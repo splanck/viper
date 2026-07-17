@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -1043,7 +1043,7 @@ Token Lexer::lexString() {
             // Enter interpolation mode
             interpolationDepth_++;
             braceDepth_.push_back(0);
-            VIPER_ZIA_ASSERT(braceDepth_.size() == static_cast<size_t>(interpolationDepth_),
+            ZANNA_ZIA_ASSERT(braceDepth_.size() == static_cast<size_t>(interpolationDepth_),
                              "interpolation brace-depth stack out of sync with depth counter");
             return tok;
         }

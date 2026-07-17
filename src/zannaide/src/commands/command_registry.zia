@@ -1,0 +1,353 @@
+module command_registry;
+
+bind "../commands/command_catalog";
+bind "../editor/language_service";
+
+bind Zanna.GUI;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: command_registry
+// PURPOSE: Runtime command table, shortcut installer, and capability gate.
+//
+// WHERE-THIS-FITS: command_catalog owns static command metadata. AppShell owns
+//          menu/toolbar widgets. main_command_dispatcher owns handler routing.
+//          This registry sits between them: it copies catalog entries into
+//          runtime CommandEntry objects, installs shortcuts, populates the
+//          palette, and explains capability-disabled commands.
+//
+// TEACHING-NOTE: Keep command metadata, trigger routing, and implementation
+//          separate. When adding a command, update the catalog first, wire a
+//          handler in the dispatcher, then let this registry handle palette and
+//          shortcut visibility.
+// ============================================================================
+
+class CommandEntry {
+    expose String id;
+    expose String label;
+    expose String description;
+    expose String category;
+    expose String shortcut;
+    expose String capability;
+    expose Boolean showInPalette;
+
+    expose func init() {
+        id = "";
+        label = "";
+        description = "";
+        category = "";
+        shortcut = "";
+        capability = "";
+        showInPalette = true;
+    }
+}
+
+class CommandRegistry {
+    expose List[CommandEntry] commands;
+
+    expose func init() {
+        commands = [];
+        RegisterDefaults();
+    }
+
+    expose func Add(id: String,
+                    label: String,
+                    description: String,
+                    shortcut: String,
+                    capability: String,
+                    showInPalette: Boolean) {
+        AddWithCategory(id, label, description, command_catalog.CategoryForCommand(id),
+                        shortcut, capability, showInPalette);
+    }
+
+    /// @brief Register a command with an explicit palette category.
+    /// @details Built-in commands pass the category stored in CommandSpec so
+    ///          catalog metadata remains the source of truth. The older Add
+    ///          overload still exists for runtime/test commands and falls back
+    ///          to the catalog classifier.
+    /// @param id Stable command id used by shortcuts and dispatch.
+    /// @param label Human-readable label for menus and palettes.
+    /// @param description Help text for shortcut/help surfaces.
+    /// @param category Palette grouping name owned by command_catalog.
+    /// @param shortcut Default keyboard shortcut text.
+    /// @param capability Required language-service capability, or empty.
+    /// @param showInPalette Whether the command appears in the palette.
+    expose func AddWithCategory(id: String,
+                                label: String,
+                                description: String,
+                                category: String,
+                                shortcut: String,
+                                capability: String,
+                                showInPalette: Boolean) {
+        var cmd = new CommandEntry();
+        cmd.id = id;
+        cmd.label = label;
+        cmd.description = description;
+        cmd.category = category;
+        if cmd.category == "" {
+            cmd.category = command_catalog.CategoryForCommand(id);
+        }
+        cmd.shortcut = shortcut;
+        cmd.capability = capability;
+        cmd.showInPalette = showInPalette;
+        commands.add(cmd);
+    }
+
+    expose func RegisterDefaults() {
+        var specs = command_catalog.DefaultCommandSpecs();
+        var i = 0;
+        while i < specs.count() {
+            var spec = specs.get(i);
+            AddWithCategory(spec.id,
+                            spec.label,
+                            spec.description,
+                            spec.category,
+                            spec.shortcut,
+                            spec.capability,
+                            spec.showInPalette);
+            i = i + 1;
+        }
+    }
+
+    expose func InstallShortcuts() {
+        Shortcuts.Clear();
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.shortcut != "" {
+                Shortcuts.Register(cmd.id, cmd.shortcut, cmd.label);
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func PopulatePalette(palette: GUI.CommandPalette,
+                                service: language_service.LanguageService) {
+        if palette == null { return; }
+        palette.Clear();
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.showInPalette {
+                if IsSupported(cmd, service) {
+                    palette.AddCommandWithShortcut(cmd.id, cmd.label, cmd.category, cmd.shortcut);
+                } else {
+                    palette.AddCommandWithShortcut(cmd.id,
+                                                   cmd.label + " (Unavailable)",
+                                                   cmd.category,
+                                                   cmd.shortcut);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func ApplyCapabilities(service: language_service.LanguageService) {
+        var i = 0;
+        while i < commands.count() {
+            var cmd = commands.get(i);
+            if cmd.shortcut != "" {
+                if IsSupported(cmd, service) {
+                    Shortcuts.SetEnabled(cmd.id, true);
+                } else {
+                    Shortcuts.SetEnabled(cmd.id, false);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func NormalizeId(id: String) -> String {
+        if id == "sidebar" { return "togglesidebar"; }
+        return id;
+    }
+
+    expose func IsKnown(id: String) -> Boolean {
+        var norm = NormalizeId(id);
+        return Find(norm) != null;
+    }
+
+    expose func IsExecutable(id: String,
+                             service: language_service.LanguageService) -> Boolean {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return false; }
+        return IsSupported(cmd, service);
+    }
+
+    expose func DisabledReason(id: String,
+                               service: language_service.LanguageService) -> String {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return "Command is not registered"; }
+        if IsSupported(cmd, service) { return ""; }
+        return DisabledReasonFor(cmd, service);
+    }
+
+    expose func Find(id: String) -> CommandEntry {
+        var i = 0;
+        while i < commands.count() {
+            if commands.get(i).id == id { return commands.get(i); }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    /// @brief Look up the display label for a command id.
+    /// @param id Command id, including aliases accepted by NormalizeId.
+    /// @return Registered label, or empty when the id is unknown.
+    expose func LabelFor(id: String) -> String {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return ""; }
+        return cmd.label;
+    }
+
+    /// @brief Look up the default shortcut for a command id.
+    /// @param id Command id, including aliases accepted by NormalizeId.
+    /// @return Shortcut text such as `Ctrl+S`, or empty when unset/unknown.
+    expose func ShortcutFor(id: String) -> String {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return ""; }
+        return cmd.shortcut;
+    }
+
+    /// @brief Look up the teaching/help description for a command id.
+    /// @param id Command id, including aliases accepted by NormalizeId.
+    /// @return Registered description, or empty when the id is unknown.
+    expose func DescriptionFor(id: String) -> String {
+        var cmd = Find(NormalizeId(id));
+        if cmd == null { return ""; }
+        return cmd.description;
+    }
+
+    expose func ShortcutConflictCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < commands.count() {
+            var left = commands.get(i);
+            if left.shortcut != "" {
+                var j = i + 1;
+                while j < commands.count() {
+                    var right = commands.get(j);
+                    if right.shortcut != "" and right.shortcut == left.shortcut {
+                        count = count + 1;
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    expose func ShortcutHasConflict(shortcut: String) -> Boolean {
+        if shortcut == "" { return false; }
+        var matches = 0;
+        var i = 0;
+        while i < commands.count() {
+            if commands.get(i).shortcut == shortcut {
+                matches = matches + 1;
+            }
+            i = i + 1;
+        }
+        return matches > 1;
+    }
+
+    expose func ShortcutConflictSummary() -> String {
+        var summary = "";
+        var i = 0;
+        while i < commands.count() {
+            var left = commands.get(i);
+            if left.shortcut != "" {
+                var j = i + 1;
+                while j < commands.count() {
+                    var right = commands.get(j);
+                    if right.shortcut == left.shortcut {
+                        if summary != "" { summary = summary + "\n"; }
+                        summary = summary + left.shortcut + ": " + left.id + " / " + right.id;
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        return summary;
+    }
+
+    expose func IsSupported(cmd: CommandEntry,
+                            service: language_service.LanguageService) -> Boolean {
+        if cmd.capability == "" { return true; }
+        if service == null { return false; }
+        if service.name == language_service.LANGUAGE_BASIC and IsZiaOnlyCommand(cmd.id) {
+            return false;
+        }
+        if cmd.capability == "completion" { return service.canComplete; }
+        if cmd.capability == "diagnostics" { return service.canDiagnose; }
+        if cmd.capability == "definition" { return service.canGoToDefinition; }
+        if cmd.capability == "references" { return service.canFindReferences; }
+        if cmd.capability == "rename" { return service.canRename; }
+        if cmd.capability == "signature" { return service.canSignatureHelp; }
+        if cmd.capability == "symbols" { return service.canDocumentSymbols; }
+        return true;
+    }
+
+    expose func ServerSupportsCapability(capability: String,
+                                         service: language_service.LanguageService) -> Boolean {
+        if capability == "" { return false; }
+        if service == null { return false; }
+        if capability == "completion" { return service.serverCanComplete; }
+        if capability == "diagnostics" { return service.serverCanDiagnose; }
+        if capability == "definition" { return service.serverCanGoToDefinition; }
+        if capability == "references" { return service.serverCanFindReferences; }
+        if capability == "rename" { return service.serverCanRename; }
+        if capability == "signature" { return service.serverCanSignatureHelp; }
+        if capability == "symbols" { return service.serverCanDocumentSymbols; }
+        return false;
+    }
+
+    expose func DisabledReasonFor(cmd: CommandEntry,
+                                  service: language_service.LanguageService) -> String {
+        if cmd == null { return "Command is not registered"; }
+        var language = "this file";
+        if service != null and service.name != "" {
+            language = Str.ToUpper(service.name);
+        }
+        if service != null
+           and service.name == language_service.LANGUAGE_BASIC
+           and IsZiaOnlyCommand(cmd.id) {
+            return cmd.label + " is unavailable: this command rewrites Zia source syntax.";
+        }
+        if service != null
+           and service.externalServerName != ""
+           and ServerSupportsCapability(cmd.capability, service) {
+            return cmd.label + " is unavailable: " + service.externalServerName
+                   + " supports " + CapabilityLabel(cmd.capability)
+                   + ", but ZannaIDE has not wired a " + language
+                   + " adapter for this command.";
+        }
+        return cmd.label + " is unavailable: " + language
+               + " does not support " + CapabilityLabel(cmd.capability) + ".";
+    }
+
+    expose func IsZiaOnlyCommand(id: String) -> Boolean {
+        return id == "organizebinds"
+               or id == "extractlocal"
+               or id == "extractfunction"
+               or id == "inlinelocal"
+               or id == "suppressdiagnostic"
+               or id == "createmissingbind";
+    }
+
+    expose func CapabilityLabel(capability: String) -> String {
+        if capability == "completion" { return "completion"; }
+        if capability == "diagnostics" { return "diagnostics"; }
+        if capability == "definition" { return "go to definition"; }
+        if capability == "references" { return "references"; }
+        if capability == "rename" { return "rename"; }
+        if capability == "signature" { return "signature help"; }
+        if capability == "symbols" { return "document symbols"; }
+        return "this language feature";
+    }
+
+    expose func CommandCategory(id: String) -> String {
+        return command_catalog.CategoryForCommand(id);
+    }
+}

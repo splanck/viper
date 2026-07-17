@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -182,7 +182,7 @@ static int8_t pad_released(int64_t pad_index, int64_t button) {
 
 /// @brief Read a gamepad axis value (-1..1 sticks, 0..1 triggers).
 ///
-/// `axis` is one of `VIPER_AXIS_*`. With `pad_index < 0`, returns the
+/// `axis` is one of `ZANNA_AXIS_*`. With `pad_index < 0`, returns the
 /// first non-zero value across pads 0..3 — useful when you want
 /// "any controller's left stick" without binding to a specific index.
 static double pad_axis_value(int64_t pad_index, int64_t axis) {
@@ -193,22 +193,22 @@ static double pad_axis_value(int64_t pad_index, int64_t axis) {
                 continue;
             double v = 0.0;
             switch (axis) {
-                case VIPER_AXIS_LEFT_X:
+                case ZANNA_AXIS_LEFT_X:
                     v = rt_pad_left_x(i);
                     break;
-                case VIPER_AXIS_LEFT_Y:
+                case ZANNA_AXIS_LEFT_Y:
                     v = rt_pad_left_y(i);
                     break;
-                case VIPER_AXIS_RIGHT_X:
+                case ZANNA_AXIS_RIGHT_X:
                     v = rt_pad_right_x(i);
                     break;
-                case VIPER_AXIS_RIGHT_Y:
+                case ZANNA_AXIS_RIGHT_Y:
                     v = rt_pad_right_y(i);
                     break;
-                case VIPER_AXIS_LEFT_TRIGGER:
+                case ZANNA_AXIS_LEFT_TRIGGER:
                     v = rt_pad_left_trigger(i);
                     break;
-                case VIPER_AXIS_RIGHT_TRIGGER:
+                case ZANNA_AXIS_RIGHT_TRIGGER:
                     v = rt_pad_right_trigger(i);
                     break;
             }
@@ -222,17 +222,17 @@ static double pad_axis_value(int64_t pad_index, int64_t axis) {
         return 0.0;
 
     switch (axis) {
-        case VIPER_AXIS_LEFT_X:
+        case ZANNA_AXIS_LEFT_X:
             return rt_pad_left_x(pad_index);
-        case VIPER_AXIS_LEFT_Y:
+        case ZANNA_AXIS_LEFT_Y:
             return rt_pad_left_y(pad_index);
-        case VIPER_AXIS_RIGHT_X:
+        case ZANNA_AXIS_RIGHT_X:
             return rt_pad_right_x(pad_index);
-        case VIPER_AXIS_RIGHT_Y:
+        case ZANNA_AXIS_RIGHT_Y:
             return rt_pad_right_y(pad_index);
-        case VIPER_AXIS_LEFT_TRIGGER:
+        case ZANNA_AXIS_LEFT_TRIGGER:
             return rt_pad_left_trigger(pad_index);
-        case VIPER_AXIS_RIGHT_TRIGGER:
+        case ZANNA_AXIS_RIGHT_TRIGGER:
             return rt_pad_right_trigger(pad_index);
         default:
             return 0.0;
@@ -250,7 +250,7 @@ static double clamp_axis(double value) {
 
 /// @brief Initialize the global action mapping system.
 /// @details Must be called once before any action operations. Clears all state.
-///   Called automatically by the Viper runtime startup.
+///   Called automatically by the Zanna runtime startup.
 void rt_action_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
@@ -527,7 +527,7 @@ int8_t rt_action_remove(rt_string name) {
 
 /// @brief `Action.BindKey(action, key)` — add a button-style key binding.
 ///
-/// `key` is a `VIPER_KEY_*` constant. Fails if action doesn't exist,
+/// `key` is a `ZANNA_KEY_*` constant. Fails if action doesn't exist,
 /// is an axis action, or allocation fails.
 int8_t rt_action_bind_key(rt_string action, int64_t key) {
     RT_ASSERT_MAIN_THREAD();
@@ -569,7 +569,7 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key) {
 
 /// @brief `Action.BindChord(action, keys)` — bind a multi-key chord.
 ///
-/// `keys` is a `seq<int>` of `VIPER_KEY_*` codes. The action is
+/// `keys` is a `seq<int>` of `ZANNA_KEY_*` codes. The action is
 /// "pressed" the frame all keys in the chord are simultaneously held
 /// AND at least one was newly pressed. Caps at `MAX_CHORD_KEYS` (8).
 /// Useful for hotkey-style actions like Ctrl+Shift+S.
@@ -757,7 +757,7 @@ int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t 
 
 /// @brief `Action.BindPadAxis(action, padIndex, axis, scale)` — bind a gamepad analog axis.
 ///
-/// `axis` is `VIPER_AXIS_*`. `scale` multiplies the raw axis value
+/// `axis` is `ZANNA_AXIS_*`. `scale` multiplies the raw axis value
 /// (typically 1.0 or -1.0 to invert).
 int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale) {
     RT_ASSERT_MAIN_THREAD();
@@ -932,11 +932,11 @@ static int action_bindings_append_desc(rt_string_builder *sb, const Binding *b) 
             return action_bindings_append_key_name(sb, b->code, "Key");
         case BIND_MOUSE_BUTTON:
             switch (b->code) {
-                case VIPER_MOUSE_BUTTON_LEFT:
+                case ZANNA_MOUSE_BUTTON_LEFT:
                     return action_bindings_append_cstr(sb, "Mouse Left");
-                case VIPER_MOUSE_BUTTON_RIGHT:
+                case ZANNA_MOUSE_BUTTON_RIGHT:
                     return action_bindings_append_cstr(sb, "Mouse Right");
-                case VIPER_MOUSE_BUTTON_MIDDLE:
+                case ZANNA_MOUSE_BUTTON_MIDDLE:
                     return action_bindings_append_cstr(sb, "Mouse Middle");
                 default:
                     return action_bindings_append_cstr(sb, "Mouse Button");
@@ -952,46 +952,46 @@ static int action_bindings_append_desc(rt_string_builder *sb, const Binding *b) 
         case BIND_PAD_BUTTON:
         case BIND_PAD_BUTTON_AXIS:
             switch (b->code) {
-                case VIPER_PAD_A:
+                case ZANNA_PAD_A:
                     return action_bindings_append_cstr(sb, "Pad A");
-                case VIPER_PAD_B:
+                case ZANNA_PAD_B:
                     return action_bindings_append_cstr(sb, "Pad B");
-                case VIPER_PAD_X:
+                case ZANNA_PAD_X:
                     return action_bindings_append_cstr(sb, "Pad X");
-                case VIPER_PAD_Y:
+                case ZANNA_PAD_Y:
                     return action_bindings_append_cstr(sb, "Pad Y");
-                case VIPER_PAD_LB:
+                case ZANNA_PAD_LB:
                     return action_bindings_append_cstr(sb, "Pad LB");
-                case VIPER_PAD_RB:
+                case ZANNA_PAD_RB:
                     return action_bindings_append_cstr(sb, "Pad RB");
-                case VIPER_PAD_UP:
+                case ZANNA_PAD_UP:
                     return action_bindings_append_cstr(sb, "Pad Up");
-                case VIPER_PAD_DOWN:
+                case ZANNA_PAD_DOWN:
                     return action_bindings_append_cstr(sb, "Pad Down");
-                case VIPER_PAD_LEFT:
+                case ZANNA_PAD_LEFT:
                     return action_bindings_append_cstr(sb, "Pad Left");
-                case VIPER_PAD_RIGHT:
+                case ZANNA_PAD_RIGHT:
                     return action_bindings_append_cstr(sb, "Pad Right");
-                case VIPER_PAD_START:
+                case ZANNA_PAD_START:
                     return action_bindings_append_cstr(sb, "Pad Start");
-                case VIPER_PAD_BACK:
+                case ZANNA_PAD_BACK:
                     return action_bindings_append_cstr(sb, "Pad Back");
                 default:
                     return action_bindings_append_cstr(sb, "Pad Button");
             }
         case BIND_PAD_AXIS:
             switch (b->code) {
-                case VIPER_AXIS_LEFT_X:
+                case ZANNA_AXIS_LEFT_X:
                     return action_bindings_append_cstr(sb, "Left Stick X");
-                case VIPER_AXIS_LEFT_Y:
+                case ZANNA_AXIS_LEFT_Y:
                     return action_bindings_append_cstr(sb, "Left Stick Y");
-                case VIPER_AXIS_RIGHT_X:
+                case ZANNA_AXIS_RIGHT_X:
                     return action_bindings_append_cstr(sb, "Right Stick X");
-                case VIPER_AXIS_RIGHT_Y:
+                case ZANNA_AXIS_RIGHT_Y:
                     return action_bindings_append_cstr(sb, "Right Stick Y");
-                case VIPER_AXIS_LEFT_TRIGGER:
+                case ZANNA_AXIS_LEFT_TRIGGER:
                     return action_bindings_append_cstr(sb, "Left Trigger");
-                case VIPER_AXIS_RIGHT_TRIGGER:
+                case ZANNA_AXIS_RIGHT_TRIGGER:
                     return action_bindings_append_cstr(sb, "Right Trigger");
                 default:
                     return action_bindings_append_cstr(sb, "Pad Axis");
@@ -1120,30 +1120,30 @@ rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button) {
 
 /// @brief `Axis.LeftX` — gamepad left stick X-axis constant.
 int64_t rt_action_axis_left_x(void) {
-    return VIPER_AXIS_LEFT_X;
+    return ZANNA_AXIS_LEFT_X;
 }
 
 /// @brief `Axis.LeftY` — gamepad left stick Y-axis constant.
 int64_t rt_action_axis_left_y(void) {
-    return VIPER_AXIS_LEFT_Y;
+    return ZANNA_AXIS_LEFT_Y;
 }
 
 /// @brief `Axis.RightX` — gamepad right stick X-axis constant.
 int64_t rt_action_axis_right_x(void) {
-    return VIPER_AXIS_RIGHT_X;
+    return ZANNA_AXIS_RIGHT_X;
 }
 
 /// @brief `Axis.RightY` — gamepad right stick Y-axis constant.
 int64_t rt_action_axis_right_y(void) {
-    return VIPER_AXIS_RIGHT_Y;
+    return ZANNA_AXIS_RIGHT_Y;
 }
 
 /// @brief `Axis.LeftTrigger` — gamepad left analog trigger constant.
 int64_t rt_action_axis_left_trigger(void) {
-    return VIPER_AXIS_LEFT_TRIGGER;
+    return ZANNA_AXIS_LEFT_TRIGGER;
 }
 
 /// @brief `Axis.RightTrigger` — gamepad right analog trigger constant.
 int64_t rt_action_axis_right_trigger(void) {
-    return VIPER_AXIS_RIGHT_TRIGGER;
+    return ZANNA_AXIS_RIGHT_TRIGGER;
 }

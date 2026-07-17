@@ -1,0 +1,54 @@
+// Test: Collections
+// Tests: List, Map, Set (no native arrays in ZannaLang)
+module Test;
+
+func main() {
+    Zanna.Terminal.Say("=== Collections Test ===");
+
+    // List[Integer]
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== List ===");
+    var list = Zanna.Collections.List.New();
+    Zanna.Collections.List.Push(list, Zanna.Core.Box.I64(10));
+    Zanna.Collections.List.Push(list, Zanna.Core.Box.I64(20));
+    Zanna.Collections.List.Push(list, Zanna.Core.Box.I64(30));
+
+    Zanna.Terminal.Print("List count: ");
+    Zanna.Terminal.SayInt(Zanna.Collections.List.get_Count(list));
+
+    Zanna.Terminal.Say("List items:");
+    var i = 0;
+    while (i < Zanna.Collections.List.get_Count(list)) {
+        var item = Zanna.Collections.List.Get(list, i);
+        Zanna.Terminal.Print("  [");
+        Zanna.Terminal.Print(Zanna.Text.Fmt.Int(i));
+        Zanna.Terminal.Print("] = ");
+        Zanna.Terminal.SayInt(Zanna.Core.Box.ToI64(item));
+        i = i + 1;
+    }
+
+    // Map[String, String]
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== Map ===");
+    var map = Zanna.Collections.Map.New();
+    Zanna.Collections.Map.Set(map, Zanna.Core.Box.Str("name"), Zanna.Core.Box.Str("Alice"));
+    Zanna.Collections.Map.Set(map, Zanna.Core.Box.Str("city"), Zanna.Core.Box.Str("Boston"));
+
+    Zanna.Terminal.Print("Map has 'name': ");
+    Zanna.Terminal.Say(Zanna.Text.Fmt.Bool(Zanna.Collections.Map.Has(map, Zanna.Core.Box.Str("name"))));
+
+    var nameVal = Zanna.Collections.Map.Get(map, Zanna.Core.Box.Str("name"));
+    Zanna.Terminal.Say("Map get 'name': " + Zanna.Core.Box.ToStr(nameVal));
+
+    var cityVal = Zanna.Collections.Map.Get(map, Zanna.Core.Box.Str("city"));
+    Zanna.Terminal.Say("Map get 'city': " + Zanna.Core.Box.ToStr(cityVal));
+
+    // Note: ZannaLang has no native arrays
+    // Arrays would need to be implemented via List or special syntax
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== Arrays ===");
+    Zanna.Terminal.Say("ZannaLang: No native arrays (use List instead)");
+    Zanna.Terminal.Say("BASIC: Native fixed and dynamic arrays supported");
+
+    Zanna.Terminal.Say("=== Collections test complete ===");
+}

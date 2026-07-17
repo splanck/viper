@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTArchiveTests.cpp
-// Purpose: Validate Viper.IO.Archive ZIP archive support.
+// Purpose: Validate Zanna.IO.Archive ZIP archive support.
 // Key invariants: Round-trip create/read preserves data, ZIP format compatibility.
-// Links: docs/viperlib/io.md
+// Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
 

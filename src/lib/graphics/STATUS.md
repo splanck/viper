@@ -1,4 +1,4 @@
-# ViperGFX Implementation Status
+# ZannaGFX Implementation Status
 
 **Date:** 2026-02-23
 **Version:** 1.1.0
@@ -96,7 +96,7 @@
 ## Build Status
 
 ```
-Library: libvipergfx.a (18 KB)
+Library: libzannagfx.a (18 KB)
 Exported Functions: 48
 Total Lines of Code: 1,613
 
@@ -193,7 +193,7 @@ C++ Compatible: ✅ Yes
 
 ## Runtime Layer Improvements (2026-02-23)
 
-The following improvements were made in the Viper runtime layer (`src/runtime/graphics/`):
+The following improvements were made in the Zanna runtime layer (`src/runtime/graphics/`):
 
 ### Bug Fixes
 

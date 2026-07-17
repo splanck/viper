@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <variant>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Identifies a virtual register allocated by the Machine IR builder.
 struct VReg {
@@ -339,4 +339,4 @@ struct MFunction {
 /// @return Multi-line string representation.
 [[nodiscard]] std::string toString(const MFunction &func);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

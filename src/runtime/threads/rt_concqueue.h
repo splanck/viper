@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_concqueue.h
@@ -74,7 +74,7 @@ void *rt_concqueue_try_dequeue(void *obj);
 ///          item is removed. A queued NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_concqueue_try_dequeue.
 /// @param obj ConcurrentQueue pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_concqueue_try_dequeue_option(void *obj);
 
 /// @brief Remove item from front of queue (blocking).

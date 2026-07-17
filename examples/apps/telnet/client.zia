@@ -2,10 +2,10 @@
 // Connects to a telnet server and provides interactive session
 module main;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Network as Network;
-bind Viper.String as String;
-bind Viper.Time as Time;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Network as Network;
+bind Zanna.String as String;
+bind Zanna.Time as Time;
 
 // ============================================================================
 // CONFIGURATION
@@ -21,7 +21,7 @@ final VERSION = "1.0.0";
 // ============================================================================
 
 func main() {
-    Terminal.Say("Viper Telnet Client v" + VERSION);
+    Terminal.Say("Zanna Telnet Client v" + VERSION);
     Terminal.Say("================================");
     Terminal.Say("");
 
@@ -94,12 +94,12 @@ func main() {
 }
 
 // Send a command to the server
-func sendCommand(conn: Viper.Network.Tcp, cmd: String) {
+func sendCommand(conn: Zanna.Network.Tcp, cmd: String) {
     Network.Tcp.SendStr(conn, cmd + "\n");
 }
 
 // Receive response from server (read until prompt or timeout)
-func receiveResponse(conn: Viper.Network.Tcp) -> String {
+func receiveResponse(conn: Zanna.Network.Tcp) -> String {
     var response = "";
     var reading = 1;
 
@@ -122,7 +122,7 @@ func receiveResponse(conn: Viper.Network.Tcp) -> String {
             Time.Clock.Sleep(10);
 
             // If we have some response and no more data, we're done
-            var respLen = Viper.String.get_Length(response);
+            var respLen = Zanna.String.get_Length(response);
             available = Network.Tcp.get_Available(conn);
             if respLen > 0 && available == 0 {
                 reading = 0;
@@ -137,7 +137,7 @@ func receiveResponse(conn: Viper.Network.Tcp) -> String {
 }
 
 // Read all available data (non-blocking style)
-func readAvailable(conn: Viper.Network.Tcp) -> String {
+func readAvailable(conn: Zanna.Network.Tcp) -> String {
     var result = "";
     Network.Tcp.SetRecvTimeout(conn, 50);
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <string>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 // ===== check() =====
 
@@ -33,7 +33,7 @@ TEST(CompilerBridge, CheckValidSource) {
 module Test;
 func start() {
     var x = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                               "test.zia");
@@ -87,7 +87,7 @@ module Test;
 func start() {
     var count = 1;
     var x = cout;
-    Viper.Terminal.SayInt(x + count);
+    Zanna.Terminal.SayInt(x + count);
 }
 )",
                               "test.zia");
@@ -139,7 +139,7 @@ TEST(CompilerBridge, CompileValidSource) {
 module Test;
 func start() {
     var x = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                                  "test.zia");
@@ -167,8 +167,8 @@ func start() {
 
 TEST(CompilerBridge, CompletionsReturnsResults) {
     CompilerBridge bridge;
-    // Place cursor after "Viper." to trigger member completions
-    std::string source = "module Test;\nfunc start() {\n    Viper.\n}\n";
+    // Place cursor after "Zanna." to trigger member completions
+    std::string source = "module Test;\nfunc start() {\n    Zanna.\n}\n";
     auto items = bridge.completions(source, 3, 11, "test.zia");
     // Should return at least some completions (runtime classes like Terminal, etc.)
     EXPECT_TRUE(items.size() > 0u);
@@ -177,7 +177,7 @@ TEST(CompilerBridge, CompletionsReturnsResults) {
 TEST(CompilerBridge, RuntimeClassCompletionCarriesAuthoredDocumentation) {
     CompilerBridge bridge;
     std::string source = "module Test;\n"
-                         "bind Viper.GUI as GUI;\n"
+                         "bind Zanna.GUI as GUI;\n"
                          "func start() {\n"
                          "    GUI.Ap\n"
                          "}\n";
@@ -186,7 +186,7 @@ TEST(CompilerBridge, RuntimeClassCompletionCarriesAuthoredDocumentation) {
         items.begin(), items.end(), [](const CompletionInfo &item) { return item.label == "App"; });
     ASSERT_NE(app, items.end());
     EXPECT_TRUE(app->documentation.find("Owns a GUI application window") != std::string::npos);
-    EXPECT_TRUE(app->documentation.find("`Viper.GUI.App`") != std::string::npos);
+    EXPECT_TRUE(app->documentation.find("`Zanna.GUI.App`") != std::string::npos);
 }
 
 TEST(CompilerBridge, CompletionsAtEmptyPosition) {
@@ -213,9 +213,9 @@ TEST(CompilerBridge, HoverOnLocalVariable) {
 
 TEST(CompilerBridge, HoverOnLocalVariableUseSite) {
     CompilerBridge bridge;
-    // Line 4: "    Viper.Terminal.SayInt(x);" — cursor on the use of 'x' at col 27
+    // Line 4: "    Zanna.Terminal.SayInt(x);" — cursor on the use of 'x' at col 27
     std::string source =
-        "module Test;\nfunc start() {\n    var x = 42;\n    Viper.Terminal.SayInt(x);\n}\n";
+        "module Test;\nfunc start() {\n    var x = 42;\n    Zanna.Terminal.SayInt(x);\n}\n";
     auto result = bridge.hover(source, 4, 27, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_CONTAINS(result, "x");
@@ -224,12 +224,12 @@ TEST(CompilerBridge, HoverOnLocalVariableUseSite) {
 
 TEST(CompilerBridge, HoverOnLocalInsideNestedBlock) {
     CompilerBridge bridge;
-    // Line 5: "        Viper.Terminal.SayInt(total);" — cursor on 'total' at col 31
+    // Line 5: "        Zanna.Terminal.SayInt(total);" — cursor on 'total' at col 31
     std::string source = "module Test;\n"
                          "func start() {\n"
                          "    var total = 0;\n"
                          "    if total == 0 {\n"
-                         "        Viper.Terminal.SayInt(total);\n"
+                         "        Zanna.Terminal.SayInt(total);\n"
                          "    }\n"
                          "}\n";
     auto result = bridge.hover(source, 5, 31, "test.zia");
@@ -246,7 +246,7 @@ TEST(CompilerBridge, HoverOnFunctionParameter) {
                          "    return a + b;\n"
                          "}\n"
                          "func start() {\n"
-                         "    Viper.Terminal.SayInt(add(1, 2));\n"
+                         "    Zanna.Terminal.SayInt(add(1, 2));\n"
                          "}\n";
     auto result = bridge.hover(source, 3, 12, "test.zia");
     EXPECT_FALSE(result.empty());
@@ -378,9 +378,9 @@ TEST(CompilerBridge, HoverOnInvalidSource) {
 
 TEST(CompilerBridge, HoverOnModuleAlias) {
     CompilerBridge bridge;
-    // Line 2: "bind Viper.Terminal as IO;" — cursor on 'IO' at col 24
+    // Line 2: "bind Zanna.Terminal as IO;" — cursor on 'IO' at col 24
     std::string source = "module Test;\n"
-                         "bind Viper.Terminal as IO;\n"
+                         "bind Zanna.Terminal as IO;\n"
                          "\n"
                          "func start() {\n"
                          "    IO.Say(\"hello\");\n"
@@ -388,7 +388,7 @@ TEST(CompilerBridge, HoverOnModuleAlias) {
     auto result = bridge.hover(source, 2, 24, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("IO") != std::string::npos);
-    EXPECT_TRUE(result.find("Viper.Terminal") != std::string::npos);
+    EXPECT_TRUE(result.find("Zanna.Terminal") != std::string::npos);
     EXPECT_TRUE(result.find("Module namespace") != std::string::npos);
 }
 
@@ -396,7 +396,7 @@ TEST(CompilerBridge, HoverOnRuntimeMethod) {
     CompilerBridge bridge;
     // Line 5: "    IO.Say("hi");" — dotPrefix="IO", identifier="Say"
     std::string source = "module Test;\n"               // 1
-                         "bind Viper.Terminal as IO;\n" // 2
+                         "bind Zanna.Terminal as IO;\n" // 2
                          "\n"                           // 3
                          "func start() {\n"             // 4
                          "    IO.Say(\"hi\");\n"        // 5
@@ -410,20 +410,20 @@ TEST(CompilerBridge, HoverOnRuntimeMethod) {
 TEST(CompilerBridge, HoverOnRuntimeClassIncludesAuthoredDocumentation) {
     CompilerBridge bridge;
     std::string source = "module Test;\n"
-                         "func use(app: Viper.GUI.App) {}\n";
+                         "func use(app: Zanna.GUI.App) {}\n";
     auto result = bridge.hover(source, 2, 25, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("Owns a GUI application window") != std::string::npos);
-    EXPECT_TRUE(result.find("`Viper.GUI.App`") != std::string::npos);
+    EXPECT_TRUE(result.find("`Zanna.GUI.App`") != std::string::npos);
 }
 
 TEST(CompilerBridge, HoverOnFinalVariable) {
     CompilerBridge bridge;
-    // Line 4: "    Viper.Terminal.SayInt(MAX);" — 'MAX' starts at col 27
+    // Line 4: "    Zanna.Terminal.SayInt(MAX);" — 'MAX' starts at col 27
     std::string source = "module Test;\n"
                          "final MAX = 100;\n"
                          "func start() {\n"
-                         "    Viper.Terminal.SayInt(MAX);\n"
+                         "    Zanna.Terminal.SayInt(MAX);\n"
                          "}\n";
     auto result = bridge.hover(source, 4, 27, "test.zia");
     EXPECT_FALSE(result.empty());
@@ -432,13 +432,13 @@ TEST(CompilerBridge, HoverOnFinalVariable) {
 
 TEST(CompilerBridge, HoverOnFunctionCallSite) {
     CompilerBridge bridge;
-    // Line 6: "    Viper.Terminal.SayInt(add(1, 2));" — 'add' starts at col 27
+    // Line 6: "    Zanna.Terminal.SayInt(add(1, 2));" — 'add' starts at col 27
     std::string source = "module Test;\n"
                          "func add(a: Integer, b: Integer) -> Integer {\n"
                          "    return a + b;\n"
                          "}\n"
                          "func start() {\n"
-                         "    Viper.Terminal.SayInt(add(1, 2));\n"
+                         "    Zanna.Terminal.SayInt(add(1, 2));\n"
                          "}\n";
     auto result = bridge.hover(source, 6, 27, "test.zia");
     EXPECT_FALSE(result.empty());
@@ -597,8 +597,8 @@ TEST(CompilerBridge, RuntimeClassesHaveNames) {
 
 TEST(CompilerBridge, RuntimeMembersForKnownClass) {
     CompilerBridge bridge;
-    // "Viper.Terminal" should exist and have methods
-    auto members = bridge.runtimeMembers("Viper.Terminal");
+    // "Zanna.Terminal" should exist and have methods
+    auto members = bridge.runtimeMembers("Zanna.Terminal");
     EXPECT_TRUE(members.size() > 0u);
     // Should have the "Say" method
     bool foundSay = false;
@@ -639,6 +639,6 @@ TEST(CompilerBridge, RuntimeSearchNoResults) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

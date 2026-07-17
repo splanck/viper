@@ -1,6 +1,6 @@
 module TestMath;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     SayNum(Pi);

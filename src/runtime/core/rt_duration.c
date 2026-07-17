@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_duration.c
-// Purpose: Implements the Duration/TimeSpan type for the Viper runtime.
+// Purpose: Implements the Duration/TimeSpan type for the Zanna runtime.
 //          A Duration is a signed 64-bit integer representing a time span in
 //          milliseconds. Provides factory functions (FromMillis, FromSeconds,
 //          FromMinutes, FromHours, FromDays), total-unit accessors, component

@@ -6,7 +6,7 @@ last-verified: 2026-07-14
 
 # CODEMAP: Graphics Library
 
-Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/graphics/`).
+Cross-platform software 2D graphics library (`src/lib/graphics/`) and Zanna runtime graphics classes (`src/runtime/graphics/`).
 
 ## Runtime Classes (`src/runtime/graphics/`)
 
@@ -21,7 +21,7 @@ in [Graphics3D Architecture](../graphics3d-architecture.md).
 | `src/runtime/graphics/2d/rt_drawing.c` / `rt_drawing_advanced.c` | Canvas drawing primitives |
 | `src/runtime/graphics/2d/rt_pixels.h` / `.c` plus `rt_pixels_*` | Software image buffers, transforms, drawing, PNG/JPEG, and other I/O |
 | `src/runtime/graphics/2d/rt_sprite.h` / `.c` | Animated sprites with scaling, collision, and multiple frames |
-| `src/runtime/game/rt_spriteanim.h` / `.c` | `Viper.Game.SpriteAnimation` playback state |
+| `src/runtime/game/rt_spriteanim.h` / `.c` | `Zanna.Game.SpriteAnimation` playback state |
 | `src/runtime/graphics/2d/rt_spritebatch.h` / `.c` | Batched sprite rendering with stable equal-depth ordering |
 | `src/runtime/graphics/2d/rt_texatlas.h` / `.c` | Named-region texture atlas and grid slicing |
 | `src/runtime/graphics/2d/rt_spritesheet.h` / `.c` | Named region extraction from a source image |
@@ -33,7 +33,7 @@ Graphics-disabled builds use `src/runtime/graphics/common/rt_graphics_stubs.c`; 
 
 ## Low-Level C Library
 
-The underlying ViperGFX library provides platform-specific window management and drawing.
+The underlying ZannaGFX library provides platform-specific window management and drawing.
 
 ## Public API (`include/`)
 
@@ -82,7 +82,7 @@ The underlying ViperGFX library provides platform-specific window management and
 
 | File                        | Purpose                            |
 |-----------------------------|------------------------------------|
-| `docs/VIPER_INTEGRATION.md` | BASIC runtime integration guide    |
+| `docs/ZANNA_INTEGRATION.md` | BASIC runtime integration guide    |
 | `DRAWING_PRIMITIVES.md`     | Drawing algorithm details          |
 | `gfxlib.md`                 | Complete specification             |
 | `INTEGRATION.md`            | CMake integration guide            |

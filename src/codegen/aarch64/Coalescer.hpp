@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Coalesce MovRR/FMovRR instructions between virtual registers.
 ///
@@ -39,4 +39,4 @@ namespace viper::codegen::aarch64 {
 /// @param fn The machine function to coalesce (modified in place).
 void coalesce(MFunction &fn);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

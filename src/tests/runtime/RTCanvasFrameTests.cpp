@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -61,10 +61,10 @@ static void test_get_delta_time_null_canvas() {
 }
 
 // ============================================================================
-// Struct-level clamping tests (requires VIPER_ENABLE_GRAPHICS for struct def)
+// Struct-level clamping tests (requires ZANNA_ENABLE_GRAPHICS for struct def)
 // ============================================================================
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// Allocate a minimal rt_canvas on the heap with zeroed fields.
 /// This is NOT a real canvas — no GC, no window — just enough to test
@@ -226,7 +226,7 @@ static void test_begin_frame_returns_0_when_closing() {
     printf("  test_begin_frame_returns_0_when_closing: PASSED\n");
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */
 
 // ============================================================================
 // Main
@@ -240,7 +240,7 @@ int main() {
     test_begin_frame_null_canvas();
     test_get_delta_time_null_canvas();
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     printf("\n--- DeltaTime Clamping ---\n");
     test_dt_clamping_disabled_by_default();
     test_dt_clamping_upper_bound();
@@ -256,7 +256,7 @@ int main() {
     test_begin_frame_returns_1_when_open();
     test_begin_frame_returns_0_when_closing();
 #else
-    printf("\n  (struct-level tests skipped — VIPER_ENABLE_GRAPHICS not defined)\n");
+    printf("\n  (struct-level tests skipped — ZANNA_ENABLE_GRAPHICS not defined)\n");
 #endif
 
     printf("\n=== All RTCanvasFrameTests passed! ===\n");

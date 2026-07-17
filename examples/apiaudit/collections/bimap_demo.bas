@@ -1,4 +1,4 @@
-' bimap_demo.bas - Comprehensive API audit for Viper.Collections.BiMap
+' bimap_demo.bas - Comprehensive API audit for Zanna.Collections.BiMap
 ' Tests: New, Set, GetByKey, GetByValue, HasKey, HasValue,
 '        RemoveByKey, RemoveByValue, Keys, Values, Len, IsEmpty, Clear
 
@@ -7,7 +7,7 @@ PRINT "=== BiMap API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM bm AS OBJECT
-bm = Viper.Collections.BiMap.New()
+bm = Zanna.Collections.BiMap.New()
 PRINT bm.Count       ' 0
 PRINT bm.IsEmpty   ' 1
 

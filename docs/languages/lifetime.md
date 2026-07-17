@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # Lifetime Model
 
-Viper BASIC uses deterministic lifetimes with reference counting and explicit disposal. This section summarizes the
+Zanna BASIC uses deterministic lifetimes with reference counting and explicit disposal. This section summarizes the
 model and best practices.
 
 ## Reference Counting (RC)
@@ -92,10 +92,10 @@ WEND
 
 ### Detection
 
-Viper includes a cycle-detecting garbage collector (`rt_gc.c`) that uses a trial-deletion algorithm. Objects must be registered via `rt_gc_track` for cycle detection to apply. The GC runs periodically during allocation and at program shutdown via `rt_gc_run_all_finalizers`. For debugging:
+Zanna includes a cycle-detecting garbage collector (`rt_gc.c`) that uses a trial-deletion algorithm. Objects must be registered via `rt_gc_track` for cycle detection to apply. The GC runs periodically during allocation and at program shutdown via `rt_gc_run_all_finalizers`. For debugging:
 
 1. Review object relationships for potential cycles
-2. Use debug builds with refcount tracing (`-DVIPER_RC_DEBUG=1`)
+2. Use debug builds with refcount tracing (`-DZANNA_RC_DEBUG=1`)
 3. Profile memory usage over time to identify growing allocations
 
 ## Guidance

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_context.c
-// Purpose: Per-VM runtime context management. Each Viper VM instance owns an
+// Purpose: Per-VM runtime context management. Each Zanna VM instance owns an
 //   RtContext that holds all per-VM state: RNG seed, open file handles,
 //   command-line arguments, module-level variables, and the OOP type registry.
 //   Multiple independent VMs can coexist in a single process because all
@@ -60,7 +60,7 @@
 #endif
 
 /* Cross-component forward declarations — weak defaults so programs that
-   don't use file I/O or OOP don't need to link viper_rt_io_fs / viper_rt_oop.
+   don't use file I/O or OOP don't need to link zanna_rt_io_fs / zanna_rt_oop.
    When those components ARE linked, their strong definitions override these. */
 #if defined(_MSC_VER)
 void rt_file_state_cleanup(RtContext *ctx);
@@ -84,7 +84,7 @@ void rt_args_state_cleanup(RtContext *ctx);
 /// @brief Thread-local pointer to the active runtime context.
 ///
 /// Each thread can have at most one active VM context bound at a time.
-/// The VM sets this pointer before executing Viper code and clears it
+/// The VM sets this pointer before executing Zanna code and clears it
 /// afterward. When NULL, runtime functions fall back to the legacy context.
 ///
 /// @note Thread-local storage ensures thread safety without locking.
@@ -332,7 +332,7 @@ static void rt_legacy_ensure_init(void) {
 ///
 /// // Use the context
 /// rt_set_current_context(&ctx);
-/// // ... execute Viper code ...
+/// // ... execute Zanna code ...
 /// rt_set_current_context(NULL);
 ///
 /// // Cleanup when done
@@ -446,7 +446,7 @@ void rt_context_cleanup(RtContext *ctx) {
 ///
 /// Associates a context with the calling thread, enabling all runtime
 /// functions to use that context's state. This is the primary mechanism
-/// by which VMs execute Viper code with isolated state.
+/// by which VMs execute Zanna code with isolated state.
 ///
 /// **Binding lifecycle:**
 /// ```

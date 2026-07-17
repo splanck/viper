@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -105,7 +105,7 @@ static void queue_release_value(void *value) {
 
 /// @brief Finalizer callback invoked when a Queue is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// Queue object becomes unreachable. It frees the internal items array to
 /// prevent memory leaks.
 ///

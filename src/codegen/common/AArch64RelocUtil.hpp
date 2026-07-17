@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 
 #include <cstdint>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 inline bool isA64AddImmediate(uint32_t insn) {
     return (insn & 0x7F000000u) == 0x11000000u;
@@ -38,4 +38,4 @@ inline bool isA64UnsignedLdStOffsetWithShift(uint32_t insn, uint32_t expectedShi
     return a64UnsignedLdStOffsetShift(insn, shift) && shift == expectedShift;
 }
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Part 2: Building Blocks — Viper</title>
-  <meta name="description" content="Viper documentation: Part 2: Building Blocks">
+  <title>Part 2: Building Blocks — Zanna</title>
+  <meta name="description" content="Zanna documentation: Part 2: Building Blocks">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/" class="active">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -128,18 +128,18 @@
         <li><a href="#summary">Summary</a></li>
         <li><a href="#exercises">Exercises</a></li>
         <li><a href="#what-is-a-standard-library">What Is a Standard Library?</a></li>
-        <li><a href="#a-tour-of-viper-s-standard-library">A Tour of Viper&#x27;s Standard Library</a></li>
-        <li><a href="#viper-terminal-console-i-o">Viper.Terminal: Console I/O</a></li>
-        <li><a href="#viper-math-mathematics">Viper.Math: Mathematics</a></li>
-        <li><a href="#viper-math-random-randomness">Viper.Math.Random: Randomness</a></li>
-        <li><a href="#viper-time-date-and-time">Viper.Time: Date and Time</a></li>
-        <li><a href="#viper-environment-system-information">Viper.System.Environment: System Information</a></li>
-        <li><a href="#viper-fmt-string-formatting">Viper.Text.Fmt: String Formatting</a></li>
-        <li><a href="#viper-string-string-utilities">Viper.String: String Utilities</a></li>
-        <li><a href="#viper-collections-data-structures">Viper.Collections: Data Structures</a></li>
-        <li><a href="#viper-core-convert-parsing-values">Viper.Core.Convert: Parsing Values</a></li>
-        <li><a href="#viper-io-file-viper-io-dir-viper-io-path">Viper.IO.File / Viper.IO.Dir / Viper.IO.Path</a></li>
-        <li><a href="#viper-crypto-security-and-encoding">Viper.Crypto: Security and Encoding</a></li>
+        <li><a href="#a-tour-of-zanna-s-standard-library">A Tour of Zanna&#x27;s Standard Library</a></li>
+        <li><a href="#zanna-terminal-console-i-o">Zanna.Terminal: Console I/O</a></li>
+        <li><a href="#zanna-math-mathematics">Zanna.Math: Mathematics</a></li>
+        <li><a href="#zanna-math-random-randomness">Zanna.Math.Random: Randomness</a></li>
+        <li><a href="#zanna-time-date-and-time">Zanna.Time: Date and Time</a></li>
+        <li><a href="#zanna-environment-system-information">Zanna.System.Environment: System Information</a></li>
+        <li><a href="#zanna-fmt-string-formatting">Zanna.Text.Fmt: String Formatting</a></li>
+        <li><a href="#zanna-string-string-utilities">Zanna.String: String Utilities</a></li>
+        <li><a href="#zanna-collections-data-structures">Zanna.Collections: Data Structures</a></li>
+        <li><a href="#zanna-core-convert-parsing-values">Zanna.Core.Convert: Parsing Values</a></li>
+        <li><a href="#zanna-io-file-zanna-io-dir-zanna-io-path">Zanna.IO.File / Zanna.IO.Dir / Zanna.IO.Path</a></li>
+        <li><a href="#zanna-crypto-security-and-encoding">Zanna.Crypto: Security and Encoding</a></li>
         <li><a href="#putting-it-all-together">Putting It All Together</a></li>
         <li><a href="#things-you-don-t-need-to-reinvent">Things You Don&#x27;t Need to Reinvent</a></li>
         <li><a href="#how-to-discover-standard-library-features">How to Discover Standard Library Features</a></li>
@@ -199,7 +199,7 @@ String:    H   e   l   l   o
 <p>Why start at 0? It comes from how computers calculate memory addresses. If the string starts at memory location 1000, the first character (H) is at 1000 + 0, the second (e) is at 1000 + 1, and so on. Zero-based indexing makes this arithmetic simple.</p>
 <p>You can access individual characters:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var word = &quot;Hello&quot;;
 Say(word[0]);  // H
@@ -213,7 +213,7 @@ Say(word.Length);  // 5
 <h3 id="accessing-characters-by-index">Accessing Characters by Index</h3>
 <p>Every character in a string has a position (index), starting from 0:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 Say(name[0]);  // A (first character)
@@ -222,7 +222,7 @@ Say(name[4]);  // e (fifth/last character)
 </code></pre>
 <p>You can use any expression as an index:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Programming&quot;;
 var middle = text.Length / 2;
@@ -234,9 +234,9 @@ Say(text[lastIndex]);  // g (last character)
 <h3 id="iterating-through-strings">Iterating Through Strings</h3>
 <p>To process every character, loop through the indices:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var text = &quot;Viper&quot;;
+var text = &quot;Zanna&quot;;
 for i in 0..text.Length {
     Say(&quot;Character &quot; + i + &quot;: &quot; + text[i]);
 }
@@ -251,7 +251,7 @@ Character 4: r
 </code></pre>
 <p>This pattern is fundamental. Want to count uppercase letters? Loop through each character and check. Want to find all positions of a letter? Loop and record indices where it matches.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Count uppercase letters
 func countUppercase(text: String) -&gt; Integer {
@@ -270,7 +270,7 @@ Say(countUppercase(&quot;Hello World&quot;));  // 2 (H and W)
 <h3 id="building-strings-character-by-character">Building Strings Character by Character</h3>
 <p>You can construct strings by starting empty and adding characters:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Reverse a string
 func reverse(text: String) -&gt; String {
@@ -286,7 +286,7 @@ Say(reverse(&quot;Hello&quot;));  // olleH
 </code></pre>
 <p>Or filter characters based on criteria:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Keep only letters
 func lettersOnly(text: String) -&gt; String {
@@ -309,7 +309,7 @@ Say(lettersOnly(&quot;Hello, World! 123&quot;));  // HelloWorld
 <h2 id="string-length">String Length</h2>
 <p>The <code>.Length</code> property tells you how many characters a string contains:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;Hello&quot;.Length);     // 5
 Say(&quot;&quot;.Length);          // 0 (empty string)
@@ -317,7 +317,7 @@ Say(&quot;Hi there!&quot;.Length); // 9 (space counts)
 </code></pre>
 <p><strong>Every character counts</strong> — letters, numbers, spaces, punctuation, even invisible characters like tabs and newlines:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;A B&quot;.Length);    // 3 (A, space, B)
 Say(&quot;A\tB&quot;.Length);   // 3 (A, tab, B)
@@ -326,16 +326,16 @@ Say(&quot;A\nB&quot;.Length);   // 3 (A, newline, B)
 <h3 id="why-length-matters">Why Length Matters</h3>
 <p>Length is essential for loops:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var text = &quot;Viper&quot;;
+var text = &quot;Zanna&quot;;
 for i in 0..text.Length {
     Say(&quot;Character &quot; + i + &quot;: &quot; + text[i]);
 }
 </code></pre>
 <p>And for validation:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func validatePassword(password: String) -&gt; Boolean {
     if password.Length &lt; 8 {
@@ -351,7 +351,7 @@ func validatePassword(password: String) -&gt; Boolean {
 </code></pre>
 <p>And for safe indexing:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Hello&quot;;
 var index = 10;
@@ -374,7 +374,7 @@ text[0] = &quot;J&quot;;  // Error! Cannot modify string characters
 <h3 id="why-immutability">Why Immutability?</h3>
 <p><strong>Safety</strong>: When you pass a string to a function, you know it won&#x27;t be modified unexpectedly.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var username = &quot;Alice&quot;;
 someFunction(username);  // Cannot modify our string
@@ -415,7 +415,7 @@ for i in 0..1000 {
 <h2 id="concatenation-joining-strings">Concatenation: Joining Strings</h2>
 <p>The <code>+</code> operator joins strings together:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var first = &quot;Hello&quot;;
 var second = &quot;World&quot;;
@@ -424,7 +424,7 @@ Say(greeting);  // Hello, World!
 </code></pre>
 <p>When you &quot;add&quot; a string and a number, the number is converted to a string:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 42;
 Say(&quot;Your score: &quot; + score);  // Your score: 42
@@ -432,7 +432,7 @@ Say(&quot;Your score: &quot; + score);  // Your score: 42
 <h3 id="concatenation-order-matters">Concatenation Order Matters</h3>
 <p>Because conversion happens automatically, order can be surprising:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // String first: concatenation
 Say(&quot;Score: &quot; + 5 + 3);   // Score: 53 (string concat)
@@ -447,7 +447,7 @@ Say(&quot;Total: &quot; + (5 + 3)); // Total: 8
 <h3 id="building-strings-with-concatenation">Building Strings with Concatenation</h3>
 <p>Concatenation is intuitive for simple cases:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func formatName(first: String, middle: String, last: String) -&gt; String {
     return first + &quot; &quot; + middle + &quot; &quot; + last;
@@ -499,7 +499,7 @@ var rest = text.skip(7);     // &quot;World!&quot;
 <h3 id="practical-examples">Practical Examples</h3>
 <p><strong>Extract file extension:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func getExtension(filename: String) -&gt; String {
     var dotPos = filename.LastIndexOf(&quot;.&quot;);
@@ -515,7 +515,7 @@ Say(getExtension(&quot;README&quot;));         // (empty)
 </code></pre>
 <p><strong>Extract domain from email:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func getEmailDomain(email: String) -&gt; String {
     var atPos = email.IndexOf(&quot;@&quot;);
@@ -529,7 +529,7 @@ Say(getEmailDomain(&quot;user@example.com&quot;));  // example.com
 </code></pre>
 <p><strong>Truncate with ellipsis:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func truncate(text: String, maxLength: Integer) -&gt; String {
     if text.Length &lt;= maxLength {
@@ -555,7 +555,7 @@ var notFound = text.IndexOf(&quot;xyz&quot;);  // -1 (not found)
 <h3 id="using-indexof-results">Using indexOf Results</h3>
 <p>Always check if the search succeeded:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var email = &quot;user@example.com&quot;;
 var atPos = email.IndexOf(&quot;@&quot;);
@@ -579,7 +579,7 @@ var filename = path.skip(lastSlash + 1);  // file.txt
 <h3 id="contains-simple-presence-check">contains: Simple Presence Check</h3>
 <p>When you only care whether something exists, not where:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;The quick brown fox&quot;;
 
@@ -591,7 +591,7 @@ if text.Contains(&quot;quick&quot;) {
 <h3 id="startswith-and-endswith">startsWith and endsWith</h3>
 <p>Check the beginning or end of a string:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var filename = &quot;report.pdf&quot;;
 
@@ -651,7 +651,7 @@ var positions = findAll(&quot;abracadabra&quot;, &quot;a&quot;);
 <p>Comparing strings is essential for sorting, searching, and validation — but it&#x27;s full of subtleties.</p>
 <h3 id="basic-equality">Basic Equality</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = &quot;hello&quot;;
 var b = &quot;hello&quot;;
@@ -663,7 +663,7 @@ Say(a == c);  // false - case differs!
 <h3 id="case-sensitivity">Case Sensitivity</h3>
 <p>String comparison is <strong>case-sensitive</strong> by default. &quot;Hello&quot; and &quot;hello&quot; are different strings:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = &quot;YES&quot;;
 if input == &quot;yes&quot; {  // false!
@@ -672,7 +672,7 @@ if input == &quot;yes&quot; {  // false!
 </code></pre>
 <p>For case-insensitive comparison, convert to the same case first:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = &quot;YES&quot;;
 if input.ToLower() == &quot;yes&quot; {  // true!
@@ -681,7 +681,7 @@ if input.ToLower() == &quot;yes&quot; {  // true!
 </code></pre>
 <p><strong>Common pattern for user input:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func normalizeInput(text: String) -&gt; String {
     return text.Trim().ToLower();
@@ -695,7 +695,7 @@ if normalizeInput(input) == &quot;yes&quot; {
 <h3 id="alphabetical-ordering">Alphabetical Ordering</h3>
 <p>Strings can be compared alphabetically using <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;apple&quot; &lt; &quot;banana&quot;);  // true (a before b)
 Say(&quot;cat&quot; &lt; &quot;car&quot;);       // false (t after r)
@@ -705,7 +705,7 @@ Say(&quot;apple&quot; &lt; &quot;apricot&quot;); // true (p before r)
 <h3 id="the-ascii-trap">The ASCII Trap</h3>
 <p>Alphabetical comparison uses character codes, which leads to surprises:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // All uppercase letters come BEFORE all lowercase
 Say(&quot;Z&quot; &lt; &quot;a&quot;);     // true! Z (90) &lt; a (97)
@@ -714,7 +714,7 @@ Say(&quot;apple&quot; &lt; &quot;Banana&quot;); // false (a &gt; B)
 </code></pre>
 <p>For true alphabetical sorting, convert to the same case:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func alphabeticallyBefore(a: String, b: String) -&gt; Boolean {
     return a.ToLower() &lt; b.ToLower();
@@ -725,15 +725,15 @@ Say(alphabeticallyBefore(&quot;apple&quot;, &quot;Banana&quot;));  // true
 <h3 id="numeric-strings-don-t-sort-numerically">Numeric Strings Don&#x27;t Sort Numerically</h3>
 <p>Another common trap:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;9&quot; &lt; &quot;10&quot;);   // false! &#x27;9&#x27; (57) &gt; &#x27;1&#x27; (49)
 Say(&quot;9&quot; &lt; &quot;100&quot;);  // false! Same reason
 </code></pre>
 <p>For numeric comparison, convert to numbers:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var a = &quot;9&quot;;
 var b = &quot;10&quot;;
@@ -743,7 +743,7 @@ if Convert.ToInt64(a) &lt; Convert.ToInt64(b) {
 </code></pre>
 <h3 id="comparing-empty-strings">Comparing Empty Strings</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var empty = &quot;&quot;;
 var space = &quot; &quot;;
@@ -757,7 +757,7 @@ Say(space.Length == 0); // false
 <h2 id="case-conversion">Case Conversion</h2>
 <p>Strings can be converted to all uppercase or all lowercase:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Hello, World!&quot;;
 Say(text.ToUpper());  // HELLO, WORLD!
@@ -765,7 +765,7 @@ Say(text.ToLower());  // hello, world!
 </code></pre>
 <p>Remember: the original string is unchanged (immutability):</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 Say(name.ToUpper());  // ALICE
@@ -774,7 +774,7 @@ Say(name);          // Alice (still)
 <h3 id="case-insensitive-comparisons">Case-Insensitive Comparisons</h3>
 <p>The most common use of case conversion:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = &quot;YES&quot;;
 
@@ -786,7 +786,7 @@ if input.ToLower() == &quot;yes&quot; {
 <h3 id="capitalizing-names">Capitalizing Names</h3>
 <p>Combine case conversion with substrings:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func capitalize(text: String) -&gt; String {
     if text.Length == 0 {
@@ -800,10 +800,10 @@ Say(capitalize(&quot;ALICE&quot;));  // Alice
 </code></pre>
 <p><strong>Title case (capitalize each word):</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func titleCase(text: String) -&gt; String {
-    bind Str = Viper.String;
+    bind Str = Zanna.String;
     var words = text.Split(&quot; &quot;);
     var result = [];
 
@@ -821,7 +821,7 @@ Say(titleCase(&quot;the quick brown fox&quot;));
 <h2 id="trimming-whitespace">Trimming Whitespace</h2>
 <p>User input often has extra spaces. The <code>trim</code> method removes whitespace from both ends:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = &quot;   hello   &quot;;
 Say(&quot;[&quot; + input.Trim() + &quot;]&quot;);  // [hello]
@@ -841,7 +841,7 @@ text.Trim();       // &quot;hello&quot; (both sides)
 <li>Carriage returns (&#x27;\r&#x27;)</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var messy = &quot;\t  Hello World  \n&quot;;
 Say(&quot;[&quot; + messy.Trim() + &quot;]&quot;);  // [Hello World]
@@ -849,7 +849,7 @@ Say(&quot;[&quot; + messy.Trim() + &quot;]&quot;);  // [Hello World]
 <h3 id="essential-for-user-input">Essential for User Input</h3>
 <p>Always trim user input before processing:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;Enter your name:&quot;);
 var name = InputLine().Trim();
@@ -863,11 +863,11 @@ if name.Length == 0 {
 <h2 id="replacing-text">Replacing Text</h2>
 <p>To replace occurrences of one string with another:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Hello, World!&quot;;
-var result = text.Replace(&quot;World&quot;, &quot;Viper&quot;);
-Say(result);  // Hello, Viper!
+var result = text.Replace(&quot;World&quot;, &quot;Zanna&quot;);
+Say(result);  // Hello, Zanna!
 </code></pre>
 <p>By default, this replaces all occurrences:</p>
 <pre><code data-lang="rust">
@@ -888,7 +888,7 @@ func sanitize(text: String) -&gt; String {
 </code></pre>
 <p><strong>Normalizing data:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Remove common variations in phone numbers
 func normalizePhone(phone: String) -&gt; String {
@@ -905,7 +905,7 @@ Say(normalizePhone(&quot;+1 (555) 123-4567&quot;));  // 15551234567
 </code></pre>
 <p><strong>Template substitution:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(template: String, name: String, time: String) -&gt; String {
     var result = template;
@@ -920,7 +920,7 @@ Say(greet(template, &quot;Alice&quot;, &quot;morning&quot;));
 </code></pre>
 <h3 id="replace-is-case-sensitive">Replace Is Case-Sensitive</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Hello hello HELLO&quot;;
 Say(text.Replace(&quot;hello&quot;, &quot;hi&quot;));
@@ -954,7 +954,7 @@ func replaceIgnoreCase(text: String, search: String, replacement: String) -&gt; 
 <h2 id="splitting-strings">Splitting Strings</h2>
 <p>Splitting breaks a string into an array of pieces at each occurrence of a delimiter:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var csv = &quot;apple,banana,cherry&quot;;
 var fruits = csv.Split(&quot;,&quot;);
@@ -1007,7 +1007,7 @@ var pairs = data.Split(&quot;&amp;&quot;);  // [&quot;name=Alice&quot;, &quot;ag
 <h3 id="parsing-csv-data">Parsing CSV Data</h3>
 <p>CSV (Comma-Separated Values) is extremely common:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func parseCSVLine(line: String) -&gt; List[String] {
     return line.Split(&quot;,&quot;);
@@ -1023,7 +1023,7 @@ Say(&quot;City: &quot; + fields[3]);       // Boston
 </code></pre>
 <p><strong>Processing multiple lines:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var csvData = &quot;Alice,30,Boston\nBob,25,Seattle\nCarol,35,Denver&quot;;
 var lines = csvData.Split(&quot;\n&quot;);
@@ -1046,8 +1046,8 @@ Carol is 35 years old, lives in Denver
 <h2 id="joining-arrays-into-strings">Joining Arrays into Strings</h2>
 <p>The reverse of splitting — combining an array into a single string:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var words = [&quot;Hello&quot;, &quot;World&quot;];
 var sentence = Str.Join(&quot; &quot;, words);
@@ -1055,8 +1055,8 @@ Say(sentence);  // Hello World
 </code></pre>
 <p>The first argument is what to put between elements, and the second is the list:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var numbers = [&quot;1&quot;, &quot;2&quot;, &quot;3&quot;];
 Say(Str.Join(&quot;, &quot;, numbers));  // 1, 2, 3
@@ -1066,7 +1066,7 @@ Say(Str.Join(&quot;&quot;, numbers));    // 123
 <h3 id="split-and-join-together">Split and Join Together</h3>
 <p>Split and join are complementary operations:</p>
 <pre><code data-lang="rust">
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 var text = &quot;Hello, World!&quot;;
 var parts = text.Split(&quot;, &quot;);  // [&quot;Hello&quot;, &quot;World!&quot;]
@@ -1074,8 +1074,8 @@ var rejoined = Str.Join(&quot;, &quot;, parts); // &quot;Hello, World!&quot;
 </code></pre>
 <p><strong>Transform and rejoin:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 // Capitalize each word
 func titleCase(text: String) -&gt; String {
@@ -1097,8 +1097,8 @@ Say(titleCase(&quot;the QUICK brown FOX&quot;));
 </code></pre>
 <p><strong>Change delimiter:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 // Convert paths between systems
 func windowsToUnix(path: String) -&gt; String {
@@ -1130,7 +1130,7 @@ for i in 0..1000 {
 <h3 id="solution-use-stringbuilder">Solution: Use StringBuilder</h3>
 <p>For building large strings, use <code>StringBuilder</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Text.StringBuilder as SB;
+bind Zanna.Text.StringBuilder as SB;
 
 var builder = new SB();
 
@@ -1156,9 +1156,9 @@ var result = builder.ToString();
 </ul>
 <h3 id="building-complex-output">Building Complex Output</h3>
 <pre><code data-lang="rust">
-bind Viper.Text.StringBuilder as SB;
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.StringBuilder as SB;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
 
 func generateReport(data: List[Record]) -&gt; String {
     var sb = new SB();
@@ -1184,8 +1184,8 @@ func generateReport(data: List[Record]) -&gt; String {
 <h3 id="alternative-collect-and-join">Alternative: Collect and Join</h3>
 <p>Another efficient pattern is to collect pieces in an array and join at the end:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.String as Str;
+bind Zanna.Terminal;
+bind Zanna.String as Str;
 
 func buildList(items: List[String]) -&gt; String {
     var lines = [];
@@ -1208,7 +1208,7 @@ Say(buildList(items));
 <h2 id="converting-between-strings-and-numbers">Converting Between Strings and Numbers</h2>
 <p><strong>String to number:</strong></p>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 var text = &quot;42&quot;;
 var num = Convert.ToInt64(text);     // 42 (integer)
@@ -1216,7 +1216,7 @@ var pi = Convert.ToDouble(&quot;3.14&quot;);   // 3.14 (float)
 </code></pre>
 <p><strong>Number to string:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 
 var num = 42;
 var text = Fmt.Int(num);  // &quot;42&quot;
@@ -1228,8 +1228,8 @@ var result = &quot;Answer: &quot; + 42;  // &quot;Answer: 42&quot;
 <h3 id="the-classic-trap">The Classic Trap</h3>
 <p>Be careful — <code>&quot;5&quot; + 3</code> is <code>&quot;53&quot;</code>, not <code>8</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var input = &quot;5&quot;;
 Say(input + 3);  // &quot;53&quot; (string concatenation!)
@@ -1239,7 +1239,7 @@ Say(Convert.ToInt64(input) + 3);  // 8 (arithmetic)
 <h3 id="handling-invalid-input">Handling Invalid Input</h3>
 <p>What if the string isn&#x27;t a valid number?</p>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 var result = Convert.ToInt64(&quot;abc&quot;);  // Error or NaN
 
@@ -1259,7 +1259,7 @@ func safeParseInt(text: String) -&gt; Integer {
 <h2 id="character-codes">Character Codes</h2>
 <p>Every character has a numeric code. The common encoding is ASCII/UTF-8, where &#x27;A&#x27; is 65, &#x27;a&#x27; is 97, &#x27;0&#x27; is 48, and so on.</p>
 <pre><code data-lang="rust">
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 var code = &quot;A&quot;.Asc();        // 65
 var ch = Str.Chr(65);        // &quot;A&quot;
@@ -1302,7 +1302,7 @@ func isAlphanumeric(c: String) -&gt; Boolean {
 </code></pre>
 <h3 id="character-conversion">Character Conversion</h3>
 <pre><code data-lang="rust">
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 func toUpper(c: String) -&gt; String {
     if c.Asc() &gt;= &quot;a&quot;.Asc() &amp;&amp; c.Asc() &lt;= &quot;z&quot;.Asc() {
@@ -1328,7 +1328,7 @@ func digitValue(c: String) -&gt; Integer {
     return -1;  // Not a digit
 }
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(digitValue(&quot;7&quot;));  // 7
 Say(digitValue(&quot;a&quot;));  // -1
@@ -1337,8 +1337,8 @@ Say(digitValue(&quot;a&quot;));  // -1
 <h2 id="string-formatting">String Formatting</h2>
 <p>For complex output, string concatenation is the primary approach:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var name = &quot;Alice&quot;;
 var score = 95;
@@ -1347,10 +1347,10 @@ var message = &quot;Player &quot; + name + &quot; scored &quot; + Convert.ToStri
 </code></pre>
 <p>When mixing strings and numbers, the <code>+</code> operator automatically converts numbers. For explicit control, use <code>Convert.ToString()</code>.</p>
 <h3 id="padding-and-alignment">Padding and Alignment</h3>
-<p>For formatted number output, use <code>Viper.Text.Fmt</code>:</p>
+<p>For formatted number output, use <code>Zanna.Text.Fmt</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 // Pad with zeros
 Say(Fmt.IntPad(42, 5, &quot;0&quot;));     // &quot;00042&quot;
@@ -1365,7 +1365,7 @@ Say(Fmt.Int(1000));               // &quot;1000&quot;
 <h3 id="validating-email-addresses">Validating Email Addresses</h3>
 <p>A basic email validator:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func isValidEmail(email: String) -&gt; Boolean {
     var trimmed = email.Trim();
@@ -1401,10 +1401,10 @@ Say(isValidEmail(&quot;two@@signs.com&quot;));     // false
 </code></pre>
 <h3 id="formatting-names">Formatting Names</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func formatName(fullName: String) -&gt; String {
-    bind Str = Viper.String;
+    bind Str = Zanna.String;
     var trimmed = fullName.Trim();
 
     // Handle empty input
@@ -1440,7 +1440,7 @@ Say(formatName(&quot;bob jones jr&quot;));      // Bob Jones Jr
 <h3 id="parsing-key-value-data">Parsing Key-Value Data</h3>
 <p>Since Zia doesn&#x27;t have a built-in Map type, we can parse key-value pairs using parallel lists:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func findValue(data: String, key: String) -&gt; String {
     var pairs = data.Split(&quot;&amp;&quot;);
@@ -1465,7 +1465,7 @@ Say(findValue(data, &quot;age&quot;));   // 30
 </code></pre>
 <h3 id="cleaning-user-input">Cleaning User Input</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func cleanInput(text: String) -&gt; String {
     var result = text.Trim();
@@ -1482,7 +1482,7 @@ Say(cleanInput(&quot;  hello    world  &quot;));  // &quot;hello world&quot;
 </code></pre>
 <h3 id="password-strength-checker">Password Strength Checker</h3>
 <pre><code data-lang="rust">
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 func checkPasswordStrength(password: String) -&gt; String {
     var score = 0;
@@ -1554,7 +1554,7 @@ func checkPasswordStrength(password: String) -&gt; String {
     }
 }
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(checkPasswordStrength(&quot;abc&quot;));
 // Weak - needs: at least 8 characters, uppercase letter, digit, special character
@@ -1568,7 +1568,7 @@ Say(checkPasswordStrength(&quot;MyPassword123!&quot;));
 <h3 id="invisible-characters">Invisible Characters</h3>
 <p>Sometimes strings look identical but aren&#x27;t:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = &quot;hello&quot;;
 var b = &quot;hello &quot;;  // Trailing space!
@@ -1581,7 +1581,7 @@ if a == b {
 </code></pre>
 <p><strong>Debugging technique:</strong> Print with visible boundaries:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func debugString(text: String) {
     Say(&quot;[&quot; + text + &quot;]&quot;);
@@ -1614,7 +1614,7 @@ debugString(&quot;hello &quot;);
 <h3 id="off-by-one-errors">Off-by-One Errors</h3>
 <p>The most common string bug:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = &quot;Hello&quot;;
 // text[5] does NOT exist - indices are 0-4
@@ -1685,7 +1685,7 @@ text.Substring(7, 5);    // Correct: start at 7, take 5 characters
 <pre><code data-lang="rust">
 module WordCounter;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func countWords(text: String) -&gt; Integer {
     var words = text.Split(&quot; &quot;);
@@ -1731,22 +1731,22 @@ func start() {
 <p>Sample run:</p>
 <pre><code data-lang="text">
 Enter some text:
-Hello World from Viper
+Hello World from Zanna
 
 === Analysis ===
 Characters: 22
 Words: 4
 Vowels: 6
 
-Uppercase: HELLO WORLD FROM VIPER
-Lowercase: hello world from viper
+Uppercase: HELLO WORLD FROM ZANNA
+Lowercase: hello world from zanna
 </code></pre>
 <p>---</p>
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var text = &quot;Hello, World!&quot;;
 
@@ -1760,7 +1760,7 @@ var sub = text.Substring(0, 5);
 var pos = text.IndexOf(&quot;World&quot;);
 
 // Replace
-var replaced = text.Replace(&quot;World&quot;, &quot;Viper&quot;);
+var replaced = text.Replace(&quot;World&quot;, &quot;Zanna&quot;);
 
 // Split and join
 var parts = text.Split(&quot;, &quot;);
@@ -1831,8 +1831,8 @@ if text.Length == 0 {    // Check if empty
 </code></pre>
 <p><strong>Confusing string concatenation with arithmetic:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var a = &quot;5&quot;;
 var b = &quot;3&quot;;
@@ -1843,7 +1843,7 @@ Say(Convert.ToInt64(a) + Convert.ToInt64(b));  // 8
 </code></pre>
 <p><strong>Not trimming user input:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = InputLine();
 // User might type &quot;  yes  &quot; with spaces
@@ -1870,8 +1870,8 @@ if input.Trim() == &quot;yes&quot; {  // Works
 <li><code>replace</code> substitutes text</li>
 <li><code>split</code> breaks into arrays; <code>join</code> combines arrays</li>
 <li>String comparison is case-sensitive and uses character codes</li>
-<li><code>Viper.Core.Convert.ToInt64/ToDouble</code> convert strings to numbers</li>
-<li><code>Viper.Text.Fmt.Int/IntPad</code> format numbers as strings</li>
+<li><code>Zanna.Core.Convert.ToInt64/ToDouble</code> convert strings to numbers</li>
+<li><code>Zanna.Text.Fmt.Int/IntPad</code> format numbers as strings</li>
 <li>Always check for empty strings and off-by-one errors</li>
 <li>Use <code>trim()</code> on user input before processing</li>
 </ul>
@@ -1947,7 +1947,7 @@ if input.Trim() == &quot;yes&quot; {  // Works
 │   └── config.ini
 └── usr/
     └── bin/
-        └── viper
+        └── zanna
 </code></pre>
 <p>On Windows, each drive has its own root (C:\, D:\, etc.):</p>
 <pre><code data-lang="text">
@@ -1960,8 +1960,8 @@ C:\
 │       └── Pictures\
 │           └── vacation.jpg
 └── Program Files\
-    └── Viper\
-        └── viper.exe
+    └── Zanna\
+        └── zanna.exe
 </code></pre>
 <h3 id="absolute-paths">Absolute Paths</h3>
 <p>An <em>absolute path</em> specifies the complete location of a file, starting from the root. It works no matter what directory you&#x27;re currently &quot;in.&quot;</p>
@@ -1969,17 +1969,17 @@ C:\
 <pre><code data-lang="rust">
 &quot;/home/alice/Documents/report.txt&quot;
 &quot;/etc/config.ini&quot;
-&quot;/usr/bin/viper&quot;
+&quot;/usr/bin/zanna&quot;
 </code></pre>
 <p><strong>Windows examples:</strong></p>
 <pre><code data-lang="rust">
 &quot;C:\\Users\\Alice\\Documents\\report.txt&quot;
-&quot;C:\\Program Files\\Viper\\viper.exe&quot;
+&quot;C:\\Program Files\\Zanna\\zanna.exe&quot;
 </code></pre>
 <p>Notice Windows uses backslashes (<code>\</code>), but since backslash is also the escape character in strings, you need to write <code>\\</code> to get a single backslash.</p>
-<p><strong>Good news:</strong> Viper handles this automatically. You can use forward slashes everywhere, and Viper will convert them appropriately for the operating system:</p>
+<p><strong>Good news:</strong> Zanna handles this automatically. You can use forward slashes everywhere, and Zanna will convert them appropriately for the operating system:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // This works on ALL operating systems
 var path = &quot;C:/Users/Alice/Documents/report.txt&quot;;
@@ -2021,7 +2021,7 @@ var content = File.ReadAllText(path);
 <h3 id="path-manipulation">Path Manipulation</h3>
 <p>The <code>Path</code> module helps work with paths safely:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
+bind Zanna.IO.Path;
 
 var path = &quot;/home/alice/documents/report.txt&quot;;
 
@@ -2037,7 +2037,7 @@ var full = join(dir, file);  // &quot;/home/alice/documents/report.txt&quot;
 </code></pre>
 <p>Always use <code>Path.join</code> instead of string concatenation:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
+bind Zanna.IO.Path;
 
 // Bad: might produce &quot;/home/alice//documents&quot; or wrong separators
 var path = directory + &quot;/&quot; + filename;
@@ -2076,7 +2076,7 @@ var path = join(directory, filename);
 <p><strong>Case sensitivity matters!</strong> On Linux, <code>Report.txt</code> and <code>report.txt</code> are different files. On Windows, they&#x27;re the same. If you develop on Windows and deploy on Linux (common for web servers), this can cause surprising bugs.</p>
 <p>To get standard locations portably:</p>
 <pre><code data-lang="rust">
-bind Viper.System.Environment;
+bind Zanna.System.Environment;
 
 var home = homeDir();           // User&#x27;s home directory
 var temp = tempDir();           // Temporary file directory
@@ -2133,7 +2133,7 @@ var cwd = currentDir();         // Current working directory
 <h3 id="read-mode">Read Mode</h3>
 <p>Read mode opens an existing file for reading. The file must already exist — if it doesn&#x27;t, you&#x27;ll get an error.</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 var content = File.ReadAllText(&quot;data.txt&quot;);
 </code></pre>
@@ -2141,7 +2141,7 @@ var content = File.ReadAllText(&quot;data.txt&quot;);
 <h3 id="write-mode">Write Mode</h3>
 <p>Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText(&quot;output.txt&quot;, &quot;Hello, World!&quot;);
 </code></pre>
@@ -2149,7 +2149,7 @@ File.WriteAllText(&quot;output.txt&quot;, &quot;Hello, World!&quot;);
 <h3 id="append-mode">Append Mode</h3>
 <p>Append mode adds data to the end of an existing file, or creates a new file if it doesn&#x27;t exist. Existing content is preserved.</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.Append(&quot;log.txt&quot;, &quot;New entry\n&quot;);
 </code></pre>
@@ -2192,15 +2192,15 @@ File.Append(&quot;log.txt&quot;, &quot;New entry\n&quot;);
 <h3 id="simple-reading-load-everything-at-once">Simple Reading: Load Everything at Once</h3>
 <p>The simplest approach loads the entire file into memory:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var content = File.ReadAllText(&quot;message.txt&quot;);
 Say(content);
 </code></pre>
 <p><strong>What happens:</strong></p>
 <ol>
-<li>Viper opens <code>message.txt</code> for reading</li>
+<li>Zanna opens <code>message.txt</code> for reading</li>
 <li>Reads all bytes from beginning to end</li>
 <li>Converts bytes to a string</li>
 <li>Closes the file</li>
@@ -2211,8 +2211,8 @@ Say(content);
 <h3 id="reading-lines-into-an-array">Reading Lines into an Array</h3>
 <p>Often you want to process a file line by line. <code>readLines</code> returns an array of strings:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var lines = File.ReadAllLines(&quot;data.txt&quot;);
 
@@ -2232,8 +2232,8 @@ for line in lines {
 <h3 id="streaming-one-line-at-a-time">Streaming: One Line at a Time</h3>
 <p>For large files, read one line at a time:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
-bind Viper.Terminal;
+bind Zanna.IO.File;
+bind Zanna.Terminal;
 
 var reader = openRead(&quot;huge.txt&quot;);
 
@@ -2256,7 +2256,7 @@ reader.Close();  // Don&#x27;t forget!
 <h3 id="reading-with-a-position">Reading with a Position</h3>
 <p>Sometimes you need to jump to a specific location:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
+bind Zanna.IO.File;
 
 var reader = openRead(&quot;data.bin&quot;);
 
@@ -2274,8 +2274,8 @@ reader.Close();
 <p>Writing is where things can go wrong in ways that lose data. Let&#x27;s understand how to write safely.</p>
 <h3 id="simple-writing">Simple Writing</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var content = &quot;Hello, File!\nThis is line two.\nAnd line three.&quot;;
 File.WriteAllText(&quot;output.txt&quot;, content);
@@ -2283,7 +2283,7 @@ Say(&quot;File written!&quot;);
 </code></pre>
 <p><strong>What happens:</strong></p>
 <ol>
-<li>Viper checks if the file exists (if so, it will be overwritten!)</li>
+<li>Zanna checks if the file exists (if so, it will be overwritten!)</li>
 <li>Creates or opens the file for writing</li>
 <li>Writes all the bytes</li>
 <li>Closes the file</li>
@@ -2292,7 +2292,7 @@ Say(&quot;File written!&quot;);
 <p>The <code>\n</code> creates line breaks. Without them, everything would be on one line.</p>
 <h3 id="appending-data">Appending Data</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.Append(&quot;log.txt&quot;, &quot;Event 1 occurred\n&quot;);
 File.Append(&quot;log.txt&quot;, &quot;Event 2 occurred\n&quot;);
@@ -2308,7 +2308,7 @@ Event 3 occurred
 <h3 id="streaming-write-incrementally">Streaming: Write Incrementally</h3>
 <p>For large amounts of data, or when building output over time:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
+bind Zanna.IO.File;
 
 var writer = openWrite(&quot;output.txt&quot;);
 
@@ -2329,7 +2329,7 @@ writer.Close();  // CRUCIAL: flushes buffered data to disk
 <h3 id="ensuring-data-is-written">Ensuring Data is Written</h3>
 <p>Because of buffering, calling <code>writeLine</code> doesn&#x27;t guarantee the data is on disk. To force data to disk:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
+bind Zanna.IO.File;
 
 var writer = openWrite(&quot;critical.txt&quot;);
 
@@ -2357,14 +2357,14 @@ H   e    l    l    o
 <li>Linux/Mac: <code>\n</code> (line feed, byte 10)</li>
 <li>Windows: <code>\r\n</code> (carriage return + line feed, bytes 13 and 10)</li>
 </ul>
-<p>Viper handles this automatically when you use <code>readLines</code> and <code>writeLine</code>.</p>
+<p>Zanna handles this automatically when you use <code>readLines</code> and <code>writeLine</code>.</p>
 <h3 id="what-are-binary-files">What Are Binary Files?</h3>
 <p>Binary files contain raw bytes that aren&#x27;t meant to be read as text. They might be images, audio, compiled programs, or custom data formats.</p>
 <p>Examples: <code>.jpg</code>, <code>.png</code>, <code>.mp3</code>, <code>.exe</code>, <code>.zip</code>, <code>.dat</code></p>
 <p>If you open a binary file in Notepad, you see gibberish — because the bytes aren&#x27;t character codes, they&#x27;re data in some other format.</p>
 <p>A simple example — storing numbers efficiently:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Store the number 1000000 as text: needs 7 bytes (&quot;1000000&quot;)
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
@@ -2393,8 +2393,8 @@ var bytes = File.ReadAllBytes(&quot;number.bin&quot;);
 </ul>
 <h3 id="working-with-binary-files">Working with Binary Files</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // Writing binary data
 var data: List[byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
@@ -2414,8 +2414,8 @@ if bytes[0] == 0x89 &amp;&amp; bytes[1] == 0x50 &amp;&amp; bytes[2] == 0x4E &amp
 <h2 id="checking-if-files-and-directories-exist">Checking If Files and Directories Exist</h2>
 <p>Before reading, you might want to check if a file exists:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 if File.Exists(&quot;config.txt&quot;) {
     var config = File.ReadAllText(&quot;config.txt&quot;);
@@ -2427,7 +2427,7 @@ if File.Exists(&quot;config.txt&quot;) {
 <h3 id="the-race-condition-problem">The Race Condition Problem</h3>
 <p>There&#x27;s a subtle issue with check-then-read:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 if File.Exists(&quot;data.txt&quot;) {
     // Another program could delete the file RIGHT HERE
@@ -2437,8 +2437,8 @@ if File.Exists(&quot;data.txt&quot;) {
 <p>Between checking and reading, another program (or user) could delete the file. This is called a <em>race condition</em>.</p>
 <p>For critical code, consider using try-catch instead:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(&quot;data.txt&quot;);
@@ -2451,11 +2451,11 @@ try {
 <p>For most programs, the check-then-read approach is fine. Race conditions mainly matter for server software or when multiple programs access the same files.</p>
 <p>---</p>
 <h2 id="working-with-directories">Working with Directories</h2>
-<p>Files are organized in directories. Viper provides tools to work with them.</p>
+<p>Files are organized in directories. Zanna provides tools to work with them.</p>
 <h3 id="checking-and-creating-directories">Checking and Creating Directories</h3>
 <pre><code data-lang="rust">
-bind Viper.IO.Dir;
-bind Viper.Terminal;
+bind Zanna.IO.Dir;
+bind Zanna.Terminal;
 
 // Check if directory exists
 if exists(&quot;saves&quot;) {
@@ -2470,8 +2470,8 @@ createAll(&quot;output/data/processed&quot;);
 </code></pre>
 <h3 id="listing-directory-contents">Listing Directory Contents</h3>
 <pre><code data-lang="rust">
-bind Viper.IO.Dir;
-bind Viper.Terminal;
+bind Zanna.IO.Dir;
+bind Zanna.Terminal;
 
 // List all files in a directory
 var files = listFiles(&quot;data&quot;);
@@ -2490,9 +2490,9 @@ var all = list(&quot;documents&quot;);
 </code></pre>
 <h3 id="practical-example-finding-all-text-files">Practical Example: Finding All Text Files</h3>
 <pre><code data-lang="rust">
-bind Viper.IO.Dir;
-bind Viper.IO.Path;
-bind Viper.Terminal;
+bind Zanna.IO.Dir;
+bind Zanna.IO.Path;
+bind Zanna.Terminal;
 
 func findTextFiles(directory: String) {
     var entries = list(directory);
@@ -2517,7 +2517,7 @@ findTextFiles(&quot;documents&quot;);
 <h3 id="common-file-errors">Common File Errors</h3>
 <p><strong>File not found:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // The file doesn&#x27;t exist
 var content = File.ReadAllText(&quot;nonexistent.txt&quot;);
@@ -2525,7 +2525,7 @@ var content = File.ReadAllText(&quot;nonexistent.txt&quot;);
 </code></pre>
 <p><strong>Permission denied:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // You don&#x27;t have permission to read/write this file
 var content = File.ReadAllText(&quot;/etc/shadow&quot;);
@@ -2533,7 +2533,7 @@ var content = File.ReadAllText(&quot;/etc/shadow&quot;);
 </code></pre>
 <p><strong>Disk full:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // No space left on the storage device
 File.WriteAllText(&quot;huge.txt&quot;, massiveData);
@@ -2541,7 +2541,7 @@ File.WriteAllText(&quot;huge.txt&quot;, massiveData);
 </code></pre>
 <p><strong>Path is a directory:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Trying to read a directory as a file
 var content = File.ReadAllText(&quot;my_folder&quot;);
@@ -2549,7 +2549,7 @@ var content = File.ReadAllText(&quot;my_folder&quot;);
 </code></pre>
 <p><strong>Invalid path:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Path contains invalid characters or is malformed
 var content = File.ReadAllText(&quot;file\0name.txt&quot;);
@@ -2558,8 +2558,8 @@ var content = File.ReadAllText(&quot;file\0name.txt&quot;);
 <h3 id="handling-errors-gracefully">Handling Errors Gracefully</h3>
 <p>Never let file errors crash your program unexpectedly. Handle them:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func loadConfig() -&gt; String {
     try {
@@ -2582,8 +2582,8 @@ func loadConfig() -&gt; String {
 <h3 id="user-friendly-error-messages">User-Friendly Error Messages</h3>
 <p>Don&#x27;t show raw error messages to users. Translate them:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func openUserFile(path: String) -&gt; String {
     try {
@@ -2608,7 +2608,7 @@ func openUserFile(path: String) -&gt; String {
 <p>Writing files is risky. If something goes wrong mid-write, you might end up with a corrupted file — half old data, half new data, completely unusable.</p>
 <h3 id="the-danger-of-direct-overwriting">The Danger of Direct Overwriting</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
 File.WriteAllText(&quot;data.txt&quot;, newData);
@@ -2617,7 +2617,7 @@ File.WriteAllText(&quot;data.txt&quot;, newData);
 <h3 id="safe-writing-with-temporary-files">Safe Writing with Temporary Files</h3>
 <p>The professional approach:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func safeWrite(filename: String, content: String) {
     var tempFile = filename + &quot;.tmp&quot;;
@@ -2643,7 +2643,7 @@ func safeWrite(filename: String, content: String) {
 <h3 id="backup-before-modifying">Backup Before Modifying</h3>
 <p>For critical data, keep a backup:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
@@ -2660,8 +2660,8 @@ func writeWithBackup(filename: String, content: String) {
 <h3 id="avoiding-accidental-overwrites">Avoiding Accidental Overwrites</h3>
 <p><strong>Confirm before overwriting:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func saveFile(filename: String, content: String) {
     if File.Exists(filename) {
@@ -2678,7 +2678,7 @@ func saveFile(filename: String, content: String) {
 </code></pre>
 <p><strong>Generate unique names:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func uniqueFilename(base: String, ext: String) -&gt; String {
     var filename = base + ext;
@@ -2703,9 +2703,9 @@ var name = uniqueFilename(&quot;report&quot;, &quot;.txt&quot;);
 <pre><code data-lang="rust">
 module Config;
 
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 final CONFIG_FILE = &quot;settings.cfg&quot;;
 
@@ -2782,8 +2782,8 @@ lastFile=/home/alice/documents/report.txt
 <pre><code data-lang="rust">
 module Logger;
 
-bind Viper.Time;
-bind File = Viper.IO.File;
+bind Zanna.Time;
+bind File = Zanna.IO.File;
 
 final LOG_FILE = &quot;application.log&quot;;
 
@@ -2832,11 +2832,11 @@ func processData() {
 <pre><code data-lang="rust">
 module GameSave;
 
-bind Viper.IO.Dir;
-bind Viper.IO.Path;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.IO.Dir;
+bind Zanna.IO.Path;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 final SAVE_DIR = &quot;saves&quot;;
 
@@ -2925,8 +2925,8 @@ func listSaves() -&gt; List[Integer] {
 <h3 id="data-export-csv">Data Export (CSV)</h3>
 <p>Exporting data for spreadsheets or other programs:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func exportToCSV(filename: String, headers: List[String], rows: List[List[String]]) {
     var lines: List[String] = [];
@@ -2964,8 +2964,8 @@ exportToCSV(&quot;people.csv&quot;, headers, data);
 <h3 id="data-import-csv">Data Import (CSV)</h3>
 <p>Reading data from CSV files:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func importFromCSV(filename: String) -&gt; List[List[String]] {
     var rows: List[List[String]] = [];
@@ -2995,8 +2995,8 @@ Say(&quot;Data rows: &quot; + (data.Length - 1));
 <pre><code data-lang="rust">
 module NoteKeeper;
 
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 final NOTES_FILE = &quot;notes.txt&quot;;
 final BACKUP_FILE = &quot;notes.txt.backup&quot;;
@@ -3240,7 +3240,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Read
 var content = File.ReadAllText(&quot;file.txt&quot;);
@@ -3292,8 +3292,8 @@ END IF
 <h2 id="common-mistakes">Common Mistakes</h2>
 <p><strong>Forgetting the file might not exist:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // Crashes if file doesn&#x27;t exist
 var content = File.ReadAllText(&quot;maybe.txt&quot;);
@@ -3312,7 +3312,7 @@ try {
 </code></pre>
 <p><strong>Overwriting when you meant to append:</strong></p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText(&quot;log.txt&quot;, &quot;Entry 1\n&quot;);
 File.WriteAllText(&quot;log.txt&quot;, &quot;Entry 2\n&quot;);  // Oops! Entry 1 is gone
@@ -3323,8 +3323,8 @@ File.Append(&quot;log.txt&quot;, &quot;Entry 2\n&quot;);  // Both entries preser
 </code></pre>
 <p><strong>Hardcoding paths:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.System.Environment;
-bind Viper.IO.Path;
+bind Zanna.System.Environment;
+bind Zanna.IO.Path;
 
 // Bad: only works on your machine
 var file = &quot;C:\\Users\\Alice\\Documents\\data.txt&quot;;
@@ -3338,7 +3338,7 @@ var file = join(home, &quot;Documents&quot;, &quot;data.txt&quot;);
 </code></pre>
 <p><strong>Not closing files:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
+bind Zanna.IO.File;
 
 var reader = openRead(&quot;file.txt&quot;);
 // ... use reader ...
@@ -3354,7 +3354,7 @@ try {
 </code></pre>
 <p><strong>Assuming writes are immediate:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.IO.File;
+bind Zanna.IO.File;
 
 var writer = openWrite(&quot;important.txt&quot;);
 writer.WriteLine(&quot;Critical data&quot;);
@@ -3367,12 +3367,12 @@ writer.Flush();  // Force to disk
 </code></pre>
 <p><strong>Not handling paths cross-platform:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
+bind Zanna.IO.Path;
 
 // Bad: backslash doesn&#x27;t work on Mac/Linux
 var path = &quot;data\\files\\scores.txt&quot;;
 
-// Good: forward slash works everywhere (Viper converts as needed)
+// Good: forward slash works everywhere (Zanna converts as needed)
 var path = &quot;data/files/scores.txt&quot;;
 
 // Best: use Path.join
@@ -3432,7 +3432,7 @@ var path = join(&quot;data&quot;, &quot;files&quot;, &quot;scores.txt&quot;);
 <h3 id="syntax-errors-breaking-the-rules">Syntax Errors: Breaking the Rules</h3>
 <p>Syntax errors happen when your code violates the rules of the language. It&#x27;s like writing a sentence with the words in the wrong order — even if your meaning is clear to a human, the compiler can&#x27;t understand it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Missing semicolon
 var x = 10
@@ -3470,7 +3470,7 @@ var y = arr[10];  // Index 10 doesn&#x27;t exist
 var text: String = null;
 var len = text.Length;  // Can&#x27;t access properties of null
 
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 var num = Convert.ToInt64(&quot;hello&quot;);  // &quot;hello&quot; is not a number
 </code></pre>
 <p>Runtime errors occur because the code is syntactically correct but asks the computer to do something impossible. You can&#x27;t divide by zero. You can&#x27;t access an array element that doesn&#x27;t exist. These operations make no sense.</p>
@@ -3554,7 +3554,7 @@ Error: IndexOutOfBounds at main.zia:23:15
 <h3 id="the-error-is-not-always-where-it-appears">The Error Is Not Always Where It Appears</h3>
 <p>This is crucial: the line where an error occurs is not always the line where the bug lives.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func processUser(user: User) {
     Say(user.name);  // ERROR: null pointer on line 5
@@ -3572,7 +3572,7 @@ func start() {
 <p>Now that you understand what errors are and how to read error messages, let&#x27;s learn to handle them in code. The <code>try-catch</code> statement lets your program respond to errors gracefully instead of crashing.</p>
 <h3 id="basic-structure">Basic Structure</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     // Code that might fail
@@ -3596,7 +3596,7 @@ Say(&quot;Program continues...&quot;);
 <h3 id="what-gets-tried-what-gets-caught">What Gets Tried, What Gets Caught</h3>
 <p>The <code>try</code> block should contain the &quot;risky&quot; code — the operations that might fail. When an error occurs, <em>nothing after that point in the try block runs</em>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     Say(&quot;Step 1&quot;);
@@ -3618,9 +3618,9 @@ Done
 <h3 id="multiple-things-can-fail">Multiple Things Can Fail</h3>
 <p>A single try block might have multiple things that could go wrong:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(filename);  // Could fail: file missing
@@ -3633,9 +3633,9 @@ try {
 </code></pre>
 <p>If <em>any</em> of these three operations fails, the catch block runs. Since Zia uses a single generic <code>catch</code> clause (there are no typed catch blocks), you can inspect the error message to understand what went wrong:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(filename);
@@ -3648,9 +3648,9 @@ try {
 </code></pre>
 <p>Because there is only one catch clause, if you need to respond differently to different failure modes, consider structuring your code so that each risky operation is in its own try-catch:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 var content = &quot;&quot;;
 try {
@@ -3740,7 +3740,7 @@ func computeAverage(numbers: List[Integer]) -&gt; Integer {
 }
 
 func processScores(data: String) {
-    bind Viper.Terminal;
+    bind Zanna.Terminal;
     var scores = parseScores(data);
     var avg = computeAverage(scores);  // Called with empty array
     Say(&quot;Average: &quot; + avg);
@@ -3758,7 +3758,7 @@ func processScores(data: String) {
 <h2 id="the-finally-block">The finally Block</h2>
 <p>Sometimes you need to run cleanup code no matter what happens — whether the try block succeeds or fails:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var connection = Database.connect(&quot;localhost&quot;);
 
@@ -3813,7 +3813,7 @@ throw Error(&quot;Email address is invalid&quot;);
 </code></pre>
 <p>Include relevant context in the message so the caller knows what happened:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     loadConfiguration();
@@ -3888,7 +3888,7 @@ var logLevel = getConfig(&quot;logLevel&quot;, &quot;info&quot;);
 <p>Handle error cases at the top of functions, then proceed with the main logic:</p>
 <pre><code data-lang="rust">
 func processFile(filename: String) {
-    bind File = Viper.IO.File;
+    bind File = Zanna.IO.File;
     // Guard clauses handle all the edge cases
     if filename.Length == 0 {
         throw Error(&quot;Filename cannot be empty&quot;);
@@ -3924,7 +3924,7 @@ func processFile(filename: String) {
 <li>You&#x27;re at the top level and need to report to the user</li>
 </ul>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Recovery: try a backup file
 func loadData() -&gt; String {
@@ -3962,8 +3962,8 @@ func processItem(item: Item) {
 <li>It&#x27;s a programming error (bug) that should crash</li>
 </ul>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // Can&#x27;t handle it — let it propagate
 func loadConfig() -&gt; Config {
@@ -3989,7 +3989,7 @@ func start() {
 <h3 id="print-debugging">Print Debugging</h3>
 <p>The simplest and most widely used technique: add print statements to see what&#x27;s happening inside your code.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func mysteriouslyWrongResult(data: List[Integer]) -&gt; Integer {
     Say(&quot;DEBUG: Input data, length = &quot; + data.Length);
@@ -4035,7 +4035,7 @@ func mysteriouslyWrongResult(data: List[Integer]) -&gt; Integer {
 <li>Repeat, narrowing down each time</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func complexProcessing(input: Data) -&gt; Result {
     var a = stepOne(input);
@@ -4081,7 +4081,7 @@ func processTransactions(accounts: List[Account], transactions: List[Transaction
 
 // Simplified test
 func testSimple() {
-    bind Viper.Terminal;
+    bind Zanna.Terminal;
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
@@ -4095,8 +4095,8 @@ func testSimple() {
 <h3 id="network-failures">Network Failures</h3>
 <p>Networks are inherently unreliable. Connections drop, servers go down, requests time out.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 func fetchUserData(userId: Integer) -&gt; UserData {
     var maxRetries = 3;
@@ -4127,8 +4127,8 @@ func fetchUserData(userId: Integer) -&gt; UserData {
 <h3 id="user-input-errors">User Input Errors</h3>
 <p>Users will enter invalid data. Always. Count on it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func getValidAge() -&gt; Integer {
     while true {
@@ -4162,8 +4162,8 @@ func getValidAge() -&gt; Integer {
 <h3 id="resource-exhaustion">Resource Exhaustion</h3>
 <p>Programs can run out of resources: memory, disk space, file handles, network connections.</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func processLargeFile(filename: String) {
     var reader = openRead(filename);
@@ -4195,8 +4195,8 @@ func processLargeFile(filename: String) {
 <h3 id="missing-files-and-configuration">Missing Files and Configuration</h3>
 <p>Programs often depend on files that might not exist:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func loadConfiguration() -&gt; Config {
     final CONFIG_FILE = &quot;config.json&quot;;
@@ -4234,10 +4234,10 @@ func loadConfiguration() -&gt; Config {
 <pre><code data-lang="rust">
 module DataProcessor;
 
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Viper.Time;
-bind Convert = Viper.Core.Convert;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
+bind Zanna.Time;
+bind Convert = Zanna.Core.Convert;
 
 final LOG_FILE = &quot;processor.log&quot;;
 
@@ -4374,7 +4374,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <h3 id="zia">Zia</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     riskyOperation();
@@ -4426,7 +4426,7 @@ try {
 <h3 id="catching-too-broadly">Catching Too Broadly</h3>
 <p>Catching everything in one block can hide which operation failed:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     var result = complexOperation(data);
@@ -4438,7 +4438,7 @@ try {
 </code></pre>
 <p>Better -- separate the operations so you know which one failed:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = complexOperation(data);  // Let validation errors propagate
 
@@ -4579,7 +4579,7 @@ var pointZ = 15.0;  // Wait, is this 3D now? Or is this a different point?
 <h3 id="problem-2-functions-become-unwieldy">Problem 2: Functions Become Unwieldy</h3>
 <p>Every function that works with a point needs two parameters:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -&gt; Number {
     var dx = x2 - x1;
@@ -4637,7 +4637,7 @@ struct Point {
     y: Number;
 }
 </code></pre>
-<p>This defines a new type called <code>Point</code>. It has two <em>fields</em>: <code>x</code> and <code>y</code>, both floating-point numbers. The <code>value</code> keyword tells Viper we&#x27;re defining a structure.</p>
+<p>This defines a new type called <code>Point</code>. It has two <em>fields</em>: <code>x</code> and <code>y</code>, both floating-point numbers. The <code>value</code> keyword tells Zanna we&#x27;re defining a structure.</p>
 <p>Now we can create points:</p>
 <pre><code data-lang="rust">
 var origin = Point { x: 0.0, y: 0.0 };
@@ -4645,7 +4645,7 @@ var position = Point { x: 10.5, y: 20.3 };
 </code></pre>
 <p>Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(position.x);  // 10.5
 Say(position.y);  // 20.3
@@ -4761,7 +4761,7 @@ struct Book {
 <p>To create a value of your structure type, use the type name followed by field values in braces:</p>
 <pre><code data-lang="rust">
 var myBook = Book {
-    title: &quot;The Viper Programming Guide&quot;,
+    title: &quot;The Zanna Programming Guide&quot;,
     author: &quot;Jane Developer&quot;,
     pageCount: 450,
     price: 29.99
@@ -4776,9 +4776,9 @@ var book2 = Book { author: &quot;B&quot;, price: 9.99, title: &quot;A&quot;, pag
 <h3 id="accessing-fields">Accessing Fields</h3>
 <p>Use dot notation to read field values:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-Say(myBook.title);      // &quot;The Viper Programming Guide&quot;
+Say(myBook.title);      // &quot;The Zanna Programming Guide&quot;
 Say(myBook.author);     // &quot;Jane Developer&quot;
 Say(myBook.pageCount);  // 450
 Say(myBook.price);      // 29.99
@@ -4804,7 +4804,7 @@ var p2 = p1;  // p2 is a COPY of p1
 
 p2.x = 99.0;  // Modify p2
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(p1.x);  // 10.0 - p1 is unchanged!
 Say(p2.x);  // 99.0 - only p2 changed
@@ -4826,7 +4826,7 @@ Original p1:          After p2 = p1:           After p2.x = 99:
 <h3 id="function-parameters-are-copies">Function Parameters Are Copies</h3>
 <p>When you pass a structure to a function, the function receives a copy:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func tryToModify(point: Point) {
     point.x = 999.0;  // Modifies the local copy
@@ -4841,7 +4841,7 @@ Say(&quot;After function: &quot; + original.x);  // 10.0 - unchanged!
 <h3 id="returning-modified-structures">Returning Modified Structures</h3>
 <p>If a function needs to modify a structure and have the caller see the changes, return the modified version:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func moveRight(point: Point, amount: Number) -&gt; Point {
     point.x = point.x + amount;
@@ -4888,7 +4888,7 @@ struct Rectangle {
 </code></pre>
 <p>Now you can call these methods on any <code>Rectangle</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var rect = Rectangle { width: 10.0, height: 5.0 };
 Say(rect.area());       // 50.0
@@ -4932,8 +4932,8 @@ var area = rect.area();
 <h3 id="methods-can-take-parameters">Methods Can Take Parameters</h3>
 <p>Methods can have parameters in addition to the implicit <code>self</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     x: Number;
@@ -4981,7 +4981,7 @@ struct Counter {
     }
 }
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var c = Counter { count: 0 };
 c.increment();
@@ -5020,7 +5020,7 @@ struct Point {
 var p = Point { x: 2.0, y: 3.0 };
 var v = Point { x: 1.0, y: 1.0 };
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var moved = p.Add(v);  // New point at (3.0, 4.0)
 var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
@@ -5063,7 +5063,7 @@ var alice = Person {
 </code></pre>
 <p>Access nested fields with chained dots:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(alice.name);           // &quot;Alice&quot;
 Say(alice.home.city);      // &quot;Springfield&quot;
@@ -5083,7 +5083,7 @@ Say(alice.home.zipCode);   // &quot;62701&quot;
 <h3 id="a-game-example">A Game Example</h3>
 <p>Let&#x27;s model a game with nested structures:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 struct Vec2 {
     x: Number;
@@ -5142,7 +5142,7 @@ struct Player {
     }
 
     func takeDamage(amount: Integer) {
-        bind Viper.Terminal;
+        bind Zanna.Terminal;
         self.health.damage(amount);
         if self.health.isDead() {
             Say(self.name + &quot; has been defeated!&quot;);
@@ -5159,7 +5159,7 @@ var hero = Player {
     score: 0
 };
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Use nested methods
 hero.move(Vec2 { x: 5.0, y: 3.0 });
@@ -5341,8 +5341,8 @@ struct Person {
 <p>Let&#x27;s see structures in action with several complete examples.</p>
 <h3 id="example-playing-cards">Example: Playing Cards</h3>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 struct Card {
     suit: String;    // &quot;Hearts&quot;, &quot;Diamonds&quot;, &quot;Clubs&quot;, &quot;Spades&quot;
@@ -5388,8 +5388,8 @@ func start() {
 </code></pre>
 <h3 id="example-2d-geometry">Example: 2D Geometry</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     x: Number;
@@ -5466,7 +5466,7 @@ func start() {
 </code></pre>
 <h3 id="example-student-grades">Example: Student Grades</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Student {
     name: String;
@@ -5554,7 +5554,7 @@ func start() {
 </code></pre>
 <h3 id="example-simple-inventory-system">Example: Simple Inventory System</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Item {
     name: String;
@@ -5645,8 +5645,8 @@ func start() {
 <pre><code data-lang="rust">
 module GameDemo;
 
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Vec2 {
     x: Number;
@@ -5857,8 +5857,8 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     x: Number;
@@ -5904,7 +5904,7 @@ PRINT p.x
 <h3 id="factory-functions">Factory Functions</h3>
 <p>Create instances with validated or computed values:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func createPoint(x: Number, y: Number) -&gt; Point {
     return Point { x: x, y: y };
@@ -5978,7 +5978,7 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -&gt; Boolean {
 </code></pre>
 <h3 id="converting-to-string">Converting to String</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Person {
     name: String;
@@ -6009,7 +6009,7 @@ p.x = 5.0;  // Now you can access fields
 <p><code>Point</code> is a blueprint. <code>p</code> is an actual point made from that blueprint.</p>
 <h3 id="expecting-changes-to-persist-through-functions">Expecting Changes to Persist Through Functions</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func birthday(person: Person) {
     person.age = person.age + 1;  // Modifies a copy!
@@ -6021,7 +6021,7 @@ Say(alice.age);  // Still 30!
 </code></pre>
 <p>Remember value semantics: the function gets a copy. To actually update:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func birthday(person: Person) -&gt; Person {
     person.age = person.age + 1;
@@ -6092,7 +6092,7 @@ p2.x = 99.0;
 </ul>
 <p>---</p>
 <h2 id="see-also">See Also</h2>
-<p>Structures define custom types by grouping fields together. Viper also supports <strong>enumerations</strong> — custom types that represent a fixed set of named integer constants. While structures are ideal when your data has multiple fields, enums are the right choice when a value can only be one of a small, known set of options (like directions, colors, or game states). See the Enum sections in [Appendix A (Zia Reference)](../appendices/a-zia-reference.md#enums) and [Appendix B (BASIC Reference)](../appendices/b-basic-reference.md#enums) for full details.</p>
+<p>Structures define custom types by grouping fields together. Zanna also supports <strong>enumerations</strong> — custom types that represent a fixed set of named integer constants. While structures are ideal when your data has multiple fields, enums are the right choice when a value can only be one of a small, known set of options (like directions, colors, or game states). See the Enum sections in [Appendix A (Zia Reference)](../appendices/a-zia-reference.md#enums) and [Appendix B (BASIC Reference)](../appendices/b-basic-reference.md#enums) for full details.</p>
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
 <p><strong>Exercise 11.1</strong>: Create a <code>Book</code> structure with title, author, and pageCount. Create an array of 3 books and print information about each one.</p>
@@ -6246,7 +6246,7 @@ Database.addUser(alice);  // Adds to database
 module Main;
 
 bind MathUtils;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var x = 5.0;
@@ -6273,7 +6273,7 @@ var area = MathUtils.PI * MathUtils.square(radius);
 <p>If you only need certain items, bind them directly:</p>
 <pre><code data-lang="rust">
 bind MathUtils { square, PI };
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(square(5.0));  // No prefix needed
@@ -6285,7 +6285,7 @@ func start() {
 <p>Sometimes you want to rename a binding. Maybe the name is too long, or maybe it conflicts with something else:</p>
 <pre><code data-lang="rust">
 bind MathUtils as M;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(M.square(5.0));
@@ -6296,7 +6296,7 @@ func start() {
 <p>You can also bind specific items from a module without the prefix:</p>
 <pre><code data-lang="rust">
 bind MathUtils { square, PI };
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(square(5.0));  // No prefix needed
@@ -6327,11 +6327,11 @@ func start() {
 <p>Real-world example:</p>
 <pre><code data-lang="rust">
 // Good: Bind with alias when using many functions
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 var x = Math.Sqrt(a) + Math.Sin(b) + Math.Cos(c);
 
 // Good: Specific bind for frequently used items
-bind Viper.Terminal { Say, InputLine };
+bind Zanna.Terminal { Say, InputLine };
 Say(&quot;Enter name: &quot;);
 var name = InputLine();
 
@@ -6369,7 +6369,7 @@ func reset() {  // Private: internal use only
 <pre><code data-lang="rust">
 // file: main.zia
 bind Counter;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Counter.increment();
@@ -6505,33 +6505,33 @@ my_tool/
 <p>Choose the structure that makes sense for your project. The goal is that anyone (including future you) can find code quickly.</p>
 <p>---</p>
 <h2 id="the-standard-library">The Standard Library</h2>
-<p>Viper comes with a rich standard library organized into namespaces:</p>
+<p>Zanna comes with a rich standard library organized into namespaces:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
-bind Viper.IO;         // File operations
-bind Viper.Math;       // Mathematical functions
-bind Viper.Text.Fmt;        // Formatting
-bind Viper.Time;       // Date and time
-bind Viper.Random;     // Random numbers
-bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
+bind Zanna.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
+bind Zanna.IO;         // File operations
+bind Zanna.Math;       // Mathematical functions
+bind Zanna.Text.Fmt;        // Formatting
+bind Zanna.Time;       // Date and time
+bind Zanna.Random;     // Random numbers
+bind Zanna.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 </code></pre>
-<p>When you bind a Viper namespace, its functions become available without the full prefix:</p>
+<p>When you bind a Zanna namespace, its functions become available without the full prefix:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Random;
+bind Zanna.Terminal;
+bind Zanna.Random;
 
 func start() {
-    Say(&quot;Guess a number!&quot;);           // No Viper.Terminal. prefix needed
-    var secret = NextInt(100) + 1;    // No Viper.Random. prefix needed
+    Say(&quot;Guess a number!&quot;);           // No Zanna.Terminal. prefix needed
+    var secret = NextInt(100) + 1;    // No Zanna.Random. prefix needed
 }
 </code></pre>
-<p>Without <code>bind</code>, you&#x27;d write <code>Viper.Terminal.Say(&quot;...&quot;)</code> and <code>Viper.Random.NextInt(100)</code>. Both work, but <code>bind</code> makes code cleaner.</p>
+<p>Without <code>bind</code>, you&#x27;d write <code>Zanna.Terminal.Say(&quot;...&quot;)</code> and <code>Zanna.Random.NextInt(100)</code>. Both work, but <code>bind</code> makes code cleaner.</p>
 <p>You can also bind with aliases or selectively import specific items:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal as T;              // Alias: T.Say(&quot;Hello&quot;)
-bind Viper.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn&#x27;t
+bind Zanna.Terminal as T;              // Alias: T.Say(&quot;Hello&quot;)
+bind Zanna.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn&#x27;t
 </code></pre>
-<p>Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check <code>Viper.Time</code>. Need to format numbers? Check <code>Viper.Text.Fmt</code>.</p>
+<p>Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check <code>Zanna.Time</code>. Need to format numbers? Check <code>Zanna.Text.Fmt</code>.</p>
 <p>---</p>
 <h2 id="module-dependencies">Module Dependencies</h2>
 <p>Modules can bind other modules, creating a dependency graph:</p>
@@ -6728,7 +6728,7 @@ export func scale(v: Vec2, factor: Number) -&gt; Vec2 {
 }
 
 export func distance(a: Vec2, b: Vec2) -&gt; Number {
-    bind Viper.Math as Math;
+    bind Zanna.Math as Math;
     var dx = b.x - a.x;
     var dy = b.y - a.y;
     return Math.Sqrt(dx * dx + dy * dy);
@@ -6739,7 +6739,7 @@ export func zero() -&gt; Vec2 {
 }
 
 export func magnitude(v: Vec2) -&gt; Number {
-    bind Viper.Math as Math;
+    bind Zanna.Math as Math;
     return Math.Sqrt(v.x * v.x + v.y * v.y);
 }
 
@@ -6866,7 +6866,7 @@ module Main;
 bind Vec2;
 bind Player;
 bind Enemy;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;=== Modular Game Demo ===&quot;);
@@ -6932,7 +6932,7 @@ string_utils/
 <pre><code data-lang="rust">
 bind string_utils;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var email = &quot;test@example.com&quot;;
 if string_utils.validation.isEmail(email) {
@@ -7015,7 +7015,7 @@ platformer/
 <pre><code data-lang="rust">
 // vec2_test.zia
 bind Vec2;
-bind Viper.Test;
+bind Zanna.Test;
 
 test &quot;add combines vectors&quot; {
     var a = Vec2.create(1.0, 2.0);
@@ -7236,7 +7236,7 @@ export func divide(a: Integer, b: Integer) -&gt; Integer { return a / b; }
 </ul>
 <p>Draw the dependency graph. Make sure there are no circular dependencies. Think carefully about what each module exports.</p>
 <p>---</p>
-<p><em>We can now organize large programs into manageable pieces. Our code is cleaner, our dependencies are clear, and our modules can be understood, tested, and reused independently. Next, we survey the entire standard library — what Viper gives you for free.</em></p>
+<p><em>We can now organize large programs into manageable pieces. Our code is cleaner, our dependencies are clear, and our modules can be understood, tested, and reused independently. Next, we survey the entire standard library — what Zanna gives you for free.</em></p>
 <p><em>[Continue to Chapter 13: The Standard Library -&gt;](13-stdlib.md)</em></p>
 <h1 id="chapter-13-the-standard-library">Chapter 13: The Standard Library</h1>
 <p>Imagine you&#x27;re building a house. You could make your own bricks, forge your own nails, mill your own lumber. Or you could go to the hardware store and buy materials that thousands of engineers have already perfected.</p>
@@ -7244,7 +7244,7 @@ export func divide(a: Integer, b: Integer) -&gt; Integer { return a / b; }
 <p>The answer is: you shouldn&#x27;t have to. That&#x27;s what the standard library is for.</p>
 <p>---</p>
 <h2 id="what-is-a-standard-library">What Is a Standard Library?</h2>
-<p>A <em>standard library</em> is a collection of pre-written code that comes bundled with a programming language. When you install Viper, you don&#x27;t just get the ability to write <code>if</code> statements and <code>for</code> loops. You get thousands of lines of carefully tested, optimized code for common tasks.</p>
+<p>A <em>standard library</em> is a collection of pre-written code that comes bundled with a programming language. When you install Zanna, you don&#x27;t just get the ability to write <code>if</code> statements and <code>for</code> loops. You get thousands of lines of carefully tested, optimized code for common tasks.</p>
 <p>Think of it as a toolbox that comes free with the language:</p>
 <ul>
 <li>Need to find the absolute value of a number? There&#x27;s a function for that.</li>
@@ -7252,7 +7252,7 @@ export func divide(a: Integer, b: Integer) -&gt; Integer { return a / b; }
 <li>Need to shuffle an array randomly? One line of code.</li>
 <li>Want to know what time it is? Just ask.</li>
 </ul>
-<p>Every mainstream programming language has a standard library. Python is famous for its &quot;batteries included&quot; philosophy. Java has a massive standard library. C has a minimal one. Viper strikes a balance: comprehensive enough to be useful, organized enough to be learnable.</p>
+<p>Every mainstream programming language has a standard library. Python is famous for its &quot;batteries included&quot; philosophy. Java has a massive standard library. C has a minimal one. Zanna strikes a balance: comprehensive enough to be useful, organized enough to be learnable.</p>
 <p><strong>Why does this matter?</strong> Three reasons:</p>
 <ol>
 <li>**You don&#x27;t have to reinvent the wheel.** Someone already wrote code to format dates. It handles edge cases you haven&#x27;t thought of. Use it.</li>
@@ -7261,110 +7261,110 @@ export func divide(a: Integer, b: Integer) -&gt; Integer { return a / b; }
 <li>**Standard library code is tested.** Millions of programs use these functions. Bugs get found and fixed. Your hand-written version won&#x27;t have that testing.</li>
 </ul>
 <ol>
-<li>**Other programmers know it.** When you use <code>Viper.Math.Sqrt()</code>, any Viper programmer knows what it does. Your custom <code>mySquareRoot()</code> function? They&#x27;d have to read your code.</li>
+<li>**Other programmers know it.** When you use <code>Zanna.Math.Sqrt()</code>, any Zanna programmer knows what it does. Your custom <code>mySquareRoot()</code> function? They&#x27;d have to read your code.</li>
 </ul>
 <p>The standard library is a superpower. Learning it makes you a dramatically more productive programmer.</p>
 <p>---</p>
-<h2 id="a-tour-of-viper-s-standard-library">A Tour of Viper&#x27;s Standard Library</h2>
-<p>Viper&#x27;s standard library is organized into modules under the <code>Viper</code> namespace. Each module handles a different category of tasks:</p>
+<h2 id="a-tour-of-zanna-s-standard-library">A Tour of Zanna&#x27;s Standard Library</h2>
+<p>Zanna&#x27;s standard library is organized into modules under the <code>Zanna</code> namespace. Each module handles a different category of tasks:</p>
 <table><thead><tr>
 <th>Module</th>
 <th>Purpose</th>
 <th>You&#x27;ll Use It For</th>
 </tr></thead><tbody>
 <tr>
-<td>`Viper.Collections`</td>
+<td>`Zanna.Collections`</td>
 <td>Data structures</td>
 <td>Lists, maps, sets</td>
 </tr>
 <tr>
-<td>`Viper.Core.Convert`</td>
+<td>`Zanna.Core.Convert`</td>
 <td>String-to-number conversion</td>
 <td>Processing user input</td>
 </tr>
 <tr>
-<td>`Viper.Crypto`</td>
+<td>`Zanna.Crypto`</td>
 <td>Hashing and encoding</td>
 <td>Security, verification</td>
 </tr>
 <tr>
-<td>`Viper.System.Environment`</td>
+<td>`Zanna.System.Environment`</td>
 <td>System information</td>
 <td>Config, command-line args</td>
 </tr>
 <tr>
-<td>`Viper.Text.Fmt`</td>
+<td>`Zanna.Text.Fmt`</td>
 <td>String formatting</td>
 <td>Creating output messages</td>
 </tr>
 <tr>
-<td>`Viper.Graphics`</td>
+<td>`Zanna.Graphics`</td>
 <td>Low-level drawing</td>
 <td>Games, visualizations</td>
 </tr>
 <tr>
-<td>`Viper.GUI`</td>
+<td>`Zanna.GUI`</td>
 <td>Widget-based UI</td>
 <td>Desktop applications</td>
 </tr>
 <tr>
-<td>`Viper.IO.Dir`</td>
+<td>`Zanna.IO.Dir`</td>
 <td>Directory operations</td>
 <td>Navigating the filesystem</td>
 </tr>
 <tr>
-<td>`Viper.IO.File`</td>
+<td>`Zanna.IO.File`</td>
 <td>File operations</td>
 <td>Reading/writing data</td>
 </tr>
 <tr>
-<td>`Viper.IO.Path`</td>
+<td>`Zanna.IO.Path`</td>
 <td>Path manipulation</td>
 <td>Building file paths safely</td>
 </tr>
 <tr>
-<td>`Viper.Math`</td>
+<td>`Zanna.Math`</td>
 <td>Mathematical functions</td>
 <td>Calculations, geometry</td>
 </tr>
 <tr>
-<td>`Viper.Network`</td>
+<td>`Zanna.Network`</td>
 <td>TCP/UDP networking</td>
 <td>Web clients, servers</td>
 </tr>
 <tr>
-<td>`Viper.Math.Random`</td>
+<td>`Zanna.Math.Random`</td>
 <td>Random number generation</td>
 <td>Games, simulations, testing</td>
 </tr>
 <tr>
-<td>`Viper.String`</td>
+<td>`Zanna.String`</td>
 <td>Advanced string operations</td>
 <td>Text processing</td>
 </tr>
 <tr>
-<td>`Viper.Terminal`</td>
+<td>`Zanna.Terminal`</td>
 <td>Console input/output</td>
 <td>User interaction, debugging</td>
 </tr>
 <tr>
-<td>`Viper.Threads`</td>
+<td>`Zanna.Threads`</td>
 <td>Concurrency</td>
 <td>Parallel processing</td>
 </tr>
 <tr>
-<td>`Viper.Time`</td>
+<td>`Zanna.Time`</td>
 <td>Date and time</td>
 <td>Timestamps, scheduling</td>
 </tr>
 </tbody></table>
 <p>Let&#x27;s explore each one in depth.</p>
 <p>---</p>
-<h2 id="viper-terminal-console-i-o">Viper.Terminal: Console I/O</h2>
-<p>You&#x27;ve used <code>Viper.Terminal</code> throughout this book. It&#x27;s how your programs talk to users.</p>
+<h2 id="zanna-terminal-console-i-o">Zanna.Terminal: Console I/O</h2>
+<p>You&#x27;ve used <code>Zanna.Terminal</code> throughout this book. It&#x27;s how your programs talk to users.</p>
 <h3 id="basic-input-and-output">Basic Input and Output</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;Hello!&quot;);              // Print with newline
 Print(&quot;No newline here&quot;);   // Print without newline
@@ -7381,7 +7381,7 @@ var char = GetKey();        // Read a single keypress
 <h3 id="terminal-control">Terminal Control</h3>
 <p>For interactive applications, you can control the cursor and colors:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Clear();                    // Clear the screen
 SetPosition(10, 5);         // Move cursor to column 10, row 5
@@ -7392,8 +7392,8 @@ SetCursorVisible(true);        // Show it again
 <p>These are essential for building text-based games, progress bars, or any program where you want precise control over what the user sees.</p>
 <h3 id="practical-example-a-simple-menu">Practical Example: A Simple Menu</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func showMenu() -&gt; Integer {
     Clear();
@@ -7409,11 +7409,11 @@ func showMenu() -&gt; Integer {
 }
 </code></pre>
 <p>---</p>
-<h2 id="viper-math-mathematics">Viper.Math: Mathematics</h2>
-<p>Math operations beyond basic arithmetic live in <code>Viper.Math</code>. These functions have been implemented by experts, optimized for speed, and tested for accuracy across edge cases.</p>
+<h2 id="zanna-math-mathematics">Zanna.Math: Mathematics</h2>
+<p>Math operations beyond basic arithmetic live in <code>Zanna.Math</code>. These functions have been implemented by experts, optimized for speed, and tested for accuracy across edge cases.</p>
 <h3 id="basic-functions">Basic Functions</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Abs(-5.0);          // 5.0 (absolute value)
 Math.AbsInt(-5);         // 5   (integer absolute value)
@@ -7423,7 +7423,7 @@ Math.ClampInt(15, 0, 10); // 10 (constrain to range 0-10)
 </code></pre>
 <h3 id="rounding">Rounding</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Floor(3.7);       // 3.0 (round down)
 Math.Ceil(3.2);        // 4.0 (round up)
@@ -7432,7 +7432,7 @@ Math.Round(3.4);       // 3.0
 </code></pre>
 <h3 id="powers-and-roots">Powers and Roots</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Sqrt(16.0);       // 4.0 (square root)
 Math.Pow(2.0, 8.0);    // 256.0 (2 to the 8th power)
@@ -7442,7 +7442,7 @@ Math.Exp(1.0);         // ~2.718 (e^x)
 </code></pre>
 <h3 id="trigonometry">Trigonometry</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Sin(0.0);         // 0.0
 Math.Cos(0.0);         // 1.0
@@ -7451,7 +7451,7 @@ Math.Atan2(y, x);      // Angle from coordinates
 </code></pre>
 <h3 id="constants">Constants</h3>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Pi;               // 3.14159265358979...
 Math.Euler;                // 2.71828182845904...
@@ -7459,7 +7459,7 @@ Math.Euler;                // 2.71828182845904...
 <h3 id="when-would-you-use-this">When Would You Use This?</h3>
 <p><strong>Game development:</strong> Calculate distances, angles, movement vectors.</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Distance between two points
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -&gt; Number {
@@ -7470,7 +7470,7 @@ func distance(x1: Number, y1: Number, x2: Number, y2: Number) -&gt; Number {
 </code></pre>
 <p><strong>Scientific calculations:</strong> Statistics, physics simulations, financial modeling.</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Compound interest
 func compoundInterest(principal: Number, rate: Number, years: Integer) -&gt; Number {
@@ -7479,7 +7479,7 @@ func compoundInterest(principal: Number, rate: Number, years: Integer) -&gt; Num
 </code></pre>
 <p><strong>Graphics:</strong> Smooth animations, circular motion, wave patterns.</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Move in a circle
 var angle = time * speed;
@@ -7495,11 +7495,11 @@ var y = centerY + radius * Math.Sin(angle);
 </ul>
 <p>The standard library handles all of this. Use it.</p>
 <p>---</p>
-<h2 id="viper-math-random-randomness">Viper.Math.Random: Randomness</h2>
-<p>Games need dice rolls. Simulations need random data. Testing needs random inputs. <code>Viper.Math.Random</code> (aliased as <code>Random</code> below) provides it all.</p>
+<h2 id="zanna-math-random-randomness">Zanna.Math.Random: Randomness</h2>
+<p>Games need dice rolls. Simulations need random data. Testing needs random inputs. <code>Zanna.Math.Random</code> (aliased as <code>Random</code> below) provides it all.</p>
 <h3 id="basic-random-values">Basic Random Values</h3>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 Random.Range(1, 100);  // Random integer from 1 to 100 (inclusive)
 Random.Next();         // Random float from 0.0 to 1.0
@@ -7507,8 +7507,8 @@ Random.Dice(2);        // 1 or 2 — simulates a coin flip
 </code></pre>
 <h3 id="working-with-collections">Working with Collections</h3>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
-bind Viper.Collections;
+bind Zanna.Math.Random as Random;
+bind Zanna.Collections;
 
 var deck = new List[Integer]();
 var i = 1;
@@ -7521,7 +7521,7 @@ Random.Shuffle(deck);  // Shuffle in place
 <h3 id="reproducible-randomness">Reproducible Randomness</h3>
 <p>For testing or game replays, you can <em>seed</em> the random number generator:</p>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 Random.Seed(12345);  // Same seed = same sequence of &quot;random&quot; numbers
 </code></pre>
@@ -7529,16 +7529,16 @@ Random.Seed(12345);  // Same seed = same sequence of &quot;random&quot; numbers
 <h3 id="practical-examples">Practical Examples</h3>
 <p><strong>Dice roll:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
-bind Viper.Terminal;
+bind Zanna.Math.Random as Random;
+bind Zanna.Terminal;
 
 var die = Random.Dice(6);
 Say(&quot;You rolled: &quot; + die);
 </code></pre>
 <p><strong>Coin flip:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
-bind Viper.Terminal;
+bind Zanna.Math.Random as Random;
+bind Zanna.Terminal;
 
 if Random.Chance(0.5) {
     Say(&quot;Heads!&quot;);
@@ -7548,7 +7548,7 @@ if Random.Chance(0.5) {
 </code></pre>
 <p><strong>Random enemy spawn:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 // Simple weighted random (for illustration)
 var roll = Random.Range(1, 100);
@@ -7564,7 +7564,7 @@ if roll &lt;= 50 {
 </code></pre>
 <p><strong>Password generator:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 func generatePassword(length: Integer) -&gt; String {
     var chars = &quot;abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&quot;;
@@ -7581,13 +7581,13 @@ func generatePassword(length: Integer) -&gt; String {
 }
 </code></pre>
 <p>---</p>
-<h2 id="viper-time-date-and-time">Viper.Time: Date and Time</h2>
+<h2 id="zanna-time-date-and-time">Zanna.Time: Date and Time</h2>
 <p>Time is surprisingly complex. Leap years, time zones, daylight saving, calendar systems. The standard library handles the complexity so you don&#x27;t have to.</p>
 <h3 id="getting-the-current-time">Getting the Current Time</h3>
 <pre><code data-lang="rust">
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 
@@ -7601,9 +7601,9 @@ Say(&quot;Second: &quot; + Fmt.Int(Time.DateTime.Second(dt)));
 <h3 id="formatting-dates">Formatting Dates</h3>
 <p>Dates need to be displayed in different formats depending on context:</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Terminal;
 
 var dt = Time.DateTime.Now();
 var y  = Time.DateTime.Year(dt);
@@ -7625,9 +7625,9 @@ Say(Fmt.IntPad(y, 4, &quot;0&quot;) + &quot;-&quot; + Fmt.IntPad(mo, 2, &quot;0&
 <h3 id="measuring-elapsed-time">Measuring Elapsed Time</h3>
 <p>For performance measurement or timing games:</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var start = Time.Clock.Ticks();
 
@@ -7639,8 +7639,8 @@ Say(&quot;Processing took &quot; + Fmt.Int(elapsed) + &quot; ms&quot;);
 </code></pre>
 <h3 id="delays-and-pauses">Delays and Pauses</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 Say(&quot;Loading...&quot;);
 Time.Clock.Sleep(2000);  // Pause for 2000 milliseconds (2 seconds)
@@ -7648,9 +7648,9 @@ Say(&quot;Done!&quot;);
 </code></pre>
 <h3 id="practical-example-simple-stopwatch">Practical Example: Simple Stopwatch</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
 
 func stopwatch() {
     Say(&quot;Press Enter to start...&quot;);
@@ -7676,8 +7676,8 @@ func stopwatch() {
 </ul>
 <p>The standard library has been battle-tested against these edge cases. Trust it.</p>
 <p>---</p>
-<h2 id="viper-environment-system-information">Viper.System.Environment: System Information</h2>
-<p>Your program doesn&#x27;t run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. <code>Viper.System.Environment</code> gives you access to this context.</p>
+<h2 id="zanna-environment-system-information">Zanna.System.Environment: System Information</h2>
+<p>Your program doesn&#x27;t run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. <code>Zanna.System.Environment</code> gives you access to this context.</p>
 <h3 id="command-line-arguments">Command-Line Arguments</h3>
 <p>When someone runs your program from the terminal with arguments:</p>
 <pre><code data-lang="bash">
@@ -7685,8 +7685,8 @@ $ zia myprogram.zia input.txt --verbose
 </code></pre>
 <p>You can access those arguments:</p>
 <pre><code data-lang="rust">
-bind Viper.System.Environment;
-bind Viper.Terminal;
+bind Zanna.System.Environment;
+bind Zanna.Terminal;
 
 var count = GetArgumentCount();
 
@@ -7700,7 +7700,7 @@ for i in 0..count {
 <h3 id="environment-variables">Environment Variables</h3>
 <p>Operating systems have configuration through environment variables:</p>
 <pre><code data-lang="rust">
-bind Env = Viper.System.Environment;
+bind Env = Zanna.System.Environment;
 
 var home = Env.GetVariable(&quot;HOME&quot;);       // /Users/alice
 var path = Env.GetVariable(&quot;PATH&quot;);       // System PATH
@@ -7714,16 +7714,16 @@ if Env.HasVariable(&quot;DEBUG&quot;) {
 </code></pre>
 <h3 id="system-information">System Information</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.System.Environment;
-bind Viper.System.Machine;
+bind Env = Zanna.System.Environment;
+bind Zanna.System.Machine;
 
 var osName = GetOS();         // &quot;windows&quot;, &quot;macos&quot;, or &quot;linux&quot;
 var home = Env.GetVariable(&quot;HOME&quot;);  // User&#x27;s home directory
 </code></pre>
 <h3 id="practical-example-cross-platform-configuration">Practical Example: Cross-Platform Configuration</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.System.Environment;
-bind Viper.IO.Path;
+bind Env = Zanna.System.Environment;
+bind Zanna.IO.Path;
 
 func getConfigPath() -&gt; String {
     var osName = Env.GetVariable(&quot;OS&quot;);
@@ -7739,12 +7739,12 @@ func getConfigPath() -&gt; String {
 }
 </code></pre>
 <p>---</p>
-<h2 id="viper-fmt-string-formatting">Viper.Text.Fmt: String Formatting</h2>
-<p>Concatenating strings with <code>+</code> gets messy when mixing numbers and text. <code>Viper.Text.Fmt</code> makes formatting cleaner.</p>
+<h2 id="zanna-fmt-string-formatting">Zanna.Text.Fmt: String Formatting</h2>
+<p>Concatenating strings with <code>+</code> gets messy when mixing numbers and text. <code>Zanna.Text.Fmt</code> makes formatting cleaner.</p>
 <h3 id="basic-formatting">Basic Formatting</h3>
 <pre><code data-lang="rust">
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 var score = 95;
@@ -7759,7 +7759,7 @@ Say(Fmt.NumFixed(3.14159, 4));   // &quot;3.1416&quot;
 </code></pre>
 <h3 id="number-formatting">Number Formatting</h3>
 <pre><code data-lang="rust">
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 
 // Decimal places
 Fmt.NumFixed(3.14159, 2);    // &quot;3.14&quot;
@@ -7776,8 +7776,8 @@ Fmt.Oct(8);                  // &quot;10&quot;
 </code></pre>
 <h3 id="practical-example-formatted-table">Practical Example: Formatted Table</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func printScoreboard(players: List[Player]) {
     Say(&quot;Name            Score&quot;);
@@ -7799,8 +7799,8 @@ func printScoreboard(players: List[Player]) {
 // Charlie  1200
 </code></pre>
 <p>---</p>
-<h2 id="viper-string-string-utilities">Viper.String: String Utilities</h2>
-<p>Beyond basic concatenation, <code>Viper.String</code> provides advanced text operations as instance methods on strings.</p>
+<h2 id="zanna-string-string-utilities">Zanna.String: String Utilities</h2>
+<p>Beyond basic concatenation, <code>Zanna.String</code> provides advanced text operations as instance methods on strings.</p>
 <h3 id="padding-and-alignment">Padding and Alignment</h3>
 <pre><code data-lang="rust">
 // PadLeft, PadRight, and Repeat are instance methods on String values
@@ -7844,14 +7844,14 @@ func isValidUsername(username: String) -&gt; Boolean {
 }
 </code></pre>
 <p>---</p>
-<h2 id="viper-collections-data-structures">Viper.Collections: Data Structures</h2>
+<h2 id="zanna-collections-data-structures">Zanna.Collections: Data Structures</h2>
 <p>Arrays are great, but sometimes you need more specialized data structures.</p>
 <h3 id="list-dynamic-array">List: Dynamic Array</h3>
 <p>Unlike fixed arrays, lists grow automatically:</p>
 <pre><code data-lang="rust">
-bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Collections;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var list = new List[String]();
 
@@ -7870,9 +7870,9 @@ list.Clear();                 // Remove all elements
 <h3 id="map-key-value-pairs">Map: Key-Value Pairs</h3>
 <p>Maps store associations between keys and values:</p>
 <pre><code data-lang="rust">
-bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Collections;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var scores = new Map[String, Integer]();
 
@@ -7902,11 +7902,11 @@ scores.Remove(&quot;Bob&quot;);
 </code></pre>
 <p><strong>When to use:</strong> When you need to look things up by name, ID, or any other key. Faster than searching an array.</p>
 <h3 id="set-unique-values">Set: Unique Values</h3>
-<p>Sets store unique string values with no duplicates. Use <code>Viper.Collections.Bag</code> for string sets:</p>
+<p>Sets store unique string values with no duplicates. Use <code>Zanna.Collections.Bag</code> for string sets:</p>
 <pre><code data-lang="rust">
-bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Collections;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var tags = new Bag();
 
@@ -7922,10 +7922,10 @@ tags.Remove(&quot;urgent&quot;);
 <p><strong>When to use:</strong> When you need to track unique items, check membership quickly, or remove duplicates.</p>
 <h3 id="practical-example-word-frequency-counter">Practical Example: Word Frequency Counter</h3>
 <pre><code data-lang="rust">
-bind Viper.Collections;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Collections;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func countWords(text: String) -&gt; Map {
     var frequency = new Map[String, Integer]();
@@ -7967,11 +7967,11 @@ while i &lt; keys.Length {
 // ...
 </code></pre>
 <p>---</p>
-<h2 id="viper-core-convert-parsing-values">Viper.Core.Convert: Parsing Values</h2>
+<h2 id="zanna-core-convert-parsing-values">Zanna.Core.Convert: Parsing Values</h2>
 <p>Converting strings to other types is so common it gets its own module.</p>
 <h3 id="basic-parsing">Basic Parsing</h3>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 Convert.ToInt64(&quot;42&quot;);        // 42
 Convert.ToDouble(&quot;3.14&quot;);     // 3.14
@@ -7981,8 +7981,8 @@ Convert.ToStringDouble(3.14); // &quot;3.14&quot;
 <h3 id="error-handling">Error Handling</h3>
 <p>Parsing can fail. Handle it gracefully:</p>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var num = Convert.ToInt64(&quot;not a number&quot;);
@@ -7992,8 +7992,8 @@ try {
 </code></pre>
 <h3 id="practical-example-robust-input-function">Practical Example: Robust Input Function</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func getNumber(prompt: String) -&gt; Integer {
     while true {
@@ -8012,11 +8012,11 @@ func getNumber(prompt: String) -&gt; Integer {
 var age = getNumber(&quot;Enter your age: &quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-io-file-viper-io-dir-viper-io-path">Viper.IO.File / Viper.IO.Dir / Viper.IO.Path</h2>
+<h2 id="zanna-io-file-zanna-io-dir-zanna-io-path">Zanna.IO.File / Zanna.IO.Dir / Zanna.IO.Path</h2>
 <p>We covered file operations in Chapter 9, but let&#x27;s review the key patterns.</p>
 <h3 id="file-operations">File Operations</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Reading
 var content = File.ReadAllText(&quot;data.txt&quot;);
@@ -8038,7 +8038,7 @@ File.Delete(&quot;temp.txt&quot;);
 </code></pre>
 <h3 id="directory-operations">Directory Operations</h3>
 <pre><code data-lang="rust">
-bind Viper.IO.Dir;
+bind Zanna.IO.Dir;
 
 create(&quot;output&quot;);
 createAll(&quot;output/reports/2024&quot;);  // Creates all intermediate dirs
@@ -8055,7 +8055,7 @@ delete(&quot;temp&quot;);
 <h3 id="path-manipulation">Path Manipulation</h3>
 <p>The <strong>critical</strong> module for working with file paths:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
+bind Zanna.IO.Path;
 
 // Join paths safely (handles OS-specific separators)
 var path = join(&quot;users&quot;, &quot;alice&quot;, &quot;documents&quot;, &quot;file.txt&quot;);
@@ -8078,7 +8078,7 @@ isAbsolute(&quot;relative/path&quot;);        // false
 <h3 id="why-path-join-matters">Why Path.Join() Matters</h3>
 <p>Never concatenate paths with <code>+</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
+bind Zanna.IO.Path;
 
 // BAD - breaks on different operating systems
 var path = dir + &quot;/&quot; + filename;
@@ -8088,12 +8088,12 @@ var path = join(dir, filename);
 </code></pre>
 <p>Windows uses backslashes (<code>\</code>), Unix uses forward slashes (<code>/</code>). <code>Path.Join()</code> handles this automatically.</p>
 <p>---</p>
-<h2 id="viper-crypto-security-and-encoding">Viper.Crypto: Security and Encoding</h2>
+<h2 id="zanna-crypto-security-and-encoding">Zanna.Crypto: Security and Encoding</h2>
 <p>For hashing, encoding, and unique identifiers.</p>
 <h3 id="hashing">Hashing</h3>
 <p>Hashing converts data into a fixed-size fingerprint. The same input always produces the same hash, but you can&#x27;t reverse a hash back to the original.</p>
 <pre><code data-lang="rust">
-bind Viper.Crypto.Hash as Hash;
+bind Zanna.Crypto.Hash as Hash;
 
 var sha = Hash.SHA256(&quot;hello&quot;);    // 64-character hex string
 var mac = Hash.HmacSHA256(&quot;key&quot;, &quot;hello&quot;);
@@ -8106,12 +8106,12 @@ var mac = Hash.HmacSHA256(&quot;key&quot;, &quot;hello&quot;);
 <li>Detecting duplicates</li>
 </ul>
 <p>MD5, SHA-1, CRC32, and their legacy HMAC variants remain available through
-<code>Viper.Crypto.Legacy.Hash</code> for compatibility with old formats, but new code
+<code>Zanna.Crypto.Legacy.Hash</code> for compatibility with old formats, but new code
 should use SHA-256, HMAC-SHA256, <code>Password</code>, <code>KeyDerive</code>, or <code>Cipher</code>.</p>
 <h3 id="encoding">Encoding</h3>
-<p>Base64 encoding converts binary data to text. This lives in <code>Viper.Text.Codec</code>:</p>
+<p>Base64 encoding converts binary data to text. This lives in <code>Zanna.Text.Codec</code>:</p>
 <pre><code data-lang="rust">
-bind Codec = Viper.Text.Codec;
+bind Codec = Zanna.Text.Codec;
 
 var encoded = Codec.Base64Enc(&quot;Hello, World!&quot;);
 // &quot;SGVsbG8sIFdvcmxkIQ==&quot;
@@ -8128,7 +8128,7 @@ var decoded = Codec.Base64Dec(encoded);
 <h3 id="unique-identifiers">Unique Identifiers</h3>
 <p>GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:</p>
 <pre><code data-lang="rust">
-bind Uuid = Viper.Text.Uuid;
+bind Uuid = Zanna.Text.Uuid;
 
 var id = Uuid.New();
 // &quot;550e8400-e29b-41d4-a716-446655440000&quot;
@@ -8143,9 +8143,9 @@ var id = Uuid.New();
 <h3 id="practical-example-password-storage">Practical Example: Password Storage</h3>
 <p><strong>Never store passwords in plain text.</strong> Hash them:</p>
 <pre><code data-lang="rust">
-bind Viper.Crypto.Hash as Hash;
-bind Uuid = Viper.Text.Uuid;
-bind Viper.Terminal;
+bind Zanna.Crypto.Hash as Hash;
+bind Uuid = Zanna.Text.Uuid;
+bind Zanna.Terminal;
 
 func hashPassword(password: String, salt: String) -&gt; String {
     // Combine password with salt to prevent rainbow table attacks
@@ -8174,17 +8174,17 @@ if checkPassword(inputPassword, storedSalt, storedHash) {
 <pre><code data-lang="rust">
 module StdlibDemo;
 
-bind Viper.Terminal;
-bind Env = Viper.System.Environment;
-bind Viper.Time;
-bind Viper.Math as Math;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Math.Random as Random;
-bind Viper.Collections;
-bind Viper.Crypto.Hash as Hash;
+bind Zanna.Terminal;
+bind Env = Zanna.System.Environment;
+bind Zanna.Time;
+bind Zanna.Math as Math;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Math.Random as Random;
+bind Zanna.Collections;
+bind Zanna.Crypto.Hash as Hash;
 
 func start() {
-    Say(&quot;=== Viper Standard Library Demo ===&quot;);
+    Say(&quot;=== Zanna Standard Library Demo ===&quot;);
     Say(&quot;&quot;);
 
     // Environment
@@ -8233,7 +8233,7 @@ func start() {
     Say(&quot;&quot;);
 
     // Crypto
-    var message = &quot;Hello, Viper!&quot;;
+    var message = &quot;Hello, Zanna!&quot;;
     Say(&quot;Crypto Demo:&quot;);
     Say(&quot;  Message: &quot; + message);
     Say(&quot;  SHA256: &quot; + Hash.SHA256(message).Substring(0, 16) + &quot;...&quot;);
@@ -8307,9 +8307,9 @@ func badRandom() -&gt; Integer {
 <h2 id="how-to-discover-standard-library-features">How to Discover Standard Library Features</h2>
 <p>You won&#x27;t memorize every function. Here&#x27;s how to find what you need:</p>
 <h3 id="1-explore-in-your-editor">1. Explore in Your Editor</h3>
-<p>Most editors offer autocomplete. Type <code>Viper.</code> and see what modules appear. Type <code>Viper.Math.</code> and see available functions.</p>
+<p>Most editors offer autocomplete. Type <code>Zanna.</code> and see what modules appear. Type <code>Zanna.Math.</code> and see available functions.</p>
 <h3 id="2-read-the-documentation">2. Read the Documentation</h3>
-<p>The official Viper documentation covers every module. Keep it bookmarked. Appendix D of this book provides a quick reference.</p>
+<p>The official Zanna documentation covers every module. Keep it bookmarked. Appendix D of this book provides a quick reference.</p>
 <h3 id="3-guess-intelligently">3. Guess Intelligently</h3>
 <p>Standard libraries follow conventions:</p>
 <ul>
@@ -8322,7 +8322,7 @@ func badRandom() -&gt; Integer {
 <p>Before implementing something:</p>
 <ol>
 <li>Think: &quot;Is this a common problem?&quot;</li>
-<li>If yes, search: &quot;Viper [what you need]&quot;</li>
+<li>If yes, search: &quot;Zanna [what you need]&quot;</li>
 <li>Check if the standard library has it</li>
 </ul>
 <p>You&#x27;ll be surprised how often the answer is &quot;yes, there&#x27;s a function for that.&quot;</p>
@@ -8332,7 +8332,7 @@ func badRandom() -&gt; Integer {
 <h3 id="start-with-the-basics">Start with the Basics</h3>
 <p>Don&#x27;t try to learn every function. Start with the most common operations:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // For File, start with:
 File.ReadAllText()
@@ -8348,9 +8348,9 @@ File.Exists()
 <pre><code data-lang="rust">
 module Test;
 
-bind Viper.Math as Math;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
     // Experiment here
@@ -8377,8 +8377,8 @@ func start() {
 <p>Some standard library patterns appear constantly. Learn these by heart.</p>
 <h3 id="pattern-safe-user-input">Pattern: Safe User Input</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func getInt(prompt: String) -&gt; Integer {
     while true {
@@ -8393,7 +8393,7 @@ func getInt(prompt: String) -&gt; Integer {
 </code></pre>
 <h3 id="pattern-read-config-with-default">Pattern: Read Config with Default</h3>
 <pre><code data-lang="rust">
-bind Env = Viper.System.Environment;
+bind Env = Zanna.System.Environment;
 
 func getConfig(key: String, defaultValue: String) -&gt; String {
     if Env.HasVariable(key) {
@@ -8407,8 +8407,8 @@ func getConfig(key: String, defaultValue: String) -&gt; String {
 </code></pre>
 <h3 id="pattern-safe-file-read">Pattern: Safe File Read</h3>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func readFileSafe(path: String) -&gt; String {
     if !File.Exists(path) {
@@ -8425,9 +8425,9 @@ func readFileSafe(path: String) -&gt; String {
 </code></pre>
 <h3 id="pattern-measure-performance">Pattern: Measure Performance</h3>
 <pre><code data-lang="rust">
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func timed(name: String, operation: func()) {
     var start = Time.Clock.Ticks();
@@ -8443,10 +8443,10 @@ timed(&quot;Sort&quot;, func() {
 </code></pre>
 <h3 id="pattern-build-a-path">Pattern: Build a Path</h3>
 <pre><code data-lang="rust">
-bind Viper.IO.Path;
-bind Env = Viper.System.Environment;
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.IO.Path;
+bind Env = Zanna.System.Environment;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, &quot;0&quot;) + &quot;-&quot; +
@@ -8462,7 +8462,7 @@ var logFile = join(
 </code></pre>
 <p>---</p>
 <h2 id="summary">Summary</h2>
-<p>The Viper standard library provides:</p>
+<p>The Zanna standard library provides:</p>
 <table><thead><tr>
 <th>Category</th>
 <th>Modules</th>
@@ -8509,9 +8509,9 @@ var logFile = join(
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
 <p><strong>Exercise 13.1</strong>: Write a program that prints the current date in three different formats: ISO (2024-03-15), US (March 15, 2024), and EU (15/03/2024).</p>
-<p><strong>Exercise 13.2</strong>: Use <code>Viper.Math</code> to calculate the distance between two points (x1, y1) and (x2, y2) using the Pythagorean theorem.</p>
+<p><strong>Exercise 13.2</strong>: Use <code>Zanna.Math</code> to calculate the distance between two points (x1, y1) and (x2, y2) using the Pythagorean theorem.</p>
 <p><strong>Exercise 13.3</strong>: Create a simple stopwatch: prompt to start, wait for user input, then display elapsed time in seconds and milliseconds.</p>
-<p><strong>Exercise 13.4</strong>: Use <code>Viper.Collections.Map</code> to build a word frequency counter. Given a sentence, count how many times each word appears.</p>
+<p><strong>Exercise 13.4</strong>: Use <code>Zanna.Collections.Map</code> to build a word frequency counter. Given a sentence, count how many times each word appears.</p>
 <p><strong>Exercise 13.5</strong>: Write a program that takes a filename as a command-line argument and prints its SHA256 hash. If the file doesn&#x27;t exist, print a helpful error message.</p>
 <p><strong>Exercise 13.6</strong>: Build a function that validates an email address (must contain @, must have text before and after @, domain must contain a dot).</p>
 <p><strong>Exercise 13.7</strong>: Create a password generator that accepts length as an argument and generates a random password with lowercase, uppercase, digits, and symbols.</p>
@@ -8556,13 +8556,13 @@ var logFile = join(
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTCompressTests.cpp
-// Purpose: Validate Viper.IO.Compress DEFLATE/GZIP compression functions.
+// Purpose: Validate Zanna.IO.Compress DEFLATE/GZIP compression functions.
 // Key invariants: Round-trip compression/decompression preserves data.
-// Links: docs/viperlib/io.md
+// Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
 

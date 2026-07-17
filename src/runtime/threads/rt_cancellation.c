@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_cancellation.c
 // Purpose: Implements a cooperative cancellation token for the
-//          Viper.Threads.Cancellation class. Tokens can be cancelled, checked,
+//          Zanna.Threads.Cancellation class. Tokens can be cancelled, checked,
 //          and linked in a parent-child hierarchy so that cancelling a parent
 //          propagates to all linked child tokens.
 //
@@ -326,7 +326,7 @@ void *rt_cancellation_linked(void *parent) {
 }
 
 /// @brief Public alias for `rt_cancellation_is_cancelled` exposed under a friendlier name.
-/// @details Matches the naming convention used by other Viper.Threads polling primitives
+/// @details Matches the naming convention used by other Zanna.Threads polling primitives
 ///          (e.g. `rt_future_check`). Identical semantics: returns 1 if this token or any
 ///          of its ancestors has been cancelled, else 0.
 int8_t rt_cancellation_check(void *token) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -99,12 +99,12 @@ namespace il::frontends::zia {
 /// @{
 //===----------------------------------------------------------------------===//
 
-struct ViperType;
+struct ZannaType;
 
 /// @brief Shared pointer to an immutable semantic type.
 /// @details Types are shared via shared_ptr for efficient comparison and
 /// interning. Once created, types are never modified.
-using TypeRef = std::shared_ptr<const ViperType>;
+using TypeRef = std::shared_ptr<const ZannaType>;
 
 /// @}
 
@@ -331,7 +331,7 @@ enum class TypeKindSem {
 /// - `elementType()`: For List[T] or Set[T], returns T
 /// - `keyType()`, `valueType()`: For Map[K,V]
 /// - `paramTypes()`, `returnType()`: For Function types
-struct ViperType {
+struct ZannaType {
     /// @brief The type kind identifying this type's category.
     TypeKindSem kind;
 
@@ -355,34 +355,34 @@ struct ViperType {
 
     /// @brief Default constructor creates an Unknown type.
     /// @details Unknown types are placeholders during type inference.
-    ViperType() : kind(TypeKindSem::Unknown) {}
+    ZannaType() : kind(TypeKindSem::Unknown) {}
 
     /// @brief Construct a primitive or simple type.
     /// @param k The type kind.
-    explicit ViperType(TypeKindSem k) : kind(k) {}
+    explicit ZannaType(TypeKindSem k) : kind(k) {}
 
     /// @brief Construct a named type (Struct, Class, Interface, TypeParam).
     /// @param k The type kind.
     /// @param n The type name.
-    ViperType(TypeKindSem k, std::string n) : kind(k), name(std::move(n)) {}
+    ZannaType(TypeKindSem k, std::string n) : kind(k), name(std::move(n)) {}
 
     /// @brief Construct a generic type with type arguments.
     /// @param k The type kind (List, Map, Set, Optional, Result, Function).
     /// @param args The type arguments.
-    ViperType(TypeKindSem k, std::vector<TypeRef> args) : kind(k), typeArgs(std::move(args)) {}
+    ZannaType(TypeKindSem k, std::vector<TypeRef> args) : kind(k), typeArgs(std::move(args)) {}
 
     /// @brief Construct a named generic type.
     /// @param k The type kind.
     /// @param n The type name.
     /// @param args The type arguments.
     /// @details Used for user-defined generic types like MyList[T].
-    ViperType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
+    ZannaType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
         : kind(k), name(std::move(n)), typeArgs(std::move(args)) {}
 
     /// @brief Construct a fixed-size array type.
     /// @param elemType The element type (stored in typeArgs[0]).
     /// @param count Number of elements (stored in elementCount).
-    ViperType(TypeKindSem k, TypeRef elemType, size_t count)
+    ZannaType(TypeKindSem k, TypeRef elemType, size_t count)
         : kind(k), typeArgs({std::move(elemType)}), elementCount(count) {}
 
     //=========================================================================
@@ -540,10 +540,10 @@ struct ViperType {
             !typeArgs.empty())
             return typeArgs[0];
         if (kind == TypeKindSem::Ptr && !typeArgs.empty() &&
-            (name == "Viper.Collections.Seq" || name == "Viper.Collections.Queue" ||
-             name == "Viper.Collections.Stack" || name == "Viper.Collections.Deque" ||
-             name == "Viper.Collections.List" || name == "Viper.Collections.Ring" ||
-             name == "Viper.Collections.Heap"))
+            (name == "Zanna.Collections.Seq" || name == "Zanna.Collections.Queue" ||
+             name == "Zanna.Collections.Stack" || name == "Zanna.Collections.Deque" ||
+             name == "Zanna.Collections.List" || name == "Zanna.Collections.Ring" ||
+             name == "Zanna.Collections.Heap"))
             return typeArgs[0];
         return nullptr;
     }
@@ -555,11 +555,11 @@ struct ViperType {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
             return typeArgs[0];
         if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
-            (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-             name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
-             name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
-             name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
-             name == "Viper.Collections.MultiMap"))
+            (name == "Zanna.Collections.Map" || name == "Zanna.Collections.OrderedMap" ||
+             name == "Zanna.Collections.SortedMap" || name == "Zanna.Collections.Trie" ||
+             name == "Zanna.Collections.FrozenMap" || name == "Zanna.Collections.DefaultMap" ||
+             name == "Zanna.Collections.WeakMap" || name == "Zanna.Collections.LruCache" ||
+             name == "Zanna.Collections.MultiMap"))
             return typeArgs[0];
         return nullptr;
     }
@@ -571,11 +571,11 @@ struct ViperType {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
             return typeArgs[1];
         if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
-            (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-             name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
-             name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
-             name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
-             name == "Viper.Collections.MultiMap"))
+            (name == "Zanna.Collections.Map" || name == "Zanna.Collections.OrderedMap" ||
+             name == "Zanna.Collections.SortedMap" || name == "Zanna.Collections.Trie" ||
+             name == "Zanna.Collections.FrozenMap" || name == "Zanna.Collections.DefaultMap" ||
+             name == "Zanna.Collections.WeakMap" || name == "Zanna.Collections.LruCache" ||
+             name == "Zanna.Collections.MultiMap"))
             return typeArgs[1];
         return nullptr;
     }
@@ -628,19 +628,19 @@ struct ViperType {
     /// @param other The type to compare with.
     /// @return True if the types are structurally equal.
     /// @details Compares kind, name, and all type arguments recursively.
-    bool equals(const ViperType &other) const;
+    bool equals(const ZannaType &other) const;
 
     /// @brief Check if a source type can be assigned to this type.
     /// @param source The source type being assigned.
     /// @return True if assignment is valid.
     /// @details Considers subtyping for entities and interface implementation.
-    bool isAssignableFrom(const ViperType &source) const;
+    bool isAssignableFrom(const ZannaType &source) const;
 
     /// @brief Check if this type can be converted to a target type.
     /// @param target The target type for conversion.
     /// @return True if conversion is possible.
     /// @details Includes implicit conversions (e.g., Int to Number).
-    bool isConvertibleTo(const ViperType &target) const;
+    bool isConvertibleTo(const ZannaType &target) const;
 
     /// @}
     //=========================================================================
@@ -760,14 +760,14 @@ TypeRef list(TypeRef element);
 /// @brief Create a typed Seq (lazy sequence) type for rt_seq-returning runtime functions.
 /// @param element The element type T.
 /// @return A Ptr type carrying the element type, representing an rt_seq.
-/// @details Represented as Ptr{name="Viper.Collections.Seq", typeArgs=[T]}.
+/// @details Represented as Ptr{name="Zanna.Collections.Seq", typeArgs=[T]}.
 /// This allows the lowerer to use kSeqLen/kSeqGet instead of kListCount/kListGet,
 /// since rt_seq and rt_list have incompatible internal structures.
 TypeRef seqOf(TypeRef element);
 
 /// @brief Create a typed Future[T] runtime type.
 /// @param payload The value produced by awaiting the future.
-/// @return A Ptr type carrying the payload type, representing Viper.Threads.Future.
+/// @return A Ptr type carrying the payload type, representing Zanna.Threads.Future.
 TypeRef futureOf(TypeRef payload);
 
 /// @brief Create a Set[T] type.
@@ -856,7 +856,7 @@ bool isSubclassOf(const std::string &childName, const std::string &parentName);
 TypeRef typeParam(const std::string &name);
 
 /// @brief Create a runtime class type (pointer type with a name).
-/// @param name The full runtime class name (e.g., "Viper.Graphics.Canvas").
+/// @param name The full runtime class name (e.g., "Zanna.Graphics.Canvas").
 /// @return A new pointer type that carries the class name.
 /// @details Used for runtime classes where we need to track the type name
 /// for method call resolution.
@@ -907,7 +907,7 @@ TypeRef fixedArray(TypeRef elemType, size_t count);
 ///
 /// @note Reference types (Class, collections) map to Ptr.
 /// @note Optionals of primitive and struct types carry nullable boxed payloads.
-il::core::Type::Kind toILType(const ViperType &type);
+il::core::Type::Kind toILType(const ZannaType &type);
 
 /// @brief Get the size in bytes for a type in memory.
 /// @param type The type to get the size for.
@@ -921,7 +921,7 @@ il::core::Type::Kind toILType(const ViperType &type);
 /// - String: pointer size (8 bytes on 64-bit)
 /// - Class: pointer size
 /// - Collections: pointer size
-size_t typeSize(const ViperType &type);
+size_t typeSize(const ZannaType &type);
 
 /// @brief Get the alignment in bytes for a type.
 /// @param type The type to get alignment for.
@@ -929,7 +929,7 @@ size_t typeSize(const ViperType &type);
 ///
 /// @details Alignment typically matches size for primitive types.
 /// Composite types may have stricter alignment requirements.
-size_t typeAlignment(const ViperType &type);
+size_t typeAlignment(const ZannaType &type);
 
 /// @brief Convert type kind to human-readable string.
 /// @param kind The type kind to convert.

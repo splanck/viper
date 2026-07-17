@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/StringUtils.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -691,7 +691,7 @@ ExprPtr Parser::parsePrimary() {
             if (ok) {
                 i += 2;
                 // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments in
-                // dotted namespaces (e.g., Viper.Random.Next, Viper.IO.File.Delete).
+                // dotted namespaces (e.g., Zanna.Random.Next, Zanna.IO.File.Delete).
                 // Cap probe distance to prevent unbounded token buffering (OOM).
                 constexpr size_t kMaxProbeDistance = 512;
                 while (i < kMaxProbeDistance && isMemberIdentToken(peek(i).kind) &&
@@ -701,7 +701,7 @@ ExprPtr Parser::parsePrimary() {
                 if (i >= kMaxProbeDistance)
                     ok = false;
                 // Accept final segment as identifier or keyword (e.g.,
-                // Viper.Text.StringBuilder.Append, Viper.Terminal.Color). (BUG-OOP-021)
+                // Zanna.Text.StringBuilder.Append, Zanna.Terminal.Color). (BUG-OOP-021)
                 if (!(isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier
@@ -825,7 +825,7 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
     while (at(TokenKind::Dot)) {
         consume();
         // Allow identifier or keyword segments inside qualified names.
-        // This supports forms like Viper.Terminal.Print or Viper.Math.Floor. (BUG-OOP-021)
+        // This supports forms like Zanna.Terminal.Print or Zanna.Math.Floor. (BUG-OOP-021)
         if (isMemberIdentToken(peek().kind)) {
             Token ident = peek();
             consume();
@@ -906,7 +906,7 @@ ExprPtr Parser::parsePostfix(ExprPtr expr) {
     while (expr && at(TokenKind::Dot)) {
         consume();
         // BUG-OOP-040 fix: Permit keyword tokens as member names in dotted access
-        // to support runtime namespaces like Viper.Random.Next().
+        // to support runtime namespaces like Zanna.Random.Next().
         if (!isMemberIdentToken(peek().kind)) {
             // Preserve original expectation for diagnostics when not matching.
             Token bad = expect(TokenKind::Identifier);

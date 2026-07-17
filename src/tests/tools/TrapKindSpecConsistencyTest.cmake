@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED VIPER_SOURCE_DIR)
-    message(FATAL_ERROR "VIPER_SOURCE_DIR must be provided to TrapKindSpecConsistencyTest.cmake")
+if (NOT DEFINED ZANNA_SOURCE_DIR)
+    message(FATAL_ERROR "ZANNA_SOURCE_DIR must be provided to TrapKindSpecConsistencyTest.cmake")
 endif ()
 
-set(_trap_header "${VIPER_SOURCE_DIR}/src/vm/Trap.hpp")
-set(_errors_spec "${VIPER_SOURCE_DIR}/docs/specs/errors.md")
-set(_spec_dir "${VIPER_SOURCE_DIR}/docs/specs")
+set(_trap_header "${ZANNA_SOURCE_DIR}/src/vm/Trap.hpp")
+set(_errors_spec "${ZANNA_SOURCE_DIR}/docs/specs/errors.md")
+set(_spec_dir "${ZANNA_SOURCE_DIR}/docs/specs")
 
 foreach (_required IN ITEMS "${_trap_header}" "${_errors_spec}")
     if (NOT EXISTS "${_required}")

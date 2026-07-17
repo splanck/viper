@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #     beyond the tolerance fails the run.
 #   - POSIX-only (uses ps); run by hand, not registered in ctest.
 # Ownership/Lifetime:
-#   - Writes only /tmp/viper_soak_*.log scratch files.
+#   - Writes only /tmp/zanna_soak_*.log scratch files.
 # Links: src/tests/graphics_conformance/soak_scene.zia
 #
 #===----------------------------------------------------------------------===//
@@ -56,14 +56,14 @@ if [[ ! -x "${ZIA}" ]]; then
 fi
 
 FRAMES=$((MINUTES * 60 * 60))
-RSS_LOG="/tmp/viper_soak_rss.log"
-OUT_LOG="/tmp/viper_soak_out.log"
+RSS_LOG="/tmp/zanna_soak_rss.log"
+OUT_LOG="/tmp/zanna_soak_out.log"
 : > "${RSS_LOG}"
 
 echo "== soak: backend=${BACKEND} frames=${FRAMES} (~${MINUTES} simulated min)"
 
-VIPER_3D_BACKEND="${BACKEND}" \
-VIPER_SOAK_FRAMES="${FRAMES}" \
+ZANNA_3D_BACKEND="${BACKEND}" \
+ZANNA_SOAK_FRAMES="${FRAMES}" \
     "${ZIA}" src/tests/graphics_conformance/soak_scene.zia > "${OUT_LOG}" 2>&1 &
 soak_pid=$!
 

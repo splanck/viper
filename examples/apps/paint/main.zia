@@ -3,12 +3,12 @@
 // PURPOSE: Program entry point. Constructs PaintApp and runs the loop.
 //
 // WHERE-THIS-FITS: Top of the dependency tree. Imports every tool +
-//          canvas + UI subsystem so a single `viper run` links the full
+//          canvas + UI subsystem so a single `zanna run` links the full
 //          app.
 // ============================================================================
 
-// main.viper - Entry point for Viper Paint
-// A full-featured paint application showcasing Viper's capabilities
+// main.zanna - Entry point for Zanna Paint
+// A full-featured paint application showcasing Zanna's capabilities
 module main;
 
 bind "./config";

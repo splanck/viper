@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_channel.c
-// Purpose: Implements a bounded, thread-safe channel for the Viper.Threads.Channel
+// Purpose: Implements a bounded, thread-safe channel for the Zanna.Threads.Channel
 //          class, modelled after Go channels. Uses a ring buffer protected by a
 //          monitor; senders block when full, receivers block when empty.
 //

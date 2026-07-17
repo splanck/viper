@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -134,7 +134,7 @@ func start() {
     var ok2 = accept[Label](label);
     var ok3 = helper.accept[User](user);
     var ok4 = helper.accept[Label](label);
-    Viper.Terminal.SayInt(ok1 + ok2 + ok3 + ok4);
+    Zanna.Terminal.SayInt(ok1 + ok2 + ok3 + ok4);
 }
 )",
                                 "constrained_matrix.zia");
@@ -167,7 +167,7 @@ func accept[T: Contracts.Named](value: T) -> Integer {
 func start() {
     var user = new User();
     var ok = accept[User](user);
-    Viper.Terminal.SayInt(ok);
+    Zanna.Terminal.SayInt(ok);
 }
 )",
                                 "qualified_constraint.zia");
@@ -200,7 +200,7 @@ func accept[T: Named](value: T) -> Integer {
 func start() {
     var admin = new AdminUser();
     var ok = accept[AdminUser](admin);
-    Viper.Terminal.SayInt(ok);
+    Zanna.Terminal.SayInt(ok);
 }
 )",
                                 "inherited_constraint.zia");
@@ -284,7 +284,7 @@ func genericName[T: Named](value: T) -> String {
 func start() {
     var user = new User();
     var name = genericName[User](user);
-    Viper.Terminal.Say(name);
+    Zanna.Terminal.Say(name);
 }
 )",
                                 "constrained_generic_body_call.zia");
@@ -297,5 +297,5 @@ func start() {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

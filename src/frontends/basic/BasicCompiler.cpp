@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/passes/CollectProcs.hpp"
 #include "il/verify/Verifier.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 #include <chrono>
 #include <iostream>
 
@@ -159,7 +159,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     // Runtime namespaces feature is controlled globally via FrontendOptions (default ON).
     // Allow disabling via environment variable for CLI/debugging.
-    const char *ns_disable = std::getenv("VIPER_NO_RUNTIME_NAMESPACES");
+    const char *ns_disable = std::getenv("ZANNA_NO_RUNTIME_NAMESPACES");
     if (ns_disable && ns_disable[0] == '1')
         FrontendOptions::setEnableRuntimeNamespaces(false);
     else

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 namespace {
 
@@ -230,4 +230,4 @@ const FrameBuilder::SlotLifetime *FrameBuilder::findSlotLifetime(int offset) con
     return nullptr;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

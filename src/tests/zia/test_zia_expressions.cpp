@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@ TEST(ZiaExpressions, Arithmetic) {
 module Test;
 
 func start() {    var x: Integer = 1 + 2 * 3;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "arith.zia"};
@@ -75,8 +75,8 @@ final GAME_WIDTH = 70;
 final PLAYER_START = 35;
 
 func start() {    // Constants should resolve to their actual values, not 0
-    Viper.Terminal.SayInt(GAME_WIDTH);
-    Viper.Terminal.SayInt(PLAYER_START);
+    Zanna.Terminal.SayInt(GAME_WIDTH);
+    Zanna.Terminal.SayInt(PLAYER_START);
 }
 )";
     CompilerInput input{.source = source, .path = "constants.zia"};
@@ -122,7 +122,7 @@ func start() {    var x: Integer = 5;
     var a: Boolean = x > 0 && x < 10;
     var b: Boolean = x < 0 || x > 3;
     if (a && b) {
-        Viper.Terminal.SayInt(1);
+        Zanna.Terminal.SayInt(1);
     }
 }
 )";
@@ -166,7 +166,7 @@ module Test;
 
 func start() {    var flag: Boolean = true;
     var value: Integer = flag ? 10 : 20;
-    Viper.Terminal.SayInt(value);
+    Zanna.Terminal.SayInt(value);
 }
 )";
     CompilerInput input{.source = source, .path = "ternary.zia"};
@@ -197,7 +197,7 @@ func start() {    var flag: Boolean = true;
 }
 
 /// @brief Bug #29: String comparison with empty string.
-/// Empty string literals should be compared using Viper.String.Equals.
+/// Empty string literals should be compared using Zanna.String.Equals.
 TEST(ZiaExpressions, StringComparisonWithEmptyString) {
     SourceManager sm;
     const std::string source = R"(
@@ -228,14 +228,14 @@ func start() {    var empty: Boolean = checkEmpty("");
 
     EXPECT_TRUE(result.succeeded());
 
-    // Verify that we're calling Viper.String.Equals for both functions
+    // Verify that we're calling Zanna.String.Equals for both functions
     bool foundEqualsCall = false;
     for (const auto &fn : result.module.functions) {
         if (fn.name == "checkEmpty" || fn.name == "checkNotEmpty") {
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call &&
-                        instr.callee == "Viper.String.Equals") {
+                        instr.callee == "Zanna.String.Equals") {
                         foundEqualsCall = true;
                     }
                 }
@@ -296,7 +296,7 @@ TEST(ZiaExpressions, LevelDataObjectTypeComparisonUsesStringEquality) {
     const std::string source = R"(
 module Test;
 
-func start() {    var level = Viper.Game2D.LevelDocument.Load("test.json");
+func start() {    var level = Zanna.Game2D.LevelDocument.Load("test.json");
     var enemy: Boolean = level.ObjectType(0) == "enemy";
 }
 )";
@@ -321,7 +321,7 @@ func start() {    var level = Viper.Game2D.LevelDocument.Load("test.json");
             continue;
         for (const auto &block : fn.blocks) {
             for (const auto &instr : block.instructions) {
-                if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.String.Equals") {
+                if (instr.op == il::core::Opcode::Call && instr.callee == "Zanna.String.Equals") {
                     foundEqualsCall = true;
                 }
             }
@@ -329,7 +329,7 @@ func start() {    var level = Viper.Game2D.LevelDocument.Load("test.json");
     }
     EXPECT_TRUE(foundEqualsCall);
 
-    const auto *objectTypeExtern = findExtern(result.module, "Viper.Game2D.LevelDocument.ObjectType");
+    const auto *objectTypeExtern = findExtern(result.module, "Zanna.Game2D.LevelDocument.ObjectType");
     ASSERT_TRUE(objectTypeExtern != nullptr);
     EXPECT_EQ(objectTypeExtern->retType.kind, il::core::Type::Kind::Str);
     ASSERT_EQ(objectTypeExtern->params.size(), 2u);
@@ -340,5 +340,5 @@ func start() {    var level = Viper.Game2D.LevelDocument.Load("test.json");
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

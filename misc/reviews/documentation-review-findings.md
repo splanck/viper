@@ -10,7 +10,7 @@ This is the living issue log for the repository-wide documentation review. It re
 compiler, API, and documentation inconsistencies found while checking every file under `docs/`
 against the current registry and implementation.
 
-The review intentionally does not build Viper or run CTest. Reproductions use source inspection,
+The review intentionally does not build Zanna or run CTest. Reproductions use source inspection,
 the checked-in generators, documentation audits, and already-existing binaries only.
 
 ## Status and Classification
@@ -30,26 +30,26 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** API inconsistency / needs triage
 - **Area:** Zia runtime-member typing and runtime registry signatures
-- **Evidence:** `Viper.Option.OkOr` and `OkOrStr` are registered as returning unqualified `obj`,
-  even though `rt_option_ok_or*` always return `Viper.Result` objects. With the existing installed
-  compiler, the following reports `Type 'Viper.Option' has no member 'IsErr'`:
+- **Evidence:** `Zanna.Option.OkOr` and `OkOrStr` are registered as returning unqualified `obj`,
+  even though `rt_option_ok_or*` always return `Zanna.Result` objects. With the existing installed
+  compiler, the following reports `Type 'Zanna.Option' has no member 'IsErr'`:
 
   ```rust
-  var none = Viper.Option.None();
+  var none = Zanna.Option.None();
   var failed = none.OkOrStr("missing");
   SayBool(failed.IsErr);
   ```
 
 - **Impact:** natural Option-to-Result chaining does not type-check. The current workaround is the
-  explicit-receiver form `Viper.Result.get_IsErr(failed)`.
-- **Likely repair point:** use `obj<Viper.Result>` return types in
+  explicit-receiver form `Zanna.Result.get_IsErr(failed)`.
+- **Likely repair point:** use `obj<Zanna.Result>` return types in
   `src/il/runtime/defs/classes/game_ui.def`'s Option block, or correct Zia's propagation of an
   unqualified object return if retaining `obj` is intentional.
 - **Review (2026-07-15):** Verified; recommendation implemented. `Option.OkOr`/`OkOrStr` now
-  declare `obj<Viper.Result>` returns in both the `RT_FUNC` and `RT_METHOD` rows of
+  declare `obj<Zanna.Result>` returns in both the `RT_FUNC` and `RT_METHOD` rows of
   `game_ui.def` (matching the established `Term.AskResult` precedent), so `failed.IsErr` and
   chained Result members type-check naturally in Zia. Runtime reference docs regenerated via
-  rtgen; `docs/viperlib/functional.md` updated (signature table + example now uses natural
+  rtgen; `docs/zannalib/functional.md` updated (signature table + example now uses natural
   member access). Regression coverage added to
   `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia` (`testOptionToResultTyping`).
   **Resolved.**
@@ -58,38 +58,38 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** confirmed compiler bug
 - **Area:** BASIC type checking/lowering
-- **Evidence:** `Viper.Input.Keyboard.GetPressed()` returns a `Seq` of boxed integers. Assigning
+- **Evidence:** `Zanna.Input.Keyboard.GetPressed()` returns a `Seq` of boxed integers. Assigning
   `pressed.Get(i)` directly to an `INTEGER` reaches IL verification and fails with
   `store ... operand type mismatch: operand 1 must be i64` instead of producing a BASIC type
   diagnostic or an explicit unbox:
 
   ```basic
-  DIM pressed AS OBJECT = Viper.Input.Keyboard.GetPressed()
+  DIM pressed AS OBJECT = Zanna.Input.Keyboard.GetPressed()
   DIM key AS INTEGER
   key = pressed.Get(0)
   ```
 
 - **Impact:** a source-level type error escapes semantic analysis and creates invalid compiler
-  output. User code must currently unbox with `Viper.Core.Box.ToI64(pressed.Get(0))`.
-- **Reproduction:** `python3 scripts/audit_bible_examples.py docs/viperlib/input.md` found this in
+  output. User code must currently unbox with `Zanna.Core.Box.ToI64(pressed.Get(0))`.
+- **Reproduction:** `python3 scripts/audit_bible_examples.py docs/zannalib/input.md` found this in
   the pre-correction “Displaying Pressed Keys” example.
 - **Review (2026-07-15):** Verified (still reproduced) and fixed. Root cause: the BASIC AST
   `Type` enum cannot express object returns, so runtime helpers returning `obj` were seeded into
   the procedure registry as INTEGER-returning; `inferCallType` then typed calls like
-  `Viper.Input.Keyboard.GetPressed()` as INTEGER and every object-to-INTEGER flow escaped the
-  existing B2001 assignment checks (a direct `KEY = Viper.Input.Keyboard.GetPressed()` even
+  `Zanna.Input.Keyboard.GetPressed()` as INTEGER and every object-to-INTEGER flow escaped the
+  existing B2001 assignment checks (a direct `KEY = Zanna.Input.Keyboard.GetPressed()` even
   compiled silently, retyping the declared INTEGER to an object slot). Fix: added
   `ProcSignature::objectReturn`, seeded from the parsed runtime signature
   (`ProcRegistry::seedRuntimeBuiltins`), and `inferCallType` now returns OBJECT for such calls,
   so the existing assignment type checks emit `B2001: operand type mismatch` at the offending
   line instead of invalid IL. Additionally qualified `Keyboard.GetPressed`/`GetReleased` as
-  `obj<Viper.Collections.Seq>` so member calls on the result resolve against Seq rather than the
-  declaring Keyboard class. Explicit unboxing via `Viper.Core.Box.ToI64` remains the documented
+  `obj<Zanna.Collections.Seq>` so member calls on the result resolve against Seq rather than the
+  declaring Keyboard class. Explicit unboxing via `Zanna.Core.Box.ToI64` remains the documented
   way to extract integers. Regression test: `src/tests/golden/basic_errors/obj_to_int_assign.*`
   (registered as `basic_error_obj_to_int_assign`); full `-L basic` suite (107 tests), goldens,
   and zia suites pass. **Resolved.**
 
-### VDOC-003 — `Viper.Functional.Lazy` has no public deferred factory
+### VDOC-003 — `Zanna.Functional.Lazy` has no public deferred factory
 
 - **Classification:** API inconsistency
 - **Area:** runtime functional API
@@ -101,7 +101,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   eager.
 - **Source:** `src/runtime/oop/rt_lazy.c` and the Lazy block in
   `src/il/runtime/defs/classes/extended_tooling.def`.
-- **Review (2026-07-15):** Verified and fixed. Registered `Viper.Functional.Lazy.New(supplier)`
+- **Review (2026-07-15):** Verified and fixed. Registered `Zanna.Functional.Lazy.New(supplier)`
   as the public deferred factory (new `rt_lazy_new_wrapper` trampoline; RT_FUNC/RT_METHOD rows
   plus RuntimeSurfacePolicy pins). Because a supplier passed from managed code is an IL/bytecode
   function value rather than a C-callable pointer, the fix also adds the execution bridges both
@@ -110,10 +110,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (`src/vm/FunctionalRuntime.cpp`) covering New/Get/GetStr/GetI64/Force/Map/AndThen, and
   bytecode-VM unified handlers (including a new `BytecodeVM::invokeValueReentrant` for
   value-returning callbacks). Verified deferred-once semantics with identical output on the
-  bytecode VM, the standard VM (`--debug-vm`), and a native `viper build` binary. As a side
+  bytecode VM, the standard VM (`--debug-vm`), and a native `zanna build` binary. As a side
   effect, `Lazy.Map`/`AndThen` callbacks now execute on both VMs instead of crashing (they
   previously dereferenced the raw function value). `Map`/`AndThen` remain eager-on-force by
-  design; docs updated (`docs/viperlib/functional.md`, including the stale `FlatMap` →
+  design; docs updated (`docs/zannalib/functional.md`, including the stale `FlatMap` →
   `AndThen` name). Regression: `testLazyDeferredFactory` in
   `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia`. **Resolved.**
 
@@ -133,7 +133,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `src/runtime/oop/rt_option.c` and `src/runtime/oop/rt_result.c`.
 - **Review (2026-07-15):** Verified, with a worse finding underneath: generic-payload combinator
   callbacks crashed outright on both interpreters (`Option.Some(x).Map(fn)` segfaulted under
-  `viper run`, because the C runtime called the managed function value as a raw C pointer). Fixed
+  `zanna run`, because the C runtime called the managed function value as a raw C pointer). Fixed
   by refactoring all eight combinators (`Option.Map/AndThen/OrElse/Filter`,
   `Result.Map/MapErr/AndThen/OrElse`) into `*_invoke` cores taking a pluggable callback-invoker
   strategy (`rt_cb_invoke1/0/pred` in `rt_option.h`), with the native wrappers using a direct-call
@@ -141,7 +141,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `BytecodeVM.cpp`) re-entering the interpreter — semantics live in one place, so the engines
   cannot drift. Verified identical output on bytecode VM, standard VM, and native. The
   typed-payload pass-through semantics this entry describes are retained deliberately: they are
-  now explicitly documented in `docs/viperlib/functional.md` ("unwrap, transform, and re-wrap
+  now explicitly documented in `docs/zannalib/functional.md` ("unwrap, transform, and re-wrap
   explicitly" for typed variants), and changing them to traps or auto-boxing would break the
   documented contract — treat any semantic redesign as a separate language decision. Regression:
   `testOptionResultCombinatorCallbacks` in
@@ -166,7 +166,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (`Option.Unwrap`/`Expect`, `Result.Unwrap`/`UnwrapErr`/`Expect`/`ExpectErr`) trap with a
   message directing to the matching typed accessor (e.g. "Unwrap called on non-object payload;
   use UnwrapStr/UnwrapI64/UnwrapI1/UnwrapF64"). Verified the trap on both VM engines; typed
-  accessors unaffected. Docs updated in `docs/viperlib/functional.md` (Unwrap/Expect rows and
+  accessors unaffected. Docs updated in `docs/zannalib/functional.md` (Unwrap/Expect rows and
   accessor notes). Regression: typed-payload NULL assertions added to
   `src/tests/runtime/RTOptionTests.cpp` and `RTResultTests.cpp`. **Resolved.**
 
@@ -203,7 +203,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   mouse movement. Use Canvas3D relative mode for actual unbounded look input.
 - **Source:** `rt_mouse_capture()` in `src/runtime/graphics/input/rt_input.c`.
 - **Review (2026-07-15):** Verified; documentation-level resolution retained. `Capture()` is by
-  design a state flag plus cursor hide, and `docs/viperlib/input.md` states explicitly that it
+  design a state flag plus cursor hide, and `docs/zannalib/input.md` states explicitly that it
   "is not an operating-system pointer lock or confinement API" and directs FPS-style input to
   relative mode. With VDOC-009's fix, relative mode now works from both the 2D and 3D canvas
   polls, so the unbounded-input path `Capture()` users actually need is available everywhere.
@@ -218,7 +218,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Evidence:** the public method only records a request and capture state. The only production call
   to `vgfx_set_relative_mouse()` based on that request is in `rt_canvas3d_poll()`; the 2D Canvas
   and GUI poll paths do not apply native relative mode or the center-warp fallback.
-- **Impact:** the namespace-global `Viper.Input.Mouse.SetRelativeMode(true)` behaves differently
+- **Impact:** the namespace-global `Zanna.Input.Mouse.SetRelativeMode(true)` behaves differently
   depending on which canvas implementation drives polling. `RelativeMode` can be true in a 2D app
   even though `RelativeModeNative` is false and no unbounded fallback is active.
 - **Source:** `src/runtime/graphics/3d/render/rt_canvas3d.c` and
@@ -230,7 +230,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and provides the warp-to-center integer fallback when native raw input is unavailable.
   Teardown restores normal cursor behavior before window destruction (matching the 3D path's
   macOS cursor-dissociation caveat). The GUI poll intentionally remains record-only (a GUI app
-  has no mouse-look use case); documented as such. Docs updated in `docs/viperlib/input.md`.
+  has no mouse-look use case); documented as such. Docs updated in `docs/zannalib/input.md`.
   Isolated contract test stubs extended (`RTCanvasStateContractTests.cpp`); canvas contract and
   mouse suites pass. Behavior on a live window follows the identical code path proven by the 3D
   poll. **Resolved.**
@@ -238,7 +238,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-010 — InputManager debounce delay does not implement held-key repeat
 
 - **Classification:** needs triage
-- **Area:** `Viper.Input.Manager`
+- **Area:** `Zanna.Input.Manager`
 - **Evidence:** `KeyPressedDebounced` requires `Keyboard.WasPressed(key)`, which is only true on a
   down edge. Waiting while the key remains held cannot retrigger it. Once the key is released, the
   debounce timer is immediately reset to zero, so the next press is not delayed either.
@@ -249,7 +249,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Review (2026-07-15):** Verified; resolved at the documentation level. The implementation is a
   per-key *edge gate*: it accepts a `WasPressed` down edge only while the key's timer is zero,
   which filters OS auto-repeat down edges (repeat KeyDown without an intervening release) while
-  the release-reset keeps genuine re-presses immediate. `docs/viperlib/input.md` now describes
+  the release-reset keeps genuine re-presses immediate. `docs/zannalib/input.md` now describes
   exactly this ("Accept a down edge only while that key's timer is zero"; "it does not generate
   held-key repeat"; "Edge-gate timer in frames"), so no handwritten claim of held-key repeat
   remains. Implementing actual held-key repeat would be a new API surface (e.g. a
@@ -301,18 +301,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-013 — CLI uses a separate form for running IL
 
 - **Classification:** CLI/API inconsistency
-- **Area:** `viper` command-line interface
-- **Evidence:** `viper run` accepts source-language inputs but not `.il`; IL execution uses the
-  legacy top-level `viper -run file.il` form.
+- **Area:** `zanna` command-line interface
+- **Evidence:** `zanna run` accepts source-language inputs but not `.il`; IL execution uses the
+  legacy top-level `zanna -run file.il` form.
 - **Impact:** the most discoverable run subcommand cannot execute the project's normative
   intermediate language, and several man-page examples had drifted into the unsupported form.
 - **Next check:** finish the man-page review and decide whether the fix belongs in docs, argument
   parsing, or both.
-- **Review (2026-07-15):** Verified and fixed in argument parsing plus docs. `viper run` now
+- **Review (2026-07-15):** Verified and fixed in argument parsing plus docs. `zanna run` now
   detects a `.il` argument (any pre-`--` argument with the extension, case-insensitive) and
-  delegates to the IL runner with all arguments forwarded, so `viper run file.il` executes IL
-  on the VM exactly like the legacy `viper -run file.il` (which remains available). Help text
-  (`viper --help` targets note, `viper help run`) and the man page (`docs/man/man1/viper.1`)
+  delegates to the IL runner with all arguments forwarded, so `zanna run file.il` executes IL
+  on the VM exactly like the legacy `zanna -run file.il` (which remains available). Help text
+  (`zanna --help` targets note, `zanna help run`) and the man page (`docs/man/man1/zanna.1`)
   updated to state `.il` targets are accepted. Regression:
   `il_quickstart_run_subcommand` golden test runs `quickstart.il` through the `run`
   subcommand via a new `RUN_CMD` knob in `check_run_output.cmake`. **Resolved.**
@@ -321,23 +321,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** confirmed compiler bug
 - **Area:** BASIC type checking/lowering
-- **Evidence:** `Viper.Collections.Seq.Push` expects an object pointer. Passing an integer key code
+- **Evidence:** `Zanna.Collections.Seq.Push` expects an object pointer. Passing an integer key code
   reaches IL verification as an `i64` argument and fails with `parameter 1 expects ptr but got
   i64`, instead of producing a BASIC type diagnostic or inserting a box:
 
   ```basic
-  DIM keys AS OBJECT = NEW Viper.Collections.Seq()
-  keys.Push(Viper.Input.Key.LeftControl)
+  DIM keys AS OBJECT = NEW Zanna.Collections.Seq()
+  keys.Push(Zanna.Input.Key.LeftControl)
   ```
 
 - **Impact:** source-level primitive-to-object mismatches can create invalid compiler output. The
-  current workaround is `keys.Push(Viper.Core.Box.I64(Viper.Input.Key.LeftControl))`.
+  current workaround is `keys.Push(Zanna.Core.Box.I64(Zanna.Input.Key.LeftControl))`.
 - **Reproduction:** found while making the `KeyChord` BASIC example independently auditable with
   the existing installed compiler. This is the inverse direction of VDOC-002's failed unboxing.
 - **Review (2026-07-15):** Verified and fixed across all three call shapes. (1) Method
   expressions: a new `checkObjectParamArgs` in the BASIC method-call analyzer rejects INTEGER,
   FLOAT, and BOOLEAN arguments bound to runtime object parameters with
-  `B2001: argument N to 'M' expects an OBJECT; box primitives with Viper.Core.Box`. (2) Method
+  `B2001: argument N to 'M' expects an OBJECT; box primitives with Zanna.Core.Box`. (2) Method
   *statements* previously bypassed argument analysis entirely ("best-effort" visiting);
   `analyzeCallStmt` now routes MethodCallExpr statements through full expression analysis while
   preserving the BUG-120 leniency for late-bound locals. (3) Fully-qualified function calls:
@@ -397,7 +397,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   rejects `Infinity`.
 - **Impact:** using the most discoverable formatter to serialize a double can silently lose its
   exact value, and its infinity text is incompatible with the paired safe parser.
-- **Workaround:** use `Viper.Core.Convert.ToStringDouble()` for round-trip serialization. The
+- **Workaround:** use `Zanna.Core.Convert.ToStringDouble()` for round-trip serialization. The
   public utilities guide now labels `Fmt.Num` as display-only.
 - **Review (2026-07-15):** Verified; partially fixed, remainder documented by design.
   `Fmt.Num`'s 15-significant-digit display format is intentional and documented as
@@ -440,23 +440,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Evidence:** the class registry exposes `Json.GetStr`, `GetInt`, `GetBool`, `SetStr`, `SetInt`,
   `SetBool`, and `Has` by aliasing Map implementations, and exposes `Stringify` by aliasing
   `Json.Format`. There are no correspondingly named function-registry symbols. BASIC resolves
-  calls such as `Viper.Text.Json.GetStr(data, "name")` and
-  `Viper.Text.Json.Stringify(value)` as unknown procedures, while Zia resolves the class aliases.
+  calls such as `Zanna.Text.Json.GetStr(data, "name")` and
+  `Zanna.Text.Json.Stringify(value)` as unknown procedures, while Zia resolves the class aliases.
 - **Impact:** the same advertised class surface is language-dependent. BASIC must call the
-  concrete `Viper.Collections.Map.Get*`, `Set*`, and `Has` functions and use `Json.Format` instead
+  concrete `Zanna.Collections.Map.Get*`, `Set*`, and `Has` functions and use `Json.Format` instead
   of `Json.Stringify`.
-- **Source:** the `Viper.Text.Json` class block in
+- **Source:** the `Zanna.Text.Json` class block in
   `src/il/runtime/defs/classes/io_text.def`, the function registry dump, and the documentation
-  audit of `docs/viperlib/text/formats.md`.
-- **Review (2026-07-15):** Verified (class is now `Viper.Data.Json`; the alias rows remain, the
+  audit of `docs/zannalib/text/formats.md`.
+- **Review (2026-07-15):** Verified (class is now `Zanna.Data.Json`; the alias rows remain, the
   `Stringify` alias no longer exists) and fixed at the resolution layer rather than by adding
   function rows (the API-hardening direction is fewer duplicate rows, not more).
   `SemanticAnalyzer::resolveCallee` now falls back on a procedure-registry miss for a qualified
   callee: it resolves the prefix as a runtime class, looks the method up in the class surface,
-  and rewrites the call to the alias target (e.g. `Viper.Data.Json.GetStr` →
-  `Viper.Collections.Map.GetStr`), so argument checking and lowering see the real function.
+  and rewrites the call to the alias target (e.g. `Zanna.Data.Json.GetStr` →
+  `Zanna.Collections.Map.GetStr`), so argument checking and lowering see the real function.
   This makes BASIC's callable class surface equal to Zia's for every aliased method, not just
-  Json. `docs/viperlib/text/formats.md` updated (BASIC example now uses the Json aliases; the
+  Json. `docs/zannalib/text/formats.md` updated (BASIC example now uses the Json aliases; the
   limitation note replaced). Regression: `JsonClassAliasesResolve` in
   `src/tests/basic/test_basic_runtime_calls.cpp`; basic (107) and golden (166) suites pass.
   **Resolved.**
@@ -479,17 +479,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Cipher` methods (including `GenerateKey`), and XML collection methods such as `ChildrenByTag`
   return concrete Map/Seq/List/Bytes/HttpRes/HttpRouter/RouteMatch/Tcp/Multipart/Future values at
   runtime but are registered as unqualified `obj`. With the existing evaluator,
-  direct `.Count` access diagnoses `Type 'Viper.Text.Csv' has no member 'Count'`,
-  `Type 'Viper.Text.Ini' has no member 'Count'`, `Type 'Viper.Text.Html' has no member 'Count'`, or
+  direct `.Count` access diagnoses `Type 'Zanna.Text.Csv' has no member 'Count'`,
+  `Type 'Zanna.Text.Ini' has no member 'Count'`, `Type 'Zanna.Text.Html' has no member 'Count'`, or
   the corresponding `JsonPath`/`Diff` error. BASIC likewise associated `Csv.Parse(...)` with
-  `Viper.Text.Csv` until the result was explicitly declared as `Viper.Collections.Seq`. A chained
+  `Zanna.Text.Csv` until the result was explicitly declared as `Zanna.Collections.Seq`. A chained
   `heap.ToSeq().Count` is worse: because Heap itself has a `Count` property, it compiles and then
   traps `Heap: invalid Heap object` when that getter receives the returned Seq. Iterator has the
   same collision: `it.ToSeq().Count` traps `Iterator.Count: invalid Iterator object`. SortedSet's
   three Seq-producing slice methods have the same collision: direct `.Count` chains compile and
   trap `SortedSet.Len: invalid SortedSet object`. `CountMap.MostCommon(1).Count` likewise traps
   `CountMap.Len: invalid CountMap object`. Scheduler follows the declaring-class failure path:
-  `Viper.Threads.Scheduler.New().Poll().get_Count()` is diagnosed as a missing Scheduler method.
+  `Zanna.Threads.Scheduler.New().Poll().get_Count()` is diagnosed as a missing Scheduler method.
   `Dns.ResolveAll("").get_Count()` similarly looks for `get_Count` on `Dns`, and
   `HttpReq.New("GET", "").Send().get_Status()` looks for `get_Status` on `HttpReq`; these probes
   fail during semantic analysis before the intentionally invalid inputs can perform network I/O.
@@ -500,18 +500,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `HttpClient.New().GetCookies("example.com").get_Count()` sees `Any`, and
   `AsyncSocket.ConnectForAsync("", 80, 1).get_IsDone()` looks for `get_IsDone` on AsyncSocket
   before the invalid host can execute. `MessageBus.New().Topics().Count` likewise diagnoses
-  `Type 'Viper.Core.MessageBus' has no member 'Count'`, even though the implementation returned an
+  `Type 'Zanna.Core.MessageBus' has no member 'Count'`, even though the implementation returned an
   empty Seq. `Aes.EncryptStr(...).Length`, `Cipher.Encrypt(...).Length`, and
   `Cipher.GenerateKey().Length` similarly look for `Length` on the declaring `Aes` or `Cipher`
   class. Generic `Result.Unwrap()` has the same limitation for non-collection payloads: BASIC
-  associates the TLS connection returned by `Tls.ConnectResult(...).Unwrap()` with `Viper.Result`
-  unless the local is explicitly declared as `Viper.Crypto.Tls`.
+  associates the TLS connection returned by `Tls.ConnectResult(...).Unwrap()` with `Zanna.Result`
+  unless the local is explicitly declared as `Zanna.Crypto.Tls`.
   MultiMap and ConcurrentMap take the other failure path: their untyped collection results are
   exposed as `Any`, so `.Count`/`get_Count()` is rejected during semantic analysis. Assigning each
   result to an explicitly typed Seq works.
 - **Impact:** natural chaining fails and the inferred type is actively misleading. Zia's current
   workaround is an explicit receiver call such as
-  `Viper.Collections.Seq.get_Count(Viper.Text.Csv.Parse(text))`; BASIC can annotate the local as
+  `Zanna.Collections.Seq.get_Count(Zanna.Text.Csv.Parse(text))`; BASIC can annotate the local as
   the known concrete class. Network and crypto results need the same explicit concrete
   receiver/local.
 - **Likely repair point:** give these methods typed collection returns (as `ParseLine` already has)
@@ -525,18 +525,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Dns.ResolveAll`/`LocalAddrs` (all `seq<str>`), `Heap.ToSeq`, `Iterator.ToSeq`,
   `MultiMap.Get`, `ConcurrentMap.Keys`/`Values` (`seq<obj>`), `Locale.Fallbacks`,
   `LocaleManager.Available`, `MessageBundle.Keys`, `PluralRules.Categories`
-  (`obj<Viper.Collections.List>`), `Http.GetBytes`/`HttpRes.Body`/`Multipart.Build`/`GetFile`/
-  `Aes.EncryptStr`/`EncryptAuth`/`Cipher.Encrypt*`/`GenerateKey` (`obj<Viper.Collections.Bytes>`),
+  (`obj<Zanna.Collections.List>`), `Http.GetBytes`/`HttpRes.Body`/`Multipart.Build`/`GetFile`/
+  `Aes.EncryptStr`/`EncryptAuth`/`Cipher.Encrypt*`/`GenerateKey` (`obj<Zanna.Collections.Bytes>`),
   `Http.Head`/`HttpRes.Headers`/`HttpClient.GetCookies` (`obj<Map>`), `HttpReq.Send` and
-  `HttpClient.Get`/`Post`/`Put`/`Delete` (`obj<Viper.Network.HttpRes>`),
+  `HttpClient.Get`/`Post`/`Put`/`Delete` (`obj<Zanna.Network.HttpRes>`),
   `HttpRouter.Add`/`Get`/`Post`/`Put`/`Delete` (`obj<HttpRouter>`, they return the router for
   chaining) and `Match` (`obj<RouteMatch>`), `ConnectionPool.Acquire` (`obj<Tcp>`), and the six
-  Future-producing `AsyncSocket` methods (`obj<Viper.Threads.Future>`). Related resolution-layer
+  Future-producing `AsyncSocket` methods (`obj<Zanna.Threads.Future>`). Related resolution-layer
   fixes: VDOC-002 (declaring-class propagation for INTEGER contexts) and
   `Keyboard.GetPressed`/`GetReleased` typed there. Generic `Result.Unwrap()` payload typing is
   inherent to a generic Result and out of scope. Element types verified against each C
   implementation before qualifying. Docs: rtgen reference regenerated; all seven
-  `docs/viperlib` VDOC-020 workaround notes replaced with the typed-return behavior. Regression:
+  `docs/zannalib` VDOC-020 workaround notes replaced with the typed-return behavior. Regression:
   `testTypedConcreteReturns` in
   `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia` (chained `.Count`/`.Length`/
   router chaining). **Resolved.**
@@ -544,7 +544,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-021 — JsonPath conflates JSON null with a missing path
 
 - **Classification:** confirmed API bug
-- **Area:** `Viper.Text.JsonPath`
+- **Area:** `Zanna.Text.JsonPath`
 - **Evidence:** `rt_jsonpath_get()` uses C NULL for both a missing lookup and the runtime
   representation of JSON `null`. `Has()` tests only the returned pointer, and `GetOr()` tests the
   same value. The installed evaluator reports false for
@@ -558,14 +558,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (remaining path segments after a null report missing — a JSON null has no children). `Has()`
   now returns true for a present null member and false for absence; `GetOr()` substitutes its
   default only when the path is missing, returning the real null otherwise. Docs updated in
-  `docs/viperlib/text/formats.md`. Regression:
+  `docs/zannalib/text/formats.md`. Regression:
   `test_has_and_get_or_distinguish_null_from_missing` in
   `src/tests/runtime/RTJsonPathTests.cpp`, plus end-to-end verification on the VM. **Resolved.**
 
 ### VDOC-022 — The JsonPath source contract overstates the implemented syntax
 
 - **Classification:** implementation-documentation inconsistency
-- **Area:** `Viper.Text.JsonPath`
+- **Area:** `Zanna.Text.JsonPath`
 - **Evidence:** the implementation header promises recursive descent (`..`) and array slices, and
   says invalid expressions trap. The resolver implements dot segments, bracket indices/quoted
   keys, negative indices, `$`, and a single wildcard handled by `Query`; it has no recursive
@@ -585,7 +585,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-023 — CSV conformance and delimiter contracts disagree with the runtime
 
 - **Classification:** API/documentation inconsistency
-- **Area:** `Viper.Text.Csv`
+- **Area:** `Zanna.Text.Csv`
 - **Evidence:** source/class comments call the implementation RFC 4180-compliant, but multi-row
   formatting emits LF rather than RFC 4180's CRLF and does not enforce equal field counts. Parsing
   intentionally accepts LF and CR as extensions. Source API comments also say a custom delimiter's
@@ -606,7 +606,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-024 — The TOML parser is not the v1.0 parser described by its source contract
 
 - **Classification:** confirmed API/conformance bug
-- **Area:** `Viper.Text.Toml`
+- **Area:** `Zanna.Text.Toml`
 - **Evidence:** the file header promises TOML v1.0 values and typed numeric/boolean boxes. The
   implementation stores every scalar—including integers, floats, booleans, and datetimes—as a
   String, and accepts arbitrary unquoted values. The evaluator reports true for
@@ -628,13 +628,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `GetStr` today) — that is a breaking feature decision, not a review fix; public docs already
   describe the permissive subset accurately. Regression:
   `test_dotted_assignment_keys_build_nested_tables` in
-  `src/tests/runtime/RTTomlTests.cpp`; docs updated in `docs/viperlib/text/formats.md`.
+  `src/tests/runtime/RTTomlTests.cpp`; docs updated in `docs/zannalib/text/formats.md`.
   **Resolved** (dotted keys fixed; subset behavior documented).
 
 ### VDOC-025 — Toml.Format drops deeply nested tables
 
 - **Classification:** confirmed data-loss bug
-- **Area:** `Viper.Text.Toml`
+- **Area:** `Zanna.Text.Toml`
 - **Evidence:** the formatter handles top-level Maps as tables but skips Map-valued entries while
   emitting a section and never recursively emits them. With the installed evaluator,
   `Toml.Format(Toml.Parse("[a.b.c]\nvalue = \"ok\""))` produces only `[a]` and blank lines;
@@ -655,14 +655,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-026 — Xml.IsValid is a subset check, not a full well-formedness check
 
 - **Classification:** API/conformance inconsistency
-- **Area:** `Viper.Data.Xml`
+- **Area:** `Zanna.Data.Xml`
 - **Evidence:** the parser skips DTD contents and recognizes only numeric references plus the five
   predefined XML entities. Consequently, the well-formed document
   `<!DOCTYPE root [<!ENTITY x "ok">]><root>&x;</root>` returns false from `Xml.IsValid`. The
   byte-oriented name/text parser also accepts non-ASCII bytes without complete UTF-8 validation and
   does not implement namespace or DTD processing.
 - **Impact:** `IsValid` cannot be used as a general XML 1.0 well-formedness check despite its public
-  description and source header. It checks acceptance by Viper's practical subset.
+  description and source header. It checks acceptance by Zanna's practical subset.
 - **Source:** `decode_entity()`, `skip_doctype()`, and `rt_xml_is_valid()` in
   `src/runtime/text/rt_xml.c`.
 - **Review (2026-07-15):** Verified; resolved at the documentation level. Implementing DTD
@@ -678,7 +678,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-027 — Yaml.Format can lose double precision and string bytes
 
 - **Classification:** confirmed data-loss bug
-- **Area:** `Viper.Data.Yaml`
+- **Area:** `Zanna.Data.Yaml`
 - **Evidence:** finite doubles are emitted with C `%g`'s default precision. The evaluator formats
   parsed `1.0000000000000002` as `1`. String values and Map keys are passed through `strlen`, so a
   runtime String containing an embedded NUL is truncated during formatting.
@@ -698,7 +698,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-028 — Unsupported YAML anchor syntax is silently misparsed
 
 - **Classification:** confirmed parser bug / needs triage
-- **Area:** `Viper.Data.Yaml`
+- **Area:** `Zanna.Data.Yaml`
 - **Evidence:** the implementation states that anchors and aliases are unsupported, but it does not
   consistently reject them. `Yaml.IsValid("base: &b {x: 1}\ncopy: *b")` returns true. Formatting
   that parsed value shows `&b {x` treated as a mapping key and `*b` as an ordinary string rather
@@ -718,7 +718,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-029 — JsonStream is not incremental despite its source-facing contract
 
 - **Classification:** API/documentation inconsistency
-- **Area:** `Viper.Text.JsonStream`
+- **Area:** `Zanna.Text.JsonStream`
 - **Evidence:** the header describes large or incremental JSON data, but the only constructor takes
   and retains one complete runtime String; there is no feed/resume input API. `Skip` avoids tree
   allocation but still scans the retained bytes. An implementation comment also says
@@ -737,7 +737,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-030 — Ini.Parse(NULL) and Ini.Parse("") produce different document shapes
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** `Viper.Text.Ini`
+- **Area:** `Zanna.Text.Ini`
 - **Evidence:** a NULL input returns immediately with an empty top-level Map. Any non-NULL input,
   including an empty String, creates the implicit empty-name section first. Thus `Sections()` has
   count 0 for NULL and count 1 for an empty string.
@@ -751,12 +751,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   a phantom empty section in `Sections()`. `test_sections_list` updated to the unified contract;
   new regression `test_empty_and_null_inputs_share_shape` in
   `src/tests/runtime/RTIniTests.cpp` (empty/NULL equivalence plus out-of-section keys still
-  landing in `""`). Docs updated in `docs/viperlib/text/formats.md`. **Resolved.**
+  landing in `""`). Docs updated in `docs/zannalib/text/formats.md`. **Resolved.**
 
 ### VDOC-031 — TOML parsing truncates raw input at an embedded NUL
 
 - **Classification:** confirmed parser inconsistency
-- **Area:** `Viper.Text.Toml`
+- **Area:** `Zanna.Text.Toml`
 - **Evidence:** `rt_toml_parse()` obtains a length-prefixed runtime String but walks it entirely
   with `while (*p)` and other C-string terminator checks. Bytes after a raw embedded NUL are never
   parsed or rejected. In contrast, `Toml.Format()` deliberately preserves runtime byte lengths and
@@ -774,7 +774,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-032 — XML name validation stops at an embedded NUL
 
 - **Classification:** confirmed validation inconsistency
-- **Area:** programmatic `Viper.Data.Xml` node/attribute creation
+- **Area:** programmatic `Zanna.Data.Xml` node/attribute creation
 - **Evidence:** `is_valid_xml_name()` checks the runtime length only for non-emptiness and then
   delegates to a C-string loop. A name such as the runtime byte sequence `a\0bad` is validated only
   as `a`, even though XML forbids NUL and bytes remain after the terminator in the retained String.
@@ -792,7 +792,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-033 — TOML and YAML formatters do not guard cyclic containers
 
 - **Classification:** runtime safety bug / needs triage
-- **Area:** `Viper.Text.Toml.Format` and `Viper.Data.Yaml.Format*`
+- **Area:** `Zanna.Text.Toml.Format` and `Zanna.Data.Yaml.Format*`
 - **Evidence:** YAML recursively descends Seq/Map values without the active-object stack used by the
   JSON formatter. TOML's value formatter recursively descends nested Seqs with no cycle check.
   Public collection APIs permit self-referential object graphs.
@@ -837,7 +837,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-035 — `Toml.Format` can emit a float as integer syntax
 
 - **Classification:** confirmed data-type loss bug
-- **Area:** `Viper.Text.Toml.Format` and TOML projection through `Viper.Data.Serialize`
+- **Area:** `Zanna.Text.Toml.Format` and TOML projection through `Zanna.Data.Serialize`
 - **Evidence:** boxed doubles are emitted with C `%.17g` and no check that the result contains a
   decimal point or exponent. The installed evaluator formats `Box.F64(1.0)` as `value = 1` through
   the Serialize TOML facade. Under TOML, `1` is an integer token, not a float token.
@@ -856,7 +856,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Classification:** runtime-registry / tooling inconsistency
 - **Area:** runtime API metadata and generated class documentation
 - **Evidence:** `math_text.def` registers the callable function
-  `Viper.Text.Toml.GetStr` as `str(obj,str)`, but the `Viper.Text.Toml` class block in
+  `Zanna.Text.Toml.GetStr` as `str(obj,str)`, but the `Zanna.Text.Toml` class block in
   `classes/io_text.def` ends after `Get`. Consequently, the generated function inventory includes
   `GetStr` while the generated class member table omits it. The already-installed binary still
   lists the member, indicating source and existing build metadata have diverged.
@@ -865,7 +865,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `src/il/runtime/defs/api/math_text.def`,
   `src/il/runtime/defs/classes/io_text.def`, and `docs/generated/runtime/text.md`.
 - **Review (2026-07-15):** Verified and fixed. Added the missing
-  `RT_METHOD("GetStr", "str(obj,str)", TomlGetStr)` row to the `Viper.Data.Toml` class manifest,
+  `RT_METHOD("GetStr", "str(obj,str)", TomlGetStr)` row to the `Zanna.Data.Toml` class manifest,
   so class metadata and qualified-call lookup expose the same surface (the RT_FUNC row already
   existed). Runtime completeness check passes; generated docs regenerated; verified
   `Toml.GetStr(...)` resolves end-to-end on the VM. **Resolved.**
@@ -894,7 +894,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-038 — JsonPath ignores path bytes after an embedded NUL
 
 - **Classification:** confirmed lookup inconsistency
-- **Area:** `Viper.Text.JsonPath`
+- **Area:** `Zanna.Text.JsonPath`
 - **Evidence:** resolution passes `rt_string_cstr(path)` into C-string loops and `strchr` instead of
   using the runtime String length. The evaluator returns `hit` for a path containing the bytes
   `a\0suffix` against `{\"a\":\"hit\"}`, proving the suffix is ignored.
@@ -912,7 +912,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-039 — YAML numeric scalar parsing ignores bytes after an embedded NUL
 
 - **Classification:** confirmed parser bug
-- **Area:** `Viper.Data.Yaml`
+- **Area:** `Zanna.Data.Yaml`
 - **Evidence:** `parse_scalar()` copies a length-delimited scalar into a NUL-terminated buffer and
   accepts `strtoll` when its end pointer sees the first NUL, without checking that the NUL is at
   the supplied span length. The installed evaluator reports `int` and successful validation for
@@ -929,7 +929,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-040 — TOML and YAML validation accepts malformed UTF-8
 
 - **Classification:** confirmed standards-validation bug
-- **Area:** `Viper.Text.Toml` and `Viper.Data.Yaml`
+- **Area:** `Zanna.Text.Toml` and `Zanna.Data.Yaml`
 - **Evidence:** both parsers copy or pass through non-ASCII bytes without validating UTF-8. Using
   `CHR$(255)` to supply the impossible standalone byte `0xFF`, the installed evaluator reports
   true for both `Toml.IsValid("x = " + CHR$(255))` and
@@ -952,7 +952,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** cross-platform embedding inconsistency / needs triage
 - **Area:** TOML/YAML formatting, generic Serialize scalar projection, JsonPath string projection,
-  and `Viper.Text.InvariantNumberFormat`
+  and `Zanna.Text.InvariantNumberFormat`
 - **Evidence:** `rt_toml.c`, `rt_yaml_format.c`, `rt_jsonpath.c`, `rt_serialize.c`, and
   `rt_numfmt.c` use ordinary `snprintf` for finite doubles. Unlike the JSON formatter and the
   locale-isolated core double-to-string path, these functions inherit the process C numeric
@@ -999,7 +999,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-043 — Serialize name and XML-key processing truncates at embedded NUL
 
 - **Classification:** confirmed lookup and data-loss bug
-- **Area:** `Viper.Data.Serialize`
+- **Area:** `Zanna.Data.Serialize`
 - **Evidence:** `FormatFromName()` passes the runtime String's C-string view to `strcasecmp`
   without checking its byte length. The evaluator therefore returns `FORMAT_JSON` for the byte
   sequence `json\0suffix`. Generic-to-XML projection also passes Map keys through `strlen` and
@@ -1019,24 +1019,24 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-044 — `Template.Keys` is registered as a sequence but returns a bag
 
 - **Classification:** confirmed runtime-registry/type-safety bug
-- **Area:** `Viper.Text.Template.Keys`, Zia/BASIC member typing, and generated API metadata
+- **Area:** `Zanna.Text.Template.Keys`, Zia/BASIC member typing, and generated API metadata
 - **Evidence:** both the function and class manifests declare `Template.Keys` as
-  `seq<str>(str)`, while `rt_template_keys()` constructs and returns a `Viper.Collections.Bag`.
+  `seq<str>(str)`, while `rt_template_keys()` constructs and returns a `Zanna.Collections.Bag`.
   With the installed evaluator, `Template.Keys("{{a}}").Count` reaches the Seq getter and traps
   with `Seq: invalid Seq object`; `.Items()` cannot type-check because the compiler sees a Seq.
   Calling the Bag getter explicitly succeeds, and `{{a}}{{a}}` produces a Bag count of one.
 - **Impact:** the advertised static type can cause valid natural code to trap on a correctly
-  returned object. BASIC can use a `Viper.Collections.Bag` local; Zia must currently invoke Bag
+  returned object. BASIC can use a `Zanna.Collections.Bag` local; Zia must currently invoke Bag
   members through an explicit receiver call.
 - **Source:** `TemplateKeys` in `src/il/runtime/defs/api/math_text.def`, the Template class block in
   `src/il/runtime/defs/classes/io_text.def`, and `rt_template_keys()` in
   `src/runtime/text/rt_template.c`.
 - **Review (2026-07-15):** Verified and fixed by correcting the registry type to the value the
   implementation actually returns: both rows now declare
-  `obj<Viper.Collections.StringSet>(str)` (the Bag's public class), so natural member access
+  `obj<Zanna.Collections.StringSet>(str)` (the Bag's public class), so natural member access
   (`Keys(...).Count`, `.Has(...)`) type-checks and runs instead of trapping through the Seq
   getter. The deduplicating-set semantics are unchanged and remain documented. Docs note in
-  `docs/viperlib/text/formatting.md` updated; generated reference regenerated. Regression:
+  `docs/zannalib/text/formatting.md` updated; generated reference regenerated. Regression:
   StringSet typing asserts added to `testTypedConcreteReturns` in
   `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia`. **Resolved.**
 
@@ -1045,7 +1045,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Classification:** implementation-documentation inconsistency
 - **Area:** Template, TextWrapper, and Markdown runtime source documentation
 - **Evidence:** `rt_template_escape()` is described as escaping HTML entities but doubles template
-  delimiters. The `rt_textwrap.c` header names an old `Viper.Text.TextWrap` class and promises
+  delimiters. The `rt_textwrap.c` header names an old `Zanna.Text.TextWrap` class and promises
   configurable initial/subsequent indentation, tab expansion, and optional hard wrapping that the
   public surface does not expose. The Markdown header names `StripMarkdown` instead of `ToText`
   and says whitespace-only input always returns empty strings/sequences, while `ToHtml(" ")`
@@ -1055,7 +1055,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `src/runtime/text/rt_template.c`, `rt_textwrap.c`, and `rt_markdown.c`.
 - **Review (2026-07-15):** Verified and fixed (comment-only). `rt_template_escape` is now
   documented as doubling template delimiters (explicitly NOT an HTML-entity escaper); the
-  `rt_textwrap.c` header names the real `Viper.Text.TextWrapper` class and its actual surface
+  `rt_textwrap.c` header names the real `Zanna.Text.TextWrapper` class and its actual surface
   (no indent/tab-expansion/hard-wrap options; long words split at the width, verified
   behaviorally; non-positive width returns the input unchanged); the Markdown header names
   `ToText` and states that whitespace-only input is kept as content (`ToHtml(" ")` emits a
@@ -1064,7 +1064,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-046 — TextWrapper can split UTF-8 sequences
 
 - **Classification:** confirmed text-corruption bug / needs triage
-- **Area:** `Viper.Text.TextWrapper`
+- **Area:** `Zanna.Text.TextWrapper`
 - **Evidence:** widths and substring positions are runtime String byte offsets. Wrapping a two-byte
   `é` at width 1 splits its UTF-8 encoding across a newline; the installed evaluator's JSON result
   contains replacement characters on both lines. Truncation and shortening use the same byte
@@ -1088,7 +1088,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-047 — Version rejects SemVer components above `INT64_MAX`
 
 - **Classification:** confirmed standards-conformance limitation
-- **Area:** `Viper.Text.Version`
+- **Area:** `Zanna.Text.Version`
 - **Evidence:** SemVer 2.0.0 requires nonnegative decimal core components without leading zeroes but
   imposes no numeric size limit. `parse_num()` accumulates each component in `int64_t` and rejects
   overflow. The installed evaluator therefore reports false for
@@ -1108,7 +1108,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-048 — `Html.ExtractText` mishandles nested matching tags
 
 - **Classification:** confirmed extraction bug
-- **Area:** `Viper.Text.Html.ExtractText`
+- **Area:** `Zanna.Text.Html.ExtractText`
 - **Evidence:** the scanner pairs an opening tag with the first following matching closing tag and
   does not track nesting depth. For `<div>a<div>b</div>c</div>`, the installed evaluator returns
   one string, `a b`, and loses the outer element's trailing `c` instead of extracting the complete
@@ -1129,7 +1129,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-049 — Markdown block state produces wrong or invalid HTML
 
 - **Classification:** confirmed renderer bug
-- **Area:** `Viper.Text.Markdown.ToHtml`
+- **Area:** `Zanna.Text.Markdown.ToHtml`
 - **Evidence:** unordered-list recognition runs before horizontal-rule recognition, so `* * *`
   renders as a list item containing `<em> </em>` instead of `<hr>`; `- - -` is likewise consumed
   as a list item. Heading, fenced-code, and horizontal-rule branches also run before the open-list
@@ -1167,7 +1167,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-051 — `Markdown.ToText` deletes literal underscores
 
 - **Classification:** confirmed data-loss bug
-- **Area:** `Viper.Text.Markdown.ToText`
+- **Area:** `Zanna.Text.Markdown.ToText`
 - **Evidence:** the plain-text loop unconditionally skips every `*`, `_`, and backtick byte rather
   than recognizing paired formatting spans. The installed evaluator converts `snake_case` to
   `snakecase`.
@@ -1187,7 +1187,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-052 — Markdown final-line advancement forms an out-of-bounds pointer
 
 - **Classification:** runtime safety bug / needs triage
-- **Area:** `Viper.Text.Markdown.ToHtml`
+- **Area:** `Zanna.Text.Markdown.ToHtml`
 - **Evidence:** when a final source line has no `LF`, its `eol` pointer equals the one-past-end
   pointer. Most rendering branches then assign `p = eol + 1`. C pointer arithmetic may form only
   pointers within the array or one past it, so forming this two-past pointer is undefined behavior
@@ -1207,7 +1207,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-053 — Regex patterns ignore bytes after an embedded NUL
 
 - **Classification:** confirmed parsing/cache inconsistency
-- **Area:** `Viper.Text.Pattern` and `Viper.Text.CompiledPattern`
+- **Area:** `Zanna.Text.Pattern` and `Zanna.Text.CompiledPattern`
 - **Evidence:** text operands are length-aware, but pattern compilation, duplication, lookup, and
   the `CompiledPattern.Pattern` property use `strlen`, `strdup`, and `strcmp` on the runtime
   String's C view. The installed evaluator reports true for matching `"a"` with the three-byte
@@ -1347,7 +1347,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-059 — FuzzyMatch can assign negative scores to successful matches
 
 - **Classification:** confirmed API/scoring bug
-- **Area:** `Viper.Text.FuzzyMatch.Score`
+- **Area:** `Zanna.Text.FuzzyMatch.Score`
 - **Evidence:** `-1` is the initialized miss score, and tests treat negative scores as misses, but
   gap/length/start penalties are not bounded for successful matches. A query `z` against 100 `a`
   bytes followed by `z` produces score `-208` while `Match(...).matched` is true.
@@ -1367,7 +1367,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-060 — String.Like accepts malformed UTF-8 as code points
 
 - **Classification:** confirmed validation bug
-- **Area:** `Viper.String.Like` and `LikeCI` wildcard advancement
+- **Area:** `Zanna.String.Like` and `LikeCI` wildcard advancement
 - **Evidence:** `like_utf8_step()` checks only a leading-byte shape, remaining length, and
   continuation-byte prefixes. It does not reject overlong encodings, UTF-16 surrogate values, or
   code points above U+10FFFF. The installed evaluator reports true when the invalid overlong byte
@@ -1387,7 +1387,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-061 — `Diff.Patch` ignores its original argument
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** `Viper.Text.Diff.Patch`
+- **Area:** `Zanna.Text.Diff.Patch`
 - **Evidence:** the implementation explicitly discards `original` and reconstructs output solely
   from the full tagged-line sequence. The evaluator returns `b` from
   `Diff.Patch("not the source", Diff.Lines("a", "b"))` without detecting the mismatch.
@@ -1406,7 +1406,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** implementation-documentation inconsistency
 - **Area:** runtime source headers/comments for pattern utilities
-- **Evidence:** the regex source names a nonexistent `Viper.Text.Regex` class and advertises bounded
+- **Evidence:** the regex source names a nonexistent `Zanna.Text.Regex` class and advertises bounded
   `{n,m}` quantifiers that its parser treats as literal braces. Scanner's header advertises
   unregistered `SkipWhile`, `ReadWhile`, and `Expect`, says `Match` advances, and says end-of-input
   reads return NUL instead of `-1`. Diff's header calls the LCS implementation Myers, names `=` as
@@ -1416,7 +1416,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   record format, or algorithm from comments adjacent to the implementation.
 - **Source:** headers in `src/runtime/text/rt_regex.c`, `rt_scanner.c`, and `rt_diff.c`.
 - **Review (2026-07-15):** Verified and fixed. All three headers rewritten against the current
-  implementation: `rt_regex.c` now names `Viper.Text.Pattern` (not the nonexistent Regex class),
+  implementation: `rt_regex.c` now names `Zanna.Text.Pattern` (not the nonexistent Regex class),
   states that `{n,m}` braces are literals, and records the NUL-rejection and zero-width-replace
   semantics. `rt_scanner.c` now lists the actual registered surface (Match/MatchStr are
   non-consuming; Accept/AcceptStr consume; no trapping Expect; end-of-input reads return `-1`).
@@ -1475,7 +1475,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-065 — The locale parser is not a conforming BCP-47 validator
 
 - **Classification:** standards-conformance bug
-- **Area:** `Viper.Localization.Locale`
+- **Area:** `Zanna.Localization.Locale`
 - **Evidence:** the installed evaluator rejects valid RFC 5646 forms including the pure
   private-use tag `x-private` and the extlang form `zh-cmn-Hans-CN`. It accepts malformed forms
   including `en-a-b-foo` (an empty `a` extension), `en-a-x-foo`, a script or region after a
@@ -1501,7 +1501,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-066 — `Locale.FromParts` does not require pre-split subtags
 
 - **Classification:** API validation bug
-- **Area:** `Viper.Localization.Locale.FromParts`
+- **Area:** `Zanna.Localization.Locale.FromParts`
 - **Evidence:** `FromParts` concatenates the three strings and reparses the result without first
   validating each argument as one subtag. The evaluator accepts
   `FromParts("en-US", "", "")` as `en-US` and
@@ -1521,7 +1521,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-067 — Null locale equality disagrees with invariant null handling
 
 - **Classification:** API inconsistency
-- **Area:** `Viper.Localization.Locale`
+- **Area:** `Zanna.Localization.Locale`
 - **Evidence:** `Tag`, `ToString`, `Fallbacks`, locale-data access, and the C header contract treat
   a null locale as invariant/root-shaped. `rt_locale_equals()` instead returns false whenever
   exactly one operand is null. The evaluator reports false for
@@ -1539,7 +1539,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-068 — Embedded NUL escapes bypass locale JSON validation
 
 - **Classification:** validation bug
-- **Area:** `Viper.Localization.LocaleManager` JSON loader
+- **Area:** `Zanna.Localization.LocaleManager` JSON loader
 - **Evidence:** locale JSON strings are copied with their runtime byte length but are subsequently
   validated and consumed as NUL-terminated C strings. A file whose tag is
   `"zz\\u0000-garbage"` successfully registers `zz`; a `numbers.digits` value of
@@ -1610,7 +1610,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-071 — Lenient localized-number parsing accepts empty grouping runs
 
 - **Classification:** parsing bug / needs triage
-- **Area:** `Viper.Localization.NumberFormat`
+- **Area:** `Zanna.Localization.NumberFormat`
 - **Evidence:** in non-strict mode every group separator is discarded without requiring a digit
   after the previous separator or before end of input. The evaluator parses `"1,,2"` as `12`
   and `"1,,,"` as `1` under en-US.
@@ -1628,7 +1628,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-072 — Scientific formatting bypasses locale special-value and sign tokens
 
 - **Classification:** localization inconsistency
-- **Area:** `Viper.Localization.NumberFormat.Scientific`
+- **Area:** `Zanna.Localization.NumberFormat.Scientific`
 - **Evidence:** `Decimal(+infinity)` emits the locale's `numbers.infinity` token (`∞` for en-US),
   while `Scientific(+infinity, 2)` uses the platform C formatter's spelling (the installed macOS
   evaluator emits `inf`). Scientific output also keeps the C formatter's ASCII mantissa/exponent
@@ -1649,7 +1649,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-073 — Relative time loses one unit for `INT64_MIN`
 
 - **Classification:** confirmed arithmetic bug
-- **Area:** `Viper.Localization.RelativeTimeFormat`
+- **Area:** `Zanna.Localization.RelativeTimeFormat`
 - **Evidence:** both `format_core()` and `Numeric()` avoid negating `INT64_MIN` by replacing its
   magnitude with `INT64_MAX`. The evaluator renders
   `Numeric(-9223372036854775808, "second")` as
@@ -1668,7 +1668,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-074 — Text direction treats whole Unicode blocks as strongly directional
 
 - **Classification:** Unicode-classification bug / documented limitation
-- **Area:** `Viper.Localization.TextDirection`
+- **Area:** `Zanna.Localization.TextDirection`
 - **Evidence:** the classifier checks broad RTL block ranges before any neutral/category logic and
   otherwise treats nearly every non-ASCII code point as LTR. Consequently Arabic-Indic digit `١`
   is reported as first-strong `rtl`, Devanagari digit `१` as `ltr`, and Arabic text followed by a
@@ -1693,7 +1693,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-075 — `ListFormat` leaks retained element references
 
 - **Classification:** confirmed memory-management bug
-- **Area:** `Viper.Localization.ListFormat`
+- **Area:** `Zanna.Localization.ListFormat`
 - **Evidence:** `rt_list_get()` returns a retained object reference. `join_with_style()` never
   releases any retrieved element; its one-item branch additionally calls `rt_string_ref()` on
   the already-retained value before returning it.
@@ -1713,7 +1713,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-076 — Plural operands are wrong when `%.15g` uses exponent notation
 
 - **Classification:** confirmed plural-rule bug
-- **Area:** `Viper.Localization.PluralRules.Cardinal`
+- **Area:** `Zanna.Localization.PluralRules.Cardinal`
 - **Evidence:** the float path scans the textual output of `%.15g` but does not apply its exponent
   when deriving `i`, `v`, `f`, and `t`. If the spelling has no decimal point (for example
   `1e-07`), it assigns `v=f=t=0`. A loaded rule `v = 0` therefore selects `one` for
@@ -1734,7 +1734,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-077 — `PluralRules.Categories` leaks each result string's initial reference
 
 - **Classification:** confirmed memory-management bug
-- **Area:** `Viper.Localization.PluralRules.Categories`
+- **Area:** `Zanna.Localization.PluralRules.Categories`
 - **Evidence:** the method passes each freshly allocated `rt_string_from_bytes()` result directly
   to `rt_list_push()`. The list retains the value, but the method never releases the temporary
   caller-owned reference. Other localization list builders explicitly balance this retain.
@@ -1749,7 +1749,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-078 — Message plural interpolation ignores the locale digit set
 
 - **Classification:** localization inconsistency
-- **Area:** `Viper.Localization.MessageBundle.Plural`
+- **Area:** `Zanna.Localization.MessageBundle.Plural`
 - **Evidence:** `{n}` is produced with C `snprintf("%lld")` and inserted as ASCII. With a loaded
   Arabic-digit locale, the evaluator emits `5 items` from `MessageBundle.Plural` while
   `RelativeTimeFormat.Numeric` for the same locale emits `٥ seconds ago`.
@@ -1768,7 +1768,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-079 — Long message fallback chains can still form retained cycles
 
 - **Classification:** lifecycle/API bug / needs triage
-- **Area:** `Viper.Localization.MessageBundle.Fallback`
+- **Area:** `Zanna.Localization.MessageBundle.Fallback`
 - **Evidence:** cycle detection stops after 16 bundles. If the proposed chain reaches the receiver
   later, `Fallback` attaches it anyway. Lookup also stops at 16, preventing recursion overflow,
   but every fallback edge is a strong retained reference.
@@ -1787,7 +1787,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-080 — Number-format C-locale initialization has a data race
 
 - **Classification:** thread-safety bug / needs triage
-- **Area:** `Viper.Localization.NumberFormat`
+- **Area:** `Zanna.Localization.NumberFormat`
 - **Evidence:** `loc_cached_c_locale()` lazily reads and writes a process-static locale pointer
   without an atomic or once primitive. Its own comment calls concurrent first use a benign race,
   but unsynchronized conflicting accesses are a C data race and therefore undefined behavior.
@@ -1835,7 +1835,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   clamps 4 because quaternary strength is unsupported.
 - **Impact:** a locale file can pass schema validation while one of its accepted settings can
   never take effect. This is currently visible only through the internal C collator because
-  `Viper.Localization.Collator` is absent from the frontend registry.
+  `Zanna.Localization.Collator` is absent from the frontend registry.
 - **Source:** `loc_data_from_json()` in `rt_locale_manager.c` and `col_alloc()` /
   `rt_collator_set_strength()` in `rt_collator.c`.
 - **Review (2026-07-15):** Verified and fixed. The loader now validates `collation.strength`
@@ -1847,7 +1847,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-083 — Integer plural rules lose precision above 2^53
 
 - **Classification:** confirmed numeric-correctness bug
-- **Area:** `Viper.Localization.PluralRules.CardinalInt` / `Ordinal`
+- **Area:** `Zanna.Localization.PluralRules.CardinalInt` / `Ordinal`
 - **Evidence:** integer operands and integer rule literals/range endpoints are converted to
   `double` before equality, range, and modulo evaluation. With a loaded `i mod 10 = 7` rule,
   `CardinalInt(9223372036854775807)` incorrectly selects `other`. With an
@@ -1869,7 +1869,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-084 — Non-default `CurrencyOf` output is not accepted by `ParseCurrency`
 
 - **Classification:** format/parse API inconsistency
-- **Area:** `Viper.Localization.NumberFormat`
+- **Area:** `Zanna.Localization.NumberFormat`
 - **Evidence:** `CurrencyOf` substitutes any valid non-default three-letter code as the symbol.
   Currency parsing recognizes only the locale's configured symbol and default code. Under en-US,
   `CurrencyOf(100, "EUR")` emits `EUR100.00`, but `TryParseCurrency` returns `None` for that exact
@@ -1889,7 +1889,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-085 — Formatted non-finite numbers are rejected by the paired parsers
 
 - **Classification:** format/parse API inconsistency
-- **Area:** `Viper.Localization.NumberFormat`
+- **Area:** `Zanna.Localization.NumberFormat`
 - **Evidence:** decimal and currency formatting explicitly emits the locale's configured `nan` and
   `infinity` strings. The shared parser accepts only an optional sign followed by localized digits,
   grouping, and a decimal separator; it never recognizes those special tokens. Under en-US,
@@ -1911,7 +1911,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-086 — Collection membership uses incompatible equality rules
 
 - **Classification:** API inconsistency
-- **Area:** `Viper.Collections.List`, `Seq`, `Set`, `Queue`, `Stack`, `Deque`, and `Ring`
+- **Area:** `Zanna.Collections.List`, `Seq`, `Set`, `Queue`, `Stack`, `Deque`, and `Ring`
 - **Evidence:** List, Seq, and Set delegate membership/search to `rt_box_equal`, which compares
   same-tag boxed integers, booleans, floats, and strings by value. Queue, Stack, Deque, and Ring
   compare only raw pointers. With two separately boxed copies of `"same"`, the installed evaluator
@@ -1934,7 +1934,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-087 — Public Queue and Stack constructors cannot create owning containers
 
 - **Classification:** ownership/API inconsistency
-- **Area:** `Viper.Collections.Queue` and `Viper.Collections.Stack`
+- **Area:** `Zanna.Collections.Queue` and `Zanna.Collections.Stack`
 - **Evidence:** `rt_queue_new()` and `rt_stack_new()` select borrowed-element mode. Their C APIs
   have ownership mutators, but neither mutator nor an owning constructor is registered on the
   public runtime class. The GC traversal callbacks deliberately omit borrowed entries. In
@@ -1984,7 +1984,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-089 — Default object sorting has no valid mixed-type fallback order
 
 - **Classification:** portability/correctness bug
-- **Area:** `Viper.Collections.List.Sort` and `Viper.Collections.Seq.Sort`
+- **Area:** `Zanna.Collections.List.Sort` and `Zanna.Collections.Seq.Sort`
 - **Evidence:** the comparators use `<` and `>` directly on unrelated object pointers whenever a
   pair is not handled as the same supported value kind. Relational comparison of pointers to
   unrelated C objects is not a defined portable ordering. Moreover, combining value order for
@@ -2011,7 +2011,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-090 — LazySeq methods do not validate their receiver type
 
 - **Classification:** confirmed runtime type-safety bug
-- **Area:** `Viper.Functional.LazySeq`
+- **Area:** `Zanna.Functional.LazySeq`
 - **Evidence:** LazySeq nodes are allocated with class id 0 and every method casts an arbitrary
   `void *` directly to `rt_lazyseq_impl`; there is no checked-cast helper. The public registry
   signatures accept an unqualified object receiver, so an explicit call can bypass instance
@@ -2032,7 +2032,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-091 — LazySeq collectors return borrowing Seqs
 
 - **Classification:** ownership/API inconsistency
-- **Area:** `Viper.Functional.LazySeq.Repeat`, `ToSeq`, and `ToSeqN`
+- **Area:** `Zanna.Functional.LazySeq.Repeat`, `ToSeq`, and `ToSeqN`
 - **Evidence:** Repeat stores its value without retaining it or registering a traversal edge.
   Both collectors allocate with the internal borrowing `rt_seq_new()` /
   `rt_seq_with_capacity()` helpers, not the owning public constructors. Pushing collected values
@@ -2053,7 +2053,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-092 — LazySeq negative limits use inconsistent sentinels
 
 - **Classification:** input-validation/API inconsistency
-- **Area:** `Viper.Functional.LazySeq`
+- **Area:** `Zanna.Functional.LazySeq`
 - **Evidence:** the API contract reserves repeat count `-1` for infinity, but Repeat treats every
   negative count as infinite. The installed evaluator confirms that `Repeat(value, -2).Take(2)`
   yields two values. In contrast, negative `Take` or `Drop` limits return null, a zero range step
@@ -2072,7 +2072,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-093 — LazySeq allocation failure dereferences null
 
 - **Classification:** confirmed allocation-path bug
-- **Area:** `Viper.Functional.LazySeq`
+- **Area:** `Zanna.Functional.LazySeq`
 - **Evidence:** `alloc_lazyseq()` calls `rt_obj_new_i64()` and immediately passes the result to
   `memset` before checking it. Every factory checks the returned node only after this helper has
   already dereferenced it.
@@ -2088,7 +2088,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-094 — Iterator source cycles are invisible to cycle collection
 
 - **Classification:** confirmed lifecycle bug
-- **Area:** `Viper.Collections.Iterator`
+- **Area:** `Zanna.Collections.Iterator`
 - **Evidence:** live Seq/List/Ring iterators retain their source, and those collections can retain
   the iterator as an element. Iterator objects have a finalizer but are never registered with
   `rt_gc_track` and have no traversal callback exposing the retained source edge.
@@ -2107,7 +2107,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-095 — LazySeq null elements collide with the exhaustion sentinel
 
 - **Classification:** API inconsistency
-- **Area:** `Viper.Functional.LazySeq.Next` and `Peek`
+- **Area:** `Zanna.Functional.LazySeq.Next` and `Peek`
 - **Evidence:** Repeat accepts a null value and treats it as a successfully yielded element, but
   the public Next/Peek wrappers discard the internal `has_more` flag and also return null at end of
   stream. Unlike the collection pop APIs, LazySeq has no `NextOption`/`PeekOption` alternative.
@@ -2116,7 +2116,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_lazyseq_next()`, `rt_lazyseq_peek()`, `rt_lazyseq_w_next()`, and
   `rt_lazyseq_w_peek()` in `src/runtime/oop/rt_lazyseq.c`.
 - **Review (2026-07-15):** Verified and fixed by adding the missing Option counterparts:
-  `LazySeq.NextOption` / `LazySeq.PeekOption` (registered as `obj<Viper.Option>`, backed by
+  `LazySeq.NextOption` / `LazySeq.PeekOption` (registered as `obj<Zanna.Option>`, backed by
   `rt_lazyseq_w_next_option` / `rt_lazyseq_w_peek_option`) return `Some(value)` for every
   yielded element — including null — and `None` only at exhaustion, matching the collection
   pop APIs' convention. The plain `Next`/`Peek` remain unchanged for compatibility.
@@ -2127,7 +2127,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-096 — Several collection boolean C returns disagree with the registry ABI
 
 - **Classification:** runtime ABI inconsistency
-- **Area:** `Viper.Collections.OrderedMap.IsEmpty`, `OrderedMap.Has`, `DefaultMap.Has`, and
+- **Area:** `Zanna.Collections.OrderedMap.IsEmpty`, `OrderedMap.Has`, `DefaultMap.Has`, and
   `BloomFilter.MightContain`
 - **Evidence:** the public C declarations and definitions of `rt_orderedmap_is_empty()`,
   `rt_orderedmap_has()`, `rt_defaultmap_has()`, and `rt_bloomfilter_might_contain()` return
@@ -2150,7 +2150,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-097 — OrderedMap installs the same finalizer twice
 
 - **Classification:** implementation inconsistency
-- **Area:** `Viper.Collections.OrderedMap` construction
+- **Area:** `Zanna.Collections.OrderedMap` construction
 - **Evidence:** `rt_orderedmap_new()` calls `rt_obj_set_finalizer(m, orderedmap_finalizer)` twice in
   succession before registering GC traversal. `rt_obj_set_finalizer()` replaces the single stored
   callback, so the second call currently just overwrites it with the same pointer.
@@ -2191,7 +2191,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-099 — CountMap `IncBy` violates its returned-count contract for non-positive increments
 
 - **Classification:** confirmed API inconsistency
-- **Area:** `Viper.Collections.CountMap.IncBy`
+- **Area:** `Zanna.Collections.CountMap.IncBy`
 - **Evidence:** the method is documented and named as returning the new count, but its first guard
   returns 0 for every `n <= 0` without looking up the key. With an existing count of 5, both
   `IncBy("x", 0)` and `IncBy("x", -2)` return 0 while `Get("x")` remains 5 in the installed
@@ -2241,10 +2241,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-101 — `I64Buffer` arithmetic uses unchecked signed C overflow
 
 - **Classification:** confirmed runtime correctness / portability bug
-- **Area:** `Viper.Collections.I64Buffer`
+- **Area:** `Zanna.Collections.I64Buffer`
 - **Evidence:** `AddScalar`, `MulScalar`, `AddBuffer`, `Sum`, and `Dot` perform their additions and
   multiplications directly in `int64_t`. They have no checked-arithmetic helper or precondition,
-  while signed integer overflow is undefined behavior in C and no Viper overflow trap is raised.
+  while signed integer overflow is undefined behavior in C and no Zanna overflow trap is raised.
 - **Impact:** inputs whose intermediate or final result exceeds signed 64-bit range can produce
   optimizer- and target-dependent behavior rather than a defined wrap or trap. `Dot` can overflow
   in either its multiplication or accumulation, and mutating methods can partially update a buffer
@@ -2263,12 +2263,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-102 — `Bag.ToSet` creates string entries that ordinary Set lookups cannot match
 
 - **Classification:** confirmed collection-conversion bug
-- **Area:** `Viper.Collections.Bag.ToSet`
+- **Area:** `Zanna.Collections.Bag.ToSet`
 - **Evidence:** `rt_bag_to_set()` inserts the raw runtime strings returned by `Bag.Items` directly
   into the generic Set. Set compares value equality only for its recognized boxed scalar tags;
   other object values use identity. In the installed evaluator, converting a Bag containing
   `"apple"` produces a Set with `Count == 1`, but
-  `set.Has(Viper.Core.Box.Str("apple")) == false`. Looking up the exact object obtained from
+  `set.Has(Zanna.Core.Box.Str("apple")) == false`. Looking up the exact object obtained from
   `set.Items()` succeeds only by identity.
 - **Impact:** the advertised Bag-to-Set conversion cannot be used for normal boxed-string
   membership, deduplication against new strings, or value-based set algebra. Callers must retain
@@ -2285,7 +2285,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-103 — `Trie.LongestPrefix` cannot distinguish an empty-key match from no match
 
 - **Classification:** API inconsistency
-- **Area:** `Viper.Collections.Trie.LongestPrefix`
+- **Area:** `Zanna.Collections.Trie.LongestPrefix`
 - **Evidence:** Trie accepts the empty string as a terminal key at its root. `LongestPrefix`
   returns an owned empty string both when that root key is the longest match and when no key
   matches; the method has no Option form or separate success flag.
@@ -2294,7 +2294,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** empty-key handling in `rt_trie_set()` and the `found`/`last_match` result path in
   `rt_trie_longest_prefix()` in `src/runtime/collections/rt_trie.c`.
 - **Review (2026-07-15):** Verified and fixed by adding the missing Option form:
-  `Trie.LongestPrefixOption` (registered as `obj<Viper.Option>(str)`, backed by
+  `Trie.LongestPrefixOption` (registered as `obj<Zanna.Option>(str)`, backed by
   `rt_trie_longest_prefix_option`) returns `Some(prefix)` for any match — including the
   valid empty-key match — and `None` when no stored key is a prefix, so the ambiguity of the
   string-returning `LongestPrefix` is resolved without changing it. Completeness/surface
@@ -2305,7 +2305,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-104 — BitSet staged growth breaks logical bounds and can corrupt heap memory
 
 - **Classification:** confirmed runtime memory-safety bug
-- **Area:** `Viper.Collections.BitSet.SetAll`, `And`, `Or`, and `Xor`
+- **Area:** `Zanna.Collections.BitSet.SetAll`, `And`, `Or`, and `Xor`
 - **Evidence:** growth can allocate more words than the logical `bit_count` requires. Starting
   from 64 bits, `Set(64)` grows to two words and `Set(128)` doubles that allocation to four words
   while logical `Length` becomes 129 (three words). `SetAll()` fills all four allocated words and
@@ -2363,7 +2363,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-106 — Bytes constructor signatures disagree inside the runtime manifest
 
 - **Classification:** registry-source inconsistency
-- **Area:** `Viper.Collections.Bytes` construction metadata
+- **Area:** `Zanna.Collections.Bytes` construction metadata
 - **Evidence:** the class declaration in `src/il/runtime/defs/classes/foundation.def` supplies
   constructor signature `obj` for `BytesNew`, while the matching API entry in
   `src/il/runtime/defs/api/collections.def` correctly declares `obj(i64)`. The installed compiler
@@ -2374,9 +2374,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
   can emit an invalid no-argument contract even though current Zia call resolution happens to use
   the correct API declaration.
 - **Source:** the Bytes entries in `foundation.def` and `collections.def`, confirmed with the
-  installed evaluator and `viper --dump-runtime-api`.
+  installed evaluator and `zanna --dump-runtime-api`.
 - **Review (2026-07-15):** Verified and fixed. The `RT_CLASS_BEGIN` row for
-  `Viper.Collections.Bytes` now declares `obj(i64)`, matching the API-side `BytesNew`
+  `Zanna.Collections.Bytes` now declares `obj(i64)`, matching the API-side `BytesNew`
   signature and the convention its sibling sized constructors (BitSet, F64Buffer, I64Buffer)
   already follow. Completeness/surface audits pass and generated docs were refreshed.
   **Resolved.**
@@ -2411,7 +2411,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-108 — `SemanticJob.IsDone(null)` depends on which Zia bridge is linked
 
 - **Classification:** API inconsistency
-- **Area:** `Viper.Zia.SemanticJob`
+- **Area:** `Zanna.Zia.SemanticJob`
 - **Evidence:** the strong editor-service implementation returns true only when a validated
   `SemanticJobHandle` contains a job whose `done` flag is set, so null and wrong-type handles
   return false. The weak runtime stub ignores its argument and always returns true. Every weak
@@ -2431,7 +2431,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-109 — Zia document-mirror deltas do not enforce revision or range validity
 
 - **Classification:** confirmed tooling correctness bug
-- **Area:** `Viper.Zia.Document.SyncDelta`
+- **Area:** `Zanna.Zia.Document.SyncDelta`
 - **Evidence:** `mirrorApplyDeltasJson()` parses but deliberately ignores every delta's `r`
   revision. `rt_zia_doc_sync_delta()` never compares `end_revision` with the mirror's stored
   revision. Its position helper clamps lines/columns beyond the buffer, accepts negative
@@ -2459,15 +2459,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-110 — Zia document-symbol queries emit runtime and imported-file symbols
 
 - **Classification:** confirmed tooling/API and performance bug
-- **Area:** `Viper.Zia.Completion.Symbols*` and asynchronous symbol jobs
+- **Area:** `Zanna.Zia.Completion.Symbols*` and asynchronous symbol jobs
 - **Evidence:** both symbol serializers enumerate `Sema::getGlobalSymbols()`, whose module scope
   contains the runtime-function inventory and imported exports, then append `getTypeNames()` a
   second time. A direct existing-binary probe containing one function and one class produced
-  7,370 rows: 7,363 `Viper.*` runtime-function rows and two `Cat` rows. A second path-aware probe
+  7,370 rows: 7,363 `Zanna.*` runtime-function rows and two `Cat` rows. A second path-aware probe
   bound a file whose `importedThing` was declared on line 3; the active file's wire result included
   `importedThing` with line 3 even though the four-field protocol has no source-path field.
 - **Impact:** each document-symbol request serializes and transports a registry-sized payload.
-  Consumers can discard line-zero runtime and duplicate-type rows, as ViperIDE does, but cannot
+  Consumers can discard line-zero runtime and duplicate-type rows, as ZannaIDE does, but cannot
   distinguish positive-line imported declarations from declarations in the active file; outline
   entries and workspace-symbol locations can therefore point into the wrong document.
 - **Source:** `symbolsForSource()` and `rt_zia_symbols_for_file()` in
@@ -2481,12 +2481,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   filtered globals. This also fixed the latent `test_zia_bugfixes` expectation for
   `Template.Keys.Count` (now StringSet-typed per VDOC-044). Regression:
   `ZiaDocSymbols.OnlyActiveFileSymbols` in `test_zia_doc_mirror.cpp` (Cat/start present, no
-  `Viper.*` rows, payload under 20 lines). **Resolved.**
+  `Zanna.*` rows, payload under 20 lines). **Resolved.**
 
 ### VDOC-111 — Legacy completion rows cannot frame multiline snippets
 
 - **Classification:** confirmed wire-format bug
-- **Area:** `Viper.Zia.Completion.Complete*`
+- **Area:** `Zanna.Zia.Completion.Complete*`
 - **Evidence:** the documented serializer emits
   `label<TAB>insertText<TAB>kind<TAB>detail<LF>` without escaping any field. Built-in snippet
   insertion text contains literal newlines—for example, the `if` snippet is
@@ -2531,7 +2531,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-113 — Zia diagnostic and mirror APIs conflate absence with a clean result
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** weak Zia services and `Viper.Zia.Document`
+- **Area:** weak Zia services and `Zanna.Zia.Document`
 - **Evidence:** the weak `Completion.Check*` functions return an empty String and weak
   `Toolchain.Check*` functions return an empty Seq for every source, exactly like a successful
   clean analysis. A weak compile returns `success = false` with empty diagnostics and no
@@ -2544,9 +2544,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** weak implementations in `src/runtime/core/rt_zia_completion_stub.c` and document
   accessors in `src/frontends/zia/rt_zia_completion.cpp`.
 - **Review (2026-07-15):** Verified and fixed by adding two definitive probes rather than
-  changing the compatibility payloads: `Viper.Zia.Completion.IsAvailable` (strong bridge
+  changing the compatibility payloads: `Zanna.Zia.Completion.IsAvailable` (strong bridge
   returns true, weak stub false) lets callers know whether an empty Check/Seq means "clean"
-  or "analysis never ran", and `Viper.Zia.Document.Has(path)` separates an absent mirror from
+  or "analysis never ran", and `Zanna.Zia.Document.Has(path)` separates an absent mirror from
   a present-but-empty document (weak stub: always false). Both registered with completeness
   and surface audits green; zia.md documents how to combine them with the synchronous
   methods. Regressions: `ZiaDocMirror.HasDistinguishesAbsentFromEmpty` (strong) and
@@ -2555,7 +2555,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-114 — ProjectIndex rename validation does not match the Zia lexer
 
 - **Classification:** confirmed tooling/compiler inconsistency
-- **Area:** `Viper.Zia.ProjectIndex.RenameEdits`
+- **Area:** `Zanna.Zia.ProjectIndex.RenameEdits`
 - **Evidence:** `isIdentifierText()` uses locale-sensitive `std::isalpha`/`std::isalnum` and has no
   length limit. The Zia lexer uses deterministic ASCII-only `isLetter`/`isDigit` helpers and
   rejects identifiers longer than 1,024 bytes. Therefore RenameEdits can accept a replacement
@@ -2577,7 +2577,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-115 — Document-delta integer parsing can overflow signed `long`
 
 - **Classification:** confirmed runtime undefined-behavior bug
-- **Area:** `Viper.Zia.Document.SyncDelta`
+- **Area:** `Zanna.Zia.Document.SyncDelta`
 - **Evidence:** the compact JSON parser accumulates every non-text numeric field as
   `v = v * 10 + digit` in signed `long`, with no digit-count or overflow check, before narrowing
   to `int`. A sufficiently long numeric literal therefore invokes signed C++ overflow instead of
@@ -2597,7 +2597,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-116 — Asynchronous Zia diagnostics drop all but the first fix-it
 
 - **Classification:** API/schema inconsistency
-- **Area:** `Viper.Zia.Toolchain` versus `Viper.Zia.SemanticJob.Diagnostics`
+- **Area:** `Zanna.Zia.Toolchain` versus `Zanna.Zia.SemanticJob.Diagnostics`
 - **Evidence:** synchronous `Check*` and `Compile*` maps contain a `fixits` Seq plus the legacy
   first-fix fields. The native `DiagnosticRecord` used by background jobs stores only one fix-it,
   and `diagnosticRecordsToSeq()` consequently omits the `fixits` key altogether.
@@ -2616,7 +2616,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-117 — Audio-disabled mix-group initialization and registration are unsynchronized
 
 - **Classification:** confirmed data-race bug
-- **Area:** `Viper.Audio.Mixer` mix-group settings in audio-disabled builds
+- **Area:** `Zanna.Audio.Mixer` mix-group settings in audio-disabled builds
 - **Evidence:** the real-audio group methods hold `audio_state_lock()` around lazy initialization,
   name lookup, registration, and volume state. Their audio-disabled counterparts call the same
   `_unlocked` helpers with no lock. Atomic loads/stores protect an already-initialized group's
@@ -2632,17 +2632,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `src/runtime/audio/rt_audio.c`.
 - **Review (2026-07-15):** Verified and fixed. The audio-state spinlock
   (`g_audio_init_lock` + `audio_state_lock/unlock`) was hoisted out of the
-  `VIPER_ENABLE_AUDIO` guard so both configurations share it, and the audio-disabled group
+  `ZANNA_ENABLE_AUDIO` guard so both configurations share it, and the audio-disabled group
   functions (`SetGroupVolume`, `GetGroupVolume`, `RegisterGroup`, `FindGroup`, `GroupName`)
   now hold it around lazy initialization, lookup, registration, and volume access — the same
   discipline the real-audio path already used. The audio-disabled branch was
-  syntax-verified with a no-`VIPER_ENABLE_AUDIO` compile; the enabled-build audio suites
+  syntax-verified with a no-`ZANNA_ENABLE_AUDIO` compile; the enabled-build audio suites
   pass unchanged. **Resolved.**
 
 ### VDOC-118 — Distinct public mix-group names silently alias after 31 bytes
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** named `Viper.Audio.Mixer` mix groups
+- **Area:** named `Zanna.Audio.Mixer` mix groups
 - **Evidence:** every name is trimmed at its space/tab edges, embedded NUL bytes are replaced with
   `_`, and the result is copied into a 32-byte C buffer with at most 31 payload bytes. Registration
   and lookup compare only that canonical buffer. Consequently two distinct runtime Strings with
@@ -2662,7 +2662,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-119 — Playlist playback stalls permanently on an unloadable selected entry
 
 - **Classification:** needs triage
-- **Area:** `Viper.Audio.Playlist` auto-advance and failure reporting
+- **Area:** `Zanna.Audio.Playlist` auto-advance and failure reporting
 - **Evidence:** paths are accepted without validation. If `playlist_load_current_music()` returns
   null, selection clears `playing`; `rt_playlist_update()` immediately returns whenever
   `!pl->playing || !pl->music`. It therefore cannot advance past the failed entry. `Play()` also
@@ -2707,9 +2707,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-121 — SoundBank accepts detached Sound wrappers as successful registrations
 
 - **Classification:** confirmed API-state validation bug
-- **Area:** `Viper.Audio.SoundBank.RegisterSound`
+- **Area:** `Zanna.Audio.SoundBank.RegisterSound`
 - **Evidence:** `Audio.Shutdown()` deliberately leaves Sound wrappers in the registry while
-  detaching their ViperAUD handles. `rt_sound_is_handle()` validates only wrapper membership and
+  detaching their ZannaAUD handles. `rt_sound_is_handle()` validates only wrapper membership and
   magic, so `rt_soundbank_register_sound()` retains such a detached wrapper and returns 1.
   `SoundBank.Play()` later forwards it to the stricter playback path, which returns -1 because
   the backend Sound is detached.
@@ -2720,7 +2720,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `src/runtime/audio/rt_audio.c`, plus `rt_soundbank_register_sound()` in
   `src/runtime/audio/rt_soundbank.c`.
 - **Review (2026-07-15):** Verified and fixed. Added `rt_sound_is_playable()` — a stricter
-  companion to `rt_sound_is_handle()` that also requires the wrapper's ViperAUD handle to be
+  companion to `rt_sound_is_handle()` that also requires the wrapper's ZannaAUD handle to be
   attached to the live audio context (audio-disabled stub returns 0) — and
   `rt_soundbank_register_sound()` now uses it, so registering a Shutdown-detached zombie
   wrapper fails with 0 instead of succeeding and failing later inside `SoundBank.Play`.
@@ -2730,7 +2730,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-122 — Peaking EQ accepts values that poison its filter coefficients
 
 - **Classification:** confirmed numeric-safety bug / needs triage
-- **Area:** `Viper.Audio.Mixer.GroupAddPeaking`
+- **Area:** `Zanna.Audio.Mixer.GroupAddPeaking`
 - **Evidence:** the shared biquad setup sanitizes frequency and Q but passes `gainDb` directly to
   `pow(10, gainDb / 40)`. NaN, infinity, or sufficiently extreme finite values produce non-finite
   coefficients and state. The per-sample sanitizer then converts each non-finite output to zero,
@@ -2750,7 +2750,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-123 — Sound loaders disagree on whether a missing asset is recoverable
 
 - **Classification:** API failure-mode inconsistency
-- **Area:** `Viper.Audio.Sound.Load` and `LoadAsset`
+- **Area:** `Zanna.Audio.Sound.Load` and `LoadAsset`
 - **Evidence:** `Sound.Load(path)` returns null for a missing/unreadable file, invalid path, decode
   error, backend failure, or exhausted Sound slots. `Sound.LoadAsset(path)` traps with
   `Sound.LoadAsset: asset not found` when asset resolution returns no bytes (including a zero-byte
@@ -2770,21 +2770,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-124 — SpatialAudio3D signatures erase Sound and Vec3 argument types
 
 - **Classification:** runtime-registry typing inconsistency
-- **Area:** `Viper.Audio.SpatialAudio3D`
+- **Area:** `Zanna.Audio.SpatialAudio3D`
 - **Evidence:** the registry declares `SetListener` as `void(obj,obj)`, `PlayAt` as
   `i64(obj,obj,f64,i64)`, and `UpdateVoice` as `void(i64,obj,f64)`, even though their
   implementations require Vec3 handles and `PlayAt` requires a Sound handle. Nearby
-  SoundListener3D/SoundSource3D properties already use `obj<Viper.Math.Vec3>`, and ordinary Sound
-  APIs use `obj<Viper.Audio.Sound>`.
+  SoundListener3D/SoundSource3D properties already use `obj<Zanna.Math.Vec3>`, and ordinary Sound
+  APIs use `obj<Zanna.Audio.Sound>`.
 - **Impact:** Zia and other registry consumers cannot reject wrong object classes at the call
   site. A bad vector reaches the checked Vec3 accessor and traps at runtime; the generated runtime
   reference likewise advertises only generic Object arguments.
 - **Likely repair point:** use typed object signatures for the three object parameters in
   `src/il/runtime/defs/graphics3d/lighting.def`.
 - **Review (2026-07-15):** Verified and fixed exactly as suggested: `SetListener` is now
-  `void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)`, `PlayAt` is
-  `i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)`, and `UpdateVoice` is
-  `void(i64,obj<Viper.Math.Vec3>,f64)` in both the RT_FUNC rows and the class RT_METHOD rows,
+  `void(obj<Zanna.Math.Vec3>,obj<Zanna.Math.Vec3>)`, `PlayAt` is
+  `i64(obj<Zanna.Audio.Sound>,obj<Zanna.Math.Vec3>,f64,i64)`, and `UpdateVoice` is
+  `void(i64,obj<Zanna.Math.Vec3>,f64)` in both the RT_FUNC rows and the class RT_METHOD rows,
   matching the SoundListener3D/SoundSource3D typing convention. Completeness/surface audits
   pass, generated docs refreshed, and the full zia suite (334 tests) type-checks the demos
   unchanged. **Resolved.**
@@ -2792,7 +2792,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-125 — Pool submission is synchronous and ignores pool state on both VMs
 
 - **Classification:** backend semantic inconsistency
-- **Area:** `Viper.Threads.Pool.Submit`
+- **Area:** `Zanna.Threads.Pool.Submit`
 - **Evidence:** the standard-VM and BytecodeVM handlers ignore the Pool argument, invoke the
   callback immediately on the submitting VM thread, set the result to true, and return. They do
   not inspect `IsShutdown`, the 65,536/default pending cap, or allocation/backpressure state. The
@@ -2817,7 +2817,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-126 — Parallel callback coverage is materially different on VM backends
 
 - **Classification:** backend feature/behavior inconsistency
-- **Area:** `Viper.Threads.Parallel`
+- **Area:** `Zanna.Threads.Parallel`
 - **Evidence:** native `For`, `Invoke`, `ForEach`, `Map`, and `Reduce` distribute work through a
   thread pool. Both VM bridges run `For`/`ForPool` and `Invoke`/`InvokePool` sequentially on the
   calling thread (ignoring a supplied Pool), while `ForEach`, `Map`, `Reduce`, and all three
@@ -2841,7 +2841,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-127 — Async bridge metadata exposes callback APIs without VM handlers
 
 - **Classification:** confirmed callback-bridge coverage bug
-- **Area:** `Viper.Threads.Async` on the standard VM and BytecodeVM
+- **Area:** `Zanna.Threads.Async` on the standard VM and BytecodeVM
 - **Evidence:** the registry marks `RunOwned`, `RunCancellable`, `RunCancellableOwned`, `Map`, and
   `MapOwned` callback positions as safe frontend bridges, so Zia/BASIC accept function references.
   The VM registration layers install a managed callback handler only for `Async.Run`. The other
@@ -2868,7 +2868,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-128 — Pool tasks have no owned-argument or discard-cleanup contract
 
 - **Classification:** API lifetime inconsistency / resource-loss hazard
-- **Area:** native `Viper.Threads.Pool.Submit` and `ShutdownNow`
+- **Area:** native `Zanna.Threads.Pool.Submit` and `ShutdownNow`
 - **Evidence:** a queued task stores only a borrowed callback and raw `arg`; submission neither
   retains the argument nor records a cleanup callback. `ShutdownNow` and finalizer cleanup free
   queued task nodes without invoking callbacks or cleaning arguments. Unlike Thread and Async,
@@ -2892,7 +2892,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-129 — Windows `Thread.JoinFor` truncates large 64-bit timeouts
 
 - **Classification:** confirmed cross-platform semantic bug
-- **Area:** `Viper.Threads.Thread.JoinFor`
+- **Area:** `Zanna.Threads.Thread.JoinFor`
 - **Evidence:** the Windows implementation converts every positive timeout to one `DWORD` wait,
   capping values above `MAXDWORD` to 4,294,967,295 ms. It returns false when that one wait expires
   instead of continuing until the requested 64-bit deadline. The POSIX implementation computes a
@@ -2907,13 +2907,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   back to the deadline check, so the join only reports false once the entire requested
   duration has elapsed — matching the POSIX deadline semantics. The safe-thread path funnels
   into the same function. Windows-only code path: reviewed against the Future timed-wait
-  idiom and pending a by-hand `build_viper_win.cmd` run on the next Windows session; the
+  idiom and pending a by-hand `build_zanna_win.cmd` run on the next Windows session; the
   macOS/Linux build is unaffected. **Resolved.**
 
 ### VDOC-130 — Scheduler generation `-1` is both valid data and the absence sentinel
 
 - **Classification:** API sentinel ambiguity
-- **Area:** `Viper.Threads.Scheduler.ScheduleGen` / `GenerationOf`
+- **Area:** `Zanna.Threads.Scheduler.ScheduleGen` / `GenerationOf`
 - **Evidence:** `ScheduleGen` accepts and stores every signed 64-bit generation without
   restriction. `GenerationOf` returns the stored value, but also returns `-1` for a null name,
   null Scheduler, or an unscheduled name.
@@ -2921,7 +2921,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the live entry from absence. `IsDueGen(name, -1)` only helps once the entry becomes due.
 - **Likely repair point:** reject/reserve `-1`, return an Option, or add a separate existence query.
 - **Review (2026-07-16):** Verified and fixed with the Option route:
-  `Scheduler.GenerationOfOption` (registered as `obj<Viper.Option>(str)`, backed by
+  `Scheduler.GenerationOfOption` (registered as `obj<Zanna.Option>(str)`, backed by
   `rt_scheduler_generation_of_option`) returns `Some(generation)` for any scheduled name —
   including a stored generation of -1 — and `None` for absence, so -1 remains usable as
   ordinary data. The legacy `GenerationOf` keeps its documented -1 sentinel for
@@ -2931,20 +2931,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-131 — `Parallel.DefaultPool` loses its Pool type in Zia chaining
 
 - **Classification:** runtime-registry typing inconsistency
-- **Area:** Zia member typing for `Viper.Threads.Parallel.DefaultPool`
-- **Evidence:** the runtime always returns a `Viper.Threads.Pool`, but both the function and class
+- **Area:** Zia member typing for `Zanna.Threads.Parallel.DefaultPool`
+- **Evidence:** the runtime always returns a `Zanna.Threads.Pool`, but both the function and class
   method registry signatures say only `obj`. With the existing evaluator,
-  `Viper.Threads.Parallel.DefaultPool().get_Size()` fails because Zia looks for `get_Size` on
-  `Viper.Threads.Parallel`. The explicit receiver form
-  `Viper.Threads.Pool.get_Size(Viper.Threads.Parallel.DefaultPool())` succeeds.
+  `Zanna.Threads.Parallel.DefaultPool().get_Size()` fails because Zia looks for `get_Size` on
+  `Zanna.Threads.Parallel`. The explicit receiver form
+  `Zanna.Threads.Pool.get_Size(Zanna.Threads.Parallel.DefaultPool())` succeeds.
 - **Impact:** the natural fluent form is rejected and inference associates a returned object with
   the utility class that produced it instead of its real runtime class.
-- **Likely repair point:** register the return as `obj<Viper.Threads.Pool>` in both the function
+- **Likely repair point:** register the return as `obj<Zanna.Threads.Pool>` in both the function
   and Parallel class method signatures in `src/il/runtime/defs/api/threads_time.def` and
   `src/il/runtime/defs/classes/threads_network.def` (an ADR is required for a registry signature
   change under the repository policy).
 - **Review (2026-07-16):** Verified and fixed exactly as suggested: both rows now declare
-  `obj<Viper.Threads.Pool>()`. This is a type *refinement* of an existing `obj` return (the
+  `obj<Zanna.Threads.Pool>()`. This is a type *refinement* of an existing `obj` return (the
   runtime always returned a Pool), the same qualification pattern applied throughout this
   review series (Template.Keys, SpatialAudio3D, etc.) — no opcode/grammar/ABI surface
   changed. Fluent chaining now type-checks: `Parallel.DefaultPool().Size` runs end-to-end.
@@ -2985,7 +2985,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Note:** the prototype scan is intentionally heuristic and advisory, so the candidate set needs
   triage before bulk edits. The 18 file-header results are exact under the script's current policy.
 - **Review (2026-07-16):** Partially resolved with measured reduction. The 18 exact
-  file-header gaps are now zero (standard Viper headers added to the benchmark references,
+  file-header gaps are now zero (standard Zanna headers added to the benchmark references,
   the six runtime unit-test files, the postfx3d snapshot test, and the Xenoscape sound
   generator). The concentrated surfaces named in the evidence are fully documented with
   ownership/failure/range contracts: `rt_numbuf.h` (all 34 buffer prototypes),
@@ -2998,10 +2998,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-134 — Four callable static Http functions are absent from the class inventory
 
 - **Classification:** runtime-registry surface inconsistency
-- **Area:** `Viper.Network.Http` member registry and generated reference
-- **Evidence:** the function registry contains `Viper.Network.Http.Put`, `PutBytes`, `Delete`, and
+- **Area:** `Zanna.Network.Http` member registry and generated reference
+- **Evidence:** the function registry contains `Zanna.Network.Http.Put`, `PutBytes`, `Delete`, and
   `DeleteBytes`, and evaluator calls to the fully qualified `Put` and `Delete` names compile and
-  reach the expected invalid-URL trap. The `Viper.Network.Http` class block contains only Get,
+  reach the expected invalid-URL trap. The `Zanna.Network.Http` class block contains only Get,
   GetBytes, Post, PostBytes, Download, Head, Patch, and Options, so the four functions are absent
   from generated class documentation and member discovery.
 - **Impact:** valid public calls advertised by the handwritten guide are invisible to registry
@@ -3018,7 +3018,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-135 — `Url.Parse`, setters, and `IsValid` implement incompatible grammars
 
 - **Classification:** confirmed API inconsistency / input-validation hazard
-- **Area:** `Viper.Network.Url`
+- **Area:** `Zanna.Network.Url`
 - **Evidence:** `Url.IsValid("http://exa mple.com")` returns false, while
   `Url.Parse("http://exa mple.com").get_Full()` succeeds and preserves the whitespace. `Parse`
   also recognizes a scheme only when it is followed by `://`:
@@ -3045,7 +3045,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-136 — `Url.EncodeQuery` reinterprets non-string Map values as string handles
 
 - **Classification:** confirmed runtime type-safety bug
-- **Area:** `Viper.Network.Url.EncodeQuery`
+- **Area:** `Zanna.Network.Url.EncodeQuery`
 - **Evidence:** the public signature accepts an untyped Map object. In
   `rt_url_encode_query`, only an `RT_BOX_STR` value is unboxed; every other non-null value is cast
   directly to `rt_string`, retained as a string, and passed to string accessors. Integer, Boolean,
@@ -3070,7 +3070,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-137 — WebSocket close leaves the TCP/TLS transport open until finalization
 
 - **Classification:** confirmed resource-lifetime bug / protocol inconsistency
-- **Area:** `Viper.Network.WebSocket.Close` and `CloseWith`
+- **Area:** `Zanna.Network.WebSocket.Close` and `CloseWith`
 - **Evidence:** `rt_ws_close_with` sends one close frame, sets `is_open = 0`, and returns. It neither
   waits for the peer's close reply nor closes `socket_fd` / `tls`; its own source comment states
   that those are left for `rt_ws_finalize`. Once marked closed, another public close is a no-op.
@@ -3093,7 +3093,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-138 — Standalone `HttpReq.SetKeepAlive(true)` cannot reuse a connection
 
 - **Classification:** public API inconsistency
-- **Area:** `Viper.Network.HttpReq`
+- **Area:** `Zanna.Network.HttpReq`
 - **Evidence:** pooled reuse requires both `req->keep_alive` and `req->connection_pool`. The only
   pool attachment function, `rt_http_req_set_connection_pool`, is internal and absent from the
   registry; only RestClient and HttpClient call it. A request created through the public
@@ -3149,7 +3149,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-140 — RateLimiter loses large Integer capacities in floating-point storage
 
 - **Classification:** confirmed numeric-range bug
-- **Area:** `Viper.Network.RateLimiter`
+- **Area:** `Zanna.Network.RateLimiter`
 - **Evidence:** `maxTokens` is accepted as signed 64-bit Integer but immediately converted to
   `double` for both capacity and tokens. The existing evaluator reports
   `RateLimiter.New(9007199254740993, 1.0).get_Max()` as `9007199254740992`. Values near `INT64_MAX`
@@ -3164,7 +3164,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   refill path saturates huge idle credits before any out-of-range cast (guard at 9.2e18,
   overflow-safe capacity comparison), acquisition compares integers exactly, and
   `get_Max`/`Available` return the stored integers with no double round-trip. The finding's
-  exact repro now returns 9007199254740993 via `viper eval`. network.md's 2^53 caveat replaced
+  exact repro now returns 9007199254740993 via `zanna eval`. network.md's 2^53 caveat replaced
   with the exact-integer contract. Regression: `test_large_capacity_exact_roundtrip` in
   `RTRateLimitTests.cpp` (2^53+1 and INT64_MAX-1 round-trip, adjacent huge capacities remain
   distinct, near-max acquisition arithmetic exact). **Resolved.**
@@ -3172,7 +3172,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-141 — TCP timeout path can immediately overwrite its own categorized trap
 
 - **Classification:** confirmed runtime control-flow bug
-- **Area:** `Viper.Network.Tcp.ConnectFor`
+- **Area:** `Zanna.Network.Tcp.ConnectFor`
 - **Evidence:** after all address attempts fail, the timeout branch calls
   `rt_trap_net(..., Err_Timeout)` without returning, then unconditionally calls
   `rt_trap_net(..., Err_NetworkError)`. `rt_trap.h` explicitly permits an embedder/test trap hook to
@@ -3196,7 +3196,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-142 — HttpRouter accepts a lossy, nonstandard route grammar
 
 - **Classification:** confirmed API/protocol inconsistency
-- **Area:** `Viper.Network.HttpRouter`
+- **Area:** `Zanna.Network.HttpRouter`
 - **Evidence:** pattern parsing discards empty segments, so `/a//b/` and `/a/b` match the same
   paths. A `*name` segment returns from the matcher immediately even if the parser stored later
   segments: the installed evaluator confirms that registered `/a/*x/c` matches `/a/one/two` and
@@ -3227,7 +3227,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-143 — Standalone HttpRouter has no synchronization or immutable phase
 
 - **Classification:** confirmed concurrency-contract bug
-- **Area:** `Viper.Network.HttpRouter`
+- **Area:** `Zanna.Network.HttpRouter`
 - **Evidence:** the source header claimed concurrent matching was safe because routes become
   immutable “after start,” but a standalone router has no Start/freeze method, mutex, or atomic
   publication. `Add` can reallocate the route array while `Match` or `Count` reads it, and match
@@ -3251,7 +3251,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-144 — HTTP server route registration is not atomic
 
 - **Classification:** confirmed state-consistency bug
-- **Area:** `Viper.Network.HttpServer` and `HttpsServer`
+- **Area:** `Zanna.Network.HttpServer` and `HttpsServer`
 - **Evidence:** both registrars first append the pattern to the embedded HttpRouter and only then
   validate/copy the handler tag into a separate route-entry array. If tag validation or allocation
   traps, the router retains the new route without a matching handler-table slot. The HTTPS version
@@ -3278,7 +3278,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-145 — ConnectionPool's public lifetime contract can invalidate live handles
 
 - **Classification:** API ownership inconsistency / needs triage
-- **Area:** `Viper.Network.ConnectionPool`
+- **Area:** `Zanna.Network.ConnectionPool`
 - **Evidence:** the pool stores raw Tcp pointers without retaining them and therefore treats
   `Release(conn)` as an ownership transfer, but the public signature/old guide merely said “return”
   and did not forbid later use or release by the caller. `Release` can also adopt an arbitrary
@@ -3308,7 +3308,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-146 — Multipart failure is indistinguishable from valid empty or partial data
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** `Viper.Network.Multipart`
+- **Area:** `Zanna.Network.Multipart`
 - **Evidence:** `Build()` returns zero-length Bytes for size overflow, allocation failure, or
   serialization failure. `Parse()` returns an empty object for invalid Content-Type, invalid or
   overlong boundary, body above 64 MiB, or missing delimiter, and silently returns a partial object
@@ -3339,7 +3339,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-147 — NetUtils.IsPortOpen does not reliably enforce or report its probe
 
 - **Classification:** confirmed network-utility bug
-- **Area:** `Viper.Network.NetUtils.IsPortOpen`
+- **Area:** `Zanna.Network.NetUtils.IsPortOpen`
 - **Evidence:** the function ignores failure from `rt_socket_set_nonblocking`, so `connect` may
   block longer than the requested timeout. It also ignores `getsockopt(SO_ERROR)`'s return while
   initializing `so_error` to zero, which can turn a failed status read into a false positive. Every
@@ -3364,7 +3364,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-148 — Plain WsServer never services inbound WebSocket frames
 
 - **Classification:** confirmed protocol/implementation inconsistency
-- **Area:** `Viper.Network.WsServer` versus `WssServer`
+- **Area:** `Zanna.Network.WsServer` versus `WssServer`
 - **Evidence:** after the plain accept loop completes an upgrade, it only stores the Tcp handle and
   returns to accept; no task reads that client again. It therefore cannot respond to ping, echo a
   close, validate framing, drain messages, or observe orderly disconnect. `ClientCount` counts the
@@ -3393,7 +3393,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-149 — WebSocket servers contain blocking and unbounded concurrency hazards
 
 - **Classification:** confirmed concurrency/resource-hardening bugs
-- **Area:** `Viper.Network.WsServer` and `WssServer`
+- **Area:** `Zanna.Network.WsServer` and `WssServer`
 - **Evidence:** plain client sockets receive no post-upgrade timeout, and `Broadcast` holds the
   client-list mutex across blocking sends; a non-reading peer can indefinitely block broadcasts,
   `ClientCount`, and `Stop`. WSS serializes all client writes through one global I/O mutex, so a slow
@@ -3445,7 +3445,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-151 — SseClient.RecvFor is neither an event deadline nor lossless on timeout
 
 - **Classification:** confirmed timeout/data-corruption bug
-- **Area:** `Viper.Network.SseClient`
+- **Area:** `Zanna.Network.SseClient`
 - **Evidence:** `RecvFor` first waits for readiness, then applies the same timeout independently to
   every subsequent socket read and delegates to unbounded `Recv`; a peer can send one byte per
   interval forever. More seriously, both SSE line readers return an accumulated partial line when
@@ -3477,7 +3477,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-152 — SseClient's HTTP and event-state validation is internally inconsistent
 
 - **Classification:** confirmed protocol bug / API ambiguity
-- **Area:** `Viper.Network.SseClient`
+- **Area:** `Zanna.Network.SseClient`
 - **Evidence:** Content-Type is accepted by a 17-byte prefix check, so
   `text/event-streaming` passes. Transfer-Encoding merely searches for a `chunked` token and neither
   validates its final position nor rejects other unsupported codings. The parser retains the last
@@ -3510,7 +3510,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-153 — HttpClient.SetCookie bypasses the jar's safety and scope rules
 
 - **Classification:** confirmed API/security-hardening bug
-- **Area:** `Viper.Network.HttpClient` cookie jar
+- **Area:** `Zanna.Network.HttpClient` cookie jar
 - **Evidence:** response cookies are syntax/domain/public-suffix checked and begin host-only, but
   manual `SetCookie` directly stores `host_only = 0` without validating domain, name, or value.
   Evaluator probes show `SetCookie("com", "super", "cookie")` is returned for `example.com`, a
@@ -3542,7 +3542,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-154 — HttpClient.SetTimeout(0) silently restores 30-second operation timeouts
 
 - **Classification:** confirmed API inconsistency
-- **Area:** `Viper.Network.HttpClient`
+- **Area:** `Zanna.Network.HttpClient`
 - **Evidence:** the setter accepts and stores zero, and its header documented zero as “no timeout.”
   Request setup calls `rt_http_req_set_timeout` only when the stored value is greater than zero.
   Each fresh HttpReq therefore retains its constructor default of 30,000ms when the client value is
@@ -3565,7 +3565,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-155 — SmtpClient Result sends can trap and constructor validation is incomplete
 
 - **Classification:** confirmed error-model/API inconsistency
-- **Area:** `Viper.Network.SmtpClient`
+- **Area:** `Zanna.Network.SmtpClient`
 - **Evidence:** `SendResult` simply calls the Boolean send and wraps its returned value; it installs
   no trap recovery. TCP connect/TLS setup functions can trap before the Boolean path returns, so an
   invalid/unreachable host escapes rather than producing `ErrStr`. The installed evaluator confirms
@@ -3592,7 +3592,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-156 — SMTP STARTTLS handshake failure can double-close a socket descriptor
 
 - **Classification:** confirmed resource-lifetime bug
-- **Area:** `Viper.Network.SmtpClient` STARTTLS upgrade
+- **Area:** `Zanna.Network.SmtpClient` STARTTLS upgrade
 - **Evidence:** the SMTP client constructs a TLS session around `rt_tcp_socket_fd(s->tcp)` but
   detaches the Tcp wrapper only after a successful handshake. On handshake failure it calls
   `rt_tls_close`, which closes the descriptor, sets only `s->tls = NULL`, and returns. The outer send
@@ -3616,7 +3616,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-157 — AsyncSocket leaks one producer reference per object-valued success
 
 - **Classification:** confirmed runtime lifetime bug
-- **Area:** `Viper.Network.AsyncSocket` and `Threads.Promise`
+- **Area:** `Zanna.Network.AsyncSocket` and `Threads.Promise`
 - **Evidence:** `rt_promise_set` now retains runtime-managed values until Future consumption or
   finalization. AsyncSocket workers create a Tcp, Bytes, or String, call `rt_promise_set`, and never
   release/transfer the worker's original reference. Connect, Recv, HttpGet, and HttpPost all follow
@@ -3637,7 +3637,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-158 — AsyncSocket.SendAsync exposes a raw pointer as an Integer result
 
 - **Classification:** confirmed runtime type/ABI bug
-- **Area:** `Viper.Network.AsyncSocket.SendAsync`
+- **Area:** `Zanna.Network.AsyncSocket.SendAsync`
 - **Evidence:** the worker casts the signed byte count directly through
   `(void *)(intptr_t)sent` into generic `Promise.Set`. It does not create an Integer box, while the
   public Future surface has only object `Get` and no typed Integer getter/unbox contract. The class
@@ -3650,7 +3650,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Review (2026-07-16):** Confirmed and fixed via the boxing route: the send worker now
   resolves the Future with `rt_box_i64(sent)` (transferred), matching the boxed-result
   convention `Async.Run` callbacks already use, so `SendAsync.Get()` returns a real runtime
-  object consumable through `Viper.Core.Box` accessors. Docs updated (method table + result
+  object consumable through `Zanna.Core.Box` accessors. Docs updated (method table + result
   contract). Regression: same test as VDOC-157 — asserts the Future payload is an
   `RT_BOX_I64` box whose `rt_unbox_i64` equals the payload byte count (pre-fix the payload was
   a pointer-cast scalar with box type -1). **Resolved.**
@@ -3658,7 +3658,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-159 — AsyncSocket has a fixed blocking pool and non-interrupting cancellation
 
 - **Classification:** API scalability inconsistency / needs triage
-- **Area:** `Viper.Network.AsyncSocket`
+- **Area:** `Zanna.Network.AsyncSocket`
 - **Evidence:** all operations share one lazily initialized pool of exactly four workers and run the
   ordinary blocking Tcp/Http functions there. Four long-lived Recv tasks occupy the entire pool;
   later connect/send/HTTP tasks remain queued. Cancelling the returned Future changes Future state
@@ -3740,9 +3740,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-162 — String.FromSingle has a mismatched C ABI
 
 - **Classification:** confirmed runtime ABI bug
-- **Area:** `Viper.String.FromSingle` across registry dispatch and runtime backends
+- **Area:** `Zanna.String.FromSingle` across registry dispatch and runtime backends
 - **Evidence:** the runtime registry, generated signature tables, and emitted IL declare
-  `Viper.String.FromSingle(f64) -> str`, while the exported C function `rt_str_f_alloc` accepts a C
+  `Zanna.String.FromSingle(f64) -> str`, while the exported C function `rt_str_f_alloc` accepts a C
   `float`. The signature-handler path explicitly casts its double argument to float, but direct
   symbol dispatch has no adapter. With the existing arm64 evaluator, both Zia and BASIC produce
   `"0"` for `FromSingle(1.5)`; Zia produces `"126443839488"` for `FromSingle(3.14)`.
@@ -3765,9 +3765,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Classification:** confirmed compiler/API inconsistency
 - **Area:** narrow runtime parameters and cross-language String formatting surface
 - **Evidence:** both functions are registered with `i16`/`i32` parameters, but ordinary Zia integer
-  expressions are i64. `Viper.String.FromI16(42)` and `FromI32(42)` pass semantic analysis and then
+  expressions are i64. `Zanna.String.FromI16(42)` and `FromI32(42)` pass semantic analysis and then
   fail IL verification because the call arguments remain i64. BASIC resolves `FromI32(42)` and
-  returns `"42"`, but reports unknown procedure `viper.string.fromi16` for the parallel public name.
+  returns `"42"`, but reports unknown procedure `zanna.string.fromi16` for the parallel public name.
 - **Impact:** the generated and handwritten public APIs cannot be called from Zia and are not even
   mutually available from BASIC; a source type mismatch escapes to the IL verifier.
 - **Likely repair point:** expose language-level i64 parameters with checked/documented narrowing or
@@ -3779,7 +3779,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   such as `FromI16(70000)` trap with the checked-narrow diagnostic instead of silently
   wrapping). BASIC: `mapIlToBasic` was silently dropping every `i16`-parameter runtime
   function from the procedure registry (which is why `FromI32` resolved but
-  `viper.string.fromi16` was "unknown"); `i16` now maps to the BASIC integer type and the
+  `zanna.string.fromi16` was "unknown"); `i16` now maps to the BASIC integer type and the
   runtime-call arg coercion emits `narrow_to(64, 16)` alongside the existing 32-bit case, so
   both names resolve in both languages. Verified live in both frontends; full basic+zia suite
   (699 tests) green. Regression: `from_i16_narrowed_call`/`from_i32_narrowed_call` probes in
@@ -3801,7 +3801,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Review (2026-07-16):** Confirmed and resolved by defining the contract both ways. The plain
   splitter is now documented as deliberately lenient INPUT-style parsing (it backs BASIC INPUT
   field splitting, where tolerance is the point), and a new registered
-  `Viper.String.SplitFieldsResult` provides the strict surface: it validates quote structure
+  `Zanna.String.SplitFieldsResult` provides the strict surface: it validates quote structure
   (quoted fields must open at field start, close exactly once, be followed only by whitespace
   before the delimiter; no quotes inside unquoted text; no EOF inside a quote) and returns
   `Ok(Seq[str])` or `ErrStr` naming the violation. Both of the finding's repros now yield
@@ -3817,7 +3817,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   as a C string. All five formatters then call `strlen` on those words. The evaluator shows that
   CamelCase and SnakeCase turn bytes `61 62 00 63 64` (`ab\0cd`) into only `61 62`; the suffix is
   silently discarded.
-- **Impact:** these methods violate Viper.String's length-aware byte-string contract and can lose
+- **Impact:** these methods violate Zanna.String's length-aware byte-string contract and can lose
   data that other String methods preserve.
 - **Likely repair point:** carry a byte length for every split word rather than repacking words as
   NUL-terminated strings.
@@ -3895,13 +3895,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the unified rule. Regression: empty-needle assertions added to `test_last_index_of` in
   `RTStringExtTests.cpp`. **Resolved.**
 
-### VDOC-169 — Tracked C/C++ files are missing the required Viper source header
+### VDOC-169 — Tracked C/C++ files are missing the required Zanna source header
 
 - **Classification:** repository-policy inconsistency
 - **Area:** source-file documentation and contribution policy
 - **Evidence:** `scripts/audit_doc_comments.sh` currently reports 18 tracked, non-generated C/C++
   files without a recognized project/file header: one Xenoscape sound generator, eleven benchmark
-  sources, and six runtime/unit-test sources. The repository operating guide requires the full Viper
+  sources, and six runtime/unit-test sources. The repository operating guide requires the full Zanna
   source header on new or modified source files.
 - **Impact:** provenance and file-purpose documentation are inconsistent across tracked sources,
   and the repository's own audit has a nonzero baseline that can hide newly introduced omissions.
@@ -3909,7 +3909,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   next modified, and make the audit distinguish an intentional legacy baseline if one must remain.
 - **Review (2026-07-16):** Already remediated during the VDOC-133 pass: all 18 files (the
   Xenoscape sound generator, the eleven benchmark sources, and the six runtime/unit-test
-  sources) received full Viper source headers, taking `scripts/audit_doc_comments.sh`'s
+  sources) received full Zanna source headers, taking `scripts/audit_doc_comments.sh`'s
   "Files missing file-level header" count to 0 — re-verified today. With a zero baseline, any
   newly introduced omission is immediately visible, so no legacy-baseline mechanism is needed.
   **Resolved.**
@@ -3950,7 +3950,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Cipher.DecryptResult` and `Tls.ConnectResult` matched and were skipped without compilation. The
   crypto review exposed five real compiler diagnostics hidden by that rule. The heuristic now
   requires a standalone type-like name rather than a member following `.`, and low-level
-  `Viper.Crypto.Tls` examples are classified as side-effectful so they are compile-checked without
+  `Zanna.Crypto.Tls` examples are classified as side-effectful so they are compile-checked without
   making network connections.
 - **Impact:** a validation report could appear clean while exactly the Result-oriented examples
   recommended for robust error handling were broken.
@@ -3964,7 +3964,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-172 — Cipher's raw-key nonce construction has only a 32-bit cross-process margin
 
 - **Classification:** confirmed cryptographic nonce-design defect / needs security triage
-- **Area:** `Viper.Crypto.Cipher` raw-key ChaCha20-Poly1305 and AES-256-GCM formats
+- **Area:** `Zanna.Crypto.Cipher` raw-key ChaCha20-Poly1305 and AES-256-GCM formats
 - **Evidence:** `cipher_random_nonce()` fills only the first four nonce bytes from the CSPRNG and
   writes a process-global 64-bit atomic counter into the remaining eight bytes. Counter values are
   unique within one process until exhaustion, but the counter resets on every process start. Two
@@ -4029,7 +4029,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-174 — `Password.NeedsRehash` marks stronger custom scrypt hashes as stale
 
 - **Classification:** confirmed password-policy bug
-- **Area:** `Viper.Crypto.Password.NeedsRehash`
+- **Area:** `Zanna.Crypto.Password.NeedsRehash`
 - **Evidence:** `HashScryptParams` accepts every supported tuple whose `N`, `r`, and `p` are each at
   least the defaults (`16384`, `8`, `1`). In compatibility mode, `NeedsRehash` nevertheless returns
   current only when all three stored values equal the defaults exactly. A valid hash created with
@@ -4053,7 +4053,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-175 — The Unix random fallback has an unsynchronized first-use descriptor read
 
 - **Classification:** confirmed C data race / portability bug
-- **Area:** `Viper.Crypto.Rand` on non-Apple POSIX `/dev/urandom` fallback paths
+- **Area:** `Zanna.Crypto.Rand` on non-Apple POSIX `/dev/urandom` fallback paths
 - **Evidence:** `rand_urandom_fd()` reads its function-static `fd` in an unlocked fast path before
   taking the mutex, while the first initializing call writes `fd` under that mutex. Concurrent
   first use therefore performs an unsynchronized read/write of the same C object. Linux reaches
@@ -4105,7 +4105,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-177 — Bytes methods dereference failed receiver checks after recoverable traps
 
 - **Classification:** confirmed systemic runtime trap-discipline bug
-- **Area:** `Viper.Collections.Bytes` and crypto/network callers that accept Bytes
+- **Area:** `Zanna.Collections.Bytes` and crypto/network callers that accept Bytes
 - **Evidence:** `rt_bytes_require()` returns `NULL` for a null or wrong-class receiver (trapping for
   the latter), but many callers immediately dereference it. Direct examples include `Len`,
   `IsEmpty`, `Get`, `Set`, `Slice`, `ToStr`, `ToHex`, `Fill`, `Find`, `Clone`, and the typed integer
@@ -4134,7 +4134,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-178 — Legacy AES string decryption truncates passwords at 256 bytes
 
 - **Classification:** confirmed legacy security/API inconsistency
-- **Area:** `Viper.Crypto.Aes.DecryptStr` legacy CBC compatibility path
+- **Area:** `Zanna.Crypto.Aes.DecryptStr` legacy CBC compatibility path
 - **Evidence:** `derive_key_legacy()` hashes a fixed domain separator, a one-byte length, and at
   most the first 256 password bytes, then performs 10,000 SHA-256 rounds. For every password of 256
   bytes or more the stored length byte wraps to zero, and suffix bytes after the first 256 never
@@ -4156,7 +4156,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-179 — TLS `ConnectFor` applies its timeout repeatedly instead of as a deadline
 
 - **Classification:** confirmed timeout/API inconsistency
-- **Area:** `Viper.Crypto.Tls.ConnectFor*` and `ConnectOptions*`
+- **Area:** `Zanna.Crypto.Tls.ConnectFor*` and `ConnectOptions*`
 - **Evidence:** each address returned by `getaddrinfo` receives the full timeout independently. Once
   connected, the same value becomes the socket timeout used again by individual handshake and later
   record reads/writes; header and payload reads can each consume it. Values at or below zero are
@@ -4182,7 +4182,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** confirmed BASIC lowering / ownership bug
 - **Area:** BASIC console `PRINT` with runtime-class string property getters
-- **Evidence:** with an explicitly typed `Viper.Crypto.Tls` receiver, the minimal statement
+- **Evidence:** with an explicitly typed `Zanna.Crypto.Tls` receiver, the minimal statement
   `PRINT conn.Host` fails IL verification with `call %t29: double release of %29`. `conn.Host`
   lowers through the runtime-property catalog, whose string result is already registered with
   `deferReleaseStr`. `IoStatementLowerer::lowerPrint` then classifies every `MemberAccessExpr` as a
@@ -4202,7 +4202,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   treats a member-access string result as NON-borrowed when it is already deferred-release (a
   runtime/instance property getter returns such an owned string), so it no longer wraps it in
   the extra retain/release pair that collided with the deferred release. Genuine borrowed loads
-  (plain string variables, fields) still get the retain/release. `viper check` on the repro now
+  (plain string variables, fields) still get the retain/release. `zanna check` on the repro now
   compiles clean, and printing a normal string variable still round-trips without leak or
   use-after-free. Regression: `test_basic_print_runtime_property` (unit) asserts the
   property-getter PRINT line emits zero manual retains/releases; the full 325-test BASIC suite
@@ -4211,7 +4211,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-181 — Asset decode failure silently changes the documented return type
 
 - **Classification:** confirmed runtime API/type inconsistency
-- **Area:** `Viper.IO.Assets.Load`
+- **Area:** `Zanna.IO.Assets.Load`
 - **Evidence:** `rt_asset_load()` first asks `rt_asset_decode_typed()` to decode a recognized image
   or audio extension. If decoding returns `NULL` for malformed or empty PNG, JPEG, BMP, GIF, WAV,
   OGG, or MP3 data, `Load` falls through and returns the raw `Bytes` object. Adjacent source
@@ -4238,7 +4238,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-182 — `File.AppendLine` does not provide line-level atomicity
 
 - **Classification:** confirmed source-contract / concurrency inconsistency
-- **Area:** `Viper.IO.File.AppendLine`
+- **Area:** `Zanna.IO.File.AppendLine`
 - **Evidence:** `rt_io_file_append_line()` opens with append semantics, but writes the text in a
   retry loop and then writes the newline in a separate operation. Its source comment claims that
   writes below `PIPE_BUF` cannot interleave because of POSIX atomic-write guarantees; `PIPE_BUF`
@@ -4262,7 +4262,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-183 — `File.Touch` also updates directories
 
 - **Classification:** confirmed API/domain inconsistency
-- **Area:** `Viper.IO.File.Touch`
+- **Area:** `Zanna.IO.File.Touch`
 - **Evidence:** `rt_file_touch()` calls `utime(path, NULL)` (or the Windows equivalent) before any
   regular-file check. On existing directories that operation succeeds and updates timestamps,
   while other `File` metadata/content helpers reject directory operands.
@@ -4281,7 +4281,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-184 — Windows `Path.Abs` corrupts drive-relative paths
 
 - **Classification:** confirmed Windows path-semantics bug
-- **Area:** `Viper.IO.Path.Abs`
+- **Area:** `Zanna.IO.Path.Abs`
 - **Evidence:** `Path.IsAbs("C:foo")` correctly treats a drive-relative path as non-absolute, but
   `rt_path_abs()` then joins that text directly to the process current directory. If the current
   drive/path differs, the result can contain a colon in the middle of a component (for example,
@@ -4299,12 +4299,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   branch requires a Windows build to exercise the drive-relative behavior directly; the POSIX
   refactor is covered by a new `test_abs` in `RTPathTests.cpp` (relative→absolute+normalized,
   already-absolute normalizes in place). **Resolved (Windows behavior pending a by-hand
-  `build_viper_win.cmd` run).**
+  `build_zanna_win.cmd` run).**
 
 ### VDOC-185 — `Path.ExeDir` has fixed-buffer encoding and truncation fallbacks
 
 - **Classification:** confirmed cross-platform path limitation / API inconsistency
-- **Area:** `Viper.IO.Path.ExeDir`
+- **Area:** `Zanna.IO.Path.ExeDir`
 - **Evidence:** Windows uses fixed-size `MAX_PATH` `GetModuleFileNameA`, so long paths and paths not
   representable in the active ANSI code page fall back to `"."`. macOS uses a fixed `PATH_MAX`
   `_NSGetExecutablePath` buffer and also falls back to `"."` when it is too small. Linux reads
@@ -4331,7 +4331,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-186 — A leading glob `**` lets later wildcards cross separators
 
 - **Classification:** confirmed glob matcher bug
-- **Area:** `Viper.IO.Glob.Match`
+- **Area:** `Zanna.IO.Glob.Match`
 - **Evidence:** the backtracking state created for `**` sets a persistent `allow_slash` flag. Later
   `*`, `?`, and character-class tokens inherit it instead of restoring ordinary component rules.
   The existing evaluator returns true for `Match("a/b", "**/a?b")`, while it correctly returns
@@ -4355,7 +4355,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-187 — `Stream.As*` returns an unsafe borrowed backing object
 
 - **Classification:** confirmed ownership/lifetime bug
-- **Area:** `Viper.IO.Stream.AsBinFile` and `AsMemStream`, BASIC and Zia lowering
+- **Area:** `Zanna.IO.Stream.AsBinFile` and `AsMemStream`, BASIC and Zia lowering
 - **Evidence:** `rt_stream_as_binfile()` and `rt_stream_as_memstream()` return `s->wrapped` without
   retaining it. The registry declares only untyped `obj()` results with unknown ownership. BASIC
   treats the result as an owned temporary (retaining for assignment and then releasing the
@@ -4370,7 +4370,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and `rt_stream_as_memstream` now `rt_obj_retain_maybe` the wrapped object before returning it,
   so the caller receives an OWNED reference that survives the Stream's close/finalize (which
   only releases the Stream's own reference for wrapping-Streams). The registry entries and class
-  methods were given concrete return types — `obj<Viper.IO.BinFile>` / `obj<Viper.IO.MemStream>`
+  methods were given concrete return types — `obj<Zanna.IO.BinFile>` / `obj<Zanna.IO.MemStream>`
   — so BASIC and Zia apply object ownership correctly instead of guessing. streams.md rewritten.
   Regression: `test_stream_conversion` in `RTStreamTests.cpp` extended — `AsMemStream()` is used
   after `rt_stream_close()` (its length still reads correctly) and then released cleanly, proving
@@ -4379,7 +4379,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-188 — `Stream.Eof` has incompatible file and memory semantics
 
 - **Classification:** confirmed runtime API inconsistency
-- **Area:** `Viper.IO.Stream.Eof` and `Viper.IO.BinFile.Eof`
+- **Area:** `Zanna.IO.Stream.Eof` and `Zanna.IO.BinFile.Eof`
 - **Evidence:** memory streams compute EOF as `position >= length`. File streams delegate to the C
   stream's sticky EOF flag, which is set only after a read attempts to pass the end. Reading
   exactly the remaining bytes—including `Stream.ReadAll()`—therefore leaves file `Eof` false but
@@ -4404,7 +4404,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-189 — BinaryBuffer continues unsafely after recoverable traps
 
 - **Classification:** confirmed systemic runtime trap-discipline bug
-- **Area:** `Viper.IO.BinaryBuffer`
+- **Area:** `Zanna.IO.BinaryBuffer`
 - **Evidence:** `binbuf_require()` traps and returns `NULL`, but `get_Position`, `get_Length`,
   `ToBytes`, and `Reset` dereference its result without checking it. Range-check helpers for
   fixed-width writes return `void`; if a test/embedder trap hook returns, the caller continues and
@@ -4431,11 +4431,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-190 — Watcher overflow reporting misses native queue loss
 
 - **Classification:** confirmed watcher correctness/observability bug
-- **Area:** `Viper.IO.Watcher.EventOverflow` and `EventOverflowCount`
+- **Area:** `Zanna.IO.Watcher.EventOverflow` and `EventOverflowCount`
 - **Evidence:** the Linux inotify decoder has no `IN_Q_OVERFLOW` branch, so a kernel-queue overflow
   is consumed without queuing `EventOverflow`. Windows queues an overflow marker when an overlapped
   read fails or reports zero bytes, but the normal queue insertion path assigns that marker a
-  dropped count of zero. Only overflow of Viper's own 64-entry ring computes a positive count.
+  dropped count of zero. Only overflow of Zanna's own 64-entry ring computes a positive count.
 - **Impact:** a client can continue applying incomplete incremental updates without receiving the
   documented rescan signal; even when Windows emits the signal, `EventOverflowCount()` cannot tell
   it how many events the marker represents.
@@ -4462,7 +4462,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-191 — Linux `Watcher.PollFor` can exceed its timeout after interruption
 
 - **Classification:** confirmed timeout-contract bug
-- **Area:** `Viper.IO.Watcher.PollFor`
+- **Area:** `Zanna.IO.Watcher.PollFor`
 - **Evidence:** the Linux implementation retries `poll()` on `EINTR` with the original timeout each
   time. It does not compute elapsed monotonic time or a deadline. A signal near the end of each
   attempt can therefore restart the full wait repeatedly.
@@ -4483,7 +4483,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-192 — FileIndex's `**` matcher ignores component boundaries
 
 - **Classification:** confirmed workspace ignore-pattern bug
-- **Area:** `Viper.Workspace.FileIndex` `.gitignore` and explicit exclude matching
+- **Area:** `Zanna.Workspace.FileIndex` `.gitignore` and explicit exclude matching
 - **Evidence:** `pathGlobMatch()` removes an optional slash after `**` and then tries the remainder
   at every byte offset, including the middle of a path component. Existing-binary probes show
   `ShouldIgnore(".", "foobar", "**/bar")` and
@@ -4506,7 +4506,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-193 — FileIndex can cache stale `.gitignore` contents indefinitely
 
 - **Classification:** confirmed cache invalidation bug
-- **Area:** `Viper.Workspace.FileIndex` nested and root `.gitignore` handling
+- **Area:** `Zanna.Workspace.FileIndex` nested and root `.gitignore` handling
 - **Evidence:** cache identity consists only of the normalized directory key and the ignore file's
   modification time rounded to whole seconds. File size, inode/file ID, higher-resolution time,
   and content are not considered. Rewriting a `.gitignore` within the same timestamp tick leaves
@@ -4530,7 +4530,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-194 — Unknown manifest sections leak their directives into the top level
 
 - **Classification:** confirmed tooling manifest parser bug
-- **Area:** `Viper.Project.Manifest.ParseText` / `ParseFile`
+- **Area:** `Zanna.Project.Manifest.ParseText` / `ParseFile`
 - **Evidence:** on an unknown `[section]`, the parser emits a diagnostic and sets `sectionMap` to
   null. Subsequent lines are then processed by the top-level directive branch until another
   recognized section appears. An existing-binary probe of `[unknown]` followed by `entry hijack`
@@ -4554,7 +4554,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-195 — Workspace edits can overwrite a target changed after validation
 
 - **Classification:** confirmed transactional/concurrency bug
-- **Area:** `Viper.Workspace.Edit.Apply*`
+- **Area:** `Zanna.Workspace.Edit.Apply*`
 - **Evidence:** Apply validates metadata and reads each target, then constructs replacement text,
   stages every temporary file, and only afterward begins target renames. There is no identity,
   content, size, or mtime recheck immediately before moving each live target to its backup. The
@@ -4582,7 +4582,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-196 — Workspace edit backup paths are predictable and not reserved
 
 - **Classification:** confirmed staging/rollback race
-- **Area:** `Viper.Workspace.Edit.Apply*`
+- **Area:** `Zanna.Workspace.Edit.Apply*`
 - **Evidence:** temporary and backup names use only a process-local incrementing counter. Content
   temps are safely opened with exclusive-create semantics, but backup paths are never reserved;
   the code calls `rename(target, backup)` directly. On POSIX that rename can replace an existing
@@ -4601,13 +4601,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the previous blind `rename(target, backup)` that POSIX would silently let clobber an existing
   file. A new `backupReserved` flag lets rollback delete a reserved-but-unused placeholder so a
   failed apply leaves no stale sidecar. Content temps keep their existing `O_EXCL` open. files.md
-  updated. Regression: `test_workspace_edits` now asserts no `.viper-edit-*` sidecars remain in the
+  updated. Regression: `test_workspace_edits` now asserts no `.zanna-edit-*` sidecars remain in the
   workspace directory after a successful apply; strict surface audit still passes. **Resolved.**
 
 ### VDOC-197 — Asset Resolver accepts empty assets and misbases relative scene paths
 
 - **Classification:** confirmed editor resolver API inconsistency
-- **Area:** `Viper.Assets.Resolver.Resolve`
+- **Area:** `Zanna.Assets.Resolver.Resolve`
 - **Evidence:** an empty `assetPath` makes the `projectRoot / asset` candidate equal the project
   directory; an existing-binary probe reports `found=true` with source `project`. Separately, a
   relative `scenePath` is combined with the asset relative to the process working directory,
@@ -4630,7 +4630,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-198 — IO runtime metadata labels trapping owned APIs as infallible or unknown
 
 - **Classification:** confirmed machine-readable registry metadata inconsistency
-- **Area:** `viper --dump-runtime-api` for IO, workspace, and project classes
+- **Area:** `zanna --dump-runtime-api` for IO, workspace, and project classes
 - **Evidence:** representative current output labels `LineWriter.Append` as infallible with unknown
   ownership even though it traps on open failure and returns a new owned writer. `Stream.As*` is
   infallible/unknown despite wrong-backing traps and its borrowed result; `Archive.Create`, almost
@@ -4646,7 +4646,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   ownership inference accurate for the named categories. Ownership: a concretely typed `seq<…>` /
   `obj<…>` return is now reported `owned` (a freshly allocated GC value the caller owns) instead
   of `unknown` — this fixes the broad "fresh typed Seq/Map/Bytes remain unknown" class and the
-  typed `Stream.As*` returns (now `obj<Viper.IO.BinFile>` / `obj<Viper.IO.MemStream>` after
+  typed `Stream.As*` returns (now `obj<Zanna.IO.BinFile>` / `obj<Zanna.IO.MemStream>` after
   VDOC-187). Fallibility: an exact-name override table marks the trapping IO entries the
   name/signature heuristic missed as `traps` — `Stream.AsBinFile` / `AsMemStream` / `ToBytes`
   (wrong-backing trap), `LineWriter.Append` (open failure), `Watcher.New` / `Start` (resource
@@ -4659,7 +4659,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-199 — `Path.DataDir` validates only the prefix before an embedded NUL
 
 - **Classification:** confirmed path-validation inconsistency
-- **Area:** `Viper.IO.Path.DataDir`
+- **Area:** `Zanna.IO.Path.DataDir`
 - **Evidence:** the public entry point obtains `rt_string_cstr(app_name)` and calls the legacy
   `is_safe_game_name()`, which measures with `strlen`. Unlike `SaveData.New`, it never passes the
   runtime String's stored byte length to `is_safe_game_name_bytes()`. Bytes after a NUL therefore
@@ -4681,7 +4681,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-200 — Random instance methods dereference an invalid receiver after a recoverable trap
 
 - **Classification:** confirmed systemic runtime trap-discipline bug
-- **Area:** `Viper.Math.Random` instance methods
+- **Area:** `Zanna.Math.Random` instance methods
 - **Evidence:** `as_random()` checks `rt_obj_is_instance()` and calls `rt_trap()` on failure, but
   unconditionally returns the original pointer cast as `rt_random_impl *`. `Next`, `NextDouble`,
   `NextInt`, `Range`, and `Seed` immediately read or write `rng->state`. Under the runtime's
@@ -4706,7 +4706,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-201 — Spline parameter handling is type-dependent and unsafe for NaN
 
 - **Classification:** confirmed runtime undefined-behavior / API inconsistency
-- **Area:** `Viper.Math.Spline.Eval`, `Tangent`, and `ArcLength`
+- **Area:** `Zanna.Math.Spline.Eval`, `Tangent`, and `ArcLength`
 - **Evidence:** linear and Catmull-Rom evaluators clamp finite values outside `[0,1]`, then convert
   `t * (count - 1)` to `int64_t`; a NaN reaches that floating-to-integer conversion, which is
   undefined in C. The cubic Bezier evaluator does no clamping or integer conversion and instead
@@ -4732,7 +4732,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-202 — PerlinNoise accepts any object and reads it as a permutation table
 
 - **Classification:** confirmed runtime type-safety bug
-- **Area:** `Viper.Math.PerlinNoise.Noise*` and `Octave*`
+- **Area:** `Zanna.Math.PerlinNoise.Noise*` and `Octave*`
 - **Evidence:** the registry exposes each receiver as untyped `obj`. `rt_perlin_noise2d()` and
   `rt_perlin_noise3d()` check only for null and then cast the payload directly to
   `rt_perlin_impl`, reading its 512-byte `perm` array. The constructor itself allocates with class
@@ -4748,7 +4748,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   returns NULL on mismatch (same discipline as VDOC-200); `rt_perlin_noise2d` / `noise3d` use it
   before touching `perm`, and `rt_perlin_octave2d` / `octave3d` validate up front so an invalid
   receiver traps once rather than 16x through the inner loop. The registry constructor now returns
-  the concrete `obj<Viper.Math.PerlinNoise>` type. A Seq/Bytes/any object passed through the
+  the concrete `obj<Zanna.Math.PerlinNoise>` type. A Seq/Bytes/any object passed through the
   generic `obj` signature can no longer be read as a 512-byte permutation table. Surface + docs
   regenerated; strict audit and all registry/surface tests pass. math.md updated. Regression:
   `test_null_safety` in `RTPerlinTests.cpp` now expects traps for null receivers, and a new
@@ -4758,7 +4758,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-203 — BigInt's negative byte encoder can change the integer value
 
 - **Classification:** confirmed serialization correctness bug
-- **Area:** `Viper.Math.BigInt.ToBytes`
+- **Area:** `Zanna.Math.BigInt.ToBytes`
 - **Evidence:** the big-endian two's-complement encoder decides whether a negative value needs a
   leading `0xff` from the magnitude's high bit rather than the encoded result's sign bit. With the
   existing installed binary, `ToBytes(FromInt(-129)).ToHex()` returns `7f`, and feeding those bytes
@@ -4783,7 +4783,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-204 — BigInt operations do not validate their generic object operands
 
 - **Classification:** confirmed runtime type-safety bug
-- **Area:** all `Viper.Math.BigInt` operations taking `Object`
+- **Area:** all `Zanna.Math.BigInt` operations taking `Object`
 - **Evidence:** BigInts carry the private class id `0x424967496E74`, but no public operation checks
   it. Functions such as `ToInt`, arithmetic, comparison, bitwise operations, and `Sqrt` cast the
   registry's generic `obj` argument directly to `bigint_t` and dereference its `digits`, `len`,
@@ -4813,7 +4813,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-205 — BigInt `PowMod` returns negative residues for negative bases
 
 - **Classification:** arithmetic API inconsistency / needs triage
-- **Area:** `Viper.Math.BigInt.PowMod`
+- **Area:** `Zanna.Math.BigInt.PowMod`
 - **Evidence:** BigInt `Mod` uses truncating-division semantics and gives the remainder the
   dividend's sign. `PowMod` repeatedly uses that operation without normalizing residues into
   `[0, |modulus|)`. The existing binary reports `PowMod(-2, 3, 5) == -3`, while the conventional
@@ -4836,7 +4836,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-206 — Quaternion inverse overflows or underflows its squared length
 
 - **Classification:** confirmed floating-point correctness bug
-- **Area:** `Viper.Math.Quat.Inverse`
+- **Area:** `Zanna.Math.Quat.Inverse`
 - **Evidence:** the implementation computes an overflow-resistant norm with chained `hypot`, but
   then squares that norm and reciprocates it without scaling. For `Quat.New(1e308,0,0,0)`, the
   square becomes infinity and the installed runtime returns a zero X component. For
@@ -4860,7 +4860,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-207 — Matrix equality treats NaN as equal to arbitrary values
 
 - **Classification:** confirmed floating-point comparison bug
-- **Area:** `Viper.Math.Mat3.Eq` and `Viper.Math.Mat4.Eq`
+- **Area:** `Zanna.Math.Mat3.Eq` and `Zanna.Math.Mat4.Eq`
 - **Evidence:** both implementations reject a component only when
   `fabs(a[i] - b[i]) > epsilon`. A NaN difference makes that comparison false, as does every
   finite difference when `epsilon` itself is NaN. Existing-binary probes return true both for a
@@ -4883,7 +4883,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-208 — Mat3 and Mat4 inverse failures have incompatible contracts
 
 - **Classification:** confirmed math API inconsistency
-- **Area:** `Viper.Math.Mat3.Inverse` and `Viper.Math.Mat4.Inverse`
+- **Area:** `Zanna.Math.Mat3.Inverse` and `Zanna.Math.Mat4.Inverse`
 - **Evidence:** Mat3 traps when its determinant is non-finite or has magnitude below `1e-15`.
   Mat4 uses the same threshold but silently returns identity for the same condition (and for an
   invalid receiver). The Mat4 source header additionally claimed that a runtime warning was
@@ -4913,7 +4913,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-209 — Math runtime metadata marks trapping owned APIs as infallible or unknown
 
 - **Classification:** confirmed machine-readable registry metadata inconsistency
-- **Area:** `viper --dump-runtime-api` for `Viper.Math.*`
+- **Area:** `zanna --dump-runtime-api` for `Zanna.Math.*`
 - **Evidence:** current JSON marks `BigInt.Div`, `Mod`, negative `Pow`/`Sqrt`, `ToStrBase`, and
   `Mat3.Inverse` as `fallibility=infallible` even though each has documented trap paths. Fresh
   BigInt, vector, quaternion, spline, and matrix results are commonly
@@ -4925,7 +4925,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   concrete object result types, and add contract assertions for known trapping/allocating entry
   points.
 - **Review (2026-07-16):** Confirmed and fixed the same way as the IO metadata (VDOC-198).
-  Ownership: a new rule marks every `Viper.Math.*` function returning an object (`obj`/`seq`) as
+  Ownership: a new rule marks every `Zanna.Math.*` function returning an object (`obj`/`seq`) as
   `owned`, since math values are immutable, freshly allocated results — this fixes the "fresh
   BigInt/Vec/Mat/Quat/Spline results are unknown" class for the bare-`obj` returns the typed rule
   missed. Fallibility: the explicit override table gained the trapping Math domain operations —
@@ -4939,7 +4939,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-210 — Native programs do not install the documented graceful-shutdown signal bridge
 
 - **Classification:** confirmed VM/native behavior gap
-- **Area:** `Viper.System.Shutdown` in native/AOT execution
+- **Area:** `Zanna.System.Shutdown` in native/AOT execution
 - **Evidence:** the process-global shutdown bitmask is implemented in `rt_shutdown.c`, but the only
   registrations for `SIGINT`, `SIGTERM`, or `SetConsoleCtrlHandler` are in `src/vm/VM.cpp`.
   No native runtime startup path publishes OS events through `rt_shutdown_request`. Cooperative
@@ -4955,13 +4955,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   installs SIGINT/SIGTERM (POSIX) or the console control handler (Windows) that call
   `rt_shutdown_request` — the same signal-safe flag-to-atomic handoff, callable directly from signal
   context since `rt_shutdown_request` is only a lock-free atomic OR. It is idempotent and exposed as
-  `Viper.System.Shutdown.InstallSignalHandlers`. A blanket auto-install was rejected: native
+  `Zanna.System.Shutdown.InstallSignalHandlers`. A blanket auto-install was rejected: native
   programs use a raw `_start` stub with no C-startup hook, and a constructor would wrongly hijack
-  Ctrl-C for the `viper` compiler and tools (which also link the runtime). While testing, the
+  Ctrl-C for the `zanna` compiler and tools (which also link the runtime). While testing, the
   native link failed even for the EXISTING `Shutdown.Poll` — `RuntimeComponents.hpp` mapped the Exec
   archive by `rt_exec_`/`rt_process_`/`rt_machine_` prefixes but omitted `rt_shutdown_`, so any
   native Shutdown user got an undefined-symbol error; added `rt_shutdown_` and
-  `Viper.System.Shutdown.` to the Exec component matcher. End-to-end verified: a native program that
+  `Zanna.System.Shutdown.` to the Exec component matcher. End-to-end verified: a native program that
   calls `InstallSignalHandlers()`, receives a real SIGINT, and observes `Interrupt` via `Poll` exits
   gracefully (was VM-only). system.md updated (method table + capability note). Regression:
   `test_installed_signal_handlers_publish` in `RTShutdownTests.cpp` raises real SIGINT/SIGTERM and
@@ -4970,7 +4970,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-211 — Legacy argument initialization uses a non-atomic flag as a cross-thread lock
 
 - **Classification:** confirmed C data race / initialization defect
-- **Area:** `Viper.System.Environment.GetArgument*` legacy-context fallback
+- **Area:** `Zanna.System.Environment.GetArgument*` legacy-context fallback
 - **Evidence:** `g_legacy_args_host_init_state` is a plain process-global `int`. Reads and writes in
   `rt_args_ensure_legacy_host_initialized`, `rt_args_push`, and `rt_args_clear` are unsynchronized,
   although the comments describe a `0 -> 1 -> 2` first-thread protocol. A second POSIX thread can
@@ -4997,7 +4997,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-212 — Windows Process passes a UTF-16 environment block as ANSI (resolved 2026-07-16)
 
 - **Classification:** resolved Windows process-launch correctness bug
-- **Area:** `Viper.System.Process.StartWithEnv`
+- **Area:** `Zanna.System.Process.StartWithEnv`
 - **Evidence:** `build_env_block_wide` creates a double-NUL-terminated `wchar_t` block, but the
   corresponding `CreateProcessW` flags are only `CREATE_NO_WINDOW |
   EXTENDED_STARTUPINFO_PRESENT`. Windows requires `CREATE_UNICODE_ENVIRONMENT` for a Unicode block.
@@ -5012,7 +5012,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-213 — Executable lookup changes across Process and PTY environment modes
 
 - **Classification:** confirmed cross-API process-launch inconsistency
-- **Area:** POSIX `Viper.System.Process.Start*` and `Viper.System.Pty.Open*`
+- **Area:** POSIX `Zanna.System.Process.Start*` and `Zanna.System.Pty.Open*`
 - **Evidence:** Process always calls `posix_spawn`, so bare program names are not searched through
   `PATH`. PTY calls `execvp` when inheriting the environment but switches to `execve` when an
   explicit environment Seq is supplied, so adding an environment changes a previously searchable
@@ -5043,7 +5043,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-214 — PTY Resize reports success without observing backend success
 
 - **Classification:** confirmed status-reporting bug
-- **Area:** `Viper.System.Pty.PtySession.Resize`
+- **Area:** `Zanna.System.Pty.PtySession.Resize`
 - **Evidence:** the public function returns true for every valid handle. The POSIX helper discards
   the result of `ioctl(TIOCSWINSZ)`, and the Windows helper discards the ConPTY HRESULT; neither
   communicates success to the caller.
@@ -5064,7 +5064,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-215 — PTY LastError is an unsynchronized process-global buffer
 
 - **Classification:** confirmed data race / diagnostic corruption
-- **Area:** `Viper.System.Pty.LastError`, `Open`, `OpenResult`, and `IsSupported`
+- **Area:** `Zanna.System.Pty.LastError`, `Open`, `OpenResult`, and `IsSupported`
 - **Evidence:** every path reads or writes the static `char pty_last_error[256]` with
   `snprintf`/plain byte access. A source comment calls PTY main-thread-only, but the public methods
   contain no main-thread assertion and the registry exposes no such constraint.
@@ -5086,9 +5086,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-216 — Windows Machine.OSVer can return a compatibility version
 
 - **Classification:** confirmed obsolete-platform-API defect
-- **Area:** `Viper.System.Machine.OsVer` / `Environment.PlatformVersion`
+- **Area:** `Zanna.System.Machine.OsVer` / `Environment.PlatformVersion`
 - **Evidence:** Windows calls deprecated `GetVersionExA`, whose result is conditioned on the
-  embedding executable's supported-OS compatibility manifest. Viper's packaging code can generate
+  embedding executable's supported-OS compatibility manifest. Zanna's packaging code can generate
   such a manifest when configured, but the runtime API itself is also used by unmanifested native
   outputs/custom embedders and has no direct version-query fallback. Other platform paths query the
   kernel/product release directly.
@@ -5104,16 +5104,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `RtlGetVersion` is unavailable, and to `"unknown"` if both fail. The file-header note and
   system.md were corrected. Windows-only branch (`#ifdef _WIN32`), so it does not compile on macOS;
   verified by inspection against the documented `RtlGetVersion` behavior, and the macOS build is
-  unaffected. Exercising the manifest-independence needs a by-hand `build_viper_win.cmd` run on
+  unaffected. Exercising the manifest-independence needs a by-hand `build_zanna_win.cmd` run on
   Windows 10/11. **Resolved (Windows behavior pending a by-hand Windows build).**
 
-### VDOC-217 — Windows Machine text queries bypass Viper's UTF-8 conversion path
+### VDOC-217 — Windows Machine text queries bypass Zanna's UTF-8 conversion path
 
 - **Classification:** confirmed cross-platform Unicode inconsistency
-- **Area:** `Viper.System.Machine.Host`, `User`, `Home`, and `Temp`
+- **Area:** `Zanna.System.Machine.Host`, `User`, `Home`, and `Temp`
 - **Evidence:** these functions use `GetComputerNameA`, `GetUserNameA`, `GetTempPathA`, and narrow
   CRT environment strings, then copy the bytes directly into runtime Strings. In the same module,
-  `Viper.System.Environment` deliberately uses wide Win32 APIs and strict UTF-16/UTF-8 conversion.
+  `Zanna.System.Environment` deliberately uses wide Win32 APIs and strict UTF-16/UTF-8 conversion.
 - **Impact:** non-ASCII user names, host names, and paths can become invalid UTF-8 or mojibake and
   then fail downstream path/string APIs.
 - **Likely repair point:** switch Machine queries to their wide forms and reuse the validated
@@ -5124,7 +5124,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   validated `rt_file_path_wide_to_string` (the same UTF-8 boundary conversion the codebase uses
   elsewhere), instead of the narrow `*A` APIs and `getenv` that copied ANSI bytes verbatim. Non-ASCII
   host/user names and paths now round-trip as valid UTF-8, consistent with
-  `Viper.System.Environment`. system.md updated. Windows-only branches (`#ifdef _WIN32`), so they do
+  `Zanna.System.Environment`. system.md updated. Windows-only branches (`#ifdef _WIN32`), so they do
   not compile on macOS; verified by inspection and the POSIX paths are unchanged (`test_rt_machine`
   green, `Machine.User`/`Host` still resolve). The non-ASCII round-trip needs a by-hand Windows build
   to exercise the wide APIs. **Resolved (Windows behavior pending a by-hand Windows build).**
@@ -5132,7 +5132,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-218 — Machine.MemFree measures different memory categories by platform
 
 - **Classification:** confirmed cross-platform semantic inconsistency
-- **Area:** `Viper.System.Machine.MemFree`
+- **Area:** `Zanna.System.Machine.MemFree`
 - **Evidence:** Linux returns only `sysinfo.freeram`, macOS returns
   `(free_count + inactive_count) * page_size`, and Windows returns `ullAvailPhys`. These represent
   strict free pages, free-plus-reclaimable pages, and available physical memory respectively.
@@ -5154,7 +5154,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-219 — macOS Machine.Cores can return a non-positive count
 
 - **Classification:** confirmed fallback-contract bug
-- **Area:** `Viper.System.Machine.Cores`
+- **Area:** `Zanna.System.Machine.Cores`
 - **Evidence:** Linux/generic POSIX check `sysconf(_SC_NPROCESSORS_ONLN) > 0` and fall back to 1.
   The macOS branch returns a successful `hw.logicalcpu` value without checking it and returns the
   raw `sysconf` result on failure, including `-1`.
@@ -5174,7 +5174,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-220 — SetAltScreen is not an idempotent toggle and cleanup does not exit it
 
 - **Classification:** confirmed terminal-state lifecycle bug
-- **Area:** `Viper.Terminal.SetAltScreen`
+- **Area:** `Zanna.Terminal.SetAltScreen`
 - **Evidence:** every true call emits the enter sequence and increments output batch depth; every
   false call decrements it. No alternate-screen state guards repeated calls. The registered exit
   handler only restores POSIX termios—it does not balance batching or emit the alternate-screen
@@ -5209,7 +5209,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** register the i64 wrappers and validate/clamp before narrowing, or change
   the public signature with the required compatibility/ADR treatment.
 - **Review (2026-07-16):** Confirmed and fixed by registering the i64 wrappers AND making them
-  clamp. The registry now maps `Viper.Terminal.ReadKeyFor` / `SetColor` / `SetPosition` to the
+  clamp. The registry now maps `Zanna.Terminal.ReadKeyFor` / `SetColor` / `SetPosition` to the
   i64-parameter symbols `rt_getkey_timeout` / `rt_term_color` / `rt_term_locate` (was the `_i32`
   variants, which silently dropped the high 32 bits at the ABI boundary). Those wrappers previously
   still cast `(int32_t)` (same truncation); they now route each parameter through a new saturating
@@ -5225,7 +5225,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-222 — System runtime metadata hides nulls, traps, and owned results
 
 - **Classification:** confirmed machine-readable registry metadata inconsistency
-- **Area:** `viper --dump-runtime-api` for Environment, Exec, Process, PTY, Machine, Unsafe, GC,
+- **Area:** `zanna --dump-runtime-api` for Environment, Exec, Process, PTY, Machine, Unsafe, GC,
   and Terminal
 - **Evidence:** current JSON calls `Environment.Cwd`, Process reads, PTY reads/resize, Unsafe
   release/value-type operations, and `GC.Collect` infallible despite documented trap paths. Process
@@ -5247,14 +5247,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `kNullableReturns` list to `runtimeReturnNullable` (spawn handles now report `nullable: true`,
   keeping the orthogonal `fallibility: infallible` since a null return is not a trap) and three
   entries to the `explicitRuntimeFallibility` override table (`Unsafe.Release`/`ReleaseStr` →
-  `traps`, `PtySession.Resize` → `status`) in `src/tools/viper/main.cpp`. Pinned all three
+  `traps`, `PtySession.Resize` → `status`) in `src/tools/zanna/main.cpp`. Pinned all three
   corrected contracts in `src/tests/tools/AgentCliTests.cmake` (the `agent_cli` ctest) and
   documented the System coverage of the override tables in `docs/tools/cli.md`. **Resolved.**
 
 ### VDOC-223 — Time's POSIX failure fallback is not monotonic
 
 - **Classification:** confirmed fallback-contract inconsistency
-- **Area:** `Viper.Time.Clock`, `Countdown`, and `Stopwatch` on POSIX
+- **Area:** `Zanna.Time.Clock`, `Countdown`, and `Stopwatch` on POSIX
 - **Evidence:** all three implementations prefer `CLOCK_MONOTONIC` but call `CLOCK_REALTIME` if
   that query fails. `Clock` then returns `0` if realtime also fails; Stopwatch does the same,
   while Countdown traps. The public page and implementation headers previously called the values
@@ -5277,13 +5277,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `test_ratchet_non_decreasing` to `RTClockTests.cpp` (exercises forward/backward/equal streams and
   independent floors directly, runs on all platforms), and rewrote the previously inaccurate
   "can decrease" / "not monotonic" language in `rt_time.c`/`.h`, `rt_stopwatch.c`, `rt_countdown.c`,
-  and `docs/viperlib/time.md`. Build clean; `test_rt_clock`/`stopwatch`/`countdown`/`timer` and the
+  and `docs/zannalib/time.md`. Build clean; `test_rt_clock`/`stopwatch`/`countdown`/`timer` and the
   strict runtime audit all pass. **Resolved.**
 
 ### VDOC-224 — Windows time objects race while caching QPC frequency
 
 - **Classification:** confirmed C data race
-- **Area:** first concurrent use of `Viper.Time.Countdown` and `Viper.Time.Stopwatch` on Windows
+- **Area:** first concurrent use of `Zanna.Time.Countdown` and `Zanna.Time.Stopwatch` on Windows
 - **Evidence:** each `get_timestamp_*` helper has a function-static mutable `LARGE_INTEGER freq`.
   Threads read and write `freq.QuadPart` without atomics or a once primitive. The source comments
   called the duplicate initialization benign because QPC frequency is constant, but identical
@@ -5306,12 +5306,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   asserting every reading is non-negative and non-decreasing (a torn frequency would surface as a
   negative/out-of-order value). The test races the process-global frequency cache on Windows and
   exercises the monotonic path's thread safety on POSIX. Build clean; stopwatch/countdown/clock
-  tests pass. Updated the "not synchronized" language in `docs/viperlib/time.md`. **Resolved.**
+  tests pass. Updated the "not synchronized" language in `docs/zannalib/time.md`. **Resolved.**
 
 ### VDOC-225 — DateTime.Create cannot distinguish failure from a valid instant
 
 - **Classification:** confirmed sentinel collision
-- **Area:** `Viper.Time.DateTime.Create`
+- **Area:** `Zanna.Time.DateTime.Create`
 - **Evidence:** invalid, normalized, skipped-DST, or unrepresentable civil input returns `-1`.
   However the implementation accepts pre-epoch dates, and under `TZ=UTC` an existing-binary probe
   confirms `Create(1969, 12, 31, 23, 59, 59) == -1` for the valid instant one second before the
@@ -5321,22 +5321,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** add an Option/Result creation API and retain the numeric sentinel only as
   an explicitly named compatibility method.
 - **Review (2026-07-16):** Confirmed and resolved along the recommended path. The registry name for
-  the sentinel form is `Viper.Time.DateTime.FromParts` (bound to `rt_datetime_create`); it still
+  the sentinel form is `Zanna.Time.DateTime.FromParts` (bound to `rt_datetime_create`); it still
   returns `-1` both for failure and for the valid instant one second before the epoch. Extracted the
   full validation/`mktime`/round-trip logic into a shared `dt_create_impl(..., int64_t *out)` that
   returns a success flag, so success is no longer encoded in the returned instant. `rt_datetime_create`
   now delegates to it as the legacy sentinel compatibility form, and a new
   `rt_datetime_create_option` returns `Some(i64)` for any valid instant — including the pre-epoch
   `-1` — and `None` on failure, mirroring the existing `TryParseOption` convention (both use
-  `rt_option_some_i64`/`rt_option_none`). Registered as `Viper.Time.DateTime.TryFromParts`
-  (`obj<Viper.Option>(i64×6)`, RT_FUNC + RT_METHOD); `--dump-runtime-api` classifies it
+  `rt_option_some_i64`/`rt_option_none`). Registered as `Zanna.Time.DateTime.TryFromParts`
+  (`obj<Zanna.Option>(i64×6)`, RT_FUNC + RT_METHOD); `--dump-runtime-api` classifies it
   `fallibility: option` / `ownership: owned`. Added `test_create_option` to `RTDatetimeTests.cpp`
   (forces `TZ=UTC` portably via a `_WIN32`-guarded `set_tz` helper, then verifies the sentinel
   collision, `Some(-1)` for the pre-epoch instant, `Some(0)` for the epoch, agreement with the
   sentinel value for valid input, and `None` for invalid month/leap-day/huge-year). Ran
   `check_runtime_completeness.sh`, regenerated `docs/generated/runtime`, and confirmed the strict
   audit, `runtime_reference_docs`, `agent_cli`, and `test_rt_datetime` all pass. Documented the new
-  form in `docs/viperlib/time.md`. Note: this finding does not cover the repeated-DST-hour ambiguity
+  form in `docs/zannalib/time.md`. Note: this finding does not cover the repeated-DST-hour ambiguity
   (that is VDOC-226, next). **Resolved.**
 
 ### VDOC-226 — Local DateTime construction leaves repeated DST hours host-defined
@@ -5352,7 +5352,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** expose an explicit ambiguity policy or parse Result carrying both
   candidates; use the embedded zone engine for deterministic named-zone civil conversion.
 - **Review (2026-07-16):** Confirmed and resolved with a fixed, host-independent ambiguity policy
-  (satisfying Viper's determinism principle). Replaced the single `mktime(tm_isdst = -1)` +
+  (satisfying Zanna's determinism principle). Replaced the single `mktime(tm_isdst = -1)` +
   round-trip pattern with a shared `dt_resolve_local_tm` helper that evaluates **both** DST states
   explicitly, accepts only interpretations whose result round-trips back to the exact input fields,
   and — for a repeated hour that round-trips through both — selects the **earlier UTC instant** (the
@@ -5366,13 +5366,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   repeated 2025-11-02 01:30 hour resolves to the EDT (earlier) instant on any host, that the skipped
   2025-03-09 02:30 hour is rejected by both the sentinel and Option forms, and that an unambiguous
   local time still round-trips. Build clean; `test_rt_datetime` passes. Rewrote the VDOC-226 note in
-  `docs/viperlib/time.md`. The deeper embedded-zone-engine option was not needed to remove the
+  `docs/zannalib/time.md`. The deeper embedded-zone-engine option was not needed to remove the
   host-dependence the finding flagged. **Resolved.**
 
 ### VDOC-227 — RelativeTime.FormatDuration emits negative zero
 
 - **Classification:** confirmed formatting defect
-- **Area:** `Viper.Time.RelativeTime.FormatDuration`
+- **Area:** `Zanna.Time.RelativeTime.FormatDuration`
 - **Evidence:** the function records the sign before dividing the magnitude into whole seconds.
   It emits a sign whenever the input is negative even when every whole-unit component is zero. An
   existing-binary probe confirms `FormatDuration(-1) == "-0s"` while `FormatDuration(999) ==
@@ -5391,15 +5391,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `test_duration_negative_subsecond` to `RTRelTimeTests.cpp` (covers `-1`, `-999`, `999` → `"0s"`,
   and `-1000`/`-1500` → `"-1s"` to confirm real magnitudes still keep their sign). Build clean;
   `test_rt_reltime`/`test_rt_reltime_format` pass. Updated the `FormatDuration` note in
-  `docs/viperlib/time.md`. **Resolved.**
+  `docs/zannalib/time.md`. **Resolved.**
 
 ### VDOC-228 — TimeZone.Find loses its class type in Zia
 
 - **Classification:** confirmed registry/type-system integration defect
-- **Area:** `Viper.Time.TimeZone.Find` and instance members
+- **Area:** `Zanna.Time.TimeZone.Find` and instance members
 - **Evidence:** the registry declares `Find` as `obj(str)`, not
-  `obj<Viper.Time.TimeZone>(str)`. Existing-compiler checks reject both instance chaining on the
-  inferred `Any` and assignment to a `Viper.Time.TimeZone` local. The explicit-receiver forms
+  `obj<Zanna.Time.TimeZone>(str)`. Existing-compiler checks reject both instance chaining on the
+  inferred `Any` and assignment to a `Zanna.Time.TimeZone` local. The explicit-receiver forms
   `TimeZone.get_Name(zone)`, `OffsetAt(zone, ts)`, and `IsDstAt(zone, ts)` compile and run.
 - **Impact:** the documented instance API is not directly usable from the natural Zia lookup
   expression; completion/type checking loses the class immediately after a successful find.
@@ -5407,13 +5407,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   chaining/typed-assignment coverage, with the required compatibility review for signature
   metadata changes.
 - **Review (2026-07-16):** Confirmed and resolved. Changed the `TimeZoneFind` RT_FUNC and the
-  `Find` RT_METHOD from `obj(str)` to `obj<Viper.Time.TimeZone>(str)` so the return carries its
+  `Find` RT_METHOD from `obj(str)` to `obj<Zanna.Time.TimeZone>(str)` so the return carries its
   concrete class. The C symbol `rt_tz_find` still returns `void*`, so this is a metadata-only
   refinement with no ABI change. Compatibility review of the ownership facet: `rt_tz_find` hands
   back a borrowed handle into process-lifetime static data ("must not be freed"), but the generic
   `obj<...>` ownership heuristic would have mislabeled the typed return as `owned`; added a
-  `kBorrowedTypedObj` override in `inferRuntimeOwnership` (`src/tools/viper/main.cpp`), evaluated
-  before the generic rule, so `--dump-runtime-api` now reports `obj<Viper.Time.TimeZone>` /
+  `kBorrowedTypedObj` override in `inferRuntimeOwnership` (`src/tools/zanna/main.cpp`), evaluated
+  before the generic rule, so `--dump-runtime-api` now reports `obj<Zanna.Time.TimeZone>` /
   `fallibility: traps` (unchanged, via the existing Find special-case) / `ownership: borrowed`.
   Added Zia coverage: `src/tests/fixtures/rt_api/test_timezone.zia` (auto-discovered `zia_rt_api`
   suite) assigns `TimeZone.Find(...)` to a `TZ`-typed local and chains `.OffsetAt`/`.IsDstAt`/
@@ -5421,7 +5421,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   run (UTC offset 0, Tokyo +32400). Pinned the corrected typed/borrowed contract in the `agent_cli`
   test. Ran `check_runtime_completeness.sh`, regenerated `docs/generated/runtime`, and confirmed the
   strict audit, `runtime_reference_docs`, and `agent_cli` pass. Updated the TimeZone section of
-  `docs/viperlib/time.md`. **Resolved.**
+  `docs/zannalib/time.md`. **Resolved.**
 
 ### VDOC-229 — Time instance APIs accept and reinterpret wrong-class objects
 
@@ -5454,7 +5454,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (RTCountdownTests/RTStopwatchTests/RTDateOnlyTests/RTDateRangeTests): each passes a live object of
   a *different* class to every method and asserts a trap; the pre-existing null-receiver and valid
   paths still pass, and the full `rt_api` Zia suite is green. Updated the receiver notes in
-  `docs/viperlib/time.md` and the `rt_daterange.c` header invariant. The third sub-recommendation —
+  `docs/zannalib/time.md` and the `rt_daterange.c` header invariant. The third sub-recommendation —
   making the front end reject incompatible explicit receivers at compile time — is a larger,
   separate change (retyping ~40 explicit-receiver registry params from bare `obj` to the concrete
   `obj<...>`, with golden/dispatch review) and is deferred: it would turn the deterministic runtime
@@ -5486,7 +5486,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   with it within a second, and is never `-1` (the errno-driven failure branch is not deterministically
   unit-testable without mocking `time()`, which is noted). Build clean; strict audit,
   `test_rt_datetime`/`dateonly`/`reltime` pass. Updated the `Now`/`Today` note in
-  `docs/viperlib/time.md`. **Resolved.**
+  `docs/zannalib/time.md`. **Resolved.**
 
 ### VDOC-231 — DateOnly accepts years its serializer cannot round-trip
 
@@ -5515,13 +5515,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Nothing` for an out-of-domain result. Verified all repo `DateOnly.Create` call sites use in-domain
   years (2023/2024/2026) and the `FromDays` demo round-trips an in-domain date, so nothing breaks.
   Build clean; `test_rt_dateonly` and the rt_api time suite pass. Updated the `Create` row, the
-  round-trip note, and the null-check guidance in `docs/viperlib/time.md`, and the `ToString`/`Create`
+  round-trip note, and the null-check guidance in `docs/zannalib/time.md`, and the `ToString`/`Create`
   doc comments in `rt_dateonly.c`. **Resolved.**
 
 ### VDOC-232 — Time runtime metadata hides nullability, traps, and ownership
 
 - **Classification:** confirmed machine-readable registry metadata inconsistency
-- **Area:** `viper --dump-runtime-api` for `Viper.Time.*`
+- **Area:** `zanna --dump-runtime-api` for `Zanna.Time.*`
 - **Evidence:** checked DateTime/Duration arithmetic, Stopwatch/Countdown receivers, and range
   subtraction are marked `fallibility=infallible`; `DateTime.ParseISO`/`ParseDate` are marked as
   trapping although they return numeric sentinels. `DateOnly.Create`, `Today`, and `Parse`, plus
@@ -5534,7 +5534,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   distinguish static/borrowed zone handles from owned objects, and assert these known cases in the
   metadata audit.
 - **Review (2026-07-16):** Confirmed and resolved the harmful metadata gaps in
-  `src/tools/viper/main.cpp`. (1) **Sentinel parsers:** added `DateTime.ParseIso8601` / `ParseDate`
+  `src/tools/zanna/main.cpp`. (1) **Sentinel parsers:** added `DateTime.ParseIso8601` / `ParseDate`
   / `ParseTime` and `DateOnly.Parse` to the `explicitRuntimeFallibility` override table as
   `sentinel` — they signal failure with `0`/`-1`/`NULL`, not the `traps` the "Parse* traps"
   heuristic assigned, so tools stop inventing trap handling for them. (2) **Nullable object
@@ -5542,7 +5542,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `DateOnly.FromParts` / `Today` / `Parse` / `FromDays` / `AddDays` / `AddMonths` / `AddYears` and
   `DateRange.Intersection` / `Union` — to `runtimeReturnNullable`, so `nullable: true` now drives the
   null branch (following the VDOC-222 precedent that a null return and a trap are orthogonal axes).
-  (3) **Ownership:** added a blanket `Viper.Time.*` bare-`obj`/`seq` → `owned` rule (mirroring the
+  (3) **Ownership:** added a blanket `Zanna.Time.*` bare-`obj`/`seq` → `owned` rule (mirroring the
   Math rule) so freshly allocated `AddDays` / `StartOfMonth` / `Intersection` / `Today` / `Parse` /
   `StartNew` results report `owned` instead of `unknown`; the one borrowed Time object,
   `TimeZone.Find`'s static handle, is already classified `borrowed` by the VDOC-228 override, which
@@ -5559,7 +5559,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 - **Classification:** confirmed cross-layer registry inconsistency
 - **Area:** runtime registry, surface policy, front ends, tooling, and tests
-- **Evidence:** the current registry no longer declares `Viper.Core.Parse.TryNum`, but
+- **Evidence:** the current registry no longer declares `Zanna.Core.Parse.TryNum`, but
   `RuntimeSurfacePolicy.inc` still requires both the function and the class method. A direct
   source-registry audit therefore fails with two errors. Zia and BASIC compatibility rewrites,
   diagnostic/explanation code, ownership/signature lookups, method-index tests, runtime tests,
@@ -5572,17 +5572,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   critical breakage — a red source-registry audit from `RuntimeSurfacePolicy.inc` requiring a
   registry entry that no longer exists — was already resolved: the policy no longer names `TryNum`,
   `rtgen --audit --strict-unclassified` passes, and `TestMethodIndex`/`TestConvertBinding` now
-  positively *assert* `Viper.Core.Parse.TryNum` is absent from the method index. ADR 0031 (which
+  positively *assert* `Zanna.Core.Parse.TryNum` is absent from the method index. ADR 0031 (which
   added `TryDouble`/`DoubleOr` and explicitly anticipated "a future breaking cleanup [to] decide
   whether compatibility aliases should be hidden or retired") is the governing record; the
   public-surface standardization executed that retirement, so I cleaned up the material that still
   advertised the removed spellings rather than restoring them (which would undo the deliberate
   standardization the tests now enforce). Fixes: removed the `TryNum`/`NumOr` rows from the
-  `Viper.Core.Parse` table in `docs/viperlib/core.md`; rewrote the false "remain available as
-  compatibility aliases" prose in `docs/viperlib/utilities.md`, `docs/languages/basic-reference.md`, and
+  `Zanna.Core.Parse` table in `docs/zannalib/core.md`; rewrote the false "remain available as
+  compatibility aliases" prose in `docs/zannalib/utilities.md`, `docs/languages/basic-reference.md`, and
   `docs/languages/basic-namespaces.md` to state the spellings were retired; marked ADR 0031 **Superseded**
   with a note that the retirement occurred; corrected the stale `rt_parse_double →
-  Viper.Core.Parse.TryNum` normalization label in `check_il_bounds.cmake` to `TryDouble` (matching
+  Zanna.Core.Parse.TryNum` normalization label in `check_il_bounds.cmake` to `TryDouble` (matching
   the already-correct `BasicToIlBatchRunner.cpp`, which the cmake copy had drifted from — no golden
   `.il` actually contains the symbol, so no golden regen); and fixed the stale `Parse.TryNum`
   mention in an `rt_numeric_conv.c` doc comment. The internal C primitive `rt_parse_try_num` (which
@@ -5644,7 +5644,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-236 — Config queries leak retained JSON values
 
 - **Classification:** confirmed runtime ownership bug
-- **Area:** `Viper.Game.Config.GetInt`, `GetStr`, `GetBool`, and `Has`
+- **Area:** `Zanna.Game.Config.GetInt`, `GetStr`, `GetBool`, and `Has`
 - **Evidence:** each method calls `rt_jsonpath_get` as an existence check. That helper explicitly
   retains the resolved value, but none of the four Config paths releases the retained result.
   Three of them then perform a second lookup for conversion, so every successful query leaks at
@@ -5668,14 +5668,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   on heap-backed values. To enable a precise, regression-catching test I added a borrowed internal
   accessor `rt_config_json_root` (classified `RUNTIME_SURFACE_INTERNAL_SYMBOL`, not a script-facing
   surface). Documented the fixed ownership contract in `rt_config.h` and rewrote the "currently leak"
-  note in `docs/viperlib/game/config.md`. Build clean; `test_rt_config`, the strict runtime-surface
+  note in `docs/zannalib/game/config.md`. Build clean; `test_rt_config`, the strict runtime-surface
   audit, completeness, and `runtime_reference_docs` all pass. **Resolved.**
 
 ### VDOC-237 — Legacy Game registry signatures erase concrete return types
 
 - **Classification:** confirmed registry/type-system integration defect
-- **Area:** function-only `Viper.Game.Entity`, `Behavior`, `Config`, `SceneManager`, Raycast, and
-  `Viper.Game2D.LevelDocument` surfaces
+- **Area:** function-only `Zanna.Game.Entity`, `Behavior`, `Config`, `SceneManager`, Raycast, and
+  `Zanna.Game2D.LevelDocument` surfaces
 - **Evidence:** constructors/loaders return unqualified `obj`; `Config.GetStr` and
   `SceneManager.get_Current`/`get_Previous` also use `obj` even though the C functions return
   runtime strings. Constructor-provenance lets current Zia accept many chained calls, but an
@@ -5684,22 +5684,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** class identity, string typing, completion, nullability, and ownership disappear at
   API boundaries; otherwise valid results cannot be consumed by typed Zia code naturally.
 - **Likely repair point:** add reviewed class definitions and concrete return descriptors
-  (`str`, nullable `obj<Viper.Game...>`, and typed Tilemap results), then cover direct assignment,
+  (`str`, nullable `obj<Zanna.Game...>`, and typed Tilemap results), then cover direct assignment,
   chaining, and completion in both front ends.
 - **Review (2026-07-16):** Fixed the concrete return-descriptor defects that the finding's own probe
   exercised — the string-returning helpers that were mistyped as `obj`. Retyped
-  `Viper.Game.Config.GetStr` (`obj(obj,str,str)` → `str(obj,str,str)`) and
-  `Viper.Game.SceneManager.get_Current` / `get_Previous` (`obj(obj)` → `str(obj)`) in
+  `Zanna.Game.Config.GetStr` (`obj(obj,str,str)` → `str(obj,str,str)`) and
+  `Zanna.Game.SceneManager.get_Current` / `get_Previous` (`obj(obj)` → `str(obj)`) in
   `physics2d.def`; all three C functions already return runtime strings (`rt_config_get_str` returns
   a caller-owned string, the scene helpers return `rt_const_cstr` names), so this is a metadata-only
   refinement with no ABI change. `--dump-runtime-api` now reports `string` / `owned` for the three,
   and a new auto-discovered Zia fixture `test_game_config_str.zia` proves the previously-rejected
   usage compiles and runs: assigning `Config.GetStr(...)` to a `String` local and passing it to a
-  `String` parameter. Updated the "erroneous `Any`" notes in `docs/viperlib/game/config.md` and
+  `String` parameter. Updated the "erroneous `Any`" notes in `docs/zannalib/game/config.md` and
   `scenemanager.md`, ran `check_runtime_completeness.sh`, and regenerated `docs/generated/runtime`.
   Scope note: the finding's remaining recommendation — introducing reviewed `RT_CLASS` definitions
   for the function-only `Entity` / `Behavior` / `Config` / `SceneManager` / `Raycast` /
-  `LevelDocument` namespaces and retyping their constructors to nullable `obj<Viper.Game...>` — is a
+  `LevelDocument` namespaces and retyping their constructors to nullable `obj<Zanna.Game...>` — is a
   larger structural registry change: a typed constructor return adds no method-chaining value
   without the accompanying class definition, and adding six class definitions restructures method
   dispatch across both front ends with golden and completion impact, which warrants its own ADR and
@@ -5710,24 +5710,24 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-238 — LevelDocument's nullable loader traps on ordinary file errors
 
 - **Classification:** confirmed failure-contract inconsistency
-- **Area:** `Viper.Game2D.LevelDocument.Load`
+- **Area:** `Zanna.Game2D.LevelDocument.Load`
 - **Evidence:** the loader is documented and registered as a nullable object factory, but it calls
   `rt_io_file_read_all_text` without an existence/error preflight. Missing paths, permission
   failures, non-regular files, short reads, and close failures trap before `Load` can return null.
-  `Viper.Game.Config.Load`, by contrast, explicitly converts a missing file into null.
+  `Zanna.Game.Config.Load`, by contrast, explicitly converts a missing file into null.
 - **Impact:** callers cannot implement the documented null fallback for the most common load
   failure, and closely related game JSON loaders have incompatible error behavior.
 - **Likely repair point:** provide a Result-based load API and make the nullable compatibility path
   consistently soft-fail, or document/register it as trapping and expose the I/O error.
 - **Review (2026-07-16):** Confirmed and resolved by making the nullable path soft-fail on the
-  common case, consistent with `Viper.Game.Config.Load`. `rt_leveldata_load` called
+  common case, consistent with `Zanna.Game.Config.Load`. `rt_leveldata_load` called
   `rt_io_file_read_all_text` (which traps inside the hardened I/O path) with no preflight, so a
   missing file trapped before `Load` could return null. Added an `rt_io_file_exists` existence
   pre-check (the same non-trapping helper `Config.Load` uses) so a missing path now returns NULL,
   letting callers implement the documented fallback. Added `LevelData.MissingFileReturnsNull` to
   `TestLevelData.cpp` (a trap would abort the test, so passing proves the soft-fail). Matching the
   scope of `Config.Load`, other I/O faults (permission, non-regular file, short/close errors) still
-  trap from the hardened read — I documented that explicitly in `docs/viperlib/game/leveldata.md`
+  trap from the hardened read — I documented that explicitly in `docs/zannalib/game/leveldata.md`
   rather than swallowing every error, since a Result-based API surfacing the specific I/O error is a
   larger additive change and the finding's stated impact is the "most common load failure" (a
   missing file). Build clean; `test_rt_leveldata` passes. **Resolved.**
@@ -5735,7 +5735,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-239 — LevelDocument silently collapses layers and truncates metadata
 
 - **Classification:** confirmed data-model inconsistency / needs triage
-- **Area:** `Viper.Game2D.LevelDocument` JSON import
+- **Area:** `Zanna.Game2D.LevelDocument` JSON import
 - **Evidence:** every `type == "tiles"` layer writes into the same base Tilemap; layer names are
   ignored and later data, including zero tiles, overwrites earlier data. Object `type`/`id` and the
   theme are silently truncated to 31 bytes, potentially at a UTF-8 continuation byte, and only the
@@ -5754,7 +5754,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `is_valid_utf8` checker proving the stored value is well-formed. (2) **Layer collapse** — the
   single-base-`Tilemap` flatten (later tiles layers overwrite earlier, names not preserved) is a
   deliberate model choice, not a bug; preserving named layers would restructure the returned model
-  and its accessors, so I documented it explicitly in `docs/viperlib/game/leveldata.md` (author one
+  and its accessors, so I documented it explicitly in `docs/zannalib/game/leveldata.md` (author one
   tiles layer, or treat the last as authoritative) rather than silently. (3) **Object cap** — 512 is
   a documented bound; reporting overflow would need a diagnostic channel the flat model lacks, and
   trapping would reject valid large levels, so it stays a documented limit. (4) The "still says 256"
@@ -5764,7 +5764,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-240 — Behavior.AddSineFloat documents units the implementation does not use
 
 - **Classification:** confirmed API/implementation contract inconsistency
-- **Area:** `Viper.Game.Behavior.AddSineFloat`
+- **Area:** `Zanna.Game.Behavior.AddSineFloat`
 - **Evidence:** the header calls `amplitude` pixels and `speed` degrees per second. Update actually
   assigns `sin(phase) * amplitude` directly to Entity vertical velocity (centipixels per 16 ms base
   frame), while phase advances by `speed * dt / 16` centidegrees. It does not offset position by a
@@ -5778,7 +5778,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   option (chosen over changing behavior, which demos depend on). The contract is now described
   accurately everywhere and cites this finding: `rt_behavior.h`'s doc comment states "amplitude is a
   centipixel/base-frame velocity and speed advances centidegrees by (speed * dt) / 16 (VDOC-240)",
-  and `docs/viperlib/game/behavior.md` says "Despite the historical names, `amplitude` is a velocity
+  and `docs/zannalib/game/behavior.md` says "Despite the historical names, `amplitude` is a velocity
   magnitude and `speed` advances centidegrees by `speed * dt / 16`." The implementation confirms
   this: `sin(phase) * amplitude` is written straight to the entity's vertical velocity via
   `rt_entity_set_vy` (not a positional offset), and the phase advances by `behavior_phase_delta =
@@ -5791,7 +5791,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-241 — Entity.OnGround is cleared on the first stationary frame after landing
 
 - **Classification:** confirmed game-physics state bug
-- **Area:** `Viper.Game.Entity.MoveAndCollide`
+- **Area:** `Zanna.Game.Entity.MoveAndCollide`
 - **Evidence:** every call clears all collision flags, but vertical collision is checked only when
   the computed Y displacement is nonzero. An existing-binary probe lands an Entity on a solid tile
   (`OnGround == true`), calls `MoveAndCollide` again after vertical velocity was zeroed, and gets
@@ -5812,13 +5812,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   clears once the entity steps off or jumps (its bottom is no longer flush). Added
   `Entity.OnGroundPersistsWhileRestingOnSolidTile` (`TestEntity.cpp`): it lands an entity, asserts
   `OnGround` stays true across three zero-`vy` frames, and that moving up clears it. Updated the
-  `OnGround` notes in `docs/viperlib/game/entity.md` and `behavior.md`. Build clean; entity,
+  `OnGround` notes in `docs/zannalib/game/entity.md` and `behavior.md`. Build clean; entity,
   behavior, and platformer tests pass. **Resolved.**
 
 ### VDOC-242 — A ray on the maximum map boundary samples the last in-bounds tile
 
 - **Classification:** confirmed raycast boundary bug
-- **Area:** `Viper.Game.Raycast.HasLineOfSight` / internal tilemap DDA
+- **Area:** `Zanna.Game.Raycast.HasLineOfSight` / internal tilemap DDA
 - **Evidence:** clipping treats `x == mapWidth` and `y == mapHeight` as inside, then clamps those
   coordinates to `mapWidth - 1`/`mapHeight - 1`. With a solid one-tile map, an existing-binary
   probe reports a vertical segment at `x == mapWidth` blocked, while the same segment one pixel
@@ -5838,13 +5838,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   last column correctly. Added `Raycast.TilemapMaxBoundaryRayIsClear` (`TestRaycast2D.cpp`) covering
   a fully-solid 1×1 map: interior ray blocks, the right and bottom max-boundary rays (and one pixel
   beyond) are clear, and the inclusive left/top min edges still block — documenting the intended
-  half-open asymmetry. Updated `docs/viperlib/game/raycast.md`. Build clean; `test_rt_raycast_2d`
+  half-open asymmetry. Updated `docs/zannalib/game/raycast.md`. Build clean; `test_rt_raycast_2d`
   passes. **Resolved.**
 
 ### VDOC-243 — SceneManager silently aliases long names and drops excess scenes
 
 - **Classification:** confirmed bounded-registry API inconsistency
-- **Area:** `Viper.Game.SceneManager.Add` and name-based switching
+- **Area:** `Zanna.Game.SceneManager.Add` and name-based switching
 - **Evidence:** the manager stores at most 64 names in fixed 128-byte buffers. `Add` silently
   ignores entries after the cap and truncates every name to 127 bytes before duplicate detection,
   so distinct long names with the same prefix alias. No result reports either condition.
@@ -5861,7 +5861,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   rather than a truncated alias. Added `SceneManager.OverlongSceneNamesAreRejectedNotAliased`
   (`TestSceneManager.cpp`): a 127-byte name is accepted, two 128-byte names sharing a 127-prefix are
   both rejected (not aliased), and switching to an over-long name is a no-op. Updated
-  `docs/viperlib/game/scenemanager.md`. Scope: converting `Add` from `void` to a boolean/Result
+  `docs/zannalib/game/scenemanager.md`. Scope: converting `Add` from `void` to a boolean/Result
   status — the finding's other recommendation — is a runtime **C ABI surface change** (return type),
   which requires an ADR per the project's spec-first rule, so it is deferred; callers can still
   detect a rejected name or the 64-scene cap by checking `IsScene` afterward, which the docs now
@@ -5893,7 +5893,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   returns normally. Added `test_basic_control_recovery.cpp` (new `fe_basic` ctest) with both the
   reduced one-loop and the nested Game-of-Life-shaped forms of `NEXT` used as an identifier,
   asserting each reports diagnostics and — crucially — that analysis *returns* rather than aborting.
-  Verified end-to-end via `viper front basic`: the nested reproducer now exits with structured
+  Verified end-to-end via `zanna front basic`: the nested reproducer now exits with structured
   errors (B0001/B1002), not SIGABRT. The finding's additional "reject keywords as identifiers at
   declaration" suggestion would improve the specific diagnostic wording, but the malformed source
   already produces errors and the process-termination impact — an editor/server taken down by one
@@ -5904,7 +5904,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-245 — Config defaults are ignored when an existing value has the wrong type
 
 - **Classification:** confirmed typed-getter contract inconsistency
-- **Area:** `Viper.Game.Config.GetInt`, `GetBool`, and `GetStr`
+- **Area:** `Zanna.Game.Config.GetInt`, `GetBool`, and `GetStr`
 - **Evidence:** the methods use the caller's default only when the path is absent. Once a value
   exists, conversion helpers return `0`, false, or an empty string for unsupported/unparseable
   input, and that conversion result replaces the supplied default. `GetStr` additionally has the
@@ -5927,13 +5927,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Added `GameConfig.WrongTypeValueReturnsSuppliedDefault` (`TestConfig.cpp`): object/array/text
   values return the default from `GetInt`/`GetBool`/`GetStr`, while genuine numbers, numeric strings,
   and scalar-to-text coercions still convert. Updated the `GetInt`/`GetBool`/`GetStr` rows in
-  `docs/viperlib/game/config.md`. Ran `check_runtime_completeness.sh` and the strict audit (both
+  `docs/zannalib/game/config.md`. Ran `check_runtime_completeness.sh` and the strict audit (both
   green); `test_rt_config` and the json/rt_api suites pass. **Resolved.**
 
 ### VDOC-246 — `SaveData.Save` traps on some failures despite its Boolean contract
 
 - **Classification:** confirmed failure-contract inconsistency
-- **Area:** `Viper.IO.SaveData.Save`
+- **Area:** `Zanna.IO.SaveData.Save`
 - **Evidence:** the method and adjacent source comment promise `false` on failure, but parent
   creation delegates to trapping `Dir.MakeAll`, and failure to obtain secure randomness for the
   temporary filename calls `rt_trap` before returning zero. Permission, disk, path-component, and
@@ -5957,12 +5957,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   since the test's non-expecting `vm_trap` aborts, reaching the assertion at all proves the
   soft-fail. Chose the "catch/return false" repair over a Result surface (which would be an ABI
   change needing an ADR); a richer inspectable error can follow separately. Updated
-  `docs/viperlib/game/persistence.md`. Build clean; `test_rt_savedata` passes. **Resolved.**
+  `docs/zannalib/game/persistence.md`. Build clean; `test_rt_savedata` passes. **Resolved.**
 
 ### VDOC-247 — Quest IDs accept and alias embedded-NUL suffixes
 
 - **Classification:** confirmed string-validation / persistence bug
-- **Area:** `Viper.Game.Quests` registration and lookup
+- **Area:** `Zanna.Game.Quests` registration and lookup
 - **Evidence:** `quests_valid_id()` validates `strlen(rt_string_cstr(id))`, so a valid prefix before
   an embedded NUL is accepted while all bytes after it escape the `[A-Za-z0-9._-]` and 64-byte
   checks. Lookups use `strcmp` and the save formatter uses `%s`, making distinct runtime strings
@@ -5984,12 +5984,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   not-found instead of matching a registered id by prefix. Added `TestQuests.cpp` (new
   `test_rt_quests` ctest): a NUL-bearing id traps at registration, and a NUL-bearing lookup key does
   not activate the prefix-matching quest (the clean key still does, proving no aliasing occurred).
-  Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
+  Updated `docs/zannalib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-248 — Quest mutation methods do not enforce objective kind
 
 - **Classification:** confirmed state-machine API bug
-- **Area:** `Viper.Game.Quests.SetFlag` and `Progress`
+- **Area:** `Zanna.Game.Quests.SetFlag` and `Progress`
 - **Evidence:** objectives store `is_counter`, but neither mutation checks it. `SetFlag` assigns the
   target to a counter and completes it; `Progress` increments a flag and can complete it. Both then
   emit normal completion/advancement events.
@@ -6006,13 +6006,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Extended `TestQuests.cpp` with a flag+counter stage: `SetFlag` on the counter and `Progress` on
   the flag are rejected (return 0, objective stays incomplete), while the matching calls succeed
   (partial counter progress is used so the stage does not auto-advance and invalidate the
-  index-based completion queries). Updated `docs/viperlib/game/quests.md`. Build clean;
+  index-based completion queries). Updated `docs/zannalib/game/quests.md`. Build clean;
   `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-249 — Quest progress can overflow before it is clamped
 
 - **Classification:** confirmed signed-overflow bug
-- **Area:** `Viper.Game.Quests.Progress`
+- **Area:** `Zanna.Game.Quests.Progress`
 - **Evidence:** the implementation performs `objective->progress += amount` on signed `int64_t`
   before comparing with and clamping to the target. A sufficiently large positive increment can
   overflow, which is undefined behavior in C and may become negative rather than completing.
@@ -6028,12 +6028,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   clamps straight to the target when `amount >= headroom` and only performs `progress += amount`
   otherwise. Extended `TestQuests.cpp` to progress a target-5 counter by `INT64_MAX` and assert the
   stored progress saturates to `5` (not a wrapped/negative value) and the objective completes.
-  Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
+  Updated `docs/zannalib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-250 — Legal maximum-size quests cannot always be serialized
 
 - **Classification:** confirmed persistence-budget inconsistency
-- **Area:** `Viper.Game.Quests.Save`
+- **Area:** `Zanna.Game.Quests.Save`
 - **Evidence:** the public registration budgets allow 16 stages with 8 objectives each and IDs up
   to 64 characters, but serialization builds each entire quest record in one fixed `char[512]`.
   Progress for only a small fraction of a legal maximum quest exhausts that buffer, at which point
@@ -6051,13 +6051,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the `q=...;s=...;g=...` header and each `;o=<stage>.<obj>:<progress>` record — straight to the
   dynamic buffer. There is no longer any per-quest size bound. Extended `TestQuests.cpp` with a
   full-budget quest (8 objectives, ~60-byte stage/objective IDs, progress on each, serialized record
-  ~1 KB) and asserts `Save` returns `1`. Updated `docs/viperlib/game/quests.md`. Build clean;
+  ~1 KB) and asserts `Save` returns `1`. Updated `docs/zannalib/game/quests.md`. Build clean;
   `test_rt_quests` passes. (The related temp-string leak is VDOC-251, next.) **Resolved.**
 
 ### VDOC-251 — Quest persistence leaks temporary runtime strings
 
 - **Classification:** confirmed runtime ownership bug
-- **Area:** `Viper.Game.Quests.Save` and `Load`
+- **Area:** `Zanna.Game.Quests.Save` and `Load`
 - **Evidence:** `Save` constructs owned runtime strings for the fixed key and serialized value,
   passes them to a setter that retains them, and never releases the temporaries. `Load` likewise
   constructs a key/default and receives the freshly retained result of `SaveData.GetString`, but
@@ -6077,13 +6077,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   canonical empty string and needs none. Added a 200-iteration Save/Load round-trip to
   `TestQuests.cpp` that re-registers the tracker and asserts progress round-trips each cycle; besides
   exercising the balanced ownership it would crash on any double-free/use-after-free introduced by
-  the change. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes.
+  the change. Updated `docs/zannalib/game/quests.md`. Build clean; `test_rt_quests` passes.
   **Resolved.**
 
 ### VDOC-252 — Quest loading weakly parses and partially applies malformed state
 
 - **Classification:** confirmed persistence-validation bug
-- **Area:** `Viper.Game.Quests.Load`
+- **Area:** `Zanna.Game.Quests.Load`
 - **Evidence:** the loader splits and mutates registered quests in place, parses numeric fields
   with `atoll` without end-pointer or overflow validation, ignores malformed/unknown fields, and
   returns true for almost any nonempty blob. It has no transaction or rollback, so later bad fields
@@ -6106,13 +6106,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   forward-compatible data patches stay safe. Extended `TestQuests.cpp`: a blob with valid leading
   fields plus a trailing unrecognized field is rejected and leaves the quest unmodified (still
   hidden), non-strict integers (garbage, 23-digit overflow) are rejected, and a well-formed blob
-  still loads. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` (including the
+  still loads. Updated `docs/zannalib/game/quests.md`. Build clean; `test_rt_quests` (including the
   200-cycle round-trip) passes. **Resolved.**
 
 ### VDOC-253 — Quest hot re-registration can leave a completed stage stuck active
 
 - **Classification:** confirmed state-migration inconsistency
-- **Area:** `Viper.Game.Quests.AddFlag` / `AddCounter` on existing objectives
+- **Area:** `Zanna.Game.Quests.AddFlag` / `AddCounter` on existing objectives
 - **Evidence:** re-registration changes objective kind and target but retains progress and does not
   run advancement. If the new target is at or below retained progress, later `SetFlag`/`Progress`
   returns false because the objective is already done and also skips `quests_check_advance`.
@@ -6131,13 +6131,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   only a genuine hot re-registration of an active quest triggers migration. Extended
   `TestQuests.cpp`: a counter is progressed to 8/10 on an active quest, then re-registered with
   target 5, and the quest is asserted to reach `COMPLETE` (the single-objective stage advances)
-  rather than staying stranded. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests`
+  rather than staying stranded. Updated `docs/zannalib/game/quests.md`. Build clean; `test_rt_quests`
   passes. **Resolved.**
 
 ### VDOC-254 — Clearing scene diagnostics also erases schema invalidity
 
 - **Classification:** confirmed editor-document state bug
-- **Area:** `Viper.Game2D.SceneDocument.ClearDiagnostics`
+- **Area:** `Zanna.Game2D.SceneDocument.ClearDiagnostics`
 - **Evidence:** `ClearDiagnostics` clears messages and unconditionally sets `SceneState.valid =
   true`. Compatibility loads normalize bad dimensions, missing fields, tile-count errors, and
   other invalid input into a document; clearing their diagnostics consequently makes
@@ -6156,7 +6156,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   one that loaded with errors). Extended `RTSceneEditorTests.cpp`: after loading a malformed scene
   (`HasErrors()==1`), `ClearDiagnostics` leaves `HasErrors()` true, while the existing
   clear-on-a-valid-scene-with-a-warning case still reports no errors. Updated
-  `docs/viperlib/game/scene.md`. Build clean; `test_rt_scene_editor` passes. **Resolved.**
+  `docs/zannalib/game/scene.md`. Build clean; `test_rt_scene_editor` passes. **Resolved.**
 
 ### VDOC-255 — Scene Result loaders can return warning text as the error
 
@@ -6182,13 +6182,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `RTSceneEditorTests.cpp`: a scene with an invalid dimension (error) followed by an unknown field
   (warning) is confirmed to have `lastError` == the trailing warning (≠ the first error), and its
   `LoadJsonResult` `Err` message is asserted to equal the first error message, proving the trailing
-  warning no longer masks it. Updated `docs/viperlib/game/scene.md`. Build clean;
+  warning no longer masks it. Updated `docs/zannalib/game/scene.md`. Build clean;
   `test_rt_scene_editor` passes. **Resolved.**
 
 ### VDOC-256 — SceneDocument construction dereferences a failed handle allocation
 
 - **Classification:** confirmed allocation / recoverable-trap bug
-- **Area:** `Viper.Game2D.SceneDocument` construction and load paths
+- **Area:** `Zanna.Game2D.SceneDocument` construction and load paths
 - **Evidence:** `handleFromState()` calls `rt_obj_new_i64` and immediately writes `h->state`
   without checking `h`. If the runtime allocation trap hook returns null, this becomes a null
   dereference. If the subsequent C++ `new SceneState` throws, the exception barrier returns null
@@ -6257,7 +6257,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-259 — Long DebugOverlay watch names duplicate and cannot be removed normally
 
 - **Classification:** confirmed bounded-name / lookup bug
-- **Area:** `Viper.Game.DebugOverlay.Watch` and `Unwatch`
+- **Area:** `Zanna.Game.DebugOverlay.Watch` and `Unwatch`
 - **Evidence:** a new watch name is copied into a 32-byte C buffer and silently truncated to 31
   bytes, but lookup before insertion compares the caller's full NUL-terminated text with stored
   names. Repeating the same long name therefore misses the truncated entry and consumes another
@@ -6280,13 +6280,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   renders a split multi-byte sequence. Added two tests to `RTDebugOverlayTests.cpp`: watching a
   40-byte name 20 times stores nothing (neither the full nor the truncated prefix is found) and
   leaves all 16 slots free for distinct valid names, and a 31-byte name round-trips (repeat updates
-  one slot, `Unwatch` removes it). Updated `docs/viperlib/game/debug.md`. Build clean;
+  one slot, `Unwatch` removes it). Updated `docs/zannalib/game/debug.md`. Build clean;
   `test_rt_debugoverlay` passes. **Resolved.**
 
 ### VDOC-260 — Pathfinder's registry cleanup contradicts its ADRs and remaining consumers
 
 - **Classification:** confirmed cross-layer runtime-surface inconsistency
-- **Area:** `Viper.Game.Pathfinder`, `PathResult`, ADRs, tests, generated docs, and built tools
+- **Area:** `Zanna.Game.Pathfinder`, `PathResult`, ADRs, tests, generated docs, and built tools
 - **Evidence:** the current source registry exposes result-returning operations under `FindPath`
   and `FindNearest` and removes `FindPathResult`, `FindNearestResult`, `FindPathLength`, mutable
   last-search properties, and `PathResult.Length`. ADR 0050 defines the `*Result` names, while ADR
@@ -6299,7 +6299,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   ADR, retain reviewed aliases for compatibility, and update all layers atomically.
 - **Review (2026-07-16):** Confirmed and reconciled to the code's committed direction (the same
   public-surface standardization that drove VDOC-233/234). The registry has settled on the canonical
-  names — `Pathfinder.FindPath`/`FindNearest` returning `obj<Viper.Game.PathResult>`, and
+  names — `Pathfinder.FindPath`/`FindNearest` returning `obj<Zanna.Game.PathResult>`, and
   `PathResult.StepCount` — and the removal is intentional: the backing C symbols
   `rt_path_result_length` and `rt_pathfinder_find_path_length` are retained but classified
   `RUNTIME_SURFACE_INTERNAL_SYMBOL`, so the native ABI is preserved while the scripting surface drops
@@ -6312,7 +6312,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   **Superseded** (its "keep `PathResult.Length` as a compatibility alias" decision was reversed;
   `StepCount` is now sole), annotated ADR 0050's status to record that its `*Result` names were
   shortened and `Length` retired while its result-object decision stands, and rewrote the "Current
-  Surface Migration" section of `docs/viperlib/game/pathfinding.md` from "uncoordinated drift in
+  Surface Migration" section of `docs/zannalib/game/pathfinding.md` from "uncoordinated drift in
   progress" to the reconciled end state. No registry/code change was needed (the surface was already
   cleaned); this closes the cross-layer inconsistency by aligning the decision records and docs with
   the shipped surface. **Resolved.**
@@ -6320,7 +6320,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-261 — `Pathfinder.FromTilemap` ignores the designated collision layer
 
 - **Classification:** confirmed game-navigation snapshot bug
-- **Area:** `Viper.Game.Pathfinder.FromTilemap`
+- **Area:** `Zanna.Game.Pathfinder.FromTilemap`
 - **Evidence:** Tilemap collision queries and body resolution read
   `tilemap->layers[collision_layer]`, but the Pathfinder importer calls the base-only
   `rt_tilemap_get_tile(x, y)` for every cell. It never reads `get_CollisionLayer` or
@@ -6342,7 +6342,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `test_from_tilemap_uses_collision_layer` to `test_rt_pathfinder.cpp`: a decorative wall on the base
   layer and the real wall on the collision layer, with the collision layer designated — the base
   wall is walkable and the collision wall blocks, the opposite of the old base-only behavior.
-  Updated `docs/viperlib/game/pathfinding.md`. Build clean; `test_rt_pathfinder` (23 tests) passes.
+  Updated `docs/zannalib/game/pathfinding.md`. Build clean; `test_rt_pathfinder` (23 tests) passes.
   **Resolved.**
 
 ### VDOC-262 — Pathfinder factories and path payloads erase their concrete collection types
@@ -6351,28 +6351,28 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Area:** `Pathfinder.FromTilemap`, `FromGrid2D`, and `PathResult.Path`
 - **Evidence:** both import factories are registered as returning bare `obj`, and the `Path`
   property is also `obj` even though runtime code returns a retained
-  `Viper.Collections.List` whose entries are `Viper.Collections.Seq` objects. This differs from the
+  `Zanna.Collections.List` whose entries are `Zanna.Collections.Seq` objects. This differs from the
   typed `PathResult` operation returns in the current class registry. Current Zia recovers the
   factory result from its qualified owner, but the declared inventory type remains erased.
 - **Impact:** tooling and frontends without owner provenance lose factory identity. For `Path`, the
   current Zia compiler rejects both assignment and an `as` cast from `Any` to
-  `Viper.Collections.List`; callers must invoke low-level static List/Seq functions and explicitly
+  `Zanna.Collections.List`; callers must invoke low-level static List/Seq functions and explicitly
   unbox coordinates.
-- **Likely repair point:** register `obj<Viper.Game.Pathfinder>` and
-  `obj<Viper.Collections.List>` returns (and, when supported, a typed point representation rather
+- **Likely repair point:** register `obj<Zanna.Game.Pathfinder>` and
+  `obj<Zanna.Collections.List>` returns (and, when supported, a typed point representation rather
   than nested untyped objects).
 - **Review (2026-07-16):** Confirmed and resolved with concrete return types. Retyped
-  `Viper.Game.Pathfinder.FromTilemap` and `FromGrid2D` from `obj(obj)` to
-  `obj<Viper.Game.Pathfinder>(obj)`, and `Viper.Game.PathResult.get_Path` from `obj(obj)` to
-  `obj<Viper.Collections.List>(obj)` in `physics2d.def` — plus the matching `Path` `RT_PROP` in
-  `game_ui.def`. Both `Viper.Game.Pathfinder` and `Viper.Collections.List` are registered classes, so
+  `Zanna.Game.Pathfinder.FromTilemap` and `FromGrid2D` from `obj(obj)` to
+  `obj<Zanna.Game.Pathfinder>(obj)`, and `Zanna.Game.PathResult.get_Path` from `obj(obj)` to
+  `obj<Zanna.Collections.List>(obj)` in `physics2d.def` — plus the matching `Path` `RT_PROP` in
+  `game_ui.def`. Both `Zanna.Game.Pathfinder` and `Zanna.Collections.List` are registered classes, so
   these are metadata-only refinements (the C symbols still return `void*`, no ABI change), and
   `--dump-runtime-api` now reports the concrete types with `ownership: owned` (the factories and the
   path list are freshly allocated). Added an auto-discovered Zia fixture
-  `test_pathfinder_typed.zia` proving the previously-rejected usage: `var pf: Viper.Game.Pathfinder =
-  Pathfinder.FromGrid2D(g)` with instance-method chaining, and `var path: Viper.Collections.List =
+  `test_pathfinder_typed.zia` proving the previously-rejected usage: `var pf: Zanna.Game.Pathfinder =
+  Pathfinder.FromGrid2D(g)` with instance-method chaining, and `var path: Zanna.Collections.List =
   result.Path` with `path.Count`/`path.Get(i)`. Ran `check_runtime_completeness.sh`, regenerated
-  `docs/generated/runtime`, and rewrote the Zia example in `docs/viperlib/game/pathfinding.md` to use
+  `docs/generated/runtime`, and rewrote the Zia example in `docs/zannalib/game/pathfinding.md` to use
   the typed forms. The finding's "typed point representation" idea (a struct instead of a two-element
   Seq) is a deeper data-model change left for a separate reviewed effort; the erased factory/list
   types the finding centered on are resolved. Build clean; `agent_cli`, `runtime_reference_docs`,
@@ -6405,14 +6405,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `StepCount == -1` — no truncated success. The allocation-failure path needs an injected
   `malloc`/`operator new` failure to trigger and is not deterministically unit-testable, so it is
   verified by inspection; the existing `test_rt_pathfinder` (23 tests) confirms normal path building
-  is unaffected. Updated `docs/viperlib/game/pathfinding.md`. Making allocation failure *distinguishable*
+  is unaffected. Updated `docs/zannalib/game/pathfinding.md`. Making allocation failure *distinguishable*
   from a real miss (a typed error result) remains a larger API change and is noted, not implemented;
   the harmful false-success is resolved. Build clean. **Resolved.**
 
 ### VDOC-264 — Timer mode is recorded but never enforced
 
 - **Classification:** confirmed timing API/state inconsistency
-- **Area:** `Viper.Game.Timer` frame and millisecond modes
+- **Area:** `Zanna.Game.Timer` frame and millisecond modes
 - **Evidence:** `Start`/`StartMs` set an `ms_mode` field, but no update or query reads it.
   `Update()` therefore adds one to a millisecond timer, while `UpdateMs(dt)` adds `dt` to a
   frame-started timer. `Elapsed` and `ElapsedMs` (likewise Remaining) are aliases over the same
@@ -6429,17 +6429,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   advancing on an `ms_mode` timer, and `UpdateMs()` returns 0 on a frame timer — so a wrong call
   simply does nothing (the developer sees a stuck timer) instead of silently misfiring. To close the
   "callers cannot inspect the active contract" gap, added `rt_timer_is_ms` and registered it as the
-  `Viper.Game.Timer.IsMs` boolean property (RT_FUNC in `vectors.def` + RT_PROP in `input_game.def`),
+  `Zanna.Game.Timer.IsMs` boolean property (RT_FUNC in `vectors.def` + RT_PROP in `input_game.def`),
   ran `check_runtime_completeness.sh`, and regenerated the runtime docs. Added `test_mode_is_enforced`
   to `RTTimerTests.cpp`: `UpdateMs` on a frame timer and `Update` on an ms timer are both ignored (no
   advance), the correct-mode calls advance, and `IsMs` reports the mode. Updated the `Timer` property
-  table and usage notes in `docs/viperlib/game/core.md`. Build clean; `test_rt_frame_timer`,
+  table and usage notes in `docs/zannalib/game/core.md`. Build clean; `test_rt_frame_timer`,
   `agent_cli`, and `runtime_reference_docs` pass. **Resolved.**
 
 ### VDOC-265 — ScreenFX removes effects before their terminal frame is observable
 
 - **Classification:** confirmed transition/fade lifecycle bug
-- **Area:** `Viper.Game.ScreenFX.Update`, `Draw`, and `TransitionProgress`
+- **Area:** `Zanna.Game.ScreenFX.Update`, `Draw`, and `TransitionProgress`
 - **Evidence:** `Update(dt)` marks a slot `NONE` as soon as `elapsed >= duration`, before the type
   switch computes output and before a subsequent `Draw()` can render it. A headless existing-binary
   probe advanced a 100 ms wipe by 99 ms and then 1 ms; `TransitionProgress` printed `990` followed
@@ -6462,7 +6462,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `transition_terminal_progress_is_1000`, plus the `flash`/`huge_shake` lifecycle tests that
   encoded the old instant-removal timing) and `test_rt_screenfx_transitions` (wipe/circle/dissolve/
   pixelate/multiple lifecycle tests now advance past the terminal frame). Rewrote the terminal-frame
-  and header docs (`rt_screenfx.h`, `docs/viperlib/game/effects.md`). Both suites pass. **Resolved.**
+  and header docs (`rt_screenfx.h`, `docs/zannalib/game/effects.md`). Both suites pass. **Resolved.**
 
 ### VDOC-266 — ScreenFX `CancelType` leaves canceled output cached and drawable
 
@@ -6485,15 +6485,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   after removing the matching effects — when no matching effect existed the recompute simply rebuilds
   the same state over the slots the caller already scanned. Added `cancel_type_clears_cached_overlay`
   and `cancel_type_clears_stale_shake_offset` to `RTScreenFXTests` (both fail without the recompute)
-  and rewrote the `CancelType` prose and Zia example in `docs/viperlib/game/effects.md`. **Resolved.**
+  and rewrote the `CancelType` prose and Zia example in `docs/zannalib/game/effects.md`. **Resolved.**
 
-### VDOC-267 — ScreenFX colors are incompatible with Viper's normal Color representation
+### VDOC-267 — ScreenFX colors are incompatible with Zanna's normal Color representation
 
 - **Classification:** public API representation inconsistency
 - **Area:** ScreenFX flash/fade colors, transition colors, and `OverlayColor`
 - **Evidence:** flash/fade inputs interpret untagged `0xRRGGBBAA` with alpha in the low byte;
   transitions interpret Canvas `0x00RRGGBB`; `OverlayColor` returns `0xRRGGBB00`. In contrast,
-  `Viper.Graphics.Color.RGBA` returns a tagged `0xAARRGGBB` value. A headless probe passed tagged
+  `Zanna.Graphics.Color.RGBA` returns a tagged `0xAARRGGBB` value. A headless probe passed tagged
   opaque red to `Flash` and observed alpha 0, while raw `0xFF0000FF` produced alpha 252 after the
   same update.
 - **Impact:** the canonical Color constructor produces invisible or channel-shifted ScreenFX
@@ -6512,13 +6512,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `ScreenFX.Rgba(r,g,b,a)` packs the `0xRRGGBBAA` overlay format (Flash/FadeIn/FadeOut) and
   `ScreenFX.Rgb(r,g,b)` packs the `0x00RRGGBB` transition format (Wipe/Circle*/Dissolve/Pixelate),
   both clamping channels to [0,255]. Registered as static (no-receiver) methods on the existing
-  ScreenFX class — the same pattern `Viper.Graphics.Color` uses — so no new class or ADR is needed.
+  ScreenFX class — the same pattern `Zanna.Graphics.Color` uses — so no new class or ADR is needed.
   Backed by `rt_screenfx_rgba`/`rt_screenfx_rgb` (RT_FUNC in physics2d.def + RT_METHOD in
   game_ui.def); ran check_runtime_completeness, regenerated the runtime docs, strict audit passes.
   Added `color_constructors_pack_screenfx_byte_orders` to `RTScreenFXTests` and the Zia fixture
   `test_screenfx_color.zia` proving the static call resolves through the frontend and the packed
   overlay drives a real alpha. Documented the byte-order split and the constructors in
-  `docs/viperlib/game/effects.md` and the header. The full unification remains ADR-gated future
+  `docs/zannalib/game/effects.md` and the header. The full unification remains ADR-gated future
   work. **Resolved.**
 
 ### VDOC-268 — ScreenFX type constants are private while shipped audits use the wrong IDs
@@ -6543,9 +6543,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (RT_FUNC in physics2d.def + RT_PROP in game_ui.def, the same `Color.Red`-style constant pattern),
   and corrected both audit demos to use `ScreenFX.TypeShake`. Added `named_constants_match_enum` to
   `RTScreenFXTests` (asserts each constant equals the private enum and that `CancelType(TypeShake)`
-  genuinely cancels the shake), verified both audits exit 0, and `eval 'Viper.Game.ScreenFX.TypeShake'`
+  genuinely cancels the shake), verified both audits exit 0, and `eval 'Zanna.Game.ScreenFX.TypeShake'`
   returns 1. check_runtime_completeness / strict audit / doc regen all pass. Rewrote the "Numeric
-  effect and direction codes" section of `docs/viperlib/game/effects.md` to document the named
+  effect and direction codes" section of `docs/zannalib/game/effects.md` to document the named
   constants and the 0≠shake footgun. **Resolved.**
 
 ### VDOC-269 — ScreenFX “circle” and “pixelate” transitions do not implement their named effects
@@ -6575,13 +6575,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   breaking public rename (ADR-gated, and it would break xenoscape and friends), the method keeps its
   name but the docs now state plainly that it is a stylized mosaic-grid approximation and point
   callers to `Dissolve`/circle/wipe for faithful covering transitions. Updated the rendering-notes
-  section and draw/ header comments in `docs/viperlib/game/effects.md` and `rt_screenfx.h`. Build,
+  section and draw/ header comments in `docs/zannalib/game/effects.md` and `rt_screenfx.h`. Build,
   strict surface audit, `test_runtime_surface_cli`, and the ScreenFX suites pass. **Resolved.**
 
 ### VDOC-270 — Lighting2D glows do not reveal the scene beneath the darkness overlay
 
 - **Classification:** confirmed rendering-contract bug
-- **Area:** `Viper.Game.Lighting2D.Draw`
+- **Area:** `Zanna.Game.Lighting2D.Draw`
 - **Evidence:** Draw first calls `Canvas.BoxAlpha` for full-screen darkness, then calls
   `Canvas.DiscAlpha` for player, dynamic, and tile lights. Both primitives are source-over blends;
   there is no subtraction, destination-alpha reduction, mask, or redraw of the underlying scene.
@@ -6600,7 +6600,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Canvas blend capability (ADR), not a doc-review change. The runtime contract had in fact already
   been corrected to state this plainly — `rt_lighting2d.h` Draw ("does not subtract darkness or
   reveal the underlying scene inside a light"), the `.c` header comment ("These rings do not
-  subtract the darkness overlay"), and `docs/viperlib/game/effects.md`'s "Current rendering
+  subtract the darkness overlay"), and `docs/zannalib/game/effects.md`'s "Current rendering
   limitation" section ("not light holes"). The remaining false prose was in the shipped example:
   `examples/games/xenoscape/lighting.zia` described the lights as "cut out of" the darkness and
   "punched out." Rewrote that tutorial prose to describe the additive source-over glow accurately
@@ -6626,24 +6626,24 @@ the checked-in generators, documentation audits, and already-existing binaries o
   turn the player glow off. Wrapped the entire Step-2 player-light block in `if (lit->player_radius
   > 0)`, making a zero base radius a true off switch while darkness, dynamic, and tile lights keep
   working. Also exposed the state per the finding's second half: added `rt_lighting2d_get_player_radius`
-  and registered it as the read-only `Viper.Game.Lighting2D.PlayerRadius` property (RT_FUNC in
+  and registered it as the read-only `Zanna.Game.Lighting2D.PlayerRadius` property (RT_FUNC in
   physics2d.def + RT_PROP in game_ui.def) so callers can observe whether the player light is enabled
   (`0` = off). Added `ZeroPlayerRadiusDisablesPlayerLight` to `TestLighting2D` (default 180; zero and
   negative both collapse to 0; a positive radius re-enables) and verified the property resolves via
   `eval`. The 0–10px pulse the finding also noted is already documented accurately in effects.md, so
   only the disable behavior needed fixing. Rewrote the "Current rendering limitation" note and added
-  the `PlayerRadius` row to the property table in `docs/viperlib/game/effects.md`.
+  the `PlayerRadius` row to the property table in `docs/zannalib/game/effects.md`.
   check_runtime_completeness / strict audit / doc regen / `test_rt_lighting2d` all pass. **Resolved.**
 
 ### VDOC-272 — Effects classes expose inconsistent constructor and cleanup metadata
 
 - **Classification:** registry/type-tooling inconsistency
 - **Area:** ParticleEmitter, ScreenFX, and Lighting2D class descriptors
-- **Evidence:** `ParticleEmitter.New` is typed as `obj<Viper.Game.ParticleEmitter>` and Destroy is
+- **Evidence:** `ParticleEmitter.New` is typed as `obj<Zanna.Game.ParticleEmitter>` and Destroy is
   an instance method. `Lighting2D.New` returns bare `obj` but Destroy is an instance method.
   `ScreenFX.New` also returns bare `obj`, while Destroy appears only as a static `void(obj)` target
   in the class inventory. Current Zia recovers owner identity and accepts both
-  `fx.Destroy()` and `Viper.Game.ScreenFX.Destroy(fx)`, masking the metadata split for source code.
+  `fx.Destroy()` and `Zanna.Game.ScreenFX.Destroy(fx)`, masking the metadata split for source code.
 - **Impact:** generated references and generic tooling see three different lifecycle shapes for
   closely related instance handles, and frontends without Zia's owner-based recovery lose the two
   untyped constructor results.
@@ -6651,8 +6651,8 @@ the checked-in generators, documentation audits, and already-existing binaries o
   convention across the three classes.
 - **Review (2026-07-16):** Confirmed and resolved by aligning all three to the ParticleEmitter shape
   (typed `New` + instance `Destroy`), which was already correct. `Lighting2D.New` and `ScreenFX.New`
-  returned bare `obj`; retyped both to `obj<Viper.Game.Lighting2D>(i64)` and
-  `obj<Viper.Game.ScreenFX>()` so frontends without Zia's owner recovery keep the concrete type and
+  returned bare `obj`; retyped both to `obj<Zanna.Game.Lighting2D>(i64)` and
+  `obj<Zanna.Game.ScreenFX>()` so frontends without Zia's owner recovery keep the concrete type and
   generated references show one lifecycle shape. `ScreenFX` had no instance `Destroy` (only the
   static `void(obj)` target), so added `RT_METHOD("Destroy", "void()", ScreenFXDestroy)` to the class
   — mirroring how `Lighting2D`/`ParticleEmitter` register both the static RT_FUNC and the instance
@@ -6660,12 +6660,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   proving typed-local assignment (`var fx: FX = FX.New()`) and instance `fx.Destroy()` now compile for
   all three classes — the typed-local form was rejected before the retyping. check_runtime_completeness
   / strict audit / doc regen / agent_cli / the fixture all pass. Updated the ScreenFX `Destroy` doc
-  row in `docs/viperlib/game/effects.md`. **Resolved.**
+  row in `docs/zannalib/game/effects.md`. **Resolved.**
 
 ### VDOC-273 — Tween integer entry points silently lose values above binary64 precision
 
 - **Classification:** confirmed numeric-correctness bug
-- **Area:** `Viper.Game.Tween.StartI64`, `LerpI64`, and `ValueI64`
+- **Area:** `Zanna.Game.Tween.StartI64`, `LerpI64`, and `ValueI64`
 - **Evidence:** both integer entry points cast their `int64_t` endpoints to `double` before
   interpolation. An existing-binary probe started a one-frame constant tween at
   `9007199254740993` (2^53 + 1); `ValueI64` returned `9007199254740992`. The later saturating
@@ -6690,7 +6690,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   moving-tween endpoints exact; `LerpI64` endpoints/constants exact) — fails before, passes after;
   existing `start_i64`/`lerp_i64` tests still pass. No registry change (behavior fix in existing
   functions). Rewrote the `StartI64`/`ValueI64`/`LerpI64` rows and precision note in
-  `docs/viperlib/game/animation.md` and the file-header contract. **Resolved.**
+  `docs/zannalib/game/animation.md` and the file-header contract. **Resolved.**
 
 ### VDOC-274 — `AnimStateMachine.AddNamed` can overwrite a numeric state and strand its name
 
@@ -6718,7 +6718,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   (the only clip, so `clip_count == 1`) followed by `AddNamed("walk")` — `Play("walk")` now lands on
   the named clip and `SetInitial(1)` still finds the intact numeric clip (frames 0..5, not the
   named 10..12). Existing named-state tests still pass (fresh machines still get IDs 0,1,…). No
-  registry change. Rewrote the `AddNamed` caveat in `docs/viperlib/game/animation.md` (mixing styles
+  registry change. Rewrote the `AddNamed` caveat in `docs/zannalib/game/animation.md` (mixing styles
   is now safe; documented the shared-ID-space caveat for a later colliding `AddState`). **Resolved.**
 
 ### VDOC-275 — Re-registering the active animation state does not reapply its clip
@@ -6744,7 +6744,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `JustEntered`/`JustExited` edge flags are intentionally left unchanged. Added
   `RedefiningActiveStateRestartsClip` to `TestAnimStateNamed` (advance state 0 to frame 1, redefine
   to 100–101, assert `CurrentFrame` restarts at 100 then advances to 101). No registry change.
-  Updated the AddState overwrite note in `docs/viperlib/game/animation.md`. **Resolved.**
+  Updated the AddState overwrite note in `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-276 — `SetEventFrame` has no public observer
 
@@ -6772,7 +6772,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `TimeZone.Find` typed return — that had never been regenerated, which was failing
   `runtime_reference_docs`; now current). `test_runtime_surface_cli`, `agent_cli`, and the animstate
   suites pass. Removed `SetEventFrame` from the method table and rewrote the legacy-API note in
-  `docs/viperlib/game/animation.md`. **Resolved.**
+  `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-277 — AnimTimeline tween and animation tracks are inert payload records
 
@@ -6800,8 +6800,8 @@ the checked-in generators, documentation audits, and already-existing binaries o
   machine — documented explicitly rather than implying automatic transitions. Added
   `TestAnimTimeline` (`TweenPayloadCInterpolates`: A/B raw, C = 10→15→20 across a halfway then full
   advance; `TweenPayloadCPreservesWideEndpoints`: 2^53+1 endpoint exact) registered via
-  `viper_add_test`. No registry change. Rewrote the AnimTimeline header contract and the
-  `docs/viperlib/game/animation.md` section, tables, and Zia example (now reads `TrackPayloadC`
+  `zanna_add_test`. No registry change. Rewrote the AnimTimeline header contract and the
+  `docs/zannalib/game/animation.md` section, tables, and Zia example (now reads `TrackPayloadC`
   directly). **Resolved.**
 
 ### VDOC-278 — AnimTimeline accepts markers that initial playback can never fire
@@ -6831,12 +6831,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `FrameZeroMarkerFiresOnFirstAdvance` and `MarkersBeyondDurationAreRejected` to `TestAnimTimeline`;
   existing marker tests (`test_rt_runtime_additions`, `test_rt_game_result_objects`) still pass. No
   registry change. Updated the `AddMarker` row and marker-range/entry prose in
-  `docs/viperlib/game/animation.md`. **Resolved.**
+  `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-279 — Animation event snapshot allocation failure masquerades as no events
 
 - **Classification:** error-signaling/allocation ambiguity
-- **Area:** `Viper.Game.AnimationEventBatch` creation and `PollEvents`
+- **Area:** `Zanna.Game.AnimationEventBatch` creation and `PollEvents`
 - **Evidence:** the batch object is allocated first with `count=0`; integer-array overflow or
   `malloc` failure returns that valid empty object without a trap or Result. Both animation
   producers therefore satisfy their non-null batch contract while silently discarding every fired
@@ -6855,11 +6855,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the NULL, letting callers tell OOM from `Count == 0`. (No `kNullableReturns` change: this NULL is
   OOM-only, following the same convention as `New()` constructors, which normal operation never
   hits.) Also addressed the finding's secondary note — typed the `AnimationEventBatch.Ids` return
-  from bare `obj` to `obj<Viper.Collections.Seq>` (RT_FUNC + RT_METHOD). Added
+  from bare `obj` to `obj<Zanna.Collections.Seq>` (RT_FUNC + RT_METHOD). Added
   `AllocationFailureReturnsNullNotEmptyBatch` to `TestAnimTimeline` (empty→valid count 0;
   populated→count 2; count overflow→NULL, exercising the same path as OOM). check_runtime_completeness
   / strict audit / doc regen / agent_cli / runtime_reference_docs pass. Updated the AnimationEventBatch
-  section of `docs/viperlib/game/animation.md`. **Resolved.**
+  section of `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-280 — PathFollower discards movement remainders and can stall forever
 
@@ -6889,7 +6889,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Added `slow_movement_accumulates_and_does_not_stall` to `RTPathFollowTests` (speed 1 on a
   1000-unit segment now moves off zero; the old code stalled at X=0 forever); all existing tests
   (which use exact quotients, remainder 0) still pass. Updated the header invariant comment and the
-  `docs/viperlib/game/animation.md` precision section. The 1001-state per-mille position quantization
+  `docs/zannalib/game/animation.md` precision section. The 1001-state per-mille position quantization
   remains (positions jump on per-mille boundaries) but the underlying travel is no longer lost.
   **Resolved.**
 
@@ -6920,7 +6920,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `degenerate_zero_length_path_completes_immediately` and
   `degenerate_loop_path_deactivates_without_finishing` to `RTPathFollowTests`; the allocation-failure
   retry path is verified by inspection (no malloc injection harness). No registry change. Updated the
-  degenerate-path/allocation prose in `docs/viperlib/game/animation.md`. **Resolved.**
+  degenerate-path/allocation prose in `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-282 — A full ButtonGroup traps before checking whether an ID is already present
 
@@ -6942,12 +6942,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   that would overflow the 256-slot array. Added `duplicate_add_at_capacity_returns_false_not_traps` to
   `RTButtonGroupTests` (fills to capacity, re-adds an existing ID → false with no trap; a trap would
   abort the test); the existing `add_overflow_traps` (new 257th ID → trap) still holds. No registry
-  change. Updated the `Add` prose in `docs/viperlib/game/animation.md`. **Resolved.**
+  change. Updated the `Add` prose in `docs/zannalib/game/animation.md`. **Resolved.**
 
 ### VDOC-283 — ButtonGroup's public previous-selection name disagrees with its diagnostic
 
 - **Classification:** low-severity naming/diagnostic inconsistency
-- **Area:** `Viper.Game.ButtonGroup.SelectPrevious`
+- **Area:** `Zanna.Game.ButtonGroup.SelectPrevious`
 - **Evidence:** the registry exposes `SelectPrevious`, backed by the C function
   `rt_buttongroup_select_prev`, but its wrong-class trap text says `ButtonGroup.SelectPrev`.
   Generated references and callers therefore have no public member matching the diagnostic.
@@ -6955,7 +6955,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** rename the C helper if desired, but make the emitted diagnostic use the
   registered `SelectPrevious` spelling.
 - **Review (2026-07-16):** Confirmed and resolved. `rt_buttongroup_select_prev`'s wrong-class trap
-  text read `ButtonGroup.SelectPrev`, but the registered public name is `Viper.Game.ButtonGroup.SelectPrevious`
+  text read `ButtonGroup.SelectPrev`, but the registered public name is `Zanna.Game.ButtonGroup.SelectPrevious`
   (vectors.def + input_game.def), so a type error pointed users and tooling at a non-existent member.
   Corrected the diagnostic string to `ButtonGroup.SelectPrevious` to match the registry; left the C
   helper name (`rt_buttongroup_select_prev`) unchanged as it is internal. Diagnostic-string fix
@@ -6965,7 +6965,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-284 — SpriteSheet erases concrete and nullable results from its public metadata
 
 - **Classification:** registry/type-contract inconsistency
-- **Area:** `Viper.Graphics.SpriteSheet.New`, `GetRegion`, and `RegionNames`
+- **Area:** `Zanna.Graphics.SpriteSheet.New`, `GetRegion`, and `RegionNames`
 - **Evidence:** the runtime returns a `Pixels` copy from `GetRegion` and a `Seq` from `RegionNames`,
   but both are registered as bare `obj`. `New` is declared non-null and typed as SpriteSheet in the
   registry even though wrong-class/null atlas input returns NULL; `GetRegion` is likewise declared
@@ -6976,7 +6976,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** register nullable concrete return types for SpriteSheet/Pixels and a
   concrete owned Seq return for names, then align constructor fallibility metadata.
 - **Review (2026-07-16):** Confirmed and resolved. Typed the two erased returns: `GetRegion`
-  `obj`→`obj<Viper.Graphics.Pixels>` and `RegionNames` `obj`→`obj<Viper.Collections.Seq>` (RT_FUNC in
+  `obj`→`obj<Zanna.Graphics.Pixels>` and `RegionNames` `obj`→`obj<Zanna.Collections.Seq>` (RT_FUNC in
   graphics2d.def + RT_METHOD in input_game.def), so generated docs and tooling see the concrete
   result identity. Aligned nullability by adding `SpriteSheet.New`, `SpriteSheet.FromGrid`, and
   `SpriteSheet.GetRegion` to `kNullableReturns` in main.cpp — verified against the C code, which
@@ -6987,34 +6987,34 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and `var n: Seq = Sheet.RegionNames(...)` now compile (rejected before the typing), the typed Pixels
   width resolves (16), and a missing region returns null. check_runtime_completeness / strict audit /
   doc regen / agent_cli / runtime_reference_docs / spritesheet fixture all pass. Updated the SpriteSheet
-  member table and prose in `docs/viperlib/game/animation.md`. **Resolved.**
+  member table and prose in `docs/zannalib/game/animation.md`. **Resolved.**
 
 ## Corrected Documentation Mismatches
 
 ### VDOC-D001 — Runtime registry and generated-artifact architecture
 
-- **Status:** corrected in `docs/viperlib/architecture.md`
+- **Status:** corrected in `docs/zannalib/architecture.md`
 - **Mismatch:** the guide described the registry as one X-macro file and omitted generated outputs.
   The current source is a modular manifest under `src/il/runtime/defs`, parsed by `rtgen`, which
   emits five named artifacts. GC trial-count initialization, automatic cycle scans, weak-reference
   ownership, and collection ownership claims were also stale.
 
-### VDOC-D002 — Nonexistent `Viper.Debug.Protocol`
+### VDOC-D002 — Nonexistent `Zanna.Debug.Protocol`
 
-- **Status:** corrected in `docs/viperlib/diagnostics.md`
+- **Status:** corrected in `docs/zannalib/diagnostics.md`
 - **Mismatch:** the handwritten reference named a runtime class that is absent from both the live
   registry and generated runtime reference.
 
 ### VDOC-D003 — Lazy, Option, and Result behavior and surface
 
-- **Status:** corrected in `docs/viperlib/functional.md`
+- **Status:** corrected in `docs/zannalib/functional.md`
 - **Mismatch:** the guide called public Lazy values deferred, omitted Option's boolean API and most
   Option/Result combinators, described non-trapping `Value`/`OkValue` accessors as unwrap aliases,
   and omitted payload-type restrictions and exact rendering/equality behavior.
 
 ### VDOC-D004 — Input reference drift
 
-- **Status:** corrected in `docs/viperlib/input.md`
+- **Status:** corrected in `docs/zannalib/input.md`
 - **Mismatch:** the guide omitted smooth wheel accessors and the `fps3d` action preset, treated
   boxed key-code sequence elements as integers, overstated mouse capture/relative-mode behavior,
   misstated KeyChord limits/timing, generalized `-1` gamepad handling to methods that reject it,
@@ -7022,7 +7022,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D005 — Codec and UUID reference drift
 
-- **Status:** corrected in `docs/viperlib/text/encoding.md`
+- **Status:** corrected in `docs/zannalib/text/encoding.md`
 - **Mismatch:** the UUID guide named obsolete RFC 4122 as the current specification, described
   superseded entropy APIs, did not distinguish syntax validation from version/variant validation,
   and implied all accepted UUID hex must be lowercase. The codec guide also omitted that hex
@@ -7030,7 +7030,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D006 — Conversion, formatting, logging, and parsing reference drift
 
-- **Status:** corrected in `docs/viperlib/utilities.md`
+- **Status:** corrected in `docs/zannalib/utilities.md`
 - **Mismatch:** the guide incorrectly promised exact `Fmt.Num` round trips, used shortened names
   for the public log-level properties, omitted formatter clamps and unsigned-radix behavior, and
   did not document the safe parser's accepted non-finite spellings. Context-dependent BASIC
@@ -7038,8 +7038,8 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D007 — Structured-data format reference drift
 
-- **Status:** corrected in `docs/viperlib/text/formats.md`
-- **Mismatch:** the guide named nonexistent `Viper.Unbox.*` functions, gave stale `Json.TypeOf`
+- **Status:** corrected in `docs/zannalib/text/formats.md`
+- **Mismatch:** the guide named nonexistent `Zanna.Unbox.*` functions, gave stale `Json.TypeOf`
   result names, used Zia-only Json aliases in BASIC, treated Seq values as having `Length`, called
   a full-input JSON tokenizer incremental, and overstated CSV/TOML/XML/YAML standards conformance.
   It also misstated delimiter length, INI section counts, XML `Root`/`Parent`/`Remove` semantics,
@@ -7048,7 +7048,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D008 — Formatting and generation reference drift
 
-- **Status:** corrected in `docs/viperlib/text/formatting.md`
+- **Status:** corrected in `docs/zannalib/text/formatting.md`
 - **Mismatch:** the guide required boxed template strings even though raw runtime strings work,
   hid the `Template.Keys` Bag/Seq registry conflict, claimed `TextWrapper.Fill` normalizes
   whitespace, described byte widths as character/display widths, and gave a wrong `Shorten`
@@ -7058,7 +7058,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D009 — Pattern-matching reference drift
 
-- **Status:** corrected in `docs/viperlib/text/patterns.md`
+- **Status:** corrected in `docs/zannalib/text/patterns.md`
 - **Mismatch:** the page described byte regex operations as character-oriented, omitted the
   pattern-string NUL truncation and zero-width transformation data loss, and overstated grouping,
   character-class, and capture behavior. Scanner byte/token/trap semantics were incomplete;
@@ -7067,7 +7067,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D010 — Localization reference drift
 
-- **Status:** corrected across `docs/viperlib/localization/`
+- **Status:** corrected across `docs/zannalib/localization/`
 - **Mismatch:** the guides presented the locale parser as full BCP-47 validation, described
   `FromParts` as independently validating pre-split components, and hid opaque collection return
   types. They overstated locale JSON's UTF-8 and formatter-template validation, Unicode direction
@@ -7078,7 +7078,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D011 — Sequential and functional collection reference drift
 
-- **Status:** corrected in `docs/viperlib/collections/sequential.md` and `functional.md`
+- **Status:** corrected in `docs/zannalib/collections/sequential.md` and `functional.md`
 - **Mismatch:** List equality was documented as identity-only even though it compares boxed values,
   Deque omitted its capacity factory/alias, and Ring exposed `First`/`Last` properties as methods.
   Queue/Stack borrowing constructors, borrowed accessors, Heap/Iterator untyped `ToSeq` results,
@@ -7089,7 +7089,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D012 — Map and set collection reference drift
 
-- **Status:** corrected in `docs/viperlib/collections/maps-sets.md`
+- **Status:** corrected in `docs/zannalib/collections/maps-sets.md`
 - **Mismatch:** Set was documented as identity-only even though it hashes and compares same-tag
   boxed scalars by value. Map omitted its boolean accessors, numeric coercion/type-error behavior,
   present-null semantics, borrowed getters, and hash-order snapshots. OrderedMap incorrectly
@@ -7101,7 +7101,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D013 — Specialized-map reference drift
 
-- **Status:** corrected in `docs/viperlib/collections/multi-maps.md`
+- **Status:** corrected in `docs/zannalib/collections/multi-maps.md`
 - **Mismatch:** BiMap omitted empty lookup results and paired hash-order snapshots. MultiMap hid
   addition order, duplicate handling, independent snapshots, and the `Any` return workaround.
   CountMap omitted non-positive increment/set behavior, tie ordering, and its untyped result trap.
@@ -7113,7 +7113,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D014 — Specialized collection reference drift
 
-- **Status:** corrected in `docs/viperlib/collections/specialized.md`
+- **Status:** corrected in `docs/zannalib/collections/specialized.md`
 - **Mismatch:** the packed-buffer table advertised a nonexistent `Count` property and omitted
   index/slice/overflow behavior. Bag omitted `Clone`, null-byte semantics, and its broken `ToSet`
   conversion. BloomFilter called its operation counter a cardinality, overstated merge-parameter
@@ -7126,7 +7126,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D015 — Collections overview overgeneralized ownership, order, overflow, and thread safety
 
-- **Status:** corrected in `docs/viperlib/collections/README.md`
+- **Status:** corrected in `docs/zannalib/collections/README.md`
 - **Mismatch:** the overview did not distinguish borrowed getters from owning containers, implied
   every snapshot had the same ordering expectations, and presented overflow trapping as a
   universal collection guarantee. It also omitted the namespace distinction for LazySeq,
@@ -7135,9 +7135,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D016 — Zia tooling reference omitted two classes and hid protocol limitations
 
-- **Status:** corrected in `docs/viperlib/zia.md`
-- **Mismatch:** the curated page omitted the complete public `Viper.Zia.Completion` and
-  `Viper.Zia.Document` classes, used generic Object returns where the registry now exposes typed
+- **Status:** corrected in `docs/zannalib/zia.md`
+- **Mismatch:** the curated page omitted the complete public `Zanna.Zia.Completion` and
+  `Zanna.Zia.Document` classes, used generic Object returns where the registry now exposes typed
   Map/Seq/handle results, and did not document completion/signature/hover Map schemas or the
   serialized symbol/token formats. It also hid weak-bridge result differences, the two-worker
   limit, document-mirror revision/range defects, asynchronous fix-it loss, ProjectIndex path and
@@ -7145,7 +7145,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D017 — Audio reference omitted public surfaces and misstated core behavior
 
-- **Status:** corrected in `docs/viperlib/audio.md`
+- **Status:** corrected in `docs/zannalib/audio.md`
 - **Mismatch:** the page omitted the complete Playlist class, audio capability query and backend
   counters, Sound/Music lifecycle methods, Voice metering, Music loop control, and reverb updates.
   It called oldest-started voice stealing LRU, described Synth noise with the wrong decay curve,
@@ -7156,7 +7156,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D018 — Threads reference hid backend gaps and misstated lifetimes and state
 
-- **Status:** corrected in `docs/viperlib/threads.md` and generated runtime summaries
+- **Status:** corrected in `docs/zannalib/threads.md` and generated runtime summaries
 - **Mismatch:** the page said a first Join reclaimed native resources even though POSIX threads
   detach at creation and Windows closes its handle only at wrapper finalization. It omitted
   recursive write locking, Pool backpressure and borrowed/discarded arguments, active-task
@@ -7170,7 +7170,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D019 — Network reference overstated validation and misstated timeout/protocol behavior
 
-- **Status:** corrected in `docs/viperlib/network.md` and implementation-adjacent source comments
+- **Status:** corrected in `docs/zannalib/network.md` and implementation-adjacent source comments
 - **Mismatch:** the guide treated HTTP/WebSocket timeouts as overall deadlines, said TCP `Recv`
   traps on timeout, limited UDP sender metadata to `RecvFrom`, described WebSocket receive methods
   as opcode-specific and protocol failures as trapping, and implied close promptly tears down the
@@ -7198,7 +7198,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D020 — Core reference drifted from String, Parse, Object, and MessageBus behavior
 
-- **Status:** corrected in `docs/viperlib/core.md` and implementation-adjacent source comments
+- **Status:** corrected in `docs/zannalib/core.md` and implementation-adjacent source comments
 - **Mismatch:** the page called `Flip` a byte reversal even though it groups UTF-8-shaped units,
   documented `Like` with glob `*`/`?` instead of SQL `%`/`_`, said LastIndexOf returned `-1` rather
   than a one-based position/zero, and described `TrimChar` as a character-set trim rather than a
@@ -7212,9 +7212,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D021 — Crypto reference drifted from framing, TLS, randomness, and password policy
 
-- **Status:** corrected in `docs/viperlib/crypto.md`, implementation-adjacent source comments, and
+- **Status:** corrected in `docs/zannalib/crypto.md`, implementation-adjacent source comments, and
   the generated TLS class summary
-- **Mismatch:** the page used nonexistent `Bytes.FromString` and `Viper.Codec.HexEncode` APIs and
+- **Mismatch:** the page used nonexistent `Bytes.FromString` and `Zanna.Codec.HexEncode` APIs and
   left Result-returning Cipher, AES, and TLS examples untyped. It described Cipher nonces as wholly
   random, promised unconditional legacy-format compatibility despite magic-prefix collisions, and
   omitted the legacy AES 256-byte password cap. HMAC key normalization, KDF bounds, null/empty
@@ -7227,7 +7227,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D022 — IO reference drifted from file, path, stream, archive, watcher, and workspace behavior
 
-- **Status:** corrected across `docs/viperlib/io/` and implementation-adjacent source comments
+- **Status:** corrected across `docs/zannalib/io/` and implementation-adjacent source comments
 - **Mismatch:** the IO guides used nonexistent `Bytes.FromString`, treated Seq results as having
   `Length`, showed file EOF becoming true after an exact read, called `AppendLine` atomic, and
   omitted directory-touch and protected-directory behavior. Path documentation hid Windows
@@ -7244,7 +7244,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D023 — Math reference drifted from live overloads, encodings, transforms, and edge behavior
 
-- **Status:** corrected in `docs/viperlib/math.md` and implementation-adjacent source comments
+- **Status:** corrected in `docs/zannalib/math.md` and implementation-adjacent source comments
 - **Mismatch:** the page advertised nonexistent static `Random.NextDouble` and two-argument
   `NextInt` calls, omitted most of Vec3's live method surface, and hid non-finite vector/quaternion
   fallbacks. Easing duplicated a method row and implied uniform clamping. Spline source prose
@@ -7258,10 +7258,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D024 — System reference omitted APIs and overstated cross-platform behavior
 
-- **Status:** corrected in `docs/viperlib/system.md`, generated System/Memory documentation, and
+- **Status:** corrected in `docs/zannalib/system.md`, generated System/Memory documentation, and
   implementation-adjacent source comments
 - **Mismatch:** the page omitted six live Environment aliases, Machine architecture/page/pointer
-  properties, the entire `Viper.Memory.WeakRef` surface, and Terminal boolean/low-level methods.
+  properties, the entire `Zanna.Memory.WeakRef` surface, and Terminal boolean/low-level methods.
   It presented runner-only argument indexing
   as universal, hid lossy command-line joining and invalid-name traps, and did not state the GUI
   clipboard's main-thread requirement. Shutdown OS-event wiring was described as backend-universal
@@ -7278,7 +7278,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D025 — Time reference drifted from clocks, parsers, ranges, and formatting behavior
 
-- **Status:** corrected in `docs/viperlib/time.md`, generated Time documentation, and
+- **Status:** corrected in `docs/zannalib/time.md`, generated Time documentation, and
   implementation-adjacent registry/header comments
 - **Mismatch:** Clock, Countdown, and Stopwatch were described as unconditionally monotonic and
   omitted sleep clamping/failure fallbacks; Stopwatch called non-thread-safe `Restart` atomic.
@@ -7296,7 +7296,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ### VDOC-D026 — Animation reference drifted from the live surface and timing contracts
 
-- **Status:** corrected in `docs/viperlib/game/animation.md` and implementation-adjacent source
+- **Status:** corrected in `docs/zannalib/game/animation.md` and implementation-adjacent source
   comments
 - **Mismatch:** the page exposed removed `EventFired`, `EventsFiredCount`, and `EventFiredId`
   members; treated AnimTimeline tracks as active animation/tween drivers; and claimed SpriteSheet
@@ -7313,51 +7313,51 @@ the checked-in generators, documentation audits, and already-existing binaries o
 
 ## Validation Notes
 
-- `docs/viperlib/core.md`: all 15 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/functional.md`: 5 examples pass; 2 contextual pseudocode snippets intentionally
+- `docs/zannalib/core.md`: all 15 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/functional.md`: 5 examples pass; 2 contextual pseudocode snippets intentionally
   skip in `scripts/audit_bible_examples.py`.
-- `docs/viperlib/input.md`: all 26 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/text/encoding.md`: all 4 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/utilities.md`: all 8 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/text/formats.md`: 10 examples pass the documentation audit. Its 7 heuristic skips
+- `docs/zannalib/input.md`: all 26 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/text/encoding.md`: all 4 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/utilities.md`: all 8 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/text/formats.md`: 10 examples pass the documentation audit. Its 7 heuristic skips
   also check and run successfully when the false-positive `*Result` placeholder filter is bypassed;
   the two Zia snippets additionally skipped by brace counting were checked and run as complete
   modules with the existing installed compiler.
-- `docs/viperlib/text/formatting.md`: all 22 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/text/patterns.md`: all 19 Zia and BASIC examples pass the documentation audit.
-- `docs/viperlib/localization/`: all 12 executable Zia and BASIC examples pass the documentation
+- `docs/zannalib/text/formatting.md`: all 22 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/text/patterns.md`: all 19 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/localization/`: all 12 executable Zia and BASIC examples pass the documentation
   audit. Six JSON/configuration schema fences are intentionally skipped.
-- `docs/viperlib/collections/sequential.md`: all 12 Zia and BASIC examples pass the documentation
+- `docs/zannalib/collections/sequential.md`: all 12 Zia and BASIC examples pass the documentation
   audit.
-- `docs/viperlib/collections/functional.md`: all 6 executable Zia and BASIC examples pass the
+- `docs/zannalib/collections/functional.md`: all 6 executable Zia and BASIC examples pass the
   documentation audit. Three callback/pseudocode snippets are intentionally skipped.
-- `docs/viperlib/collections/maps-sets.md`: all 14 executable examples pass the documentation
+- `docs/zannalib/collections/maps-sets.md`: all 14 executable examples pass the documentation
   audit.
-- `docs/viperlib/collections/multi-maps.md`: all 15 executable examples pass the documentation
+- `docs/zannalib/collections/multi-maps.md`: all 15 executable examples pass the documentation
   audit. One contextual snippet is intentionally skipped.
-- `docs/viperlib/collections/specialized.md`: all 12 Zia and BASIC examples pass the documentation
+- `docs/zannalib/collections/specialized.md`: all 12 Zia and BASIC examples pass the documentation
   audit.
-- `docs/viperlib/zia.md`: all 4 executable Zia examples pass the documentation audit. Its one JSON
+- `docs/zannalib/zia.md`: all 4 executable Zia examples pass the documentation audit. Its one JSON
   protocol-schema fence is intentionally skipped.
-- `docs/viperlib/audio.md`: all executable examples pass the documentation audit; contextual
+- `docs/zannalib/audio.md`: all executable examples pass the documentation audit; contextual
   snippets and shell command fences are intentionally skipped.
-- `docs/viperlib/threads.md`: all 22 independently runnable examples pass the documentation
+- `docs/zannalib/threads.md`: all 22 independently runnable examples pass the documentation
   audit; 15 IL, callback, and surrounding-application-context snippets are intentionally skipped.
-- `docs/viperlib/network.md`: all 35 compile-checked Zia/BASIC examples pass the documentation
+- `docs/zannalib/network.md`: all 35 compile-checked Zia/BASIC examples pass the documentation
   audit; 15 contextual, pseudocode, or side-effectful examples are intentionally skipped from
   execution.
-- `docs/viperlib/crypto.md`: all 22 compile-checked Zia/BASIC examples pass the documentation
+- `docs/zannalib/crypto.md`: all 22 compile-checked Zia/BASIC examples pass the documentation
   audit; 10 contextual or network-side-effectful examples are intentionally skipped from
   execution. The TLS example uses a typed local for its string property as the documented
   workaround for VDOC-180.
-- `docs/viperlib/io/`: all 40 compile-checked Zia/BASIC examples pass the documentation audit; 6
+- `docs/zannalib/io/`: all 40 compile-checked Zia/BASIC examples pass the documentation audit; 6
   non-runnable or contextual fences are intentionally skipped. IO examples are not executed by
   the auditor because they can mutate files, open watchers, or perform other external side effects.
-- `docs/viperlib/math.md`: all 22 executable Zia and BASIC examples pass the documentation audit;
+- `docs/zannalib/math.md`: all 22 executable Zia and BASIC examples pass the documentation audit;
   2 contextual snippets are intentionally skipped. Existing-binary probes additionally confirmed
   the Random overload errors, BigInt byte/PowMod defects, quaternion inverse extremes, matrix NaN
   equality, and Mat4 singular-inverse fallback recorded above.
-- `docs/viperlib/system.md`: 14 executable examples pass the documentation audit; 4 contextual
+- `docs/zannalib/system.md`: 14 executable examples pass the documentation audit; 4 contextual
   snippets are intentionally skipped. The live API inventory was checked with the existing
   installed compiler/runtime. Separate existing-binary probes confirmed WeakRef creation,
   promotion, reset, and post-free invalidation; runner
@@ -7365,13 +7365,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and pointer values; Shutdown bit masking; ShellResult status; ShellCapture (but not Shell)
   updating LastExitCode; Process stdout/stderr/exit capture, replacement environments, and lack of
   bare-name lookup; and POSIX PTY open/wait/read behavior. No build or CTest invocation was used.
-- `docs/viperlib/time.md`: 17 executable Zia and BASIC examples pass the documentation audit; one
+- `docs/zannalib/time.md`: 17 executable Zia and BASIC examples pass the documentation audit; one
   surrounding-application Countdown snippet is intentionally skipped. Existing-binary probes in
   a fixed `TZ=UTC` environment confirmed parser case/separator/offset behavior, the `Create(-1)`
   collision, nullable DateOnly factories, non-round-tripping years, negative-zero relative
   duration text, nullable range set operations, and TimeZone explicit-receiver forms. A separate
   New York probe confirmed skipped-hour rejection and the host-selected repeated-hour occurrence.
-- `docs/viperlib/game/animation.md`: all 7 Zia and BASIC examples pass the documentation audit.
+- `docs/zannalib/game/animation.md`: all 7 Zia and BASIC examples pass the documentation audit.
   Existing-binary probes additionally confirmed Tween integer precision loss and Stop semantics,
   inert timeline payload C, unobservable initial/out-of-range markers, mixed named-state collision,
   active-clip overwrite drift, PathFollower sub-unit and zero-length stalls, and the full-group
@@ -7387,8 +7387,8 @@ the checked-in generators, documentation audits, and already-existing binaries o
   audit checkpoint predated the concurrent deletion sweep. `scripts/lint_zia_runtime_names.sh`
   passed at its last invocation; the advisory platform-policy findings are recorded as VDOC-064.
 - Review validation is intentionally limited to source inspection, documentation scripts, and
-  existing binaries: Viper must not be built and CTest must not be run while concurrent work is in
+  existing binaries: Zanna must not be built and CTest must not be run while concurrent work is in
   progress. One earlier invocation of `scripts/audit_runtime_surface.sh --summary-only` was made in
   error; despite its read-only-looking mode, that wrapper built its audit bundle and ran eight
   focused CTest cases. The mistake was disclosed immediately, the wrapper has not been used again,
-  and no subsequent review step has built Viper or invoked CTest.
+  and no subsequent review step has built Zanna or invoked CTest.

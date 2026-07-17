@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -140,42 +140,42 @@ static void load_preset_standard_movement(void) {
     define_action_cstr("move_y", 1);
 
     /* WASD */
-    bind_key_to("move_up", VIPER_KEY_W);
-    bind_key_to("move_down", VIPER_KEY_S);
-    bind_key_to("move_left", VIPER_KEY_A);
-    bind_key_to("move_right", VIPER_KEY_D);
+    bind_key_to("move_up", ZANNA_KEY_W);
+    bind_key_to("move_down", ZANNA_KEY_S);
+    bind_key_to("move_left", ZANNA_KEY_A);
+    bind_key_to("move_right", ZANNA_KEY_D);
 
     /* Arrow keys */
-    bind_key_to("move_up", VIPER_KEY_UP);
-    bind_key_to("move_down", VIPER_KEY_DOWN);
-    bind_key_to("move_left", VIPER_KEY_LEFT);
-    bind_key_to("move_right", VIPER_KEY_RIGHT);
+    bind_key_to("move_up", ZANNA_KEY_UP);
+    bind_key_to("move_down", ZANNA_KEY_DOWN);
+    bind_key_to("move_left", ZANNA_KEY_LEFT);
+    bind_key_to("move_right", ZANNA_KEY_RIGHT);
 
     /* D-pad (any controller) */
-    bind_pad_to("move_up", VIPER_PAD_UP);
-    bind_pad_to("move_down", VIPER_PAD_DOWN);
-    bind_pad_to("move_left", VIPER_PAD_LEFT);
-    bind_pad_to("move_right", VIPER_PAD_RIGHT);
+    bind_pad_to("move_up", ZANNA_PAD_UP);
+    bind_pad_to("move_down", ZANNA_PAD_DOWN);
+    bind_pad_to("move_left", ZANNA_PAD_LEFT);
+    bind_pad_to("move_right", ZANNA_PAD_RIGHT);
 
     /* Axis: WASD as digital */
-    bind_key_axis_to("move_x", VIPER_KEY_A, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_D, 1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_LEFT, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_RIGHT, 1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_W, -1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_S, 1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_UP, -1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_DOWN, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_A, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_D, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_LEFT, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_RIGHT, 1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_W, -1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_S, 1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_UP, -1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_DOWN, 1.0);
 
     /* Axis: left stick */
-    bind_pad_axis_to("move_x", VIPER_AXIS_LEFT_X, 1.0);
-    bind_pad_axis_to("move_y", VIPER_AXIS_LEFT_Y, 1.0);
+    bind_pad_axis_to("move_x", ZANNA_AXIS_LEFT_X, 1.0);
+    bind_pad_axis_to("move_y", ZANNA_AXIS_LEFT_Y, 1.0);
 
     /* Axis: D-pad as digital axis */
-    bind_pad_button_axis_to("move_x", VIPER_PAD_LEFT, -1.0);
-    bind_pad_button_axis_to("move_x", VIPER_PAD_RIGHT, 1.0);
-    bind_pad_button_axis_to("move_y", VIPER_PAD_UP, -1.0);
-    bind_pad_button_axis_to("move_y", VIPER_PAD_DOWN, 1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_LEFT, -1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_RIGHT, 1.0);
+    bind_pad_button_axis_to("move_y", ZANNA_PAD_UP, -1.0);
+    bind_pad_button_axis_to("move_y", ZANNA_PAD_DOWN, 1.0);
 }
 
 /// @brief Preset: first/third-person 3D controls — WASD movement axes, jump,
@@ -191,26 +191,26 @@ static void load_preset_fps3d(void) {
     define_action_cstr("move_x", 1);
     define_action_cstr("move_y", 1);
 
-    bind_key_to("jump", VIPER_KEY_SPACE);
-    bind_key_to("sprint", VIPER_KEY_LSHIFT);
-    bind_key_to("crouch", VIPER_KEY_LCTRL);
-    bind_key_to("interact", VIPER_KEY_E);
-    bind_key_to("pause", VIPER_KEY_ESCAPE);
-    rt_action_bind_mouse(rt_const_cstr("fire"), VIPER_MOUSE_BUTTON_LEFT);
-    rt_action_bind_mouse(rt_const_cstr("aim"), VIPER_MOUSE_BUTTON_RIGHT);
+    bind_key_to("jump", ZANNA_KEY_SPACE);
+    bind_key_to("sprint", ZANNA_KEY_LSHIFT);
+    bind_key_to("crouch", ZANNA_KEY_LCTRL);
+    bind_key_to("interact", ZANNA_KEY_E);
+    bind_key_to("pause", ZANNA_KEY_ESCAPE);
+    rt_action_bind_mouse(rt_const_cstr("fire"), ZANNA_MOUSE_BUTTON_LEFT);
+    rt_action_bind_mouse(rt_const_cstr("aim"), ZANNA_MOUSE_BUTTON_RIGHT);
 
-    bind_pad_to("jump", VIPER_PAD_A);
-    bind_pad_to("sprint", VIPER_PAD_LB);
-    bind_pad_to("crouch", VIPER_PAD_B);
-    bind_pad_to("interact", VIPER_PAD_X);
-    bind_pad_to("pause", VIPER_PAD_START);
+    bind_pad_to("jump", ZANNA_PAD_A);
+    bind_pad_to("sprint", ZANNA_PAD_LB);
+    bind_pad_to("crouch", ZANNA_PAD_B);
+    bind_pad_to("interact", ZANNA_PAD_X);
+    bind_pad_to("pause", ZANNA_PAD_START);
 
-    bind_key_axis_to("move_x", VIPER_KEY_A, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_D, 1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_W, -1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_S, 1.0);
-    bind_pad_axis_to("move_x", VIPER_AXIS_LEFT_X, 1.0);
-    bind_pad_axis_to("move_y", VIPER_AXIS_LEFT_Y, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_A, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_D, 1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_W, -1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_S, 1.0);
+    bind_pad_axis_to("move_x", ZANNA_AXIS_LEFT_X, 1.0);
+    bind_pad_axis_to("move_y", ZANNA_AXIS_LEFT_Y, 1.0);
 }
 
 /// @brief Preset: arrow/D-pad navigation + Enter/Space + Esc → `menu_*`/`confirm`/`back`.
@@ -223,31 +223,31 @@ static void load_preset_menu_navigation(void) {
     define_action_cstr("back", 0);
 
     /* Arrow keys */
-    bind_key_to("menu_up", VIPER_KEY_UP);
-    bind_key_to("menu_down", VIPER_KEY_DOWN);
-    bind_key_to("menu_left", VIPER_KEY_LEFT);
-    bind_key_to("menu_right", VIPER_KEY_RIGHT);
+    bind_key_to("menu_up", ZANNA_KEY_UP);
+    bind_key_to("menu_down", ZANNA_KEY_DOWN);
+    bind_key_to("menu_left", ZANNA_KEY_LEFT);
+    bind_key_to("menu_right", ZANNA_KEY_RIGHT);
 
     /* WASD */
-    bind_key_to("menu_up", VIPER_KEY_W);
-    bind_key_to("menu_down", VIPER_KEY_S);
-    bind_key_to("menu_left", VIPER_KEY_A);
-    bind_key_to("menu_right", VIPER_KEY_D);
+    bind_key_to("menu_up", ZANNA_KEY_W);
+    bind_key_to("menu_down", ZANNA_KEY_S);
+    bind_key_to("menu_left", ZANNA_KEY_A);
+    bind_key_to("menu_right", ZANNA_KEY_D);
 
     /* Confirm / Back */
-    bind_key_to("confirm", VIPER_KEY_ENTER);
-    bind_key_to("confirm", VIPER_KEY_SPACE);
-    bind_key_to("back", VIPER_KEY_ESCAPE);
+    bind_key_to("confirm", ZANNA_KEY_ENTER);
+    bind_key_to("confirm", ZANNA_KEY_SPACE);
+    bind_key_to("back", ZANNA_KEY_ESCAPE);
 
     /* D-pad (any controller) */
-    bind_pad_to("menu_up", VIPER_PAD_UP);
-    bind_pad_to("menu_down", VIPER_PAD_DOWN);
-    bind_pad_to("menu_left", VIPER_PAD_LEFT);
-    bind_pad_to("menu_right", VIPER_PAD_RIGHT);
+    bind_pad_to("menu_up", ZANNA_PAD_UP);
+    bind_pad_to("menu_down", ZANNA_PAD_DOWN);
+    bind_pad_to("menu_left", ZANNA_PAD_LEFT);
+    bind_pad_to("menu_right", ZANNA_PAD_RIGHT);
 
     /* Gamepad confirm / back */
-    bind_pad_to("confirm", VIPER_PAD_A);
-    bind_pad_to("back", VIPER_PAD_B);
+    bind_pad_to("confirm", ZANNA_PAD_A);
+    bind_pad_to("back", ZANNA_PAD_B);
 }
 
 /// @brief Preset: 2D platformer controls — `move_left/right`, `jump`, `shoot`, `pause` + `move_x`
@@ -261,32 +261,32 @@ static void load_preset_platformer(void) {
     define_action_cstr("move_x", 1);
 
     /* Keys */
-    bind_key_to("move_left", VIPER_KEY_A);
-    bind_key_to("move_left", VIPER_KEY_LEFT);
-    bind_key_to("move_right", VIPER_KEY_D);
-    bind_key_to("move_right", VIPER_KEY_RIGHT);
-    bind_key_to("jump", VIPER_KEY_SPACE);
-    bind_key_to("jump", VIPER_KEY_W);
-    bind_key_to("jump", VIPER_KEY_UP);
-    bind_key_to("shoot", VIPER_KEY_J);
-    bind_key_to("shoot", VIPER_KEY_X);
-    bind_key_to("pause", VIPER_KEY_ESCAPE);
+    bind_key_to("move_left", ZANNA_KEY_A);
+    bind_key_to("move_left", ZANNA_KEY_LEFT);
+    bind_key_to("move_right", ZANNA_KEY_D);
+    bind_key_to("move_right", ZANNA_KEY_RIGHT);
+    bind_key_to("jump", ZANNA_KEY_SPACE);
+    bind_key_to("jump", ZANNA_KEY_W);
+    bind_key_to("jump", ZANNA_KEY_UP);
+    bind_key_to("shoot", ZANNA_KEY_J);
+    bind_key_to("shoot", ZANNA_KEY_X);
+    bind_key_to("pause", ZANNA_KEY_ESCAPE);
 
     /* Gamepad */
-    bind_pad_to("move_left", VIPER_PAD_LEFT);
-    bind_pad_to("move_right", VIPER_PAD_RIGHT);
-    bind_pad_to("jump", VIPER_PAD_A);
-    bind_pad_to("shoot", VIPER_PAD_X);
-    bind_pad_to("pause", VIPER_PAD_START);
+    bind_pad_to("move_left", ZANNA_PAD_LEFT);
+    bind_pad_to("move_right", ZANNA_PAD_RIGHT);
+    bind_pad_to("jump", ZANNA_PAD_A);
+    bind_pad_to("shoot", ZANNA_PAD_X);
+    bind_pad_to("pause", ZANNA_PAD_START);
 
     /* Axis: left/right */
-    bind_key_axis_to("move_x", VIPER_KEY_A, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_D, 1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_LEFT, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_RIGHT, 1.0);
-    bind_pad_axis_to("move_x", VIPER_AXIS_LEFT_X, 1.0);
-    bind_pad_button_axis_to("move_x", VIPER_PAD_LEFT, -1.0);
-    bind_pad_button_axis_to("move_x", VIPER_PAD_RIGHT, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_A, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_D, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_LEFT, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_RIGHT, 1.0);
+    bind_pad_axis_to("move_x", ZANNA_AXIS_LEFT_X, 1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_LEFT, -1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_RIGHT, 1.0);
 }
 
 /// @brief Preset: top-down shooter controls — 4-directional movement + `fire`/`pause`.
@@ -301,49 +301,49 @@ static void load_preset_topdown(void) {
     define_action_cstr("move_y", 1);
 
     /* WASD */
-    bind_key_to("move_up", VIPER_KEY_W);
-    bind_key_to("move_down", VIPER_KEY_S);
-    bind_key_to("move_left", VIPER_KEY_A);
-    bind_key_to("move_right", VIPER_KEY_D);
+    bind_key_to("move_up", ZANNA_KEY_W);
+    bind_key_to("move_down", ZANNA_KEY_S);
+    bind_key_to("move_left", ZANNA_KEY_A);
+    bind_key_to("move_right", ZANNA_KEY_D);
 
     /* Arrow keys */
-    bind_key_to("move_up", VIPER_KEY_UP);
-    bind_key_to("move_down", VIPER_KEY_DOWN);
-    bind_key_to("move_left", VIPER_KEY_LEFT);
-    bind_key_to("move_right", VIPER_KEY_RIGHT);
+    bind_key_to("move_up", ZANNA_KEY_UP);
+    bind_key_to("move_down", ZANNA_KEY_DOWN);
+    bind_key_to("move_left", ZANNA_KEY_LEFT);
+    bind_key_to("move_right", ZANNA_KEY_RIGHT);
 
     /* Fire / Pause */
-    bind_key_to("fire", VIPER_KEY_SPACE);
-    bind_key_to("fire", VIPER_KEY_J);
-    bind_key_to("pause", VIPER_KEY_ESCAPE);
+    bind_key_to("fire", ZANNA_KEY_SPACE);
+    bind_key_to("fire", ZANNA_KEY_J);
+    bind_key_to("pause", ZANNA_KEY_ESCAPE);
 
     /* D-pad (any controller) */
-    bind_pad_to("move_up", VIPER_PAD_UP);
-    bind_pad_to("move_down", VIPER_PAD_DOWN);
-    bind_pad_to("move_left", VIPER_PAD_LEFT);
-    bind_pad_to("move_right", VIPER_PAD_RIGHT);
-    bind_pad_to("fire", VIPER_PAD_A);
-    bind_pad_to("pause", VIPER_PAD_START);
+    bind_pad_to("move_up", ZANNA_PAD_UP);
+    bind_pad_to("move_down", ZANNA_PAD_DOWN);
+    bind_pad_to("move_left", ZANNA_PAD_LEFT);
+    bind_pad_to("move_right", ZANNA_PAD_RIGHT);
+    bind_pad_to("fire", ZANNA_PAD_A);
+    bind_pad_to("pause", ZANNA_PAD_START);
 
     /* Axis: WASD + arrows as digital */
-    bind_key_axis_to("move_x", VIPER_KEY_A, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_D, 1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_LEFT, -1.0);
-    bind_key_axis_to("move_x", VIPER_KEY_RIGHT, 1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_W, -1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_S, 1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_UP, -1.0);
-    bind_key_axis_to("move_y", VIPER_KEY_DOWN, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_A, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_D, 1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_LEFT, -1.0);
+    bind_key_axis_to("move_x", ZANNA_KEY_RIGHT, 1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_W, -1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_S, 1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_UP, -1.0);
+    bind_key_axis_to("move_y", ZANNA_KEY_DOWN, 1.0);
 
     /* Axis: left stick */
-    bind_pad_axis_to("move_x", VIPER_AXIS_LEFT_X, 1.0);
-    bind_pad_axis_to("move_y", VIPER_AXIS_LEFT_Y, 1.0);
+    bind_pad_axis_to("move_x", ZANNA_AXIS_LEFT_X, 1.0);
+    bind_pad_axis_to("move_y", ZANNA_AXIS_LEFT_Y, 1.0);
 
     /* Axis: D-pad as digital axis */
-    bind_pad_button_axis_to("move_x", VIPER_PAD_LEFT, -1.0);
-    bind_pad_button_axis_to("move_x", VIPER_PAD_RIGHT, 1.0);
-    bind_pad_button_axis_to("move_y", VIPER_PAD_UP, -1.0);
-    bind_pad_button_axis_to("move_y", VIPER_PAD_DOWN, 1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_LEFT, -1.0);
+    bind_pad_button_axis_to("move_x", ZANNA_PAD_RIGHT, 1.0);
+    bind_pad_button_axis_to("move_y", ZANNA_PAD_UP, -1.0);
+    bind_pad_button_axis_to("move_y", ZANNA_PAD_DOWN, 1.0);
 }
 
 /// @brief `Action.LoadPreset(name)` — apply a pre-configured action set.

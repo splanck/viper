@@ -230,14 +230,14 @@ def update_checklist(checklist_path: str, covered: set[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Viper runtime sweep tests.")
+    parser = argparse.ArgumentParser(description="Run Zanna runtime sweep tests.")
     parser.add_argument("--update-checklist", action="store_true")
     args = parser.parse_args()
 
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    ilc_path = os.path.join(repo_root, "build", "src", "tools", "viper", "viper")
+    ilc_path = os.path.join(repo_root, "build", "src", "tools", "zanna", "zanna")
     if not os.path.exists(ilc_path):
-        print(f"error: viper not found at {ilc_path}", file=sys.stderr)
+        print(f"error: zanna not found at {ilc_path}", file=sys.stderr)
         return 1
 
     zia_dir = os.path.join(repo_root, "src", "tests", "fixtures", "zia_runtime")

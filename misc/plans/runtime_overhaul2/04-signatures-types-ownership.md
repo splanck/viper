@@ -11,10 +11,10 @@ Required grammar concepts:
 
 - primitive scalars: `void`, `i1`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`,
   `str`;
-- typed object handles: `obj<Viper.Domain.Type>`;
+- typed object handles: `obj<Zanna.Domain.Type>`;
 - intentionally dynamic object values: `obj`;
-- generic containers: `seq<T>`, `obj<Viper.Option<T>>`,
-  `obj<Viper.Result<T,E>>` if/when nested generics are supported;
+- generic containers: `seq<T>`, `obj<Zanna.Option<T>>`,
+  `obj<Zanna.Result<T,E>>` if/when nested generics are supported;
 - no raw `ptr` in public rows;
 - no suffix-nullable syntax such as `str?` unless a future schema version
   formally defines it.

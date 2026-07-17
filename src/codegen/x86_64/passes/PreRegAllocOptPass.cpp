@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include "codegen/x86_64/PreRegAllocOpt.hpp"
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// @brief Run pre-RA MIR cleanup if optimisation is enabled.
 /// @details Disabled at -O0 to keep the compile pipeline tight. Verifies the
@@ -46,4 +46,4 @@ bool PreRegAllocOptPass::run(Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

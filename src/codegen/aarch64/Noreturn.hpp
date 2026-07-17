@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 
 #include <string_view>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Return true if @p symbol names a runtime helper that traps or terminates.
 [[nodiscard]] inline bool isNoReturnRuntimeSymbol(std::string_view symbol) noexcept {
@@ -59,4 +59,4 @@ namespace viper::codegen::aarch64 {
     return !block.instrs.empty() && isNoReturnCall(block.instrs.back());
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

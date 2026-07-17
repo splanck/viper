@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Functions imported from a single DLL for the import directory.
 struct PEImport {
@@ -132,4 +132,4 @@ std::string generateAsInvokerManifest();
 /// @brief Generate an asInvoker manifest with optional Windows compatibility metadata.
 std::string generateAsInvokerManifest(const std::string &minOsWindows);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

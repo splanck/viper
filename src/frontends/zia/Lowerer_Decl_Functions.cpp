@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -1187,7 +1187,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 /// @param decl Destructor declaration AST node.
 /// @param typeName Qualified owning-class name.
 /// @details Lowers the user-defined body, then on fall-through releases each reference-typed
-///          field: weak fields via `Viper.Memory.WeakRef.Free`, and owned `Str`/`Ptr` fields
+///          field: weak fields via `Zanna.Memory.WeakRef.Free`, and owned `Str`/`Ptr` fields
 ///          via emitManagedRelease(). Emits an implicit return-void.
 void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName) {
     ZiaLocationScope locScope(*this, decl.loc);

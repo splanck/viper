@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -60,7 +60,7 @@ END
     Lowerer lowerer;
     auto module = lowerer.lowerProgram(*program);
 
-    viper::tests::VmFixture fx;
+    zanna::tests::VmFixture fx;
     int64_t rc = fx.run(module);
     // The program returns 0 (from END). If g != 12, the destructors didn't
     // chain correctly. Verify by checking the module global "G".
@@ -70,6 +70,6 @@ END
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.IO.TempFile - Temporary File/Directory Creation
+// API Audit: Zanna.IO.TempFile - Temporary File/Directory Creation
 // =============================================================================
 // Tests: Dir, Path, PathWithPrefix, PathWithExt, Create, CreateWithPrefix,
 //        CreateDir, CreateDirWithPrefix
 // =============================================================================
 
 module TempFileDemo;
-bind Viper.Terminal;
-bind Viper.IO.TempFile as TF;
-bind Viper.IO.File as File;
-bind Viper.IO.Dir as Dir;
+bind Zanna.Terminal;
+bind Zanna.IO.TempFile as TF;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Dir as Dir;
 func start() {
-    Say("=== API Audit: Viper.IO.TempFile ===");
+    Say("=== API Audit: Zanna.IO.TempFile ===");
 
     // --- Dir ---
     Say("--- Dir ---");
@@ -26,14 +26,14 @@ func start() {
 
     // --- PathWithPrefix ---
     Say("--- PathWithPrefix ---");
-    var pp = TF.PathWithPrefix("viper_audit_");
-    Say("PathWithPrefix('viper_audit_'):");
+    var pp = TF.PathWithPrefix("zanna_audit_");
+    Say("PathWithPrefix('zanna_audit_'):");
     Say(pp);
 
     // --- PathWithExt ---
     Say("--- PathWithExt ---");
-    var pe = TF.PathWithExt("viper_audit_", ".txt");
-    Say("PathWithExt('viper_audit_', '.txt'):");
+    var pe = TF.PathWithExt("zanna_audit_", ".txt");
+    Say("PathWithExt('zanna_audit_', '.txt'):");
     Say(pe);
 
     // --- Create ---
@@ -48,8 +48,8 @@ func start() {
 
     // --- CreateWithPrefix ---
     Say("--- CreateWithPrefix ---");
-    var cwp = TF.CreateWithPrefix("viper_audit_");
-    Say("CreateWithPrefix('viper_audit_'):");
+    var cwp = TF.CreateWithPrefix("zanna_audit_");
+    Say("CreateWithPrefix('zanna_audit_'):");
     Say(cwp);
     Say("File exists:");
     SayBool(File.Exists(cwp));
@@ -68,8 +68,8 @@ func start() {
 
     // --- CreateDirWithPrefix ---
     Say("--- CreateDirWithPrefix ---");
-    var cdp = TF.CreateDirWithPrefix("viper_audit_");
-    Say("CreateDirWithPrefix('viper_audit_'):");
+    var cdp = TF.CreateDirWithPrefix("zanna_audit_");
+    Say("CreateDirWithPrefix('zanna_audit_'):");
     Say(cdp);
     Say("Dir exists:");
     SayBool(Dir.Exists(cdp));

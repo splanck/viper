@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Emits AArch64 assembly text from Machine IR.
 ///
@@ -603,4 +603,4 @@ class AsmEmitter {
     }
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Round @p value up to the next multiple of @p align.
 /// @details Performs always-on validation so release builds do not divide by
@@ -118,4 +118,4 @@ class DownwardFrameCursor {
     int minSlotBytes_{1};
 };
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

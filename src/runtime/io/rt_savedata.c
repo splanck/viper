@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,9 +8,9 @@
 // File: src/runtime/io/rt_savedata.c
 // Purpose: Cross-platform game save/load persistence. Key-value pairs stored
 //   as JSON in platform-appropriate directories:
-//     macOS:   ~/Library/Application Support/Viper/<game>/save.json
-//     Linux:   ~/.local/share/viper/<game>/save.json
-//     Windows: %APPDATA%\Viper\<game>\save.json
+//     macOS:   ~/Library/Application Support/Zanna/<game>/save.json
+//     Linux:   ~/.local/share/zanna/<game>/save.json
+//     Windows: %APPDATA%\Zanna\<game>\save.json
 //
 // Key invariants:
 //   - Keys are unique; last-write wins.
@@ -753,10 +753,10 @@ static int is_safe_game_name(const char *name) {
 /// @brief Build the platform-appropriate save file path for `game_name`.
 ///
 /// Locations follow each OS's convention for per-user data:
-///   - Windows: `%APPDATA%\Viper\<game>\save.json` (or `%HOME%\AppData\...`
+///   - Windows: `%APPDATA%\Zanna\<game>\save.json` (or `%HOME%\AppData\...`
 ///     if APPDATA is unset).
-///   - macOS: `~/Library/Application Support/Viper/<game>/save.json`.
-///   - Linux: `~/.local/share/viper/<game>/save.json` (XDG default).
+///   - macOS: `~/Library/Application Support/Zanna/<game>/save.json`.
+///   - Linux: `~/.local/share/zanna/<game>/save.json` (XDG default).
 /// Rejects unsafe game names up front — any path-traversal characters
 /// trap before we compose the path. Returns a heap-allocated string
 /// that the caller owns (via `free`).
@@ -775,25 +775,25 @@ static char *compute_save_path(const char *game_name) {
     const char *appdata_env = getenv("APPDATA");
     char *appdata = (appdata_env && *appdata_env) ? savedata_absolute_dup(appdata_env) : NULL;
     const char *base = appdata ? appdata : home;
-    const char *middle = appdata ? "\\Viper\\" : "\\AppData\\Roaming\\Viper\\";
+    const char *middle = appdata ? "\\Zanna\\" : "\\AppData\\Roaming\\Zanna\\";
     size_t needed = strlen(base) + strlen(middle) + strlen(game_name) + strlen("\\save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
         snprintf(path, needed, "%s%s%s\\save.json", base, middle, game_name);
     free(appdata);
 #elif defined(__APPLE__)
-    size_t needed = strlen(home) + strlen("/Library/Application Support/Viper/") +
+    size_t needed = strlen(home) + strlen("/Library/Application Support/Zanna/") +
                     strlen(game_name) + strlen("/save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
         snprintf(
-            path, needed, "%s/Library/Application Support/Viper/%s/save.json", home, game_name);
+            path, needed, "%s/Library/Application Support/Zanna/%s/save.json", home, game_name);
 #else
-    size_t needed = strlen(home) + strlen("/.local/share/viper/") + strlen(game_name) +
+    size_t needed = strlen(home) + strlen("/.local/share/zanna/") + strlen(game_name) +
                     strlen("/save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
-        snprintf(path, needed, "%s/.local/share/viper/%s/save.json", home, game_name);
+        snprintf(path, needed, "%s/.local/share/zanna/%s/save.json", home, game_name);
 #endif
 
     if (path && !savedata_path_is_abs(path)) {
@@ -1504,7 +1504,7 @@ rt_string rt_savedata_get_path(void *obj) {
 // Path.DataDir — per-user writable data directory
 //=============================================================================
 
-/// @brief Viper.IO.Path.DataDir(app) — resolve (and create) the per-user
+/// @brief Zanna.IO.Path.DataDir(app) — resolve (and create) the per-user
 ///        writable data directory for an application.
 ///
 /// Locations follow each OS's convention for per-user data, mirroring the

@@ -1,11 +1,11 @@
-// smoothvalue_demo.zia - Comprehensive API audit for Viper.Game.SmoothValue
+// smoothvalue_demo.zia - Comprehensive API audit for Zanna.Game.SmoothValue
 // Tests: New(initial,smoothing), Value, ValueI64, Target, Smoothing, AtTarget,
 //        Velocity, SetImmediate, Update, Impulse
 
 module SmoothValueDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== SmoothValue API Audit ===");

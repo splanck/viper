@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_jsonpath.c
-// Purpose: Implements a JSONPath-like path resolver for the Viper.Data.JsonPath
+// Purpose: Implements a JSONPath-like path resolver for the Zanna.Data.JsonPath
 //          class. Evaluates dot-separated paths against a parsed rt_map/rt_seq
 //          JSON tree (from rt_json.c). The supported syntax is: dot segments
 //          (`a.b`), bracket indices (`[0]`, negative from the end) and quoted

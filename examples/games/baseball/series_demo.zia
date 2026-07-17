@@ -12,12 +12,12 @@
 //          Each team rotates through its top three starting pitchers across
 //          the series so the rotation shows up in the box scores.
 //
-// Run via: viper run examples/games/baseball/series_demo.zia
+// Run via: zanna run examples/games/baseball/series_demo.zia
 // ============================================================================
 module series_demo;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/model/constants";
 bind "./src/model/player";
 bind "./src/model/team";

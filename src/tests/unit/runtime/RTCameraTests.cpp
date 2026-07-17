@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // RTCameraTests.cpp - Unit tests for rt_camera
 //===----------------------------------------------------------------------===//
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //          symbols, date names and patterns, relative-time strings, plural
 //          rule trees, list-join templates, collation tailorings). Shared
 //          between the C-baked en-US table (rt_locale_data_en_us.c) and the
-//          (Phase 2+) JSON/VPA loader so both paths produce structurally
+//          (Phase 2+) JSON/ZPAK loader so both paths produce structurally
 //          identical records consumable by NumberFormat, DateFormat, etc.
 //
 // Key invariants:
@@ -57,7 +57,7 @@ typedef enum {
 } rt_plural_category_t;
 
 /// @brief AST node kind for the plural rule mini-language.
-/// @details Documented grammar in docs/viperlib/localization/data-files.md.
+/// @details Documented grammar in docs/zannalib/localization/data-files.md.
 ///          Kept as a small enum so the evaluator switches on it without
 ///          touching branch predictors beyond the 8-node working set.
 typedef enum {

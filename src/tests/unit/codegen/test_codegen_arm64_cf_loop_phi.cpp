@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp
 // Purpose: Verify loop lowering with loop-carried block params.
@@ -14,9 +14,9 @@
 #include <sstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -77,10 +77,10 @@ TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
     // This test validates the ldp pairing of loop-header slot reloads on the
     // legacy slot path. Global slot pinning keeps these values in callee-saved
     // registers (no header loads at all), so disable it for this compile.
-    setenv("VIPER_NO_GLOBAL_RA", "1", 1);
+    setenv("ZANNA_NO_GLOBAL_RA", "1", 1);
     struct EnvReset {
         ~EnvReset() {
-            unsetenv("VIPER_NO_GLOBAL_RA");
+            unsetenv("ZANNA_NO_GLOBAL_RA");
         }
     } envReset;
 
@@ -120,6 +120,6 @@ TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

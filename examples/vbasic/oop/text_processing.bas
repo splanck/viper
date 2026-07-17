@@ -3,11 +3,11 @@ REM Note: Some BASIC keywords (APPEND, DELETE) may conflict with member names.
 REM If your build treats these as reserved, use the procedural helpers as shown.
 
 REM Variant A: Object members (may collide with keywords)
-'USING Viper.IO
+'USING Zanna.IO
 '
 ' Canonical namespace example:
-'DIM sb AS Viper.Text.StringBuilder
-'sb = NEW Viper.Text.StringBuilder()
+'DIM sb AS Zanna.Text.StringBuilder
+'sb = NEW Zanna.Text.StringBuilder()
 '
 'sb.Append("hello")
 'sb.Append(" ")
@@ -22,15 +22,15 @@ REM Variant A: Object members (may collide with keywords)
 'File.Delete("oop_text_proc.tmp")
 
 REM Variant B: Procedural helpers (portable across builds)
-DIM sb AS Viper.Text.StringBuilder
-sb = NEW Viper.Text.StringBuilder()
-sb = Viper.Text.StringBuilder.Append(sb, "hello")
-sb = Viper.Text.StringBuilder.Append(sb, " ")
-sb = Viper.Text.StringBuilder.Append(sb, "world")
-sb = Viper.Text.StringBuilder.Append(sb, "!")
+DIM sb AS Zanna.Text.StringBuilder
+sb = NEW Zanna.Text.StringBuilder()
+sb = Zanna.Text.StringBuilder.Append(sb, "hello")
+sb = Zanna.Text.StringBuilder.Append(sb, " ")
+sb = Zanna.Text.StringBuilder.Append(sb, "world")
+sb = Zanna.Text.StringBuilder.Append(sb, "!")
 PRINT sb.ToString()
 
-REM Use Viper.IO.File.* helpers when available in your build
-'Viper.IO.File.WriteAllText("oop_text_proc.tmp", sb.ToString())
-'PRINT Viper.IO.File.ReadAllText("oop_text_proc.tmp")
-'Viper.IO.File.Delete("oop_text_proc.tmp")
+REM Use Zanna.IO.File.* helpers when available in your build
+'Zanna.IO.File.WriteAllText("oop_text_proc.tmp", sb.ToString())
+'PRINT Zanna.IO.File.ReadAllText("oop_text_proc.tmp")
+'Zanna.IO.File.Delete("oop_text_proc.tmp")

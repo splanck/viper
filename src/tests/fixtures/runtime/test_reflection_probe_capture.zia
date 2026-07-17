@@ -1,7 +1,7 @@
 module probe_test;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var canvas = Canvas3D.New("probe", 64, 64);

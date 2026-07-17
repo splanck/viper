@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_codec.c
-// Purpose: Implements encoding and decoding utilities for the Viper.Text.Codec
+// Purpose: Implements encoding and decoding utilities for the Zanna.Text.Codec
 //          class. Provides Base64 (RFC 4648), hexadecimal, and URL percent-
 //          encoding representations of strings and binary data.
 //

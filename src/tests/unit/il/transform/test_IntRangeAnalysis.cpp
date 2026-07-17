@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -72,17 +72,17 @@ il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fn) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fn);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fn);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",
         [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
-    registry.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+    registry.registerFunctionAnalysis<zanna::analysis::IntRangeInfo>(
         "int-ranges",
-        [](Module &, Function &fn) { return viper::analysis::computeIntRanges(fn); });
+        [](Module &, Function &fn) { return zanna::analysis::computeIntRanges(fn); });
     return registry;
 }
 
@@ -132,7 +132,7 @@ exit(%res: i64):
 TEST(IntRangeAnalysis, CountedLoopGuardBoundsInductionVariable) {
     Module module = parseModule(kCountedLoop);
     Function &fn = module.functions.front();
-    auto info = viper::analysis::computeIntRanges(fn);
+    auto info = zanna::analysis::computeIntRanges(fn);
 
     const auto *body = info.entryFor("body");
     ASSERT_TRUE(body != nullptr);
@@ -163,7 +163,7 @@ exit(%res: i64):
 }
 )");
     Function &fn = module.functions.front();
-    auto info = viper::analysis::computeIntRanges(fn);
+    auto info = zanna::analysis::computeIntRanges(fn);
     const auto *loop = info.entryFor("loop");
     ASSERT_TRUE(loop != nullptr);
     auto it = loop->find(paramId(fn, "loop", 0));
@@ -174,7 +174,7 @@ exit(%res: i64):
 TEST(IntRangeAnalysis, RotatedSelfLoopKeepsFullInductionBounds) {
     Module module = parseModule(kRotatedLoop);
     Function &fn = module.functions.front();
-    auto info = viper::analysis::computeIntRanges(fn);
+    auto info = zanna::analysis::computeIntRanges(fn);
     const auto *body = info.entryFor("body");
     ASSERT_TRUE(body != nullptr);
     auto it = body->find(paramId(fn, "body", 1));
@@ -337,6 +337,6 @@ entry(%a: i64, %b: i64):
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

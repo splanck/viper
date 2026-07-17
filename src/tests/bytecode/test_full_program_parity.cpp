@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@ struct SuccessCase {
 
 struct TrapCase {
     const char *file;
-    viper::bytecode::TrapKind bytecodeKind;
+    zanna::bytecode::TrapKind bytecodeKind;
     const char *ilDiagnosticName;
 };
 
@@ -58,7 +58,7 @@ struct RunResult {
     bool trapped = false;
     int64_t value = 0;
     std::string output;
-    viper::bytecode::TrapKind trapKind = viper::bytecode::TrapKind::None;
+    zanna::bytecode::TrapKind trapKind = zanna::bytecode::TrapKind::None;
     std::string trapMessage;
 };
 
@@ -89,7 +89,7 @@ class ScopedRuntimeOutputCapture {
 };
 
 [[nodiscard]] fs::path corpusRoot() {
-    return fs::path(VIPER_SHARED_IL_CORPUS_DIR);
+    return fs::path(ZANNA_SHARED_IL_CORPUS_DIR);
 }
 
 [[nodiscard]] il::core::Module loadModule(const fs::path &path) {
@@ -126,17 +126,17 @@ class ScopedRuntimeOutputCapture {
     return result;
 }
 
-void registerBytecodeTerminalHandlers(viper::bytecode::BytecodeVM &vm) {
+void registerBytecodeTerminalHandlers(zanna::bytecode::BytecodeVM &vm) {
     vm.setRuntimeBridgeEnabled(false);
     vm.registerNativeHandler(
-        "Viper.Terminal.PrintI64",
-        [](viper::bytecode::BCSlot *args, uint32_t argc, viper::bytecode::BCSlot *) {
+        "Zanna.Terminal.PrintI64",
+        [](zanna::bytecode::BCSlot *args, uint32_t argc, zanna::bytecode::BCSlot *) {
             assert(argc == 1);
             rt_print_i64(args[0].i64);
         });
     vm.registerNativeHandler(
-        "Viper.Terminal.PrintStr",
-        [](viper::bytecode::BCSlot *args, uint32_t argc, viper::bytecode::BCSlot *) {
+        "Zanna.Terminal.PrintStr",
+        [](zanna::bytecode::BCSlot *args, uint32_t argc, zanna::bytecode::BCSlot *) {
             assert(argc == 1);
             rt_print_str(static_cast<rt_string>(args[0].ptr));
         });
@@ -145,26 +145,26 @@ void registerBytecodeTerminalHandlers(viper::bytecode::BytecodeVM &vm) {
 [[nodiscard]] RunResult runBytecodeVm(const il::core::Module &module,
                                       bool threaded,
                                       uint64_t maxInstructions = 0) {
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto compiled = compiler.compileChecked(module);
     if (!compiled) {
         std::cerr << "bytecode compile failed: " << compiled.error().message << '\n';
         assert(false && "bytecode compile failed for shared corpus");
     }
 
-    viper::bytecode::BytecodeModule bytecode = std::move(compiled.value());
-    viper::bytecode::BytecodeVM vm;
+    zanna::bytecode::BytecodeModule bytecode = std::move(compiled.value());
+    zanna::bytecode::BytecodeVM vm;
     vm.setThreadedDispatch(threaded);
     vm.setMaxInstructions(maxInstructions);
     registerBytecodeTerminalHandlers(vm);
     vm.load(&bytecode);
 
     ScopedRuntimeOutputCapture capture;
-    const viper::bytecode::BCSlot slot = vm.exec("main", {});
+    const zanna::bytecode::BCSlot slot = vm.exec("main", {});
     rt_output_flush();
 
     RunResult result;
-    result.trapped = vm.state() == viper::bytecode::VMState::Trapped;
+    result.trapped = vm.state() == zanna::bytecode::VMState::Trapped;
     result.value = slot.i64;
     result.output = capture.output();
     result.trapKind = vm.trapKind();
@@ -212,11 +212,11 @@ void requireTrapMatches(const TrapCase &testCase) {
 
     il::core::Module ilTrapModule = module;
     const bool usesPendingInterrupt =
-        testCase.bytecodeKind == viper::bytecode::TrapKind::Interrupt;
-    const viper::tests::ChildResult ilTrap =
+        testCase.bytecodeKind == zanna::bytecode::TrapKind::Interrupt;
+    const zanna::tests::ChildResult ilTrap =
         usesPendingInterrupt
-            ? viper::tests::runModuleWithPendingInterruptIsolated(ilTrapModule)
-            : viper::tests::runModuleIsolated(ilTrapModule);
+            ? zanna::tests::runModuleWithPendingInterruptIsolated(ilTrapModule)
+            : zanna::tests::runModuleIsolated(ilTrapModule);
     if (!ilTrap.trapped()) {
         std::cerr << "IL VM did not trap for " << testCase.file << '\n';
         assert(false && "IL VM trap corpus case did not trap");
@@ -243,7 +243,7 @@ void requireTrapMatches(const TrapCase &testCase) {
 }
 
 void testTrapKindAlignment() {
-    using BC = viper::bytecode::TrapKind;
+    using BC = zanna::bytecode::TrapKind;
     using IL = il::vm::TrapKind;
 
     static_assert(static_cast<int32_t>(IL::DivideByZero) ==
@@ -286,7 +286,7 @@ void testGateRejectsDivergentResults() {
 
     divergent = baseline;
     divergent.trapped = true;
-    divergent.trapKind = viper::bytecode::TrapKind::RuntimeError;
+    divergent.trapKind = zanna::bytecode::TrapKind::RuntimeError;
     assert(!sameObservableResult(baseline, divergent) && "parity gate missed trap mismatch");
 }
 
@@ -338,7 +338,7 @@ const std::vector<SuccessCase> &successCases() {
 }
 
 const std::vector<TrapCase> &trapCases() {
-    using BC = viper::bytecode::TrapKind;
+    using BC = zanna::bytecode::TrapKind;
     static const std::vector<TrapCase> cases = {
         {"trap_kind_00_divide_by_zero.il", BC::DivideByZero, "DivideByZero"},
         {"trap_kind_01_overflow.il", BC::Overflow, "Overflow"},
@@ -359,7 +359,7 @@ const std::vector<TrapCase> &trapCases() {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     std::cout << "Running bytecode full-program parity corpus...\n";

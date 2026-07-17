@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -83,7 +83,7 @@ void buildFloatBinaryFunction(Module &module, Opcode op, double lhs, double rhs)
 double runFloatBinary(Opcode op, double lhs, double rhs) {
     Module module;
     buildFloatBinaryFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     int64_t bits = fixture.run(module);
     return bitsToDouble(bits);
 }

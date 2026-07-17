@@ -1,12 +1,12 @@
-// ring_demo.zia - Comprehensive API audit for Viper.Collections.Ring
+// ring_demo.zia - Comprehensive API audit for Zanna.Collections.Ring
 // Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Capacity, IsEmpty, IsFull, Clear
 
 module RingDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Ring API Audit ===");

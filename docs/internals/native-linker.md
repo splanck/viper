@@ -38,7 +38,7 @@ sections, applies relocations, and writes platform-native executables. Combined 
 
 ### What the Linker Does
 
-The native linker takes the user's compiled `.o` file plus the Viper runtime archives (`.a` files) and produces a
+The native linker takes the user's compiled `.o` file plus the Zanna runtime archives (`.a` files) and produces a
 runnable executable. It performs the classic linker pipeline:
 
 1. Parse the user's `.o` file
@@ -184,7 +184,7 @@ ObjFile
   through its own `sh_link` symbol table, and symbol tables must link to an in-bounds `SHT_STRTAB`. Symbols and
   relocation sections that reference unsupported or unmapped section indexes are hard errors.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. x86_64 branch/signed
-  PC-relative addends are normalized to Viper's internal `S + A - P` convention, where a raw displacement field of
+  PC-relative addends are normalized to Zanna's internal `S + A - P` convention, where a raw displacement field of
   zero becomes internal addend `-4`. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
@@ -288,8 +288,8 @@ network → threads → audio → graphics → exec → io_fs → text → colle
 ```
 
 Base is always included. Other components are pulled in based on which `rt_*` symbols the program references.
-Windows CRT/runtime shim names that Viper intentionally supplies from its own runtime archives are not downgraded to
-dynamic imports. That exception is scoped to Viper runtime archive objects; arbitrary user or third-party archives
+Windows CRT/runtime shim names that Zanna intentionally supplies from its own runtime archives are not downgraded to
+dynamic imports. That exception is scoped to Zanna runtime archive objects; arbitrary user or third-party archives
 still produce normal multiply-defined diagnostics.
 
 ELF/COFF common symbols are materialized once after archive resolution into a linker-owned zero-fill section. This
@@ -613,7 +613,7 @@ zero-dependency policy, so signing works identically even when cross-building of
 
 ### Linux: CRT Startup
 
-Viper programs emit a `main` function. On Linux x86_64, the native linker emits its own loader metadata
+Zanna programs emit a `main` function. On Linux x86_64, the native linker emits its own loader metadata
 (`PT_INTERP`, `PT_DYNAMIC`, `DT_NEEDED`, `.dynsym`, `.rela.dyn`) and still enters at `main`; there is no
 external `crt1.o` or host linker dependency in the executable link step.
 
@@ -624,7 +624,7 @@ minimal PE executables with the entry point at `main` and emits the required DLL
 
 ### Thread-Local Storage
 
-The Viper runtime uses 13 thread-local variables across 9 `.c` files. The linker preserves TLS sections (`.tdata`,
+The Zanna runtime uses 13 thread-local variables across 9 `.c` files. The linker preserves TLS sections (`.tdata`,
 `.tbss`, `__DATA,__thread_data`) when present in input objects. TLS relocations are handled by the relocation
 applier using the appropriate format-specific types. ELF output emits `PT_TLS`; PE output emits the TLS data
 directory and reports zero-filled TLS separately from initialized template bytes. TLS offset calculations use the
@@ -647,9 +647,9 @@ truncating the count would leave a trailing thunk field uninitialized and dyld t
 | `--system-link` | Deprecated alias for native linking |
 | `--native-asm` | Use native assembler (this is the default) |
 | `--system-asm` | Override: use system assembler (`cc -c`) instead |
-| `--arch arm64\|x64` | Override native target architecture (`viper build`) |
+| `--arch arm64\|x64` | Override native target architecture (`zanna build`) |
 | `--fast-link \| --no-fast-link` | Toggle the fast link path; skips string dedup + ICF |
-| `--stack-size BYTES` | Set the executable stack size (decimal or `0x` hex; `viper build`) |
+| `--stack-size BYTES` | Set the executable stack size (decimal or `0x` hex; `zanna build`) |
 
 Default behavior: the native assembler and native linker are used by default. `--system-asm` still requests
 the host assembler for `.s -> .o`, but `--system-link` no longer routes the final executable through `cc`.
@@ -659,9 +659,9 @@ the host assembler for `.s -> .o`, but `--system-link` no longer routes the fina
 
 | Variable | Effect |
 |----------|--------|
-| `VIPER_LINKER_STATS` | When set to a value other than `0`, prints per-stage link timings to stderr (`[link-time] <stage> <ms>`) |
-| `VIPER_LIB_PATH` | Additional directory searched for runtime/support archives |
-| `VIPER_BUILD_DIR` / `VIPER_BUILD_TYPE` | Override the discovered CMake build directory / configuration |
+| `ZANNA_LINKER_STATS` | When set to a value other than `0`, prints per-stage link timings to stderr (`[link-time] <stage> <ms>`) |
+| `ZANNA_LIB_PATH` | Additional directory searched for runtime/support archives |
+| `ZANNA_BUILD_DIR` / `ZANNA_BUILD_TYPE` | Override the discovered CMake build directory / configuration |
 
 The linker keeps parsed immutable archives in a process-wide cache. Cache keys
 include the archive path, file size, and last-write time, so a rebuilt runtime
@@ -771,8 +771,8 @@ input remains supported for external objects and compatibility callers.
 
 ### Why Not Use LLD?
 
-Viper's core principle is zero external dependencies. LLVM's LLD is an excellent linker, but it would introduce
-a massive dependency on the LLVM project. The native linker is purpose-built for Viper's specific needs and is
+Zanna's core principle is zero external dependencies. LLVM's LLD is an excellent linker, but it would introduce
+a massive dependency on the LLVM project. The native linker is purpose-built for Zanna's specific needs and is
 significantly simpler than a general-purpose linker.
 
 ### Why Format-Dispatched Relocations?

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_fbx_loader.h"
 #include "rt_asset_error.h"
@@ -185,13 +185,13 @@ static int fbx_parse_file_byte_limit(const char *text, uint64_t *out_limit) {
 }
 
 /// @brief Return the process-configured FBX file-size ceiling in bytes.
-/// @details `VIPER_FBX_MAX_FILE_BYTES` may lower the default ceiling for hosts that process
+/// @details `ZANNA_FBX_MAX_FILE_BYTES` may lower the default ceiling for hosts that process
 ///          untrusted assets under tighter memory budgets. The hard upper bound remains
 ///          @c RT_FBX_HARD_MAX_FILE_BYTES so a misconfigured environment cannot raise the
 ///          loader above its audited allocation limit.
 /// @return Maximum readable FBX file size in bytes.
 static uint64_t fbx_max_file_bytes(void) {
-    const char *env = getenv("VIPER_FBX_MAX_FILE_BYTES");
+    const char *env = getenv("ZANNA_FBX_MAX_FILE_BYTES");
     uint64_t parsed = 0;
     if (!env || !*env)
         return RT_FBX_DEFAULT_MAX_FILE_BYTES;
@@ -441,4 +441,4 @@ void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

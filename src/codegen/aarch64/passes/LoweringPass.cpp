@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     if (!module.ilMod || !module.ti) {
@@ -84,7 +84,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
             MFunction mir = lowerer.lowerFunction(fn);
 
             // --- Label sanitization: hyphens → underscores, optional suffix ----
-            using viper::codegen::common::sanitizeLabel;
+            using zanna::codegen::common::sanitizeLabel;
             std::unordered_map<std::string, std::string> bbMap;
             bbMap.reserve(mir.blocks.size());
 
@@ -198,4 +198,4 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

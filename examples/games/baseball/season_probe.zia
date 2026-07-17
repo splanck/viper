@@ -13,12 +13,12 @@
 //          Then runs the off-season tick and checks that the year advanced
 //          to 2027 and the career ledger has 40+ entries (4 teams × 34
 //          players minus duplicates).
-// Run via: viper run examples/games/baseball/season_probe.zia
+// Run via: zanna run examples/games/baseball/season_probe.zia
 // ============================================================================
 module season_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/season_model";

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/math/rt_mat3.c
-// Purpose: 3×3 matrix type for 2D affine transformations in Viper. Supports
+// Purpose: 3×3 matrix type for 2D affine transformations in Zanna. Supports
 //   construction from rotation/scale/translation components, matrix–matrix
 //   multiplication (transform concatenation), matrix–vector multiplication
 //   (point/direction transform), inverse, transpose, and determinant. Used

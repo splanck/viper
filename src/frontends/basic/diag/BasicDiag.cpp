@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 ///          placeholders in the format string using caller-supplied
 ///          replacements. Accessors are thin lookups over the static table.
 
-#include "viper/diag/BasicDiag.hpp"
+#include "zanna/diag/BasicDiag.hpp"
 
 #include <array>
 #include <cstddef>
@@ -109,14 +109,14 @@ constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
       "E_NS_008",
       il::support::Severity::Error,
       "USING cannot appear inside a namespace block"},
-     {"NS_RESERVED_VIPER",
+     {"NS_RESERVED_ZANNA",
       "E_NS_009",
       il::support::Severity::Error,
-      "reserved root namespace 'Viper' cannot be declared or imported"},
+      "reserved root namespace 'Zanna' cannot be declared or imported"},
      {"RESERVED_ROOT_DECL",
       "E_RESERVED_ROOT_DECL",
       il::support::Severity::Error,
-      "User code may not declare symbols under the reserved root 'Viper'."}}};
+      "User code may not declare symbols under the reserved root 'Zanna'."}}};
 }
 
 /// @brief Look up the catalog record for a diagnostic enumerator (positional index into

@@ -1,13 +1,13 @@
 #!/bin/sh
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
 #
 # File: examples/games/3dbowling/run_probes.sh
-# Purpose: Run every 3dbowling release gate with an existing Viper binary.
+# Purpose: Run every 3dbowling release gate with an existing Zanna binary.
 # Key invariants:
 #   - The script never configures, builds, or invokes CTest.
 #   - A probe passes only when it exits cleanly and prints exactly RESULT: ok.
@@ -21,7 +21,7 @@ set -u
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
-VIPER_BIN=${VIPER_BIN:-viper}
+ZANNA_BIN=${ZANNA_BIN:-zanna}
 OUTPUT=$(mktemp "${TMPDIR:-/tmp}/3dbowling-probe.XXXXXX") || exit 1
 trap 'rm -f "$OUTPUT"' EXIT HUP INT TERM
 
@@ -55,9 +55,9 @@ release_visual_probe
 release_menu_probe
 "
 
-if ! command -v "$VIPER_BIN" >/dev/null 2>&1; then
-    echo "3dbowling probes: Viper binary not found: $VIPER_BIN" >&2
-    echo "Set VIPER_BIN to an existing viper executable; this runner never builds it." >&2
+if ! command -v "$ZANNA_BIN" >/dev/null 2>&1; then
+    echo "3dbowling probes: Zanna binary not found: $ZANNA_BIN" >&2
+    echo "Set ZANNA_BIN to an existing zanna executable; this runner never builds it." >&2
     exit 1
 fi
 
@@ -66,7 +66,7 @@ passed=0
 failed=0
 for probe in $PROBES; do
     echo "==> $probe"
-    if "$VIPER_BIN" run "$SCRIPT_DIR/$probe.zia" >"$OUTPUT" 2>&1; then
+    if "$ZANNA_BIN" run "$SCRIPT_DIR/$probe.zia" >"$OUTPUT" 2>&1; then
         status=0
     else
         status=$?

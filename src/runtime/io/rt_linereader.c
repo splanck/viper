@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_linereader.c
-// Purpose: Implements line-by-line text file reading for the Viper.IO.LineReader
+// Purpose: Implements line-by-line text file reading for the Zanna.IO.LineReader
 //          class. Reads text files one line at a time with correct handling of
 //          all three common line ending styles: LF (Unix), CR (classic Mac),
 //          and CRLF (Windows).
@@ -72,7 +72,7 @@ static rt_linereader_impl *linereader_require(void *obj, const char *context) {
 
 /// @brief Finalizer callback invoked when a LineReader is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// LineReader object becomes unreachable. It ensures that the underlying
 /// operating system file handle is properly closed to prevent resource leaks.
 ///
@@ -108,7 +108,7 @@ static void rt_linereader_finalize(void *obj) {
 /// The returned LineReader provides convenient
 /// methods for reading lines, characters, or the entire file content.
 ///
-/// The LineReader is managed by Viper's garbage collector and will automatically
+/// The LineReader is managed by Zanna's garbage collector and will automatically
 /// close when collected if not explicitly closed.
 ///
 /// **Line ending handling:**
@@ -129,7 +129,7 @@ static void rt_linereader_finalize(void *obj) {
 /// reader.Close()
 /// ```
 ///
-/// @param path Viper string containing the file path. Must not be NULL.
+/// @param path Zanna string containing the file path. Must not be NULL.
 ///             Path is interpreted according to the OS (relative or absolute).
 ///
 /// @return A pointer to a new LineReader object on success. On failure, traps
@@ -153,7 +153,7 @@ void *rt_linereader_open(rt_string path) {
     }
 
     const char *path_str = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str) {
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &path_str) || !path_str) {
         rt_trap("LineReader.Open: invalid path");
         return NULL;
     }
@@ -251,7 +251,7 @@ static int lr_getc(rt_linereader_impl *lr) {
 ///
 /// **Memory management:**
 /// The function uses a dynamically growing buffer (starting at 256 bytes) to
-/// handle lines of any length. The returned string is a new Viper string that
+/// handle lines of any length. The returned string is a new Zanna string that
 /// the caller owns.
 ///
 /// **EOF behavior:**
@@ -271,7 +271,7 @@ static int lr_getc(rt_linereader_impl *lr) {
 ///
 /// @param obj Pointer to a LineReader object. Must not be NULL and reader must be open.
 ///
-/// @return A Viper string containing the line content (without line ending).
+/// @return A Zanna string containing the line content (without line ending).
 ///         Returns an empty string if at EOF or on error.
 ///         Traps if obj is NULL or reader is closed.
 ///
@@ -506,7 +506,7 @@ int64_t rt_linereader_peek_char(void *obj) {
 /// @brief Reads the entire remaining file content as a single string.
 ///
 /// Reads all remaining bytes from the current file position to the end of
-/// file and returns them as a Viper string. This is useful when you need
+/// file and returns them as a Zanna string. This is useful when you need
 /// the complete file content at once, such as for:
 /// - Loading configuration files
 /// - Reading templates
@@ -529,7 +529,7 @@ int64_t rt_linereader_peek_char(void *obj) {
 ///
 /// @param obj Pointer to a LineReader object. Must not be NULL and reader must be open.
 ///
-/// @return A Viper string containing all remaining file content. Returns an
+/// @return A Zanna string containing all remaining file content. Returns an
 ///         empty string if already at EOF or on error.
 ///         Traps if obj is NULL, reader is closed, or allocation fails.
 ///

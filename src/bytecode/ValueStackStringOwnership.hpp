@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
 /// @brief Tracks which bytecode value-stack slots own runtime string handles.
@@ -95,4 +95,4 @@ class ValueStackStringOwnership {
 };
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

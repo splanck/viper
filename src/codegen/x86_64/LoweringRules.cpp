@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,12 +27,12 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 
 /// @brief Match thunk that forwards to a declarative lowering rule.
-/// @details Wraps the @ref viper::codegen::x64::lowering::kLoweringRuleTable
+/// @details Wraps the @ref zanna::codegen::x64::lowering::kLoweringRuleTable
 ///          entry at @p Index in a function pointer compatible signature for the
 ///          runtime registry.  This enables the declarative data to satisfy the
 ///          imperative interface expected by the pass manager.
@@ -88,7 +88,7 @@ const std::vector<LoweringRule> &buildRules() {
 /// @details Forwards to @ref buildRules so callers always receive the cached
 ///          registry constructed from the declarative rule table.
 /// @return Reference to the lowering rule registry.
-const std::vector<LoweringRule> &viper_get_lowering_rules() {
+const std::vector<LoweringRule> &zanna_get_lowering_rules() {
     return buildRules();
 }
 
@@ -100,7 +100,7 @@ const std::vector<LoweringRule> &viper_get_lowering_rules() {
 ///          structures.
 /// @param instr IL instruction that needs a lowering rule.
 /// @return Pointer to the matching rule or nullptr when no rule applies.
-const LoweringRule *viper_select_rule(const IL::Instr &instr) {
+const LoweringRule *zanna_select_rule(const IL::Instr &instr) {
     const auto *spec = lookupRuleSpec(instr);
     if (!spec) {
         return nullptr;
@@ -111,4 +111,4 @@ const LoweringRule *viper_select_rule(const IL::Instr &instr) {
     return index < rules.size() ? &rules[index] : nullptr;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

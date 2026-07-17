@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Codegen parallel loops use one bounded policy rather than each pass
 //     spawning up to hardware_concurrency() threads independently.
-//   - VIPER_CODEGEN_THREADS can lower or raise the cap for CI and debugging.
+//   - ZANNA_CODEGEN_THREADS can lower or raise the cap for CI and debugging.
 //   - The helper never returns zero for non-empty work.
 // Ownership/Lifetime:
 //   - Header-only utility; no persistent state.
@@ -26,7 +26,7 @@
 #include <limits>
 #include <thread>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Default upper bound for codegen worker threads.
 /// @details Codegen passes are often memory-bandwidth heavy and may be invoked
@@ -62,11 +62,11 @@ inline constexpr std::size_t kDefaultCodegenWorkerCap = 8;
 /// @details The result is the minimum of the item count, detected hardware
 ///          concurrency, and a cap. The cap defaults to
 ///          @ref kDefaultCodegenWorkerCap but can be overridden by
-///          @c VIPER_CODEGEN_THREADS. For non-empty work the return value is
+///          @c ZANNA_CODEGEN_THREADS. For non-empty work the return value is
 ///          always at least one, so callers can use it directly to choose
 ///          sequential versus parallel execution.
 /// @param itemCount Number of independent work items.
-/// @param defaultCap Cap used when @c VIPER_CODEGEN_THREADS is unset or invalid.
+/// @param defaultCap Cap used when @c ZANNA_CODEGEN_THREADS is unset or invalid.
 /// @return Worker count in the range [0, itemCount].
 [[nodiscard]] inline std::size_t codegenWorkerCount(
     std::size_t itemCount, std::size_t defaultCap = kDefaultCodegenWorkerCap) noexcept {
@@ -75,9 +75,9 @@ inline constexpr std::size_t kDefaultCodegenWorkerCap = 8;
     }
     const std::size_t hw =
         std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
-    const std::size_t envCap = parseThreadLimit(std::getenv("VIPER_CODEGEN_THREADS"));
+    const std::size_t envCap = parseThreadLimit(std::getenv("ZANNA_CODEGEN_THREADS"));
     const std::size_t effectiveCap = envCap != 0 ? envCap : std::max<std::size_t>(1, defaultCap);
     return std::min(itemCount, std::min(hw, effectiveCap));
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

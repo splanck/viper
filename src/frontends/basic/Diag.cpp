@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -202,7 +202,7 @@ void NoteAliasExpansion(DiagnosticEmitter &emitter,
 
 /// @brief Report a user procedure that shadows a builtin extern.
 /// @details Emitted when a user-defined procedure collides with a seeded
-///          `Viper.*` runtime helper, which would otherwise hide the builtin.
+///          `Zanna.*` runtime helper, which would otherwise hide the builtin.
 /// @param emitter Diagnostic sink used to emit the error.
 /// @param qname Fully-qualified procedure name that caused the conflict.
 /// @param loc Source location of the user-defined declaration.
@@ -210,12 +210,12 @@ void ErrorBuiltinShadow(DiagnosticEmitter &emitter,
                         std::string_view qname,
                         il::support::SourceLoc loc) {
     // Emit a distinct diagnostic when a user-defined procedure attempts to shadow
-    // a builtin extern (seeded from Viper.* runtime registry). Keep the message
+    // a builtin extern (seeded from Zanna.* runtime registry). Keep the message
     // concise and actionable.
     std::string msg =
         std::string("user procedure shadows builtin extern '") + std::string(qname) + "'";
     emitter.emit(il::support::Severity::Error,
-                 "E_VIPER_BUILTIN_SHADOW",
+                 "E_ZANNA_BUILTIN_SHADOW",
                  loc,
                  static_cast<uint32_t>(qname.size()),
                  std::move(msg));

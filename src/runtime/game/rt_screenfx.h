@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_screenfx.h
@@ -88,7 +88,7 @@ int64_t rt_screenfx_dir_down(void);  ///< 3
 /// @brief Pack an overlay color for Flash/FadeIn/FadeOut in the ScreenFX
 ///   @c 0xRRGGBBAA byte order (alpha in the least-significant byte).
 ///
-/// ScreenFX overlay colors do NOT use the canonical @c Viper.Graphics.Color
+/// ScreenFX overlay colors do NOT use the canonical @c Zanna.Graphics.Color
 /// byte order (@c 0xAARRGGBB) — passing a @c Color.Rgba() value directly to
 /// Flash/FadeIn/FadeOut reads the wrong alpha channel. Use this constructor so
 /// the encoding is explicit and correct at the call site.

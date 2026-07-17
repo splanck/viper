@@ -1,6 +1,6 @@
 ' test_treemap_trie.bas — TreeMap, Trie, SortedSet, BiMap
-DIM tm AS Viper.Collections.SortedMap
-tm = Viper.Collections.SortedMap.New()
+DIM tm AS Zanna.Collections.SortedMap
+tm = Zanna.Collections.SortedMap.New()
 PRINT "tm empty: "; tm.IsEmpty
 tm.Set("banana", "yellow")
 tm.Set("apple", "red")
@@ -14,8 +14,8 @@ PRINT "tm ceil blueberry: "; tm.Ceil("blueberry")
 tm.Remove("apple")
 PRINT "tm len after remove: "; tm.Count
 
-DIM tr AS Viper.Collections.Trie
-tr = Viper.Collections.Trie.New()
+DIM tr AS Zanna.Collections.Trie
+tr = Zanna.Collections.Trie.New()
 PRINT "tr empty: "; tr.IsEmpty
 tr.Set("hello", "1")
 tr.Set("help", "2")
@@ -28,8 +28,8 @@ PRINT "tr longestprefix helping: "; tr.LongestPrefix("helping")
 tr.Remove("help")
 PRINT "tr len after remove: "; tr.Count
 
-DIM ss AS Viper.Collections.SortedSet
-ss = Viper.Collections.SortedSet.New()
+DIM ss AS Zanna.Collections.SortedSet
+ss = Zanna.Collections.SortedSet.New()
 PRINT "ss empty: "; ss.IsEmpty
 ss.Add("cherry")
 ss.Add("apple")
@@ -45,8 +45,8 @@ PRINT "ss ceil blueberry: "; ss.Ceil("blueberry")
 ss.Remove("apple")
 PRINT "ss len after drop: "; ss.Count
 
-DIM bm AS Viper.Collections.BiMap
-bm = Viper.Collections.BiMap.New()
+DIM bm AS Zanna.Collections.BiMap
+bm = Zanna.Collections.BiMap.New()
 PRINT "bm empty: "; bm.IsEmpty
 bm.Put("one", "1")
 bm.Put("two", "2")

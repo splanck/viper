@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,11 +35,11 @@ bool compileOk(const std::string &source) {
     return result.succeeded();
 }
 
-// A-002: bind Viper.Core.Box — standalone functions now importable
+// A-002: bind Zanna.Core.Box — standalone functions now importable
 TEST(ZiaBindFns, BoxFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestBox;
-bind Viper.Core.Box;
+bind Zanna.Core.Box;
 /// @brief Start.
 func start() {    var b = I64(42);
     var v = ToI64(b);
@@ -47,11 +47,11 @@ func start() {    var b = I64(42);
 )"));
 }
 
-// A-003: bind Viper.Core.Parse — standalone functions now importable
+// A-003: bind Zanna.Core.Parse — standalone functions now importable
 TEST(ZiaBindFns, ParseFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestParse;
-bind Viper.Core.Parse;
+bind Zanna.Core.Parse;
 /// @brief Start.
 func start() {    var x = IntOr("42", 0);
     var y = DoubleOr("3.14", 0.0);
@@ -59,22 +59,22 @@ func start() {    var x = IntOr("42", 0);
 )"));
 }
 
-// A-004: bind Viper.Math.Random — standalone functions now importable
+// A-004: bind Zanna.Math.Random — standalone functions now importable
 TEST(ZiaBindFns, RandomFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestRandom;
-bind Viper.Math.Random;
+bind Zanna.Math.Random;
 /// @brief Start.
 func start() {    var r = Range(1, 100);
 }
 )"));
 }
 
-// A-005: bind Viper.String — Capitalize/Title/Slug etc. now importable
+// A-005: bind Zanna.String — Capitalize/Title/Slug etc. now importable
 TEST(ZiaBindFns, StringFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestString;
-bind Viper.String;
+bind Zanna.String;
 /// @brief Start.
 func start() {    var a = Capitalize("hello");
     var b = Title("hello world");
@@ -89,5 +89,5 @@ func start() {    var a = Capitalize("hello");
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

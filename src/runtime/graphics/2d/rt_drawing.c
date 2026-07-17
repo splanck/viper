@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,9 +28,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
-/// @brief Check whether `VIPER_TRACE_CANVAS_BOX` is set, with one-shot caching.
+/// @brief Check whether `ZANNA_TRACE_CANVAS_BOX` is set, with one-shot caching.
 /// @details The env-var lookup happens once on first call and is cached
 ///          in a static so the trace check on every `Canvas.Box()` is
 ///          a single int compare. Used by debug builds to log the
@@ -38,7 +38,7 @@
 static int rt_trace_canvas_box_enabled(void) {
     static int cached = -1;
     if (cached == -1)
-        cached = getenv("VIPER_TRACE_CANVAS_BOX") ? 1 : 0;
+        cached = getenv("ZANNA_TRACE_CANVAS_BOX") ? 1 : 0;
     return cached;
 }
 
@@ -195,7 +195,7 @@ static int8_t rt_canvas_clip_line_test(long double p,
 ///          parametric arithmetic so int64 endpoints far apart don't lose
 ///          precision during the (q / p) division. Final endpoints are rounded
 ///          back to int64 with saturation, then verified to fit in int32 (the
-///          ViperGFX backend takes int32 coordinates).
+///          ZannaGFX backend takes int32 coordinates).
 /// @param canvas Canvas whose clip rect provides the bounds.
 /// @param x1,y1  In/out: line start. Replaced with the clipped start on success.
 /// @param x2,y2  In/out: line end. Replaced with the clipped end on success.
@@ -242,7 +242,7 @@ static int64_t rt_canvas_rect_last(int64_t start, int64_t length) {
     return rtg_add_sat64(start, length - 1);
 }
 
-/// @brief Convert a Viper packed color to the opaque 24-bit RGB value expected by ViperGFX.
+/// @brief Convert a Zanna packed color to the opaque 24-bit RGB value expected by ZannaGFX.
 static vgfx_color_t rt_canvas_color_to_vgfx_rgb(int64_t color) {
     return (vgfx_color_t)((rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu);
 }
@@ -509,7 +509,7 @@ static int8_t rt_canvas_point_in_clip_i64(
 /// @brief Plot one pixel at (x, y) iff it falls inside the clip rect.
 /// @details Used by line/disc/ring/text rasterizers that step pixel-by-pixel
 ///          and want clip-correct behavior without paying for a separate
-///          ViperGFX clip-set per pixel. NULL canvas / NULL gfx_win are no-ops.
+///          ZannaGFX clip-set per pixel. NULL canvas / NULL gfx_win are no-ops.
 static void rt_canvas_pset_clipped(rt_canvas *canvas,
                                    int64_t x,
                                    int64_t y,
@@ -1696,4 +1696,4 @@ int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

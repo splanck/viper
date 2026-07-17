@@ -2,7 +2,7 @@
 
 The runtime API catalog should be a source of truth for tools, docs, and
 migration diagnostics. Today much of the metadata is inferred in
-`src/tools/viper/main.cpp`; that must change before public freeze.
+`src/tools/zanna/main.cpp`; that must change before public freeze.
 
 ## Catalog Schema
 
@@ -81,9 +81,9 @@ The snapshot should be reviewed like ABI:
 
 Add tool support for API migration:
 
-- `viper runtime-api --json` or keep `--dump-runtime-api` with richer schema;
-- `viper explain-runtime <name>` for a public row;
-- `viper migrate-api --check <file|dir>` to detect legacy names;
+- `zanna runtime-api --json` or keep `--dump-runtime-api` with richer schema;
+- `zanna explain-runtime <name>` for a public row;
+- `zanna migrate-api --check <file|dir>` to detect legacy names;
 - diagnostics with fixits when a canonical replacement is mechanical.
 
 ## Documentation Work

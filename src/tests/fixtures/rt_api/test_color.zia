@@ -1,6 +1,6 @@
 module TestColor;
-bind Viper.Graphics.Color;
-bind Viper.Terminal;
+bind Zanna.Graphics.Color;
+bind Zanna.Terminal;
 
 func start() {
     var c = Rgb(255, 128, 0);

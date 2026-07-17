@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -621,7 +621,7 @@ class Parser {
     /// @return The parsed GlobalVarDecl.
     DeclPtr parseGlobalVarDecl();
 
-    /// @brief Parse a bind declaration: bind Viper.Terminal as Term;
+    /// @brief Parse a bind declaration: bind Zanna.Terminal as Term;
     /// @return The parsed BindDecl.
     BindDecl parseBindDecl();
 

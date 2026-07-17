@@ -11,10 +11,10 @@
 // =============================================================================
 module loader;
 
-bind Viper.Data.Json as Json;
-bind Viper.Collections.Map as Map;
-bind Viper.String as Str;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Data.Json as Json;
+bind Zanna.Collections.Map as Map;
+bind Zanna.String as Str;
+bind Zanna.Core.Convert as Convert;
 bind "../config" as config;
 bind "../core/strings" as S;
 bind "./level_base" as level_base;

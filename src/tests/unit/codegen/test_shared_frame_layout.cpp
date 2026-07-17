@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,8 +36,8 @@
 
 #include <stdexcept>
 
-using namespace viper::codegen::aarch64;
-using namespace viper::codegen::common;
+using namespace zanna::codegen::aarch64;
+using namespace zanna::codegen::common;
 
 // ===========================================================================
 // FrameLayout via AArch64 FrameBuilder
@@ -422,6 +422,6 @@ TEST(SharedCallLayout, IndirectAggregateUsesOneGprSlot) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

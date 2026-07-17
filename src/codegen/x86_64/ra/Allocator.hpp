@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 class Coalescer;
 
@@ -304,4 +304,4 @@ class LinearScanAllocator {
     void releaseCallReserved();
 };
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

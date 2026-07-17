@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@ func start() {    var maybePerson: Person? = new Person("Alice");
     if (maybePerson != null) {
         // Inside this branch, maybePerson should be narrowed to Person
         var name: String = maybePerson.name;
-        Viper.Terminal.Say(name);
+        Zanna.Terminal.Say(name);
     }
 }
 )";
@@ -79,11 +79,11 @@ class Person {
 func start() {    var maybePerson: Person? = new Person("Bob");
 
     if (maybePerson == null) {
-        Viper.Terminal.Say("No person");
+        Zanna.Terminal.Say("No person");
     } else {
         // Inside else branch, maybePerson should be narrowed to Person
         var name: String = maybePerson.name;
-        Viper.Terminal.Say(name);
+        Zanna.Terminal.Say(name);
     }
 }
 )";
@@ -121,7 +121,7 @@ func start() {    var maybePerson: Person? = new Person("Charlie");
     if (null != maybePerson) {
         // Inside this branch, maybePerson should be narrowed to Person
         var name: String = maybePerson.name;
-        Viper.Terminal.Say(name);
+        Zanna.Terminal.Say(name);
     }
 }
 )";
@@ -162,7 +162,7 @@ func start() {    var maybePerson: Person? = new Person("Eve");
     if (maybePerson != null) {
         // Inside this branch, can call methods on the narrowed type
         var greeting: String = maybePerson.greet();
-        Viper.Terminal.Say(greeting);
+        Zanna.Terminal.Say(greeting);
     }
 }
 )";
@@ -190,7 +190,7 @@ module Test;
 
 func start() {
     var x: Integer? = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
 
@@ -218,7 +218,7 @@ module Test;
 func start() {
     var x: Integer? = 42;
     x = null;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
 
@@ -245,7 +245,7 @@ class Node {
 func start() {
     var node: Node? = new Node(5);
     var value = node?.value ?? 0;
-    Viper.Terminal.SayInt(value);
+    Zanna.Terminal.SayInt(value);
 }
 )";
 
@@ -277,7 +277,7 @@ func start() {
         null => { matched = -1; }
         _ => { matched = 1; }
     }
-    Viper.Terminal.SayInt(matched);
+    Zanna.Terminal.SayInt(matched);
 }
 )";
 
@@ -315,7 +315,7 @@ class Person {
 
 func start() {    var maybePerson: Person? = new Person("Alice");
     var person: Person = maybePerson!;
-    Viper.Terminal.Say(person.name);
+    Zanna.Terminal.Say(person.name);
 }
 )";
 
@@ -347,7 +347,7 @@ class Item {
     }
 }
 
-func useItem(item: Item) {    Viper.Terminal.Say(item.label);
+func useItem(item: Item) {    Zanna.Terminal.Say(item.label);
 }
 
 func start() {    var maybeItem: Item? = new Item("sword");
@@ -379,7 +379,7 @@ module Test;
 func start() {
     var x: Integer? = 42;
     var y: Integer = x!;
-    Viper.Terminal.SayInt(y);
+    Zanna.Terminal.SayInt(y);
 }
 )";
 
@@ -414,11 +414,11 @@ class Person {
 func start() {
     var maybeText: String? = "hello";
     var text = maybeText!;
-    Viper.Terminal.Say(text);
+    Zanna.Terminal.Say(text);
 
     var maybePerson: Person? = new Person("Ada");
     var name = maybePerson?.name ?? "n/a";
-    Viper.Terminal.Say(name);
+    Zanna.Terminal.Say(name);
 }
 )";
 
@@ -473,7 +473,7 @@ class Node {
 
 func start() {    var maybeNode: Node? = new Node("hello");
     var val: String = maybeNode!.value;
-    Viper.Terminal.Say(val);
+    Zanna.Terminal.Say(val);
 }
 )";
 
@@ -513,7 +513,7 @@ class Holder {
     expose func printChild() {
         if self.child != null {
             var childName: String = self.child.name;
-            Viper.Terminal.Say(childName);
+            Zanna.Terminal.Say(childName);
         }
     }
 }
@@ -543,6 +543,6 @@ func start() {
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

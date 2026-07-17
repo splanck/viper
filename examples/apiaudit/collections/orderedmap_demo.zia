@@ -1,12 +1,12 @@
-// orderedmap_demo.zia - Comprehensive API audit for Viper.Collections.OrderedMap
+// orderedmap_demo.zia - Comprehensive API audit for Zanna.Collections.OrderedMap
 // Tests: New, Set, Get, Has, Remove, Clear, Len, IsEmpty, Keys, Values, KeyAt
 
 module OrderedMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== OrderedMap API Audit ===");

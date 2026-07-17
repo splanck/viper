@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -64,14 +64,14 @@ std::string format_imm(std::int64_t v) {
 /// @param name Label identifier to emit.
 /// @return Sanitized copy of @p name as a standard symbol reference.
 std::string format_label(std::string_view name) {
-    return viper::codegen::common::sanitizeLabel(name);
+    return zanna::codegen::common::sanitizeLabel(name);
 }
 
 /// @brief Emit a RIP-relative reference to a label.
 /// @param name Label identifier appearing in the operand.
 /// @return Formatted string using the `symbol(%rip)` syntax.
 std::string format_rip_label(std::string_view name) {
-    std::string result = viper::codegen::common::sanitizeLabel(name);
+    std::string result = zanna::codegen::common::sanitizeLabel(name);
     result += "(%rip)";
     return result;
 }
@@ -85,7 +85,7 @@ std::string format_rip_label(std::string_view name) {
 std::string fmt_reg(int reg) {
     if (reg >= 0) {
         const auto phys =
-            viper::codegen::x64::regName(static_cast<viper::codegen::x64::PhysReg>(reg));
+            zanna::codegen::x64::regName(static_cast<zanna::codegen::x64::PhysReg>(reg));
         return std::string{phys != nullptr ? phys : "%r?"};
     }
 

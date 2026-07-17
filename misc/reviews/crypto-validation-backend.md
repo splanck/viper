@@ -6,7 +6,7 @@ last-verified: 2026-05-08
 
 # Zero-Dependency Crypto Validation Backend
 
-This document tracks the implementation path for a validation-ready Viper crypto backend. Viper remains a zero-dependency project: no OpenSSL, BoringSSL, libsodium, platform TLS library, or platform crypto provider is used as the module backend.
+This document tracks the implementation path for a validation-ready Zanna crypto backend. Zanna remains a zero-dependency project: no OpenSSL, BoringSSL, libsodium, platform TLS library, or platform crypto provider is used as the module backend.
 
 ## Scope
 
@@ -21,10 +21,10 @@ The in-repo work creates a validation-ready module boundary and approved-mode po
 5. AES-256-GCM primitive and high-level Cipher approved-mode formats.
 6. HMAC-SHA384, HMAC-SHA512, HKDF-SHA384, and TLS-label HKDF-SHA384 primitives.
 7. P-256 ECDH primitive for the future approved TLS key-share profile.
-8. Public `Viper.Crypto.Module` controls for enabling approved mode and reporting status.
+8. Public `Zanna.Crypto.Module` controls for enabling approved mode and reporting status.
 9. Approved-mode policy gates for non-approved services: MD5, SHA-1, HMAC-MD5, HMAC-SHA1, CRC32, fast hash, scrypt, AES-CBC, ChaCha20-Poly1305 Cipher formats, legacy Cipher formats, and current TLS.
-10. Approved-mode `Viper.Crypto.Cipher` encryption uses AES-256-GCM.
-11. Approved-mode `Viper.Crypto.Password.Hash` uses PBKDF2-HMAC-SHA256.
+10. Approved-mode `Zanna.Crypto.Cipher` encryption uses AES-256-GCM.
+11. Approved-mode `Zanna.Crypto.Password.Hash` uses PBKDF2-HMAC-SHA256.
 12. Runtime tests cover AES-256-GCM vectors, HMAC-SHA384/SHA512 vectors, P-256 ECDH agreement, approved-mode Cipher formats, approved-mode Password behavior, and module policy checks.
 
 ## Remaining Engineering Before Lab Submission

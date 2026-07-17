@@ -1,0 +1,257 @@
+module context_menus;
+
+bind "../ui/app_shell";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/language_service";
+bind "../build/debug_session";
+
+bind Zanna.GUI;
+bind IO = Zanna.IO;
+bind Path = Zanna.IO.Path;
+bind Dir = Zanna.IO.Dir;
+bind Exec = Zanna.System.Exec;
+bind Machine = Zanna.System.Machine;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: context_menus
+// PURPOSE: Context-menu targeting and enablement policy for the workbench.
+//          main.zia decides when to show menus; this module decides what target
+//          they refer to and which actions are currently valid.
+//
+// WHERE-THIS-FITS: Imported by main.zia during right-click handling and by
+//          explorer action helpers that need safe path/name validation.
+//
+// TEACHING-NOTE: Keep platform-specific reveal behavior here. The rest of the
+//          IDE should ask for "reveal this path" without knowing about Finder,
+//          Explorer, or xdg-open command-line arguments.
+// ============================================================================
+
+/// @brief Hide any open command palette or context menu.
+/// @param shell Workbench shell that owns all floating menu handles.
+/// @details The runtime tracks one active menu overlay. Dismissing first keeps a
+///          newly opened context menu from competing with an existing one.
+expose func DismissContextMenus(shell: app_shell.AppShell) {
+    if shell.commandPalette.IsVisible() {
+        shell.commandPalette.Hide();
+    }
+    if shell.menuChrome.treeContextMenu.IsVisible() {
+        shell.menuChrome.treeContextMenu.Hide();
+    }
+    if shell.menuChrome.editorContextMenu.IsVisible() {
+        shell.menuChrome.editorContextMenu.Hide();
+    }
+    if shell.menuChrome.tabContextMenu.IsVisible() {
+        shell.menuChrome.tabContextMenu.Hide();
+    }
+}
+
+/// @brief Compare two editor positions in document order.
+/// @param lhsLine First position line.
+/// @param lhsCol First position column.
+/// @param rhsLine Second position line.
+/// @param rhsCol Second position column.
+/// @return -1 if lhs < rhs, 1 if lhs > rhs, 0 if equal.
+expose func CompareEditorPositions(lhsLine: Integer,
+                                   lhsCol: Integer,
+                                   rhsLine: Integer,
+                                   rhsCol: Integer) -> Integer {
+    if lhsLine < rhsLine { return -1; }
+    if lhsLine > rhsLine { return 1; }
+    if lhsCol < rhsCol { return -1; }
+    if lhsCol > rhsCol { return 1; }
+    return 0;
+}
+
+/// @brief Return true when an editor coordinate is inside the primary selection.
+/// @param engine Editor controller that owns the CodeEditor widget.
+/// @param line Zero-based line at the clicked pixel.
+/// @param col Zero-based column at the clicked pixel.
+/// @return True when the coordinate is within the active selection range.
+/// @details Selection end is treated as exclusive so right-clicking just after
+///          highlighted text retargets the cursor, while right-clicking inside
+///          highlighted text preserves the selection for Cut/Copy.
+expose func EditorPointInsidePrimarySelection(engine: editor_engine.EditorEngine,
+                                              line: Integer,
+                                              col: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    if !engine.editor.CursorHasSelection(0) { return false; }
+    var startLine = engine.editor.GetSelectionStartLineAt(0);
+    var startCol = engine.editor.GetSelectionStartColAt(0);
+    var endLine = engine.editor.GetSelectionEndLineAt(0);
+    var endCol = engine.editor.GetSelectionEndColAt(0);
+    if CompareEditorPositions(line, col, startLine, startCol) < 0 { return false; }
+    if CompareEditorPositions(line, col, endLine, endCol) >= 0 { return false; }
+    return true;
+}
+
+/// @brief Move the editor cursor to the right-clicked text position when appropriate.
+/// @param engine Editor controller that owns the CodeEditor widget.
+/// @param x Window-space X coordinate of the context-menu click.
+/// @param y Window-space Y coordinate of the context-menu click.
+/// @details Context-menu commands such as Rename, Go to Definition, and Evaluate
+///          operate at the current caret. A click inside the current selection
+///          preserves that selection for Cut/Copy; other clicks retarget it.
+expose func MoveEditorCursorForContextMenu(engine: editor_engine.EditorEngine,
+                                           x: Integer,
+                                           y: Integer) {
+    if engine == null or engine.editor == null { return; }
+    var line = engine.editor.GetLineAtPixel(y);
+    var col = engine.editor.GetColAtPixel(x, y);
+    if EditorPointInsidePrimarySelection(engine, line, col) {
+        return;
+    }
+    engine.editor.SetCursor(line, col);
+}
+
+/// @brief Enable editor context-menu commands from the current editor/debug state.
+/// @param shell Workbench shell that owns editor menu item handles.
+/// @param engine Editor controller for selection/read-only state.
+/// @param service Active language service capabilities.
+/// @param session Debug session used to gate Evaluate at Cursor.
+expose func ConfigureEditorContextMenu(shell: app_shell.AppShell,
+                                       engine: editor_engine.EditorEngine,
+                                       service: language_service.LanguageService,
+                                       session: debug_session.DebugSession) {
+    var hasEditor = engine != null and engine.editor != null;
+    var hasSelection = false;
+    var readOnly = true;
+    if hasEditor {
+        hasSelection = engine.editor.CursorHasSelection(0);
+        readOnly = engine.editor.GetReadOnly() != 0;
+    }
+    var canDefinition = hasEditor and service != null and service.canGoToDefinition;
+    var canReferences = hasEditor and service != null and service.canFindReferences;
+    var canRename = hasEditor and service != null and service.canRename and readOnly == false;
+    var canEvaluate = hasEditor and session != null and session.IsActive() and session.stopped;
+
+    SetContextMenuItemEnabled(shell.menuChrome.ecCut, hasSelection and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecCopy, hasSelection);
+    SetContextMenuItemEnabled(shell.menuChrome.ecPaste, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecGotoDef, canDefinition);
+    SetContextMenuItemEnabled(shell.menuChrome.ecFindRefs, canReferences);
+    SetContextMenuItemEnabled(shell.menuChrome.ecRename, canRename);
+    SetContextMenuItemEnabled(shell.menuChrome.ecFormat, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecToggleBreakpoint, hasEditor);
+    SetContextMenuItemEnabled(shell.menuChrome.ecEvaluate, canEvaluate);
+    SetContextMenuItemEnabled(shell.menuChrome.ecPalette, true);
+}
+
+/// @brief Resolve the current tree context-menu target path.
+/// @param projMgr Project manager used when the menu was opened on selection.
+/// @param shell Workbench shell that stores the right-click context path.
+/// @return The explicit right-click path, or the currently selected tree path.
+expose func CurrentContextPath(projMgr: project_manager.ProjectManager,
+                               shell: app_shell.AppShell) -> String {
+    if shell.contextPath != "" {
+        return shell.contextPath;
+    }
+    return projMgr.SelectedPath();
+}
+
+/// @brief Resolve the directory that create/search actions should use.
+/// @param projMgr Project manager used for the project-root fallback.
+/// @param path Path under the right-click cursor, or empty for blank tree space.
+/// @return Directory path for explorer actions.
+expose func ContextDirForPath(projMgr: project_manager.ProjectManager,
+                              path: String) -> String {
+    if path != "" {
+        if Dir.Exists(path) != false {
+            return path;
+        }
+        if IO.File.Exists(path) != false {
+            return Path.Directory(path);
+        }
+    }
+    return projMgr.project.rootPath;
+}
+
+/// @brief Enable tree context-menu actions that apply to the current target.
+/// @param shell Workbench shell that owns the menu item handles.
+/// @param projMgr Project manager used to test project-open state.
+/// @param path Absolute path stored on the clicked tree node, or empty.
+/// @param contextDir Directory where create/search actions should operate.
+/// @details The explorer uses one persistent menu object. Before showing it,
+///          this helper greys out entries that do not apply to the target, such
+///          as Run for folders or Duplicate for blank tree space.
+expose func ConfigureTreeContextMenuForPath(shell: app_shell.AppShell,
+                                            projMgr: project_manager.ProjectManager,
+                                            path: String,
+                                            contextDir: String) {
+    var hasPath = path != "";
+    var isFile = hasPath and IO.File.Exists(path) != false;
+    var hasDir = contextDir != "" and Dir.Exists(contextDir) != false;
+    var hasProject = projMgr != null and projMgr.project != null and projMgr.project.isOpen;
+
+    SetContextMenuItemEnabled(shell.menuChrome.ctxOpen, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxOpenText, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxReveal, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyPath, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyRelativePath, hasPath and hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDuplicate, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRename, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDelete, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxNewFile, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxNewFolder, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxSearchFolder, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRunFile, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxSetEntry, isFile and hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRefresh, hasProject);
+}
+
+/// @brief Set a context-menu item enabled flag when the item exists.
+/// @param item Menu item handle that may be null during partial shell setup.
+/// @param enabled True to enable the action; false to render it disabled.
+expose func SetContextMenuItemEnabled(item: GUI.MenuItem,
+                                      enabled: Boolean) {
+    if item == null { return; }
+    if enabled {
+        item.SetEnabled(true);
+    } else {
+        item.SetEnabled(false);
+    }
+}
+
+/// @brief Reveal a path in the host operating system's file browser.
+/// @param path File or directory path to reveal.
+/// @details macOS uses Finder's reveal flag, Windows uses Explorer's select
+///          flag, and Linux opens the containing directory through xdg-open.
+expose func RevealPath(path: String) {
+    if path == "" { return; }
+    var os = Machine.Os;
+    if os == "macos" {
+        var macArgs = Seq.New();
+        Seq.Push(macArgs, "-R");
+        Seq.Push(macArgs, path);
+        Exec.RunArgs("open", macArgs);
+    } else if os == "windows" {
+        var winArgs = Seq.New();
+        Seq.Push(winArgs, "/select," + path);
+        Exec.RunArgs("explorer.exe", winArgs);
+    } else {
+        var dir = path;
+        if IO.File.Exists(path) != false {
+            dir = Path.Directory(path);
+        }
+        var linuxArgs = Seq.New();
+        Seq.Push(linuxArgs, dir);
+        Exec.RunArgs("xdg-open", linuxArgs);
+    }
+}
+
+/// @brief Validate a user-entered child name for create/duplicate commands.
+/// @param name Prompt text supplied by the user.
+/// @return True when name is a single file-system entry name.
+/// @details Explorer actions take a name relative to the selected directory.
+///          Rejecting separators, drive separators, and dot directory aliases
+///          prevents accidental path traversal while preserving the feature.
+expose func IsSafeChildName(name: String) -> Boolean {
+    if name == "" or name == "." or name == ".." { return false; }
+    if Str.IndexOf(name, Path.Separator()) != 0 { return false; }
+    if Str.IndexOf(name, "/") != 0 { return false; }
+    if Str.IndexOf(name, "\\") != 0 { return false; }
+    if Str.IndexOf(name, ":") != 0 { return false; }
+    return true;
+}

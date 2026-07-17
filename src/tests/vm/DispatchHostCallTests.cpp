@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -65,13 +65,13 @@ Module buildHostCallModule() {
 
 int64_t runWithDispatch(const char *dispatch) {
     assert(dispatch != nullptr);
-    assert(setenv("VIPER_DISPATCH", dispatch, 1) == 0);
+    assert(setenv("ZANNA_DISPATCH", dispatch, 1) == 0);
 
     Module module = buildHostCallModule();
     il::vm::VM vm(module);
     const int64_t rv = vm.run();
 
-    assert(unsetenv("VIPER_DISPATCH") == 0);
+    assert(unsetenv("ZANNA_DISPATCH") == 0);
     return rv;
 }
 
@@ -82,7 +82,7 @@ int main() {
 
     assert(runWithDispatch("switch") == expected);
 
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     assert(runWithDispatch("threaded") == expected);
 #endif
 

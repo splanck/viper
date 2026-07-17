@@ -1,24 +1,24 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Build curated Zia showcase binaries using viper project format
+REM Build curated Zia showcase binaries using zanna project format
 REM Usage: scripts\build_demos_win.cmd [--clean] [--arch arm64|x64]
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%.."
 set "BUILD_DIR_EXPLICIT=0"
 set "TOOL_BUILD_DIR_EXPLICIT=0"
-if not "%VIPER_DEMO_BUILD_DIR%"=="" (
-    set "BUILD_DIR=%VIPER_DEMO_BUILD_DIR%"
+if not "%ZANNA_DEMO_BUILD_DIR%"=="" (
+    set "BUILD_DIR=%ZANNA_DEMO_BUILD_DIR%"
     set "BUILD_DIR_EXPLICIT=1"
-) else if not "%VIPER_BUILD_DIR%"=="" (
-    set "BUILD_DIR=%VIPER_BUILD_DIR%"
+) else if not "%ZANNA_BUILD_DIR%"=="" (
+    set "BUILD_DIR=%ZANNA_BUILD_DIR%"
     set "BUILD_DIR_EXPLICIT=1"
 ) else (
     set "BUILD_DIR=%ROOT_DIR%\build"
 )
-if not "%VIPER_DEMO_TOOL_BUILD_DIR%"=="" (
-    set "TOOL_BUILD_DIR=%VIPER_DEMO_TOOL_BUILD_DIR%"
+if not "%ZANNA_DEMO_TOOL_BUILD_DIR%"=="" (
+    set "TOOL_BUILD_DIR=%ZANNA_DEMO_TOOL_BUILD_DIR%"
     set "TOOL_BUILD_DIR_EXPLICIT=1"
 ) else (
     set "TOOL_BUILD_DIR=%ROOT_DIR%\build"
@@ -26,14 +26,14 @@ if not "%VIPER_DEMO_TOOL_BUILD_DIR%"=="" (
 set "BIN_DIR=%ROOT_DIR%\examples\bin"
 set "DEMO_MANIFEST=%SCRIPT_DIR%demo_projects.list"
 
-if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
+if "%ZANNA_BUILD_TYPE%"=="" set "ZANNA_BUILD_TYPE=Debug"
 if "%JOBS%"=="" set "JOBS=%NUMBER_OF_PROCESSORS%"
 if "%JOBS%"=="" set "JOBS=8"
 
 set CLEAN=0
 set FAILED=0
 set SUCCEEDED=0
-set "DEMO_ARCH=%VIPER_DEMO_ARCH%"
+set "DEMO_ARCH=%ZANNA_DEMO_ARCH%"
 
 REM Parse arguments
 :parse_args
@@ -61,7 +61,7 @@ goto :usage
 :usage
 echo Usage: %~nx0 [--clean] [--arch arm64^|x64]
 echo   --clean    Remove existing binaries before building
-echo   --arch     Target architecture ^(default: host, or VIPER_DEMO_ARCH^)
+echo   --arch     Target architecture ^(default: host, or ZANNA_DEMO_ARCH^)
 exit /b 1
 
 :done_args
@@ -97,15 +97,15 @@ if "%TOOL_BUILD_DIR_EXPLICIT%"=="0" (
     )
 )
 
-set "VIPER=%TOOL_BUILD_DIR%\src\tools\viper\%VIPER_BUILD_TYPE%\viper.exe"
-set "VIPER_BUILD_DIR=%BUILD_DIR%"
-set "TARGET_VIPER=%BUILD_DIR%\src\tools\viper\%VIPER_BUILD_TYPE%\viper.exe"
+set "ZANNA=%TOOL_BUILD_DIR%\src\tools\zanna\%ZANNA_BUILD_TYPE%\zanna.exe"
+set "ZANNA_BUILD_DIR=%BUILD_DIR%"
+set "TARGET_ZANNA=%BUILD_DIR%\src\tools\zanna\%ZANNA_BUILD_TYPE%\zanna.exe"
 
-echo Building Viper demos as native %DEMO_ARCH% binaries
+echo Building Zanna demos as native %DEMO_ARCH% binaries
 echo ==============================================
 echo.
 echo Note: larger demos can stay quiet for several minutes while codegen runs.
-echo Using Viper tool: %TOOL_BUILD_DIR%
+echo Using Zanna tool: %TOOL_BUILD_DIR%
 echo Using target runtime build: %BUILD_DIR%
 echo.
 
@@ -114,13 +114,13 @@ if not exist "%DEMO_MANIFEST%" (
     echo ERROR: demo manifest not found: %DEMO_MANIFEST%
     exit /b 1
 )
-if not exist "%VIPER%" (
+if not exist "%ZANNA%" (
     call :ensure_tool_build
     if errorlevel 1 exit /b 1
 )
 if /I not "%TOOL_BUILD_DIR%"=="%BUILD_DIR%" (
-    if not exist "%TARGET_VIPER%" (
-        call :ensure_viper_build
+    if not exist "%TARGET_ZANNA%" (
+        call :ensure_zanna_build
         if errorlevel 1 exit /b 1
     )
 )
@@ -171,7 +171,7 @@ if %FAILED%==0 (
 exit /b %FAILED%
 
 REM ============================================
-REM Build a demo from its viper project directory
+REM Build a demo from its zanna project directory
 REM ============================================
 :build_demo
 set "NAME=%~1"
@@ -180,12 +180,12 @@ set "PROJECT_DIR=%~2"
 echo Building %NAME%...
 echo   Started: %DATE% %TIME%
 
-if /i "%NAME%"=="vipersql" (
-    echo   Note: vipersql is the slowest demo on Windows and can take several minutes.
+if /i "%NAME%"=="zannasql" (
+    echo   Note: zannasql is the slowest demo on Windows and can take several minutes.
 )
 
-if not exist "%PROJECT_DIR%\viper.project" (
-    echo   ERROR: No viper.project found in %PROJECT_DIR%
+if not exist "%PROJECT_DIR%\zanna.project" (
+    echo   ERROR: No zanna.project found in %PROJECT_DIR%
     set /a FAILED+=1
     echo   Finished: %DATE% %TIME%
     echo.
@@ -196,7 +196,7 @@ set "EXE_FILE=%BIN_DIR%\%NAME%.exe"
 set "DEMO_BUILD_FLAGS="
 
 echo   Compiling...
-if /i "%NAME%"=="vipersql" (
+if /i "%NAME%"=="zannasql" (
     set "DEMO_BUILD_FLAGS=-O0"
     echo   Using -O0 to avoid pathological optimizer/codegen time for this large demo.
 )
@@ -204,7 +204,7 @@ if /i "%NAME%"=="xenoscape" (
     set "DEMO_BUILD_FLAGS=-O0"
     echo   Using -O0 to avoid the Windows x64 checked-integer optimizer miscompile.
 )
-"%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>nul
+"%ZANNA%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>nul
 if errorlevel 1 goto :build_demo_failed
 call :stage_demo_assets "%PROJECT_DIR%"
 if errorlevel 1 goto :build_demo_asset_failed
@@ -217,7 +217,7 @@ goto :eof
 
 :build_demo_failed
 echo   FAILED
-"%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>&1
+"%ZANNA%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>&1
 echo   Finished: %DATE% %TIME%
 set /a FAILED+=1
 echo.
@@ -231,13 +231,13 @@ echo.
 goto :eof
 
 REM ============================================
-REM Stage assets declared in a demo's viper.project.
+REM Stage assets declared in a demo's zanna.project.
 REM ============================================
 :stage_demo_assets
 set "ASSET_PROJECT_DIR=%~1"
-if not exist "%ASSET_PROJECT_DIR%\viper.project" exit /b 0
+if not exist "%ASSET_PROJECT_DIR%\zanna.project" exit /b 0
 
-for /f "usebackq tokens=1,2,*" %%A in ("%ASSET_PROJECT_DIR%\viper.project") do (
+for /f "usebackq tokens=1,2,*" %%A in ("%ASSET_PROJECT_DIR%\zanna.project") do (
     if /I "%%A"=="asset" (
         call :stage_demo_asset "%ASSET_PROJECT_DIR%" "%%~B" "%%~C"
         if errorlevel 1 exit /b 1
@@ -287,82 +287,82 @@ if errorlevel 1 (
 exit /b 0
 
 REM ============================================
-REM Ensure a Viper tool/runtime build exists for the requested demo arch.
+REM Ensure a Zanna tool/runtime build exists for the requested demo arch.
 REM ============================================
-:ensure_viper_build
-echo Viper tool not found at %VIPER%
-echo Configuring/building target-architecture Viper runtime...
+:ensure_zanna_build
+echo Zanna tool not found at %ZANNA%
+echo Configuring/building target-architecture Zanna runtime...
 
 set "ARCH_ARG="
 if "%BUILD_DIR_EXPLICIT%"=="0" (
-    if "%VIPER_CMAKE_GENERATOR%"=="" (
+    if "%ZANNA_CMAKE_GENERATOR%"=="" (
         if /I "%DEMO_ARCH%"=="arm64" set "ARCH_ARG=-A ARM64"
         if /I "%DEMO_ARCH%"=="x64" set "ARCH_ARG=-A x64"
     )
 )
 
 set "CONFIG_ARGS="
-if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" set "CONFIG_ARGS=%VIPER_EXTRA_CMAKE_ARGS%"
+if not "%ZANNA_EXTRA_CMAKE_ARGS%"=="" set "CONFIG_ARGS=%ZANNA_EXTRA_CMAKE_ARGS%"
 
-if not "%VIPER_CMAKE_GENERATOR%"=="" (
-    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%VIPER_CMAKE_GENERATOR%" %ARCH_ARG% -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% %CONFIG_ARGS%
+if not "%ZANNA_CMAKE_GENERATOR%"=="" (
+    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%ZANNA_CMAKE_GENERATOR%" %ARCH_ARG% -DCMAKE_BUILD_TYPE=%ZANNA_BUILD_TYPE% %CONFIG_ARGS%
 ) else (
-    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" %ARCH_ARG% -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% %CONFIG_ARGS%
+    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" %ARCH_ARG% -DCMAKE_BUILD_TYPE=%ZANNA_BUILD_TYPE% %CONFIG_ARGS%
 )
 if errorlevel 1 (
     echo ERROR: CMake configuration failed for %DEMO_ARCH% build
     exit /b 1
 )
 
-cmake --build "%BUILD_DIR%" --config %VIPER_BUILD_TYPE% --target viper -j %JOBS%
+cmake --build "%BUILD_DIR%" --config %ZANNA_BUILD_TYPE% --target zanna -j %JOBS%
 if errorlevel 1 (
-    echo ERROR: Viper build failed for %DEMO_ARCH%
+    echo ERROR: Zanna build failed for %DEMO_ARCH%
     exit /b 1
 )
 
-if not exist "%VIPER%" (
-    echo ERROR: viper still not found at %VIPER%
+if not exist "%ZANNA%" (
+    echo ERROR: zanna still not found at %ZANNA%
     exit /b 1
 )
 
 exit /b 0
 
 REM ============================================
-REM Ensure a host-native Viper tool exists.
+REM Ensure a host-native Zanna tool exists.
 REM ============================================
 :ensure_tool_build
-echo Host Viper tool not found at %VIPER%
-echo Configuring/building host-native Viper tool...
+echo Host Zanna tool not found at %ZANNA%
+echo Configuring/building host-native Zanna tool...
 
 set "TOOL_ARCH_ARG="
 if "%TOOL_BUILD_DIR_EXPLICIT%"=="0" (
-    if "%VIPER_CMAKE_GENERATOR%"=="" (
+    if "%ZANNA_CMAKE_GENERATOR%"=="" (
         if /I "%HOST_DEMO_ARCH%"=="arm64" set "TOOL_ARCH_ARG=-A ARM64"
         if /I "%HOST_DEMO_ARCH%"=="x64" set "TOOL_ARCH_ARG=-A x64"
     )
 )
 
 set "CONFIG_ARGS="
-if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" set "CONFIG_ARGS=%VIPER_EXTRA_CMAKE_ARGS%"
+if not "%ZANNA_EXTRA_CMAKE_ARGS%"=="" set "CONFIG_ARGS=%ZANNA_EXTRA_CMAKE_ARGS%"
 
-if not "%VIPER_CMAKE_GENERATOR%"=="" (
-    cmake -S "%ROOT_DIR%" -B "%TOOL_BUILD_DIR%" -G "%VIPER_CMAKE_GENERATOR%" %TOOL_ARCH_ARG% -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% %CONFIG_ARGS%
+if not "%ZANNA_CMAKE_GENERATOR%"=="" (
+    cmake -S "%ROOT_DIR%" -B "%TOOL_BUILD_DIR%" -G "%ZANNA_CMAKE_GENERATOR%" %TOOL_ARCH_ARG% -DCMAKE_BUILD_TYPE=%ZANNA_BUILD_TYPE% %CONFIG_ARGS%
 ) else (
-    cmake -S "%ROOT_DIR%" -B "%TOOL_BUILD_DIR%" %TOOL_ARCH_ARG% -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% %CONFIG_ARGS%
+    cmake -S "%ROOT_DIR%" -B "%TOOL_BUILD_DIR%" %TOOL_ARCH_ARG% -DCMAKE_BUILD_TYPE=%ZANNA_BUILD_TYPE% %CONFIG_ARGS%
 )
 if errorlevel 1 (
-    echo ERROR: CMake configuration failed for host Viper tool build
+    echo ERROR: CMake configuration failed for host Zanna tool build
     exit /b 1
 )
 
-cmake --build "%TOOL_BUILD_DIR%" --config %VIPER_BUILD_TYPE% --target viper -j %JOBS%
+cmake --build "%TOOL_BUILD_DIR%" --config %ZANNA_BUILD_TYPE% --target zanna -j %JOBS%
 if errorlevel 1 (
-    echo ERROR: host Viper tool build failed
+    echo ERROR: host Zanna tool build failed
     exit /b 1
 )
 
-if not exist "%VIPER%" (
-    echo ERROR: host Viper tool still not found at %VIPER%
+if not exist "%ZANNA%" (
+    echo ERROR: host Zanna tool still not found at %ZANNA%
     exit /b 1
 )
 

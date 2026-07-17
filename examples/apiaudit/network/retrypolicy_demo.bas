@@ -1,8 +1,8 @@
-' API Audit: Viper.Network.RetryPolicy (BASIC)
-PRINT "=== API Audit: Viper.Network.RetryPolicy ==="
+' API Audit: Zanna.Network.RetryPolicy (BASIC)
+PRINT "=== API Audit: Zanna.Network.RetryPolicy ==="
 
 PRINT "--- Exponential ---"
-DIM rp AS OBJECT = Viper.Network.RetryPolicy.Exponential(3, 100, 5000)
+DIM rp AS OBJECT = Zanna.Network.RetryPolicy.Exponential(3, 100, 5000)
 
 PRINT "--- Properties ---"
 PRINT rp.MaxRetries

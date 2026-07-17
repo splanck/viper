@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <cstring>
 #include <setjmp.h>
 
-#ifndef VIPER_ENABLE_AUDIO
+#ifndef ZANNA_ENABLE_AUDIO
 namespace {
 
 using TrapFn = void (*)();
@@ -123,9 +123,9 @@ static void test_null_handle_apis_do_not_trap() {
 #endif
 
 int main() {
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     assert(rt_audio_is_available() == 1);
-    VIPER_PLATFORM_SKIP("audio enabled in this build");
+    ZANNA_PLATFORM_SKIP("audio enabled in this build");
 #else
     assert(rt_audio_is_available() == 0);
     expect_invalid_operation(trap_sound_load, "not compiled in");

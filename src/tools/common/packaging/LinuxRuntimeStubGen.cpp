@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/LinuxRuntimeStubGen.cpp
-// Purpose: Generate the Viper self-extracting Linux bundle runtime stub.
+// Purpose: Generate the Zanna self-extracting Linux bundle runtime stub.
 //
 // Key invariants:
 //   - The shell runtime is POSIX sh and requires only standard base system tools.
@@ -29,7 +29,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 std::string shellSingleQuote(std::string_view value) {
@@ -134,14 +134,14 @@ std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params)
               "case \"$entry_path\" in /*|..|../*|*/../*|*/..) echo \"Unsafe Linux bundle entry "
               "path: $entry_path\" >&2; exit 2 ;; esac\n"
               "say() {\n"
-              "    case \"${VIPER_BUNDLE_QUIET:-}\" in 1|true|TRUE|yes|YES) return ;; esac\n"
+              "    case \"${ZANNA_BUNDLE_QUIET:-}\" in 1|true|TRUE|yes|YES) return ;; esac\n"
               "    if [ -t 2 ] && [ -z \"${NO_COLOR:-}\" ]; then\n"
-              "        printf '\\033[1;34mViper bundle\\033[0m  %s\\n' \"$*\" >&2\n"
+              "        printf '\\033[1;34mZanna bundle\\033[0m  %s\\n' \"$*\" >&2\n"
               "    else\n"
-              "        printf 'Viper bundle: %s\\n' \"$*\" >&2\n"
+              "        printf 'Zanna bundle: %s\\n' \"$*\" >&2\n"
               "    fi\n"
               "}\n"
-              "fail() { printf 'Viper bundle error: %s\\n' \"$*\" >&2; exit 2; }\n"
+              "fail() { printf 'Zanna bundle error: %s\\n' \"$*\" >&2; exit 2; }\n"
               "check_no_symlink_components() {\n"
               "    checked_path=$1\n"
               "    case \"$checked_path\" in /*) current=/; rest=${checked_path#/} ;; *) "
@@ -179,7 +179,7 @@ std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params)
               "else\n"
               "    cache_root=${TMPDIR:-/tmp}\n"
               "fi\n"
-              "cache_root=${cache_root%/}/viper\n"
+              "cache_root=${cache_root%/}/zanna\n"
               "case \"$cache_root\" in /*) ;; *) fail \"cache root must be absolute: "
               "$cache_root\" ;; esac\n"
               "cache_key=$cache_name\n"
@@ -191,26 +191,26 @@ std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params)
            << "$/ { print NR + 1; exit }' \"$self\")\n"
               "[ -n \"$payload_line\" ] || fail \"payload marker not found\"\n"
               "case \"${1:-}\" in\n";
-    script << "    --viper-bundle-help";
+    script << "    --zanna-bundle-help";
     if (params.appImageInterface)
         script << "|--appimage-help";
     script << ")\n"
-              "        echo \"Viper self-extracting Linux bundle options:\"\n"
-              "        echo \"  --viper-bundle-extract  safely extract to ./viper-bundle-root\"\n"
-              "        echo \"  --viper-bundle-cache    print this bundle's cache directory\"\n"
-              "        echo \"  --viper-bundle-help     show this help\"\n";
+              "        echo \"Zanna self-extracting Linux bundle options:\"\n"
+              "        echo \"  --zanna-bundle-extract  safely extract to ./zanna-bundle-root\"\n"
+              "        echo \"  --zanna-bundle-cache    print this bundle's cache directory\"\n"
+              "        echo \"  --zanna-bundle-help     show this help\"\n";
     if (params.appImageInterface)
         script << "        echo \"  --appimage-help/extract AppImage-compatible aliases\"\n";
     script << "        exit 0 ;;\n"
-              "    --viper-bundle-cache) printf '%s\\n' \"$extract_dir\"; exit 0 ;;\n"
-              "    --viper-bundle-extract";
+              "    --zanna-bundle-cache) printf '%s\\n' \"$extract_dir\"; exit 0 ;;\n"
+              "    --zanna-bundle-extract";
     if (params.appImageInterface)
         script << "|--appimage-extract";
     script << ")\n"
-              "        extract_target=./viper-bundle-root\n"
+              "        extract_target=./zanna-bundle-root\n"
               "        [ ! -e \"$extract_target\" ] && [ ! -L \"$extract_target\" ] || fail "
               "\"$extract_target already exists; move or remove it first\"\n"
-              "        tmp_dir=$(mktemp -d \"./.viper-bundle-extract.XXXXXX\")\n"
+              "        tmp_dir=$(mktemp -d \"./.zanna-bundle-extract.XXXXXX\")\n"
               "        trap 'rm -rf \"${tmp_dir:-}\"' EXIT HUP INT TERM\n"
               "        payload_file=$tmp_dir/payload.tar.gz\n"
               "        tail -n +$payload_line \"$self\" > \"$payload_file\"\n"
@@ -222,7 +222,7 @@ std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params)
               "        mv \"$tmp_dir/root\" \"$extract_target\"\n"
               "        tmp_dir=\n"
               "        trap - EXIT HUP INT TERM\n"
-              "        printf 'Extracted Viper bundle to %s\\n' \"$extract_target\"\n"
+              "        printf 'Extracted Zanna bundle to %s\\n' \"$extract_target\"\n"
               "        exit 0 ;;\n"
               "esac\n"
               "check_no_symlink_components \"$cache_root\"\n"
@@ -241,9 +241,9 @@ std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params)
               "$extract_dir\"\n"
               "refresh=0\n";
     if (params.appImageInterface)
-        script << "refresh_request=${VIPER_BUNDLE_REFRESH:-${VIPER_APPIMAGE_CLEAN_CACHE:-}}\n";
+        script << "refresh_request=${ZANNA_BUNDLE_REFRESH:-${ZANNA_APPIMAGE_CLEAN_CACHE:-}}\n";
     else
-        script << "refresh_request=${VIPER_BUNDLE_REFRESH:-}\n";
+        script << "refresh_request=${ZANNA_BUNDLE_REFRESH:-}\n";
     script << "case \"$refresh_request\" in "
               "1|true|TRUE|yes|YES) refresh=1 ;; esac\n"
               "cache_is_valid() {\n"
@@ -384,4 +384,4 @@ bool verifyLinuxAppImage(const std::vector<uint8_t> &data, std::string *err) {
     return true;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

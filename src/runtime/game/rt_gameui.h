@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: src/runtime/game/rt_gameui.h
 // Purpose: Lightweight in-game UI widgets (Label, Bar, Panel, NineSlice,
 //   MenuList, GameButton) that draw directly to a Canvas. Purpose-built for
-//   game HUDs, menus, and overlays — separate from the desktop ViperGUI widget system.
+//   game HUDs, menus, and overlays — separate from the desktop ZannaGUI widget system.
 //
 // Key invariants:
 //   - All widgets are GC-managed via rt_obj_new_i64.
@@ -343,14 +343,14 @@ int64_t rt_uitable_handle_click(void *table, int64_t mx, int64_t my);
 ///          plus rt_uitable_last_header_click(). It performs the same state
 ///          updates as rt_uitable_handle_click(): row clicks select rows and
 ///          sortable header clicks toggle sort order.
-/// @param table Opaque Viper.Game.UI.Table object.
+/// @param table Opaque Zanna.Game.UI.Table object.
 /// @param mx Click x-coordinate in canvas pixels.
 /// @param my Click y-coordinate in canvas pixels.
-/// @return Opaque Viper.Game.UI.TableClickResult object.
+/// @return Opaque Zanna.Game.UI.TableClickResult object.
 void *rt_uitable_handle_click_result(void *table, int64_t mx, int64_t my);
 /// @brief Index of the column header last clicked (for sort toggling), or -1.
 int64_t rt_uitable_last_header_click(void *table);
-/// @brief Return the click kind stored in a Viper.Game.UI.TableClickResult.
+/// @brief Return the click kind stored in a Zanna.Game.UI.TableClickResult.
 /// @param result Opaque TableClickResult object.
 /// @return One of RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
 int64_t rt_table_click_result_kind(void *result);
@@ -369,12 +369,12 @@ int8_t rt_table_click_result_is_header(void *result);
 /// @brief Return the selected row as an Option.
 /// @details Row clicks return Some(row). Header clicks and misses return None.
 /// @param result Opaque TableClickResult object.
-/// @return Opaque Viper.Option containing an i64 row index, or None.
+/// @return Opaque Zanna.Option containing an i64 row index, or None.
 void *rt_table_click_result_row_option(void *result);
 /// @brief Return the clicked header column as an Option.
 /// @details Header clicks return Some(column). Row clicks and misses return None.
 /// @param result Opaque TableClickResult object.
-/// @return Opaque Viper.Option containing an i64 column index, or None.
+/// @return Opaque Zanna.Option containing an i64 column index, or None.
 void *rt_table_click_result_column_option(void *result);
 /// @brief Scroll the view by @p delta rows.
 void rt_uitable_handle_scroll(void *table, int64_t delta);

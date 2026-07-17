@@ -1,14 +1,14 @@
 // =============================================================================
-// API Audit: Viper.IO.Path - Path Manipulation
+// API Audit: Zanna.IO.Path - Path Manipulation
 // =============================================================================
 // Tests: Abs, Dir, Ext, Name, Stem, IsAbs, Join, Norm, Sep, WithExt
 // =============================================================================
 
 module PathDemo;
-bind Viper.Terminal;
-bind Viper.IO.Path as Path;
+bind Zanna.Terminal;
+bind Zanna.IO.Path as Path;
 func start() {
-    Say("=== API Audit: Viper.IO.Path ===");
+    Say("=== API Audit: Zanna.IO.Path ===");
 
     var testPath = "/home/user/documents/file.txt";
 

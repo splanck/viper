@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Implements floating-point domain helpers required by the BASIC
 //          runtime. Provides exponentiation with BASIC-specific domain checks
 //          (rejecting negative bases raised to non-integer exponents), a plain
-//          two-argument pow wrapper for Viper.Math.Pow, and trap-on-error
+//          two-argument pow wrapper for Zanna.Math.Pow, and trap-on-error
 //          variants used by the BASIC ^ operator in native codegen.
 //
 // Key invariants:
@@ -78,7 +78,7 @@ double rt_pow_f64_chkdom(double base, double exp, bool *ok) {
 
 /// @brief Simple 2-arg pow wrapper for IL calling convention.
 /// @details Calls the standard C pow() directly without domain checks.
-///          Used by Viper.Math.Pow which has signature f64(f64,f64).
+///          Used by Zanna.Math.Pow which has signature f64(f64,f64).
 double rt_math_pow(double base, double exponent) {
     return pow(base, exponent);
 }

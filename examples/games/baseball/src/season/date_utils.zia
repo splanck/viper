@@ -1,6 +1,6 @@
 // ============================================================================
 // File: src/season/date_utils.zia
-// Purpose: Tiny calendar helpers built on top of `Viper.Time.DateOnly`. The
+// Purpose: Tiny calendar helpers built on top of `Zanna.Time.DateOnly`. The
 //          season layer represents dates as integer "days since epoch" so
 //          two GameDay objects can be compared with `<` and game-day deltas
 //          are simple subtraction. These helpers convert between the
@@ -17,7 +17,7 @@
 // ============================================================================
 module date_utils;
 
-bind Viper.Time.DateOnly as DO;
+bind Zanna.Time.DateOnly as DO;
 bind "../model/player";
 
 // Convert (year, month, day) to integer days-since-epoch via DateOnly.

@@ -1,13 +1,13 @@
 module openworld_slice_visibility_dense_probe;
 
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Game3D as Game3D;
-bind Viper.IO as IO;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Game3D as Game3D;
+bind Zanna.IO as IO;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);
@@ -280,12 +280,12 @@ func start() {
     denseNode.Mesh = denseMesh;
     denseNode.Material = Material3D.FromColor(0.4, 0.5, 0.3);
     denseScene.Add(denseNode);
-    if (denseScene.Save("/tmp/viper_dense_proxy_cell.vscn") != 1) {
+    if (denseScene.Save("/tmp/zanna_dense_proxy_cell.vscn") != 1) {
         fail("dense proxy cell fixture did not save");
         return;
     }
-    IO.File.WriteAllText("/tmp/viper_dense_proxy_cells.json",
-        "{\"cells\":[{\"name\":\"dense\",\"path\":\"/tmp/viper_dense_proxy_cell.vscn\"," +
+    IO.File.WriteAllText("/tmp/zanna_dense_proxy_cells.json",
+        "{\"cells\":[{\"name\":\"dense\",\"path\":\"/tmp/zanna_dense_proxy_cell.vscn\"," +
         "\"center\":[0,0,0],\"radius\":8,\"bytes\":65536}]}");
 
     var proxyWorld = Game3D.World3D.New("Dense Proxy Ring", 64, 48);
@@ -293,7 +293,7 @@ func start() {
     proxyStream.SetAsyncStreaming(false);
     proxyStream.SetCenter(Vec3.New(0.0, 0.0, 0.0));
     proxyStream.SetRadii(360.0, 520.0);
-    proxyStream.MountCells("/tmp/viper_dense_proxy_cells.json");
+    proxyStream.MountCells("/tmp/zanna_dense_proxy_cells.json");
     proxyStream.Update(1.0 / 60.0);
     if (proxyStream.ResidentCellCount != 1) {
         fail("proxy ring fixture did not load the dense cell");

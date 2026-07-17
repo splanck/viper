@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 namespace {
 
@@ -106,4 +106,4 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

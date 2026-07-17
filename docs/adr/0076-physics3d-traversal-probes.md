@@ -23,7 +23,7 @@ controller — but no composed API returning structured traversal results.
 ## Decision
 
 `Physics3DWorld` gains three composed probes (`rt_physics3d_probes.c`), plus
-the result class `Viper.Graphics3D.LedgeHit3D` (class id `-0x60304D`, a plain
+the result class `Zanna.Graphics3D.LedgeHit3D` (class id `-0x60304D`, a plain
 snapshot handle following the `PhysicsHit3D` pattern):
 
 - `ProbeClearance(position, radius, height, mask)` — capsule overlap test at

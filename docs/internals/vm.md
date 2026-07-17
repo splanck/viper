@@ -4,9 +4,9 @@ audience: contributors
 last-verified: 2026-07-16
 ---
 
-# Viper VM — Architecture & Implementation Guide
+# Zanna VM — Architecture & Implementation Guide
 
-Comprehensive guide to the Viper Virtual Machine (VM), which executes Viper IL
+Comprehensive guide to the Zanna Virtual Machine (VM), which executes Zanna IL
 programs. This document covers the VM's design philosophy, architecture, execution model, and source code organization.
 
 ---
@@ -36,10 +36,10 @@ programs. This document covers the VM's design philosophy, architecture, executi
 
 ## Overview
 
-### What is the Viper VM?
+### What is the Zanna VM?
 
-The Viper VM is the primary execution engine for programs written in Viper's Intermediate Language (
-IL). It serves as the primary execution engine for the Viper toolchain, providing:
+The Zanna VM is the primary execution engine for programs written in Zanna's Intermediate Language (
+IL). It serves as the primary execution engine for the Zanna toolchain, providing:
 
 - **Deterministic execution** of IL programs
 - **Debugging and tracing** capabilities
@@ -145,7 +145,7 @@ class VM {
     // Polling and profiling
     uint32_t pollEveryN_;               // Host callback frequency
     std::function<bool(VM&)> pollCallback_;
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     std::array<uint64_t, kNumOpcodes> opCounts_;  // Per-opcode counters
 #endif
 
@@ -361,16 +361,16 @@ The dispatch strategy is selected at VM construction via environment variable:
 
 ```bash
 # Use function table dispatch (portable, moderate performance)
-VIPER_DISPATCH=table ./viper -run program.il
+ZANNA_DISPATCH=table ./zanna -run program.il
 
 # Use switch statement dispatch (good cache locality)
-VIPER_DISPATCH=switch ./viper -run program.il
+ZANNA_DISPATCH=switch ./zanna -run program.il
 
 # Use threaded dispatch (fastest, requires GCC/Clang)
-VIPER_DISPATCH=threaded ./viper -run program.il
+ZANNA_DISPATCH=threaded ./zanna -run program.il
 ```
 
-**Default:** Threaded if supported (`VIPER_THREADING_SUPPORTED=1`), otherwise Switch.
+**Default:** Threaded if supported (`ZANNA_THREADING_SUPPORTED=1`), otherwise Switch.
 
 ### Shared Dispatch Loop
 
@@ -378,7 +378,7 @@ All strategies share a common dispatch loop (`runSharedDispatchLoop`) that handl
 
 - State reset per iteration (`beginDispatch`)
 - Instruction selection (`selectInstruction`)
-- Debug hooks (`VIPER_VM_DISPATCH_BEFORE/AFTER`)
+- Debug hooks (`ZANNA_VM_DISPATCH_BEFORE/AFTER`)
 - Trap handling for threaded dispatch
 - Finalization and exit conditions (`finalizeDispatch`)
 
@@ -393,11 +393,11 @@ The shared dispatch loop includes several optimizations:
 
 2. **Branch hints**: `[[likely]]` and `[[unlikely]]` attributes guide code layout for hot paths.
 
-3. **Zero-cost hooks**: `VIPER_VM_DISPATCH_BEFORE` and `VIPER_VM_DISPATCH_AFTER` macros
-   compile to nothing when disabled. When opcode counting is enabled (`VIPER_VM_OPCOUNTS=1`),
+3. **Zero-cost hooks**: `ZANNA_VM_DISPATCH_BEFORE` and `ZANNA_VM_DISPATCH_AFTER` macros
+   compile to nothing when disabled. When opcode counting is enabled (`ZANNA_VM_OPCOUNTS=1`),
    the counter increment is gated by a runtime flag (`config.enableOpcodeCounts`).
 
-4. **Efficient polling**: `VIPER_VM_DISPATCH_AFTER` only increments the poll counter when
+4. **Efficient polling**: `ZANNA_VM_DISPATCH_AFTER` only increments the poll counter when
    polling is active (`interruptEveryN > 0`), avoiding wasted cycles in the common case.
 
 ### Instrumentation Hooks
@@ -406,24 +406,24 @@ The VM provides compile-time configurable hooks for profiling and embedding:
 
 ```cpp
 // In VMConfig.hpp - define before including VM headers
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) \
+#define ZANNA_VM_DISPATCH_BEFORE(ST, OPCODE) \
     do { myProfiler.onInstruction(ST, OPCODE); } while(0)
 
-#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE) \
+#define ZANNA_VM_DISPATCH_AFTER(ST, OPCODE) \
     do { myProfiler.afterInstruction(ST, OPCODE); } while(0)
 ```
 
 **Predefined behavior:**
 
-- `VIPER_VM_DISPATCH_BEFORE`: Increments per-opcode counters when `VIPER_VM_OPCOUNTS=1`
-- `VIPER_VM_DISPATCH_AFTER`: Calls poll callback every N instructions if configured
+- `ZANNA_VM_DISPATCH_BEFORE`: Increments per-opcode counters when `ZANNA_VM_OPCOUNTS=1`
+- `ZANNA_VM_DISPATCH_AFTER`: Calls poll callback every N instructions if configured
 
 ### Per-Opcode Counters
 
 Enable compile-time opcode counting:
 
 ```cpp
-#define VIPER_VM_OPCOUNTS 1  // Default: enabled
+#define ZANNA_VM_OPCOUNTS 1  // Default: enabled
 ```
 
 Access counters at runtime:
@@ -437,24 +437,24 @@ for (auto [opcode, count] : vm.getNonZeroOpcodeCounts()) {
 }
 ```
 
-Disable via environment: `VIPER_ENABLE_OPCOUNTS=0`
+Disable via environment: `ZANNA_ENABLE_OPCOUNTS=0`
 
 ### Benchmark Harness
 
-The `viper bench` command provides a built-in benchmark harness for comparing dispatch strategies:
+The `zanna bench` command provides a built-in benchmark harness for comparing dispatch strategies:
 
 ```sh
 # Run all three strategies with 3 iterations each
-viper bench program.il
+zanna bench program.il
 
 # Run a specific strategy with 5 iterations
-viper bench program.il -n 5 --table
+zanna bench program.il -n 5 --table
 
 # Run multiple files with JSON output
-viper bench file1.il file2.il --json
+zanna bench file1.il file2.il --json
 
 # Limit execution with max-steps
-viper bench program.il --max-steps 1000000
+zanna bench program.il --max-steps 1000000
 ```
 
 **Output format (text):**
@@ -627,14 +627,14 @@ class RuntimeBridge {
 
 **Call flow:**
 
-1. IL `call @Viper.Terminal.PrintI64(args)` instruction (or legacy `@rt_*` alias)
+1. IL `call @Zanna.Terminal.PrintI64(args)` instruction (or legacy `@rt_*` alias)
 2. Handler evaluates arguments into bytecode/VM slots
 3. Bytecode caches known runtime descriptors in the native-function table and calls the resolved-descriptor RuntimeBridge entry point when possible
 4. C function is invoked with marshalled arguments
 5. Return value is marshalled back to `Slot`
 
-**Note:** The runtime supports both canonical `@Viper.*` names and legacy `@rt_*` aliases when built with
-`-DVIPER_RUNTIME_NS_DUAL=ON`.
+**Note:** The runtime supports both canonical `@Zanna.*` names and legacy `@rt_*` aliases when built with
+`-DZANNA_RUNTIME_NS_DUAL=ON`.
 
 ### Runtime Call Context
 
@@ -789,7 +789,7 @@ src/vm/
 │
 ├── control_flow.hpp/cpp        # Control flow utilities
 ├── tco.hpp/cpp                 # Tail-call optimization
-├── ViperStringHandle.hpp       # RAII string handle wrapper
+├── ZannaStringHandle.hpp       # RAII string handle wrapper
 │
 ├── int_ops_arith.cpp           # Integer arithmetic implementations
 ├── int_ops_cmp.cpp             # Integer comparison implementations
@@ -797,7 +797,7 @@ src/vm/
 ├── fp_ops.cpp                  # Floating-point implementations
 ├── mem_ops.cpp                 # Memory operation implementations
 │
-├── ThreadsRuntime.cpp          # Viper.Threads runtime support
+├── ThreadsRuntime.cpp          # Zanna.Threads runtime support
 │
 └── debug/                      # Debug and tracing subsystem
     └── *.cpp                   # Debug controller, trace, scripting
@@ -847,7 +847,7 @@ src/vm/
 
 ### Tail-Call Optimization
 
-Enabled by default (`VIPER_VM_TAILCALL`):
+Enabled by default (`ZANNA_VM_TAILCALL`):
 
 ```cpp
 // Detect tail call
@@ -861,10 +861,10 @@ Eliminates stack growth for recursive functions.
 
 ### Opcode Counting
 
-Compile-time flag (`VIPER_VM_OPCOUNTS`):
+Compile-time flag (`ZANNA_VM_OPCOUNTS`):
 
 ```cpp
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
 std::array<uint64_t, kNumOpcodes> opCounts_;
 #endif
 ```
@@ -888,12 +888,12 @@ dispatch in the bytecode VM. Trusted dispatch skips per-instruction PC and opera
 loop while keeping checked compilation, verifier diagnostics, runtime traps, and branch-target checks available for
 debug/unchecked embedding paths.
 
-**ExecState-based dispatch:** The dispatch macros (`VIPER_VM_DISPATCH_BEFORE`, `VIPER_VM_DISPATCH_AFTER`) use
+**ExecState-based dispatch:** The dispatch macros (`ZANNA_VM_DISPATCH_BEFORE`, `ZANNA_VM_DISPATCH_AFTER`) use
 `ExecState` directly instead of `VMContext`, avoiding an extra indirection per instruction:
 
 ```cpp
 // Hot path uses ExecState directly
-VIPER_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&
+ZANNA_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&
 
 // ExecState.config includes all per-instruction configuration
 struct PollConfig {
@@ -934,7 +934,7 @@ struct ExecStackGuard {
 Caches runtime handles for string literals:
 
 ```cpp
-std::unordered_map<std::string_view, ViperStringHandle, ...> inlineLiteralCache;
+std::unordered_map<std::string_view, ZannaStringHandle, ...> inlineLiteralCache;
 ```
 
 **Optimizations:**
@@ -1020,11 +1020,11 @@ Allows embedding applications to maintain responsiveness.
 
 ## Further Reading
 
-**Viper Documentation:**
+**Zanna Documentation:**
 
 - **[IL Guide](../il/il-guide.md)** — IL specification and semantics
 - **[IL Reference](../il/il-guide.md#reference)** — Complete opcode catalog
-- **[Getting Started](../getting-started.md)** — Build and run Viper
+- **[Getting Started](../getting-started.md)** — Build and run Zanna
 
 **Developer Documentation:**
 
@@ -1046,27 +1046,27 @@ This section summarizes runtime tuning knobs and benchmarking for the VM.
 
 ### Dispatch Modes
 
-- Env `VIPER_DISPATCH`:
+- Env `ZANNA_DISPATCH`:
     - `table`: function-table dispatch via `executeOpcode`
     - `switch`: inline switch dispatch with generated handlers
-    - `threaded`: computed goto (if built with `VIPER_VM_THREADED`)
+    - `threaded`: computed goto (if built with `ZANNA_VM_THREADED`)
 
-- Env `VIPER_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via
-  `Runner::opcodeCounts()` or the `--count` flag in `viper -run`.
+- Env `ZANNA_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via
+  `Runner::opcodeCounts()` or the `--count` flag in `zanna -run`.
 
-- Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see
+- Env `ZANNA_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see
   `RunConfig::interruptEveryN`).
 
 ### Switch Backend Heuristics
 
 Switch dispatch selects a backend per instruction. Heuristics can be tuned via env:
 
-- `VIPER_SWITCH_DENSE_MAX_RANGE` (default `4096`): maximum value range to consider a dense jump table.
-- `VIPER_SWITCH_DENSE_MIN_DENSITY` (default `0.60`): minimum case density for dense backend.
-- `VIPER_SWITCH_HASH_MIN_CASES` (default `64`): minimum number of cases before hashing is considered.
-- `VIPER_SWITCH_HASH_MAX_DENSITY` (default `0.15`): maximum density to prefer hashed backend.
+- `ZANNA_SWITCH_DENSE_MAX_RANGE` (default `4096`): maximum value range to consider a dense jump table.
+- `ZANNA_SWITCH_DENSE_MIN_DENSITY` (default `0.60`): minimum case density for dense backend.
+- `ZANNA_SWITCH_HASH_MIN_CASES` (default `64`): minimum number of cases before hashing is considered.
+- `ZANNA_SWITCH_HASH_MAX_DENSITY` (default `0.15`): maximum density to prefer hashed backend.
 
-If `VIPER_SWITCH_MODE` is set to `dense|sorted|hashed|linear|auto`, it overrides the heuristic for all instructions.
+If `ZANNA_SWITCH_MODE` is set to `dense|sorted|hashed|linear|auto`, it overrides the heuristic for all instructions.
 
 ### Benchmarking
 
@@ -1077,7 +1077,7 @@ Use the helper script to compare dispatch performance across modes:
 Environment variables:
 
 - `IL_DIR` (default `examples/il/benchmarks`): directory of IL programs to benchmark (relative to repo root).
-- `ILC_BIN`: optional path to `viper`; otherwise auto-detected under `build/`.
+- `ILC_BIN`: optional path to `zanna`; otherwise auto-detected under `build/`.
 - `RUNS_PER_CASE` (default `5`): number of runs per (mode, program) pair.
 
 Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,
@@ -1089,7 +1089,7 @@ Example:
 RUNS_PER_CASE=5 IL_DIR='src/tests/il/e2e' scripts/vm_benchmark.sh
 ```
 
-The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture
+The script sets `ZANNA_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `ZANNA_ENABLE_OPCOUNTS=1` to capture
 counts.
 
 ---
@@ -1099,9 +1099,9 @@ counts.
 Each `VM` instance is single‑threaded: only one host thread may execute within a given VM instance at a time. To
 parallelize at the *embedder* level, create one VM per host thread (each VM has its own program state).
 
-For *language-level* shared-memory threads (`Viper.Threads`), the VM spawns a new host thread and runs a new VM instance
+For *language-level* shared-memory threads (`Zanna.Threads`), the VM spawns a new host thread and runs a new VM instance
 that shares a single `VM::ProgramState` (shared globals + shared `RtContext`) with its parent. This preserves the “one
-host thread per VM instance” invariant while allowing a Viper program to share memory across its threads.
+host thread per VM instance” invariant while allowing a Zanna program to share memory across its threads.
 
 The active VM is tracked via a thread‑local guard (see `ActiveVMGuard` in `src/vm/VMContext.*`), which binds the VM and
 its runtime context for the duration of execution. In debug builds, attempting to activate a different VM while one is
@@ -1114,13 +1114,13 @@ already active on the same thread triggers an assertion.
 ## Appendix: Runtime ABI Reference
 
 Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. This section documents the core ABI surface
-available to both the VM and native backends. For the complete list see the [Runtime Library Reference](../viperlib/README.md).
+available to both the VM and native backends. For the complete list see the [Runtime Library Reference](../zannalib/README.md).
 
 ### Runtime symbol naming
 
-- Canonical entry points use dotted `Viper.*` names emitted by frontends (catalogued in `src/il/runtime/RuntimeSignatures.hpp`).
+- Canonical entry points use dotted `Zanna.*` names emitted by frontends (catalogued in `src/il/runtime/RuntimeSignatures.hpp`).
 - Native backends rewrite these to C symbols via `il::runtime::mapCanonicalRuntimeName` and the alias table in `src/il/runtime/RuntimeNameMap.hpp`.
-- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+- When built with `-DZANNA_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Zanna.*`.
 
 ### Math
 

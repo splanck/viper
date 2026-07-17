@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,8 +20,8 @@
 #include <filesystem>
 #include <string>
 
-// Build-time VPA writer
-#include "VpaWriter.hpp"
+// Build-time ZPAK writer
+#include "ZpakWriter.hpp"
 
 extern "C" {
 #include "rt_asset.h"
@@ -32,14 +32,14 @@ int64_t rt_bytes_len(void *bytes);
 rt_string rt_const_cstr(const char *str);
 }
 
-static const char *write_vpa_temp(const char *name,
+static const char *write_zpak_temp(const char *name,
                                   const char *entry_name,
                                   const uint8_t *data,
                                   size_t len) {
     static char path[256];
-    snprintf(path, sizeof(path), "/tmp/viper_test_%s", name);
+    snprintf(path, sizeof(path), "/tmp/zanna_test_%s", name);
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry(entry_name, data, len, false);
 
     std::string err;
@@ -48,11 +48,11 @@ static const char *write_vpa_temp(const char *name,
     return path;
 }
 
-static bool write_vpa_at(const char *path,
+static bool write_zpak_at(const char *path,
                          const char *entry_name,
                          const uint8_t *data,
                          size_t len) {
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry(entry_name, data, len, false);
     std::string err;
     return writer.writeToFile(path, err);
@@ -62,10 +62,10 @@ static bool write_vpa_at(const char *path,
 
 TEST(AssetManager, MountAndFind) {
     const uint8_t data[] = "hello from pack";
-    const char *vpaPath = write_vpa_temp("mount_test.vpa", "greet.txt", data, sizeof(data) - 1);
-    ASSERT_TRUE(vpaPath != nullptr);
+    const char *zpakPath = write_zpak_temp("mount_test.zpak", "greet.txt", data, sizeof(data) - 1);
+    ASSERT_TRUE(zpakPath != nullptr);
 
-    rt_string path_str = rt_const_cstr(vpaPath);
+    rt_string path_str = rt_const_cstr(zpakPath);
     int64_t ok = rt_asset_mount(path_str);
     EXPECT_EQ(ok, 1);
 
@@ -80,15 +80,15 @@ TEST(AssetManager, MountAndFind) {
     EXPECT_EQ(ok, 1);
 
     // After unmount, should not find via pack (may still find via filesystem fallback)
-    remove(vpaPath);
+    remove(zpakPath);
 }
 
 TEST(AssetManager, LoadBytesFromPack) {
     const uint8_t data[] = "raw bytes payload";
-    const char *vpaPath = write_vpa_temp("load_bytes.vpa", "payload.bin", data, sizeof(data) - 1);
-    ASSERT_TRUE(vpaPath != nullptr);
+    const char *zpakPath = write_zpak_temp("load_bytes.zpak", "payload.bin", data, sizeof(data) - 1);
+    ASSERT_TRUE(zpakPath != nullptr);
 
-    rt_string path_str = rt_const_cstr(vpaPath);
+    rt_string path_str = rt_const_cstr(zpakPath);
     rt_asset_mount(path_str);
 
     rt_string name_str = rt_const_cstr("payload.bin");
@@ -97,16 +97,16 @@ TEST(AssetManager, LoadBytesFromPack) {
     EXPECT_EQ(rt_bytes_len(result), (int64_t)(sizeof(data) - 1));
 
     rt_asset_unmount(path_str);
-    remove(vpaPath);
+    remove(zpakPath);
 }
 
 TEST(AssetManager, AssetSchemeUsesMountedPack) {
     const uint8_t data[] = "asset uri payload";
-    const char *vpaPath =
-        write_vpa_temp("asset_scheme.vpa", "models/payload.bin", data, sizeof(data) - 1);
-    ASSERT_TRUE(vpaPath != nullptr);
+    const char *zpakPath =
+        write_zpak_temp("asset_scheme.zpak", "models/payload.bin", data, sizeof(data) - 1);
+    ASSERT_TRUE(zpakPath != nullptr);
 
-    rt_string path_str = rt_const_cstr(vpaPath);
+    rt_string path_str = rt_const_cstr(zpakPath);
     EXPECT_EQ(rt_asset_mount(path_str), 1);
 
     rt_string uri = rt_const_cstr("asset://models/payload.bin");
@@ -122,7 +122,7 @@ TEST(AssetManager, AssetSchemeUsesMountedPack) {
     std::free(raw);
 
     rt_asset_unmount(path_str);
-    remove(vpaPath);
+    remove(zpakPath);
 }
 
 TEST(AssetManager, ExistsReturnsFalse) {
@@ -142,37 +142,37 @@ TEST(AssetManager, LoadReturnsNull) {
 }
 
 TEST(AssetManager, MountNonExistent) {
-    rt_string path = rt_const_cstr("/tmp/no_such_file_12345.vpa");
+    rt_string path = rt_const_cstr("/tmp/no_such_file_12345.zpak");
     int64_t ok = rt_asset_mount(path);
     EXPECT_EQ(ok, 0);
 }
 
 TEST(AssetManager, UnmountNonExistent) {
-    rt_string path = rt_const_cstr("never_mounted.vpa");
+    rt_string path = rt_const_cstr("never_mounted.zpak");
     int64_t ok = rt_asset_unmount(path);
     EXPECT_EQ(ok, 0);
 }
 
 TEST(AssetManager, AmbiguousBasenameUnmountDoesNotRemoveWrongPack) {
     namespace fs = std::filesystem;
-    fs::path root = fs::temp_directory_path() / "viper_asset_basename_unmount";
+    fs::path root = fs::temp_directory_path() / "zanna_asset_basename_unmount";
     fs::remove_all(root);
     fs::create_directories(root / "a");
     fs::create_directories(root / "b");
 
-    fs::path packA = root / "a" / "shared.vpa";
-    fs::path packB = root / "b" / "shared.vpa";
+    fs::path packA = root / "a" / "shared.zpak";
+    fs::path packB = root / "b" / "shared.zpak";
     std::string packAStr = packA.string();
     std::string packBStr = packB.string();
     const uint8_t dataA[] = "a";
     const uint8_t dataB[] = "b";
-    ASSERT_TRUE(write_vpa_at(packAStr.c_str(), "only-a.txt", dataA, sizeof(dataA) - 1));
-    ASSERT_TRUE(write_vpa_at(packBStr.c_str(), "only-b.txt", dataB, sizeof(dataB) - 1));
+    ASSERT_TRUE(write_zpak_at(packAStr.c_str(), "only-a.txt", dataA, sizeof(dataA) - 1));
+    ASSERT_TRUE(write_zpak_at(packBStr.c_str(), "only-b.txt", dataB, sizeof(dataB) - 1));
 
     EXPECT_EQ(rt_asset_mount(rt_const_cstr(packAStr.c_str())), 1);
     EXPECT_EQ(rt_asset_mount(rt_const_cstr(packBStr.c_str())), 1);
 
-    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.vpa")), 0);
+    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.zpak")), 0);
     EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-a.txt")), 1);
     EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 1);
 
@@ -180,7 +180,7 @@ TEST(AssetManager, AmbiguousBasenameUnmountDoesNotRemoveWrongPack) {
     EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-a.txt")), 0);
     EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 1);
 
-    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.vpa")), 1);
+    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.zpak")), 1);
     EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 0);
 
     fs::remove_all(root);
@@ -189,15 +189,15 @@ TEST(AssetManager, AmbiguousBasenameUnmountDoesNotRemoveWrongPack) {
 TEST(AssetManager, ListFromPack) {
     const uint8_t d1[] = "a";
     const uint8_t d2[] = "b";
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("alpha.txt", d1, 1, false);
     writer.addEntry("beta.txt", d2, 1, false);
 
-    const char *vpaPath = "/tmp/viper_test_list.vpa";
+    const char *zpakPath = "/tmp/zanna_test_list.zpak";
     std::string err;
-    ASSERT_TRUE(writer.writeToFile(vpaPath, err));
+    ASSERT_TRUE(writer.writeToFile(zpakPath, err));
 
-    rt_string path_str = rt_const_cstr(vpaPath);
+    rt_string path_str = rt_const_cstr(zpakPath);
     rt_asset_mount(path_str);
 
     void *list = rt_asset_list();
@@ -205,7 +205,7 @@ TEST(AssetManager, ListFromPack) {
     // List should contain at least our 2 entries (may have more from other tests)
 
     rt_asset_unmount(path_str);
-    remove(vpaPath);
+    remove(zpakPath);
 }
 
 TEST(AssetManager, NullInputs) {
@@ -218,5 +218,5 @@ TEST(AssetManager, NullInputs) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

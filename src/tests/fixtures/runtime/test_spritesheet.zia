@@ -1,21 +1,21 @@
 // Test: SpriteSheet/atlas with named regions
 module TestSpriteSheet;
 
-bind Viper.Terminal;
-bind Viper.Graphics.Pixels as Px;
-bind Viper.Graphics.SpriteSheet as Sheet;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.Graphics.Pixels as Px;
+bind Zanna.Graphics.SpriteSheet as Sheet;
+bind Zanna.Collections.Seq as Seq;
 
 func start() {
     // Create a 32x32 pixel atlas
-    var px = Viper.Graphics.Pixels.New(32, 32);
+    var px = Zanna.Graphics.Pixels.New(32, 32);
 
     // Create sprite sheet from atlas
-    var sheet = Viper.Graphics.SpriteSheet.New(px);
+    var sheet = Zanna.Graphics.SpriteSheet.New(px);
 
     // Verify dimensions
-    var w = Viper.Graphics.SpriteSheet.get_Width(sheet);
-    var h = Viper.Graphics.SpriteSheet.get_Height(sheet);
+    var w = Zanna.Graphics.SpriteSheet.get_Width(sheet);
+    var h = Zanna.Graphics.SpriteSheet.get_Height(sheet);
     if (w != 32) {
         Say("FAIL: width should be 32");
         return;
@@ -26,39 +26,39 @@ func start() {
     }
 
     // No regions initially
-    var rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    var rc = Zanna.Graphics.SpriteSheet.get_RegionCount(sheet);
     if (rc != 0) {
         Say("FAIL: initial region count should be 0");
         return;
     }
 
     // Define regions
-    Viper.Graphics.SpriteSheet.SetRegion(sheet, "top_left", 0, 0, 16, 16);
-    Viper.Graphics.SpriteSheet.SetRegion(sheet, "top_right", 16, 0, 16, 16);
-    Viper.Graphics.SpriteSheet.SetRegion(sheet, "bottom_left", 0, 16, 16, 16);
-    Viper.Graphics.SpriteSheet.SetRegion(sheet, "bottom_right", 16, 16, 16, 16);
+    Zanna.Graphics.SpriteSheet.SetRegion(sheet, "top_left", 0, 0, 16, 16);
+    Zanna.Graphics.SpriteSheet.SetRegion(sheet, "top_right", 16, 0, 16, 16);
+    Zanna.Graphics.SpriteSheet.SetRegion(sheet, "bottom_left", 0, 16, 16, 16);
+    Zanna.Graphics.SpriteSheet.SetRegion(sheet, "bottom_right", 16, 16, 16, 16);
 
-    rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    rc = Zanna.Graphics.SpriteSheet.get_RegionCount(sheet);
     if (rc != 4) {
         Say("FAIL: region count should be 4");
         return;
     }
 
     // HasRegion
-    var has = Viper.Graphics.SpriteSheet.HasRegion(sheet, "top_left");
+    var has = Zanna.Graphics.SpriteSheet.HasRegion(sheet, "top_left");
     if (has != true) {
         Say("FAIL: should have top_left");
         return;
     }
 
-    var hasNot = Viper.Graphics.SpriteSheet.HasRegion(sheet, "center");
+    var hasNot = Zanna.Graphics.SpriteSheet.HasRegion(sheet, "center");
     if (hasNot != false) {
         Say("FAIL: should not have center");
         return;
     }
 
     // GetRegion — returns a Pixels buffer
-    var region = Viper.Graphics.SpriteSheet.GetRegion(sheet, "top_left");
+    var region = Zanna.Graphics.SpriteSheet.GetRegion(sheet, "top_left");
     if (region == null) {
         Say("FAIL: GetRegion should return non-null");
         return;
@@ -66,7 +66,7 @@ func start() {
 
     // VDOC-284: GetRegion returns a concrete, nullable Pixels. The typed-local
     // assignment only compiles because the registered return is now
-    // obj<Viper.Graphics.Pixels>, not bare obj, and the width resolves on it.
+    // obj<Zanna.Graphics.Pixels>, not bare obj, and the width resolves on it.
     var typedRegion: Px = Sheet.GetRegion(sheet, "top_left");
     if (Px.get_Width(typedRegion) != 16) {
         Say("FAIL: typed region width should be 16");
@@ -86,43 +86,43 @@ func start() {
     }
 
     // RegionNames
-    var names = Viper.Graphics.SpriteSheet.RegionNames(sheet);
-    var nlen = Viper.Collections.Seq.get_Count(names);
+    var names = Zanna.Graphics.SpriteSheet.RegionNames(sheet);
+    var nlen = Zanna.Collections.Seq.get_Count(names);
     if (nlen != 4) {
         Say("FAIL: RegionNames should have 4 entries");
         return;
     }
 
     // RemoveRegion
-    var removed = Viper.Graphics.SpriteSheet.RemoveRegion(sheet, "bottom_right");
+    var removed = Zanna.Graphics.SpriteSheet.RemoveRegion(sheet, "bottom_right");
     if (removed != true) {
         Say("FAIL: RemoveRegion should return 1");
         return;
     }
 
-    rc = Viper.Graphics.SpriteSheet.get_RegionCount(sheet);
+    rc = Zanna.Graphics.SpriteSheet.get_RegionCount(sheet);
     if (rc != 3) {
         Say("FAIL: region count should be 3 after remove");
         return;
     }
 
     // === Test FromGrid ===
-    var gridSheet = Viper.Graphics.SpriteSheet.FromGrid(px, 8, 8);
+    var gridSheet = Zanna.Graphics.SpriteSheet.FromGrid(px, 8, 8);
     // 32x32 / 8x8 = 4x4 = 16 regions
-    var gridCount = Viper.Graphics.SpriteSheet.get_RegionCount(gridSheet);
+    var gridCount = Zanna.Graphics.SpriteSheet.get_RegionCount(gridSheet);
     if (gridCount != 16) {
         Say("FAIL: grid 32x32 / 8x8 should produce 16 regions");
         return;
     }
 
     // Grid regions are named "0", "1", etc.
-    var hasFirst = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "0");
+    var hasFirst = Zanna.Graphics.SpriteSheet.HasRegion(gridSheet, "0");
     if (hasFirst != true) {
         Say("FAIL: grid should have region '0'");
         return;
     }
 
-    var hasLast = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "15");
+    var hasLast = Zanna.Graphics.SpriteSheet.HasRegion(gridSheet, "15");
     if (hasLast != true) {
         Say("FAIL: grid should have region '15'");
         return;

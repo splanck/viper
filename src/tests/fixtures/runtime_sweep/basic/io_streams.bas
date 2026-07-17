@@ -1,111 +1,111 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.IO.BinFile.Open
-' COVER: Viper.IO.BinFile.Eof
-' COVER: Viper.IO.BinFile.Position
-' COVER: Viper.IO.BinFile.SizeBytes
-' COVER: Viper.IO.BinFile.Close
-' COVER: Viper.IO.BinFile.Flush
-' COVER: Viper.IO.BinFile.Read
-' COVER: Viper.IO.BinFile.ReadByte
-' COVER: Viper.IO.BinFile.Seek
-' COVER: Viper.IO.BinFile.Write
-' COVER: Viper.IO.BinFile.WriteByte
-' COVER: Viper.IO.LineReader.Open
-' COVER: Viper.IO.LineReader.Eof
-' COVER: Viper.IO.LineReader.Close
-' COVER: Viper.IO.LineReader.PeekChar
-' COVER: Viper.IO.LineReader.Read
-' COVER: Viper.IO.LineReader.ReadAll
-' COVER: Viper.IO.LineReader.ReadChar
-' COVER: Viper.IO.LineWriter.Open
-' COVER: Viper.IO.LineWriter.Open
-' COVER: Viper.IO.LineWriter.Close
-' COVER: Viper.IO.LineWriter.Flush
-' COVER: Viper.IO.LineWriter.Write
-' COVER: Viper.IO.LineWriter.WriteChar
-' COVER: Viper.IO.LineWriter.WriteLine
-' COVER: Viper.IO.MemStream.New
-' COVER: Viper.IO.MemStream.Capacity
-' COVER: Viper.IO.MemStream.Length
-' COVER: Viper.IO.MemStream.Position
-' COVER: Viper.IO.MemStream.Clear
-' COVER: Viper.IO.MemStream.ReadBytes
-' COVER: Viper.IO.MemStream.ReadF32
-' COVER: Viper.IO.MemStream.ReadF64
-' COVER: Viper.IO.MemStream.ReadI16
-' COVER: Viper.IO.MemStream.ReadI32
-' COVER: Viper.IO.MemStream.ReadI64
-' COVER: Viper.IO.MemStream.ReadI8
-' COVER: Viper.IO.MemStream.ReadStr
-' COVER: Viper.IO.MemStream.ReadU16
-' COVER: Viper.IO.MemStream.ReadU32
-' COVER: Viper.IO.MemStream.ReadU8
-' COVER: Viper.IO.MemStream.Seek
-' COVER: Viper.IO.MemStream.Skip
-' COVER: Viper.IO.MemStream.ToBytes
-' COVER: Viper.IO.MemStream.WriteBytes
-' COVER: Viper.IO.MemStream.WriteF32
-' COVER: Viper.IO.MemStream.WriteF64
-' COVER: Viper.IO.MemStream.WriteI16
-' COVER: Viper.IO.MemStream.WriteI32
-' COVER: Viper.IO.MemStream.WriteI64
-' COVER: Viper.IO.MemStream.WriteI8
-' COVER: Viper.IO.MemStream.WriteStr
-' COVER: Viper.IO.MemStream.WriteU16
-' COVER: Viper.IO.MemStream.WriteU32
-' COVER: Viper.IO.MemStream.WriteU8
+' COVER: Zanna.IO.BinFile.Open
+' COVER: Zanna.IO.BinFile.Eof
+' COVER: Zanna.IO.BinFile.Position
+' COVER: Zanna.IO.BinFile.SizeBytes
+' COVER: Zanna.IO.BinFile.Close
+' COVER: Zanna.IO.BinFile.Flush
+' COVER: Zanna.IO.BinFile.Read
+' COVER: Zanna.IO.BinFile.ReadByte
+' COVER: Zanna.IO.BinFile.Seek
+' COVER: Zanna.IO.BinFile.Write
+' COVER: Zanna.IO.BinFile.WriteByte
+' COVER: Zanna.IO.LineReader.Open
+' COVER: Zanna.IO.LineReader.Eof
+' COVER: Zanna.IO.LineReader.Close
+' COVER: Zanna.IO.LineReader.PeekChar
+' COVER: Zanna.IO.LineReader.Read
+' COVER: Zanna.IO.LineReader.ReadAll
+' COVER: Zanna.IO.LineReader.ReadChar
+' COVER: Zanna.IO.LineWriter.Open
+' COVER: Zanna.IO.LineWriter.Open
+' COVER: Zanna.IO.LineWriter.Close
+' COVER: Zanna.IO.LineWriter.Flush
+' COVER: Zanna.IO.LineWriter.Write
+' COVER: Zanna.IO.LineWriter.WriteChar
+' COVER: Zanna.IO.LineWriter.WriteLine
+' COVER: Zanna.IO.MemStream.New
+' COVER: Zanna.IO.MemStream.Capacity
+' COVER: Zanna.IO.MemStream.Length
+' COVER: Zanna.IO.MemStream.Position
+' COVER: Zanna.IO.MemStream.Clear
+' COVER: Zanna.IO.MemStream.ReadBytes
+' COVER: Zanna.IO.MemStream.ReadF32
+' COVER: Zanna.IO.MemStream.ReadF64
+' COVER: Zanna.IO.MemStream.ReadI16
+' COVER: Zanna.IO.MemStream.ReadI32
+' COVER: Zanna.IO.MemStream.ReadI64
+' COVER: Zanna.IO.MemStream.ReadI8
+' COVER: Zanna.IO.MemStream.ReadStr
+' COVER: Zanna.IO.MemStream.ReadU16
+' COVER: Zanna.IO.MemStream.ReadU32
+' COVER: Zanna.IO.MemStream.ReadU8
+' COVER: Zanna.IO.MemStream.Seek
+' COVER: Zanna.IO.MemStream.Skip
+' COVER: Zanna.IO.MemStream.ToBytes
+' COVER: Zanna.IO.MemStream.WriteBytes
+' COVER: Zanna.IO.MemStream.WriteF32
+' COVER: Zanna.IO.MemStream.WriteF64
+' COVER: Zanna.IO.MemStream.WriteI16
+' COVER: Zanna.IO.MemStream.WriteI32
+' COVER: Zanna.IO.MemStream.WriteI64
+' COVER: Zanna.IO.MemStream.WriteI8
+' COVER: Zanna.IO.MemStream.WriteStr
+' COVER: Zanna.IO.MemStream.WriteU16
+' COVER: Zanna.IO.MemStream.WriteU32
+' COVER: Zanna.IO.MemStream.WriteU8
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
-    IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Core.Diagnostics.Assert(FALSE, msg)
+    IF Zanna.Math.Abs(actual - expected) > eps THEN
+        Zanna.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
 DIM cwd AS STRING
-cwd = Viper.IO.Dir.Current()
+cwd = Zanna.IO.Dir.Current()
 DIM base AS STRING
-base = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_streams")
-IF Viper.IO.Dir.Exists(base) THEN
-    Viper.IO.Dir.RemoveAll(base)
+base = Zanna.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_streams")
+IF Zanna.IO.Dir.Exists(base) THEN
+    Zanna.IO.Dir.RemoveAll(base)
 END IF
-Viper.IO.Dir.MakeAll(base)
+Zanna.IO.Dir.MakeAll(base)
 
 DIM binPath AS STRING
-binPath = Viper.IO.Path.Join(base, "bin.dat")
-DIM bf AS Viper.IO.BinFile
-bf = Viper.IO.BinFile.Open(binPath, "w")
+binPath = Zanna.IO.Path.Join(base, "bin.dat")
+DIM bf AS Zanna.IO.BinFile
+bf = Zanna.IO.BinFile.Open(binPath, "w")
 bf.WriteByte(202)
 bf.WriteByte(254)
-DIM buf AS Viper.IO.BinaryBuffer
-buf = Viper.IO.BinaryBuffer.NewCapacity(2)
+DIM buf AS Zanna.IO.BinaryBuffer
+buf = Zanna.IO.BinaryBuffer.NewCapacity(2)
 buf.WriteByte(1)
 buf.WriteByte(2)
 bf.Write(buf, 0, 2)
 bf.Flush()
 bf.Close()
 
-bf = Viper.IO.BinFile.Open(binPath, "r")
-Viper.Core.Diagnostics.AssertEq(bf.SizeBytes, 4, "bin.size")
-Viper.Core.Diagnostics.AssertEq(bf.Position, 0, "bin.pos0")
+bf = Zanna.IO.BinFile.Open(binPath, "r")
+Zanna.Core.Diagnostics.AssertEq(bf.SizeBytes, 4, "bin.size")
+Zanna.Core.Diagnostics.AssertEq(bf.Position, 0, "bin.pos0")
 DIM b0 AS INTEGER
 b0 = bf.ReadByte()
-Viper.Core.Diagnostics.AssertEq(b0, 202, "bin.readbyte")
-DIM readBuf AS Viper.IO.BinaryBuffer
-readBuf = Viper.IO.BinaryBuffer.NewCapacity(2)
+Zanna.Core.Diagnostics.AssertEq(b0, 202, "bin.readbyte")
+DIM readBuf AS Zanna.IO.BinaryBuffer
+readBuf = Zanna.IO.BinaryBuffer.NewCapacity(2)
 DIM readCount AS INTEGER
 readCount = bf.Read(readBuf, 0, 2)
-Viper.Core.Diagnostics.AssertEq(readCount, 2, "bin.read")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(readBuf.ToBytes()), "fe01", "bin.read.hex")
+Zanna.Core.Diagnostics.AssertEq(readCount, 2, "bin.read")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Collections.Bytes.ToHex(readBuf.ToBytes()), "fe01", "bin.read.hex")
 DIM newPos AS INTEGER
 newPos = bf.Seek(0, 0)
-Viper.Core.Diagnostics.AssertEq(newPos, 0, "bin.seek")
-Viper.Core.Diagnostics.Assert(bf.Eof = FALSE, "bin.eof")
+Zanna.Core.Diagnostics.AssertEq(newPos, 0, "bin.seek")
+Zanna.Core.Diagnostics.Assert(bf.Eof = FALSE, "bin.eof")
 bf.Close()
 
 DIM linesPath AS STRING
-linesPath = Viper.IO.Path.Join(base, "lines.txt")
-DIM writer AS Viper.IO.LineWriter
-writer = Viper.IO.LineWriter.Open(linesPath)
+linesPath = Zanna.IO.Path.Join(base, "lines.txt")
+DIM writer AS Zanna.IO.LineWriter
+writer = Zanna.IO.LineWriter.Open(linesPath)
 writer.NewLine = "\n"
 writer.Write("A")
 writer.WriteChar(66)
@@ -113,23 +113,23 @@ writer.WriteLine("C")
 writer.Flush()
 writer.Close()
 
-DIM reader AS Viper.IO.LineReader
-reader = Viper.IO.LineReader.Open(linesPath)
+DIM reader AS Zanna.IO.LineReader
+reader = Zanna.IO.LineReader.Open(linesPath)
 DIM peek AS INTEGER
 peek = reader.PeekChar()
-Viper.Core.Diagnostics.Assert(peek >= 0, "line.peek")
+Zanna.Core.Diagnostics.Assert(peek >= 0, "line.peek")
 DIM ch AS INTEGER
 ch = reader.ReadChar()
-Viper.Core.Diagnostics.Assert(ch >= 0, "line.readchar")
+Zanna.Core.Diagnostics.Assert(ch >= 0, "line.readchar")
 DIM line AS STRING
 line = reader.Read()
 DIM rest AS STRING
 rest = reader.ReadAll()
 reader.Close()
-Viper.Core.Diagnostics.Assert(reader.Eof, "line.eof")
+Zanna.Core.Diagnostics.Assert(reader.Eof, "line.eof")
 
-DIM ms AS Viper.IO.MemStream
-ms = Viper.IO.MemStream.New()
+DIM ms AS Zanna.IO.MemStream
+ms = Zanna.IO.MemStream.New()
 ms.WriteI8(-5)
 ms.WriteU8(250)
 ms.WriteI16(-1234)
@@ -140,40 +140,40 @@ ms.WriteI64(-123456789)
 ms.WriteF32(1.5)
 ms.WriteF64(2.25)
 ms.WriteStr("hi")
-DIM msBytes AS Viper.IO.BinaryBuffer
-msBytes = Viper.IO.BinaryBuffer.NewCapacity(2)
+DIM msBytes AS Zanna.IO.BinaryBuffer
+msBytes = Zanna.IO.BinaryBuffer.NewCapacity(2)
 msBytes.WriteByte(7)
 msBytes.WriteByte(8)
 ms.WriteBytes(msBytes)
 
-Viper.Core.Diagnostics.Assert(ms.Length > 0, "ms.len")
-Viper.Core.Diagnostics.Assert(ms.Capacity >= ms.Length, "ms.capacity")
+Zanna.Core.Diagnostics.Assert(ms.Length > 0, "ms.len")
+Zanna.Core.Diagnostics.Assert(ms.Capacity >= ms.Length, "ms.capacity")
 
 ms.Seek(0)
-Viper.Core.Diagnostics.AssertEq(ms.ReadI8(), -5, "ms.readi8")
-Viper.Core.Diagnostics.AssertEq(ms.ReadU8(), 250, "ms.readu8")
-Viper.Core.Diagnostics.AssertEq(ms.ReadI16(), -1234, "ms.readi16")
-Viper.Core.Diagnostics.AssertEq(ms.ReadU16(), 65530, "ms.readu16")
-Viper.Core.Diagnostics.AssertEq(ms.ReadI32(), -123456, "ms.readi32")
-Viper.Core.Diagnostics.AssertEq(ms.ReadU32(), 4000000000, "ms.readu32")
-Viper.Core.Diagnostics.AssertEq(ms.ReadI64(), -123456789, "ms.readi64")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadI8(), -5, "ms.readi8")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadU8(), 250, "ms.readu8")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadI16(), -1234, "ms.readi16")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadU16(), 65530, "ms.readu16")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadI32(), -123456, "ms.readi32")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadU32(), 4000000000, "ms.readu32")
+Zanna.Core.Diagnostics.AssertEq(ms.ReadI64(), -123456789, "ms.readi64")
 AssertApprox(ms.ReadF32(), 1.5, 0.0001, "ms.readf32")
 AssertApprox(ms.ReadF64(), 2.25, 0.0001, "ms.readf64")
-Viper.Core.Diagnostics.AssertEqStr(ms.ReadStr(2), "hi", "ms.readstr")
-DIM rb AS Viper.IO.BinaryBuffer
+Zanna.Core.Diagnostics.AssertEqStr(ms.ReadStr(2), "hi", "ms.readstr")
+DIM rb AS Zanna.IO.BinaryBuffer
 rb = ms.ReadBytes(2)
-Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(rb.ToBytes()), "0708", "ms.readbytes")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Collections.Bytes.ToHex(rb.ToBytes()), "0708", "ms.readbytes")
 
 ms.Skip(0)
-DIM allBytes AS Viper.IO.BinaryBuffer
+DIM allBytes AS Zanna.IO.BinaryBuffer
 allBytes = ms.ToBytes()
-Viper.Core.Diagnostics.Assert(allBytes.Length >= 0, "ms.tobytes")
+Zanna.Core.Diagnostics.Assert(allBytes.Length >= 0, "ms.tobytes")
 
 ms.Clear()
-Viper.Core.Diagnostics.AssertEq(ms.Length, 0, "ms.clear")
-Viper.Core.Diagnostics.AssertEq(ms.Position, 0, "ms.pos0")
+Zanna.Core.Diagnostics.AssertEq(ms.Length, 0, "ms.clear")
+Zanna.Core.Diagnostics.AssertEq(ms.Position, 0, "ms.pos0")
 
-Viper.IO.Dir.RemoveAll(base)
+Zanna.IO.Dir.RemoveAll(base)
 
 PRINT "RESULT: ok"
 END

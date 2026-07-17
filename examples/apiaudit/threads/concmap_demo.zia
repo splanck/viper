@@ -1,19 +1,19 @@
 // =============================================================================
-// API Audit: Viper.Threads.ConcurrentMap
+// API Audit: Zanna.Threads.ConcurrentMap
 // =============================================================================
 // Tests: New, Set, Get, GetOr, Has, SetIfMissing, Remove, Clear, Keys, Values,
 //        Len, IsEmpty
 // =============================================================================
 
 module ConcMapDemo;
-bind Viper.Threads.ConcurrentMap as CM;
-bind Viper.Core.Box as Box;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.ConcurrentMap as CM;
+bind Zanna.Core.Box as Box;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.ConcurrentMap ===");
+    Say("=== API Audit: Zanna.Threads.ConcurrentMap ===");
 
     // --- New ---
     Say("--- New ---");

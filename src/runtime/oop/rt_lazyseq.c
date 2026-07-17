@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_lazyseq.c
-// Purpose: Implements the lazy sequence (LazySeq) type for the Viper collections
+// Purpose: Implements the lazy sequence (LazySeq) type for the Zanna collections
 //          runtime. A LazySeq wraps a source sequence and a pipeline of
 //          functional transformations (Map, Filter, TakeWhile, SkipWhile, etc.)
 //          that are applied only when elements are materialized.
@@ -1104,7 +1104,7 @@ void *rt_lazyseq_w_find(void *seq, void *pred) {
 ///          the found flag to return `Some(value)` or `None`.
 /// @param seq LazySeq object.
 /// @param pred Opaque predicate function pointer.
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_lazyseq_w_find_option(void *seq, void *pred) {
     int8_t found = 0;
     void *value = rt_lazyseq_find(as_lazyseq(seq), (int8_t (*)(void *))pred, &found);

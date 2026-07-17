@@ -1,0 +1,27 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-14
+---
+
+# Text Processing
+> String manipulation, encoding, parsing, and data format libraries.
+
+**Part of [Zanna Runtime Library](../README.md)**
+
+---
+
+## Contents
+
+| File | Contents |
+|------|----------|
+| [Encoding & Identity](encoding.md) | Codec (Base64, Hex, URL encoding), Uuid |
+| [Data Formats](formats.md) | Json, JsonPath, JsonStream, Csv, Toml, Ini, Xml, Yaml, and serialization |
+| [Pattern Matching](patterns.md) | Pattern, CompiledPattern, Scanner, Diff, FuzzyMatch, String.Like/LikeCI |
+| [Formatting & Generation](formatting.md) | Template, StringBuilder, TextWrapper, InvariantNumberFormat, Pluralize, Version, Html, Markdown |
+
+## See Also
+
+- [Collections](../collections/README.md) - `Seq`, `Map`, and `StringSet` used with templates and CSV
+- [Input/Output](../io/README.md) - `File` and `LineReader` for reading text files
+- [Cryptography](../crypto.md) - `Hash` for checksums and authentication of text data

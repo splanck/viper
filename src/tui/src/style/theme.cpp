@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/style/theme.cpp
-// Purpose: Define the default colour palette used by the Viper TUI renderer and
+// Purpose: Define the default colour palette used by the Zanna TUI renderer and
 //          expose helpers for mapping semantic roles to styles.
 // Key invariants: Colour assignments remain constant after construction so that
 //                 callers can cache pointers to the returned styles without
 //                 observing mutation.
 // Ownership/Lifetime: Theme stores styles by value and owns no external
 //                     resources.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,8 +25,8 @@
 
 #include "tui/style/theme.hpp"
 
-namespace viper::tui::style {
-/// @brief Construct the default Viper TUI theme.
+namespace zanna::tui::style {
+/// @brief Construct the default Zanna TUI theme.
 /// @details Initialises each semantic role—normal, accent, disabled, and
 ///          selection—with hand-picked RGBA tuples tuned for readability in
 ///          dark terminals.  Values are stored directly inside the @ref Theme so
@@ -65,4 +65,4 @@ const render::Style &Theme::style(Role r) const {
     }
 }
 
-} // namespace viper::tui::style
+} // namespace zanna::tui::style

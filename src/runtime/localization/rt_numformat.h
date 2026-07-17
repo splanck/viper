@@ -1,17 +1,17 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_numformat.h
-// Purpose: Public C API for Viper.Localization.NumberFormat — locale-aware
+// Purpose: Public C API for Zanna.Localization.NumberFormat — locale-aware
 //          number formatting AND parsing. Wraps a Locale with mutable per-
 //          instance options (fraction digit range, grouping on/off, strict
 //          mode, rounding policy). Delegates to the shared digit-grouping
 //          helper in rt_numfmt_internal.h so the existing
-//          Viper.Text.InvariantNumberFormat surface continues to work unchanged.
+//          Zanna.Text.InvariantNumberFormat surface continues to work unchanged.
 //
 // Key invariants:
 //   - Every instance captures the Locale's rt_locale_data_t at construction;
@@ -29,7 +29,7 @@
 // Links: src/runtime/localization/rt_numformat.c (implementation),
 //        src/runtime/text/rt_numfmt_internal.h (shared grouping helper),
 //        src/runtime/localization/rt_locale.h (Locale handle type),
-//        docs/viperlib/localization/formatting.md (user documentation).
+//        docs/zannalib/localization/formatting.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

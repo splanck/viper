@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 
@@ -596,7 +596,7 @@ void AsmEmitter::emitFunction(std::ostream &os,
                               const TargetInfo &target) const {
     os << ".text\n";
     const std::string linkName =
-        formatSymbolReference(viper::common::MangleLink(func.name), format_);
+        formatSymbolReference(zanna::common::MangleLink(func.name), format_);
     os << ".globl " << linkName << "\n";
     if (format_ == objfile::ObjFormat::ELF) {
         os << ".type " << linkName << ", @function\n";
@@ -1247,7 +1247,7 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand,
         Overload{[&](const OpLabel &label) {
                      if (auto mapped = il::runtime::mapCanonicalRuntimeName(label.name))
                          return formatSymbolReference(std::string{*mapped}, format);
-                     return formatSymbolReference(viper::common::MangleLink(label.name), format);
+                     return formatSymbolReference(zanna::common::MangleLink(label.name), format);
                  },
                  [&](const OpReg &reg) {
                      if (reg.cls != RegClass::GPR) {
@@ -1307,4 +1307,4 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) {
     }
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

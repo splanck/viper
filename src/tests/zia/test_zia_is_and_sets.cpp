@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -74,7 +74,7 @@ class Dog extends Animal {
 
 func start() {    var dog = new Dog();
     var result: Boolean = dog is Dog;
-    Viper.Terminal.SayInt(result ? 1 : 0);
+    Zanna.Terminal.SayInt(result ? 1 : 0);
 }
 )";
     CompilerInput input{.source = source, .path = "is_basic.zia"};
@@ -115,7 +115,7 @@ class Dog extends Animal {
 
 func start() {    var dog = new Dog();
     var isAnimal: Boolean = dog is Animal;
-    Viper.Terminal.SayInt(isAnimal ? 1 : 0);
+    Zanna.Terminal.SayInt(isAnimal ? 1 : 0);
 }
 )";
     CompilerInput input{.source = source, .path = "is_base.zia"};
@@ -164,8 +164,8 @@ func start() {    var s = {1, 2, 3};
     EXPECT_TRUE(result.succeeded());
 
     // Verify Set.New and Set.Add calls are emitted
-    EXPECT_TRUE(hasCall(result.module, "main", "Viper.Collections.Set.New"));
-    EXPECT_TRUE(hasCall(result.module, "main", "Viper.Collections.Set.Add"));
+    EXPECT_TRUE(hasCall(result.module, "main", "Zanna.Collections.Set.New"));
+    EXPECT_TRUE(hasCall(result.module, "main", "Zanna.Collections.Set.Add"));
 }
 
 /// @brief Test that empty set literal compiles.
@@ -194,7 +194,7 @@ func start() {    var s = {42};
     }
 
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCall(result.module, "main", "Viper.Collections.Set.New"));
+    EXPECT_TRUE(hasCall(result.module, "main", "Zanna.Collections.Set.New"));
 }
 
 /// @brief Test set literal with string elements.
@@ -220,12 +220,12 @@ func start() {    var s = {"hello", "world"};
     }
 
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCall(result.module, "main", "Viper.Collections.Set.New"));
-    EXPECT_TRUE(hasCall(result.module, "main", "Viper.Collections.Set.Add"));
+    EXPECT_TRUE(hasCall(result.module, "main", "Zanna.Collections.Set.New"));
+    EXPECT_TRUE(hasCall(result.module, "main", "Zanna.Collections.Set.Add"));
 }
 
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

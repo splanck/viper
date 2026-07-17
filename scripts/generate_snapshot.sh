@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# generate_snapshot.sh - Create a tarball snapshot of the Viper source code
+# generate_snapshot.sh - Create a tarball snapshot of the Zanna source code
 #
 # Usage: ./scripts/generate_snapshot.sh
 #
 # Creates a .tar.gz archive of the current HEAD in the parent directory
-# with the filename: vipersrc<YYYYMMDD>.tar.gz
+# with the filename: zannasrc<YYYYMMDD>.tar.gz
 #
 
 set -e
@@ -14,7 +14,7 @@ set -e
 DATE=$(date +%Y%m%d)
 
 # Output filename
-OUTPUT="../vipersrc${DATE}.tar.gz"
+OUTPUT="../zannasrc${DATE}.tar.gz"
 
 # Create the archive
 git archive --format=tar.gz --output="${OUTPUT}" HEAD

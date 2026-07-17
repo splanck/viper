@@ -1,7 +1,7 @@
 module fireworks;
 
 // ============================================================================
-// FIREWORKS.VIPER - Fireworks Animation
+// FIREWORKS.ZANNA - Fireworks Animation
 // ============================================================================
 // Beautiful fireworks display with rockets, explosions, and sparkles.
 // Features multiple explosion patterns and colors.
@@ -9,12 +9,12 @@ module fireworks;
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Time;
 
 var FIREWORKS_PI: Number;
 
@@ -438,7 +438,7 @@ func fireworksRun(canvas: Canvas) {
         // A toggles auto-launch
         if canvas.KeyHeld(65) != 0 {
             show.toggleAuto();
-            Viper.Time.Clock.Sleep(200);  // Debounce
+            Zanna.Time.Clock.Sleep(200);  // Debounce
         }
 
         // Up/Down adjusts launch frequency
@@ -503,6 +503,6 @@ func fireworksRun(canvas: Canvas) {
         canvas.TextBg(10, height - 45, "SPACE: Launch | A: Toggle Auto | UP/DOWN: Speed | ESC: Exit", colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

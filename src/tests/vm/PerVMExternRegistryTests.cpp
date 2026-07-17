@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: src/tests/vm/PerVMExternRegistryTests.cpp
 //
@@ -14,13 +14,13 @@
 //   - Per-VM registries are independent: changes in one don't affect others
 //   - The process-global registry remains unchanged by per-VM operations
 //
-// Links: include/viper/vm/RuntimeBridge.hpp
+// Links: include/zanna/vm/RuntimeBridge.hpp
 //===----------------------------------------------------------------------===//
 #include "il/core/Module.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt_context.h"
 #include "tests/TestHarness.hpp"
-#include "viper/vm/RuntimeBridge.hpp"
+#include "zanna/vm/RuntimeBridge.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
@@ -558,6 +558,6 @@ TEST(ExternRegistryStrictMode, CaseInsensitiveNameMatching) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

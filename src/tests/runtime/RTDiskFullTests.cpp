@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -65,7 +65,7 @@ static rt_string make_string(const char *s) {
 // with a read-only stream so fputc returns EOF.
 static void test_linewriter_write_char_traps() {
     // Create a valid LineWriter first
-    const std::string path = tmpPath("viper_diskfull_test_wc.txt");
+    const std::string path = tmpPath("zanna_diskfull_test_wc.txt");
     void *lw = rt_linewriter_open(make_string(path.c_str()));
     assert(lw != nullptr);
 
@@ -100,7 +100,7 @@ static void test_linewriter_write_char_traps() {
 // -- Test: LineWriter.Flush traps on fflush failure ---------------------------
 // Strategy: Same approach -- replace FILE* with a broken stream.
 static void test_linewriter_flush_traps() {
-    const std::string path = tmpPath("viper_diskfull_test_fl.txt");
+    const std::string path = tmpPath("zanna_diskfull_test_fl.txt");
     void *lw = rt_linewriter_open(make_string(path.c_str()));
     assert(lw != nullptr);
 
@@ -132,7 +132,7 @@ static void test_linewriter_flush_traps() {
 
 // -- Test: BinFile.Flush traps on fflush failure ------------------------------
 static void test_binfile_flush_traps() {
-    const std::string path = tmpPath("viper_diskfull_test_bf.txt");
+    const std::string path = tmpPath("zanna_diskfull_test_bf.txt");
     void *bf = rt_binfile_open(make_string(path.c_str()), make_string("w"));
     assert(bf != nullptr);
 

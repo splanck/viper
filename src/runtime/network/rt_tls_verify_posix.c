@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,13 +32,13 @@
 /// @details If the runtime is executing with elevated effective credentials,
 ///          trust roots must not be redirected by untrusted inherited
 ///          environment variables.
-/// @return Nonzero when VIPER_TLS_CA_FILE should be ignored.
+/// @return Nonzero when ZANNA_TLS_CA_FILE should be ignored.
 static RT_TLS_MAYBE_UNUSED int tls_posix_ignore_env_trust_override(void) {
     return geteuid() != getuid() || getegid() != getgid();
 }
 
 /// @brief Find a PEM CA bundle file by probing standard OS paths.
-/// @details The VIPER_TLS_CA_FILE environment variable can point at an
+/// @details The ZANNA_TLS_CA_FILE environment variable can point at an
 ///          application-managed CA bundle. When unset or unusable, standard
 ///          distro bundle paths are probed in order.
 /// @return Path string literal on success, NULL if none found.
@@ -49,7 +49,7 @@ static RT_TLS_MAYBE_UNUSED const char *find_ca_bundle(void) {
                                     "/etc/ssl/cert.pem",
                                     NULL};
     const char *override =
-        tls_posix_ignore_env_trust_override() ? NULL : getenv("VIPER_TLS_CA_FILE");
+        tls_posix_ignore_env_trust_override() ? NULL : getenv("ZANNA_TLS_CA_FILE");
     if (override && override[0]) {
         FILE *f = fopen(override, "rb");
         if (f) {
@@ -1334,7 +1334,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
     char *bundle_pem = NULL;
     size_t bundle_len = 0;
 
-    const char *require_revocation = getenv("VIPER_TLS_REQUIRE_REVOCATION");
+    const char *require_revocation = getenv("ZANNA_TLS_REQUIRE_REVOCATION");
     if (require_revocation && require_revocation[0] && strcmp(require_revocation, "0") != 0) {
         session->error = "TLS: mandatory revocation checking is not supported";
         return RT_TLS_ERROR_HANDSHAKE;

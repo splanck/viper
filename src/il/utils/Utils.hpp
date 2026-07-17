@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,11 +25,11 @@ struct Function;
 struct Value;
 } // namespace il::core
 
-namespace viper::analysis {
+namespace zanna::analysis {
 struct DomTree;
-} // namespace viper::analysis
+} // namespace zanna::analysis
 
-namespace viper::il {
+namespace zanna::il {
 
 using Instruction = ::il::core::Instr;
 using Block = ::il::core::BasicBlock;
@@ -73,7 +73,7 @@ void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::
 /// @param dominator Candidate dominator block.
 /// @param block Candidate dominated block.
 /// @return True when @p dominator is on @p block's immediate-dominator chain.
-bool dominatesInTree(const ::viper::analysis::DomTree &domTree,
+bool dominatesInTree(const ::zanna::analysis::DomTree &domTree,
                      const ::il::core::BasicBlock *dominator,
                      const ::il::core::BasicBlock *block);
 
@@ -95,7 +95,7 @@ void replaceUsesDominatedBy(::il::core::Function &F,
                             const ::il::core::Value &replacement,
                             const ::il::core::BasicBlock &rootBlock,
                             std::size_t rootInstrIndex,
-                            const ::viper::analysis::DomTree &domTree);
+                            const ::zanna::analysis::DomTree &domTree);
 
 /// @brief Compute the next available temporary identifier in a function.
 /// @details Scans all parameters, block parameters, instruction results,
@@ -117,4 +117,4 @@ Block *findBlock(::il::core::Function &F, std::string_view label);
 /// @return Pointer to the block when found; nullptr otherwise.
 const Block *findBlock(const ::il::core::Function &F, std::string_view label);
 
-} // namespace viper::il
+} // namespace zanna::il

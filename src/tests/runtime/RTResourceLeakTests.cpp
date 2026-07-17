@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -99,7 +99,7 @@ static void test_load_png_nonexistent_no_leak() {
 /// Loading a file that isn't a PNG (bad signature) returns NULL without leaking.
 static void test_load_png_bad_signature_no_leak() {
     // Create a temp file with non-PNG content
-    char tmpfile[] = "/tmp/viper_test_bad_png_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_bad_png_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     const char *junk = "This is not a PNG file at all!";
@@ -123,7 +123,7 @@ static void test_load_png_bad_signature_no_leak() {
 /// without leaking comp_bytes or raw_bytes.
 static void test_load_png_truncated_no_leak() {
     // Create a temp file with just the PNG signature + truncated IHDR
-    char tmpfile[] = "/tmp/viper_test_trunc_png_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_trunc_png_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
 
@@ -149,7 +149,7 @@ static void test_load_png_truncated_no_leak() {
 /// Repeated failed PNG loads don't accumulate GC objects (regression test for
 /// the comp_bytes/raw_bytes leak fixed in this changeset).
 static void test_load_png_repeated_failures_stable() {
-    char tmpfile[] = "/tmp/viper_test_repeat_png_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_repeat_png_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     const char *junk = "NotAPNG";
@@ -194,7 +194,7 @@ static void test_load_bmp_nonexistent_no_leak() {
 
 /// Loading a truncated BMP (valid magic, incomplete headers) returns NULL.
 static void test_load_bmp_truncated_no_leak() {
-    char tmpfile[] = "/tmp/viper_test_trunc_bmp_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_trunc_bmp_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     // Write just BM magic + a few bytes (not a complete header)
@@ -223,7 +223,7 @@ static void test_png_roundtrip_no_leak() {
             rt_pixels_set(p, x, y, 0xFF0000FF); // red
 
     // Save to temp file
-    char tmpfile[] = "/tmp/viper_test_png_rt_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_png_rt_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     close(fd);

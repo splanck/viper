@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-05-31
 ---
 
-# Viper Architecture Overview
+# Zanna Architecture Overview
 
-**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (Zia, BASIC) →
+**Purpose:** This document explains how Zanna compiles and runs programs end-to-end: front ends (Zia, BASIC) →
 intermediate language (IL) → optimization passes → execution on the VM → native code generation. It merges
 prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked
 pages.
@@ -63,7 +63,7 @@ the IL as the thin waist between language-specific semantics and machine executi
 
 ### End-to-end lifecycle
 
-`viper` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute
+`zanna` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute
 pipeline:
 
 1. BASIC front end emits IL.
@@ -72,7 +72,7 @@ pipeline:
 4. VM loads the module and runs `main`.
 
 ```sh
-$ viper run examples/basic/ex1_hello_cond.bas
+$ zanna run examples/basic/ex1_hello_cond.bas
 HELLO
 READY
 10
@@ -91,7 +91,7 @@ When the native backend is enabled, the same IL feeds the code generator instead
 - **Passes:** `src/il/transform/`.
 - **Support utilities:** `src/support/`, `src/common/`.
 - **Tests:** `src/tests/` (`unit/`, `golden/`, `e2e/`, `smoke/`, `perf/`).
-- **Tools:** `src/tools/viper/` (driver and subcommands), `src/tools/`.
+- **Tools:** `src/tools/zanna/` (driver and subcommands), `src/tools/`.
 - **VM:** `src/vm/`, `src/runtime/`.
 
 ## Components & responsibilities
@@ -218,7 +218,7 @@ Ownership rules mirror strings. The lowering pipeline emits retains on assignmen
 parameter teardown releases, and function returns transfer ownership to the caller. Violating these rules (e.g.,
 releasing then reusing a temp in the same block) is caught by the IL verifier.
 
-Build with `-DCMAKE_CXX_FLAGS="-DVIPER_RC_DEBUG=1"` (or add it to `CFLAGS` for the C runtime) to enable
+Build with `-DCMAKE_CXX_FLAGS="-DZANNA_RC_DEBUG=1"` (or add it to `CFLAGS` for the C runtime) to enable
 retain/release logging. The macro is a compile-time switch — it is not read from the environment at runtime — and is
 not enabled automatically by Debug builds. When set, the runtime logs every retain/release along with the resulting
 refcount, highlighting double releases, missing retains, or stale handles early in development.
@@ -302,7 +302,7 @@ Differential testing against the VM keeps codegen honest once implemented.
 
 ### Tools & CLI
 
-The CLI (`viper`) dispatches to focused handlers based on the first tokens:
+The CLI (`zanna`) dispatches to focused handlers based on the first tokens:
 
 - `run <target> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks] [--verify-each] [--paranoid-verify] [--time-compile] [--pass-stats]`
 - `build <target> [-o output] [--bounds-checks] [--no-runtime-namespaces] [--verify-each] [--paranoid-verify] [--time-compile] [--pass-stats] [--fast-link]`
@@ -319,29 +319,29 @@ The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 - `il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after] [-verify-each] [--pass-stats]`
 - `bench <file.il> [-n N] [--table|--switch|--threaded] [--json]`
 
-Handlers live in `src/tools/viper/cmd_run.cpp`, `cmd_run_il.cpp`,
+Handlers live in `src/tools/zanna/cmd_run.cpp`, `cmd_run_il.cpp`,
 `cmd_front_zia.cpp`, `cmd_front_basic.cpp`, `cmd_il_opt.cpp`,
 `cmd_codegen_x64.cpp`, `cmd_codegen_arm64.cpp`, `cmd_init.cpp`,
 `cmd_package.cpp`, `cmd_install_package.cpp`, `cmd_bench.cpp`,
-and `cmd_repl.cpp`; `src/tools/viper/main.cpp` merely dispatches to
+and `cmd_repl.cpp`; `src/tools/zanna/main.cpp` merely dispatches to
 these subcommands. Additional tools (verifier, disassembler, wrapper
 frontends) reuse the same IL libraries.
 
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors. The REPL (
-`viper repl`) provides interactive evaluation backed by the VM.
+`zanna repl`) provides interactive evaluation backed by the VM.
 
 ### Asset Embedding
 
-When a project declares `embed` or `pack` directives in `viper.project`, the build
-pipeline compiles assets into VPA (Viper Pack Archive) format:
+When a project declares `embed` or `pack` directives in `zanna.project`, the build
+pipeline compiles assets into ZPAK (Zanna Pack Archive) format:
 
 - `embed` assets are baked into the executable's `.rodata` section (zero disk I/O at runtime)
-- `pack` assets are written to separate `.vpa` files distributed alongside the executable
+- `pack` assets are written to separate `.zpak` files distributed alongside the executable
 - `pack-compressed` applies DEFLATE compression (pre-compressed formats auto-skip)
 
-The runtime asset manager (`Viper.IO.Assets`) transparently loads from embedded data,
+The runtime asset manager (`Zanna.IO.Assets`) transparently loads from embedded data,
 mounted packs, or the filesystem. Resolution order: embedded → mounted packs → disk.
-See `docs/viperlib/io/assets.md` for the full API reference.
+See `docs/zannalib/io/assets.md` for the full API reference.
 
 ### CLI tools (built targets)
 
@@ -350,13 +350,13 @@ See `docs/viperlib/io/assets.md` for the full API reference.
 - `ilrun` — Convenience wrapper for IL execution (`ilrun program.il`)
 - `vbasic` — Convenience wrapper for BASIC (`vbasic script.bas --emit-il|-o`)
 - `vbasic-server` — BASIC language server (LSP + MCP dual protocol)
-- `viper` — Unified driver
+- `zanna` — Unified driver
     - `run <target>` — Build and run a Zia or BASIC target
     - `build <target>` — Emit IL or build a native executable
     - `init <project-name>` — Scaffold a new Zia or BASIC project
     - `repl [zia|basic]` — Interactive REPL session
     - `package [target]` — Build a platform-native app installer
-    - `install-package [--target …]` — Build a Viper toolchain installer
+    - `install-package [--target …]` — Build a Zanna toolchain installer
     - `bench <file.il> [-n N]` — IL benchmark runner
     - `-run <file.il>` — Execute IL on the VM
     - `codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]` — AArch64 assembly / object / native run
@@ -402,8 +402,8 @@ bumping the IL version and updating consumers.
 
 - `il::core`, `il::build`, `il::io`, `il::verify` for IL infrastructure.
 - `il::vm` for the VM engine.
-- `viper::codegen::x64` for the x86-64 native backend.
-- `viper::codegen::aarch64` for the AArch64 native backend.
+- `zanna::codegen::x64` for the x86-64 native backend.
+- `zanna::codegen::aarch64` for the AArch64 native backend.
 - `il::frontends::basic` for the BASIC front end.
 - `il::frontends::zia` for the Zia front end.
 - `rt` (C ABI) for the runtime library.
@@ -418,9 +418,9 @@ bumping the IL version and updating consumers.
 
 <a id="tui-architecture"></a>
 
-## ViperTUI Architecture
+## ZannaTUI Architecture
 
-ViperTUI is an experimental terminal UI library built in layers. Each layer stays focused and exposes a small surface so
+ZannaTUI is an experimental terminal UI library built in layers. Each layer stays focused and exposes a small surface so
 higher tiers can be tested without a real terminal.
 
 ### Layers
@@ -453,13 +453,13 @@ and render through the UI and render layers.
 #### Tests
 
 Tests exercise the layers without a real TTY by using `StringTermIO` to capture rendered output. Setting
-`VIPERTUI_NO_TTY=1` ensures `TerminalSession` stays inactive so tests run headless.
+`ZANNATUI_NO_TTY=1` ensures `TerminalSession` stays inactive so tests run headless.
 
 ### Environment Flags
 
-- `VIPERTUI_NO_TTY` – when set to `1`, `TerminalSession` skips TTY setup and the application renders a single frame then
+- `ZANNATUI_NO_TTY` – when set to `1`, `TerminalSession` skips TTY setup and the application renders a single frame then
   exits (useful for CI and tests).
-- `VIPERTUI_DISABLE_OSC52` – disables OSC 52 clipboard sequences so tests do not emit control codes on unsupported
+- `ZANNATUI_DISABLE_OSC52` – disables OSC 52 clipboard sequences so tests do not emit control codes on unsupported
   terminals.
 
 ### Glossary

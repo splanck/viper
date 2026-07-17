@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: il/core/Type.hpp
 // Purpose: Declares the Type struct -- a lightweight value-based wrapper
 //          around a Type::Kind enum representing the 10 primitive types in
-//          Viper IL (void, i1, i16, i32, i64, f64, ptr, str, error,
+//          Zanna IL (void, i1, i16, i32, i64, f64, ptr, str, error,
 //          resumetok). Provides string conversion to spec mnemonics.
 // Key invariants:
 //   - Type is a POD-like struct with value semantics; safe to copy freely.

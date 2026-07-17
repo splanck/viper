@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # Script: build_deck.py
-# Purpose: Generate the informal "Intro to Viper" slide deck.
+# Purpose: Generate the informal "Intro to Zanna" slide deck.
 
-"""Generate the informal "Intro to Viper" slide deck (16:9, dark theme).
+"""Generate the informal "Intro to Zanna" slide deck (16:9, dark theme).
 
 Reproducible: edit the content/constants below and re-run:
 
     /tmp/pptx-venv/bin/python misc/presentation/build_deck.py
 
-Output: misc/presentation/Viper_Intro_Revised.pptx
+Output: misc/presentation/Zanna_Intro_Revised.pptx
 """
 
 import os
@@ -21,7 +21,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 
 # --------------------------------------------------------------------------- #
-# Theme tokens (GitHub-dark inspired, "viper green" accent)
+# Theme tokens (GitHub-dark inspired, "zanna green" accent)
 # --------------------------------------------------------------------------- #
 BG      = RGBColor(0x0D, 0x11, 0x17)   # slide background
 PANEL   = RGBColor(0x16, 0x1B, 0x22)   # card / panel
@@ -29,7 +29,7 @@ CODEBG  = RGBColor(0x0A, 0x0E, 0x14)   # code block background
 BORDER  = RGBColor(0x30, 0x36, 0x3D)   # subtle borders
 TEXT    = RGBColor(0xE6, 0xED, 0xF3)   # primary text
 MUTED   = RGBColor(0x8B, 0x94, 0x9E)   # secondary text
-GREEN   = RGBColor(0x3F, 0xB9, 0x50)   # primary accent (viper green)
+GREEN   = RGBColor(0x3F, 0xB9, 0x50)   # primary accent (zanna green)
 CYAN    = RGBColor(0x58, 0xA6, 0xFF)   # secondary accent (links/headers)
 AMBER   = RGBColor(0xD2, 0x99, 0x22)   # highlight
 COMMENT = RGBColor(0x6E, 0x96, 0x6E)   # code comments
@@ -49,8 +49,8 @@ MONO = "Menlo"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-LOGO = os.path.join(ROOT, "misc", "images", "viperlogo2.png")
-OUT  = os.path.join(HERE, "Viper_Intro_Revised.pptx")
+LOGO = os.path.join(ROOT, "misc", "images", "zannalogo2.png")
+OUT  = os.path.join(HERE, "Zanna_Intro_Revised.pptx")
 
 EMU_IN = 914400
 SW, SH = 13.333, 7.5   # widescreen inches
@@ -186,7 +186,7 @@ CODE_KW = {
 CODE_OPS = ("->", "=", "+", "*", "%")          # match "->" before "-"
 QNAME = re.compile(r"[A-Z]\w*(?:\.[A-Za-z_]\w*)+")  # Title-cased dotted chain
 
-CONSOLE_CMDS = ("viper", "git", "cd", "clone", "init", "run", "build",
+CONSOLE_CMDS = ("zanna", "git", "cd", "clone", "init", "run", "build",
                 "repl", "il-opt", "make", "Say")
 
 
@@ -401,7 +401,7 @@ def slide_title():
     tf = textbox(s, 0.95, 3.2, 11.5, 2.6)
     para(tf, "An informal introduction", size=16, color=GREEN, bold=True,
          first=True, after=6)
-    para(tf, "Viper", size=76, color=TEXT, bold=True, after=2)
+    para(tf, "Zanna", size=76, color=TEXT, bold=True, after=2)
     para(tf, "A from-scratch compiler, VM, runtime, and native toolchain "
             "for games and apps.", size=22, color=MUTED,
          after=0, line=1.1)
@@ -414,7 +414,7 @@ def slide_title():
         ("    ·    ", {"color": BORDER}),
         ("Linux · macOS · Windows", {"color": MUTED}),
         ("    ·    ", {"color": BORDER}),
-        ("github.com/splanck/viper", {"color": CYAN}),
+        ("github.com/zannagames/zanna", {"color": CYAN}),
     ], size=14, first=True, after=0)
 
 
@@ -426,7 +426,7 @@ def slide_origin():
     para(tf, "THE ORIGIN STORY", size=15, color=GREEN, bold=True, first=True,
          after=0)
     t2 = textbox(s, 0.95, 2.62, 11.5, 2.08)
-    para(t2, "Where did Viper come from?", size=54, color=TEXT, bold=True,
+    para(t2, "Where did Zanna come from?", size=54, color=TEXT, bold=True,
          first=True, after=0)
     t3 = textbox(s, 0.95, 4.87, 10.39, 0.98)
     para(t3, "How a weekend compiler experiment quietly turned into an "
@@ -436,12 +436,12 @@ def slide_origin():
 
 def slide_what_is():
     s = new_slide()
-    kicker(s, "What is Viper")
+    kicker(s, "What is Zanna")
     title(s, "A platform for building games", th=0.77)
 
     tf = textbox(s, 0.7, 1.91, 11.26, 1.64)
     para(tf, [
-        ("Viper is a ", {"color": TEXT}),
+        ("Zanna is a ", {"color": TEXT}),
         ("game development platform and runtime",
          {"color": GREEN, "bold": True}),
         (". It is general purpose, but the whole stack is shaped first and "
@@ -458,7 +458,7 @@ def slide_what_is():
          "The same compiler, languages, and runtime handle ordinary apps "
          "and tools too."),
         (8.86, "One whole stack",
-         "Compiler, VM, native backends, and runtime are all part of Viper "
+         "Compiler, VM, native backends, and runtime are all part of Zanna "
          "itself."),
     ]
     for x, head, body in cards:
@@ -471,14 +471,14 @@ def slide_what_is():
 
 def slide_why():
     s = new_slide()
-    kicker(s, "Why Viper")
+    kicker(s, "Why Zanna")
     title(s, "The IL is the protagonist",
           "One typed, SSA-based intermediate language sits at the center "
           "of everything.")
 
     tf = textbox(s, 0.7, 2.3, 11.9, 1.6)
     para(tf, [
-        ("Most toolchains bolt a language onto someone else's stack. Viper "
+        ("Most toolchains bolt a language onto someone else's stack. Zanna "
          "inverts that: a small, ", {"color": TEXT}),
         ("typed, verifiable IL", {"color": GREEN, "bold": True}),
         (" is the contract. Every language compiles to it, every backend "
@@ -515,7 +515,7 @@ def slide_why():
 
     node(x0, "Zia · BASIC", "languages")
     glyph_arrow(x0 + bw)
-    node(x1, "Viper IL", "typed SSA · verified", filled=True)
+    node(x1, "Zanna IL", "typed SSA · verified", filled=True)
     glyph_arrow(x1 + bw)
     node(x2, "VM · Native", "run or ship")
 
@@ -534,7 +534,7 @@ def slide_core_idea():
     tf = textbox(s, 0.7, 2.45, 6.85, 4.4)
     pts = [
         ("Programs in ", ("Zia", GREEN), " or ", ("BASIC", GREEN),
-         " compile to ", ("Viper IL", GREEN),
+         " compile to ", ("Zanna IL", GREEN),
          " — a typed, SSA-based intermediate language."),
         ("The IL is the ", ("“thin waist”", TEXT),
          ": frontends and backends plug into it independently."),
@@ -557,7 +557,7 @@ def slide_core_idea():
                     ml=0.32, mt=0.3)
     para(ctf, "Self-contained stack", size=21, color=TEXT, bold=True,
          first=True, after=8)
-    para(ctf, "Every layer of the stack is implemented in the Viper repo.",
+    para(ctf, "Every layer of the stack is implemented in the Zanna repo.",
          size=15, color=MUTED, after=16, line=1.18)
     for feat in ["Compiler, VM, assembler, linker, runtime in-tree",
                  "Native code generation without LLVM",
@@ -594,7 +594,7 @@ def slide_languages():
             para(tf, feat, size=16, color=TEXT, after=9, bullet="✓")
 
     foot = textbox(s, 0.7, 6.4, 11.9, 0.45)
-    para(foot, [("Both lower to the same Viper IL",
+    para(foot, [("Both lower to the same Zanna IL",
                  {"color": TEXT, "bold": True}),
                 (" — so they share the same optimizer, backends, and "
                  "runtime library.", {"color": MUTED})],
@@ -609,8 +609,8 @@ def slide_same_program():
     zia = [
         "module Area;",
         "",
-        "bind Viper.Terminal as Terminal;",
-        "bind Viper.Text.Fmt as Fmt;",
+        "bind Zanna.Terminal as Terminal;",
+        "bind Zanna.Text.Fmt as Fmt;",
         "",
         "func start() {",
         "    var w = 4;",
@@ -623,7 +623,7 @@ def slide_same_program():
     basic = [
         "REM Area",
         "",
-        "USING Viper.Text",
+        "USING Zanna.Text",
         "",
         "LET W = 4",
         "LET H = 3",
@@ -633,7 +633,7 @@ def slide_same_program():
     ]
     code_block(s, 0.7, 2.05, 5.55, 3.65, zia, header="Zia", size=13,
                lang="code", header_color=GREEN)
-    code_block(s, 7.1, 2.05, 5.55, 3.65, basic, header="Viper BASIC",
+    code_block(s, 7.1, 2.05, 5.55, 3.65, basic, header="Zanna BASIC",
                size=13, lang="code", header_color=CYAN)
 
     eq = textbox(s, 6.35, 3.48, 0.66, 0.66, anchor=MSO_ANCHOR.MIDDLE)
@@ -642,7 +642,7 @@ def slide_same_program():
 
     foot = textbox(s, 0.7, 5.86, 11.9, 0.7)
     para(foot, [("Same runtime, either way", {"color": GREEN, "bold": True}),
-                (" — both frontends call the very same Viper.Text.Fmt and "
+                (" — both frontends call the very same Zanna.Text.Fmt and "
                  "terminal classes. Only the syntax differs.",
                  {"color": MUTED})],
          size=15, first=True, after=0, line=1.1)
@@ -650,14 +650,14 @@ def slide_same_program():
 
 def slide_il():
     s = new_slide()
-    kicker(s, "Viper IL")
+    kicker(s, "Zanna IL")
     title(s, "Typed, SSA-based, and inspectable")
 
     zia = [
         "module Hello;",
         "",
-        "bind Viper.Terminal as Terminal;",
-        "bind Viper.Text.Fmt as Fmt;",
+        "bind Zanna.Terminal as Terminal;",
+        "bind Zanna.Text.Fmt as Fmt;",
         "",
         "func start() {",
         "    var x = 2 + 3;",
@@ -679,10 +679,10 @@ def slide_il():
         "  %t4 = alloca 8",
         "  store i64, %t4, %t3",
         "  %t5 = const_str @.L0",
-        "  call @Viper.Terminal.Say(%t5)",
+        "  call @Zanna.Terminal.Say(%t5)",
         "  %t6 = load i64, %t4",
-        "  %t7 = call @Viper.Text.Fmt.Int(%t6)",
-        "  call @Viper.Terminal.Say(%t7)",
+        "  %t7 = call @Zanna.Text.Fmt.Int(%t6)",
+        "  call @Zanna.Terminal.Say(%t7)",
         "  ret",
         "}",
     ]
@@ -693,7 +693,7 @@ def slide_il():
                             Inches(0.5), Inches(0.42))
     ar.fill.solid(); ar.fill.fore_color.rgb = GREEN
     ar.line.fill.background(); _no_shadow(ar)
-    code_block(s, 7.1, 2.05, 5.55, 4.2, il, header="Viper IL — unoptimized",
+    code_block(s, 7.1, 2.05, 5.55, 4.2, il, header="Zanna IL — unoptimized",
                size=11.5, lang="code")
 
     foot = textbox(s, 0.7, 6.4, 11.9, 0.7)
@@ -736,7 +736,7 @@ def slide_architecture():
          ("lex · parse · sema · lower", 12.5, MUTED, False)])
     down_arrow(s, cx, 3.73)
     box(3.97, 6.6, 0.88,
-        [("Viper IL", 19, GREEN, True),
+        [("Zanna IL", 19, GREEN, True),
          ("typed SSA · verifier · 24-pass optimizer", 12.5, MUTED, False)],
         accent=GREEN)
 
@@ -755,7 +755,7 @@ def slide_architecture():
     down_arrow(s, rx, 6.15)
 
     box(6.41, 6.6, 0.82,
-        [("Viper Runtime", 17, TEXT, True),
+        [("Zanna Runtime", 17, TEXT, True),
          ("graphics · GUI · 3D · audio · net · crypto · game systems · …",
           12.5, MUTED, False)],
         accent=CYAN)
@@ -776,8 +776,8 @@ def slide_execution_vm():
         para(tf, feat, size=16, color=TEXT, after=12, bullet="▸")
 
     session = [
-        "$ viper run game.zia      # no build step",
-        "$ viper repl              # live evaluation",
+        "$ zanna run game.zia      # no build step",
+        "$ zanna repl              # live evaluation",
         "zia> Say(\"hello\")",
         "hello",
         "zia> Say(Fmt.Int(2 + 3))",
@@ -915,14 +915,14 @@ def slide_enough():
 
 def slide_showcase():
     s = new_slide()
-    kicker(s, "Built with Viper")
+    kicker(s, "Built with Zanna")
     title(s, "Larger demos, all in pure Zia",
           "All open source in the repo — running on the same toolchain.")
 
     demos = [
         ("XENOSCAPE", "~21K LOC",
          "Metroidvania-style demo — bosses, abilities, saves"),
-        ("ViperSQL", "~85K LOC",
+        ("ZannaSQL", "~85K LOC",
          "Experimental SQL database engine + client"),
         ("Chess", "Zia", "Alpha-beta AI, drag-and-drop GUI"),
         ("3D Bowling", "Zia", "Physics-driven, multi-mode camera"),
@@ -966,15 +966,15 @@ def slide_tooling():
     title(s, "From source to native binary")
 
     cmds = [
-        "git clone https://github.com/splanck/viper",
-        "cd viper",
-        "./scripts/build_viper_linux.sh    # build the toolchain",
+        "git clone https://github.com/zannagames/zanna",
+        "cd zanna",
+        "./scripts/build_zanna_linux.sh    # build the toolchain",
         "./scripts/build_demos_linux.sh    # build the demos",
         "",
-        "viper init my-app",
-        "viper run my-app",
-        "viper repl",
-        "viper build my-app -o my-app",
+        "zanna init my-app",
+        "zanna run my-app",
+        "zanna repl",
+        "zanna build my-app -o my-app",
     ]
     code_block(s, 0.7, 2.25, 6.55, 2.45, cmds, header="Build from source",
                size=12, lang="console")
@@ -990,9 +990,9 @@ def slide_tooling():
     para(ttf, "In the box", size=18, color=TEXT, bold=True, first=True,
          after=10)
     for cmd in [
-        "viper  unified driver — run/build/package",
+        "zanna  unified driver — run/build/package",
         "repl  live Zia & BASIC evaluation",
-        "viper il-opt  optimize IL (24 passes)",
+        "zanna il-opt  optimize IL (24 passes)",
         "il-verify · il-dis  verify & disassemble IL",
         "zia-server  LSP + MCP language server",
         "package  installers: .app · .deb · .exe · .tar.gz",
@@ -1001,7 +1001,7 @@ def slide_tooling():
                 after=10, line=1.05)
 
     foot = textbox(s, 0.7, 6.6, 11.9, 0.45, anchor=MSO_ANCHOR.MIDDLE)
-    para(foot, [("github.com/splanck/viper", {"color": CYAN, "bold": True}),
+    para(foot, [("github.com/zannagames/zanna", {"color": CYAN, "bold": True}),
                 ("     —     clone it, run the demos, and tell me what "
                  "breaks.", {"color": MUTED})],
          size=15, first=True, after=0)
@@ -1018,12 +1018,12 @@ def slide_thanks():
     para(t1, "Thanks for watching.", size=60, color=TEXT, bold=True,
          first=True, after=0)
     t2 = textbox(s, 0.95, 4.76, 10.72, 0.98)
-    para(t2, "Viper is open source and pre-alpha. Clone it, run the demos, "
+    para(t2, "Zanna is open source and pre-alpha. Clone it, run the demos, "
              "and tell me what breaks.", size=20, color=MUTED, first=True,
          after=0, line=1.15)
     foot = textbox(s, 0.95, 6.7, 11.5, 0.5, anchor=MSO_ANCHOR.MIDDLE)
     para(foot, [
-        ("github.com/splanck/viper", {"color": CYAN, "bold": True}),
+        ("github.com/zannagames/zanna", {"color": CYAN, "bold": True}),
         ("    ·    ", {"color": BORDER}),
         ("GPL-3.0", {"color": MUTED}),
         ("    ·    ", {"color": BORDER}),

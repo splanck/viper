@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/io/rt_ide_primitives.h
 // Purpose: Workspace, asset, manifest, and transactional edit helpers used by
-//          ViperIDE and editor-style tooling.
+//          ZannaIDE and editor-style tooling.
 // Key invariants:
 //   - Workspace edit targets are validated before any disk mutation is attempted.
 //   - Workspace/file-index helpers never depend on compiler-layer services.

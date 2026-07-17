@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 /// @details Defines AST nodes representing type annotations as written in
 /// source code (e.g., `i64`, `str`, `List<i64>`, `fn(i64) -> str`). These
 /// are purely syntactic representations — the semantic analyzer resolves them
-/// to ViperType instances (see Types.hpp) during type checking.
+/// to ZannaType instances (see Types.hpp) during type checking.
 ///
 /// Type annotation nodes appear in variable declarations (`var x: i64`),
 /// function signatures (`func foo(a: str) -> i64`), type casts, and
@@ -32,7 +32,7 @@
 /// Ownership/Lifetime: Owned by the declaration or expression that contains
 /// them, via TypePtr (std::unique_ptr<TypeNode>).
 ///
-/// @see Types.hpp — semantic type system (resolved ViperType instances).
+/// @see Types.hpp — semantic type system (resolved ZannaType instances).
 /// @see Sema.hpp — resolves syntactic type nodes to semantic types.
 /// @see Parser.hpp — creates type annotation nodes during parsing.
 ///
@@ -49,7 +49,7 @@ namespace il::frontends::zia {
 /// @name Type Nodes
 /// @brief AST nodes representing type annotations in source code.
 /// @details These represent the syntactic form of types as written by the
-/// programmer. The semantic analyzer resolves these to ViperType instances.
+/// programmer. The semantic analyzer resolves these to ZannaType instances.
 /// @{
 //===----------------------------------------------------------------------===//
 
@@ -95,7 +95,7 @@ enum class TypeKind {
 /// @brief Base class for all type annotation nodes.
 /// @details Type nodes represent type expressions as written in source code.
 /// They are parsed from type annotations and later resolved to semantic
-/// ViperType instances during semantic analysis.
+/// ZannaType instances during semantic analysis.
 ///
 /// ## Subclasses
 /// - NamedType: Simple type names like `Integer` or `MyClass`

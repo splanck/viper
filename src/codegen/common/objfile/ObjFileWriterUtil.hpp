@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Append a 16-bit value in little-endian byte order.
 inline void appendLE16(std::vector<uint8_t> &out, uint16_t val) {
@@ -351,4 +351,4 @@ inline void padTo(std::vector<uint8_t> &out, size_t target) {
         out.resize(target, 0);
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

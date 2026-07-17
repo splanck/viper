@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
     if (!isPhysReg(reg))
@@ -757,4 +757,4 @@ std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept {
     return std::nullopt;
 }
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

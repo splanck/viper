@@ -1,5 +1,5 @@
 ' main.bas - Entry Point with Interactive REPL
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "executor.bas"
 
@@ -12,7 +12,7 @@ SUB Main()
     DIM result AS QueryResult
     DIM running AS INTEGER
 
-    PRINT "ViperSQL - SQLite Clone in Viper Basic"
+    PRINT "ZannaSQL - SQLite Clone in Zanna Basic"
     PRINT "Type SQL commands or 'exit' to quit."
     PRINT ""
 

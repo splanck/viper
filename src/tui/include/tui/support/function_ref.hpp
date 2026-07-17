@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the FunctionRef class template, a lightweight
-// non-owning callable reference for Viper's TUI framework. FunctionRef
+// non-owning callable reference for Zanna's TUI framework. FunctionRef
 // provides a type-erased view of a callable (lambda, function pointer,
 // or functor) without incurring the heap allocation overhead of
 // std::function.
@@ -34,7 +34,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace viper::tui {
+namespace zanna::tui {
 /// @brief Non-owning, lightweight reference to a callable with a given signature.
 /// @details Provides type-erased callable access without heap allocation, similar to
 ///          the C++26 std::function_ref proposal. The referenced callable must outlive
@@ -94,4 +94,4 @@ template <typename Ret, typename... Args> class FunctionRef<Ret(Args...)> {
     void *obj_{};
     Ret (*callback_)(void *, Args...){};
 };
-} // namespace viper::tui
+} // namespace zanna::tui

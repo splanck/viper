@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_parallel.c
-// Purpose: Implements the data-parallel combinators on `Viper.Threads.Parallel`:
+// Purpose: Implements the data-parallel combinators on `Zanna.Threads.Parallel`:
 //            - ForEach / ForEachPool        — apply a callback to each element.
 //            - Map / MapPool                — transform each element into a result Seq.
 //            - Reduce / ReducePool          — fold elements into a single accumulator.

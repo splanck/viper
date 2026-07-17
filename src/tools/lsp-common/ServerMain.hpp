@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tools/lsp-common/ServerMain.hpp
-// Purpose: Shared stdio entry-point runner for Viper language servers.
+// Purpose: Shared stdio entry-point runner for Zanna language servers.
 // Key invariants:
 //   - --mcp uses newline-delimited JSON-RPC.
 //   - --lsp uses Content-Length framed JSON-RPC.
@@ -33,7 +33,7 @@
 #include <exception>
 #include <memory>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Protocol mode selected by a language server command line.
 enum class LanguageServerMode {
@@ -131,7 +131,7 @@ template <typename Bridge>
 int runLanguageLspServer(Transport &transport, Bridge &bridge, const ServerConfig &config) {
     LspHandler handler(bridge, transport, config);
     RawMessage msg;
-    const bool verbose = std::getenv("VIPER_LSP_LOG") != nullptr;
+    const bool verbose = std::getenv("ZANNA_LSP_LOG") != nullptr;
 
     if (verbose) {
         std::fprintf(stderr, "[%s] LSP server started\n", config.serverName.c_str());
@@ -212,7 +212,7 @@ int runLanguageLspServer(Transport &transport, Bridge &bridge, const ServerConfi
     return transport.lastReadFailedDueToError() ? 1 : 0;
 }
 
-/// @brief Run a Viper language server from a normal `main` function.
+/// @brief Run a Zanna language server from a normal `main` function.
 /// @details Parses common protocol flags, constructs the language-specific
 ///          compiler bridge, selects MCP or LSP transport, and runs the matching
 ///          event loop. Unknown options and malformed auto-detect input produce
@@ -277,4 +277,4 @@ int runLanguageServerMain(int argc,
     return runLanguageMcpServer(*transport, bridge, config);
 }
 
-} // namespace viper::server
+} // namespace zanna::server

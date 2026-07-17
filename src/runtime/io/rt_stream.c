@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: src/runtime/io/rt_stream.c
 // Purpose: Implements the unified stream abstraction that wraps either a BinFile
 //          (disk-backed) or a MemStream (in-memory buffer) behind a common
-//          read/write/seek/tell interface used by the Viper.IO.Stream class.
+//          read/write/seek/tell interface used by the Zanna.IO.Stream class.
 //
 // Key invariants:
 //   - A stream wraps exactly one underlying object (BinFile or MemStream).

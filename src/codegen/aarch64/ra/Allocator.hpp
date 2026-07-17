@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,7 +54,7 @@
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Per-function linear-scan register allocator for AArch64 MIR.
 ///
@@ -216,4 +216,4 @@ class LinearAllocator {
     void recordCalleeSavedUsage();
 };
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

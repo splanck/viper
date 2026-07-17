@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,38 +18,38 @@
 //===----------------------------------------------------------------------===//
 
 
-// Viper.Collections.Deque - Double-ended queue for O(1) operations at both ends
-RT_FUNC(DequeNew,          rt_deque_new,            "Viper.Collections.Deque.New",          "obj()")
-RT_FUNC(DequeWithCapacity, rt_deque_with_capacity,  "Viper.Collections.Deque.WithCapacity", "obj(i64)")
-RT_FUNC(DequeLen,       rt_deque_len,          "Viper.Collections.Deque.get_Count",   "i64(obj)")
-RT_FUNC(DequeCapacity,  rt_deque_cap,          "Viper.Collections.Deque.get_Capacity", "i64(obj)")
-RT_FUNC(DequeIsEmpty,   rt_deque_is_empty,     "Viper.Collections.Deque.get_IsEmpty", "i1(obj)")
-RT_FUNC(DequePushFront, rt_deque_push_front,   "Viper.Collections.Deque.PushFront", "void(obj,obj)")
-RT_FUNC(DequePopFront,  rt_deque_pop_front,    "Viper.Collections.Deque.PopFront",  "obj(obj)")
-RT_FUNC(DequePeekFront, rt_deque_peek_front,   "Viper.Collections.Deque.PeekFront", "obj(obj)")
-RT_FUNC(DequePushBack,  rt_deque_push_back,    "Viper.Collections.Deque.PushBack",  "void(obj,obj)")
-RT_FUNC(DequePopBack,   rt_deque_pop_back,     "Viper.Collections.Deque.PopBack",   "obj(obj)")
-RT_FUNC(DequePeekBack,  rt_deque_peek_back,    "Viper.Collections.Deque.PeekBack",  "obj(obj)")
-RT_FUNC(DequeGet,       rt_deque_get,          "Viper.Collections.Deque.Get",       "obj(obj,i64)")
-RT_FUNC(DequeSet,       rt_deque_set,          "Viper.Collections.Deque.Set",       "void(obj,i64,obj)")
-RT_FUNC(DequeClear,     rt_deque_clear,        "Viper.Collections.Deque.Clear",     "void(obj)")
-RT_FUNC(DequeHas,       rt_deque_has,          "Viper.Collections.Deque.Has",       "i1(obj,obj)")
-RT_FUNC(DequeReverse,   rt_deque_reverse,      "Viper.Collections.Deque.Reverse",   "void(obj)")
-RT_FUNC(DequeClone,     rt_deque_clone,        "Viper.Collections.Deque.Clone",     "obj<Viper.Collections.Deque>(obj)")
-RT_FUNC(DequeTryPopFrontOption, rt_deque_try_pop_front_option, "Viper.Collections.Deque.TryPopFront", "obj<Viper.Option>(obj)")
-RT_FUNC(DequeTryPopBackOption,  rt_deque_try_pop_back_option,  "Viper.Collections.Deque.TryPopBack",  "obj<Viper.Option>(obj)")
-RT_FUNC(DequeToSeq,     rt_deque_to_seq,       "Viper.Collections.Deque.ToSeq",     "obj<Viper.Collections.Seq>(obj)")
-RT_FUNC(DequeToList,    rt_deque_to_list,      "Viper.Collections.Deque.ToList",    "obj<Viper.Collections.List>(obj)")
+// Zanna.Collections.Deque - Double-ended queue for O(1) operations at both ends
+RT_FUNC(DequeNew,          rt_deque_new,            "Zanna.Collections.Deque.New",          "obj()")
+RT_FUNC(DequeWithCapacity, rt_deque_with_capacity,  "Zanna.Collections.Deque.WithCapacity", "obj(i64)")
+RT_FUNC(DequeLen,       rt_deque_len,          "Zanna.Collections.Deque.get_Count",   "i64(obj)")
+RT_FUNC(DequeCapacity,  rt_deque_cap,          "Zanna.Collections.Deque.get_Capacity", "i64(obj)")
+RT_FUNC(DequeIsEmpty,   rt_deque_is_empty,     "Zanna.Collections.Deque.get_IsEmpty", "i1(obj)")
+RT_FUNC(DequePushFront, rt_deque_push_front,   "Zanna.Collections.Deque.PushFront", "void(obj,obj)")
+RT_FUNC(DequePopFront,  rt_deque_pop_front,    "Zanna.Collections.Deque.PopFront",  "obj(obj)")
+RT_FUNC(DequePeekFront, rt_deque_peek_front,   "Zanna.Collections.Deque.PeekFront", "obj(obj)")
+RT_FUNC(DequePushBack,  rt_deque_push_back,    "Zanna.Collections.Deque.PushBack",  "void(obj,obj)")
+RT_FUNC(DequePopBack,   rt_deque_pop_back,     "Zanna.Collections.Deque.PopBack",   "obj(obj)")
+RT_FUNC(DequePeekBack,  rt_deque_peek_back,    "Zanna.Collections.Deque.PeekBack",  "obj(obj)")
+RT_FUNC(DequeGet,       rt_deque_get,          "Zanna.Collections.Deque.Get",       "obj(obj,i64)")
+RT_FUNC(DequeSet,       rt_deque_set,          "Zanna.Collections.Deque.Set",       "void(obj,i64,obj)")
+RT_FUNC(DequeClear,     rt_deque_clear,        "Zanna.Collections.Deque.Clear",     "void(obj)")
+RT_FUNC(DequeHas,       rt_deque_has,          "Zanna.Collections.Deque.Has",       "i1(obj,obj)")
+RT_FUNC(DequeReverse,   rt_deque_reverse,      "Zanna.Collections.Deque.Reverse",   "void(obj)")
+RT_FUNC(DequeClone,     rt_deque_clone,        "Zanna.Collections.Deque.Clone",     "obj<Zanna.Collections.Deque>(obj)")
+RT_FUNC(DequeTryPopFrontOption, rt_deque_try_pop_front_option, "Zanna.Collections.Deque.TryPopFront", "obj<Zanna.Option>(obj)")
+RT_FUNC(DequeTryPopBackOption,  rt_deque_try_pop_back_option,  "Zanna.Collections.Deque.TryPopBack",  "obj<Zanna.Option>(obj)")
+RT_FUNC(DequeToSeq,     rt_deque_to_seq,       "Zanna.Collections.Deque.ToSeq",     "obj<Zanna.Collections.Seq>(obj)")
+RT_FUNC(DequeToList,    rt_deque_to_list,      "Zanna.Collections.Deque.ToList",    "obj<Zanna.Collections.List>(obj)")
 
 // Deque aliases
 
 /// @summary Provides Deque functionality for collection-oriented programs.
 /// @details
-/// Create `Viper.Collections.Deque` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Deque` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
 /// `Capacity`, `IsEmpty` and operations including `PushFront`, `PopFront`, `PeekFront`,
 /// `PushBack`.
-RT_CLASS_BEGIN("Viper.Collections.Deque", Deque, "obj", DequeNew)
+RT_CLASS_BEGIN("Zanna.Collections.Deque", Deque, "obj", DequeNew)
     RT_PROP("Count", "i64", DequeLen, none)
     RT_PROP("Capacity", "i64", DequeCapacity, none)
     RT_PROP("IsEmpty", "i1", DequeIsEmpty, none)
@@ -64,21 +64,21 @@ RT_CLASS_BEGIN("Viper.Collections.Deque", Deque, "obj", DequeNew)
     RT_METHOD("Clear", "void()", DequeClear)
     RT_METHOD("Has", "i1(obj)", DequeHas)
     RT_METHOD("Reverse", "void()", DequeReverse)
-    RT_METHOD("Clone", "obj<Viper.Collections.Deque>()", DequeClone)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", DequeToSeq)
-    RT_METHOD("TryPopFront", "obj<Viper.Option>()", DequeTryPopFrontOption)
-    RT_METHOD("TryPopBack", "obj<Viper.Option>()", DequeTryPopBackOption)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", DequeToList)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Deque>()", DequeClone)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", DequeToSeq)
+    RT_METHOD("TryPopFront", "obj<Zanna.Option>()", DequeTryPopFrontOption)
+    RT_METHOD("TryPopBack", "obj<Zanna.Option>()", DequeTryPopBackOption)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", DequeToList)
 RT_CLASS_END()
 
-// Viper.Text.Scanner - String scanner for lexing and parsing
+// Zanna.Text.Scanner - String scanner for lexing and parsing
 /// @summary Provides string scanner for lexing and parsing.
 /// @details
-/// Create `Viper.Text.Scanner` values through its registered constructor and use the returned
+/// Create `Zanna.Text.Scanner` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Position`, `IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`,
 /// `PeekStr`.
-RT_CLASS_BEGIN("Viper.Text.Scanner", Scanner, "obj", ScannerNew)
+RT_CLASS_BEGIN("Zanna.Text.Scanner", Scanner, "obj", ScannerNew)
     RT_PROP("Position", "i64", ScannerPos, ScannerSetPos)
     RT_PROP("IsEnd", "i1", ScannerIsEnd, none)
     RT_PROP("Remaining", "i64", ScannerRemaining, none)
@@ -105,12 +105,12 @@ RT_CLASS_BEGIN("Viper.Text.Scanner", Scanner, "obj", ScannerNew)
     RT_METHOD("ReadLine", "str()", ScannerReadLine)
 RT_CLASS_END()
 
-// Viper.Time.DateOnly - Date without time components
+// Zanna.Time.DateOnly - Date without time components
 /// @summary Represents immutable proleptic-Gregorian dates without time or zone state.
 /// @details `Create`, `Today`, and exact `YYYY-MM-DD` parsing can return null. Arithmetic returns
 /// new objects and clamps month/year shifts to a valid day. Day-count conversion is relative to
 /// 1970-01-01 and traps on signed overflow for extreme values.
-RT_CLASS_BEGIN("Viper.Time.DateOnly", DateOnly, "obj", none)
+RT_CLASS_BEGIN("Zanna.Time.DateOnly", DateOnly, "obj", none)
     RT_METHOD("FromParts", "obj(i64,i64,i64)", DateOnlyCreate)
     RT_METHOD("Today", "obj()", DateOnlyToday)
     RT_METHOD("Parse", "obj(str)", DateOnlyParse)
@@ -137,13 +137,13 @@ RT_CLASS_BEGIN("Viper.Time.DateOnly", DateOnly, "obj", none)
     RT_METHOD("Format", "str(str)", DateOnlyFormat)
 RT_CLASS_END()
 
-// Viper.Text.TextWrapper - Text wrapping and formatting utilities
+// Zanna.Text.TextWrapper - Text wrapping and formatting utilities
 /// @summary Provides text wrapping and formatting utilities.
 /// @details
-/// `Viper.Text.TextWrapper` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.TextWrapper` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Wrap`,
 /// `WrapLines`, `Fill`, `Indent`.
-RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.TextWrapper", TextWrapper, "obj", none)
     RT_METHOD("Wrap", "str(str,i64)", TextWrapWrap)
     RT_METHOD("WrapLines", "seq<str>(str,i64)", TextWrapWrapLines)
     RT_METHOD("Fill", "str(str,i64)", TextWrapFill)
@@ -160,104 +160,104 @@ RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
     RT_METHOD("MaxLineLength", "i64(str)", TextWrapMaxLineLen)
 RT_CLASS_END()
 
-// Viper.Functional.Lazy - Deferred computation until first access
-RT_FUNC(LazyNew,           rt_lazy_new_wrapper,   "Viper.Functional.Lazy.New",            "obj<Viper.Functional.Lazy>(obj)")
-RT_FUNC(LazyOf,            rt_lazy_of,            "Viper.Functional.Lazy.Of",             "obj<Viper.Functional.Lazy>(obj)")
-RT_FUNC(LazyOfStr,         rt_lazy_of_str,        "Viper.Functional.Lazy.OfStr",          "obj<Viper.Functional.Lazy>(str)")
-RT_FUNC(LazyOfI64,         rt_lazy_of_i64,        "Viper.Functional.Lazy.OfI64",          "obj<Viper.Functional.Lazy>(i64)")
-RT_FUNC(LazyGet,           rt_lazy_get,           "Viper.Functional.Lazy.Get",            "obj(obj)")
-RT_FUNC(LazyGetStr,        rt_lazy_get_str,       "Viper.Functional.Lazy.GetStr",         "str(obj)")
-RT_FUNC(LazyGetI64,        rt_lazy_get_i64,       "Viper.Functional.Lazy.GetI64",         "i64(obj)")
-RT_FUNC(LazyIsEvaluated,   rt_lazy_is_evaluated,  "Viper.Functional.Lazy.get_IsEvaluated","i1(obj)")
-RT_FUNC(LazyForce,         rt_lazy_force,         "Viper.Functional.Lazy.Force",          "void(obj)")
-RT_FUNC(LazyMap,           rt_lazy_map_wrapper,      "Viper.Functional.Lazy.Map",            "obj<Viper.Functional.Lazy>(obj,obj)")
-RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Viper.Functional.Lazy.AndThen",        "obj<Viper.Functional.Lazy>(obj,obj)")
+// Zanna.Functional.Lazy - Deferred computation until first access
+RT_FUNC(LazyNew,           rt_lazy_new_wrapper,   "Zanna.Functional.Lazy.New",            "obj<Zanna.Functional.Lazy>(obj)")
+RT_FUNC(LazyOf,            rt_lazy_of,            "Zanna.Functional.Lazy.Of",             "obj<Zanna.Functional.Lazy>(obj)")
+RT_FUNC(LazyOfStr,         rt_lazy_of_str,        "Zanna.Functional.Lazy.OfStr",          "obj<Zanna.Functional.Lazy>(str)")
+RT_FUNC(LazyOfI64,         rt_lazy_of_i64,        "Zanna.Functional.Lazy.OfI64",          "obj<Zanna.Functional.Lazy>(i64)")
+RT_FUNC(LazyGet,           rt_lazy_get,           "Zanna.Functional.Lazy.Get",            "obj(obj)")
+RT_FUNC(LazyGetStr,        rt_lazy_get_str,       "Zanna.Functional.Lazy.GetStr",         "str(obj)")
+RT_FUNC(LazyGetI64,        rt_lazy_get_i64,       "Zanna.Functional.Lazy.GetI64",         "i64(obj)")
+RT_FUNC(LazyIsEvaluated,   rt_lazy_is_evaluated,  "Zanna.Functional.Lazy.get_IsEvaluated","i1(obj)")
+RT_FUNC(LazyForce,         rt_lazy_force,         "Zanna.Functional.Lazy.Force",          "void(obj)")
+RT_FUNC(LazyMap,           rt_lazy_map_wrapper,      "Zanna.Functional.Lazy.Map",            "obj<Zanna.Functional.Lazy>(obj,obj)")
+RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Zanna.Functional.Lazy.AndThen",        "obj<Zanna.Functional.Lazy>(obj,obj)")
 /// @summary Provides Lazy functionality for functional programming workflows.
 /// @details
-/// `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `IsEvaluated` and
 /// operations including `New`, `Of`, `OfStr`, `OfI64`, `Get`. `New` wraps a zero-argument
 /// supplier that is invoked once on first access; the `Of*` factories wrap eager values.
-RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj(obj)", LazyNew)
-    RT_METHOD("Of", "obj<Viper.Functional.Lazy>(obj)", LazyOf)
-    RT_METHOD("OfStr", "obj<Viper.Functional.Lazy>(str)", LazyOfStr)
-    RT_METHOD("OfI64", "obj<Viper.Functional.Lazy>(i64)", LazyOfI64)
+RT_CLASS_BEGIN("Zanna.Functional.Lazy", Lazy, "obj(obj)", LazyNew)
+    RT_METHOD("Of", "obj<Zanna.Functional.Lazy>(obj)", LazyOf)
+    RT_METHOD("OfStr", "obj<Zanna.Functional.Lazy>(str)", LazyOfStr)
+    RT_METHOD("OfI64", "obj<Zanna.Functional.Lazy>(i64)", LazyOfI64)
     RT_METHOD("Get", "obj()", LazyGet)
     RT_METHOD("GetStr", "str()", LazyGetStr)
     RT_METHOD("GetI64", "i64()", LazyGetI64)
     RT_PROP("IsEvaluated", "i1", LazyIsEvaluated, none)
     RT_METHOD("Force", "void()", LazyForce)
-    RT_METHOD("Map", "obj<Viper.Functional.Lazy>(obj)", LazyMap)
-    RT_METHOD("AndThen", "obj<Viper.Functional.Lazy>(obj)", LazyFlatMap)
+    RT_METHOD("Map", "obj<Zanna.Functional.Lazy>(obj)", LazyMap)
+    RT_METHOD("AndThen", "obj<Zanna.Functional.Lazy>(obj)", LazyFlatMap)
 RT_CLASS_END()
 
 //=============================================================================
-// Viper.Functional.LazySeq - Lazy sequence with on-demand element generation
+// Zanna.Functional.LazySeq - Lazy sequence with on-demand element generation
 //=============================================================================
 
 // Factory methods (no receiver) — use void* wrappers for IL ABI
-RT_FUNC(LazySeqRange,          rt_lazyseq_w_range,        "Viper.Functional.LazySeq.Range",           "obj<Viper.Functional.LazySeq>(i64,i64,i64)")
-RT_FUNC(LazySeqRepeat,         rt_lazyseq_w_repeat,       "Viper.Functional.LazySeq.Repeat",          "obj<Viper.Functional.LazySeq>(obj,i64)")
+RT_FUNC(LazySeqRange,          rt_lazyseq_w_range,        "Zanna.Functional.LazySeq.Range",           "obj<Zanna.Functional.LazySeq>(i64,i64,i64)")
+RT_FUNC(LazySeqRepeat,         rt_lazyseq_w_repeat,       "Zanna.Functional.LazySeq.Repeat",          "obj<Zanna.Functional.LazySeq>(obj,i64)")
 // Instance methods (receiver as first obj param) — use void* wrappers for IL ABI
-RT_FUNC(LazySeqNext,           rt_lazyseq_w_next,         "Viper.Functional.LazySeq.Next",            "obj(obj)")
-RT_FUNC(LazySeqPeek,           rt_lazyseq_w_peek,         "Viper.Functional.LazySeq.Peek",            "obj(obj)")
-RT_FUNC(LazySeqNextOption,     rt_lazyseq_w_next_option,  "Viper.Functional.LazySeq.NextOption",      "obj<Viper.Option>(obj)")
-RT_FUNC(LazySeqPeekOption,     rt_lazyseq_w_peek_option,  "Viper.Functional.LazySeq.PeekOption",      "obj<Viper.Option>(obj)")
-RT_FUNC(LazySeqReset,          rt_lazyseq_w_reset,        "Viper.Functional.LazySeq.Reset",           "void(obj)")
-RT_FUNC(LazySeqIndex,          rt_lazyseq_w_index,        "Viper.Functional.LazySeq.get_Index",       "i64(obj)")
-RT_FUNC(LazySeqIsExhausted,    rt_lazyseq_w_is_exhausted, "Viper.Functional.LazySeq.get_IsExhausted", "i1(obj)")
-RT_FUNC(LazySeqTake,           rt_lazyseq_w_take,         "Viper.Functional.LazySeq.Take",            "obj<Viper.Functional.LazySeq>(obj,i64)")
-RT_FUNC(LazySeqDrop,           rt_lazyseq_w_drop,         "Viper.Functional.LazySeq.Drop",            "obj<Viper.Functional.LazySeq>(obj,i64)")
-RT_FUNC(LazySeqConcat,         rt_lazyseq_w_concat,       "Viper.Functional.LazySeq.Concat",          "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqToSeq,          rt_lazyseq_w_to_seq,       "Viper.Functional.LazySeq.ToSeq",           "seq<obj>(obj)")
-RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Viper.Functional.LazySeq.ToSeqLimited",          "seq<obj>(obj,i64)")
-RT_FUNC(LazySeqCount,          rt_lazyseq_w_count,        "Viper.Functional.LazySeq.Count",           "i64(obj)")
+RT_FUNC(LazySeqNext,           rt_lazyseq_w_next,         "Zanna.Functional.LazySeq.Next",            "obj(obj)")
+RT_FUNC(LazySeqPeek,           rt_lazyseq_w_peek,         "Zanna.Functional.LazySeq.Peek",            "obj(obj)")
+RT_FUNC(LazySeqNextOption,     rt_lazyseq_w_next_option,  "Zanna.Functional.LazySeq.NextOption",      "obj<Zanna.Option>(obj)")
+RT_FUNC(LazySeqPeekOption,     rt_lazyseq_w_peek_option,  "Zanna.Functional.LazySeq.PeekOption",      "obj<Zanna.Option>(obj)")
+RT_FUNC(LazySeqReset,          rt_lazyseq_w_reset,        "Zanna.Functional.LazySeq.Reset",           "void(obj)")
+RT_FUNC(LazySeqIndex,          rt_lazyseq_w_index,        "Zanna.Functional.LazySeq.get_Index",       "i64(obj)")
+RT_FUNC(LazySeqIsExhausted,    rt_lazyseq_w_is_exhausted, "Zanna.Functional.LazySeq.get_IsExhausted", "i1(obj)")
+RT_FUNC(LazySeqTake,           rt_lazyseq_w_take,         "Zanna.Functional.LazySeq.Take",            "obj<Zanna.Functional.LazySeq>(obj,i64)")
+RT_FUNC(LazySeqDrop,           rt_lazyseq_w_drop,         "Zanna.Functional.LazySeq.Drop",            "obj<Zanna.Functional.LazySeq>(obj,i64)")
+RT_FUNC(LazySeqConcat,         rt_lazyseq_w_concat,       "Zanna.Functional.LazySeq.Concat",          "obj<Zanna.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqToSeq,          rt_lazyseq_w_to_seq,       "Zanna.Functional.LazySeq.ToSeq",           "seq<obj>(obj)")
+RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Zanna.Functional.LazySeq.ToSeqLimited",          "seq<obj>(obj,i64)")
+RT_FUNC(LazySeqCount,          rt_lazyseq_w_count,        "Zanna.Functional.LazySeq.Count",           "i64(obj)")
 // Functional methods (receiver as first obj, closure as second obj)
-RT_FUNC(LazySeqMap,            rt_lazyseq_w_map,          "Viper.Functional.LazySeq.Map",             "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqFilter,         rt_lazyseq_w_filter,       "Viper.Functional.LazySeq.Filter",          "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqTakeWhile,      rt_lazyseq_w_take_while,   "Viper.Functional.LazySeq.TakeWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqDropWhile,      rt_lazyseq_w_drop_while,   "Viper.Functional.LazySeq.DropWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqFindOption,     rt_lazyseq_w_find_option,  "Viper.Functional.LazySeq.Find",      "obj<Viper.Option>(obj,obj)")
-RT_FUNC(LazySeqAny,            rt_lazyseq_w_any,          "Viper.Functional.LazySeq.Any",             "i1(obj,obj)")
-RT_FUNC(LazySeqAll,            rt_lazyseq_w_all,          "Viper.Functional.LazySeq.All",             "i1(obj,obj)")
+RT_FUNC(LazySeqMap,            rt_lazyseq_w_map,          "Zanna.Functional.LazySeq.Map",             "obj<Zanna.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqFilter,         rt_lazyseq_w_filter,       "Zanna.Functional.LazySeq.Filter",          "obj<Zanna.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqTakeWhile,      rt_lazyseq_w_take_while,   "Zanna.Functional.LazySeq.TakeWhile",       "obj<Zanna.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqDropWhile,      rt_lazyseq_w_drop_while,   "Zanna.Functional.LazySeq.DropWhile",       "obj<Zanna.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqFindOption,     rt_lazyseq_w_find_option,  "Zanna.Functional.LazySeq.Find",      "obj<Zanna.Option>(obj,obj)")
+RT_FUNC(LazySeqAny,            rt_lazyseq_w_any,          "Zanna.Functional.LazySeq.Any",             "i1(obj,obj)")
+RT_FUNC(LazySeqAll,            rt_lazyseq_w_all,          "Zanna.Functional.LazySeq.All",             "i1(obj,obj)")
 
 /// @summary Provides Lazy Seq functionality for functional programming workflows.
 /// @details
-/// `Viper.Functional.LazySeq` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Functional.LazySeq` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Index`,
 /// `IsExhausted` and operations including `Range`, `Repeat`, `Next`, `Peek`.
-RT_CLASS_BEGIN("Viper.Functional.LazySeq", LazySeq, "obj", none)
-    RT_METHOD("Range", "obj<Viper.Functional.LazySeq>(i64,i64,i64)", LazySeqRange)
-    RT_METHOD("Repeat", "obj<Viper.Functional.LazySeq>(obj,i64)", LazySeqRepeat)
+RT_CLASS_BEGIN("Zanna.Functional.LazySeq", LazySeq, "obj", none)
+    RT_METHOD("Range", "obj<Zanna.Functional.LazySeq>(i64,i64,i64)", LazySeqRange)
+    RT_METHOD("Repeat", "obj<Zanna.Functional.LazySeq>(obj,i64)", LazySeqRepeat)
     RT_METHOD("Next", "obj()", LazySeqNext)
-    RT_METHOD("NextOption", "obj<Viper.Option>()", LazySeqNextOption)
+    RT_METHOD("NextOption", "obj<Zanna.Option>()", LazySeqNextOption)
     RT_METHOD("Peek", "obj()", LazySeqPeek)
-    RT_METHOD("PeekOption", "obj<Viper.Option>()", LazySeqPeekOption)
+    RT_METHOD("PeekOption", "obj<Zanna.Option>()", LazySeqPeekOption)
     RT_METHOD("Reset", "void()", LazySeqReset)
     RT_PROP("Index", "i64", LazySeqIndex, none)
     RT_PROP("IsExhausted", "i1", LazySeqIsExhausted, none)
-    RT_METHOD("Map", "obj<Viper.Functional.LazySeq>(obj)", LazySeqMap)
-    RT_METHOD("Filter", "obj<Viper.Functional.LazySeq>(obj)", LazySeqFilter)
-    RT_METHOD("Take", "obj<Viper.Functional.LazySeq>(i64)", LazySeqTake)
-    RT_METHOD("Drop", "obj<Viper.Functional.LazySeq>(i64)", LazySeqDrop)
-    RT_METHOD("TakeWhile", "obj<Viper.Functional.LazySeq>(obj)", LazySeqTakeWhile)
-    RT_METHOD("DropWhile", "obj<Viper.Functional.LazySeq>(obj)", LazySeqDropWhile)
-    RT_METHOD("Concat", "obj<Viper.Functional.LazySeq>(obj)", LazySeqConcat)
+    RT_METHOD("Map", "obj<Zanna.Functional.LazySeq>(obj)", LazySeqMap)
+    RT_METHOD("Filter", "obj<Zanna.Functional.LazySeq>(obj)", LazySeqFilter)
+    RT_METHOD("Take", "obj<Zanna.Functional.LazySeq>(i64)", LazySeqTake)
+    RT_METHOD("Drop", "obj<Zanna.Functional.LazySeq>(i64)", LazySeqDrop)
+    RT_METHOD("TakeWhile", "obj<Zanna.Functional.LazySeq>(obj)", LazySeqTakeWhile)
+    RT_METHOD("DropWhile", "obj<Zanna.Functional.LazySeq>(obj)", LazySeqDropWhile)
+    RT_METHOD("Concat", "obj<Zanna.Functional.LazySeq>(obj)", LazySeqConcat)
     RT_METHOD("ToSeq", "seq<obj>()", LazySeqToSeq)
     RT_METHOD("ToSeq", "seq<obj>(i64)", LazySeqToSeqN)
     RT_METHOD("Count", "i64()", LazySeqCount)
-    RT_METHOD("Find", "obj<Viper.Option>(obj)", LazySeqFindOption)
+    RT_METHOD("Find", "obj<Zanna.Option>(obj)", LazySeqFindOption)
     RT_METHOD("Any", "i1(obj)", LazySeqAny)
     RT_METHOD("All", "i1(obj)", LazySeqAll)
 RT_CLASS_END()
 
-// Viper.Threads.Scheduler - named task scheduler
+// Zanna.Threads.Scheduler - named task scheduler
 /// @summary Provides named task scheduler.
 /// @details
-/// Create `Viper.Threads.Scheduler` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Scheduler` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Pending` and operations including `Schedule`, `ScheduleGeneration`, `Cancel`, `IsDue`.
-RT_CLASS_BEGIN("Viper.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
+RT_CLASS_BEGIN("Zanna.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
     RT_PROP("Pending", "i64", SchedulerPending, none)
     RT_METHOD("Schedule", "void(str,i64)", SchedulerSchedule)
     RT_METHOD("ScheduleGeneration", "void(str,i64,i64)", SchedulerScheduleGen)
@@ -265,18 +265,18 @@ RT_CLASS_BEGIN("Viper.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
     RT_METHOD("IsDue", "i1(str)", SchedulerIsDue)
     RT_METHOD("IsDueGeneration", "i1(str,i64)", SchedulerIsDueGen)
     RT_METHOD("GenerationOf", "i64(str)", SchedulerGenerationOf)
-    RT_METHOD("GenerationOfOption", "obj<Viper.Option>(str)", SchedulerGenerationOfOption)
+    RT_METHOD("GenerationOfOption", "obj<Zanna.Option>(str)", SchedulerGenerationOfOption)
     RT_METHOD("Poll", "seq<str>()", SchedulerPoll)
     RT_METHOD("Clear", "void()", SchedulerClear)
 RT_CLASS_END()
 
-// Viper.Network.RateLimiter - token bucket rate limiter
+// Zanna.Network.RateLimiter - token bucket rate limiter
 /// @summary Provides token bucket rate limiter.
 /// @details
-/// Create `Viper.Network.RateLimiter` values through its registered constructor and use the
+/// Create `Zanna.Network.RateLimiter` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquire`, `Reset`.
-RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
+RT_CLASS_BEGIN("Zanna.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
     RT_PROP("Available", "i64", RateLimitAvailable, none)
     RT_PROP("Max", "i64", RateLimitGetMax, none)
     RT_PROP("Rate", "f64", RateLimitGetRate, none)
@@ -285,41 +285,41 @@ RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
     RT_METHOD("Reset", "void()", RateLimitReset)
 RT_CLASS_END()
 
-// Viper.Network.HttpRouter - URL pattern matching with parameter extraction
+// Zanna.Network.HttpRouter - URL pattern matching with parameter extraction
 /// @summary Provides URL pattern matching with parameter extraction.
 /// @details
-/// Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
+/// Create `Zanna.Network.HttpRouter` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Add`, `Get`, `Post`, `Put`.
-RT_CLASS_BEGIN("Viper.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
-    RT_METHOD("Add", "obj<Viper.Network.HttpRouter>(str,str)", HttpRouterAdd)
-    RT_METHOD("Get", "obj<Viper.Network.HttpRouter>(str)", HttpRouterGet)
-    RT_METHOD("Post", "obj<Viper.Network.HttpRouter>(str)", HttpRouterPost)
-    RT_METHOD("Put", "obj<Viper.Network.HttpRouter>(str)", HttpRouterPut)
-    RT_METHOD("Delete", "obj<Viper.Network.HttpRouter>(str)", HttpRouterDelete)
-    RT_METHOD("Match", "obj<Viper.Network.RouteMatch>(str,str)", HttpRouterMatch)
+RT_CLASS_BEGIN("Zanna.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
+    RT_METHOD("Add", "obj<Zanna.Network.HttpRouter>(str,str)", HttpRouterAdd)
+    RT_METHOD("Get", "obj<Zanna.Network.HttpRouter>(str)", HttpRouterGet)
+    RT_METHOD("Post", "obj<Zanna.Network.HttpRouter>(str)", HttpRouterPost)
+    RT_METHOD("Put", "obj<Zanna.Network.HttpRouter>(str)", HttpRouterPut)
+    RT_METHOD("Delete", "obj<Zanna.Network.HttpRouter>(str)", HttpRouterDelete)
+    RT_METHOD("Match", "obj<Zanna.Network.RouteMatch>(str,str)", HttpRouterMatch)
     RT_PROP("Count", "i64", HttpRouterCount, none)
 RT_CLASS_END()
 
-// Viper.Network.RouteMatch - result of a route match
+// Zanna.Network.RouteMatch - result of a route match
 /// @summary Provides result of a route match.
 /// @details
-/// `Viper.Network.RouteMatch` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Network.RouteMatch` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Index`,
 /// `Pattern` and operations including `Param`.
-RT_CLASS_BEGIN("Viper.Network.RouteMatch", RouteMatch, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.RouteMatch", RouteMatch, "obj", none)
     RT_METHOD("Param", "str(str)", RouteMatchParam)
     RT_PROP("Index", "i64", RouteMatchIndex, none)
     RT_PROP("Pattern", "str", RouteMatchPattern, none)
 RT_CLASS_END()
 
-// Viper.Network.HttpServer - threaded HTTP/1.1 server
+// Zanna.Network.HttpServer - threaded HTTP/1.1 server
 /// @summary Provides threaded HTTP/1.1 server.
 /// @details
-/// Create `Viper.Network.HttpServer` values through its registered constructor and use the returned
+/// Create `Zanna.Network.HttpServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Port`,
 /// `IsRunning` and operations including `Get`, `Post`, `Put`, `Delete`.
-RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
+RT_CLASS_BEGIN("Zanna.Network.HttpServer", HttpServer, "obj", HttpServerNew)
     RT_METHOD("Get", "void(str,str)", HttpServerGetRoute)
     RT_METHOD("Post", "void(str,str)", HttpServerPostRoute)
     RT_METHOD("Put", "void(str,str)", HttpServerPutRoute)
@@ -331,13 +331,13 @@ RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
     RT_PROP("IsRunning", "i1", HttpServerIsRunning, none)
 RT_CLASS_END()
 
-// Viper.Network.HttpsServer - threaded TLS-backed HTTP/1.1 and HTTP/2 server
+// Zanna.Network.HttpsServer - threaded TLS-backed HTTP/1.1 and HTTP/2 server
 /// @summary Provides threaded TLS-backed HTTP/1.1 and HTTP/2 server.
 /// @details
-/// Create `Viper.Network.HttpsServer` values through its registered constructor and use the
+/// Create `Zanna.Network.HttpsServer` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Port`, `IsRunning` and operations including `Get`, `Post`, `Put`, `Delete`.
-RT_CLASS_BEGIN("Viper.Network.HttpsServer", HttpsServer, "obj", HttpsServerNew)
+RT_CLASS_BEGIN("Zanna.Network.HttpsServer", HttpsServer, "obj", HttpsServerNew)
     RT_METHOD("Get", "void(str,str)", HttpsServerGetRoute)
     RT_METHOD("Post", "void(str,str)", HttpsServerPostRoute)
     RT_METHOD("Put", "void(str,str)", HttpsServerPutRoute)
@@ -351,10 +351,10 @@ RT_CLASS_END()
 
 /// @summary Provides Server Req functionality for networked applications.
 /// @details
-/// `Viper.Network.ServerReq` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.ServerReq` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Method`, `Path`,
 /// `Body` and operations including `Header`, `Param`, `Query`.
-RT_CLASS_BEGIN("Viper.Network.ServerReq", ServerReq, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.ServerReq", ServerReq, "obj", none)
     RT_PROP("Method", "str", ServerReqMethod, none)
     RT_PROP("Path", "str", ServerReqPath, none)
     RT_PROP("Body", "str", ServerReqBody, none)
@@ -365,57 +365,57 @@ RT_CLASS_END()
 
 /// @summary Provides Server Res functionality for networked applications.
 /// @details
-/// `Viper.Network.ServerRes` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.ServerRes` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Status`,
 /// `Header`, `Send`, `Json`.
-RT_CLASS_BEGIN("Viper.Network.ServerRes", ServerRes, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.ServerRes", ServerRes, "obj", none)
     RT_METHOD("Status", "obj(i64)", ServerResStatus)
     RT_METHOD("Header", "obj(str,str)", ServerResHeader)
     RT_METHOD("Send", "void(str)", ServerResSend)
     RT_METHOD("Json", "void(str)", ServerResJson)
 RT_CLASS_END()
 
-// Viper.Network.ConnectionPool - thread-safe TCP connection pooling
+// Zanna.Network.ConnectionPool - thread-safe TCP connection pooling
 /// @summary Provides thread-safe TCP connection pooling.
 /// @details
-/// Create `Viper.Network.ConnectionPool` values through its registered constructor and use the
+/// Create `Zanna.Network.ConnectionPool` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Size`, `Available` and operations including `Acquire`, `Release`, `Clear`.
-RT_CLASS_BEGIN("Viper.Network.ConnectionPool", ConnectionPool, "obj", ConnPoolNew)
-    RT_METHOD("Acquire", "obj<Viper.Network.Tcp>(str,i64)", ConnPoolAcquire)
+RT_CLASS_BEGIN("Zanna.Network.ConnectionPool", ConnectionPool, "obj", ConnPoolNew)
+    RT_METHOD("Acquire", "obj<Zanna.Network.Tcp>(str,i64)", ConnPoolAcquire)
     RT_METHOD("Release", "void(obj)", ConnPoolRelease)
     RT_METHOD("Clear", "void()", ConnPoolClear)
     RT_PROP("Size", "i64", ConnPoolSize, none)
     RT_PROP("Available", "i64", ConnPoolAvailable, none)
 RT_CLASS_END()
 
-// Viper.Network.Multipart - multipart form-data builder and parser
+// Zanna.Network.Multipart - multipart form-data builder and parser
 /// @summary Provides multipart form-data builder and parser.
 /// @details
-/// Create `Viper.Network.Multipart` values through its registered constructor and use the returned
+/// Create `Zanna.Network.Multipart` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ContentType`, `Count` and operations including `AddField`, `AddFile`, `Build`, `Parse`.
-RT_CLASS_BEGIN("Viper.Network.Multipart", Multipart, "obj", MultipartNew)
+RT_CLASS_BEGIN("Zanna.Network.Multipart", Multipart, "obj", MultipartNew)
     RT_METHOD("AddField", "obj(str,str)", MultipartAddField)
     RT_METHOD("AddFile", "obj(str,str,obj)", MultipartAddFile)
-    RT_METHOD("Build", "obj<Viper.Collections.Bytes>()", MultipartBuild)
-    RT_METHOD("Parse", "obj<Viper.Network.Multipart>(str,obj)", MultipartParse)
-    RT_METHOD("ParseResult", "obj<Viper.Result>(str,obj)", MultipartParseResult)
+    RT_METHOD("Build", "obj<Zanna.Collections.Bytes>()", MultipartBuild)
+    RT_METHOD("Parse", "obj<Zanna.Network.Multipart>(str,obj)", MultipartParse)
+    RT_METHOD("ParseResult", "obj<Zanna.Result>(str,obj)", MultipartParseResult)
     RT_METHOD("HasField", "i1(str)", MultipartHasField)
     RT_METHOD("HasFile", "i1(str)", MultipartHasFile)
     RT_METHOD("GetField", "str(str)", MultipartGetField)
-    RT_METHOD("GetFile", "obj<Viper.Collections.Bytes>(str)", MultipartGetFile)
+    RT_METHOD("GetFile", "obj<Zanna.Collections.Bytes>(str)", MultipartGetFile)
     RT_PROP("ContentType", "str", MultipartContentType, none)
     RT_PROP("Count", "i64", MultipartCount, none)
 RT_CLASS_END()
 
-// Viper.Network.NetUtils - static network utilities
+// Zanna.Network.NetUtils - static network utilities
 /// @summary Provides static network utilities.
 /// @details
-/// `Viper.Network.NetUtils` is a static runtime surface and does not require an instance.
+/// `Zanna.Network.NetUtils` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCidr`,
 /// `IsPrivateIp`.
-RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
+RT_CLASS_BEGIN("Zanna.Network.NetUtils", NetUtils, "none", none)
     RT_METHOD("IsPortOpen", "i1(str,i64,i64)", NetUtilsIsPortOpen)
     RT_METHOD("GetFreePort", "i64()", NetUtilsGetFreePort)
     RT_METHOD("MatchCidr", "i1(str,str)", NetUtilsMatchCIDR)
@@ -423,14 +423,14 @@ RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
     RT_METHOD("LocalIpv4", "str()", NetUtilsLocalIPv4)
 RT_CLASS_END()
 
-// Viper.Network.WsServer - WebSocket server
+// Zanna.Network.WsServer - WebSocket server
 /// @summary Provides WebSocket server.
 /// @details
-/// Create `Viper.Network.WsServer` values through its registered constructor and use the returned
+/// Create `Zanna.Network.WsServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
 /// `SetSubprotocol`, `Broadcast`.
-RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
+RT_CLASS_BEGIN("Zanna.Network.WsServer", WsServer, "obj", WsServerNew)
     RT_METHOD("Start", "void()", WsServerStart)
     RT_METHOD("Stop", "void()", WsServerStop)
     RT_METHOD("SetSubprotocol", "void(str)", WsServerSetSubprotocol)
@@ -442,14 +442,14 @@ RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
     RT_PROP("IsRunning", "i1", WsServerIsRunning, none)
 RT_CLASS_END()
 
-// Viper.Network.WssServer - TLS-backed WebSocket server
+// Zanna.Network.WssServer - TLS-backed WebSocket server
 /// @summary Provides TLS-backed WebSocket server.
 /// @details
-/// Create `Viper.Network.WssServer` values through its registered constructor and use the returned
+/// Create `Zanna.Network.WssServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
 /// `SetSubprotocol`, `Broadcast`.
-RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
+RT_CLASS_BEGIN("Zanna.Network.WssServer", WssServer, "obj", WssServerNew)
     RT_METHOD("Start", "void()", WssServerStart)
     RT_METHOD("Stop", "void()", WssServerStop)
     RT_METHOD("SetSubprotocol", "void(str)", WssServerSetSubprotocol)
@@ -461,82 +461,82 @@ RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
     RT_PROP("IsRunning", "i1", WssServerIsRunning, none)
 RT_CLASS_END()
 
-// Viper.Network.SseClient - Server-Sent Events client
+// Zanna.Network.SseClient - Server-Sent Events client
 /// @summary Provides Server-Sent Events client.
 /// @details
-/// `Viper.Network.SseClient` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.SseClient` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `IsOpen`,
 /// `LastEventType`, `LastEventId` and operations including `Recv`, `RecvFor`, `Close`.
-RT_CLASS_BEGIN("Viper.Network.SseClient", SseClient, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.SseClient", SseClient, "obj", none)
     RT_METHOD("Recv", "str()", SseRecv)
     RT_METHOD("RecvFor", "str(i64)", SseRecvFor)
-    RT_METHOD("RecvForResult", "obj<Viper.Result>(i64)", SseRecvForResult)
+    RT_METHOD("RecvForResult", "obj<Zanna.Result>(i64)", SseRecvForResult)
     RT_METHOD("Close", "void()", SseClose)
     RT_PROP("IsOpen", "i1", SseIsOpen, none)
     RT_PROP("LastEventType", "str", SseLastEventType, none)
     RT_PROP("LastEventId", "str", SseLastEventId, none)
 RT_CLASS_END()
 
-// Viper.Network.HttpClient - session-based HTTP client with cookies
+// Zanna.Network.HttpClient - session-based HTTP client with cookies
 /// @summary Provides session-based HTTP client with cookies.
 /// @details
-/// Create `Viper.Network.HttpClient` values through its registered constructor and use the returned
+/// Create `Zanna.Network.HttpClient` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `KeepAlive`, `FollowRedirects` and operations including `Get`, `Post`, `Put`, `Delete`.
-RT_CLASS_BEGIN("Viper.Network.HttpClient", HttpClient, "obj", HttpClientNew)
-    RT_METHOD("Get", "obj<Viper.Network.HttpRes>(str)", HttpClientGet)
-    RT_METHOD("Post", "obj<Viper.Network.HttpRes>(str,str)", HttpClientPost)
-    RT_METHOD("Put", "obj<Viper.Network.HttpRes>(str,str)", HttpClientPut)
-    RT_METHOD("Delete", "obj<Viper.Network.HttpRes>(str)", HttpClientDelete)
+RT_CLASS_BEGIN("Zanna.Network.HttpClient", HttpClient, "obj", HttpClientNew)
+    RT_METHOD("Get", "obj<Zanna.Network.HttpRes>(str)", HttpClientGet)
+    RT_METHOD("Post", "obj<Zanna.Network.HttpRes>(str,str)", HttpClientPost)
+    RT_METHOD("Put", "obj<Zanna.Network.HttpRes>(str,str)", HttpClientPut)
+    RT_METHOD("Delete", "obj<Zanna.Network.HttpRes>(str)", HttpClientDelete)
     RT_METHOD("SetHeader", "void(str,str)", HttpClientSetHeader)
     RT_METHOD("SetTimeout", "void(i64)", HttpClientSetTimeout)
     RT_METHOD("SetPoolSize", "void(i64)", HttpClientSetPoolSize)
     RT_METHOD("SetMaxRedirects", "void(i64)", HttpClientSetMaxRedir)
     RT_METHOD("SetCookie", "void(str,str,str)", HttpClientSetCookie)
     RT_METHOD("DeleteCookie", "void(str,str)", HttpClientDeleteCookie)
-    RT_METHOD("GetCookies", "obj<Viper.Collections.Map>(str)", HttpClientGetCookies)
+    RT_METHOD("GetCookies", "obj<Zanna.Collections.Map>(str)", HttpClientGetCookies)
     RT_PROP("KeepAlive", "i1", HttpClientKeepAliveGet, HttpClientKeepAliveSet)
     RT_PROP("FollowRedirects", "i1", HttpClientFollowRedirGet, HttpClientFollowRedirSet)
 RT_CLASS_END()
 
-// Viper.Network.SmtpClient - simple email sending
+// Zanna.Network.SmtpClient - simple email sending
 /// @summary Provides simple email sending.
 /// @details
-/// Create `Viper.Network.SmtpClient` values through its registered constructor and use the returned
+/// Create `Zanna.Network.SmtpClient` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetAuth`, `SetTls`, `SendResult`, `SendHtmlResult`.
-RT_CLASS_BEGIN("Viper.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
+RT_CLASS_BEGIN("Zanna.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
     RT_METHOD("SetAuth", "void(str,str)", SmtpSetAuth)
     RT_METHOD("SetTls", "void(i1)", SmtpSetTls)
-    RT_METHOD("SendResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendResult)
-    RT_METHOD("SendHtmlResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendHtmlResult)
+    RT_METHOD("SendResult", "obj<Zanna.Result>(str,str,str,str)", SmtpSendResult)
+    RT_METHOD("SendHtmlResult", "obj<Zanna.Result>(str,str,str,str)", SmtpSendHtmlResult)
     RT_METHOD("Close", "void()", SmtpClose)
 RT_CLASS_END()
 
-// Viper.Network.AsyncSocket - blocking socket work with Future integration
+// Zanna.Network.AsyncSocket - blocking socket work with Future integration
 /// @summary Runs blocking socket work through Future-returning worker-pool tasks.
 /// @details
-/// `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance.
+/// `Zanna.Network.AsyncSocket` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync`,
 /// `SendAsync`, `RecvAsync`.
-RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
+RT_CLASS_BEGIN("Zanna.Network.AsyncSocket", AsyncSocket, "none", none)
     RT_METHOD("SetPoolSize",     "void(i64)",                             AsyncSetPoolSize)
-    RT_METHOD("ConnectAsync",    "obj<Viper.Threads.Future>(str,i64)",    AsyncConnect)
-    RT_METHOD("ConnectForAsync", "obj<Viper.Threads.Future>(str,i64,i64)", AsyncConnectFor)
-    RT_METHOD("SendAsync", "obj<Viper.Threads.Future>(obj,obj)", AsyncSend)
-    RT_METHOD("RecvAsync", "obj<Viper.Threads.Future>(obj,i64)", AsyncRecv)
-    RT_METHOD("HttpGetAsync", "obj<Viper.Threads.Future>(str)", AsyncHttpGet)
-    RT_METHOD("HttpPostAsync", "obj<Viper.Threads.Future>(str,str)", AsyncHttpPost)
+    RT_METHOD("ConnectAsync",    "obj<Zanna.Threads.Future>(str,i64)",    AsyncConnect)
+    RT_METHOD("ConnectForAsync", "obj<Zanna.Threads.Future>(str,i64,i64)", AsyncConnectFor)
+    RT_METHOD("SendAsync", "obj<Zanna.Threads.Future>(obj,obj)", AsyncSend)
+    RT_METHOD("RecvAsync", "obj<Zanna.Threads.Future>(obj,i64)", AsyncRecv)
+    RT_METHOD("HttpGetAsync", "obj<Zanna.Threads.Future>(str)", AsyncHttpGet)
+    RT_METHOD("HttpPostAsync", "obj<Zanna.Threads.Future>(str,str)", AsyncHttpPost)
 RT_CLASS_END()
 
-// Viper.Text.Html - HTML parsing and utilities
+// Zanna.Text.Html - HTML parsing and utilities
 /// @summary Provides HTML parsing and utilities.
 /// @details
-/// `Viper.Text.Html` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Html` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Parse`,
 /// `ToText`, `Escape`, `Unescape`.
-RT_CLASS_BEGIN("Viper.Text.Html", Html, "obj", none)
-    RT_METHOD("Parse", "obj<Viper.Collections.Map>(str)", HtmlParse)
+RT_CLASS_BEGIN("Zanna.Text.Html", Html, "obj", none)
+    RT_METHOD("Parse", "obj<Zanna.Collections.Map>(str)", HtmlParse)
     RT_METHOD("ToText", "str(str)", HtmlToText)
     RT_METHOD("Escape", "str(str)", HtmlEscape)
     RT_METHOD("Unescape", "str(str)", HtmlUnescape)
@@ -551,146 +551,146 @@ RT_CLASS_END()
 
 /// @summary Provides Completion constants and static operations for Zia language tooling.
 /// @details
-/// `Viper.Zia.Completion` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Zia.Completion` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Complete`, `CompleteForFile`, `Items`,
 /// `ItemsForFile`.
-RT_CLASS_BEGIN("Viper.Zia.Completion", ZiaCompletion, "none", none)
+RT_CLASS_BEGIN("Zanna.Zia.Completion", ZiaCompletion, "none", none)
     RT_METHOD("IsAvailable", "i1()", ZiaServiceAvailable)
     RT_METHOD("Complete",       "str(str,i64,i64)",     ZiaComplete)
     RT_METHOD("CompleteForFile", "str(str,str,i64,i64)", ZiaCompleteForFile)
-    RT_METHOD("Items",          "obj<Viper.Collections.Seq>(str,i64,i64)", ZiaCompletionItems)
-    RT_METHOD("ItemsForFile",   "obj<Viper.Collections.Seq>(str,str,i64,i64)", ZiaCompletionItemsForFile)
-    RT_METHOD("BeginItemsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginItemsForFile)
+    RT_METHOD("Items",          "obj<Zanna.Collections.Seq>(str,i64,i64)", ZiaCompletionItems)
+    RT_METHOD("ItemsForFile",   "obj<Zanna.Collections.Seq>(str,str,i64,i64)", ZiaCompletionItemsForFile)
+    RT_METHOD("BeginItemsForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginItemsForFile)
     RT_METHOD("SignatureHelp",   "str(str,i64,i64)",     ZiaSignatureHelp)
     RT_METHOD("SignatureHelpForFile", "str(str,str,i64,i64)", ZiaSignatureHelpForFile)
-    RT_METHOD("SignatureInfo",   "obj<Viper.Collections.Map>(str,i64,i64)", ZiaSignatureInfo)
-    RT_METHOD("SignatureInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)", ZiaSignatureInfoForFile)
-    RT_METHOD("BeginSignatureInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginSignatureInfoForFile)
+    RT_METHOD("SignatureInfo",   "obj<Zanna.Collections.Map>(str,i64,i64)", ZiaSignatureInfo)
+    RT_METHOD("SignatureInfoForFile", "obj<Zanna.Collections.Map>(str,str,i64,i64)", ZiaSignatureInfoForFile)
+    RT_METHOD("BeginSignatureInfoForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginSignatureInfoForFile)
     RT_METHOD("Check",          "str(str)",             ZiaCheck)
     RT_METHOD("CheckForFile",   "str(str,str)",         ZiaCheckForFile)
     RT_METHOD("Hover",          "str(str,i64,i64)",     ZiaHover)
     RT_METHOD("HoverForFile",   "str(str,str,i64,i64)", ZiaHoverForFile)
-    RT_METHOD("HoverInfo",      "obj<Viper.Collections.Map>(str,i64,i64)", ZiaHoverInfo)
-    RT_METHOD("HoverInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)", ZiaHoverInfoForFile)
-    RT_METHOD("BeginHoverInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginHoverInfoForFile)
+    RT_METHOD("HoverInfo",      "obj<Zanna.Collections.Map>(str,i64,i64)", ZiaHoverInfo)
+    RT_METHOD("HoverInfoForFile", "obj<Zanna.Collections.Map>(str,str,i64,i64)", ZiaHoverInfoForFile)
+    RT_METHOD("BeginHoverInfoForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginHoverInfoForFile)
     RT_METHOD("Symbols",        "str(str)",             ZiaSymbols)
     RT_METHOD("SymbolsForFile", "str(str,str)",         ZiaSymbolsForFile)
-    RT_METHOD("BeginSymbolsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginSymbolsForFile)
-    RT_METHOD("BeginTokensForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginTokensForFile)
+    RT_METHOD("BeginSymbolsForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginSymbolsForFile)
+    RT_METHOD("BeginTokensForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginTokensForFile)
     RT_METHOD("ClearCache",     "void()",               ZiaCompletionClearCache)
 RT_CLASS_END()
 
-// Viper.Zia.Toolchain - structured diagnostics and compile results
+// Zanna.Zia.Toolchain - structured diagnostics and compile results
 /// @summary Provides structured diagnostics and compile results.
 /// @details
-/// `Viper.Zia.Toolchain` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Zia.Toolchain` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`,
 /// `Compile`.
-RT_CLASS_BEGIN("Viper.Zia.Toolchain", ZiaToolchain, "none", none)
-    RT_METHOD("Check",          "obj<Viper.Collections.Seq>(str)",     ZiaToolchainCheck)
-    RT_METHOD("CheckForFile",   "obj<Viper.Collections.Seq>(str,str)", ZiaToolchainCheckForFile)
-    RT_METHOD("BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaToolchainBeginCheckForFile)
-    RT_METHOD("Compile",        "obj<Viper.Collections.Map>(str)",     ZiaToolchainCompile)
-    RT_METHOD("CompileForFile", "obj<Viper.Collections.Map>(str,str)", ZiaToolchainCompileForFile)
+RT_CLASS_BEGIN("Zanna.Zia.Toolchain", ZiaToolchain, "none", none)
+    RT_METHOD("Check",          "obj<Zanna.Collections.Seq>(str)",     ZiaToolchainCheck)
+    RT_METHOD("CheckForFile",   "obj<Zanna.Collections.Seq>(str,str)", ZiaToolchainCheckForFile)
+    RT_METHOD("BeginCheckForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaToolchainBeginCheckForFile)
+    RT_METHOD("Compile",        "obj<Zanna.Collections.Map>(str)",     ZiaToolchainCompile)
+    RT_METHOD("CompileForFile", "obj<Zanna.Collections.Map>(str,str)", ZiaToolchainCompileForFile)
 RT_CLASS_END()
 
-// Viper.Zia.Document - incremental document mirror sync (plan 08), static-only
+// Zanna.Zia.Document - incremental document mirror sync (plan 08), static-only
 /// @summary Provides incremental document mirror sync (plan 08), static-only.
 /// @details
-/// `Viper.Zia.Document` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Zia.Document` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
-RT_CLASS_BEGIN("Viper.Zia.Document", ZiaDocument, "none", none)
+RT_CLASS_BEGIN("Zanna.Zia.Document", ZiaDocument, "none", none)
     RT_METHOD("SyncFull",     "void(str,str,i64)", ZiaDocSyncFull)
     RT_METHOD("SyncDelta",    "i1(str,str,i64)",   ZiaDocSyncDelta)
     RT_METHOD("Close",        "void(str)",         ZiaDocClose)
     RT_METHOD("Text",         "str(str)",          ZiaDocText)
     RT_METHOD("Has",          "i1(str)",           ZiaDocHas)
     RT_METHOD("CheckForFile", "str(str)",          ZiaDocCheckForFile)
-    RT_METHOD("BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)", ZiaDocBeginCheckForFile)
+    RT_METHOD("BeginCheckForFile", "obj<Zanna.Zia.SemanticJob.SemanticJobHandle>(str)", ZiaDocBeginCheckForFile)
 RT_CLASS_END()
 
-/// @summary Provides Language Service constants and static operations for Viper BASIC language tooling.
+/// @summary Provides Language Service constants and static operations for Zanna BASIC language tooling.
 /// @details
-/// `Viper.Basic.LanguageService` is a static runtime surface and does not require an instance.
+/// `Zanna.Basic.LanguageService` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `CheckForFile`, `ItemsForFile`,
 /// `SymbolsForFile`, `HoverInfoForFile`.
-RT_CLASS_BEGIN("Viper.Basic.LanguageService", BasicLanguageService, "none", none)
-    RT_METHOD("CheckForFile",    "obj<Viper.Collections.Seq>(str,str)",         BasicToolchainCheckForFile)
-    RT_METHOD("ItemsForFile",    "obj<Viper.Collections.Seq>(str,str,i64,i64)", BasicCompletionItemsForFile)
+RT_CLASS_BEGIN("Zanna.Basic.LanguageService", BasicLanguageService, "none", none)
+    RT_METHOD("CheckForFile",    "obj<Zanna.Collections.Seq>(str,str)",         BasicToolchainCheckForFile)
+    RT_METHOD("ItemsForFile",    "obj<Zanna.Collections.Seq>(str,str,i64,i64)", BasicCompletionItemsForFile)
     RT_METHOD("SymbolsForFile",  "str(str,str)",                                BasicCompletionSymbolsForFile)
-    RT_METHOD("HoverInfoForFile","obj<Viper.Collections.Map>(str,str,i64,i64)", BasicCompletionHoverInfoForFile)
+    RT_METHOD("HoverInfoForFile","obj<Zanna.Collections.Map>(str,str,i64,i64)", BasicCompletionHoverInfoForFile)
 RT_CLASS_END()
 
 /// @summary Provides Semantic Job constants and static operations for Zia language tooling.
 /// @details
-/// `Viper.Zia.SemanticJob` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Zia.SemanticJob` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `IsDone`, `IsError`, `Error`, `Kind`.
-RT_CLASS_BEGIN("Viper.Zia.SemanticJob", ZiaSemanticJob, "none", none)
+RT_CLASS_BEGIN("Zanna.Zia.SemanticJob", ZiaSemanticJob, "none", none)
     RT_METHOD("IsDone",          "i1(obj)",                         ZiaSemanticJobIsDone)
     RT_METHOD("IsError",         "i1(obj)",                         ZiaSemanticJobIsError)
-    RT_METHOD("Error",     "obj<Viper.Option>(obj)",          ZiaSemanticJobErrorOption)
+    RT_METHOD("Error",     "obj<Zanna.Option>(obj)",          ZiaSemanticJobErrorOption)
     RT_METHOD("Kind",            "i64(obj)",                        ZiaSemanticJobKind)
     RT_METHOD("Cancel",          "void(obj)",                       ZiaSemanticJobCancel)
-    RT_METHOD("CompletionItems", "obj<Viper.Collections.Seq>(obj)", ZiaSemanticJobCompletionItems)
-    RT_METHOD("SignatureInfo",   "obj<Viper.Collections.Map>(obj)", ZiaSemanticJobSignatureInfo)
-    RT_METHOD("HoverInfo",       "obj<Viper.Collections.Map>(obj)", ZiaSemanticJobHoverInfo)
+    RT_METHOD("CompletionItems", "obj<Zanna.Collections.Seq>(obj)", ZiaSemanticJobCompletionItems)
+    RT_METHOD("SignatureInfo",   "obj<Zanna.Collections.Map>(obj)", ZiaSemanticJobSignatureInfo)
+    RT_METHOD("HoverInfo",       "obj<Zanna.Collections.Map>(obj)", ZiaSemanticJobHoverInfo)
     RT_METHOD("Symbols",         "str(obj)",                        ZiaSemanticJobSymbols)
     RT_METHOD("Tokens",          "str(obj)",                        ZiaSemanticJobTokens)
-    RT_METHOD("Diagnostics",     "obj<Viper.Collections.Seq>(obj)", ZiaSemanticJobDiagnostics)
+    RT_METHOD("Diagnostics",     "obj<Zanna.Collections.Seq>(obj)", ZiaSemanticJobDiagnostics)
 RT_CLASS_END()
 
 /// @summary Provides Semantic Job Handle functionality for Zia language tooling.
 /// @details
-/// `Viper.Zia.SemanticJob.SemanticJobHandle` exposes a registry-backed runtime surface without
+/// `Zanna.Zia.SemanticJob.SemanticJobHandle` exposes a registry-backed runtime surface without
 /// requiring callers to construct the class directly. The registry entry makes the type available
 /// to compilers, language services, and generated reference documentation.
-RT_CLASS_BEGIN("Viper.Zia.SemanticJob.SemanticJobHandle", ZiaSemanticJobHandle, "obj", none)
+RT_CLASS_BEGIN("Zanna.Zia.SemanticJob.SemanticJobHandle", ZiaSemanticJobHandle, "obj", none)
 RT_CLASS_END()
 
-// Viper.Zia.ProjectIndex - project-wide semantic navigation and rename queries
+// Zanna.Zia.ProjectIndex - project-wide semantic navigation and rename queries
 /// @summary Provides project-wide semantic navigation and rename queries.
 /// @details
-/// `Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance.
+/// `Zanna.Zia.ProjectIndex` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `New`, `IsValid`, `UpdateFile`, `RemoveFile`.
-RT_CLASS_BEGIN("Viper.Zia.ProjectIndex", ZiaProjectIndex, "none", none)
-    RT_METHOD("New",         "obj<Viper.Zia.ProjectIndex.ProjectIndexHandle>(str)",        ZiaProjectIndexNew)
+RT_CLASS_BEGIN("Zanna.Zia.ProjectIndex", ZiaProjectIndex, "none", none)
+    RT_METHOD("New",         "obj<Zanna.Zia.ProjectIndex.ProjectIndexHandle>(str)",        ZiaProjectIndexNew)
     RT_METHOD("IsValid",     "i1(obj)",                                        ZiaProjectIndexIsValid)
     RT_METHOD("UpdateFile",  "i1(obj,str,str)",                                ZiaProjectIndexUpdateFile)
     RT_METHOD("RemoveFile",  "i1(obj,str)",                                    ZiaProjectIndexRemoveFile)
     RT_METHOD("Clear",       "void(obj)",                                      ZiaProjectIndexClear)
     RT_METHOD("Destroy",     "void(obj)",                                      ZiaProjectIndexDestroy)
-    RT_METHOD("Definition",  "obj<Viper.Collections.Map>(obj,str,str,i64,i64)", ZiaProjectIndexDefinition)
-    RT_METHOD("References",  "obj<Viper.Collections.Seq>(obj,str,str,i64,i64)", ZiaProjectIndexReferences)
-    RT_METHOD("RenameEdits", "obj<Viper.Collections.Map>(obj,str,str,i64,i64,str)", ZiaProjectIndexRenameEdits)
+    RT_METHOD("Definition",  "obj<Zanna.Collections.Map>(obj,str,str,i64,i64)", ZiaProjectIndexDefinition)
+    RT_METHOD("References",  "obj<Zanna.Collections.Seq>(obj,str,str,i64,i64)", ZiaProjectIndexReferences)
+    RT_METHOD("RenameEdits", "obj<Zanna.Collections.Map>(obj,str,str,i64,i64,str)", ZiaProjectIndexRenameEdits)
 RT_CLASS_END()
 
 /// @summary Provides Project Index Handle functionality for Zia language tooling.
 /// @details
-/// `Viper.Zia.ProjectIndex.ProjectIndexHandle` exposes a registry-backed runtime surface without
+/// `Zanna.Zia.ProjectIndex.ProjectIndexHandle` exposes a registry-backed runtime surface without
 /// requiring callers to construct the class directly. The registry entry makes the type available
 /// to compilers, language services, and generated reference documentation.
-RT_CLASS_BEGIN("Viper.Zia.ProjectIndex.ProjectIndexHandle", ZiaProjectIndexHandle, "obj", none)
+RT_CLASS_BEGIN("Zanna.Zia.ProjectIndex.ProjectIndexHandle", ZiaProjectIndexHandle, "obj", none)
 RT_CLASS_END()
 
-// Viper.GUI.GroupBox - titled "card" container for grouping related controls
+// Zanna.GUI.GroupBox - titled "card" container for grouping related controls
 /// @summary Provides titled "card" container for grouping related controls.
 /// @details
-/// Create `Viper.GUI.GroupBox` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.GroupBox` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `Destroy`, `SetTitle`, `AddChild`.
-RT_CLASS_BEGIN("Viper.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew)
     RT_METHOD("Destroy",     "void()",        GuiGroupBoxDestroy)
     RT_METHOD("SetTitle",    "void(str)",     GuiGroupBoxSetTitle)
     RT_METHOD("AddChild",    "void(obj)",     GuiGroupBoxAddChild)
 RT_CLASS_END()
 
-// Viper.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense
+// Zanna.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense
 /// @summary Provides floating overlay panel for popups/IntelliSense.
 /// @details
-/// Create `Viper.GUI.FloatingPanel` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.FloatingPanel` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `Destroy`, `SetPosition`, `CenterInParent`, `SetSize`.
-RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew)
+RT_CLASS_BEGIN("Zanna.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew)
     RT_METHOD("Destroy",     "void()",        GuiFloatingPanelDestroy)
     RT_METHOD("SetPosition", "void(f64,f64)", GuiFloatingPanelSetPosition)
     RT_METHOD("CenterInParent", "void()",     GuiFloatingPanelCenterInParent)

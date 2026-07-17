@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,7 +53,7 @@ struct RuntimeMethodInfo {
  * @brief Return true for concrete GUI runtime classes that inherit Widget operations.
  *
  * @details The runtime class catalog keeps base widget methods only on
- * `Viper.GUI.Widget`; frontends use this predicate to offer and resolve those
+ * `Zanna.GUI.Widget`; frontends use this predicate to offer and resolve those
  * methods for concrete widget handles without copying the methods into every
  * public class surface.
  */

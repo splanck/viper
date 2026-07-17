@@ -1,9 +1,9 @@
-' API Audit: Viper.IO.Stream (BASIC)
-PRINT "=== API Audit: Viper.IO.Stream ==="
+' API Audit: Zanna.IO.Stream (BASIC)
+PRINT "=== API Audit: Zanna.IO.Stream ==="
 
 ' --- OpenMemory ---
 PRINT "--- OpenMemory ---"
-DIM s1 AS OBJECT = Viper.IO.Stream.OpenMemory()
+DIM s1 AS OBJECT = Zanna.IO.Stream.OpenMemory()
 PRINT s1.Type
 PRINT s1.Pos
 PRINT s1.Length
@@ -21,8 +21,8 @@ PRINT s1.ReadByte()
 
 ' --- Write / Read ---
 PRINT "--- Write / Read ---"
-DIM s2 AS OBJECT = Viper.IO.Stream.OpenMemory()
-DIM data AS OBJECT = Viper.Collections.Bytes.New(4)
+DIM s2 AS OBJECT = Zanna.IO.Stream.OpenMemory()
+DIM data AS OBJECT = Zanna.Collections.Bytes.New(4)
 data.Set(0, 72)
 data.Set(1, 73)
 data.Set(2, 33)
@@ -31,8 +31,8 @@ s2.Write(data)
 PRINT s2.Length
 s2.Pos = 0
 DIM rd AS OBJECT = s2.Read(4)
-PRINT Viper.Collections.Bytes.Get(rd, 0)
-PRINT Viper.Collections.Bytes.Get(rd, 1)
+PRINT Zanna.Collections.Bytes.Get(rd, 0)
+PRINT Zanna.Collections.Bytes.Get(rd, 1)
 
 ' --- Eof ---
 PRINT "--- Eof ---"

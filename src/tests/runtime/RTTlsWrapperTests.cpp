@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTTlsWrapperTests.cpp
-// Purpose: Validate Viper.Crypto.Tls wrapper argument handling.
+// Purpose: Validate Zanna.Crypto.Tls wrapper argument handling.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,45 +27,45 @@ static void test_tls_wrapper_rejects_invalid_args_without_network() {
 
     rt_string host = rt_const_cstr("example.com");
     test_result("ConnectFor rejects overflowing timeout",
-                rt_viper_tls_connect_for(host, 443, std::numeric_limits<int64_t>::max()) ==
+                rt_zanna_tls_connect_for(host, 443, std::numeric_limits<int64_t>::max()) ==
                     nullptr);
 
     const char raw_host[] = {'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', 0, 'x'};
     rt_string nul_host = rt_string_from_bytes(raw_host, sizeof(raw_host));
     test_result("Connect rejects embedded NUL hostname",
-                rt_viper_tls_connect(nul_host, 443) == nullptr);
+                rt_zanna_tls_connect(nul_host, 443) == nullptr);
     test_result("ConnectFor rejects embedded NUL hostname",
-                rt_viper_tls_connect_for(nul_host, 443, 1000) == nullptr);
+                rt_zanna_tls_connect_for(nul_host, 443, 1000) == nullptr);
 
     const char raw_ca[] = {'/', 't', 'm', 'p', '/', 'c', 'a', 0, 'x'};
     rt_string nul_ca = rt_string_from_bytes(raw_ca, sizeof(raw_ca));
     test_result("ConnectOptions rejects embedded NUL CA path",
-                rt_viper_tls_connect_options(host, 443, nul_ca, rt_const_cstr(""), 1, 1000) ==
+                rt_zanna_tls_connect_options(host, 443, nul_ca, rt_const_cstr(""), 1, 1000) ==
                     nullptr);
 
     const char raw_alpn[] = {'h', '2', 0, 'x'};
     rt_string nul_alpn = rt_string_from_bytes(raw_alpn, sizeof(raw_alpn));
     test_result("ConnectOptions rejects embedded NUL ALPN",
-                rt_viper_tls_connect_options(host, 443, rt_const_cstr(""), nul_alpn, 1, 1000) ==
+                rt_zanna_tls_connect_options(host, 443, rt_const_cstr(""), nul_alpn, 1, 1000) ==
                     nullptr);
 
     test_result("ConnectOptions rejects overflowing timeout",
-                rt_viper_tls_connect_options(host,
+                rt_zanna_tls_connect_options(host,
                                              443,
                                              rt_const_cstr(""),
                                              rt_const_cstr("h2,http/1.1"),
                                              1,
                                              std::numeric_limits<int64_t>::max()) == nullptr);
 
-    test_result("IsOpen(NULL) is false", rt_viper_tls_is_open(nullptr) == 0);
+    test_result("IsOpen(NULL) is false", rt_zanna_tls_is_open(nullptr) == 0);
     test_result("NegotiatedAlpn(NULL) returns empty string",
-                rt_str_len(rt_viper_tls_negotiated_alpn(nullptr)) == 0);
+                rt_str_len(rt_zanna_tls_negotiated_alpn(nullptr)) == 0);
     test_result("Recv(NULL) returns NULL",
-                rt_viper_tls_recv(nullptr, std::numeric_limits<int64_t>::max()) == nullptr);
+                rt_zanna_tls_recv(nullptr, std::numeric_limits<int64_t>::max()) == nullptr);
     test_result("RecvStr(NULL) returns empty string",
-                rt_str_len(rt_viper_tls_recv_str(nullptr, std::numeric_limits<int64_t>::max())) ==
+                rt_str_len(rt_zanna_tls_recv_str(nullptr, std::numeric_limits<int64_t>::max())) ==
                     0);
-    test_result("SendStr(NULL) returns -1", rt_viper_tls_send_str(nullptr, host) == -1);
+    test_result("SendStr(NULL) returns -1", rt_zanna_tls_send_str(nullptr, host) == -1);
 
     printf("\n");
 }
@@ -79,7 +79,7 @@ static void test_tls_connect_for_honors_deadline() {
     // deadline expires. A 500 ms budget must return well under a few seconds.
     rt_string blackhole = rt_const_cstr("192.0.2.1");
     auto start = std::chrono::steady_clock::now();
-    void *session = rt_viper_tls_connect_for(blackhole, 443, 500);
+    void *session = rt_zanna_tls_connect_for(blackhole, 443, 500);
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::steady_clock::now() - start)
                        .count();

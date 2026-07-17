@@ -3,17 +3,17 @@ module TestCrypto;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Crypto.Hash.MD5
-// COVER: Viper.Crypto.Hash.SHA1
-// COVER: Viper.Crypto.Hash.SHA256
-// COVER: Viper.Crypto.Hash.CRC32
-// COVER: Viper.Crypto.Hash.HmacMD5
-// COVER: Viper.Crypto.Hash.HmacSHA1
-// COVER: Viper.Crypto.Hash.HmacSHA256
-// COVER: Viper.Crypto.SecureRandom.Int
-// COVER: Viper.Crypto.SecureRandom.Bytes
-// COVER: Viper.Crypto.Aes.EncryptStr
-// COVER: Viper.Crypto.Aes.DecryptStr
+// COVER: Zanna.Crypto.Hash.MD5
+// COVER: Zanna.Crypto.Hash.SHA1
+// COVER: Zanna.Crypto.Hash.SHA256
+// COVER: Zanna.Crypto.Hash.CRC32
+// COVER: Zanna.Crypto.Hash.HmacMD5
+// COVER: Zanna.Crypto.Hash.HmacSHA1
+// COVER: Zanna.Crypto.Hash.HmacSHA256
+// COVER: Zanna.Crypto.SecureRandom.Int
+// COVER: Zanna.Crypto.SecureRandom.Bytes
+// COVER: Zanna.Crypto.Aes.EncryptStr
+// COVER: Zanna.Crypto.Aes.DecryptStr
 
 func testAES() {
     setTest("AES");
@@ -22,31 +22,31 @@ func testAES() {
     var plaintext = "Hello, World! This is a test.";
     var password = "MySecretPassword123";
 
-    var encrypted = Viper.Crypto.Aes.EncryptStr(plaintext, password);
-    var decrypted = Viper.Crypto.Aes.DecryptStr(encrypted, password);
+    var encrypted = Zanna.Crypto.Aes.EncryptStr(plaintext, password);
+    var decrypted = Zanna.Crypto.Aes.DecryptStr(encrypted, password);
     assertEqStr(decrypted, plaintext, "aes roundtrip");
 
     // Test empty string
     var emptyPlain = "";
-    var emptyEnc = Viper.Crypto.Aes.EncryptStr(emptyPlain, password);
-    var emptyDec = Viper.Crypto.Aes.DecryptStr(emptyEnc, password);
+    var emptyEnc = Zanna.Crypto.Aes.EncryptStr(emptyPlain, password);
+    var emptyDec = Zanna.Crypto.Aes.DecryptStr(emptyEnc, password);
     assertEqStr(emptyDec, emptyPlain, "aes empty string");
 
     // Test different passwords work independently
-    var enc1 = Viper.Crypto.Aes.EncryptStr(plaintext, "password1");
-    var enc2 = Viper.Crypto.Aes.EncryptStr(plaintext, "password2");
-    var dec1 = Viper.Crypto.Aes.DecryptStr(enc1, "password1");
-    var dec2 = Viper.Crypto.Aes.DecryptStr(enc2, "password2");
+    var enc1 = Zanna.Crypto.Aes.EncryptStr(plaintext, "password1");
+    var enc2 = Zanna.Crypto.Aes.EncryptStr(plaintext, "password2");
+    var dec1 = Zanna.Crypto.Aes.DecryptStr(enc1, "password1");
+    var dec2 = Zanna.Crypto.Aes.DecryptStr(enc2, "password2");
     assertEqStr(dec1, plaintext, "aes password1");
     assertEqStr(dec2, plaintext, "aes password2");
 
     // Test long text (multi-block)
     var longPlain = "";
     for (var i = 0; i < 50; i = i + 1) {
-        longPlain = Viper.String.Concat(longPlain, "ABCDEFGHIJ");
+        longPlain = Zanna.String.Concat(longPlain, "ABCDEFGHIJ");
     }
-    var longEnc = Viper.Crypto.Aes.EncryptStr(longPlain, password);
-    var longDec = Viper.Crypto.Aes.DecryptStr(longEnc, password);
+    var longEnc = Zanna.Crypto.Aes.EncryptStr(longPlain, password);
+    var longDec = Zanna.Crypto.Aes.DecryptStr(longEnc, password);
     assertEqStr(longDec, longPlain, "aes long text");
 }
 
@@ -54,13 +54,13 @@ func testMD5() {
     setTest("MD5");
 
     // Known MD5 hashes
-    var hash1 = Viper.Crypto.Legacy.Hash.Md5("");
+    var hash1 = Zanna.Crypto.Legacy.Hash.Md5("");
     assertEqStr(hash1, "d41d8cd98f00b204e9800998ecf8427e", "md5 empty string");
 
-    var hash2 = Viper.Crypto.Legacy.Hash.Md5("hello");
+    var hash2 = Zanna.Crypto.Legacy.Hash.Md5("hello");
     assertEqStr(hash2, "5d41402abc4b2a76b9719d911017c592", "md5 'hello'");
 
-    var hash3 = Viper.Crypto.Legacy.Hash.Md5("Hello, World!");
+    var hash3 = Zanna.Crypto.Legacy.Hash.Md5("Hello, World!");
     assertEqStr(hash3, "65a8e27d8879283831b664bd8b7f0ad4", "md5 'Hello, World!'");
 }
 
@@ -68,10 +68,10 @@ func testSHA1() {
     setTest("SHA1");
 
     // Known SHA1 hashes
-    var hash1 = Viper.Crypto.Legacy.Hash.Sha1("");
+    var hash1 = Zanna.Crypto.Legacy.Hash.Sha1("");
     assertEqStr(hash1, "da39a3ee5e6b4b0d3255bfef95601890afd80709", "sha1 empty string");
 
-    var hash2 = Viper.Crypto.Legacy.Hash.Sha1("hello");
+    var hash2 = Zanna.Crypto.Legacy.Hash.Sha1("hello");
     assertEqStr(hash2, "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d", "sha1 'hello'");
 }
 
@@ -79,10 +79,10 @@ func testSHA256() {
     setTest("SHA256");
 
     // Known SHA256 hashes
-    var hash1 = Viper.Crypto.Hash.Sha256("");
+    var hash1 = Zanna.Crypto.Hash.Sha256("");
     assertEqStr(hash1, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256 empty string");
 
-    var hash2 = Viper.Crypto.Hash.Sha256("hello");
+    var hash2 = Zanna.Crypto.Hash.Sha256("hello");
     assertEqStr(hash2, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", "sha256 'hello'");
 }
 
@@ -90,10 +90,10 @@ func testCRC32() {
     setTest("CRC32");
 
     // CRC32 of known strings
-    var crc1 = Viper.Crypto.Legacy.Hash.Crc32("hello");
+    var crc1 = Zanna.Crypto.Legacy.Hash.Crc32("hello");
     assertEqInt(crc1, 0x3610a686, "crc32 'hello'");
 
-    var crc2 = Viper.Crypto.Legacy.Hash.Crc32("");
+    var crc2 = Zanna.Crypto.Legacy.Hash.Crc32("");
     assertEqInt(crc2, 0, "crc32 empty string");
 }
 
@@ -104,16 +104,16 @@ func testHMAC() {
     var msg = "message";
 
     // HMAC-MD5
-    var hmacMd5 = Viper.Crypto.Legacy.Hash.HmacMd5(key, msg);
-    assertEqInt(Viper.String.get_Length(hmacMd5), 32, "hmac-md5 length");
+    var hmacMd5 = Zanna.Crypto.Legacy.Hash.HmacMd5(key, msg);
+    assertEqInt(Zanna.String.get_Length(hmacMd5), 32, "hmac-md5 length");
 
     // HMAC-SHA1
-    var hmacSha1 = Viper.Crypto.Legacy.Hash.HmacSha1(key, msg);
-    assertEqInt(Viper.String.get_Length(hmacSha1), 40, "hmac-sha1 length");
+    var hmacSha1 = Zanna.Crypto.Legacy.Hash.HmacSha1(key, msg);
+    assertEqInt(Zanna.String.get_Length(hmacSha1), 40, "hmac-sha1 length");
 
     // HMAC-SHA256
-    var hmacSha256 = Viper.Crypto.Hash.HmacSha256(key, msg);
-    assertEqInt(Viper.String.get_Length(hmacSha256), 64, "hmac-sha256 length");
+    var hmacSha256 = Zanna.Crypto.Hash.HmacSha256(key, msg);
+    assertEqInt(Zanna.String.get_Length(hmacSha256), 64, "hmac-sha256 length");
 }
 
 func testCryptoRandInt() {
@@ -121,7 +121,7 @@ func testCryptoRandInt() {
 
     // Test range - both min and max are inclusive [min, max]
     for (var i = 0; i < 50; i = i + 1) {
-        var n = Viper.Crypto.SecureRandom.Int(10, 100);
+        var n = Zanna.Crypto.SecureRandom.Int(10, 100);
         assertGteInt(n, 10, "crypto rand >= min");
         assertLteInt(n, 100, "crypto rand <= max");
     }
@@ -130,9 +130,9 @@ func testCryptoRandInt() {
 func testCryptoRandBytes() {
     setTest("CryptoRandBytes");
 
-    var bytes = Viper.Crypto.SecureRandom.Bytes(16);
+    var bytes = Zanna.Crypto.SecureRandom.Bytes(16);
     assertEqInt(bytes.Length, 16, "crypto rand bytes length");
-    assertEqInt(Viper.String.get_Length(bytes.ToHex()), 32, "crypto rand bytes hex length");
+    assertEqInt(Zanna.String.get_Length(bytes.ToHex()), 32, "crypto rand bytes hex length");
 }
 
 
@@ -142,12 +142,12 @@ func testHashDeterminism() {
     // Same input should always produce same hash
     var input = "test string for hashing";
 
-    var md5_1 = Viper.Crypto.Legacy.Hash.Md5(input);
-    var md5_2 = Viper.Crypto.Legacy.Hash.Md5(input);
+    var md5_1 = Zanna.Crypto.Legacy.Hash.Md5(input);
+    var md5_2 = Zanna.Crypto.Legacy.Hash.Md5(input);
     assertEqStr(md5_1, md5_2, "md5 deterministic");
 
-    var sha256_1 = Viper.Crypto.Hash.Sha256(input);
-    var sha256_2 = Viper.Crypto.Hash.Sha256(input);
+    var sha256_1 = Zanna.Crypto.Hash.Sha256(input);
+    var sha256_2 = Zanna.Crypto.Hash.Sha256(input);
     assertEqStr(sha256_1, sha256_2, "sha256 deterministic");
 }
 
@@ -157,13 +157,13 @@ func testHashLength() {
     var input = "test";
 
     // MD5 produces 32 hex chars (128 bits)
-    assertEqInt(Viper.String.get_Length(Viper.Crypto.Legacy.Hash.Md5(input)), 32, "md5 length");
+    assertEqInt(Zanna.String.get_Length(Zanna.Crypto.Legacy.Hash.Md5(input)), 32, "md5 length");
 
     // SHA1 produces 40 hex chars (160 bits)
-    assertEqInt(Viper.String.get_Length(Viper.Crypto.Legacy.Hash.Sha1(input)), 40, "sha1 length");
+    assertEqInt(Zanna.String.get_Length(Zanna.Crypto.Legacy.Hash.Sha1(input)), 40, "sha1 length");
 
     // SHA256 produces 64 hex chars (256 bits)
-    assertEqInt(Viper.String.get_Length(Viper.Crypto.Hash.Sha256(input)), 64, "sha256 length");
+    assertEqInt(Zanna.String.get_Length(Zanna.Crypto.Hash.Sha256(input)), 64, "sha256 length");
 }
 
 func start() {

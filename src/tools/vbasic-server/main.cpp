@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tools/vbasic-server/main.cpp
-// Purpose: Entry point for the Viper BASIC language server (MCP + LSP).
+// Purpose: Entry point for the Zanna BASIC language server (MCP + LSP).
 // Key invariants:
 //   - --mcp: newline-delimited JSON-RPC (MCP protocol)
 //   - --lsp: Content-Length framed JSON-RPC (LSP protocol)
@@ -18,28 +18,28 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Defines the Viper BASIC language-server entry point.
+/// @brief Defines the Zanna BASIC language-server entry point.
 /// @details All protocol handling is shared with the Zia language server via
 ///          ServerMain.hpp; this file supplies BASIC-specific metadata and
 ///          bridge construction.
 
 #include "tools/lsp-common/ServerMain.hpp"
 #include "tools/vbasic-server/BasicCompilerBridge.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 
-using namespace viper::server;
+using namespace zanna::server;
 
-/// @brief Viper BASIC-specific labels and protocol metadata.
+/// @brief Zanna BASIC-specific labels and protocol metadata.
 static const ServerConfig kBasicConfig{
     "vbasic-server",   // serverName
-    VIPER_VERSION_STR, // version
+    ZANNA_VERSION_STR, // version
     "vbasic",          // sourceName
     "basic",           // toolPrefix
     ".bas",            // defaultExt
-    "Viper BASIC",     // langLabel
+    "Zanna BASIC",     // langLabel
 };
 
-/// @brief Entry point for the Viper BASIC language server.
+/// @brief Entry point for the Zanna BASIC language server.
 /// @details Delegates common argument parsing, protocol auto-detection, and
 ///          MCP/LSP event loops to @ref runLanguageServerMain.
 /// @param argc Argument count from the C runtime.

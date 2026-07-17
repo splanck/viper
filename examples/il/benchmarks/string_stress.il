@@ -1,7 +1,7 @@
 il 0.3.0
 
-extern @Viper.String.Concat(str, str) -> str
-extern @Viper.String.get_Length(str) -> i64
+extern @Zanna.String.Concat(str, str) -> str
+extern @Zanna.String.get_Length(str) -> i64
 extern @rt_str_release_maybe(str) -> void
 
 global const str @.hello = "Hello"
@@ -20,15 +20,15 @@ loop(%sum: i64, %i: i64):
 body(%sum0: i64, %i0: i64):
   %s1 = const_str @.hello
   %s2 = const_str @.space
-  %t1 = call @Viper.String.Concat(%s1, %s2)
+  %t1 = call @Zanna.String.Concat(%s1, %s2)
 
   %s3 = const_str @.world
-  %t2 = call @Viper.String.Concat(%t1, %s3)
+  %t2 = call @Zanna.String.Concat(%t1, %s3)
 
   %s4 = const_str @.bang
-  %t3 = call @Viper.String.Concat(%t2, %s4)
+  %t3 = call @Zanna.String.Concat(%t2, %s4)
 
-  %len = call @Viper.String.get_Length(%t3)
+  %len = call @Zanna.String.get_Length(%t3)
   call @rt_str_release_maybe(%t3)
   %new_sum = iadd.ovf %sum0, %len
   %next_i = iadd.ovf %i0, 1

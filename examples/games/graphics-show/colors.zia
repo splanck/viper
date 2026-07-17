@@ -1,16 +1,16 @@
 module colors;
 
 // ============================================================================
-// COLORS.VIPER - Color Utility Functions
+// COLORS.ZANNA - Color Utility Functions
 // ============================================================================
 // Provides color creation and manipulation utilities for graphics demos.
-// Uses Viper.Graphics.Color.* namespace for RGB/RGBA operations.
+// Uses Zanna.Graphics.Color.* namespace for RGB/RGBA operations.
 // ============================================================================
 
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
 
 // Predefined color constants
 var BLACK: Integer;

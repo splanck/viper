@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/basic/test_basic_runtime_calls.cpp
-// Purpose: Compile-time coverage for BASIC calls into Viper runtime classes.
+// Purpose: Compile-time coverage for BASIC calls into Zanna runtime classes.
 //
 // Key invariants:
 //   - Runtime class methods and properties resolve through runtime.def metadata.
@@ -72,11 +72,11 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
 TEST(BasicRuntimeCalls, LegacyRuntimeOutParameterApisReturnObjects) {
     ASSERT_TRUE(compileOk(R"(
 DIM opt AS OBJECT
-opt = Viper.Core.Parse.TryInt("123")
-opt = Viper.Core.Parse.TryDouble("12.5")
-opt = Viper.Core.Parse.TryBool("yes")
-opt = Viper.Core.Parse.TryInt("123")
-opt = Viper.Core.Parse.TryDouble("12.5")
+opt = Zanna.Core.Parse.TryInt("123")
+opt = Zanna.Core.Parse.TryDouble("12.5")
+opt = Zanna.Core.Parse.TryBool("yes")
+opt = Zanna.Core.Parse.TryInt("123")
+opt = Zanna.Core.Parse.TryDouble("12.5")
 )"));
 }
 
@@ -87,13 +87,13 @@ DIM box AS OBJECT
 DIM opt AS OBJECT
 DIM fields AS OBJECT
 DIM pe AS OBJECT
-entries = Viper.IO.Dir.List(".")
-box = Viper.Core.Box.I64(42)
-opt = Viper.Core.Box.ToI64Option(box)
-opt = Viper.Core.Box.ToI64Option(box)
-fields = Viper.String.SplitFields("a,b")
-pe = Viper.Game.ParticleEmitter.New(4)
-opt = Viper.Game.ParticleEmitter.ParticleAt(pe, 0)
+entries = Zanna.IO.Dir.List(".")
+box = Zanna.Core.Box.I64(42)
+opt = Zanna.Core.Box.ToI64Option(box)
+opt = Zanna.Core.Box.ToI64Option(box)
+fields = Zanna.String.SplitFields("a,b")
+pe = Zanna.Game.ParticleEmitter.New(4)
+opt = Zanna.Game.ParticleEmitter.ParticleAt(pe, 0)
 PRINT "ok"
 )"));
 }
@@ -103,7 +103,7 @@ TEST(BasicRuntimeCalls, SafeThreadCallbackBridgeCompiles) {
 SUB Worker()
 END SUB
 DIM thread AS OBJECT
-thread = Viper.Threads.Thread.Start(ADDRESSOF Worker, 0)
+thread = Zanna.Threads.Thread.Start(ADDRESSOF Worker, 0)
 )"));
 }
 
@@ -112,14 +112,14 @@ TEST(BasicRuntimeCalls, JsonClassAliasesResolve) {
     // callable from BASIC (VDOC-019): Json.Get*/Set*/Has alias Map functions.
     ASSERT_TRUE(compileOk(R"(
 DIM data AS OBJECT
-data = Viper.Data.Json.NewObject()
-Viper.Data.Json.SetStr(data, "name", "zia")
-Viper.Data.Json.SetInt(data, "version", 1)
+data = Zanna.Data.Json.NewObject()
+Zanna.Data.Json.SetStr(data, "name", "zia")
+Zanna.Data.Json.SetInt(data, "version", 1)
 DIM name AS STRING
-name = Viper.Data.Json.GetStr(data, "name")
+name = Zanna.Data.Json.GetStr(data, "name")
 DIM present AS BOOLEAN
-present = Viper.Data.Json.Has(data, "name")
-PRINT Viper.Data.Json.Format(data)
+present = Zanna.Data.Json.Has(data, "name")
+PRINT Zanna.Data.Json.Format(data)
 )"));
 }
 
@@ -133,9 +133,9 @@ END SUB
 DIM seq AS OBJECT
 DIM kept AS OBJECT
 DIM handler AS OBJECT
-seq = Viper.Collections.Seq.New()
-kept = Viper.Collections.Seq.Filter(seq, ADDRESSOF KeepIt)
-handler = Viper.Core.MessageBus.Callback(ADDRESSOF OnMessage)
+seq = Zanna.Collections.Seq.New()
+kept = Zanna.Collections.Seq.Filter(seq, ADDRESSOF KeepIt)
+handler = Zanna.Core.MessageBus.Callback(ADDRESSOF OnMessage)
 )"));
 }
 
@@ -144,8 +144,8 @@ TEST(BasicRuntimeCalls, ResultOkI64) {
     ASSERT_TRUE(compileOk(R"(
 DIM r AS OBJECT
 DIM v AS INTEGER
-r = Viper.Result.OkI64(42)
-v = Viper.Result.UnwrapI64(r)
+r = Zanna.Result.OkI64(42)
+v = Zanna.Result.UnwrapI64(r)
 PRINT v
 )"));
 }
@@ -155,8 +155,8 @@ TEST(BasicRuntimeCalls, OptionSomeI64) {
     ASSERT_TRUE(compileOk(R"(
 DIM opt AS OBJECT
 DIM v AS INTEGER
-opt = Viper.Option.SomeI64(99)
-v = Viper.Option.UnwrapI64(opt)
+opt = Zanna.Option.SomeI64(99)
+v = Zanna.Option.UnwrapI64(opt)
 PRINT v
 )"));
 }
@@ -166,8 +166,8 @@ TEST(BasicRuntimeCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 DIM lazy AS OBJECT
 DIM v AS INTEGER
-lazy = Viper.Functional.Lazy.OfI64(42)
-v = Viper.Functional.Lazy.GetI64(lazy)
+lazy = Zanna.Functional.Lazy.OfI64(42)
+v = Zanna.Functional.Lazy.GetI64(lazy)
 PRINT v
 )"));
 }
@@ -176,7 +176,7 @@ PRINT v
 TEST(BasicRuntimeCalls, EasingLinear) {
     ASSERT_TRUE(compileOk(R"(
 DIM v AS DOUBLE
-v = Viper.Math.Easing.Linear(0.5)
+v = Zanna.Math.Easing.Linear(0.5)
 PRINT v
 )"));
 }
@@ -186,9 +186,9 @@ TEST(BasicRuntimeCalls, StringBuilderAppend) {
     ASSERT_TRUE(compileOk(R"(
 DIM sb AS OBJECT
 DIM s AS STRING
-sb = Viper.Text.StringBuilder.New()
-sb = Viper.Text.StringBuilder.Append(sb, "hello")
-s = Viper.Text.StringBuilder.ToString(sb)
+sb = Zanna.Text.StringBuilder.New()
+sb = Zanna.Text.StringBuilder.Append(sb, "hello")
+s = Zanna.Text.StringBuilder.ToString(sb)
 PRINT s
 )"));
 }
@@ -197,7 +197,7 @@ PRINT s
 TEST(BasicRuntimeCalls, ScannerNew) {
     ASSERT_TRUE(compileOk(R"(
 DIM sc AS OBJECT
-sc = Viper.Text.Scanner.New("hello world")
+sc = Zanna.Text.Scanner.New("hello world")
 PRINT "created"
 )"));
 }
@@ -210,20 +210,20 @@ DIM dlg AS OBJECT
 DIM shown AS INTEGER
 DIM path AS STRING
 DIM count AS INTEGER
-box = Viper.GUI.MessageBox.NewInfo("Title", "Body")
-Viper.GUI.MessageBox.AddButton(box, "OK", 1)
-Viper.GUI.MessageBox.SetDefaultButton(box, 1)
-choice = Viper.GUI.MessageBox.Show(box)
-Viper.GUI.MessageBox.Destroy(box)
-dlg = Viper.GUI.FileDialog.NewOpen()
-Viper.GUI.FileDialog.SetTitle(dlg, "Choose")
-Viper.GUI.FileDialog.AddFilter(dlg, "Images", "*.png")
-Viper.GUI.FileDialog.SetMultiple(dlg, TRUE)
-shown = Viper.GUI.FileDialog.Show(dlg)
-path = Viper.GUI.FileDialog.GetPath(dlg)
-count = Viper.GUI.FileDialog.get_PathCount(dlg)
-path = Viper.GUI.FileDialog.GetPathAt(dlg, 0)
-Viper.GUI.FileDialog.Destroy(dlg)
+box = Zanna.GUI.MessageBox.NewInfo("Title", "Body")
+Zanna.GUI.MessageBox.AddButton(box, "OK", 1)
+Zanna.GUI.MessageBox.SetDefaultButton(box, 1)
+choice = Zanna.GUI.MessageBox.Show(box)
+Zanna.GUI.MessageBox.Destroy(box)
+dlg = Zanna.GUI.FileDialog.NewOpen()
+Zanna.GUI.FileDialog.SetTitle(dlg, "Choose")
+Zanna.GUI.FileDialog.AddFilter(dlg, "Images", "*.png")
+Zanna.GUI.FileDialog.SetMultiple(dlg, TRUE)
+shown = Zanna.GUI.FileDialog.Show(dlg)
+path = Zanna.GUI.FileDialog.GetPath(dlg)
+count = Zanna.GUI.FileDialog.get_PathCount(dlg)
+path = Zanna.GUI.FileDialog.GetPathAt(dlg, 0)
+Zanna.GUI.FileDialog.Destroy(dlg)
 PRINT choice
 )"));
 }
@@ -238,18 +238,18 @@ DIM queue AS OBJECT
 DIM stack AS OBJECT
 DIM deque AS OBJECT
 DIM seq2 AS OBJECT
-seq = Viper.Collections.Seq.New()
-list = Viper.Collections.Seq.ToList(seq)
-st = Viper.Collections.Seq.ToSet(seq)
-bag = Viper.Collections.Seq.ToStringSet(seq)
-queue = Viper.Collections.Seq.ToQueue(seq)
-stack = Viper.Collections.Seq.ToStack(seq)
-deque = Viper.Collections.Seq.ToDeque(seq)
-seq2 = Viper.Collections.List.ToSeq(list)
-seq2 = Viper.Collections.Set.ToSeq(st)
-seq2 = Viper.Collections.StringSet.ToSeq(bag)
-list = Viper.Collections.Set.ToList(st)
-list = Viper.Collections.Deque.ToList(deque)
+seq = Zanna.Collections.Seq.New()
+list = Zanna.Collections.Seq.ToList(seq)
+st = Zanna.Collections.Seq.ToSet(seq)
+bag = Zanna.Collections.Seq.ToStringSet(seq)
+queue = Zanna.Collections.Seq.ToQueue(seq)
+stack = Zanna.Collections.Seq.ToStack(seq)
+deque = Zanna.Collections.Seq.ToDeque(seq)
+seq2 = Zanna.Collections.List.ToSeq(list)
+seq2 = Zanna.Collections.Set.ToSeq(st)
+seq2 = Zanna.Collections.StringSet.ToSeq(bag)
+list = Zanna.Collections.Set.ToList(st)
+list = Zanna.Collections.Deque.ToList(deque)
 PRINT "ok"
 )"));
 }
@@ -260,13 +260,13 @@ DIM anim AS OBJECT
 DIM ok AS BOOLEAN
 DIM current AS STRING
 DIM playing AS BOOLEAN
-anim = Viper.Graphics.SpriteAnimator.New()
-ok = Viper.Graphics.SpriteAnimator.AddClip(anim, "idle", 0, 0, 16, 16)
-playing = Viper.Graphics.SpriteAnimator.Play(anim, "idle")
-current = Viper.Graphics.SpriteAnimator.get_Current(anim)
-playing = Viper.Graphics.SpriteAnimator.get_IsPlaying(anim)
-Viper.Graphics.SpriteAnimator.Stop(anim)
-Viper.Graphics.SpriteAnimator.Destroy(anim)
+anim = Zanna.Graphics.SpriteAnimator.New()
+ok = Zanna.Graphics.SpriteAnimator.AddClip(anim, "idle", 0, 0, 16, 16)
+playing = Zanna.Graphics.SpriteAnimator.Play(anim, "idle")
+current = Zanna.Graphics.SpriteAnimator.get_Current(anim)
+playing = Zanna.Graphics.SpriteAnimator.get_IsPlaying(anim)
+Zanna.Graphics.SpriteAnimator.Stop(anim)
+Zanna.Graphics.SpriteAnimator.Destroy(anim)
 PRINT current
 )"));
 }
@@ -277,12 +277,12 @@ DIM body AS OBJECT
 DIM q AS OBJECT
 DIM ang AS OBJECT
 DIM sleeping AS BOOLEAN
-body = Viper.Graphics3D.PhysicsBody3D.Sphere(1.0, 1.0)
-q = Viper.Math.Quat.Identity()
-Viper.Graphics3D.PhysicsBody3D.SetOrientation(body, q)
-Viper.Graphics3D.PhysicsBody3D.SetAngularVelocity(body, 0.0, 1.0, 0.0)
-Viper.Graphics3D.PhysicsBody3D.ApplyTorque(body, 0.0, 2.0, 0.0)
-Viper.Graphics3D.PhysicsBody3D.ApplyAngularImpulse(body, 0.0, 1.0, 0.0)
+body = Zanna.Graphics3D.PhysicsBody3D.Sphere(1.0, 1.0)
+q = Zanna.Math.Quat.Identity()
+Zanna.Graphics3D.PhysicsBody3D.SetOrientation(body, q)
+Zanna.Graphics3D.PhysicsBody3D.SetAngularVelocity(body, 0.0, 1.0, 0.0)
+Zanna.Graphics3D.PhysicsBody3D.ApplyTorque(body, 0.0, 2.0, 0.0)
+Zanna.Graphics3D.PhysicsBody3D.ApplyAngularImpulse(body, 0.0, 1.0, 0.0)
 body.LinearDamping = 0.2
 body.AngularDamping = 0.3
 body.IsKinematic = 1
@@ -308,18 +308,18 @@ DIM xf AS OBJECT
 DIM minv AS OBJECT
 DIM maxv AS OBJECT
 DIM ty AS INTEGER
-mesh = Viper.Graphics3D.Mesh3D.Box(2.0, 1.0, 2.0)
-boxCol = Viper.Graphics3D.Collider3D.Box(1.0, 0.5, 1.0)
-hullCol = Viper.Graphics3D.Collider3D.NewConvexHull(mesh)
-compound = Viper.Graphics3D.Collider3D.NewCompound()
-xf = Viper.Graphics3D.Transform3D.New()
-Viper.Graphics3D.Transform3D.SetPosition(xf, 1.5, 0.0, 0.0)
-Viper.Graphics3D.Collider3D.AddChild(compound, boxCol, xf)
-Viper.Graphics3D.Collider3D.AddChild(compound, hullCol, xf)
-minv = Viper.Graphics3D.Collider3D.GetLocalBoundsMin(compound)
-maxv = Viper.Graphics3D.Collider3D.GetLocalBoundsMax(compound)
+mesh = Zanna.Graphics3D.Mesh3D.Box(2.0, 1.0, 2.0)
+boxCol = Zanna.Graphics3D.Collider3D.Box(1.0, 0.5, 1.0)
+hullCol = Zanna.Graphics3D.Collider3D.NewConvexHull(mesh)
+compound = Zanna.Graphics3D.Collider3D.NewCompound()
+xf = Zanna.Graphics3D.Transform3D.New()
+Zanna.Graphics3D.Transform3D.SetPosition(xf, 1.5, 0.0, 0.0)
+Zanna.Graphics3D.Collider3D.AddChild(compound, boxCol, xf)
+Zanna.Graphics3D.Collider3D.AddChild(compound, hullCol, xf)
+minv = Zanna.Graphics3D.Collider3D.GetLocalBoundsMin(compound)
+maxv = Zanna.Graphics3D.Collider3D.GetLocalBoundsMax(compound)
 ty = compound.Type
-body = Viper.Graphics3D.PhysicsBody3D.New(1.0)
+body = Zanna.Graphics3D.PhysicsBody3D.New(1.0)
 body.Collider = compound
 body.Collider = boxCol
 boxCol = body.Collider
@@ -340,13 +340,13 @@ DIM hit AS OBJECT
 DIM hits AS OBJECT
 DIM count AS INTEGER
 DIM frac AS DOUBLE
-world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
-body = Viper.Graphics3D.PhysicsBody3D.NewAABB(1.0, 1.0, 1.0, 0.0)
-origin = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
-dir = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
-delta = Viper.Math.Vec3.New(5.0, 0.0, 0.0)
-minv = Viper.Math.Vec3.New(-1.0, -1.0, -1.0)
-maxv = Viper.Math.Vec3.New(1.0, 1.0, 1.0)
+world = Zanna.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
+body = Zanna.Graphics3D.PhysicsBody3D.NewAABB(1.0, 1.0, 1.0, 0.0)
+origin = Zanna.Math.Vec3.New(0.0, 0.0, 0.0)
+dir = Zanna.Math.Vec3.New(1.0, 0.0, 0.0)
+delta = Zanna.Math.Vec3.New(5.0, 0.0, 0.0)
+minv = Zanna.Math.Vec3.New(-1.0, -1.0, -1.0)
+maxv = Zanna.Math.Vec3.New(1.0, 1.0, 1.0)
 world.Add(body)
 hit = world.Raycast(origin, dir, 10.0, 1)
 hit = world.SweepSphere(origin, 0.5, delta, 1)
@@ -354,9 +354,9 @@ hit = world.SweepCapsule(origin, delta, 0.5, delta, 1)
 hits = world.RaycastAll(origin, dir, 10.0, 1)
 hits = world.OverlapSphere(origin, 1.0, 1)
 hits = world.OverlapAABB(minv, maxv, 1)
-count = Viper.Graphics3D.PhysicsHitList3D.get_Count(hits)
-hit = Viper.Graphics3D.PhysicsHitList3D.Get(hits, 0)
-frac = Viper.Graphics3D.PhysicsHit3D.get_Fraction(hit)
+count = Zanna.Graphics3D.PhysicsHitList3D.get_Count(hits)
+hit = Zanna.Graphics3D.PhysicsHitList3D.Get(hits, 0)
+frac = Zanna.Graphics3D.PhysicsHit3D.get_Fraction(hit)
 PRINT count
 )"));
 }
@@ -369,7 +369,7 @@ DIM alpha AS DOUBLE
 DIM beta AS DOUBLE
 DIM threshold AS DOUBLE
 DIM dropped AS INTEGER
-world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
+world = Zanna.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
 world.SolverIterations = 4
 world.PositionIterations = 5
 world.ContactBeta = 0.35
@@ -391,7 +391,7 @@ DIM evt AS OBJECT
 DIM cp AS OBJECT
 DIM count AS INTEGER
 DIM sep AS DOUBLE
-world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
+world = Zanna.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
 count = world.CollisionEventCount
 count = world.EnterEventCount
 count = world.StayEventCount
@@ -400,14 +400,14 @@ evt = world.GetCollisionEvent(0)
 evt = world.GetEnterEvent(0)
 evt = world.GetStayEvent(0)
 evt = world.GetExitEvent(0)
-count = Viper.Graphics3D.CollisionEvent3D.get_ContactCount(evt)
-sep = Viper.Graphics3D.CollisionEvent3D.get_NormalImpulse(evt)
-sep = Viper.Graphics3D.CollisionEvent3D.get_RelativeSpeed(evt)
-cp = Viper.Graphics3D.CollisionEvent3D.GetContact(evt, 0)
-cp = Viper.Graphics3D.CollisionEvent3D.GetContactPoint(evt, 0)
-cp = Viper.Graphics3D.CollisionEvent3D.GetContactNormal(evt, 0)
-sep = Viper.Graphics3D.CollisionEvent3D.GetContactSeparation(evt, 0)
-sep = Viper.Graphics3D.ContactPoint3D.get_Separation(cp)
+count = Zanna.Graphics3D.CollisionEvent3D.get_ContactCount(evt)
+sep = Zanna.Graphics3D.CollisionEvent3D.get_NormalImpulse(evt)
+sep = Zanna.Graphics3D.CollisionEvent3D.get_RelativeSpeed(evt)
+cp = Zanna.Graphics3D.CollisionEvent3D.GetContact(evt, 0)
+cp = Zanna.Graphics3D.CollisionEvent3D.GetContactPoint(evt, 0)
+cp = Zanna.Graphics3D.CollisionEvent3D.GetContactNormal(evt, 0)
+sep = Zanna.Graphics3D.CollisionEvent3D.GetContactSeparation(evt, 0)
+sep = Zanna.Graphics3D.ContactPoint3D.get_Separation(cp)
 PRINT count
 )"));
 }
@@ -425,33 +425,33 @@ DIM inst AS OBJECT
 DIM instScene AS OBJECT
 DIM node AS OBJECT
 DIM count AS INTEGER
-scene = Viper.Graphics3D.SceneGraph.New()
-parent = Viper.Graphics3D.SceneNode.New()
-child = Viper.Graphics3D.SceneNode.New()
-mesh = Viper.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0)
-mat = Viper.Graphics3D.Material3D.FromColor(0.2, 0.4, 0.6)
-Viper.Graphics3D.SceneNode.set_Name(parent, "parent")
-Viper.Graphics3D.SceneNode.set_Name(child, "child")
-Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 2.0, 3.0)
+scene = Zanna.Graphics3D.SceneGraph.New()
+parent = Zanna.Graphics3D.SceneNode.New()
+child = Zanna.Graphics3D.SceneNode.New()
+mesh = Zanna.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0)
+mat = Zanna.Graphics3D.Material3D.FromColor(0.2, 0.4, 0.6)
+Zanna.Graphics3D.SceneNode.set_Name(parent, "parent")
+Zanna.Graphics3D.SceneNode.set_Name(child, "child")
+Zanna.Graphics3D.SceneNode.SetPosition(parent, 1.0, 2.0, 3.0)
 parent.Mesh = mesh
 parent.Material = mat
 child.Mesh = mesh
 child.Material = mat
-Viper.Graphics3D.SceneNode.AddChild(parent, child)
-Viper.Graphics3D.SceneGraph.Add(scene, parent)
-count = Viper.Graphics3D.SceneGraph.Save(scene, "tests/runtime/_basic_scene_asset_surface.vscn")
-res = Viper.Graphics3D.SceneAsset.LoadResult("tests/runtime/_basic_scene_asset_surface.vscn")
-model = Viper.Result.Unwrap(res)
-count = Viper.Graphics3D.SceneAsset.get_MeshCount(model)
-count = Viper.Graphics3D.SceneAsset.get_MaterialCount(model)
-count = Viper.Graphics3D.SceneAsset.get_SkeletonCount(model)
-count = Viper.Graphics3D.SceneAsset.get_AnimationCount(model)
-count = Viper.Graphics3D.SceneAsset.get_NodeCount(model)
-mesh = Viper.Graphics3D.SceneAsset.GetMesh(model, 0)
-mat = Viper.Graphics3D.SceneAsset.GetMaterial(model, 0)
-node = Viper.Graphics3D.SceneAsset.FindNode(model, "child")
-inst = Viper.Graphics3D.SceneAsset.Instantiate(model)
-instScene = Viper.Graphics3D.SceneAsset.InstantiateScene(model)
+Zanna.Graphics3D.SceneNode.AddChild(parent, child)
+Zanna.Graphics3D.SceneGraph.Add(scene, parent)
+count = Zanna.Graphics3D.SceneGraph.Save(scene, "tests/runtime/_basic_scene_asset_surface.vscn")
+res = Zanna.Graphics3D.SceneAsset.LoadResult("tests/runtime/_basic_scene_asset_surface.vscn")
+model = Zanna.Result.Unwrap(res)
+count = Zanna.Graphics3D.SceneAsset.get_MeshCount(model)
+count = Zanna.Graphics3D.SceneAsset.get_MaterialCount(model)
+count = Zanna.Graphics3D.SceneAsset.get_SkeletonCount(model)
+count = Zanna.Graphics3D.SceneAsset.get_AnimationCount(model)
+count = Zanna.Graphics3D.SceneAsset.get_NodeCount(model)
+mesh = Zanna.Graphics3D.SceneAsset.GetMesh(model, 0)
+mat = Zanna.Graphics3D.SceneAsset.GetMaterial(model, 0)
+node = Zanna.Graphics3D.SceneAsset.FindNode(model, "child")
+inst = Zanna.Graphics3D.SceneAsset.Instantiate(model)
+instScene = Zanna.Graphics3D.SceneAsset.InstantiateScene(model)
 PRINT count
 )"));
 }
@@ -472,21 +472,21 @@ DIM evt AS STRING
 DIM state AS STRING
 DIM ok AS BOOLEAN
 DIM count AS INTEGER
-skel = Viper.Graphics3D.Skeleton3D.New()
-Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
-Viper.Graphics3D.Skeleton3D.AddBone(skel, "arm", 0, Viper.Math.Mat4.Identity())
-Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
-walk = Viper.Graphics3D.Animation3D.New("walk", 1.0)
-wave = Viper.Graphics3D.Animation3D.New("wave", 1.0)
-pos0 = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
-pos1 = Viper.Math.Vec3.New(5.0, 0.0, 0.0)
-rot = Viper.Math.Quat.Identity()
-scl = Viper.Math.Vec3.One()
-Viper.Graphics3D.Animation3D.AddKeyframe(walk, 0, 0.0, pos0, rot, scl)
-Viper.Graphics3D.Animation3D.AddKeyframe(walk, 0, 1.0, pos1, rot, scl)
-Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 0.0, pos0, rot, scl)
-Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 1.0, pos1, rot, scl)
-controller = Viper.Graphics3D.AnimController3D.New(skel)
+skel = Zanna.Graphics3D.Skeleton3D.New()
+Zanna.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Zanna.Math.Mat4.Identity())
+Zanna.Graphics3D.Skeleton3D.AddBone(skel, "arm", 0, Zanna.Math.Mat4.Identity())
+Zanna.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
+walk = Zanna.Graphics3D.Animation3D.New("walk", 1.0)
+wave = Zanna.Graphics3D.Animation3D.New("wave", 1.0)
+pos0 = Zanna.Math.Vec3.New(0.0, 0.0, 0.0)
+pos1 = Zanna.Math.Vec3.New(5.0, 0.0, 0.0)
+rot = Zanna.Math.Quat.Identity()
+scl = Zanna.Math.Vec3.One()
+Zanna.Graphics3D.Animation3D.AddKeyframe(walk, 0, 0.0, pos0, rot, scl)
+Zanna.Graphics3D.Animation3D.AddKeyframe(walk, 0, 1.0, pos1, rot, scl)
+Zanna.Graphics3D.Animation3D.AddKeyframe(wave, 1, 0.0, pos0, rot, scl)
+Zanna.Graphics3D.Animation3D.AddKeyframe(wave, 1, 1.0, pos1, rot, scl)
+controller = Zanna.Graphics3D.AnimController3D.New(skel)
 count = controller.AddState("walk", walk)
 count = controller.AddState("wave", wave)
 ok = controller.AddTransition("walk", "wave", 0.2)
@@ -531,25 +531,25 @@ DIM scl AS OBJECT
 DIM count AS INTEGER
 DIM mode AS INTEGER
 DIM bound AS OBJECT
-scene = Viper.Graphics3D.SceneGraph.New()
-parent = Viper.Graphics3D.SceneNode.New()
-node = Viper.Graphics3D.SceneNode.New()
-body = Viper.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
-skel = Viper.Graphics3D.Skeleton3D.New()
-Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
-Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
-anim = Viper.Graphics3D.Animation3D.New("walk", 1.0)
-pos0 = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
-pos1 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
-rot = Viper.Math.Quat.Identity()
-scl = Viper.Math.Vec3.One()
-Viper.Graphics3D.Animation3D.AddKeyframe(anim, 0, 0.0, pos0, rot, scl)
-Viper.Graphics3D.Animation3D.AddKeyframe(anim, 0, 1.0, pos1, rot, scl)
-controller = Viper.Graphics3D.AnimController3D.New(skel)
+scene = Zanna.Graphics3D.SceneGraph.New()
+parent = Zanna.Graphics3D.SceneNode.New()
+node = Zanna.Graphics3D.SceneNode.New()
+body = Zanna.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
+skel = Zanna.Graphics3D.Skeleton3D.New()
+Zanna.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Zanna.Math.Mat4.Identity())
+Zanna.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
+anim = Zanna.Graphics3D.Animation3D.New("walk", 1.0)
+pos0 = Zanna.Math.Vec3.New(0.0, 0.0, 0.0)
+pos1 = Zanna.Math.Vec3.New(1.0, 0.0, 0.0)
+rot = Zanna.Math.Quat.Identity()
+scl = Zanna.Math.Vec3.One()
+Zanna.Graphics3D.Animation3D.AddKeyframe(anim, 0, 0.0, pos0, rot, scl)
+Zanna.Graphics3D.Animation3D.AddKeyframe(anim, 0, 1.0, pos1, rot, scl)
+controller = Zanna.Graphics3D.AnimController3D.New(skel)
 controller.AddState("walk", anim)
 controller.Play("walk")
-Viper.Graphics3D.SceneNode.AddChild(parent, node)
-Viper.Graphics3D.SceneGraph.Add(scene, parent)
+Zanna.Graphics3D.SceneNode.AddChild(parent, node)
+Zanna.Graphics3D.SceneGraph.Add(scene, parent)
 node.BindBody(body)
 bound = node.Body
 node.SyncMode = 1
@@ -576,19 +576,19 @@ DIM pos AS OBJECT
 DIM vel AS OBJECT
 DIM hasPath AS BOOLEAN
 DIM dist AS DOUBLE
-mesh = Viper.Graphics3D.Mesh3D.Plane(20.0, 20.0)
-nav = Viper.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
-world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
-character = Viper.Graphics3D.Character3D.New(0.4, 1.8, 80.0)
+mesh = Zanna.Graphics3D.Mesh3D.Plane(20.0, 20.0)
+nav = Zanna.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
+world = Zanna.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
+character = Zanna.Graphics3D.Character3D.New(0.4, 1.8, 80.0)
 character.World = world
-node = Viper.Graphics3D.SceneNode.New()
-agent = Viper.Graphics3D.NavAgent3D.New(nav, 0.4, 1.8)
+node = Zanna.Graphics3D.SceneNode.New()
+agent = Zanna.Graphics3D.NavAgent3D.New(nav, 0.4, 1.8)
 agent.BindCharacter(character)
 agent.BindNode(node)
 agent.DesiredSpeed = 3.5
 agent.StoppingDistance = 0.25
 agent.AutoRepath = 1
-target = Viper.Math.Vec3.New(4.0, 0.0, 4.0)
+target = Zanna.Math.Vec3.New(4.0, 0.0, 4.0)
 agent.SetTarget(target)
 agent.Update(0.1)
 pos = agent.Position
@@ -596,7 +596,7 @@ vel = agent.Velocity
 vel = agent.DesiredVelocity
 hasPath = agent.HasPath
 dist = agent.RemainingDistance
-agent.Warp(Viper.Math.Vec3.New(0.0, 0.0, 0.0))
+agent.Warp(Zanna.Math.Vec3.New(0.0, 0.0, 0.0))
 agent.ClearTarget()
 PRINT dist
 )"));
@@ -615,25 +615,25 @@ DIM source AS OBJECT
 DIM pos AS OBJECT
 DIM vel AS OBJECT
 DIM voice AS INTEGER
-ok = Viper.Audio.Mixer.IsAvailable()
-cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
-Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
-scene = Viper.Graphics3D.SceneGraph.New()
-parent = Viper.Graphics3D.SceneNode.New()
-node = Viper.Graphics3D.SceneNode.New()
-Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
-Viper.Graphics3D.SceneNode.AddChild(parent, node)
-Viper.Graphics3D.SceneGraph.Add(scene, parent)
-listener = Viper.Graphics3D.SoundListener3D.New()
+ok = Zanna.Audio.Mixer.IsAvailable()
+cam = Zanna.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
+Zanna.Graphics3D.Camera3D.LookAt(cam, Zanna.Math.Vec3.New(0.0, 2.0, 6.0), Zanna.Math.Vec3.New(0.0, 1.0, 0.0), Zanna.Math.Vec3.New(0.0, 1.0, 0.0))
+scene = Zanna.Graphics3D.SceneGraph.New()
+parent = Zanna.Graphics3D.SceneNode.New()
+node = Zanna.Graphics3D.SceneNode.New()
+Zanna.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
+Zanna.Graphics3D.SceneNode.AddChild(parent, node)
+Zanna.Graphics3D.SceneGraph.Add(scene, parent)
+listener = Zanna.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
-source = Viper.Graphics3D.SoundSource3D.New(Viper.Audio.Synth.Tone(440, 120, 0))
+source = Zanna.Graphics3D.SoundSource3D.New(Zanna.Audio.Synth.Tone(440, 120, 0))
 source.BindNode(node)
 source.MaxDistance = 18.0
 source.Volume = 70
 source.Looping = 0
-Viper.Graphics3D.SceneGraph.SyncBindings(scene, 0.016)
-Viper.Audio.SpatialAudio3D.SyncBindings(0.016)
+Zanna.Graphics3D.SceneGraph.SyncBindings(scene, 0.016)
+Zanna.Audio.SpatialAudio3D.SyncBindings(0.016)
 pos = listener.Position
 pos = source.Position
 vel = listener.Velocity
@@ -661,8 +661,8 @@ DIM normalScale AS DOUBLE
 DIM alphaMode AS INTEGER
 DIM anisotropy AS INTEGER
 DIM doubleSided AS BOOLEAN
-base = Viper.Graphics3D.Material3D.PBR(0.8, 0.7, 0.6)
-tex = Viper.Graphics.Pixels.New(1, 1)
+base = Zanna.Graphics3D.Material3D.PBR(0.8, 0.7, 0.6)
+tex = Zanna.Graphics.Pixels.New(1, 1)
 base.SetAlbedoMap(tex)
 base.Metallic = 0.9
 base.Roughness = 0.15
@@ -696,7 +696,7 @@ TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
 DIM pat AS OBJECT
 DIM matches AS OBJECT
 DIM count AS INTEGER
-pat = Viper.Text.CompiledPattern.New("[0-9]+")
+pat = Zanna.Text.CompiledPattern.New("[0-9]+")
 matches = pat.FindAll("a1b22c333")
 count = matches.Count
 PRINT count
@@ -704,7 +704,7 @@ PRINT count
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, DefaultMapKeysObjectResultKeepsSeqSurface) {
@@ -712,7 +712,7 @@ TEST(BasicRuntimeCalls, DefaultMapKeysObjectResultKeepsSeqSurface) {
 DIM dm AS OBJECT
 DIM keys AS OBJECT
 DIM count AS INTEGER
-dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
+dm = Zanna.Collections.DefaultMap.New(Zanna.Core.Box.Str("N/A"))
 dm.Set("name", "Alice")
 dm.Set("city", "Boston")
 keys = dm.Keys()
@@ -722,35 +722,35 @@ PRINT count
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, PatternFindAllObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM matches AS OBJECT
 DIM count AS INTEGER
-matches = Viper.Text.Pattern.FindAll("a1b22c333", "[0-9]+")
+matches = Zanna.Text.Pattern.FindAll("a1b22c333", "[0-9]+")
 count = matches.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, TextWrapperWrapLinesObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM lines AS OBJECT
 DIM count AS INTEGER
-lines = Viper.Text.TextWrapper.WrapLines("one two three", 7)
+lines = Zanna.Text.TextWrapper.WrapLines("one two three", 7)
 count = lines.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsStringSetSurface) {
@@ -759,14 +759,14 @@ TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsStringSetSurface) {
     auto module = compileModule(R"(
 DIM keys AS OBJECT
 DIM count AS INTEGER
-keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}")
+keys = Zanna.Text.Template.Keys("Hello {{name}} from {{place}}")
 count = keys.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.StringSet.get_Count"),
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.StringSet.get_Count"),
               static_cast<size_t>(1));
 }
 
@@ -775,15 +775,15 @@ TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {
 DIM seq AS OBJECT
 DIM out AS OBJECT
 DIM count AS INTEGER
-seq = Viper.Functional.LazySeq.Range(1, 5, 1)
-out = Viper.Functional.LazySeq.ToSeqLimited(seq, 3)
+seq = Zanna.Functional.LazySeq.Range(1, 5, 1)
+out = Zanna.Functional.LazySeq.ToSeqLimited(seq, 3)
 count = out.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, ResultAndOptionFactoriesKeepConcreteObjectSurface) {
@@ -792,8 +792,8 @@ DIM ok AS OBJECT
 DIM none AS OBJECT
 DIM okFlag AS BOOLEAN
 DIM noneFlag AS BOOLEAN
-ok = Viper.Result.OkI64(42)
-none = Viper.Option.None()
+ok = Zanna.Result.OkI64(42)
+none = Zanna.Option.None()
 okFlag = ok.IsOk
 noneFlag = none.IsNone
 PRINT okFlag
@@ -802,8 +802,8 @@ PRINT noneFlag
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Result.get_IsOk"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Option.get_IsNone"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Result.get_IsOk"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Option.get_IsNone"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, IoConstructorAliasesLowerToOpenTargets) {
@@ -811,20 +811,20 @@ TEST(BasicRuntimeCalls, IoConstructorAliasesLowerToOpenTargets) {
 DIM writer AS OBJECT
 DIM reader AS OBJECT
 DIM file AS OBJECT
-writer = Viper.IO.LineWriter.Open("out.txt")
-reader = Viper.IO.LineReader.Open("out.txt")
-file = Viper.IO.BinFile.Open("out.bin", "rw")
+writer = Zanna.IO.LineWriter.Open("out.txt")
+reader = Zanna.IO.LineReader.Open("out.txt")
+file = Zanna.IO.BinFile.Open("out.bin", "rw")
 PRINT "ok"
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineWriter.Open"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineReader.Open"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.BinFile.Open"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.IO.LineWriter.Open"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.IO.LineReader.Open"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.IO.BinFile.Open"), static_cast<size_t>(1));
 }
 
 /// @brief Main.
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

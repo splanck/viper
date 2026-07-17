@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_async.h
@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 //=========================================================================
-// Viper.Threads.Async — High-level async combinators
+// Zanna.Threads.Async — High-level async combinators
 //=========================================================================
 
 /// @brief Run a callback asynchronously on a new thread.

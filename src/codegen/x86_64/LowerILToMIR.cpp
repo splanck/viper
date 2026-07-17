@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 
@@ -80,13 +80,13 @@ namespace {
 /// @details MIRBuilder methods are declared @c noexcept because they are thin
 ///          accessors used by many lowering rules. Missing adapter/block state
 ///          indicates a compiler bug rather than user IL, so the check remains
-///          active in release builds and terminates via @ref VIPER_ICE instead
+///          active in release builds and terminates via @ref ZANNA_ICE instead
 ///          of throwing through a noexcept boundary.
 /// @param condition True when the required invariant holds.
 /// @param message Human-readable invariant failure.
 inline void requireBuilderInvariant(bool condition, const char *message) noexcept {
     if (!condition) {
-        VIPER_ICE(message);
+        ZANNA_ICE(message);
     }
 }
 
@@ -320,7 +320,7 @@ void LowerILToMIR::resetFunctionState() {
 }
 
 void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
-    if (!viper::codegen::shouldElideLoadRetainForRelease())
+    if (!zanna::codegen::shouldElideLoadRetainForRelease())
         return;
 
     const auto isDirectCall = [](const ILInstr &ins) {
@@ -328,7 +328,7 @@ void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
                ins.ops.front().kind == ILValue::Kind::LABEL;
     };
     const auto isReleaseCall = [&](const ILInstr &ins) {
-        return isDirectCall(ins) && viper::codegen::isStringReleaseCallee(ins.ops.front().label);
+        return isDirectCall(ins) && zanna::codegen::isStringReleaseCallee(ins.ops.front().label);
     };
     // Borrowed argument of a registered runtime helper (see StringRetainPolicy.hpp).
     const auto isBorrowedRuntimeArg = [&](const ILInstr &ins, std::size_t opIdx) {
@@ -409,7 +409,7 @@ void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
             if (instr.opcode != "call" || instr.resultId < 0 ||
                 instr.resultKind != ILValue::Kind::STR || !isDirectCall(instr))
                 continue;
-            if (!viper::codegen::shouldElideStringResultRetain(instr.ops.front().label))
+            if (!zanna::codegen::shouldElideStringResultRetain(instr.ops.front().label))
                 continue;
             unsigned spends = 0;
             for (const auto &useBlock : func.blocks) {
@@ -843,7 +843,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
         result.addBlock(std::move(block));
     }
 
-    const auto &rules = viper_get_lowering_rules();
+    const auto &rules = zanna_get_lowering_rules();
     (void)rules; // keep static initialisation local to this TU.
 
     // Build a map from entry block parameter IDs to their ABI physical registers
@@ -1019,7 +1019,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
             MIRBuilder builder{*this, mirBlock};
             builder.setCurrentLoc(loweredInstr.loc);
 
-            const LoweringRule *rule = viper_select_rule(loweredInstr);
+            const LoweringRule *rule = zanna_select_rule(loweredInstr);
             if (!rule) {
                 reportNoRule(loweredInstr);
             }
@@ -1030,4 +1030,4 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
     return result;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

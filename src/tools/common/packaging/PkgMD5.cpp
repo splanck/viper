@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //          Ported from src/runtime/text/rt_hash.c with all GC deps removed.
 //
 // Key invariants:
-//   - No runtime (viper_rt_*) dependencies.
+//   - No runtime (zanna_rt_*) dependencies.
 //   - Little-endian byte ordering for block processing.
 //
 // Ownership/Lifetime:
@@ -25,7 +25,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Streaming MD5 state used by md5Init/md5Update/md5Final.
@@ -251,4 +251,4 @@ std::string md5hex(const uint8_t *data, size_t len) {
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

@@ -1,8 +1,8 @@
 module TestMapBag;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var m = new Viper.Collections.Map();
+    var m = new Zanna.Collections.Map();
     SayBool(m.IsEmpty);
     m.Set("a", "1");
     m.Set("b", "2");
@@ -21,7 +21,7 @@ func start() {
     m.Clear();
     SayBool(m.IsEmpty);
 
-    var b = new Viper.Collections.StringSet();
+    var b = new Zanna.Collections.StringSet();
     SayBool(b.IsEmpty);
     b.Add("x");
     b.Add("y");
@@ -36,7 +36,7 @@ func start() {
     b.Clear();
     SayBool(b.IsEmpty);
 
-    var cm = new Viper.Collections.CountMap();
+    var cm = new Zanna.Collections.CountMap();
     cm.Increment("a");
     cm.Increment("a");
     cm.Increment("b");
@@ -54,7 +54,7 @@ func start() {
     SayBool(cm.Has("d"));
     SayInt(cm.Keys().Count);
 
-    var om = new Viper.Collections.OrderedMap();
+    var om = new Zanna.Collections.OrderedMap();
     om.Set("first", "1");
     om.Set("second", "2");
     om.Set("third", "3");

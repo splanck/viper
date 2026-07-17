@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include "rt_game3d.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (!viper_fuzz3d::input_is_bounded(size))
+    if (!zanna_fuzz3d::input_is_bounded(size))
         return 0;
     (void)rt_game3d_persistence_validate(data, (int64_t)size);
     return 0;

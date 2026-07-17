@@ -1,15 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale_manager.c
-// Purpose: Implementation of Viper.Localization.LocaleManager — the process
+// Purpose: Implementation of Zanna.Localization.LocaleManager — the process
 //          global registry of locale-data records plus the current/system
 //          locale state. Supports the baked en-US locale, system-detection
-//          bootstrap, JSON/VPA locale loading, and filesystem search paths.
+//          bootstrap, JSON/ZPAK locale loading, and filesystem search paths.
 //
 // Key invariants:
 //   - A single process-global rwlock guards all mutating access.
@@ -75,7 +75,7 @@
 typedef struct loc_registry_entry {
     const char *tag;              ///< borrowed when baked; owned copy when loaded
     const rt_locale_data_t *data; ///< borrowed; arena-owned for loaded records
-    int is_baked;                 ///< 1 for en-US; 0 for JSON/VPA (freed on unload)
+    int is_baked;                 ///< 1 for en-US; 0 for JSON/ZPAK (freed on unload)
 } loc_registry_entry_t;
 
 static struct {
@@ -120,7 +120,7 @@ static int64_t loc_data_ref_count(const rt_locale_data_t *data) {
 static loc_arena_t *loc_arena_new(void) {
     loc_arena_t *arena = (loc_arena_t *)calloc(1, sizeof(*arena));
     if (!arena)
-        rt_trap("Viper.Localization.LocaleManager: locale arena allocation failed");
+        rt_trap("Zanna.Localization.LocaleManager: locale arena allocation failed");
     return arena;
 }
 
@@ -139,7 +139,7 @@ void *loc_arena_alloc(loc_arena_t *arena, size_t size) {
     if (!ptr || !node) {
         free(ptr);
         free(node);
-        rt_trap("Viper.Localization.LocaleManager: locale arena allocation failed");
+        rt_trap("Zanna.Localization.LocaleManager: locale arena allocation failed");
         return NULL;
     }
     node->ptr = ptr;
@@ -466,7 +466,7 @@ static char *json_dup_string(loc_arena_t *arena,
             if (ok)
                 *ok = 0;
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: locale JSON missing string field");
+                     "Zanna.Localization.LocaleManager: locale JSON missing string field");
             return NULL;
         }
         return loc_arena_strdup(arena, fallback ? fallback : "");
@@ -477,14 +477,14 @@ static char *json_dup_string(loc_arena_t *arena,
         if (ok)
             *ok = 0;
         loc_fail(trap_on_error,
-                 "Viper.Localization.LocaleManager: locale JSON field must be a string");
+                 "Zanna.Localization.LocaleManager: locale JSON field must be a string");
         return NULL;
     }
     int64_t len = rt_str_len((rt_string)v);
     if (len < 0 || len > 256) {
         if (ok)
             *ok = 0;
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON string too long");
+        loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: locale JSON string too long");
         return NULL;
     }
     return loc_arena_strndup(arena, cs, (size_t)len);
@@ -509,7 +509,7 @@ static int32_t json_get_i32(
             if (ok)
                 *ok = 0;
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: locale JSON missing numeric field");
+                     "Zanna.Localization.LocaleManager: locale JSON missing numeric field");
         }
         return fallback;
     }
@@ -523,14 +523,14 @@ static int32_t json_get_i32(
         if (ok)
             *ok = 0;
         loc_fail(trap_on_error,
-                 "Viper.Localization.LocaleManager: locale JSON field must be numeric");
+                 "Zanna.Localization.LocaleManager: locale JSON field must be numeric");
         return fallback;
     }
     if (d < (double)INT32_MIN || d > (double)INT32_MAX || d != (double)(int32_t)d) {
         if (ok)
             *ok = 0;
         loc_fail(trap_on_error,
-                 "Viper.Localization.LocaleManager: locale JSON integer out of range");
+                 "Zanna.Localization.LocaleManager: locale JSON integer out of range");
         return fallback;
     }
     return (int32_t)d;
@@ -592,7 +592,7 @@ static int load_string_array(loc_arena_t *arena,
     }
     if (!loc_is_seq(v) || rt_seq_len(v) != (int64_t)expected)
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: locale JSON array has wrong length");
+                        "Zanna.Localization.LocaleManager: locale JSON array has wrong length");
     const char **arr = (const char **)loc_arena_alloc(arena, expected * sizeof(char *));
     for (size_t i = 0; i < expected; ++i) {
         void *item = rt_seq_get(v, (int64_t)i);
@@ -601,11 +601,11 @@ static int load_string_array(loc_arena_t *arena,
         if (!ok)
             return loc_fail(
                 trap_on_error,
-                "Viper.Localization.LocaleManager: locale JSON array item must be string");
+                "Zanna.Localization.LocaleManager: locale JSON array item must be string");
         int64_t len = rt_str_len((rt_string)item);
         if (len < 0 || len > 256)
             return loc_fail(trap_on_error,
-                            "Viper.Localization.LocaleManager: locale JSON array string too long");
+                            "Zanna.Localization.LocaleManager: locale JSON array string too long");
         arr[i] = loc_arena_strndup(arena, cs, (size_t)len);
     }
     *out = arr;
@@ -641,18 +641,18 @@ static int load_plural_chain(loc_arena_t *arena,
     }
     if (!loc_is_seq(v))
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: plural rule field must be an array");
+                        "Zanna.Localization.LocaleManager: plural rule field must be an array");
     int64_t n = rt_seq_len(v);
     if (n <= 0 || n > 32)
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: plural rule count out of range");
+                        "Zanna.Localization.LocaleManager: plural rule count out of range");
     rt_plural_rule_entry_t *entries =
         (rt_plural_rule_entry_t *)loc_arena_alloc(arena, (size_t)n * sizeof(*entries));
     for (int64_t i = 0; i < n; ++i) {
         void *entry = rt_seq_get(v, i);
         if (!loc_is_map(entry))
             return loc_fail(trap_on_error,
-                            "Viper.Localization.LocaleManager: plural rule entry must be object");
+                            "Zanna.Localization.LocaleManager: plural rule entry must be object");
         int ok = 1;
         char *cat = json_dup_string(arena, entry, "category", "other", 1, trap_on_error, &ok);
         char *rule = json_dup_string(arena, entry, "rule", "true", 1, trap_on_error, &ok);
@@ -660,10 +660,10 @@ static int load_plural_chain(loc_arena_t *arena,
             return 0;
         if (!valid_category_name(cat))
             return loc_fail(trap_on_error,
-                            "Viper.Localization.LocaleManager: invalid plural category");
+                            "Zanna.Localization.LocaleManager: invalid plural category");
         rt_plural_rule_node_t *head = parse_rule(arena, rule);
         if (!head)
-            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid plural rule");
+            return loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: invalid plural rule");
         entries[i].category = parse_category(cat);
         entries[i].head = head;
     }
@@ -695,7 +695,7 @@ static int load_reltime_unit(loc_arena_t *arena,
         return 1;
     if (!loc_is_map(u))
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: relative_time unit must be object");
+                        "Zanna.Localization.LocaleManager: relative_time unit must be object");
     int ok = 1;
     out->other = json_dup_string(arena, u, "other", fallback->other, 0, trap_on_error, &ok);
     out->zero = json_dup_string(arena, u, "zero", fallback->zero, 0, trap_on_error, &ok);
@@ -728,7 +728,7 @@ static int load_list_style(loc_arena_t *arena,
         return 1;
     if (!loc_is_map(style))
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: list style must be object");
+                        "Zanna.Localization.LocaleManager: list style must be object");
     int ok = 1;
     out->pair = json_dup_string(arena, style, "pair", fallback->pair, 0, trap_on_error, &ok);
     out->start = json_dup_string(arena, style, "start", fallback->start, 0, trap_on_error, &ok);
@@ -741,7 +741,7 @@ static int load_list_style(loc_arena_t *arena,
     if (!loc_list_template_valid(out->pair) || !loc_list_template_valid(out->start) ||
         !loc_list_template_valid(out->middle) || !loc_list_template_valid(out->end))
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: list template missing {0}/{1}");
+                        "Zanna.Localization.LocaleManager: list template missing {0}/{1}");
     return ok;
 }
 
@@ -756,7 +756,7 @@ static int load_list_style(loc_arena_t *arena,
 static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     if (!loc_is_map(root)) {
         loc_fail(trap_on_error,
-                 "Viper.Localization.LocaleManager: locale JSON root must be object");
+                 "Zanna.Localization.LocaleManager: locale JSON root must be object");
         return NULL;
     }
 
@@ -775,7 +775,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     rt_locale_t parsed;
     if (rt_locale_internal_parse_into(raw_tag, strlen(raw_tag), &parsed) != 0 ||
         strcmp(parsed.tag, "root") == 0) {
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid locale tag in JSON");
+        loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: invalid locale tag in JSON");
         loc_arena_free(arena);
         return NULL;
     }
@@ -783,7 +783,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
 
     void *names = json_get(root, "names");
     if (names && !loc_is_map(names)) {
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: names must be object");
+        loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: names must be object");
         loc_arena_free(arena);
         return NULL;
     }
@@ -803,14 +803,14 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         memcpy(data->text_direction, text_dir, strlen(text_dir));
     } else if (text_dir) {
         loc_fail(trap_on_error,
-                 "Viper.Localization.LocaleManager: text_direction must be ltr or rtl");
+                 "Zanna.Localization.LocaleManager: text_direction must be ltr or rtl");
         loc_arena_free(arena);
         return NULL;
     }
     data->first_day_of_week =
         json_get_i32(root, "first_day_of_week", data->first_day_of_week, 0, trap_on_error, &ok);
     if (data->first_day_of_week < 0 || data->first_day_of_week > 6) {
-        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: first_day_of_week out of range");
+        loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: first_day_of_week out of range");
         loc_arena_free(arena);
         return NULL;
     }
@@ -820,7 +820,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         if (strcmp(measurement, "metric") != 0 && strcmp(measurement, "us") != 0 &&
             strcmp(measurement, "uk") != 0) {
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: measurement must be metric/us/uk");
+                     "Zanna.Localization.LocaleManager: measurement must be metric/us/uk");
             loc_arena_free(arena);
             return NULL;
         }
@@ -831,7 +831,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     void *numbers = json_get(root, "numbers");
     if (numbers) {
         if (!loc_is_map(numbers)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: numbers must be object");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: numbers must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -869,7 +869,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             // Equal separators make formatted numbers ambiguous to parse.
             (data->numbers.group_sep && *data->numbers.group_sep &&
              strcmp(data->numbers.decimal_sep, data->numbers.group_sep) == 0)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid numbers schema");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: invalid numbers schema");
             loc_arena_free(arena);
             return NULL;
         }
@@ -878,7 +878,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     void *currency = json_get(root, "currency");
     if (currency) {
         if (!loc_is_map(currency)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: currency must be object");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: currency must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -906,7 +906,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             !loc_currency_pattern_valid(data->currency.pattern_positive) ||
             !loc_currency_pattern_valid(data->currency.pattern_negative) ||
             data->currency.fraction_digits < 0 || data->currency.fraction_digits > 9) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid currency schema");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: invalid currency schema");
             loc_arena_free(arena);
             return NULL;
         }
@@ -915,7 +915,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     void *dates = json_get(root, "dates");
     if (dates) {
         if (!loc_is_map(dates)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: dates must be object");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: dates must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -956,7 +956,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         if (patterns) {
             if (!loc_is_map(patterns)) {
                 loc_fail(trap_on_error,
-                         "Viper.Localization.LocaleManager: date patterns must be object");
+                         "Zanna.Localization.LocaleManager: date patterns must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
@@ -1007,7 +1007,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
                 !loc_date_pattern_valid(data->dates.patterns.datetime_short) ||
                 !loc_date_pattern_valid(data->dates.patterns.datetime_medium)) {
                 loc_fail(trap_on_error,
-                         "Viper.Localization.LocaleManager: unsupported date pattern letter");
+                         "Zanna.Localization.LocaleManager: unsupported date pattern letter");
                 loc_arena_free(arena);
                 return NULL;
             }
@@ -1018,7 +1018,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     if (rt) {
         if (!loc_is_map(rt)) {
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: relative_time must be object");
+                     "Zanna.Localization.LocaleManager: relative_time must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1036,7 +1036,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             !loc_template_has_n(data->reltime.short_past) ||
             !loc_template_has_n(data->reltime.short_future)) {
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: relative_time template missing {n}");
+                     "Zanna.Localization.LocaleManager: relative_time template missing {n}");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1046,7 +1046,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         if (units) {
             if (!loc_is_map(units)) {
                 loc_fail(trap_on_error,
-                         "Viper.Localization.LocaleManager: relative_time.units must be object");
+                         "Zanna.Localization.LocaleManager: relative_time.units must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
@@ -1067,7 +1067,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             if (!loc_is_map(short_units)) {
                 loc_fail(
                     trap_on_error,
-                    "Viper.Localization.LocaleManager: relative_time.short_units must be object");
+                    "Zanna.Localization.LocaleManager: relative_time.short_units must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
@@ -1088,7 +1088,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             !data->reltime.future || !strstr(data->reltime.future, "{n}") ||
             !strstr(data->reltime.future, "{unit}")) {
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: invalid relative_time schema");
+                     "Zanna.Localization.LocaleManager: invalid relative_time schema");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1117,7 +1117,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     void *list_format = json_get(root, "list_format");
     if (list_format) {
         if (!loc_is_map(list_format)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: list_format must be object");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: list_format must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1147,7 +1147,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     void *collation = json_get(root, "collation");
     if (collation) {
         if (!loc_is_map(collation)) {
-            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: collation must be object");
+            loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: collation must be object");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1158,7 +1158,7 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         // so accepted settings always take effect (VDOC-082).
         if (data->collation.strength < 1 || data->collation.strength > 3) {
             loc_fail(trap_on_error,
-                     "Viper.Localization.LocaleManager: collation.strength out of range");
+                     "Zanna.Localization.LocaleManager: collation.strength out of range");
             loc_arena_free(arena);
             return NULL;
         }
@@ -1201,18 +1201,18 @@ static int loc_text_starts_object(rt_string text) {
 /// @return 1 on successful registration; 0 on failure.
 static int loc_register_json_text(rt_string text, int trap_on_error) {
     if (!text)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: empty locale JSON");
+        return loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: empty locale JSON");
     int64_t len = rt_str_len(text);
     if (len <= 0 || len > 256 * 1024)
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: locale JSON size out of range");
+                        "Zanna.Localization.LocaleManager: locale JSON size out of range");
     if (!loc_text_starts_object(text) || rt_json_is_valid(text) != 1)
-        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: malformed locale JSON");
+        return loc_fail(trap_on_error, "Zanna.Localization.LocaleManager: malformed locale JSON");
 
     void *root = rt_json_parse_object(text);
     if (!root)
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: malformed locale JSON object");
+                        "Zanna.Localization.LocaleManager: malformed locale JSON object");
     rt_locale_data_t *data = loc_data_from_json(root, trap_on_error);
     loc_release_object(root);
     if (!data)
@@ -1223,7 +1223,7 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
     rt_rwlock_write_exit(g_mgr.lock);
     if (!registered)
         return loc_fail(trap_on_error,
-                        "Viper.Localization.LocaleManager: cannot replace locale while in use");
+                        "Zanna.Localization.LocaleManager: cannot replace locale while in use");
     return 1;
 }
 
@@ -1237,13 +1237,13 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
 static void loc_registry_grow(void) {
     size_t new_cap = g_mgr.capacity == 0 ? 4 : g_mgr.capacity * 2;
     if (g_mgr.capacity > SIZE_MAX / 2 || new_cap > SIZE_MAX / sizeof(*g_mgr.entries)) {
-        rt_trap("Viper.Localization.LocaleManager: registry capacity overflow");
+        rt_trap("Zanna.Localization.LocaleManager: registry capacity overflow");
         return;
     }
     loc_registry_entry_t *new_entries =
         (loc_registry_entry_t *)realloc(g_mgr.entries, new_cap * sizeof(*new_entries));
     if (!new_entries) {
-        rt_trap("Viper.Localization.LocaleManager: registry allocation failed");
+        rt_trap("Zanna.Localization.LocaleManager: registry allocation failed");
         return;
     }
     g_mgr.entries = new_entries;
@@ -1256,7 +1256,7 @@ static void loc_registry_grow(void) {
 ///          can only replace loaded records if the existing record has no live
 ///          references; if they do, the new data is freed and 0 is returned.
 /// @param data      Locale-data record to register; must have a non-NULL `tag`.
-/// @param is_baked  1 for permanent built-in records; 0 for JSON/VPA loaded records.
+/// @param is_baked  1 for permanent built-in records; 0 for JSON/ZPAK loaded records.
 /// @return 1 on success; 0 if the existing record is in use and cannot be replaced.
 static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked) {
     if (!data || !data->tag)
@@ -1341,7 +1341,7 @@ static void loc_mgr_ensure_init(void) {
     if (!lock) {
         void *fresh = rt_rwlock_new();
         if (!fresh) {
-            rt_trap("Viper.Localization.LocaleManager: rwlock allocation failed");
+            rt_trap("Zanna.Localization.LocaleManager: rwlock allocation failed");
             return;
         }
         // First writer wins; everyone else discards their rwlock. This is
@@ -1482,7 +1482,7 @@ void rt_locale_manager_release_data(const rt_locale_data_t *data) {
     int64_t old = __atomic_fetch_sub(counter, 1, __ATOMIC_ACQ_REL);
     if (old <= 0) {
         __atomic_fetch_add(counter, 1, __ATOMIC_ACQ_REL);
-        rt_trap("Viper.Localization.LocaleManager: locale data refcount underflow");
+        rt_trap("Zanna.Localization.LocaleManager: locale data refcount underflow");
     }
 }
 
@@ -1511,7 +1511,7 @@ void *rt_locale_manager_current(void) {
 void rt_locale_manager_set_current(void *locale) {
     loc_mgr_ensure_init();
     if (!locale) {
-        rt_trap("Viper.Localization.LocaleManager: SetCurrent requires a non-null Locale");
+        rt_trap("Zanna.Localization.LocaleManager: SetCurrent requires a non-null Locale");
         return;
     }
     rt_locale_t *target = (rt_locale_t *)locale;
@@ -1529,7 +1529,7 @@ void rt_locale_manager_set_current(void *locale) {
     }
     if (!loaded) {
         rt_rwlock_write_exit(g_mgr.lock);
-        rt_trap("Viper.Localization.LocaleManager: locale not loaded (call Load* first)");
+        rt_trap("Zanna.Localization.LocaleManager: locale not loaded (call Load* first)");
         return;
     }
     rt_locale_bind_data(locale, bound_data);
@@ -1606,12 +1606,12 @@ int8_t rt_locale_manager_is_loaded(void *locale) {
 void rt_locale_manager_load_from_json(rt_string path) {
     loc_mgr_ensure_init();
     if (!path) {
-        rt_trap("Viper.Localization.LocaleManager: LoadFromJson requires a path");
+        rt_trap("Zanna.Localization.LocaleManager: LoadFromJson requires a path");
         return;
     }
     rt_string text = rt_io_file_read_all_text(path);
     if (!text) {
-        rt_trap("Viper.Localization.LocaleManager: cannot read locale JSON");
+        rt_trap("Zanna.Localization.LocaleManager: cannot read locale JSON");
         return;
     }
     (void)loc_register_json_text(text, /*trap_on_error=*/1);
@@ -1636,20 +1636,20 @@ int8_t rt_locale_manager_try_load_from_json(rt_string path) {
     return ok ? 1 : 0;
 }
 
-/// @brief Load and register a locale from a named VPA asset, trapping on failure.
+/// @brief Load and register a locale from a named ZPAK asset, trapping on failure.
 /// @details Loads the asset as bytes, converts to a string, and passes through the
 ///          JSON registration path. Traps if the name is NULL, the asset is missing,
 ///          or the JSON is invalid.
-/// @param name rt_string asset name as registered in the VPA package.
+/// @param name rt_string asset name as registered in the ZPAK package.
 void rt_locale_manager_load_from_asset(rt_string name) {
     loc_mgr_ensure_init();
     if (!name) {
-        rt_trap("Viper.Localization.LocaleManager: LoadFromAsset requires a name");
+        rt_trap("Zanna.Localization.LocaleManager: LoadFromAsset requires a name");
         return;
     }
     void *bytes = rt_asset_load_bytes(name);
     if (!bytes) {
-        rt_trap("Viper.Localization.LocaleManager: locale asset not found");
+        rt_trap("Zanna.Localization.LocaleManager: locale asset not found");
         return;
     }
     rt_string text = rt_bytes_to_str(bytes);
@@ -1658,7 +1658,7 @@ void rt_locale_manager_load_from_asset(rt_string name) {
     rt_string_unref(text);
 }
 
-/// @brief Attempt to load and register a locale from a named VPA asset, returning 0 on failure.
+/// @brief Attempt to load and register a locale from a named ZPAK asset, returning 0 on failure.
 /// @details Non-trapping counterpart to `rt_locale_manager_load_from_asset`.
 /// @param name rt_string asset name to look up.
 /// @return 1 on successful registration; 0 if the asset is absent or the JSON is invalid.
@@ -1685,13 +1685,13 @@ void rt_locale_manager_load_builtin(rt_string tag) {
     const char *bytes = tag ? rt_string_cstr(tag) : NULL;
     int64_t len = tag ? rt_str_len(tag) : 0;
     if (!bytes || len <= 0) {
-        rt_trap("Viper.Localization.LocaleManager: LoadBuiltin requires a non-empty tag");
+        rt_trap("Zanna.Localization.LocaleManager: LoadBuiltin requires a non-empty tag");
         return;
     }
 
     char input[RT_LOCALE_TAG_CAP * 2];
     if ((size_t)len >= sizeof(input)) {
-        rt_trap("Viper.Localization.LocaleManager: builtin tag too long");
+        rt_trap("Zanna.Localization.LocaleManager: builtin tag too long");
         return;
     }
     memcpy(input, bytes, (size_t)len);
@@ -1699,7 +1699,7 @@ void rt_locale_manager_load_builtin(rt_string tag) {
 
     rt_locale_t parsed;
     if (rt_locale_internal_parse_into(input, (size_t)len, &parsed) != 0) {
-        rt_trap("Viper.Localization.LocaleManager: invalid builtin locale tag");
+        rt_trap("Zanna.Localization.LocaleManager: invalid builtin locale tag");
         return;
     }
 
@@ -1709,7 +1709,7 @@ void rt_locale_manager_load_builtin(rt_string tag) {
         rt_rwlock_write_exit(g_mgr.lock);
         return;
     }
-    rt_trap("Viper.Localization.LocaleManager: unknown builtin locale (only 'en-US' is baked)");
+    rt_trap("Zanna.Localization.LocaleManager: unknown builtin locale (only 'en-US' is baked)");
 }
 
 /// @brief Find, load (if needed), and return a Locale handle for @p tag.
@@ -1852,12 +1852,12 @@ void rt_locale_manager_add_search_path(rt_string path) {
     if (!bytes || len <= 0)
         return;
     if ((uint64_t)len > (uint64_t)SIZE_MAX) {
-        rt_trap("Viper.Localization.LocaleManager: search path length overflow");
+        rt_trap("Zanna.Localization.LocaleManager: search path length overflow");
         return;
     }
     size_t path_len = (size_t)len;
     if (memchr(bytes, '\0', path_len)) {
-        rt_trap("Viper.Localization.LocaleManager: search path contains embedded NUL");
+        rt_trap("Zanna.Localization.LocaleManager: search path contains embedded NUL");
         return;
     }
 
@@ -1874,13 +1874,13 @@ void rt_locale_manager_add_search_path(rt_string path) {
         if (g_mgr.search_capacity > SIZE_MAX / 2 ||
             new_cap > SIZE_MAX / sizeof(*g_mgr.search_paths)) {
             rt_rwlock_write_exit(g_mgr.lock);
-            rt_trap("Viper.Localization.LocaleManager: search path capacity overflow");
+            rt_trap("Zanna.Localization.LocaleManager: search path capacity overflow");
             return;
         }
         char **new_paths = (char **)realloc(g_mgr.search_paths, new_cap * sizeof(*new_paths));
         if (!new_paths) {
             rt_rwlock_write_exit(g_mgr.lock);
-            rt_trap("Viper.Localization.LocaleManager: search path grow failed");
+            rt_trap("Zanna.Localization.LocaleManager: search path grow failed");
             return;
         }
         g_mgr.search_paths = new_paths;
@@ -1889,7 +1889,7 @@ void rt_locale_manager_add_search_path(rt_string path) {
     char *copy = (char *)malloc(path_len + 1);
     if (!copy) {
         rt_rwlock_write_exit(g_mgr.lock);
-        rt_trap("Viper.Localization.LocaleManager: search path allocation failed");
+        rt_trap("Zanna.Localization.LocaleManager: search path allocation failed");
         return;
     }
     memcpy(copy, bytes, path_len);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Builds a ZIP archive in memory with Unix permission bits preserved.
 /// @details Accumulates entries (files, directories, symlinks), optionally
@@ -157,4 +157,4 @@ class ZipWriter {
     static void getDosTime(uint16_t &time, uint16_t &date);
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

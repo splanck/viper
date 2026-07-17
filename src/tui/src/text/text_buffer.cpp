@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,12 +14,12 @@
 // Ownership/Lifetime: TextBuffer owns its @ref PieceTable, @ref LineIndex, and
 //                     @ref EditHistory instances outright and therefore manages
 //                     their lifetimes as a unit.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implementation of the @ref viper::tui::text::TextBuffer façade.
+/// @brief Implementation of the @ref zanna::tui::text::TextBuffer façade.
 /// @details `TextBuffer` bundles the editable storage (piece table), indexing
 ///          metadata (line index), and undo/redo machinery (edit history).  Each
 ///          mutating operation updates all three structures through explicit
@@ -30,7 +30,7 @@
 
 #include <utility>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Create a lightweight view over a contiguous span within the piece table.
 /// @details Stores the referenced table along with the byte offset and length of
 ///          the slice.  Views provide a convenience wrapper so callers can visit
@@ -273,4 +273,4 @@ void TextBuffer::forEachLine(LineVisitor fn) const {
         }
     }
 }
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

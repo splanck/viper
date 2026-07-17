@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -374,7 +374,7 @@ static bool evaluateFloatComparison(Opcode op, double l, double r, long long &ou
 }
 
 static bool traceEnabled() {
-    static const bool enabled = std::getenv("VIPER_PEEPHOLE_TRACE") != nullptr;
+    static const bool enabled = std::getenv("ZANNA_PEEPHOLE_TRACE") != nullptr;
     return enabled;
 }
 
@@ -632,7 +632,7 @@ bool tryFoldLiteralConcat(Module &module,
 
     Instr &call = block.instructions[idx];
     const bool isStringConcat =
-        call.callee == "rt_str_concat" || call.callee == "Viper.String.Concat";
+        call.callee == "rt_str_concat" || call.callee == "Zanna.String.Concat";
     if (call.op != Opcode::Call || !isStringConcat || !call.result || call.operands.size() != 2) {
         return false;
     }
@@ -704,7 +704,7 @@ bool tryFoldLiteralConcat(Module &module,
 static void runPeephole(Module &m) {
     const bool trace = traceEnabled();
     for (auto &f : m.functions) {
-        unsigned nextId = viper::il::nextTempId(f);
+        unsigned nextId = zanna::il::nextTempId(f);
         UseCountMap useCounts = buildUseCountMap(f);
         auto refreshUseCounts = [&]() { useCounts = buildUseCountMap(f); };
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::installer {
+namespace zanna::installer {
 
 enum class UpdateStatus { Unconfigured, Current, Available };
 
@@ -55,4 +55,4 @@ void showUpdateResult(HINSTANCE instance,
                       const HostPackage &package,
                       const UpdateCheckResult &result);
 
-} // namespace viper::installer
+} // namespace zanna::installer

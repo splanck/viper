@@ -1,7 +1,7 @@
 NAMESPACE App
-  USING Viper.Terminal
+  USING Zanna.Terminal
   SUB Main()
-    Viper.Terminal.PrintI64(99)
+    Zanna.Terminal.PrintI64(99)
   END SUB
 END NAMESPACE
 App.Main()

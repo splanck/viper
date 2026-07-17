@@ -1,10 +1,10 @@
 // test_special_collections.zia — BitSet, BloomFilter, UnionFind, Bytes, LruCache, MultiMap
 module TestSpecialCollections;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var bs = new Viper.Collections.BitSet(64);
+    var bs = new Zanna.Collections.BitSet(64);
     SayBool(bs.IsEmpty);
     SayInt(bs.Length);
     bs.SetBit(3);
@@ -21,14 +21,14 @@ func start() {
     bs.Clear();
     SayInt(bs.Count);
 
-    var bf = new Viper.Collections.BloomFilter(1000, 0.01);
+    var bf = new Zanna.Collections.BloomFilter(1000, 0.01);
     bf.Add("hello");
     bf.Add("world");
     SayInt(bf.Count);
     SayBool(bf.MightContain("hello"));
     SayBool(bf.MightContain("xyz"));
 
-    var uf = new Viper.Collections.UnionFind(10);
+    var uf = new Zanna.Collections.UnionFind(10);
     SayInt(uf.Count);
     uf.Union(1, 2);
     uf.Union(3, 4);
@@ -37,7 +37,7 @@ func start() {
     SayBool(uf.IsConnected(1, 5));
     SayInt(uf.ComponentSize(1));
 
-    var by = new Viper.Collections.Bytes(8);
+    var by = new Zanna.Collections.Bytes(8);
     SayInt(by.Length);
     by.Set(0, 65);
     by.Set(1, 66);
@@ -47,7 +47,7 @@ func start() {
     SayInt(by.Get(0));
     Say(by.ToHex());
 
-    var lru = new Viper.Collections.LruCache(3);
+    var lru = new Zanna.Collections.LruCache(3);
     SayBool(lru.IsEmpty);
     SayInt(lru.Capacity);
     lru.Set("a", "1");
@@ -60,7 +60,7 @@ func start() {
     lru.Remove("d");
     SayInt(lru.Count);
 
-    var mm = new Viper.Collections.MultiMap();
+    var mm = new Zanna.Collections.MultiMap();
     SayBool(mm.IsEmpty);
     mm.Add("color", "red");
     mm.Add("color", "blue");

@@ -233,28 +233,28 @@ Class Maze
                 screenX = MAZE_LEFT + x
                 screenY = MAZE_TOP + y
 
-                Viper.Terminal.SetPosition(screenY, screenX)
+                Zanna.Terminal.SetPosition(screenY, screenX)
 
                 If cell = CELL_WALL Then
-                    Viper.Terminal.SetColor(COLOR_WALL, 0)
+                    Zanna.Terminal.SetColor(COLOR_WALL, 0)
                     PRINT "#";
                 ElseIf cell = CELL_DOT Then
-                    Viper.Terminal.SetColor(COLOR_DOT, 0)
+                    Zanna.Terminal.SetColor(COLOR_DOT, 0)
                     PRINT ".";
                 ElseIf cell = CELL_POWER Then
-                    Viper.Terminal.SetColor(COLOR_POWER, 0)
+                    Zanna.Terminal.SetColor(COLOR_POWER, 0)
                     PRINT "o";
                 ElseIf cell = CELL_GHOST_DOOR Then
-                    Viper.Terminal.SetColor(COLOR_WALL, 0)
+                    Zanna.Terminal.SetColor(COLOR_WALL, 0)
                     PRINT "-";
                 Else
-                    Viper.Terminal.SetColor(COLOR_EMPTY, 0)
+                    Zanna.Terminal.SetColor(COLOR_EMPTY, 0)
                     PRINT " ";
                 End If
             Next x
         Next y
 
-        Viper.Terminal.SetColor(7, 0)
+        Zanna.Terminal.SetColor(7, 0)
     End Sub
 
     ' Draw a single cell (for updates)
@@ -267,25 +267,25 @@ Class Maze
         screenX = MAZE_LEFT + x
         screenY = MAZE_TOP + y
 
-        Viper.Terminal.SetPosition(screenY, screenX)
+        Zanna.Terminal.SetPosition(screenY, screenX)
 
         If cell = CELL_WALL Then
-            Viper.Terminal.SetColor(COLOR_WALL, 0)
+            Zanna.Terminal.SetColor(COLOR_WALL, 0)
             PRINT "#";
         ElseIf cell = CELL_DOT Then
-            Viper.Terminal.SetColor(COLOR_DOT, 0)
+            Zanna.Terminal.SetColor(COLOR_DOT, 0)
             PRINT ".";
         ElseIf cell = CELL_POWER Then
-            Viper.Terminal.SetColor(COLOR_POWER, 0)
+            Zanna.Terminal.SetColor(COLOR_POWER, 0)
             PRINT "o";
         ElseIf cell = CELL_GHOST_DOOR Then
-            Viper.Terminal.SetColor(COLOR_WALL, 0)
+            Zanna.Terminal.SetColor(COLOR_WALL, 0)
             PRINT "-";
         Else
-            Viper.Terminal.SetColor(COLOR_EMPTY, 0)
+            Zanna.Terminal.SetColor(COLOR_EMPTY, 0)
             PRINT " ";
         End If
 
-        Viper.Terminal.SetColor(7, 0)
+        Zanna.Terminal.SetColor(7, 0)
     End Sub
 End Class

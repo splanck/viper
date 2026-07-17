@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_scheduler.c
-// Purpose: Implements a poll-based task scheduler for the Viper.Threads.Scheduler
+// Purpose: Implements a poll-based task scheduler for the Zanna.Threads.Scheduler
 //          class. Tasks are registered with a string name and a delay in
 //          milliseconds; Poll returns a sequence of names whose due times have
 //          elapsed. Does not use background threads.

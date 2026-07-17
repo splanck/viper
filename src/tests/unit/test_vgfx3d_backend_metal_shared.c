@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "vgfx3d_backend_metal_shared.h"
@@ -32,8 +32,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef VIPER_SOURCE_DIR
-#define VIPER_SOURCE_DIR "."
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
 #endif
 
 static int tests_run = 0;
@@ -451,7 +451,7 @@ static char *read_metal_backend_sources(void) {
         snprintf(path,
                  sizeof(path),
                  "%s/src/runtime/graphics/3d/backend/%s",
-                 VIPER_SOURCE_DIR,
+                 ZANNA_SOURCE_DIR,
                  k_parts[i]);
         part = read_text_file(path);
         if (!part) {

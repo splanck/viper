@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //   - Video frames decoded by VideoPlayer are atomically uploaded to vg_image_t.
 //   - Slider tracks playback position (0.0-1.0 normalized).
 //   - Automatic and manual updates decode/upload at most once per app frame.
-//   - Pixel format conversion: Viper Pixels (0xRRGGBBAA) → vg_image RGBA bytes.
+//   - Pixel format conversion: Zanna Pixels (0xRRGGBBAA) → vg_image RGBA bytes.
 //   - Media event edges are independent; consuming one never consumes another.
 // Ownership/Lifetime:
 //   - The wrapper owns its player and reusable RGBA conversion buffer.
@@ -24,7 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_videowidget.h"
 #include "rt_gui.h"
@@ -1042,4 +1042,4 @@ void rt_videowidget_add_child(void *obj, void *child) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

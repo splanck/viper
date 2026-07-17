@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: support/diag_catalog.def
-// Purpose: Central catalog of diagnostic codes for `viper explain` and
-//          `viper --print-error-codes`. X-macro consumers define
+// Purpose: Central catalog of diagnostic codes for `zanna explain` and
+//          `zanna --print-error-codes`. X-macro consumers define
 //          DIAG_CODE(code, subsystem, summary) before including this file.
 // Key invariants:
 //   - Codes are unique and sorted by subsystem then code.
@@ -15,7 +15,7 @@
 //   - Codes not listed here still resolve through prefix-family fallback in
 //     diag_catalog.cpp; add entries here as codes stabilize.
 // Ownership/Lifetime:
-//   - Static data compiled into viper_support.
+//   - Static data compiled into zanna_support.
 // Links: support/diag_catalog.hpp, docs/tools/debugging.md
 //
 //===----------------------------------------------------------------------===//
@@ -80,7 +80,7 @@ DIAG_CODE("W013", "zia-warning", "Declaration body is empty")
 DIAG_CODE("W014", "zia-warning", "Expression result is computed but never used")
 DIAG_CODE("W015", "zia-warning", "Variable may be read before initialization (promoted to error under strict diagnostics)")
 DIAG_CODE("W016", "zia-warning", "Optional accessed without a null check (promoted to error under strict diagnostics)")
-DIAG_CODE("W017", "zia-warning", "'^' is bitwise xor in Zia; use Viper.Math.Pow for exponentiation")
+DIAG_CODE("W017", "zia-warning", "'^' is bitwise xor in Zia; use Zanna.Math.Pow for exponentiation")
 DIAG_CODE("W018", "zia-warning", "'&' is bitwise and; did you mean logical 'and'")
 DIAG_CODE("W019", "zia-warning", "Match expression does not cover all cases (promoted to error under strict diagnostics)")
 
@@ -180,7 +180,7 @@ DIAG_CODE("B9002", "basic-warning", "Code is unreachable")
 DIAG_CODE("B9003", "basic-warning", "Implicit conversion may lose information")
 
 // ===== BASIC frontend codes emitted by the parser/semantic/lowering stages =====
-// These complete `viper explain` coverage for every B-code the BASIC frontend
+// These complete `zanna explain` coverage for every B-code the BASIC frontend
 // emits; a CTest guard (test_basic_diag_catalog) keeps emit sites and this
 // catalog in sync.
 DIAG_CODE("B2004", "basic-sema", "Array size computation overflows")

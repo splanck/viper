@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTLocaleNumberFormatTests.cpp
-// Purpose: Validate Viper.Localization.NumberFormat against the baked en-US
+// Purpose: Validate Zanna.Localization.NumberFormat against the baked en-US
 //          locale. Covers format and parse round-trips across Decimal /
 //          Integer / Percent / Currency / Scientific / Ordinal plus options
 //          (MinFractionDigits, MaxFractionDigits, UseGrouping, Strict,
@@ -96,7 +96,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_numfmt_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_numfmt_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }

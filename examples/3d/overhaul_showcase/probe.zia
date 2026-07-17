@@ -3,8 +3,8 @@
 // fixed frame budget on the software backend, and asserts world telemetry.
 bind "showcase_scenes";
 
-bind Viper.Game3D;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D;
+bind Zanna.Terminal as Terminal;
 
 func main() {
     var game = new SceneGame();

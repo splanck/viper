@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_stopwatch.h
@@ -17,7 +17,7 @@
 //   - Instance methods trap when passed a NULL stopwatch pointer.
 //
 // Ownership/Lifetime:
-//   - Stopwatch objects are heap-allocated runtime objects managed through Viper's
+//   - Stopwatch objects are heap-allocated runtime objects managed through Zanna's
 //     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_stopwatch.c (implementation)

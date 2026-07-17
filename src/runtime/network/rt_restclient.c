@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -81,7 +81,7 @@ static void rest_client_clear_last_response(rest_client *client) {
 ///          transport responses become Err values.
 /// @param response HttpRes object returned by the request path.
 /// @param null_message Error text when @p response is NULL.
-/// @return Opaque `Viper.Result`.
+/// @return Opaque `Zanna.Result`.
 static void *rest_response_result(void *response, const char *null_message) {
     if (!response)
         return rt_result_err_str(
@@ -333,7 +333,7 @@ static void *execute_request(rest_client *client, void *req) {
 ///          an HTTP response is received.
 /// @param client RestClient receiver.
 /// @param req Prepared HttpReq object; ownership is consumed.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 static void *execute_request_result(rest_client *client, void *req) {
     if (!client) {
         rest_release_temp_object(req);

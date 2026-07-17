@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/tests/test_vg_audit_fixes.c
-// Purpose: Regression tests for GUI bugs identified in the Viper.GUI in-depth
+// Purpose: Regression tests for GUI bugs identified in the Zanna.GUI in-depth
 //          audits (Rounds 1–7). Covers dialog re-entrancy, event routing,
 //          layout clamping, animation, input guards, and widget lifetime.
 // Key invariants:
@@ -1146,7 +1146,7 @@ TEST(notification_manual_dismiss_respects_exit_animation) {
 }
 
 //=============================================================================
-// Round 3 — Viper.GUI class audit fixes
+// Round 3 — Zanna.GUI class audit fixes
 //=============================================================================
 
 /// @brief R3 — radiogroup_destroy clears button→group pointers; button_destroy removes it from
@@ -3083,7 +3083,7 @@ TEST(widget_runtime_restore_rejects_destroyed_widget_pointer) {
 }
 
 //=============================================================================
-// Round 7 - Viper.GUI class correctness audit fixes
+// Round 7 - Zanna.GUI class correctness audit fixes
 //=============================================================================
 
 static int g_overlay_paint_count = 0;
@@ -3851,7 +3851,7 @@ TEST(filedialog_create_always_has_current_path) {
 }
 
 //=============================================================================
-// Round 9 - Viper.GUI class correctness audit fixes
+// Round 9 - Zanna.GUI class correctness audit fixes
 //=============================================================================
 
 TEST(platform_event_translation_preserves_focus_unknown_and_modifiers) {
@@ -4248,7 +4248,7 @@ static bool filedialog_modal_test_runner(vg_filedialog_t *dialog, void *user_dat
 }
 
 TEST(filedialog_convenience_uses_installed_modal_runner) {
-    char expected[] = "/tmp/viper-gui-test.txt";
+    char expected[] = "/tmp/zanna-gui-test.txt";
     vg_filedialog_set_modal_runner(filedialog_modal_test_runner, expected);
     char *result = vg_filedialog_open_file("Open", NULL, "Text", "*.txt");
     ASSERT_NOT_NULL(result);
@@ -5032,9 +5032,9 @@ TEST(widget_common_event_edges_are_independent_and_saturating) {
 
 /// @brief Run all audit-regression tests across Rounds 1–7 and report pass/fail counts.
 int main(void) {
-    g_verbose = getenv("VIPER_GUI_TEST_VERBOSE") != NULL;
+    g_verbose = getenv("ZANNA_GUI_TEST_VERBOSE") != NULL;
 
-    printf("\n=== test_vg_audit_fixes — Viper.GUI audit regression suite ===\n");
+    printf("\n=== test_vg_audit_fixes — Zanna.GUI audit regression suite ===\n");
 
     printf("\nFix #1: Dialog re-entrancy guard\n");
     RUN(dialog_close_reentry_is_guarded);
@@ -5096,7 +5096,7 @@ int main(void) {
     RUN(notification_zero_fade_duration_snaps_cleanly);
     RUN(notification_visual_bounds_track_only_painted_toasts);
 
-    printf("\nRound 3 — Viper.GUI class audit fixes\n");
+    printf("\nRound 3 — Zanna.GUI class audit fixes\n");
     RUN(radiogroup_destroy_and_radio_destroy_clear_cross_references);
     RUN(colorpicker_set_color_emits_once_after_child_slider_sync);
     RUN(colorpalette_click_callback_fires_once_per_click);
@@ -5165,7 +5165,7 @@ int main(void) {
     RUN(grid_explicit_placement_extends_effective_rows);
     RUN(widget_runtime_restore_rejects_destroyed_widget_pointer);
 
-    printf("\nRound 7 - Viper.GUI class correctness audit fixes\n");
+    printf("\nRound 7 - Zanna.GUI class correctness audit fixes\n");
     RUN(scrollview_internal_overlay_children_are_not_repainted_by_global_pass);
     RUN(grid_placement_metadata_is_removed_when_child_detaches);
     RUN(dock_metadata_is_removed_when_child_detaches);
@@ -5199,7 +5199,7 @@ int main(void) {
     RUN(textinput_null_font_preserves_existing_font_and_invalid_tick_is_ignored);
     RUN(findreplace_whole_word_does_not_match_inside_utf8_word);
 
-    printf("\nRound 9 - Viper.GUI class correctness audit fixes\n");
+    printf("\nRound 9 - Zanna.GUI class correctness audit fixes\n");
     RUN(platform_event_translation_preserves_focus_unknown_and_modifiers);
     RUN(focus_rejects_hidden_or_disabled_ancestors);
     RUN(flex_grow_keeps_unequal_measured_basis);
@@ -5217,7 +5217,7 @@ int main(void) {
     RUN(non_dropdown_capture_does_not_synthesize_outside_click);
     RUN(filedialog_convenience_uses_installed_modal_runner);
 
-    printf("\nRound 10 - Viper.GUI runtime bug-fix follow-up coverage\n");
+    printf("\nRound 10 - Zanna.GUI runtime bug-fix follow-up coverage\n");
     RUN(menubar_key_event_dispatches_accelerator);
     RUN(toolbar_capacity_overflow_is_rejected);
     RUN(statusbar_capacity_overflow_is_rejected);
@@ -5226,7 +5226,7 @@ int main(void) {
     RUN(icon_from_pixels_rejects_size_overflow);
     RUN(contextmenu_registry_grows_beyond_legacy_cap);
 
-    printf("\nRound 11 - Viper.GUI class bug-fix implementation coverage\n");
+    printf("\nRound 11 - Zanna.GUI class bug-fix implementation coverage\n");
     RUN(codeeditor_set_text_clears_undo_redo_history);
     RUN(codeeditor_readonly_blocks_direct_mutation_apis);
     RUN(codeeditor_zero_length_selection_is_not_active_or_modified);

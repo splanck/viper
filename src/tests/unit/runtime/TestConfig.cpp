@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// Tests for Viper.Game.Config file loading and defaulted lookups.
+// Tests for Zanna.Game.Config file loading and defaulted lookups.
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
@@ -26,7 +26,7 @@ static std::string temp_path(const char *name) {
     const char *tmp = std::getenv("TMPDIR");
     if (!tmp || !*tmp)
         tmp = "/tmp";
-    return std::string(tmp) + "/viper_rt_config_" + name;
+    return std::string(tmp) + "/zanna_rt_config_" + name;
 }
 
 static void write_file(const std::string &path, const char *contents) {
@@ -169,5 +169,5 @@ TEST(GameConfig, WrongTypeValueReturnsSuppliedDefault) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

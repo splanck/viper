@@ -23,8 +23,8 @@
 // history.zia - Undo/redo history for Paint documents
 module history;
 
-bind Viper.Collections;
-bind Viper.Graphics;
+bind Zanna.Collections;
+bind Zanna.Graphics;
 
 bind "./config";
 

@@ -43,8 +43,8 @@ Result: 78/78 `graphics3d` tests passed.
 Run from `examples/3d/openworld_slice`:
 
 ```powershell
-$env:VIPER_3D_BACKEND='software'; ..\..\..\build\src\tools\viper\Release\viper.exe run perf_probe.zia
-$env:VIPER_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\viper\Release\viper.exe run perf_probe.zia
+$env:ZANNA_3D_BACKEND='software'; ..\..\..\build\src\tools\zanna\Release\zanna.exe run perf_probe.zia
+$env:ZANNA_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\zanna\Release\zanna.exe run perf_probe.zia
 ```
 
 Measured results:
@@ -63,8 +63,8 @@ perf gates should be added only on stable CI hardware.
 Run from `examples/3d/openworld_slice`:
 
 ```powershell
-$env:VIPER_3D_BACKEND='software'; ..\..\..\build\src\tools\viper\Release\viper.exe run long_traversal.zia
-$env:VIPER_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\viper\Release\viper.exe run long_traversal.zia
+$env:ZANNA_3D_BACKEND='software'; ..\..\..\build\src\tools\zanna\Release\zanna.exe run long_traversal.zia
+$env:ZANNA_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\zanna\Release\zanna.exe run long_traversal.zia
 ```
 
 | Backend | Visits per run | Replay | Max visit ms | Max stream bytes | Max draws | Max bodies | Max entities | Resident cells | Resident tiles | Pending requests | Streamed area m2 | No visible seams |
@@ -77,9 +77,9 @@ $env:VIPER_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\viper\Release\viper.exe 
 Run from `examples/3d/openworld_slice`:
 
 ```powershell
-$env:VIPER_3D_BACKEND='d3d11'
-$env:VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE='1'
-..\..\..\build\src\tools\viper\Release\viper.exe run streaming_hitch_probe.zia
+$env:ZANNA_3D_BACKEND='d3d11'
+$env:ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE='1'
+..\..\..\build\src\tools\zanna\Release\zanna.exe run streaming_hitch_probe.zia
 ```
 
 Evidence:
@@ -107,7 +107,7 @@ HITCH: blocking_us=606 async_create_us=2 first_observe_us=307 zero_budget_pendin
 Run from `examples/3d/openworld_slice`:
 
 ```powershell
-$env:VIPER_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\viper\Release\viper.exe run gpu_smoke.zia
+$env:ZANNA_3D_BACKEND='d3d11'; ..\..\..\build\src\tools\zanna\Release\zanna.exe run gpu_smoke.zia
 ```
 
 | Backend | Fallback max lights | Clustered max lights | Configured lights | Fallback us | Clustered us |
@@ -129,7 +129,7 @@ PASS: d3d11
 ## Linux Note
 
 The local WSL2 image is not a Linux graphics reference host: the existing
-`build-wsl-debug` CMake cache has `VIPERGFX_AVAILABLE=OFF` and
-`VIPERAUD_AVAILABLE=OFF` because X11 and ALSA development headers are missing.
+`build-wsl-debug` CMake cache has `ZANNAGFX_AVAILABLE=OFF` and
+`ZANNAAUD_AVAILABLE=OFF` because X11 and ALSA development headers are missing.
 Passwordless sudo is unavailable in that image, so Linux Release graphics proof
 remains external to this Windows machine.

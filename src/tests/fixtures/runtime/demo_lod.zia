@@ -3,10 +3,10 @@
 // Orbiting camera reveals transitions as objects move between distance thresholds.
 module DemoLOD;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("LOD Demo", 800, 600);

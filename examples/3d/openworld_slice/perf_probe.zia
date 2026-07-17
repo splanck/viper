@@ -1,10 +1,10 @@
 module openworld_slice_perf_probe;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
 bind "./main";
 
 func fail(message: String) {

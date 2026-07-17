@@ -3,7 +3,7 @@
 // PURPOSE: Persistent player profile — XP, rank, achievements (12 of
 //          them), rotating contracts (objectives that reward XP), high-
 //          score leaderboard, per-run summary stats. Backed by
-//          Viper.IO.SaveData so everything survives across sessions.
+//          Zanna.IO.SaveData so everything survives across sessions.
 //
 // KEY-DESIGN-CHOICES:
 //   * ENUMERATED ACHIEVEMENTS + CONTRACTS. ACH_* and CONTRACT_*
@@ -25,10 +25,10 @@
 
 module progression;
 
-bind Viper.IO;
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Text.Fmt;
+bind Zanna.IO;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Text.Fmt;
 
 bind "./config";
 

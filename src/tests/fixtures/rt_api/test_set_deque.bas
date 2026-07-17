@@ -1,6 +1,6 @@
 ' test_set_deque.bas — Set, Deque, DefaultMap, SparseArray, WeakMap
-DIM s AS Viper.Collections.Set
-s = Viper.Collections.Set.New()
+DIM s AS Zanna.Collections.Set
+s = Zanna.Collections.Set.New()
 PRINT "set empty: "; s.IsEmpty
 s.Add("apple")
 s.Add("banana")
@@ -11,8 +11,8 @@ PRINT "set has mango: "; s.Has("mango")
 s.Remove("banana")
 PRINT "set len after remove: "; s.Count
 
-DIM dq AS Viper.Collections.Deque
-dq = Viper.Collections.Deque.New()
+DIM dq AS Zanna.Collections.Deque
+dq = Zanna.Collections.Deque.New()
 PRINT "deque empty: "; dq.IsEmpty
 dq.PushBack("a")
 dq.PushBack("b")
@@ -29,8 +29,8 @@ PRINT "deque len after reverse: "; dq.Count
 dq.Clear()
 PRINT "deque empty after clear: "; dq.IsEmpty
 
-DIM sa AS Viper.Collections.SparseArray
-sa = Viper.Collections.SparseArray.New()
+DIM sa AS Zanna.Collections.SparseArray
+sa = Zanna.Collections.SparseArray.New()
 sa.Set(0, "zero")
 sa.Set(100, "hundred")
 sa.Set(999, "big")
@@ -40,8 +40,8 @@ PRINT "sparse has 50: "; sa.Has(50)
 sa.Remove(100)
 PRINT "sparse len after remove: "; sa.Count
 
-DIM wm AS Viper.Collections.WeakMap
-wm = Viper.Collections.WeakMap.New()
+DIM wm AS Zanna.Collections.WeakMap
+wm = Zanna.Collections.WeakMap.New()
 PRINT "weakmap empty: "; wm.IsEmpty
 wm.Set("key1", "val1")
 wm.Set("key2", "val2")

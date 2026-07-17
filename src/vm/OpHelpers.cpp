@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/vm/internal/OpHelpers.hpp"
+#include "zanna/vm/internal/OpHelpers.hpp"
 
 #include "il/core/Function.hpp"
 

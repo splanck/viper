@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_scene3d.cpp
-// Purpose: Unit tests for Viper.Graphics3D.SceneGraph and SceneNode —
+// Purpose: Unit tests for Zanna.Graphics3D.SceneGraph and SceneNode —
 //   hierarchy management, TRS transform propagation, dirty flags, and
 //   search-by-name.
 //
@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt.hpp"
@@ -842,7 +842,7 @@ static void test_scene_repairs_corrupt_private_counts() {
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
                 "SceneGraph node counting skips wrong-class private child slots");
     {
-        const char *corrupt_save_path = "/tmp/viper_scene_corrupt_child_slot_save.vscn";
+        const char *corrupt_save_path = "/tmp/zanna_scene_corrupt_child_slot_save.vscn";
         EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(corrupt_save_path)) == 1,
                     "SceneGraph.Save skips wrong-class private child slots");
         std::remove(corrupt_save_path);
@@ -1748,7 +1748,7 @@ static void test_scene_draw_culling_uses_canvas_output_aspect() {
 static void test_scene_save_escapes_json_names() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
-    const char *path = "/tmp/viper_scene_escape_test.vscn";
+    const char *path = "/tmp/zanna_scene_escape_test.vscn";
     const char *name = "quote\"slash\\line\nbreak";
 
     rt_scene_node3d_set_name(node, rt_const_cstr(name));
@@ -1769,7 +1769,7 @@ static void test_scene_save_escapes_json_names() {
 static void test_scene_save_serializes_visibility_and_lod_metadata() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
-    const char *path = "/tmp/viper_scene_metadata_test.vscn";
+    const char *path = "/tmp/zanna_scene_metadata_test.vscn";
 
     rt_scene_node3d_set_visible(node, 0);
     rt_scene_node3d_set_mesh(node, rt_mesh3d_new_box(1.0, 1.0, 1.0));
@@ -1806,7 +1806,7 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
 }
 
 static void test_scene_roundtrip_loads_shared_assets() {
-    const char *path = "/tmp/viper_scene_roundtrip_test.vscn";
+    const char *path = "/tmp/zanna_scene_roundtrip_test.vscn";
     void *scene = rt_scene3d_new();
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -2395,7 +2395,7 @@ static void test_node_animator_import_index_binding_does_not_fallback_to_duplica
 }
 
 static void test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit() {
-    const char *path = "/tmp/viper_scene_deep_roundtrip_test.vscn";
+    const char *path = "/tmp/zanna_scene_deep_roundtrip_test.vscn";
     constexpr int supported_depth = 98;
     void *scene = rt_scene3d_new();
     void *parent = rt_scene3d_get_root(scene);
@@ -2441,7 +2441,7 @@ static void test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit() {
 }
 
 static void test_scene_save_skips_invalid_material_asset_refs() {
-    const char *path = "/tmp/viper_scene_invalid_material_refs.vscn";
+    const char *path = "/tmp/zanna_scene_invalid_material_refs.vscn";
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
@@ -3504,7 +3504,7 @@ static void test_scene_draw_includes_node_attached_lights() {
 }
 
 static void test_scene_roundtrip_preserves_node_lights() {
-    const char *path = "/tmp/viper_scene_node_light_roundtrip.vscn";
+    const char *path = "/tmp/zanna_scene_node_light_roundtrip.vscn";
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
     void *pos = rt_vec3_new(0.0, 0.0, 0.0);
@@ -3544,7 +3544,7 @@ static void test_scene_roundtrip_preserves_node_lights() {
 ///        policy, visibility) must survive a full save/load cycle — the scene
 ///        editor depends on `.vscn` being a lossless authoring format.
 static void test_scene_roundtrip_preserves_authoring_metadata() {
-    const char *path = "/tmp/viper_scene_authoring_roundtrip.vscn";
+    const char *path = "/tmp/zanna_scene_authoring_roundtrip.vscn";
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
 
@@ -3583,12 +3583,12 @@ static void test_scene_roundtrip_preserves_authoring_metadata() {
 
 static void test_scene_save_rejects_wrong_handle() {
     void *node = rt_scene_node3d_new();
-    EXPECT_TRUE(rt_scene3d_save(node, rt_const_cstr("/tmp/viper_scene_wrong_handle.vscn")) == 0,
+    EXPECT_TRUE(rt_scene3d_save(node, rt_const_cstr("/tmp/zanna_scene_wrong_handle.vscn")) == 0,
                 "SceneGraph.Save rejects non-SceneGraph handles");
 }
 
 static void test_scene_load_rejects_malformed_json() {
-    const char *path = "/tmp/viper_scene_malformed_json.vscn";
+    const char *path = "/tmp/zanna_scene_malformed_json.vscn";
     EXPECT_TRUE(write_text_file(path, "{\"format\":\"vscn\", \"nodes\": ["),
                 "Malformed VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
@@ -3597,7 +3597,7 @@ static void test_scene_load_rejects_malformed_json() {
 }
 
 static void test_scene_load_rejects_invalid_node_references() {
-    const char *path = "/tmp/viper_scene_invalid_node_ref.vscn";
+    const char *path = "/tmp/zanna_scene_invalid_node_ref.vscn";
     const char *json = "{\n"
                        "  \"format\": \"vscn\",\n"
                        "  \"version\": 2,\n"
@@ -3617,7 +3617,7 @@ static void test_scene_load_rejects_invalid_node_references() {
 }
 
 static void test_scene_load_rejects_out_of_range_numeric_indices() {
-    const char *path = "/tmp/viper_scene_out_of_range_index.vscn";
+    const char *path = "/tmp/zanna_scene_out_of_range_index.vscn";
     const char *json = "{\n"
                        "  \"format\": \"vscn\",\n"
                        "  \"version\": 2,\n"
@@ -3638,7 +3638,7 @@ static void test_scene_load_rejects_out_of_range_numeric_indices() {
 }
 
 static void test_scene_load_rejects_fractional_counts_and_indices() {
-    const char *texture_path = "/tmp/viper_scene_fractional_texture_size.vscn";
+    const char *texture_path = "/tmp/zanna_scene_fractional_texture_size.vscn";
     const char *texture_json = "{\n"
                                "  \"format\": \"vscn\",\n"
                                "  \"version\": 2,\n"
@@ -3649,7 +3649,7 @@ static void test_scene_load_rejects_fractional_counts_and_indices() {
                                "  \"meshes\": [],\n"
                                "  \"nodes\": []\n"
                                "}\n";
-    const char *mesh_path = "/tmp/viper_scene_fractional_mesh_count.vscn";
+    const char *mesh_path = "/tmp/zanna_scene_fractional_mesh_count.vscn";
     const char *mesh_json = "{\n"
                             "  \"format\": \"vscn\",\n"
                             "  \"version\": 2,\n"
@@ -3661,7 +3661,7 @@ static void test_scene_load_rejects_fractional_counts_and_indices() {
                             "\"verticesBase64\": \"\", \"indicesBase64\": \"\"}],\n"
                             "  \"nodes\": []\n"
                             "}\n";
-    const char *node_path = "/tmp/viper_scene_fractional_node_ref.vscn";
+    const char *node_path = "/tmp/zanna_scene_fractional_node_ref.vscn";
     const char *node_json = "{\n"
                             "  \"format\": \"vscn\",\n"
                             "  \"version\": 2,\n"
@@ -3688,7 +3688,7 @@ static void test_scene_load_rejects_fractional_counts_and_indices() {
 }
 
 static void test_scene_load_rejects_wrong_typed_vscn_fields() {
-    const char *bool_ref_path = "/tmp/viper_scene_bool_node_ref.vscn";
+    const char *bool_ref_path = "/tmp/zanna_scene_bool_node_ref.vscn";
     const char *bool_ref_json = "{\n"
                                 "  \"format\": \"vscn\",\n"
                                 "  \"version\": 2,\n"
@@ -3699,7 +3699,7 @@ static void test_scene_load_rejects_wrong_typed_vscn_fields() {
                                 "  \"nodes\": ["
                                 "{\"name\": \"bad\", \"mesh\": true, \"material\": -1}]\n"
                                 "}\n";
-    const char *children_path = "/tmp/viper_scene_children_wrong_type.vscn";
+    const char *children_path = "/tmp/zanna_scene_children_wrong_type.vscn";
     const char *children_json = "{\n"
                                 "  \"format\": \"vscn\",\n"
                                 "  \"version\": 2,\n"
@@ -3723,7 +3723,7 @@ static void test_scene_load_rejects_wrong_typed_vscn_fields() {
 }
 
 static void test_scene_load_sanitizes_degenerate_rotation() {
-    const char *path = "/tmp/viper_scene_degenerate_rotation.vscn";
+    const char *path = "/tmp/zanna_scene_degenerate_rotation.vscn";
     const char *json = "{\n"
                        "  \"format\": \"vscn\",\n"
                        "  \"version\": 2,\n"
@@ -3751,7 +3751,7 @@ static void test_scene_load_sanitizes_degenerate_rotation() {
 }
 
 static void test_scene_roundtrip_preserves_high_precision_transform() {
-    const char *path = "/tmp/viper_scene_precision_roundtrip.vscn";
+    const char *path = "/tmp/zanna_scene_precision_roundtrip.vscn";
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
     const double x = 0.000000123456789;

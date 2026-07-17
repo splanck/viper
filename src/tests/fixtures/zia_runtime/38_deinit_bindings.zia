@@ -1,7 +1,7 @@
 module RuntimeTest38;
 
-bind Viper.Terminal;
-bind Viper.Runtime.Unsafe;
+bind Zanna.Terminal;
+bind Zanna.Runtime.Unsafe;
 
 var released: Boolean = false;
 
@@ -13,15 +13,15 @@ class Resource {
 }
 
 func makeResource() {    var r = new Resource();
-    Viper.Runtime.Unsafe.Release(r);
+    Zanna.Runtime.Unsafe.Release(r);
 }
 
 func start() {    makeResource();
 
     if (!released) {
-        Viper.Terminal.Say("FAIL: deinit_not_run");
+        Zanna.Terminal.Say("FAIL: deinit_not_run");
         return;
     }
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

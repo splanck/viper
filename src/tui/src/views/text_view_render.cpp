@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances managed
 //                     by the caller and writes results into an externally-owned
 //                     ScreenBuffer.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,10 +36,10 @@
 #include <string_view>
 #include <vector>
 
-using viper::tui::util::char_width;
-using viper::tui::util::clampAdd;
+using zanna::tui::util::char_width;
+using zanna::tui::util::clampAdd;
 
-namespace viper::tui::views {
+namespace zanna::tui::views {
 
 /// @brief Paint the visible region of the text buffer into the screen buffer.
 /// @details Iterates every viewport row, rendering optional line numbers,
@@ -158,4 +158,4 @@ void TextView::paint(render::ScreenBuffer &sb) {
     }
 }
 
-} // namespace viper::tui::views
+} // namespace zanna::tui::views

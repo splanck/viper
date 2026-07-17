@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/bytecode/BytecodeCompiler.hpp
-// Purpose: Compiles IL modules into compact bytecode for the Viper bytecode VM.
+// Purpose: Compiles IL modules into compact bytecode for the Zanna bytecode VM.
 // Key invariants: SSA values are deterministically mapped to local slots.
 //                 Block linearization preserves fall-through for the common case.
 //                 All branch offsets are resolved before the function is finalized.
@@ -41,10 +41,10 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
-/// @brief Compiler that transforms IL modules into bytecode for the Viper VM.
+/// @brief Compiler that transforms IL modules into bytecode for the Zanna VM.
 /// @details The BytecodeCompiler lowers an IL module's functions into compact
 ///          bytecode by performing SSA-to-locals mapping, basic-block
 ///          linearization, constant pool construction, instruction emission,
@@ -341,4 +341,4 @@ class BytecodeCompiler {
 };
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

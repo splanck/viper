@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lifetime Model — Viper</title>
-  <meta name="description" content="Viper documentation: Lifetime Model">
+  <title>Lifetime Model — Zanna</title>
+  <meta name="description" content="Zanna documentation: Lifetime Model">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -45,7 +45,7 @@
   <main class="page-main prose">
     <h1>Lifetime Model</h1>
 <h1 id="lifetime-model">Lifetime Model</h1>
-<p>Viper BASIC uses deterministic lifetimes with reference counting and explicit disposal. This section summarizes the</p>
+<p>Zanna BASIC uses deterministic lifetimes with reference counting and explicit disposal. This section summarizes the</p>
 <p>model and best practices.</p>
 <h2 id="reference-counting-rc">Reference Counting (RC)</h2>
 <ul>
@@ -121,10 +121,10 @@ WEND
 <li>**Use explicit cleanup methods**: Provide a <code>Close()</code> or <code>Release()</code> method that breaks cycles.</li>
 </ul>
 <h3 id="detection">Detection</h3>
-<p>Viper does not include automatic cycle detection. If you suspect a memory leak from cycles:</p>
+<p>Zanna does not include automatic cycle detection. If you suspect a memory leak from cycles:</p>
 <ol>
 <li>Review object relationships for potential cycles</li>
-<li>Use debug builds with refcount tracing (<code>-DVIPER_RC_DEBUG=1</code>)</li>
+<li>Use debug builds with refcount tracing (<code>-DZANNA_RC_DEBUG=1</code>)</li>
 <li>Profile memory usage over time to identify growing allocations</li>
 </ul>
 <h2 id="guidance">Guidance</h2>
@@ -160,13 +160,13 @@ WEND
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

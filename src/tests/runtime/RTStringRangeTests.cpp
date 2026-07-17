@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,16 +27,16 @@ static void call_mid_negative() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_left_negative);
-    viper::tests::registerChildFunction(call_mid_negative);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_left_negative);
+    zanna::tests::registerChildFunction(call_mid_negative);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(call_left_negative);
+    auto result = zanna::tests::runIsolated(call_left_negative);
     bool ok = result.stderrText.find("LEFT$: len must be >= 0") != std::string::npos;
     assert(ok);
 
-    result = viper::tests::runIsolated(call_mid_negative);
+    result = zanna::tests::runIsolated(call_mid_negative);
     ok = result.stderrText.find("MID$: start must be >= 1") != std::string::npos;
     assert(ok);
 

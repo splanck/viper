@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,12 +13,12 @@
 // Ownership/Lifetime:
 //   - Temporary fixture files are owned by each test and removed where cleanup matters.
 //   - Runtime handles are GC-managed for the duration of the test process.
-// Links: rt_gltf.h, rt_asset_error.h, docs/viperlib/graphics/rendering3d.md
+// Links: rt_gltf.h, rt_asset_error.h, docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_asset.h"
@@ -43,7 +43,7 @@ extern "C" {
 #include <string>
 #include <vector>
 
-#include "VpaWriter.hpp"
+#include "ZpakWriter.hpp"
 
 extern "C" {
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -222,8 +222,8 @@ static bool write_test_ktx2_rgba8(const char *path,
 }
 
 static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
-    const char *png_path = "/tmp/viper_gltf_embedded.png";
-    const char *gltf_path = "/tmp/viper_gltf_embedded.gltf";
+    const char *png_path = "/tmp/zanna_gltf_embedded.png";
+    const char *gltf_path = "/tmp/zanna_gltf_embedded.gltf";
 
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x336699FFll);
@@ -358,8 +358,8 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
 }
 
 static void test_gltf_resolves_percent_encoded_external_buffers() {
-    const char *bin_path = "/tmp/viper gltf encoded buffer.bin";
-    const char *gltf_path = "/tmp/viper_gltf_encoded_external_buffer.gltf";
+    const char *bin_path = "/tmp/zanna gltf encoded buffer.bin";
+    const char *gltf_path = "/tmp/zanna_gltf_encoded_external_buffer.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 3.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -379,7 +379,7 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"viper%20gltf%20encoded%20buffer.bin\",\"byteLength\":" +
+        "\"buffers\":[{\"uri\":\"zanna%20gltf%20encoded%20buffer.bin\",\"byteLength\":" +
         std::to_string(gltf_buffer.size()) +
         "}],"
         "\"bufferViews\":["
@@ -414,8 +414,8 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
 }
 
 static void test_gltf_preload_bundle_supplies_external_buffers() {
-    const char *bin_path = "/tmp/viper_gltf_preload_external.bin";
-    const char *gltf_path = "/tmp/viper_gltf_preload_external.gltf";
+    const char *bin_path = "/tmp/zanna_gltf_preload_external.bin";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_external.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -435,7 +435,7 @@ static void test_gltf_preload_bundle_supplies_external_buffers() {
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"viper_gltf_preload_external.bin\",\"byteLength\":" +
+        "\"buffers\":[{\"uri\":\"zanna_gltf_preload_external.bin\",\"byteLength\":" +
         std::to_string(gltf_buffer.size()) +
         "}],"
         "\"bufferViews\":["
@@ -488,11 +488,11 @@ static void test_gltf_preload_bundle_supplies_external_buffers() {
 }
 
 static void test_gltf_preload_bundle_rejects_missing_required_buffers() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_missing_required_buffer.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_missing_required_buffer.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"viper_gltf_preload_missing_required_buffer.bin\","
+        "\"buffers\":[{\"uri\":\"zanna_gltf_preload_missing_required_buffer.bin\","
         "\"byteLength\":36}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
@@ -543,7 +543,7 @@ static void test_gltf_preload_bundle_rejects_short_glb_bin() {
 
     char error[128] = {0};
     rt_gltf_preload_bundle *bundle =
-        rt_gltf_preload_bundle_create(rt_const_cstr("/tmp/viper_gltf_preload_short_bin.glb"),
+        rt_gltf_preload_bundle_create(rt_const_cstr("/tmp/zanna_gltf_preload_short_bin.glb"),
                                       owned_root,
                                       glb.size(),
                                       0,
@@ -555,7 +555,7 @@ static void test_gltf_preload_bundle_rejects_short_glb_bin() {
 }
 
 static void test_gltf_preload_bundle_validates_accessor_ranges() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_invalid_accessor_range.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_invalid_accessor_range.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f, 0.0f, 11.0f, 0.0f};
     for (float v : positions)
@@ -594,7 +594,7 @@ static void test_gltf_preload_bundle_validates_accessor_ranges() {
 }
 
 static void test_gltf_preload_bundle_rejects_corrupt_required_image_payload() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_corrupt_required_image.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_corrupt_required_image.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -624,8 +624,8 @@ static void test_gltf_preload_bundle_rejects_corrupt_required_image_payload() {
 }
 
 static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
-    const char *png_path = "/tmp/viper_gltf_preload_data_uri.png";
-    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri.gltf";
+    const char *png_path = "/tmp/zanna_gltf_preload_data_uri.png";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_data_uri.gltf";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x5588CCFFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
@@ -713,8 +713,8 @@ static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
 }
 
 static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
-    const char *bmp_path = "/tmp/viper_gltf_preload_data_uri.bmp";
-    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_bmp.gltf";
+    const char *bmp_path = "/tmp/zanna_gltf_preload_data_uri.bmp";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_data_uri_bmp.gltf";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0xCC8844FFll);
     EXPECT_TRUE(rt_pixels_save_bmp(pixels, rt_const_cstr(bmp_path)) == 1,
@@ -802,7 +802,7 @@ static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
 }
 
 static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_jpeg.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_data_uri_jpeg.gltf";
     const char *image_b64 =
         "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAA"
         "A6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/7QA4UGhvdG9zaG9w"
@@ -900,7 +900,7 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
 }
 
 static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_gif.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_data_uri_gif.gltf";
     const uint8_t gif_bytes[] = {'G',  'I',  'F',  '8',  '7',  'a',  0x01, 0x00, 0x01,
                                  0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
                                  0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
@@ -982,7 +982,7 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
 }
 
 static void test_gltf_preload_bundle_decodes_static_mesh_to_pod() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_static_mesh_pod.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_static_mesh_pod.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 14.0f, 0.0f, 0.0f, 0.0f, 15.0f, 0.0f};
     const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
@@ -1063,7 +1063,7 @@ static void test_gltf_preload_bundle_decodes_static_mesh_to_pod() {
 }
 
 static void test_gltf_preload_bundle_decodes_strip_and_fan_without_normals_to_pod() {
-    const char *gltf_path = "/tmp/viper_gltf_preload_topology_mesh_pod.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_topology_mesh_pod.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float strip_positions[12] = {
         0.0f,
@@ -1191,8 +1191,8 @@ static void test_gltf_preload_bundle_decodes_strip_and_fan_without_normals_to_po
 }
 
 static void test_gltf_preload_bundle_stages_buffer_view_images() {
-    const char *png_path = "/tmp/viper_gltf_preload_bufferview_image.png";
-    const char *gltf_path = "/tmp/viper_gltf_preload_bufferview_image.gltf";
+    const char *png_path = "/tmp/zanna_gltf_preload_bufferview_image.png";
+    const char *gltf_path = "/tmp/zanna_gltf_preload_bufferview_image.gltf";
     void *pixels = rt_pixels_new(2, 2);
     rt_pixels_set(pixels, 0, 0, 0xAA6633FFll);
     rt_pixels_set(pixels, 1, 0, 0x11223344ll);
@@ -1292,8 +1292,8 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
 }
 
 static void test_gltf_preload_bundle_slices_decoded_image_commit() {
-    const char *png_path = "/tmp/viper_gltf_sliced_preload_texture.png";
-    const char *gltf_path = "/tmp/viper_gltf_sliced_preload_texture.gltf";
+    const char *png_path = "/tmp/zanna_gltf_sliced_preload_texture.png";
+    const char *gltf_path = "/tmp/zanna_gltf_sliced_preload_texture.gltf";
 
     void *pixels = rt_pixels_new(32, 32);
     EXPECT_TRUE(pixels != nullptr, "Sliced preload source Pixels can be allocated");
@@ -1380,8 +1380,8 @@ static void test_gltf_preload_bundle_slices_decoded_image_commit() {
 }
 
 static void test_gltf_load_asset_resolves_mounted_external_buffers() {
-    const char *pack_path = "/tmp/viper_gltf_asset_pack.vpa";
-    const char *png_path = "/tmp/viper_gltf_asset_texture.png";
+    const char *pack_path = "/tmp/zanna_gltf_asset_pack.zpak";
+    const char *png_path = "/tmp/zanna_gltf_asset_texture.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x224466FFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
@@ -1421,7 +1421,7 @@ static void test_gltf_load_asset_resolves_mounted_external_buffers() {
         "\"material\":0}]}]"
         "}";
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("assets/models/tri.gltf",
                     reinterpret_cast<const uint8_t *>(gltf_json.data()),
                     gltf_json.size(),
@@ -1432,7 +1432,7 @@ static void test_gltf_load_asset_resolves_mounted_external_buffers() {
     bool wrote_pack = writer.writeToFile(pack_path, err);
     EXPECT_TRUE(wrote_pack, "Mounted glTF asset pack can be written");
     if (!err.empty())
-        std::fprintf(stderr, "VPA write detail: %s\n", err.c_str());
+        std::fprintf(stderr, "ZPAK write detail: %s\n", err.c_str());
     if (!wrote_pack)
         return;
 
@@ -1508,8 +1508,8 @@ static std::vector<uint8_t> make_triangle_glb(float x1, float y2) {
 }
 
 static void test_gltf_load_asset_handles_glb_filesystem_and_mounted_package() {
-    const char *glb_path = "/tmp/viper_gltf_asset_triangle.glb";
-    const char *pack_path = "/tmp/viper_gltf_asset_glb_pack.vpa";
+    const char *glb_path = "/tmp/zanna_gltf_asset_triangle.glb";
+    const char *pack_path = "/tmp/zanna_gltf_asset_glb_pack.zpak";
     std::vector<uint8_t> glb = make_triangle_glb(8.0f, 9.0f);
 
     FILE *f = std::fopen(glb_path, "wb");
@@ -1531,7 +1531,7 @@ static void test_gltf_load_asset_handles_glb_filesystem_and_mounted_package() {
         }
     }
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("assets/models/tri.glb", glb.data(), glb.size(), false);
     std::string err;
     bool wrote_pack = writer.writeToFile(pack_path, err);
@@ -1557,7 +1557,7 @@ static void test_gltf_load_asset_handles_glb_filesystem_and_mounted_package() {
 }
 
 static void test_gltf_rejects_out_of_range_indices() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_indices.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_indices.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 99};
@@ -1601,7 +1601,7 @@ static void test_gltf_rejects_out_of_range_indices() {
 }
 
 static void test_gltf_skips_non_triangle_primitives() {
-    const char *gltf_path = "/tmp/viper_gltf_skip_lines.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_skip_lines.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -1638,7 +1638,7 @@ static void test_gltf_skips_non_triangle_primitives() {
 }
 
 static void test_gltf_drops_invalid_optional_attributes() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_optional_normal.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_optional_normal.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const float bad_normals[6] = {9.0f, 9.0f, 9.0f, 9.0f, 9.0f, 9.0f};
@@ -1682,7 +1682,7 @@ static void test_gltf_drops_invalid_optional_attributes() {
 }
 
 static void test_gltf_rejects_unsorted_sparse_indices() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_sparse_order.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_sparse_order.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float base_positions[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     const uint16_t sparse_indices[2] = {2, 1};
@@ -1729,7 +1729,7 @@ static void test_gltf_rejects_unsorted_sparse_indices() {
 }
 
 static void test_gltf_rejects_invalid_skin_reference() {
-    const char *gltf_path = "/tmp/viper_gltf_invalid_skin_ref.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_invalid_skin_ref.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -1758,7 +1758,7 @@ static void test_gltf_rejects_invalid_skin_reference() {
 }
 
 static void test_gltf_rejects_invalid_skin_joint_tables() {
-    const char *bad_index_path = "/tmp/viper_gltf_invalid_skin_joint_index.gltf";
+    const char *bad_index_path = "/tmp/zanna_gltf_invalid_skin_joint_index.gltf";
     std::string bad_index_json = "{"
                                  "\"asset\":{\"version\":\"2.0\"},"
                                  "\"nodes\":[{\"name\":\"Joint\"}],"
@@ -1770,7 +1770,7 @@ static void test_gltf_rejects_invalid_skin_joint_tables() {
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(bad_index_path)) == nullptr,
                 "GLTF.Load rejects skin joints outside the node table");
 
-    const char *duplicate_path = "/tmp/viper_gltf_duplicate_skin_joints.gltf";
+    const char *duplicate_path = "/tmp/zanna_gltf_duplicate_skin_joints.gltf";
     std::string duplicate_json = "{"
                                  "\"asset\":{\"version\":\"2.0\"},"
                                  "\"nodes\":[{\"name\":\"Joint\"}],"
@@ -1784,7 +1784,7 @@ static void test_gltf_rejects_invalid_skin_joint_tables() {
 }
 
 static void test_gltf_builds_scene_hierarchy_for_active_scene() {
-    const char *gltf_path = "/tmp/viper_gltf_scene_graph.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_scene_graph.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
@@ -1901,7 +1901,7 @@ static void test_gltf_builds_scene_hierarchy_for_active_scene() {
 }
 
 static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
-    const char *gltf_path = "/tmp/viper_gltf_extended_attrs.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_extended_attrs.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[12] = {
         0.0f,
@@ -2121,7 +2121,7 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
 }
 
 static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
-    const char *gltf_path = "/tmp/viper_gltf_primary_joint_clip.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_primary_joint_clip.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t joints[12] = {256, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4};
@@ -2193,7 +2193,7 @@ static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
 }
 
 static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
-    const char *gltf_path = "/tmp/viper_gltf_joints1.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_joints1.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -2347,7 +2347,7 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
 }
 
 static void test_gltf_applies_matrix_nodes_in_column_major_order() {
-    const char *gltf_path = "/tmp/viper_gltf_matrix_node.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_matrix_node.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -2499,7 +2499,7 @@ static void test_gltf_eight_influence_import() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
         "\"WEIGHTS_0\":2,\"JOINTS_1\":3,\"WEIGHTS_1\":4}}]}]"
         "}";
-    const char *gltf_path = "/tmp/viper_gltf_eight_influences.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_eight_influences.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "eight-influence fixture writes");
 
     rt_gltf_load_options opts = rt_gltf_load_options_default();
@@ -2615,7 +2615,7 @@ static void test_gltf_compress_animations_option() {
         "\"target\":{\"node\":0,\"path\":\"translation\"}}],"
         "\"samplers\":[{\"input\":0,\"interpolation\":\"LINEAR\",\"output\":1}]}]"
         "}";
-    const char *gltf_path = "/tmp/viper_gltf_compress_anim.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_compress_anim.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "compressAnimations fixture writes");
 
     void *asset_raw = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -2653,7 +2653,7 @@ static void test_gltf_ior_and_volume_extensions() {
     /* KHR_materials_ior + KHR_materials_volume ride the PBR custom params:
      * [4] = ior, [5] = thickness, [6] = folded Beer-Lambert absorption
      * (-ln(avg(attenuationColor)) / attenuationDistance). */
-    const char *gltf_path = "/tmp/viper_gltf_ior_volume.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_ior_volume.gltf";
     std::string gltf_json =
         "{\"asset\":{\"version\":\"2.0\"},"
         "\"materials\":[{"
@@ -2681,7 +2681,7 @@ static void test_gltf_ior_and_volume_extensions() {
                 "volume attenuation folds to the Beer-Lambert coefficient");
 
     /* KHR_materials_sheen: luminance-folded intensity + roughness. */
-    const char *sheen_path = "/tmp/viper_gltf_sheen.gltf";
+    const char *sheen_path = "/tmp/zanna_gltf_sheen.gltf";
     std::string sheen_json =
         "{\"asset\":{\"version\":\"2.0\"},"
         "\"materials\":[{"
@@ -2703,7 +2703,7 @@ static void test_gltf_ior_and_volume_extensions() {
     }
 
     /* KHR_materials_anisotropy: strength + rotation params. */
-    const char *aniso_path = "/tmp/viper_gltf_aniso.gltf";
+    const char *aniso_path = "/tmp/zanna_gltf_aniso.gltf";
     std::string aniso_json =
         "{\"asset\":{\"version\":\"2.0\"},"
         "\"materials\":[{"
@@ -2823,7 +2823,7 @@ static void test_gltf_partitions_oversized_skins() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
         "\"WEIGHTS_0\":2},\"indices\":3}]}]"
         "}";
-    const char *gltf_path = "/tmp/viper_gltf_oversized_skin.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_oversized_skin.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "oversized-skin glTF fixture writes");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load imports a 300-joint skin");
@@ -2882,7 +2882,7 @@ static void test_gltf_partitions_oversized_skins() {
 }
 
 static void test_gltf_imports_skins_and_animation_clips() {
-    const char *gltf_path = "/tmp/viper_gltf_skinned_anim.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_skinned_anim.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3096,7 +3096,7 @@ static void test_gltf_imports_skins_and_animation_clips() {
 }
 
 static void test_gltf_skips_duplicate_skeletal_animation_channels() {
-    const char *gltf_path = "/tmp/viper_gltf_duplicate_skeletal_channels.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_duplicate_skeletal_channels.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3177,7 +3177,7 @@ static void test_gltf_skips_duplicate_skeletal_animation_channels() {
 }
 
 static void test_gltf_imports_step_skeletal_animation_as_hold_keys() {
-    const char *gltf_path = "/tmp/viper_gltf_step_skeletal_hold_keys.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_step_skeletal_hold_keys.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3252,7 +3252,7 @@ static void test_gltf_imports_step_skeletal_animation_as_hold_keys() {
 }
 
 static void test_gltf_rejects_skeletal_trs_animation_output_count_mismatch() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_skeletal_trs_output_count.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_skeletal_trs_output_count.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3310,7 +3310,7 @@ static void test_gltf_rejects_skeletal_trs_animation_output_count_mismatch() {
 }
 
 static void test_gltf_rejects_node_trs_animation_output_count_mismatch() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_node_trs_output_count.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_node_trs_output_count.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3367,7 +3367,7 @@ static void test_gltf_rejects_node_trs_animation_output_count_mismatch() {
 }
 
 static void test_gltf_ignores_inverse_bind_matrices_with_count_mismatch() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_inverse_bind_count.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_inverse_bind_count.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3422,7 +3422,7 @@ static void test_gltf_ignores_inverse_bind_matrices_with_count_mismatch() {
 }
 
 static void test_gltf_skips_duplicate_node_animation_channels() {
-    const char *gltf_path = "/tmp/viper_gltf_duplicate_node_channels.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_duplicate_node_channels.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3496,7 +3496,7 @@ static void test_gltf_skips_duplicate_node_animation_channels() {
 }
 
 static void test_gltf_imports_step_node_animation_duplicate_times() {
-    const char *gltf_path = "/tmp/viper_gltf_step_duplicate_node_times.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_step_duplicate_node_times.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3565,7 +3565,7 @@ static void test_gltf_imports_step_node_animation_duplicate_times() {
 }
 
 static void test_gltf_rejects_mismatched_morph_weight_animation_width() {
-    const char *gltf_path = "/tmp/viper_gltf_mismatched_weight_animation_width.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_mismatched_weight_animation_width.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3641,7 +3641,7 @@ static void test_gltf_rejects_mismatched_morph_weight_animation_width() {
 }
 
 static void test_gltf_splits_animation_clips_per_skin() {
-    const char *gltf_path = "/tmp/viper_gltf_multi_skin_animation.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_multi_skin_animation.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3727,7 +3727,7 @@ static void test_gltf_splits_animation_clips_per_skin() {
 }
 
 static void test_gltf_applies_sparse_accessors() {
-    const char *gltf_path = "/tmp/viper_gltf_sparse_accessor.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_sparse_accessor.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -3846,7 +3846,7 @@ static void test_gltf_applies_sparse_accessors() {
 }
 
 static void test_gltf_imports_morph_targets() {
-    const char *gltf_path = "/tmp/viper_gltf_morph_targets.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_morph_targets.gltf";
     std::vector<uint8_t> gltf_buffer;
     auto align4 = [&]() {
         while ((gltf_buffer.size() & 3u) != 0)
@@ -4062,7 +4062,7 @@ static void test_gltf_imports_morph_targets() {
 }
 
 static void test_gltf_rejects_malformed_glb_headers() {
-    const char *glb_path = "/tmp/viper_gltf_bad_header.glb";
+    const char *glb_path = "/tmp/zanna_gltf_bad_header.glb";
     std::vector<uint8_t> glb;
     std::string json = "{\"asset\":{\"version\":\"2.0\"}}";
     while ((json.size() & 3u) != 0)
@@ -4087,7 +4087,7 @@ static void test_gltf_rejects_malformed_glb_headers() {
 }
 
 static void test_gltf_rejects_corrupt_required_image_payload() {
-    const char *gltf_path = "/tmp/viper_gltf_corrupt_required_image.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_corrupt_required_image.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4102,7 +4102,7 @@ static void test_gltf_rejects_corrupt_required_image_payload() {
 }
 
 static void test_gltf_rejects_corrupt_extension_texture_payloads() {
-    const char *gltf_path = "/tmp/viper_gltf_corrupt_extension_texture.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_corrupt_extension_texture.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4122,7 +4122,7 @@ static void test_gltf_rejects_corrupt_extension_texture_payloads() {
 }
 
 static void test_gltf_rejects_unsafe_external_buffer_paths() {
-    const char *gltf_path = "/tmp/viper_gltf_unsafe_uri.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_unsafe_uri.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4136,8 +4136,8 @@ static void test_gltf_rejects_unsafe_external_buffer_paths() {
 }
 
 static void test_gltf_accepts_dot_relative_external_buffer_paths() {
-    const char *gltf_path = "/tmp/viper_gltf_dot_relative_uri.gltf";
-    const char *bin_path = "/tmp/viper_gltf_dot_relative_uri.bin";
+    const char *gltf_path = "/tmp/zanna_gltf_dot_relative_uri.gltf";
+    const char *bin_path = "/tmp/zanna_gltf_dot_relative_uri.bin";
     const float scalar = 1.0f;
     FILE *bin = std::fopen(bin_path, "wb");
     EXPECT_TRUE(bin != nullptr, "Dot-relative glTF buffer fixture can be created");
@@ -4148,7 +4148,7 @@ static void test_gltf_accepts_dot_relative_external_buffer_paths() {
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"./viper_gltf_dot_relative_uri.bin\",\"byteLength\":4}],"
+        "\"buffers\":[{\"uri\":\"./zanna_gltf_dot_relative_uri.bin\",\"byteLength\":4}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
         "}";
@@ -4159,7 +4159,7 @@ static void test_gltf_accepts_dot_relative_external_buffer_paths() {
 }
 
 static void test_gltf_rejects_percent_decoded_nul_external_paths() {
-    const char *gltf_path = "/tmp/viper_gltf_nul_uri.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_nul_uri.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4173,7 +4173,7 @@ static void test_gltf_rejects_percent_decoded_nul_external_paths() {
 }
 
 static void test_gltf_rejects_control_chars_in_external_paths() {
-    const char *raw_path = "/tmp/viper_gltf_raw_control_uri.gltf";
+    const char *raw_path = "/tmp/zanna_gltf_raw_control_uri.gltf";
     std::string raw_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4185,7 +4185,7 @@ static void test_gltf_rejects_control_chars_in_external_paths() {
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(raw_path)) == nullptr,
                 "GLTF.Load rejects raw control characters in external paths");
 
-    const char *encoded_path = "/tmp/viper_gltf_encoded_control_uri.gltf";
+    const char *encoded_path = "/tmp/zanna_gltf_encoded_control_uri.gltf";
     std::string encoded_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4200,7 +4200,7 @@ static void test_gltf_rejects_control_chars_in_external_paths() {
 }
 
 static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
-    const char *scheme_path = "/tmp/viper_gltf_scheme_uri.gltf";
+    const char *scheme_path = "/tmp/zanna_gltf_scheme_uri.gltf";
     std::string scheme_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4213,7 +4213,7 @@ static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(scheme_path)) == nullptr,
                 "GLTF.Load rejects external URI schemes without relying on ://");
 
-    const char *escape_path = "/tmp/viper_gltf_bad_escape_uri.gltf";
+    const char *escape_path = "/tmp/zanna_gltf_bad_escape_uri.gltf";
     std::string escape_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4228,7 +4228,7 @@ static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
 }
 
 static void test_gltf_rejects_malformed_data_uri_percent_escapes() {
-    const char *gltf_path = "/tmp/viper_gltf_bad_data_uri_escape.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_bad_data_uri_escape.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4241,7 +4241,7 @@ static void test_gltf_rejects_malformed_data_uri_percent_escapes() {
 }
 
 static void test_gltf_rejects_invalid_node_resource_references() {
-    const char *mesh_path = "/tmp/viper_gltf_invalid_node_mesh.gltf";
+    const char *mesh_path = "/tmp/zanna_gltf_invalid_node_mesh.gltf";
     std::string mesh_json = "{"
                             "\"asset\":{\"version\":\"2.0\"},"
                             "\"meshes\":[{\"primitives\":[]}],"
@@ -4254,7 +4254,7 @@ static void test_gltf_rejects_invalid_node_resource_references() {
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(mesh_path)) == nullptr,
                 "GLTF.Load rejects nodes that reference missing meshes");
 
-    const char *light_path = "/tmp/viper_gltf_invalid_node_light.gltf";
+    const char *light_path = "/tmp/zanna_gltf_invalid_node_light.gltf";
     std::string light_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4272,7 +4272,7 @@ static void test_gltf_rejects_invalid_node_resource_references() {
 }
 
 static void test_gltf_rejects_invalid_declared_scene_roots() {
-    const char *gltf_path = "/tmp/viper_gltf_invalid_declared_scene_root.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_invalid_declared_scene_root.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4287,7 +4287,7 @@ static void test_gltf_rejects_invalid_declared_scene_roots() {
 }
 
 static void test_gltf_material_without_pbr_uses_pbr_defaults() {
-    const char *gltf_path = "/tmp/viper_gltf_material_no_pbr.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_material_no_pbr.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"materials\":[{}]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "No-PBR material glTF fixture can be created");
@@ -4305,7 +4305,7 @@ static void test_gltf_material_without_pbr_uses_pbr_defaults() {
 }
 
 static void test_gltf_ignores_wrong_typed_optional_string_fields() {
-    const char *gltf_path = "/tmp/viper_gltf_wrong_typed_optional_strings.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_wrong_typed_optional_strings.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
                             "\"images\":[{\"uri\":17,\"mimeType\":18}],"
                             "\"textures\":[{\"source\":0}],"
@@ -4327,7 +4327,7 @@ static void test_gltf_ignores_wrong_typed_optional_string_fields() {
 }
 
 static void test_gltf_assigns_default_material_to_materialless_primitives() {
-    const char *gltf_path = "/tmp/viper_gltf_default_material.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_default_material.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -4362,7 +4362,7 @@ static void test_gltf_assigns_default_material_to_materialless_primitives() {
 }
 
 static void test_gltf_uses_texture_texcoord_and_transform() {
-    const char *gltf_path = "/tmp/viper_gltf_texcoord_transform.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_texcoord_transform.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const float uv0[6] = {0.0f, 0.0f, 0.1f, 0.1f, 0.2f, 0.2f};
@@ -4432,7 +4432,7 @@ static void test_gltf_uses_texture_texcoord_and_transform() {
 }
 
 static void test_gltf_unsupported_texture_texcoord_falls_back_to_primary() {
-    const char *gltf_path = "/tmp/viper_gltf_unsupported_texture_texcoord.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_unsupported_texture_texcoord.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4495,7 +4495,7 @@ static std::string build_variant_fixture_json() {
 }
 
 static void test_gltf_imports_material_variants() {
-    const char *gltf_path = "/tmp/viper_gltf_material_variants.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_material_variants.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, build_variant_fixture_json()),
                 "Material-variants glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -4674,14 +4674,14 @@ static void test_gltf_meshopt_compressed_views_roundtrip() {
     std::vector<uint8_t> tri_stream = meshopt_test_encode_triangles(indices, 3);
     std::vector<uint8_t> seq_stream = meshopt_test_encode_indices(indices, 3);
 
-    const char *gltf_path = "/tmp/viper_gltf_meshopt_triangles.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_meshopt_triangles.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, meshopt_test_build_gltf(pos_stream, tri_stream,
                                                                    "TRIANGLES")),
                 "meshopt TRIANGLES fixture can be created");
     meshopt_test_check_triangle_asset(rt_gltf_load(rt_const_cstr(gltf_path)),
                                       "meshopt ATTRIBUTES+TRIANGLES");
 
-    const char *seq_path = "/tmp/viper_gltf_meshopt_indices.gltf";
+    const char *seq_path = "/tmp/zanna_gltf_meshopt_indices.gltf";
     EXPECT_TRUE(write_text_file(seq_path, meshopt_test_build_gltf(pos_stream, seq_stream,
                                                                   "INDICES")),
                 "meshopt INDICES fixture can be created");
@@ -4691,7 +4691,7 @@ static void test_gltf_meshopt_compressed_views_roundtrip() {
     /* Corrupt stream: flip the attribute header byte; the load must fail cleanly. */
     std::vector<uint8_t> corrupt_stream = pos_stream;
     corrupt_stream[0] = 0x00;
-    const char *corrupt_path = "/tmp/viper_gltf_meshopt_corrupt.gltf";
+    const char *corrupt_path = "/tmp/zanna_gltf_meshopt_corrupt.gltf";
     EXPECT_TRUE(write_text_file(corrupt_path, meshopt_test_build_gltf(corrupt_stream, tri_stream,
                                                                       "TRIANGLES")),
                 "meshopt corrupt fixture can be created");
@@ -4759,7 +4759,7 @@ static void test_gltf_meshopt_octahedral_filter() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
         "\"indices\":2}]}]"
         "}";
-    const char *gltf_path = "/tmp/viper_gltf_meshopt_octahedral.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_meshopt_octahedral.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "meshopt OCTAHEDRAL fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -4778,7 +4778,7 @@ static void test_gltf_meshopt_octahedral_filter() {
 static void test_gltf_quantized_attributes_roundtrip() {
     /* KHR_mesh_quantization: SHORT (non-normalized) positions and normalized BYTE
      * normals decode to floats through the standard accessor rules. */
-    const char *gltf_path = "/tmp/viper_gltf_quantized.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_quantized.gltf";
     std::vector<uint8_t> gltf_buffer;
     const int16_t positions[9] = {0, 0, 0, 2, 0, 0, 0, 3, 0};
     const int8_t normals[9] = {0, 0, 127, 0, 0, 127, 0, 0, 127};
@@ -4866,7 +4866,7 @@ static void test_gltf_meshopt_exponential_filter() {
     size_t at = gltf_json.find(needle);
     EXPECT_TRUE(at != std::string::npos, "Exponential fixture finds the ATTRIBUTES view");
     gltf_json.replace(at, needle.size(), "\"mode\":\"ATTRIBUTES\",\"filter\":\"EXPONENTIAL\"");
-    const char *gltf_path = "/tmp/viper_gltf_meshopt_exponential.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_meshopt_exponential.gltf";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "meshopt EXPONENTIAL fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -4885,7 +4885,7 @@ static void test_gltf_meshopt_exponential_filter() {
 }
 
 static void test_gltf_imports_material_extensions_supported_by_material3d() {
-    const char *gltf_path = "/tmp/viper_gltf_material_extensions.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_material_extensions.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4932,7 +4932,7 @@ void *rt_model3d_get_mesh(void *obj, int64_t index);
 }
 
 static void test_gltf_converts_spec_glossiness_materials() {
-    const char *gltf_path = "/tmp/viper_gltf_spec_gloss.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_spec_gloss.gltf";
     std::string gltf_json = "{"
                             "\"asset\":{\"version\":\"2.0\"},"
                             "\"extensionsRequired\":[\"KHR_materials_pbrSpecularGlossiness\"],"
@@ -4997,7 +4997,7 @@ static std::vector<uint8_t> build_test_bmp_1x1_bgra(uint8_t b, uint8_t g, uint8_
 }
 
 static void test_gltf_converts_spec_glossiness_texture_per_texel() {
-    const char *gltf_path = "/tmp/viper_gltf_spec_gloss_texture.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_spec_gloss_texture.gltf";
     /* 1x1 spec-gloss texel: sRGB specular 128 (linear ~0.2159), gloss alpha 128. */
     std::vector<uint8_t> bmp = build_test_bmp_1x1_bgra(128, 128, 128, 128);
     std::string bmp_b64 = base64_encode(bmp.data(), bmp.size());
@@ -5050,7 +5050,7 @@ static void test_gltf_converts_spec_glossiness_texture_per_texel() {
 }
 
 static void test_gltf_forced_tangents_load_option() {
-    const char *gltf_path = "/tmp/viper_gltf_forced_tangents.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_forced_tangents.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 0.f};
     const float uvs[6] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f};
@@ -5107,8 +5107,8 @@ static void test_gltf_forced_tangents_load_option() {
 }
 
 static void test_gltf_imports_ktx2_basisu_textures() {
-    const char *ktx_path = "/tmp/viper_gltf_basisu_albedo.ktx2";
-    const char *gltf_path = "/tmp/viper_gltf_basisu_texture.gltf";
+    const char *ktx_path = "/tmp/zanna_gltf_basisu_albedo.ktx2";
+    const char *gltf_path = "/tmp/zanna_gltf_basisu_texture.gltf";
     const uint8_t rgba[16] = {0x10,
                               0x20,
                               0x30,
@@ -5131,7 +5131,7 @@ static void test_gltf_imports_ktx2_basisu_textures() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"extensionsUsed\":[\"KHR_texture_basisu\"],"
-        "\"images\":[{\"uri\":\"viper_gltf_basisu_albedo.ktx2\",\"mimeType\":\"image/ktx2\"}],"
+        "\"images\":[{\"uri\":\"zanna_gltf_basisu_albedo.ktx2\",\"mimeType\":\"image/ktx2\"}],"
         "\"textures\":[{\"extensions\":{\"KHR_texture_basisu\":{\"source\":0}}}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
         "}";
@@ -5152,7 +5152,7 @@ static void test_gltf_imports_ktx2_basisu_textures() {
 }
 
 static void test_gltf_preserves_negative_matrix_scale_sign() {
-    const char *gltf_path = "/tmp/viper_gltf_negative_scale.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_negative_scale.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -5176,7 +5176,7 @@ static void test_gltf_preserves_negative_matrix_scale_sign() {
 }
 
 static void test_gltf_matrix_shear_does_not_leak_into_rotation() {
-    const char *gltf_path = "/tmp/viper_gltf_sheared_matrix.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_sheared_matrix.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -5202,7 +5202,7 @@ static void test_gltf_matrix_shear_does_not_leak_into_rotation() {
 static void test_gltf_rejects_skins_over_runtime_bone_limit() {
     /* Skeletons accept up to VGFX3D_MAX_SKELETON_BONES (1024); rejection begins
      * past that. Draw palettes stay at 256 via mesh partitioning. */
-    const char *gltf_path = "/tmp/viper_gltf_rejected_skin.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_rejected_skin.gltf";
     std::string nodes;
     std::string joints;
     for (int i = 0; i < 1025; i++) {
@@ -5226,7 +5226,7 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
 static void test_gltf_rejects_unsupported_required_extensions() {
     /* KHR_draco_mesh_compression graduated to the supported gate; EXT_texture_webp
      * remains genuinely unsupported. */
-    const char *gltf_path = "/tmp/viper_gltf_required_extension.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_required_extension.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
                             "\"extensionsRequired\":[\"EXT_texture_webp\"],"
                             "\"extensionsUsed\":[\"EXT_texture_webp\"]}";
@@ -5245,7 +5245,7 @@ static void test_gltf_rejects_unsupported_required_extensions() {
 }
 
 static void test_gltf_warns_unsupported_optional_extensions() {
-    const char *gltf_path = "/tmp/viper_gltf_optional_extension_warning.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_optional_extension_warning.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
                             "\"extensionsUsed\":[\"EXT_missing_material_model\"]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
@@ -5269,7 +5269,7 @@ static void test_gltf_warns_unsupported_optional_extensions() {
 }
 
 static void test_gltf_rejects_required_extensions_with_partial_runtime_support() {
-    const char *gltf_path = "/tmp/viper_gltf_partial_required_extensions.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_partial_required_extensions.gltf";
     /* KHR_texture_basisu moved to the fully-supported list once the runtime gained
      * ETC1S/BasisLZ and UASTC KTX2 decoding; clearcoat/transmission remain
      * factor-level approximations. */
@@ -5290,7 +5290,7 @@ static void test_gltf_rejects_required_extensions_with_partial_runtime_support()
 }
 
 static void test_gltf_rejects_non_string_required_extensions() {
-    const char *gltf_path = "/tmp/viper_gltf_required_extension_non_string.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_required_extension_non_string.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"extensionsRequired\":[17]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Non-string required-extension glTF fixture can be created");
@@ -5300,7 +5300,7 @@ static void test_gltf_rejects_non_string_required_extensions() {
 }
 
 static void test_gltf_accepts_supported_required_extensions_with_parser_coverage() {
-    const char *gltf_path = "/tmp/viper_gltf_supported_required_extensions.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_supported_required_extensions.gltf";
     std::string gltf_json = "{\n"
                             "  \"asset\": {\"version\": \"2.0\"},\n"
                             "  \"extensionsUsed\": [\"KHR_texture_transform\", "
@@ -5349,7 +5349,7 @@ static void test_gltf_accepts_supported_required_extensions_with_parser_coverage
 }
 
 static void test_gltf_imports_required_punctual_lights() {
-    const char *gltf_path = "/tmp/viper_gltf_punctual_light.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_punctual_light.gltf";
     std::string gltf_json = "{\n"
                             "  \"asset\": {\"version\": \"2.0\"},\n"
                             "  \"extensionsUsed\": [\"KHR_lights_punctual\"],\n"
@@ -5403,7 +5403,7 @@ static void test_gltf_imports_required_punctual_lights() {
 }
 
 static void test_gltf_preserves_primary_texture_sampler_state() {
-    const char *gltf_path = "/tmp/viper_gltf_sampler_state.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_sampler_state.gltf";
     std::string gltf_json =
         "{\n"
         "  \"asset\": {\"version\": \"2.0\"},\n"
@@ -5441,7 +5441,7 @@ static void test_gltf_preserves_primary_texture_sampler_state() {
 }
 
 static void test_gltf_preserves_independent_texture_slot_metadata() {
-    const char *gltf_path = "/tmp/viper_gltf_texture_slot_metadata.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_texture_slot_metadata.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -5484,7 +5484,7 @@ static void test_gltf_preserves_independent_texture_slot_metadata() {
 }
 
 static void test_gltf_rejects_invalid_scene_graph_links() {
-    const char *gltf_path = "/tmp/viper_gltf_invalid_scene_graph.gltf";
+    const char *gltf_path = "/tmp/zanna_gltf_invalid_scene_graph.gltf";
     std::string gltf_json = "{\n"
                             "  \"asset\": {\"version\": \"2.0\"},\n"
                             "  \"nodes\": [\n"

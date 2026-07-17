@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Architecture — Viper</title>
-  <meta name="description" content="Viper documentation: Architecture">
+  <title>Architecture — Zanna</title>
+  <meta name="description" content="Zanna documentation: Architecture">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -57,8 +57,8 @@
   </aside>
   <main class="page-main prose">
     <h1>Architecture</h1>
-<h1 id="viper-vm-architecture-implementation-guide">Viper VM — Architecture &amp; Implementation Guide</h1>
-<p>Comprehensive guide to the Viper Virtual Machine (VM), which executes Viper IL</p>
+<h1 id="zanna-vm-architecture-implementation-guide">Zanna VM — Architecture &amp; Implementation Guide</h1>
+<p>Comprehensive guide to the Zanna Virtual Machine (VM), which executes Zanna IL</p>
 <p>programs. This document covers the VM&#x27;s design philosophy, architecture, execution model, and source code organization.</p>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
@@ -77,9 +77,9 @@
 </ul>
 <p>---</p>
 <h2 id="overview">Overview</h2>
-<h3 id="what-is-the-viper-vm">What is the Viper VM?</h3>
-<p>The Viper VM is the primary execution engine for programs written in Viper&#x27;s Intermediate Language (</p>
-<p>IL). It serves as the primary execution engine for the Viper toolchain, providing:</p>
+<h3 id="what-is-the-zanna-vm">What is the Zanna VM?</h3>
+<p>The Zanna VM is the primary execution engine for programs written in Zanna&#x27;s Intermediate Language (</p>
+<p>IL). It serves as the primary execution engine for the Zanna toolchain, providing:</p>
 <ul>
 <li><strong>Deterministic execution</strong> of IL programs</li>
 <li><strong>Debugging and tracing</strong> capabilities</li>
@@ -195,7 +195,7 @@ class VM {
     // Polling and profiling
     uint32_t pollEveryN_;               // Host callback frequency
     std::function&lt;bool(VM&amp;)&gt; pollCallback_;
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     std::array&lt;uint64_t, kNumOpcodes&gt; opCounts_;  // Per-opcode counters
 #endif
 
@@ -376,21 +376,21 @@ for (;;) {
 <p>The dispatch strategy is selected at VM construction via environment variable:</p>
 <pre><code data-lang="bash">
 # Use function table dispatch (portable, moderate performance)
-VIPER_DISPATCH=table ./viper -run program.il
+ZANNA_DISPATCH=table ./zanna -run program.il
 
 # Use switch statement dispatch (good cache locality)
-VIPER_DISPATCH=switch ./viper -run program.il
+ZANNA_DISPATCH=switch ./zanna -run program.il
 
 # Use threaded dispatch (fastest, requires GCC/Clang)
-VIPER_DISPATCH=threaded ./viper -run program.il
+ZANNA_DISPATCH=threaded ./zanna -run program.il
 </code></pre>
-<p><strong>Default:</strong> Threaded if supported (<code>VIPER_THREADING_SUPPORTED=1</code>), otherwise Switch.</p>
+<p><strong>Default:</strong> Threaded if supported (<code>ZANNA_THREADING_SUPPORTED=1</code>), otherwise Switch.</p>
 <h3 id="shared-dispatch-loop">Shared Dispatch Loop</h3>
 <p>All strategies share a common dispatch loop (<code>runSharedDispatchLoop</code>) that handles:</p>
 <ul>
 <li>State reset per iteration (<code>beginDispatch</code>)</li>
 <li>Instruction selection (<code>selectInstruction</code>)</li>
-<li>Debug hooks (<code>VIPER_VM_DISPATCH_BEFORE/AFTER</code>)</li>
+<li>Debug hooks (<code>ZANNA_VM_DISPATCH_BEFORE/AFTER</code>)</li>
 <li>Trap handling for threaded dispatch</li>
 <li>Finalization and exit conditions (<code>finalizeDispatch</code>)</li>
 </ul>
@@ -405,33 +405,33 @@ VIPER_DISPATCH=threaded ./viper -run program.il
 <li>**Branch hints**: <code>[[likely]]</code> and <code>[[unlikely]]</code> attributes guide code layout for hot paths.</li>
 </ul>
 <ol>
-<li>**Zero-cost hooks**: <code>VIPER_VM_DISPATCH_BEFORE</code> and <code>VIPER_VM_DISPATCH_AFTER</code> macros</li>
+<li>**Zero-cost hooks**: <code>ZANNA_VM_DISPATCH_BEFORE</code> and <code>ZANNA_VM_DISPATCH_AFTER</code> macros</li>
 </ul>
-<p>compile to nothing when disabled. When opcode counting is enabled (<code>VIPER_VM_OPCOUNTS=1</code>),</p>
+<p>compile to nothing when disabled. When opcode counting is enabled (<code>ZANNA_VM_OPCOUNTS=1</code>),</p>
 <p>the counter increment is gated by a runtime flag (<code>config.enableOpcodeCounts</code>).</p>
 <ol>
-<li>**Efficient polling**: <code>VIPER_VM_DISPATCH_AFTER</code> only increments the poll counter when</li>
+<li>**Efficient polling**: <code>ZANNA_VM_DISPATCH_AFTER</code> only increments the poll counter when</li>
 </ul>
 <p>polling is active (<code>interruptEveryN &gt; 0</code>), avoiding wasted cycles in the common case.</p>
 <h3 id="instrumentation-hooks">Instrumentation Hooks</h3>
 <p>The VM provides compile-time configurable hooks for profiling and embedding:</p>
 <pre><code data-lang="cpp">
 // In VMConfig.hpp - define before including VM headers
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) \
+#define ZANNA_VM_DISPATCH_BEFORE(ST, OPCODE) \
     do { myProfiler.onInstruction(ST, OPCODE); } while(0)
 
-#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE) \
+#define ZANNA_VM_DISPATCH_AFTER(ST, OPCODE) \
     do { myProfiler.afterInstruction(ST, OPCODE); } while(0)
 </code></pre>
 <p><strong>Predefined behavior:</strong></p>
 <ul>
-<li><code>VIPER_VM_DISPATCH_BEFORE</code>: Increments per-opcode counters when <code>VIPER_VM_OPCOUNTS=1</code></li>
-<li><code>VIPER_VM_DISPATCH_AFTER</code>: Calls poll callback every N instructions if configured</li>
+<li><code>ZANNA_VM_DISPATCH_BEFORE</code>: Increments per-opcode counters when <code>ZANNA_VM_OPCOUNTS=1</code></li>
+<li><code>ZANNA_VM_DISPATCH_AFTER</code>: Calls poll callback every N instructions if configured</li>
 </ul>
 <h3 id="per-opcode-counters">Per-Opcode Counters</h3>
 <p>Enable compile-time opcode counting:</p>
 <pre><code data-lang="cpp">
-#define VIPER_VM_OPCOUNTS 1  // Default: enabled
+#define ZANNA_VM_OPCOUNTS 1  // Default: enabled
 </code></pre>
 <p>Access counters at runtime:</p>
 <pre><code data-lang="cpp">
@@ -442,21 +442,21 @@ for (auto [opcode, count] : vm.getNonZeroOpcodeCounts()) {
     std::cout &lt;&lt; opcodeMnemonic(opcode) &lt;&lt; &quot;: &quot; &lt;&lt; count &lt;&lt; &quot;\n&quot;;
 }
 </code></pre>
-<p>Disable via environment: <code>VIPER_ENABLE_OPCOUNTS=0</code></p>
+<p>Disable via environment: <code>ZANNA_ENABLE_OPCOUNTS=0</code></p>
 <h3 id="benchmark-harness">Benchmark Harness</h3>
-<p>The <code>viper bench</code> command provides a built-in benchmark harness for comparing dispatch strategies:</p>
+<p>The <code>zanna bench</code> command provides a built-in benchmark harness for comparing dispatch strategies:</p>
 <pre><code data-lang="sh">
 # Run all three strategies with 3 iterations each
-viper bench program.il
+zanna bench program.il
 
 # Run a specific strategy with 5 iterations
-viper bench program.il -n 5 --table
+zanna bench program.il -n 5 --table
 
 # Run multiple files with JSON output
-viper bench file1.il file2.il --json
+zanna bench file1.il file2.il --json
 
 # Limit execution with max-steps
-viper bench program.il --max-steps 1000000
+zanna bench program.il --max-steps 1000000
 </code></pre>
 <p><strong>Output format (text):</strong></p>
 <pre><code data-lang="text">
@@ -596,14 +596,14 @@ class RuntimeBridge {
 </code></pre>
 <p><strong>Call flow:</strong></p>
 <ol>
-<li>IL <code>call @Viper.Terminal.PrintI64(args)</code> instruction (or legacy <code>@rt_*</code> alias)</li>
+<li>IL <code>call @Zanna.Terminal.PrintI64(args)</code> instruction (or legacy <code>@rt_*</code> alias)</li>
 <li>Handler evaluates arguments into <code>Slot</code> vector</li>
 <li><code>RuntimeBridge::call()</code> looks up function descriptor by canonical name</li>
 <li>C function is invoked with marshalled arguments</li>
 <li>Return value is marshalled back to <code>Slot</code></li>
 </ul>
-<p><strong>Note:</strong> The runtime supports both canonical <code>@Viper.<em></code> names and legacy <code>@rt_</em></code> aliases when built with</p>
-<p><code>-DVIPER_RUNTIME_NS_DUAL=ON</code>.</p>
+<p><strong>Note:</strong> The runtime supports both canonical <code>@Zanna.<em></code> names and legacy <code>@rt_</em></code> aliases when built with</p>
+<p><code>-DZANNA_RUNTIME_NS_DUAL=ON</code>.</p>
 <h3 id="runtime-call-context">Runtime Call Context</h3>
 <p>Tracks active runtime call for trap diagnostics:</p>
 <pre><code data-lang="cpp">
@@ -727,7 +727,7 @@ src/vm/
 │
 ├── control_flow.hpp/cpp        # Control flow utilities
 ├── tco.hpp/cpp                 # Tail-call optimization
-├── ViperStringHandle.hpp       # RAII string handle wrapper
+├── ZannaStringHandle.hpp       # RAII string handle wrapper
 │
 ├── int_ops_arith.cpp           # Integer arithmetic implementations
 ├── int_ops_cmp.cpp             # Integer comparison implementations
@@ -735,7 +735,7 @@ src/vm/
 ├── fp_ops.cpp                  # Floating-point implementations
 ├── mem_ops.cpp                 # Memory operation implementations
 │
-├── ThreadsRuntime.cpp          # Viper.Threads runtime support
+├── ThreadsRuntime.cpp          # Zanna.Threads runtime support
 │
 └── debug/                      # Debug and tracing subsystem
     └── *.cpp                   # Debug controller, trace, scripting
@@ -780,7 +780,7 @@ src/vm/
 <p>---</p>
 <h2 id="performance-features">Performance Features</h2>
 <h3 id="tail-call-optimization">Tail-Call Optimization</h3>
-<p>Enabled by default (<code>VIPER_VM_TAILCALL</code>):</p>
+<p>Enabled by default (<code>ZANNA_VM_TAILCALL</code>):</p>
 <pre><code data-lang="cpp">
 // Detect tail call
 if (instr.isTailCall()) {
@@ -790,9 +790,9 @@ if (instr.isTailCall()) {
 </code></pre>
 <p>Eliminates stack growth for recursive functions.</p>
 <h3 id="opcode-counting">Opcode Counting</h3>
-<p>Compile-time flag (<code>VIPER_VM_OPCOUNTS</code>):</p>
+<p>Compile-time flag (<code>ZANNA_VM_OPCOUNTS</code>):</p>
 <pre><code data-lang="cpp">
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
 std::array&lt;uint64_t, kNumOpcodes&gt; opCounts_;
 #endif
 </code></pre>
@@ -805,11 +805,11 @@ vm.resetOpcodeCounts();
 </code></pre>
 <h3 id="execution-context-optimization">Execution Context Optimization</h3>
 <p>The VM execution context has been optimized to minimize overhead on the hot path:</p>
-<p><strong>ExecState-based dispatch:</strong> The dispatch macros (<code>VIPER_VM_DISPATCH_BEFORE</code>, <code>VIPER_VM_DISPATCH_AFTER</code>) use</p>
+<p><strong>ExecState-based dispatch:</strong> The dispatch macros (<code>ZANNA_VM_DISPATCH_BEFORE</code>, <code>ZANNA_VM_DISPATCH_AFTER</code>) use</p>
 <p><code>ExecState</code> directly instead of <code>VMContext</code>, avoiding an extra indirection per instruction:</p>
 <pre><code data-lang="cpp">
 // Hot path uses ExecState directly
-VIPER_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&amp;
+ZANNA_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&amp;
 
 // ExecState.config includes all per-instruction configuration
 struct PollConfig {
@@ -843,7 +843,7 @@ struct ExecStackGuard {
 <h3 id="inline-string-literal-cache">Inline String Literal Cache</h3>
 <p>Caches runtime handles for string literals:</p>
 <pre><code data-lang="cpp">
-std::unordered_map&lt;std::string_view, ViperStringHandle, ...&gt; inlineLiteralCache;
+std::unordered_map&lt;std::string_view, ZannaStringHandle, ...&gt; inlineLiteralCache;
 </code></pre>
 <p><strong>Optimizations:</strong></p>
 <ul>
@@ -915,11 +915,11 @@ vm.setPollConfig(everyN, [](VM&amp; vm) {
 </ul>
 <p>---</p>
 <h2 id="further-reading">Further Reading</h2>
-<p><strong>Viper Documentation:</strong></p>
+<p><strong>Zanna Documentation:</strong></p>
 <ul>
 <li><strong>[IL Guide](il-guide.md)</strong> — IL specification and semantics</li>
 <li><strong>[IL Reference](il-reference.md)</strong> — Complete opcode catalog</li>
-<li><strong>[Getting Started](getting-started.md)</strong> — Build and run Viper</li>
+<li><strong>[Getting Started](getting-started.md)</strong> — Build and run Zanna</li>
 </ul>
 <p><strong>Developer Documentation</strong> (in <code>/devdocs</code>):**</p>
 <ul>
@@ -938,28 +938,28 @@ vm.setPollConfig(everyN, [](VM&amp; vm) {
 <p>This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.</p>
 <h2 id="dispatch-modes">Dispatch Modes</h2>
 <ul>
-<li>Env <code>VIPER_DISPATCH</code>:</li>
+<li>Env <code>ZANNA_DISPATCH</code>:</li>
 <li><code>table</code>: function-table dispatch via <code>executeOpcode</code></li>
 <li><code>switch</code>: inline switch dispatch with generated handlers</li>
-<li><code>threaded</code>: computed goto (if built with <code>VIPER_VM_THREADED</code>)</li>
+<li><code>threaded</code>: computed goto (if built with <code>ZANNA_VM_THREADED</code>)</li>
 </ul>
 <ul>
-<li>Env <code>VIPER_ENABLE_OPCOUNTS</code> (default on): enable per-opcode execution counters. You can query counts via</li>
+<li>Env <code>ZANNA_ENABLE_OPCOUNTS</code> (default on): enable per-opcode execution counters. You can query counts via</li>
 </ul>
-<p><code>Runner::opcodeCounts()</code> or the <code>--count</code> flag in <code>viper -run</code>.</p>
+<p><code>Runner::opcodeCounts()</code> or the <code>--count</code> flag in <code>zanna -run</code>.</p>
 <ul>
-<li>Env <code>VIPER_INTERRUPT_EVERY_N</code>: periodically invoke a host callback every N instructions (see</li>
+<li>Env <code>ZANNA_INTERRUPT_EVERY_N</code>: periodically invoke a host callback every N instructions (see</li>
 </ul>
 <p><code>RunConfig::interruptEveryN</code>).</p>
 <h2 id="switch-backend-heuristics">Switch Backend Heuristics</h2>
 <p>Switch dispatch selects a backend per instruction. Heuristics can be tuned via env:</p>
 <ul>
-<li><code>VIPER_SWITCH_DENSE_MAX_RANGE</code> (default <code>4096</code>): maximum value range to consider a dense jump table.</li>
-<li><code>VIPER_SWITCH_DENSE_MIN_DENSITY</code> (default <code>0.60</code>): minimum case density for dense backend.</li>
-<li><code>VIPER_SWITCH_HASH_MIN_CASES</code> (default <code>64</code>): minimum number of cases before hashing is considered.</li>
-<li><code>VIPER_SWITCH_HASH_MAX_DENSITY</code> (default <code>0.15</code>): maximum density to prefer hashed backend.</li>
+<li><code>ZANNA_SWITCH_DENSE_MAX_RANGE</code> (default <code>4096</code>): maximum value range to consider a dense jump table.</li>
+<li><code>ZANNA_SWITCH_DENSE_MIN_DENSITY</code> (default <code>0.60</code>): minimum case density for dense backend.</li>
+<li><code>ZANNA_SWITCH_HASH_MIN_CASES</code> (default <code>64</code>): minimum number of cases before hashing is considered.</li>
+<li><code>ZANNA_SWITCH_HASH_MAX_DENSITY</code> (default <code>0.15</code>): maximum density to prefer hashed backend.</li>
 </ul>
-<p>If <code>VIPER_SWITCH_MODE</code> is set to <code>dense|sorted|hashed|linear|auto</code>, it overrides the heuristic for all instructions.</p>
+<p>If <code>ZANNA_SWITCH_MODE</code> is set to <code>dense|sorted|hashed|linear|auto</code>, it overrides the heuristic for all instructions.</p>
 <h2 id="benchmarking">Benchmarking</h2>
 <p>Use the helper script to compare dispatch performance across modes:</p>
 <ul>
@@ -968,7 +968,7 @@ vm.setPollConfig(everyN, [](VM&amp; vm) {
 <p>Environment variables:</p>
 <ul>
 <li><code>IL_DIR</code> (default <code>examples/il/benchmarks</code>): directory of IL programs to benchmark (relative to repo root).</li>
-<li><code>ILC_BIN</code>: optional path to <code>viper</code>; otherwise auto-detected under <code>build/</code>.</li>
+<li><code>ILC_BIN</code>: optional path to <code>zanna</code>; otherwise auto-detected under <code>build/</code>.</li>
 <li><code>RUNS_PER_CASE</code> (default <code>5</code>): number of runs per (mode, program) pair.</li>
 </ul>
 <p>Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,</p>
@@ -977,14 +977,14 @@ vm.setPollConfig(everyN, [](VM&amp; vm) {
 <pre><code data-lang="bash">
 RUNS_PER_CASE=5 IL_DIR=&#x27;src/tests/il/e2e&#x27; scripts/vm_benchmark.sh
 </code></pre>
-<p>The script sets <code>VIPER_DEBUG_VM=1</code> so the VM prints the resolved dispatch kind, and <code>VIPER_ENABLE_OPCOUNTS=1</code> to capture</p>
+<p>The script sets <code>ZANNA_DEBUG_VM=1</code> so the VM prints the resolved dispatch kind, and <code>ZANNA_ENABLE_OPCOUNTS=1</code> to capture</p>
 <p>counts.</p>
 <h3 id="concurrency-model">Concurrency Model</h3>
 <p>Each <code>VM</code> instance is single‑threaded: only one host thread may execute within a given VM instance at a time. To</p>
 <p>parallelize at the <em>embedder</em> level, create one VM per host thread (each VM has its own program state).</p>
-<p>For <em>language-level</em> shared-memory threads (<code>Viper.Threads</code>), the VM spawns a new host thread and runs a new VM instance</p>
+<p>For <em>language-level</em> shared-memory threads (<code>Zanna.Threads</code>), the VM spawns a new host thread and runs a new VM instance</p>
 <p>that shares a single <code>VM::ProgramState</code> (shared globals + shared <code>RtContext</code>) with its parent. This preserves the “one</p>
-<p>host thread per VM instance” invariant while allowing a Viper program to share memory across its threads.</p>
+<p>host thread per VM instance” invariant while allowing a Zanna program to share memory across its threads.</p>
 <p>The active VM is tracked via a thread‑local guard (see <code>ActiveVMGuard</code> in <code>src/vm/VMContext.*</code>), which binds the VM and</p>
 <p>its runtime context for the duration of execution. In debug builds, attempting to activate a different VM while one is</p>
 <p>already active on the same thread triggers an assertion.</p>
@@ -994,9 +994,9 @@ RUNS_PER_CASE=5 IL_DIR=&#x27;src/tests/il/e2e&#x27; scripts/vm_benchmark.sh
 <p>available to both the VM and native backends. For the complete list see [runtime-api-complete.md](runtime-api-complete.md).</p>
 <h3 id="runtime-symbol-naming">Runtime symbol naming</h3>
 <ul>
-<li>Canonical entry points use dotted <code>Viper.*</code> names emitted by frontends (catalogued in <code>src/il/runtime/RuntimeSignatures.hpp</code>).</li>
+<li>Canonical entry points use dotted <code>Zanna.*</code> names emitted by frontends (catalogued in <code>src/il/runtime/RuntimeSignatures.hpp</code>).</li>
 <li>Native backends rewrite these to C symbols via <code>il::runtime::mapCanonicalRuntimeName</code> and the alias table in <code>src/il/runtime/RuntimeNameMap.hpp</code>.</li>
-<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
+<li>When built with <code>-DZANNA_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Zanna.*</code>.</li>
 </ul>
 <h3 id="math">Math</h3>
 <table><thead><tr>
@@ -1275,13 +1275,13 @@ RUNS_PER_CASE=5 IL_DIR=&#x27;src/tests/il/e2e&#x27; scripts/vm_benchmark.sh
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

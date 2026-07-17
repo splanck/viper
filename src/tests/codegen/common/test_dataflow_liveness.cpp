@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,9 +41,9 @@ static int gPass = 0;
 
 // ---------------------------------------------------------------------------
 
-using viper::codegen::ra::buildPredecessors;
-using viper::codegen::ra::DataflowResult;
-using viper::codegen::ra::solveBackwardDataflow;
+using zanna::codegen::ra::buildPredecessors;
+using zanna::codegen::ra::DataflowResult;
+using zanna::codegen::ra::solveBackwardDataflow;
 
 // ---------------------------------------------------------------------------
 // Test 1: Single straight-line block — no cross-block liveness.

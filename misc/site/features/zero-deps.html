@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zero Dependencies — Viper</title>
-  <meta name="description" content="Viper is built entirely from scratch with zero external dependencies. Custom assemblers, linkers, optimizer passes, and a 300-class runtime — every line is Viper's own.">
+  <title>Zero Dependencies — Zanna</title>
+  <meta name="description" content="Zanna is built entirely from scratch with zero external dependencies. Custom assemblers, linkers, optimizer passes, and a 300-class runtime — every line is Zanna's own.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -50,20 +50,20 @@
   <main class="page-main prose">
     <h1 id="overview">Zero Dependencies</h1>
 
-    <p>Viper has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt, no zlib. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
+    <p>Zanna has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt, no zlib. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
 
-    <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Viper complete control over its compilation pipeline, enables portability to unusual targets, and makes the entire system auditable and educational.</p>
+    <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Zanna complete control over its compilation pipeline, enables portability to unusual targets, and makes the entire system auditable and educational.</p>
 
-    <h2 id="what-we-replaced">What Typical Projects Use vs. What Viper Builds</h2>
+    <h2 id="what-we-replaced">What Typical Projects Use vs. What Zanna Builds</h2>
 
-    <p>Here's what a typical compiler or language runtime would pull in as external dependencies, and what Viper builds instead:</p>
+    <p>Here's what a typical compiler or language runtime would pull in as external dependencies, and what Zanna builds instead:</p>
 
     <table>
       <thead>
         <tr>
           <th>Subsystem</th>
           <th>Typical External Library</th>
-          <th>Viper</th>
+          <th>Zanna</th>
         </tr>
       </thead>
       <tbody>
@@ -71,7 +71,7 @@
         <tr><td>Linking</td><td>GNU ld, Apple ld, lld</td><td>Custom linker (ELF, Mach-O, PE)</td></tr>
         <tr><td>Object files</td><td>LLVM MC, binutils</td><td>Custom writers for 3 formats</td></tr>
         <tr><td>Optimization</td><td>LLVM passes</td><td>20+ custom IL optimizer passes</td></tr>
-        <tr><td>2D graphics</td><td>SDL2, SFML, DirectX</td><td>ViperGFX (Cocoa / X11 / Win32)</td></tr>
+        <tr><td>2D graphics</td><td>SDL2, SFML, DirectX</td><td>ZannaGFX (Cocoa / X11 / Win32)</td></tr>
         <tr><td>3D graphics</td><td>OGRE, bgfx, raylib</td><td>4 backends written from scratch (Metal, D3D11, OpenGL, software)</td></tr>
         <tr><td>Audio</td><td>OpenAL, PortAudio, miniaudio</td><td>Custom mixer (AudioQueue / ALSA / WASAPI)</td></tr>
         <tr><td>Audio codecs</td><td>libvorbis, libmp3lame, mpg123</td><td>Custom WAV/OGG-Vorbis/MP3 decoders + streaming</td></tr>
@@ -93,7 +93,7 @@
 
     <h2 id="assemblers">Custom Binary Encoders</h2>
 
-    <p>Viper doesn't call out to <code>as</code>, <code>nasm</code>, or LLVM to generate machine code. It has its own binary encoders that translate Machine IR directly into raw bytes:</p>
+    <p>Zanna doesn't call out to <code>as</code>, <code>nasm</code>, or LLVM to generate machine code. It has its own binary encoders that translate Machine IR directly into raw bytes:</p>
 
     <ul>
       <li><strong>x86-64 Encoder</strong> (1,451 LOC) &mdash; REX prefixes, ModR/M/SIB byte construction, displacement/immediate packing, RIP-relative addressing</li>
@@ -180,7 +180,7 @@
         <tr><td>Network</td><td>22</td><td>TCP, UDP, HTTP server &amp; client, WebSocket, TLS, DNS, SMTP, SSE, connection pool, rate limiter</td></tr>
         <tr><td>Crypto</td><td>10</td><td>AES, AES-GCM, SHA-2, HMAC, HKDF, PBKDF2, TLS, ECDSA, secure RNG</td></tr>
         <tr><td>Text</td><td>20</td><td>JSON, XML, YAML, TOML, CSV, Markdown, HTML, Regex, templates</td></tr>
-        <tr><td>I/O</td><td>16</td><td>File, Directory, Archive, Compress, Streaming, Watcher, asset embedding (VPA)</td></tr>
+        <tr><td>I/O</td><td>16</td><td>File, Directory, Archive, Compress, Streaming, Watcher, asset embedding (ZPAK)</td></tr>
         <tr><td>Threading</td><td>18</td><td>Async, channels, futures, pools, concurrent collections</td></tr>
         <tr><td>Game</td><td>22</td><td>Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements, entity system, AI behaviors, level loading, scene management</td></tr>
         <tr><td>Game.Physics2D</td><td>6</td><td>Rigid bodies, joints (hinge, spring, rope, distance)</td></tr>
@@ -219,10 +219,10 @@
     <p>When a bug appears in the linker, the optimizer, or the runtime &mdash; we fix it directly. No waiting for upstream releases, no version conflicts, no ABI compatibility concerns.</p>
 
     <h3>Portability</h3>
-    <p>Viper can target platforms where external libraries don't exist &mdash; the entire toolchain needs nothing beyond a C/C++ compiler and the host's libc, something impossible if it depended on LLVM or SDL.</p>
+    <p>Zanna can target platforms where external libraries don't exist &mdash; the entire toolchain needs nothing beyond a C/C++ compiler and the host's libc, something impossible if it depended on LLVM or SDL.</p>
 
     <h3>Auditability</h3>
-    <p>Every line of code in Viper's output binary was written by the Viper project. No hidden transitive dependencies, no supply chain concerns for the compiler itself.</p>
+    <p>Every line of code in Zanna's output binary was written by the Zanna project. No hidden transitive dependencies, no supply chain concerns for the compiler itself.</p>
 
     <h3>Educational Value</h3>
     <p>Students and hobbyists can read the complete source of a working assembler, linker, optimizer, and runtime. There's no black box.</p>
@@ -266,13 +266,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

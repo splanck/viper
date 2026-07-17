@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_action.h
@@ -35,14 +35,14 @@ extern "C" {
 //=========================================================================
 
 typedef enum {
-    VIPER_AXIS_LEFT_X = 0,
-    VIPER_AXIS_LEFT_Y = 1,
-    VIPER_AXIS_RIGHT_X = 2,
-    VIPER_AXIS_RIGHT_Y = 3,
-    VIPER_AXIS_LEFT_TRIGGER = 4,
-    VIPER_AXIS_RIGHT_TRIGGER = 5,
-    VIPER_AXIS_MAX = 6,
-} viper_axis_t;
+    ZANNA_AXIS_LEFT_X = 0,
+    ZANNA_AXIS_LEFT_Y = 1,
+    ZANNA_AXIS_RIGHT_X = 2,
+    ZANNA_AXIS_RIGHT_Y = 3,
+    ZANNA_AXIS_LEFT_TRIGGER = 4,
+    ZANNA_AXIS_RIGHT_TRIGGER = 5,
+    ZANNA_AXIS_MAX = 6,
+} zanna_axis_t;
 
 //=========================================================================
 // Action System Lifecycle
@@ -97,7 +97,7 @@ int8_t rt_action_remove(rt_string name);
 
 /// @brief Bind a keyboard key to a button action.
 /// @param action Action name.
-/// @param key Key code (VIPER_KEY_*).
+/// @param key Key code (ZANNA_KEY_*).
 /// @return 1 on success, 0 if action not found or is an axis action.
 int8_t rt_action_bind_key(rt_string action, int64_t key);
 
@@ -120,7 +120,7 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key);
 
 /// @brief Bind a mouse button to a button action.
 /// @param action Action name.
-/// @param button Mouse button (VIPER_MOUSE_BUTTON_*).
+/// @param button Mouse button (ZANNA_MOUSE_BUTTON_*).
 /// @return 1 on success, 0 if action not found or is an axis action.
 int8_t rt_action_bind_mouse(rt_string action, int64_t button);
 
@@ -161,7 +161,7 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity);
 /// @brief Bind a gamepad button to a button action.
 /// @param action Action name.
 /// @param pad_index Controller index (0-3), or -1 for any controller.
-/// @param button Gamepad button (VIPER_PAD_*).
+/// @param button Gamepad button (ZANNA_PAD_*).
 /// @return 1 on success, 0 if action not found or is an axis action.
 int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button);
 
@@ -175,7 +175,7 @@ int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t 
 /// @brief Bind a gamepad axis to an axis action.
 /// @param action Action name.
 /// @param pad_index Controller index (0-3), or -1 for any controller.
-/// @param axis Axis constant (VIPER_AXIS_*).
+/// @param axis Axis constant (ZANNA_AXIS_*).
 /// @param scale Multiplier for axis value (use -1.0 to invert).
 /// @return 1 on success, 0 if action not found or is not an axis action.
 int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <cstdio>
 #include <string>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief A raw message read from or written to the transport.
 struct RawMessage {
@@ -96,4 +96,4 @@ class LspTransport : public Transport {
 /// @brief Set stdin/stdout to binary mode on Windows (no-op on Unix).
 void platformInitStdio();
 
-} // namespace viper::server
+} // namespace zanna::server

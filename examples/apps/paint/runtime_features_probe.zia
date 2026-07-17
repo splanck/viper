@@ -9,8 +9,8 @@
 // runtime_features_probe.zia - Non-GUI smoke coverage for Paint runtime helpers
 module runtime_features_probe;
 
-bind Viper.Core.Diagnostics as Diag;
-bind Viper.Terminal;
+bind Zanna.Core.Diagnostics as Diag;
+bind Zanna.Terminal;
 
 bind "./canvas";
 bind "./history";

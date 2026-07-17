@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTCsvTests.cpp
-// Purpose: Tests for Viper.Data.Csv parsing and formatting.
+// Purpose: Tests for Zanna.Data.Csv parsing and formatting.
 //
 //===----------------------------------------------------------------------===//
 
@@ -451,7 +451,7 @@ static void test_is_valid_reports_malformed_without_trapping() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Data.Csv Tests ===\n\n");
+    printf("=== Zanna.Data.Csv Tests ===\n\n");
 
     // ParseLine tests
     test_parse_line_simple();

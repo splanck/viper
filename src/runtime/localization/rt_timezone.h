@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 // Ownership/Lifetime:
 //   - TimeZone handles point at static runtime data and must not be freed.
 //   - Returned strings are newly allocated rt_string values.
-// Links: src/runtime/localization/rt_timezone.c, docs/viperlib/time.md
+// Links: src/runtime/localization/rt_timezone.c, docs/zannalib/time.md
 //
 //===----------------------------------------------------------------------===//
 

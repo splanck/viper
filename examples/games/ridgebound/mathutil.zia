@@ -6,7 +6,7 @@
 // module bind just this file.
 module mathutil;
 
-bind Viper.Math;
+bind Zanna.Math;
 
 func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
     return (((r * 256) + g) * 256 + b) * 256 + a;

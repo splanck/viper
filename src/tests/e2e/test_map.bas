@@ -1,4 +1,4 @@
-' Test Viper.Collections.Map infrastructure
+' Test Zanna.Collections.Map infrastructure
 ' Note: Full BASIC Map integration pending frontend runtime lookup
 
 ' Test hash map concepts with simulated behavior

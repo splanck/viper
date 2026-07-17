@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Button widget for Viper's TUI framework.
+// This file declares the Button widget for Zanna's TUI framework.
 // Button displays a labeled interactive element with a border that can
 // be activated by pressing Enter when focused.
 //
@@ -31,7 +31,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Interactive button widget with border, label, and activation callback.
 /// @details Renders a bordered rectangle with centered label text. When focused,
@@ -64,4 +64,4 @@ class Button : public ui::Widget {
     const style::Theme &theme_;
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

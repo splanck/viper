@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "ArithSimplify.hpp"
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Rewrite @p instr to @c "XOR reg, reg" (the canonical zero idiom).
 /// @details Used by the @c MOVri-zero rewrite to take advantage of the fact
@@ -161,4 +161,4 @@ bool tryStrengthReduction(std::vector<MInstr> &instrs,
     return true;
 }
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

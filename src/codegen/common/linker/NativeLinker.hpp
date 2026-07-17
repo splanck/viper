@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Options for the native linker.
 struct NativeLinkerOptions {
@@ -65,4 +65,4 @@ struct NativeLinkerOptions {
 /// @return 0 on success, non-zero on failure.
 int nativeLink(const NativeLinkerOptions &opts, std::ostream &out, std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

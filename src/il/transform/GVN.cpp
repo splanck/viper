@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -143,8 +143,8 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 /// @param changed Output flag set true if any instruction is removed.
 void visitBlock(Function &F,
                 BasicBlock *B,
-                const viper::analysis::DomTree &DT,
-                viper::analysis::BasicAA &AA,
+                const zanna::analysis::DomTree &DT,
+                zanna::analysis::BasicAA &AA,
                 const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder,
                 State state,
                 bool &changed) {
@@ -155,7 +155,7 @@ void visitBlock(Function &F,
         if (I.op == Opcode::Load && I.result && !I.operands.empty() &&
             isLoadKnownNonTrapping(F, I)) {
             const Value &ptr = I.operands[0];
-            auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(I.type);
             LoadKey key{ptr, I.type.kind, loadSize};
 
             // Try exact match first
@@ -164,7 +164,7 @@ void visitBlock(Function &F,
                 for (auto avail = it->second.rbegin(); avail != it->second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
+                    zanna::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
@@ -177,13 +177,13 @@ void visitBlock(Function &F,
                 if (kv.first.type != key.type)
                     continue;
                 if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) !=
-                    viper::analysis::AliasResult::MustAlias) {
+                    zanna::analysis::AliasResult::MustAlias) {
                     continue;
                 }
                 for (auto avail = kv.second.rbegin(); avail != kv.second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
+                    zanna::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     replaced = true;
@@ -204,10 +204,10 @@ void visitBlock(Function &F,
         // Memory clobber: stores or other writes invalidate relevant loads
         if (I.op == Opcode::Store && I.operands.size() >= 2) {
             const Value &stPtr = I.operands[0];
-            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            auto storeSize = zanna::analysis::BasicAA::typeSizeBytes(I.type);
             for (auto it = state.loads.begin(); it != state.loads.end();) {
                 if (AA.alias(it->first.ptr, stPtr, it->first.size, storeSize) !=
-                    viper::analysis::AliasResult::NoAlias)
+                    zanna::analysis::AliasResult::NoAlias)
                     it = state.loads.erase(it);
                 else
                     ++it;
@@ -218,8 +218,8 @@ void visitBlock(Function &F,
 
         if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
             auto mr = AA.modRef(I);
-            if (mr != viper::analysis::ModRefResult::NoModRef &&
-                mr != viper::analysis::ModRefResult::Ref) {
+            if (mr != zanna::analysis::ModRefResult::NoModRef &&
+                mr != zanna::analysis::ModRefResult::Ref) {
                 state.loads.clear();
             }
             ++idx;
@@ -245,7 +245,7 @@ void visitBlock(Function &F,
                 for (auto avail = found->second.rbegin(); avail != found->second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
+                    zanna::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
@@ -291,8 +291,8 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
     // Query required analyses
     (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG,
                                                              function); // ensure available
-    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
-    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
+    auto &dom = analysis.getFunctionResult<zanna::analysis::DomTree>(kAnalysisDominators, function);
+    auto &aa = analysis.getFunctionResult<zanna::analysis::BasicAA>(kAnalysisBasicAA, function);
 
     bool changed = false;
 

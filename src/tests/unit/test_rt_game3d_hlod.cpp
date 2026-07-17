@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_canvas3d.h"
@@ -168,9 +168,9 @@ void set_center(void *stream, double x, double z) {
 bool test_bake_cell_proxy() {
     TEST("bakeCellProxy merges, simplifies to budget, and round-trips");
 
-    const char *cell_path = "/tmp/viper_g3d_hlod_cell.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_hlod_bake_cells.json";
-    std::remove("/tmp/viper_g3d_hlod_cell_proxy.vscn");
+    const char *cell_path = "/tmp/zanna_g3d_hlod_cell.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_hlod_bake_cells.json";
+    std::remove("/tmp/zanna_g3d_hlod_cell_proxy.vscn");
     EXPECT_TRUE(write_dense_cell_scene(cell_path, "hlod_cell_marker"), "dense fixture saves");
 
     char manifest[512];
@@ -223,9 +223,9 @@ bool test_bake_cell_proxy() {
 bool test_proxy_ring_blocking() {
     TEST("proxy ring: Unloaded -> ProxyResident -> Resident with no gap (blocking)");
 
-    const char *cell_path = "/tmp/viper_g3d_hlod_ring_cell.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_hlod_ring_cells.json";
-    std::remove("/tmp/viper_g3d_hlod_ring_cell_proxy.vscn");
+    const char *cell_path = "/tmp/zanna_g3d_hlod_ring_cell.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_hlod_ring_cells.json";
+    std::remove("/tmp/zanna_g3d_hlod_ring_cell_proxy.vscn");
     EXPECT_TRUE(write_dense_cell_scene(cell_path, "ring_cell_marker"), "fixture saves");
 
     /* Bake a proxy first (separate world), then mount a manifest that references it. */
@@ -255,7 +255,7 @@ bool test_proxy_ring_blocking() {
                   sizeof(manifest),
                   "{\"cells\":[{\"name\":\"ring\",\"path\":\"%s\",\"center\":[0,0,0],"
                   "\"radius\":8,\"bytes\":65536,"
-                  "\"proxy\":\"/tmp/viper_g3d_hlod_ring_cell_proxy.vscn\","
+                  "\"proxy\":\"/tmp/zanna_g3d_hlod_ring_cell_proxy.vscn\","
                   "\"proxyBytes\":16384}]}",
                   cell_path);
     EXPECT_TRUE(write_text_file(manifest_path, manifest), "proxy manifest writes");
@@ -320,14 +320,14 @@ bool test_proxy_ring_blocking() {
 bool test_proxy_ring_async() {
     TEST("proxy ring stages and swaps under worker-backed streaming");
 
-    const char *cell_path = "/tmp/viper_g3d_hlod_ring_cell.vscn"; /* reuse prior fixtures */
-    const char *manifest_path = "/tmp/viper_g3d_hlod_ring_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_hlod_ring_cell.vscn"; /* reuse prior fixtures */
+    const char *manifest_path = "/tmp/zanna_g3d_hlod_ring_cells.json";
     char manifest[768];
     std::snprintf(manifest,
                   sizeof(manifest),
                   "{\"cells\":[{\"name\":\"ringa\",\"path\":\"%s\",\"center\":[0,0,0],"
                   "\"radius\":8,\"bytes\":65536,"
-                  "\"proxy\":\"/tmp/viper_g3d_hlod_ring_cell_proxy.vscn\","
+                  "\"proxy\":\"/tmp/zanna_g3d_hlod_ring_cell_proxy.vscn\","
                   "\"proxyBytes\":16384}]}",
                   cell_path);
     EXPECT_TRUE(write_text_file(manifest_path, manifest), "manifest writes");
@@ -403,14 +403,14 @@ bool test_impostor_frames_install() {
 bool test_generate_impostors() {
     TEST("generateImpostors captures yaw strips for proxy-resident cells");
 
-    const char *cell_path = "/tmp/viper_g3d_hlod_ring_cell.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_hlod_ring_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_hlod_ring_cell.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_hlod_ring_cells.json";
     char manifest[768];
     std::snprintf(manifest,
                   sizeof(manifest),
                   "{\"cells\":[{\"name\":\"impo\",\"path\":\"%s\",\"center\":[0,0,0],"
                   "\"radius\":8,\"bytes\":65536,"
-                  "\"proxy\":\"/tmp/viper_g3d_hlod_ring_cell_proxy.vscn\","
+                  "\"proxy\":\"/tmp/zanna_g3d_hlod_ring_cell_proxy.vscn\","
                   "\"proxyBytes\":16384}]}",
                   cell_path);
     EXPECT_TRUE(write_text_file(manifest_path, manifest), "manifest writes");

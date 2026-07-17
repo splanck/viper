@@ -1,10 +1,10 @@
 module IniDemo;
-bind Viper.Terminal;
-bind Viper.Data.Ini as Ini;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Data.Ini as Ini;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Data.Ini API Audit ===");
+    Say("=== Zanna.Data.Ini API Audit ===");
 
     var iniText = "[database]\nhost=localhost\nport=5432\nname=mydb\n\n[server]\nhost=0.0.0.0\nport=8080\nworkers=4";
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Script: source_health_audit.sh
-# Purpose: Local source-health guardrails for high-ownership Viper subsystems.
+# Purpose: Local source-health guardrails for high-ownership Zanna subsystems.
 
 set -euo pipefail
 
@@ -141,11 +141,11 @@ manual_alloc_hotspot_count() {
     done < <(
         if [[ -n "$RG_BIN" ]]; then
             { "$RG_BIN" -n 'malloc|calloc|realloc|free|new |delete ' \
-                src/runtime src/bytecode src/tools/common/packaging src/tools/viper \
+                src/runtime src/bytecode src/tools/common/packaging src/tools/zanna \
                 -g '!*.md' </dev/null 2>/dev/null || true; }
         else
             { grep -R -n -E 'malloc|calloc|realloc|free|new |delete ' \
-                src/runtime src/bytecode src/tools/common/packaging src/tools/viper 2>/dev/null || true; }
+                src/runtime src/bytecode src/tools/common/packaging src/tools/zanna 2>/dev/null || true; }
         fi | cut -d: -f1 | sort | uniq -c | sort -nr
     )
     printf '%s\n' "$count"
@@ -164,7 +164,7 @@ fuzz_targets_missing_corpus() {
                 printf '  missing-corpus %s\n' "$target" >&2
             fi
         fi
-    done < <(sed -n -E 's/^[[:space:]]*viper_add_(3d_loader_)?fuzzer\((fuzz_[^[:space:]\)]+).*/\2/p' \
+    done < <(sed -n -E 's/^[[:space:]]*zanna_add_(3d_loader_)?fuzzer\((fuzz_[^[:space:]\)]+).*/\2/p' \
         src/tests/fuzz/CMakeLists.txt | sort -u)
     printf '%s\n' "$missing"
 }
@@ -252,7 +252,7 @@ metric_value() {
             graphics_stub_unclassified_count
             ;;
         graphics_disabled_test_markers)
-            rg_count 'requires_graphics_disabled|VIPER_GRAPHICS_DISABLED|graphics disabled' \
+            rg_count 'requires_graphics_disabled|ZANNA_GRAPHICS_DISABLED|graphics disabled' \
                 src/tests src/runtime
             ;;
         fuzz_targets_missing_corpus)
@@ -262,30 +262,30 @@ metric_value() {
             find src/tests/fuzz/corpus -type f ! -name '*.md' | wc -l | tr -d ' '
             ;;
         fuzz_harness_registrations)
-            rg_count 'viper_add_(3d_loader_)?fuzzer\(' src/tests/fuzz/CMakeLists.txt
+            rg_count 'zanna_add_(3d_loader_)?fuzzer\(' src/tests/fuzz/CMakeLists.txt
             ;;
         platform_skip_markers)
-            rg_count 'VIPER_PLATFORM_SKIP|SKIP:' src/tests tests examples scripts
+            rg_count 'ZANNA_PLATFORM_SKIP|SKIP:' src/tests tests examples scripts
             ;;
         platform_policy_allowlist_entries)
             rg_count '^[^#[:space:]]' scripts/platform_policy_allowlist.txt
             ;;
         raw_platform_macro_occurrences)
-            rg_count '(_WIN32|__APPLE__|__linux__)' src include viperide tests
+            rg_count '(_WIN32|__APPLE__|__linux__)' src include zannaide tests
             ;;
         mega_files_over_4000_lines)
-            file_line_count_over 4000 src include examples scripts cmake viperide tests
+            file_line_count_over 4000 src include examples scripts cmake zannaide tests
             ;;
         manual_alloc_hotspots_over_70)
             manual_alloc_hotspot_count 70
             ;;
         sanitizer_coverage_options)
-            rg_count 'IL_SANITIZE_ADDRESS|IL_SANITIZE_UNDEFINED|IL_SANITIZE_THREAD|VIPER_ENABLE_COVERAGE' \
+            rg_count 'IL_SANITIZE_ADDRESS|IL_SANITIZE_UNDEFINED|IL_SANITIZE_THREAD|ZANNA_ENABLE_COVERAGE' \
                 CMakeLists.txt
             ;;
         diagnostic_json_entrypoints)
             rg_count '--diagnostic-format|DiagnosticFormat::Json|--json' \
-                src/tools/viper src/tools/zia src/tools/vbasic src/tests/tools src/tests/unit
+                src/tools/zanna src/tools/zia src/tools/vbasic src/tests/tools src/tests/unit
             ;;
         mcp_tool_definitions)
             rg_count 'tools\.push_back' src/tools/lsp-common/McpHandler.cpp
@@ -311,30 +311,30 @@ metric_value() {
             ;;
         ide_basic_capability_gates)
             rg_count 'basicService\.name|basic semantic commands disabled|format unsupported basic' \
-                src/viperide/src
+                src/zannaide/src
             ;;
         ide_scheduler_capability_jobs)
             rg_count 'JOB_(DIAGNOSTIC|COMPLETION|HOVER|SIGNATURE)' \
-                src/viperide/src/editor
+                src/zannaide/src/editor
             ;;
         debug_adapter_protocol_markers)
             rg_count '@@VDBG@@|setBreakpoints|callStack|locals|continue|stepOver' \
-                src/tools/viper src/viperide/src/build
+                src/tools/zanna src/zannaide/src/build
             ;;
         packaging_verifier_entrypoints)
             rg_count 'verify.*Payload|verifyPEZipOverlayNestedPayload|PkgVerify' \
-                src/tools/common/packaging src/tools/viper
+                src/tools/common/packaging src/tools/zanna
             ;;
         packaging_negative_test_markers)
             rg_count 'reject|invalid|tamper|duplicate|uncovered|verify' \
                 src/tests/tools/PackageCliTests.cmake
             ;;
         todo_fixme_markers)
-            rg_count 'TODO|FIXME|HACK' src include viperide tests examples scripts
+            rg_count 'TODO|FIXME|HACK' src include zannaide tests examples scripts
             ;;
         raw_not_implemented_markers)
             rg_count 'not implemented|unimplemented|placeholder' \
-                src include viperide tests examples
+                src include zannaide tests examples
             ;;
         *)
             echo "error: unknown metric: $name" >&2
@@ -448,7 +448,7 @@ need_file src/codegen/x86_64/LowerILToMIR.hpp
 need_file src/tests/fuzz/CMakeLists.txt
 need_file src/tests/fuzz/corpus
 need_file src/tools/common/packaging/PkgVerify.cpp
-need_file src/viperide/src/editor/language_service.zia
+need_file src/zannaide/src/editor/language_service.zia
 
 if [[ "$MODE" == "self-test" ]]; then
     print_metrics >/dev/null

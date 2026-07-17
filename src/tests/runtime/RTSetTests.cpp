@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTSetTests.cpp
-// Purpose: Validate Viper.Collections.Set content-aware hashing and equality.
+// Purpose: Validate Zanna.Collections.Set content-aware hashing and equality.
 // Key invariants: Boxed values are compared by content, not pointer identity.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_box.h"
 #include "rt_seq.h"

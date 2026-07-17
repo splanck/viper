@@ -1,12 +1,12 @@
-// sparsearray_demo.zia - Comprehensive API audit for Viper.Collections.SparseArray
+// sparsearray_demo.zia - Comprehensive API audit for Zanna.Collections.SparseArray
 // Tests: New, Set, Get, Has, Remove, Len, Indices, Values, Clear
 
 module SparseArrayDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== SparseArray API Audit ===");

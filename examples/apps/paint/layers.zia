@@ -31,8 +31,8 @@
 // layers.zia - Layer-backed document storage for Paint
 module layers;
 
-bind Viper.Collections;
-bind Viper.Graphics;
+bind Zanna.Collections;
+bind Zanna.Graphics;
 
 bind "./config";
 

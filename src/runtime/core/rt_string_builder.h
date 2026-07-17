@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_string_builder.h
@@ -133,8 +133,8 @@ rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value);
 ///         other errors from reserve.
 rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 
-// --- Viper.Text.StringBuilder runtime bridge ---
-// These adapters implement the Viper.Text.StringBuilder object surface by
+// --- Zanna.Text.StringBuilder runtime bridge ---
+// These adapters implement the Zanna.Text.StringBuilder object surface by
 // operating on the embedded rt_string_builder stored inside the opaque
 // object (see rt_sb_bridge.c for the layout and construction helper).
 
@@ -152,7 +152,7 @@ int64_t rt_text_sb_get_length(void *sb);
 int64_t rt_text_sb_get_capacity(void *sb);
 
 /// @brief Append a runtime string and return the receiver for chaining.
-/// @details Matches the fluent API style of Viper.Text.StringBuilder. Appends
+/// @details Matches the fluent API style of Zanna.Text.StringBuilder. Appends
 ///          the string's bytes to the embedded builder and returns the same
 ///          object pointer.
 /// @param sb Opaque StringBuilder object pointer.

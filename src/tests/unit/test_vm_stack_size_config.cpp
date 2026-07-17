@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 
 #include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 #include <cassert>
 #include <cstdlib>
 #include <string>
@@ -75,7 +75,7 @@ static void runSmallStackOverflow() {
 
 /// Test 2: Small stack size triggers overflow on allocations that fit in default.
 static void testSmallStackOverflow() {
-    auto result = viper::tests::runIsolated(runSmallStackOverflow);
+    auto result = zanna::tests::runIsolated(runSmallStackOverflow);
     assert(result.trapped());
     bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Small stack should trap on large allocation");
@@ -105,16 +105,16 @@ static void runVerySmallStack() {
 
 /// Test 4: Very small stack (256 bytes) traps on any significant allocation.
 static void testVerySmallStack() {
-    auto result = viper::tests::runIsolated(runVerySmallStack);
+    auto result = zanna::tests::runIsolated(runVerySmallStack);
     assert(result.trapped());
     bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Very small stack should trap on 512-byte allocation");
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(runSmallStackOverflow);
-    viper::tests::registerChildFunction(runVerySmallStack);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(runSmallStackOverflow);
+    zanna::tests::registerChildFunction(runVerySmallStack);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     testLargeStackAllocation();

@@ -1,4 +1,4 @@
-' frozenset_demo.bas - Comprehensive API audit for Viper.Collections.FrozenSet
+' frozenset_demo.bas - Comprehensive API audit for Zanna.Collections.FrozenSet
 ' Tests: Empty, FromSeq, Len, IsEmpty, Has, Items, Union, Intersect,
 '        Diff, IsSubset, Equals
 
@@ -7,20 +7,20 @@ PRINT "=== FrozenSet API Audit ==="
 ' --- Empty ---
 PRINT "--- Empty ---"
 DIM empty AS OBJECT
-empty = Viper.Collections.FrozenSet.Empty()
+empty = Zanna.Collections.FrozenSet.Empty()
 PRINT empty.Count       ' 0
 PRINT empty.IsEmpty   ' 1
 
 ' --- FromSeq ---
 PRINT "--- FromSeq ---"
-DIM items AS Viper.Collections.Seq
-items = Viper.Collections.Seq.New()
+DIM items AS Zanna.Collections.Seq
+items = Zanna.Collections.Seq.New()
 items.Push("apple")
 items.Push("banana")
 items.Push("cherry")
 items.Push("apple")  ' duplicate
 DIM fs AS OBJECT
-fs = Viper.Collections.FrozenSet.FromSeq(items)
+fs = Zanna.Collections.FrozenSet.FromSeq(items)
 PRINT fs.Count          ' 3
 PRINT fs.IsEmpty      ' 0
 
@@ -38,13 +38,13 @@ PRINT all.Count             ' 3
 
 ' --- Union ---
 PRINT "--- Union ---"
-DIM items2 AS Viper.Collections.Seq
-items2 = Viper.Collections.Seq.New()
+DIM items2 AS Zanna.Collections.Seq
+items2 = Zanna.Collections.Seq.New()
 items2.Push("cherry")
 items2.Push("date")
 items2.Push("elderberry")
 DIM fs2 AS OBJECT
-fs2 = Viper.Collections.FrozenSet.FromSeq(items2)
+fs2 = Zanna.Collections.FrozenSet.FromSeq(items2)
 DIM united AS OBJECT
 united = fs.Union(fs2)
 PRINT united.Count          ' 5
@@ -66,31 +66,31 @@ PRINT diff.Has("cherry")  ' 0
 
 ' --- IsSubset ---
 PRINT "--- IsSubset ---"
-DIM subItems AS Viper.Collections.Seq
-subItems = Viper.Collections.Seq.New()
+DIM subItems AS Zanna.Collections.Seq
+subItems = Zanna.Collections.Seq.New()
 subItems.Push("apple")
 subItems.Push("banana")
 DIM subset AS OBJECT
-subset = Viper.Collections.FrozenSet.FromSeq(subItems)
+subset = Zanna.Collections.FrozenSet.FromSeq(subItems)
 PRINT subset.IsSubset(fs)    ' 1
 PRINT fs.IsSubset(subset)    ' 0
 
 ' --- Equals ---
 PRINT "--- Equals ---"
-DIM items3 AS Viper.Collections.Seq
-items3 = Viper.Collections.Seq.New()
+DIM items3 AS Zanna.Collections.Seq
+items3 = Zanna.Collections.Seq.New()
 items3.Push("banana")
 items3.Push("cherry")
 items3.Push("apple")
 DIM fs3 AS OBJECT
-fs3 = Viper.Collections.FrozenSet.FromSeq(items3)
+fs3 = Zanna.Collections.FrozenSet.FromSeq(items3)
 PRINT fs.Equals(fs3)      ' 1
 PRINT fs.Equals(fs2)      ' 0
 
 ' --- Empty equals empty ---
 PRINT "--- Empty equals empty ---"
-DIM e1 AS OBJECT = Viper.Collections.FrozenSet.Empty()
-DIM e2 AS OBJECT = Viper.Collections.FrozenSet.Empty()
+DIM e1 AS OBJECT = Zanna.Collections.FrozenSet.Empty()
+DIM e2 AS OBJECT = Zanna.Collections.FrozenSet.Empty()
 PRINT e1.Equals(e2)       ' 1
 
 PRINT "=== FrozenSet audit complete ==="

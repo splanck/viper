@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <sstream>
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Emit AArch64 assembly text for the entire module.
 /// @details Pipeline: validates @p module.ti, prints the rodata pool, then
@@ -73,4 +73,4 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

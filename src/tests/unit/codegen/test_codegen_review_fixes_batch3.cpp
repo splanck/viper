@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ TEST(CodegenReviewBatch3, MulToShlSkipsWhenFlagsConsumed) {
     // After peepholes, the IMUL must NOT be transformed to SHL because
     // the JCC reads the overflow flag which SHL sets differently.
 
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MFunction fn{};
     fn.name = "test_mul_flags";
@@ -87,7 +87,7 @@ TEST(CodegenReviewBatch3, MulToShlWorksWhenFlagsNotConsumed) {
     //   jcc .Lblock           (reads flags from CMP, not IMUL)
     // The IMUL CAN be transformed to SHL because CMP overwrites flags first.
 
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MFunction fn{};
     fn.name = "test_mul_no_flags";
@@ -131,7 +131,7 @@ TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel) {
     // conservatively skip the transformation (another block might branch
     // there expecting IMUL's flag state).
 
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MFunction fn{};
     fn.name = "test_mul_label_barrier";
@@ -170,7 +170,7 @@ TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel) {
 TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens) {
     // Verify that block labels containing hyphens are sanitized to prevent
     // the assembler from parsing them as subtraction operators.
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     const auto &target = darwinTarget();
     AsmEmitter emitter{target};
@@ -205,7 +205,7 @@ TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens) {
 
 TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized) {
     // Verify that branch targets referencing hyphenated labels are also sanitized.
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     const auto &target = darwinTarget();
     AsmEmitter emitter{target};
@@ -235,7 +235,7 @@ TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized) {
 }
 
 TEST(CodegenReviewBatch3, AArch64PostSchedulePeepholeRunsCleanupOnly) {
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     MFunction fn{};
     fn.name = "post_sched_cleanup";
@@ -262,8 +262,8 @@ TEST(CodegenReviewBatch3, AArch64PostSchedulePeepholeRunsCleanupOnly) {
 }
 
 TEST(CodegenReviewBatch3, AArch64BinaryEmitCanCoalesceFunctionSections) {
-    using namespace viper::codegen::aarch64;
-    using namespace viper::codegen::aarch64::passes;
+    using namespace zanna::codegen::aarch64;
+    using namespace zanna::codegen::aarch64::passes;
 
     AArch64Module module{};
     module.ti = &darwinTarget();
@@ -293,7 +293,7 @@ TEST(CodegenReviewBatch3, AArch64BinaryEmitCanCoalesceFunctionSections) {
 
 TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {
     // Verify conditional branch targets are also sanitized.
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     const auto &target = darwinTarget();
     AsmEmitter emitter{target};
@@ -327,6 +327,6 @@ TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

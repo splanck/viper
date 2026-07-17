@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -89,7 +89,7 @@ static inline int64_t rtg_mul_sat64(int64_t a, int64_t b) {
     return (int64_t)value;
 }
 
-/// @brief Clamp an int64 to the int32 range accepted by ViperGFX.
+/// @brief Clamp an int64 to the int32 range accepted by ZannaGFX.
 static inline int32_t rtg_clamp_i64_to_i32(int64_t value) {
     if (value > INT32_MAX)
         return INT32_MAX;
@@ -98,7 +98,7 @@ static inline int32_t rtg_clamp_i64_to_i32(int64_t value) {
     return (int32_t)value;
 }
 
-/// @brief Return whether an int64 can be passed to ViperGFX without narrowing.
+/// @brief Return whether an int64 can be passed to ZannaGFX without narrowing.
 static inline int8_t rtg_i64_fits_i32(int64_t value) {
     return value >= INT32_MIN && value <= INT32_MAX;
 }
@@ -282,7 +282,7 @@ static inline void rtg_hsl_to_rgb(
         *b = 255;
 }
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_action.h"
 #include "rt_font.h"
@@ -301,7 +301,7 @@ void rt_keyboard_clear_canvas_if_matches(void *canvas);
 void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 /// @brief Magic value used to reject accidental calls with non-Canvas objects.
-#define RT_CANVAS_MAGIC 0x564950455243414eLL /* "VIPERCAN" */
+#define RT_CANVAS_MAGIC 0x564950455243414eLL /* "ZANNACAN" */
 
 /// @brief Internal canvas wrapper structure.
 /// @details Contains the vptr (for future OOP support), a runtime magic guard,
@@ -309,7 +309,7 @@ void rt_mouse_clear_canvas_if_matches(void *canvas);
 typedef struct {
     void *vptr;              ///< VTable pointer (reserved for future use)
     int64_t magic;           ///< RT_CANVAS_MAGIC while this object is a live Canvas
-    vgfx_window_t gfx_win;   ///< ViperGFX window handle
+    vgfx_window_t gfx_win;   ///< ZannaGFX window handle
     int64_t should_close;    ///< Close request flag
     vgfx_event_t last_event; ///< Last polled event for retrieval
     char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
@@ -373,7 +373,7 @@ static inline int64_t rtg_scale_down_i64(int64_t physical, float scale) {
 
 /// @brief Return the coordinate scale the Canvas should use for drawing/input.
 /// @details Windowed Canvas drawing uses the platform HiDPI scale. In native
-///          fullscreen, ViperGFX resizes the framebuffer to the monitor; Canvas
+///          fullscreen, ZannaGFX resizes the framebuffer to the monitor; Canvas
 ///          keeps its designed logical size and scales draw/input coordinates to
 ///          that fullscreen framebuffer instead of exposing the monitor as a new
 ///          game resolution.
@@ -403,7 +403,7 @@ static inline float rt_canvas_effective_coord_scale(rt_canvas *canvas) {
 }
 
 /// @brief Push the canvas's logical coordinate scale and clip rect into the
-///        underlying ViperGFX window.
+///        underlying ZannaGFX window.
 /// @details Re-reads the window HiDPI scale, applies it as the coord scale, and
 ///          either sets or clears the GFX clip rectangle to mirror the canvas's
 ///          logical clip state. No-op when the canvas has no window.
@@ -509,13 +509,13 @@ static inline int8_t rt_canvas_clip_intersect_logical(
     return 1;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Blit a sub-rectangle of @p pixels_ptr to (dx,dy) with straight-alpha
 ///        compositing (internal; defined in rt_drawing.c). Region-cropped, blending
 ///        counterpart of rt_canvas_blit_region — used by the SpriteBatch fast path so
 ///        transparent sprite-sheet frames blend instead of overwriting. Declared
-///        outside the VIPER_ENABLE_GRAPHICS guard so translation units compiled
+///        outside the ZANNA_ENABLE_GRAPHICS guard so translation units compiled
 ///        without graphics (e.g. isolated contract tests that stub it) still see it.
 void rt_canvas_blit_region_alpha(void *canvas_ptr,
                                  int64_t dx,

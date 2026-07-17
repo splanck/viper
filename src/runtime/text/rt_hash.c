@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_hash.c
-// Purpose: Implements the Viper.Crypto.Hash runtime — MD5, SHA-1, SHA-256,
+// Purpose: Implements the Zanna.Crypto.Hash runtime — MD5, SHA-1, SHA-256,
 //          matching HMAC variants, CRC32, keyed SipHash-2-4, and fixed-time
 //          equality helpers for digest/MAC comparisons.
 //
@@ -1423,7 +1423,7 @@ static int8_t fixed_time_eq(const uint8_t *a, size_t a_len, const uint8_t *b, si
     return diff == 0 ? 1 : 0;
 }
 
-/// @brief Public Viper.Crypto.Hash.ConstantTimeEquals — fixed-time same-length string equality.
+/// @brief Public Zanna.Crypto.Hash.ConstantTimeEquals — fixed-time same-length string equality.
 /// @details Compares two `rt_string` payloads in time independent of the
 ///          first differing byte position, so an attacker timing the
 ///          comparison can't learn how many leading bytes of a guess were
@@ -1441,7 +1441,7 @@ int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
     return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
-/// @brief Public Viper.Crypto.Hash.ConstantTimeEqualsBytes — fixed-time same-length byte equality.
+/// @brief Public Zanna.Crypto.Hash.ConstantTimeEqualsBytes — fixed-time same-length byte equality.
 /// @details Same semantics as rt_hash_constant_time_equals but for raw byte
 ///          arrays. NULL is treated as an empty byte array; invalid non-empty
 ///          Bytes objects trap instead of being silently compared as empty.

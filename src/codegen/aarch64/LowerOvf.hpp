@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Expand overflow-checked arithmetic pseudo-opcodes into guarded sequences.
 ///
@@ -49,4 +49,4 @@ namespace viper::codegen::aarch64 {
 /// @param fn Machine IR function being rewritten in place.
 void lowerOverflowOps(MFunction &fn);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

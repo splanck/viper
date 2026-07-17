@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,10 +21,10 @@
 #include <algorithm>
 #include <string>
 
-using viper::tui::render::Renderer;
-using viper::tui::render::ScreenBuffer;
-using viper::tui::render::Style;
-using viper::tui::term::StringTermIO;
+using zanna::tui::render::Renderer;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::render::Style;
+using zanna::tui::term::StringTermIO;
 
 static int countChar(const std::string &s, char c) {
     return static_cast<int>(std::count(s.begin(), s.end(), c));
@@ -66,6 +66,6 @@ TEST(TUI, RendererMinimal) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -21,13 +21,13 @@ built, signed, and validated.
 
 Add `.github/workflows/windows-release-installer.yml` as a manual
 `workflow_dispatch` release workflow. It builds with the canonical Windows build
-script, enables ViperIDE packaging, creates a Windows toolchain installer with
-`viper install-package`, optionally signs from repository secrets, verifies the
+script, enables ZannaIDE packaging, creates a Windows toolchain installer with
+`zanna install-package`, optionally signs from repository secrets, verifies the
 artifact structurally, and uploads the installer artifact.
 
-Signing remains opt-in. PFX signing uses `VIPER_WINDOWS_SIGN_PFX_BASE64` and
-`VIPER_WINDOWS_SIGN_PASSWORD`; certificate-store signing can be supplied by setting
-`VIPER_WINDOWS_SIGN_THUMBPRINT` in the workflow environment or repository
+Signing remains opt-in. PFX signing uses `ZANNA_WINDOWS_SIGN_PFX_BASE64` and
+`ZANNA_WINDOWS_SIGN_PASSWORD`; certificate-store signing can be supplied by setting
+`ZANNA_WINDOWS_SIGN_THUMBPRINT` in the workflow environment or repository
 configuration.
 
 ## Consequences
@@ -37,7 +37,7 @@ configuration.
 - The workflow uses the repository build script instead of open-coded CMake calls,
   keeping release packaging aligned with local validation.
 - Unsigned artifacts remain supported for test builds; signed release artifacts use
-  the same `viper install-package --windows-sign` path as local release builds.
+  the same `zanna install-package --windows-sign` path as local release builds.
 
 ## Alternatives Considered
 

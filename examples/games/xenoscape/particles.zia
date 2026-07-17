@@ -19,7 +19,7 @@
 // *preset*: specific velocity, lifetime, colour, gravity,
 // fade-out settings for that effect.
 //
-// Viper's `Viper.Game.ParticleEmitter` is exactly that —
+// Zanna's `Zanna.Game.ParticleEmitter` is exactly that —
 // one emitter, configured by setter methods, fires a `Burst`
 // of N particles on demand.  We cache one emitter for the
 // entire game's lifetime and reconfigure it before each
@@ -65,8 +65,8 @@
 
 module particles;
 
-bind Viper.Graphics;
-bind Viper.Game.ParticleEmitter as PE;
+bind Zanna.Graphics;
+bind Zanna.Game.ParticleEmitter as PE;
 bind "./config";
 bind "./palette";
 

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/system/rt_pty.h
-// Purpose: Pseudo-terminal-backed child handles for Viper.System.Pty — an
+// Purpose: Pseudo-terminal-backed child handles for Zanna.System.Pty — an
 //          interactive terminal surface (merged ANSI output, resize) distinct
-//          from the pipe-based Viper.System.Process.
+//          from the pipe-based Zanna.System.Process.
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -33,7 +33,7 @@ extern "C" {
 void *rt_pty_open(
     rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows);
 
-/// @brief Open a PTY-backed child process and return a Viper.Result.
+/// @brief Open a PTY-backed child process and return a Zanna.Result.
 /// @details Returns `Ok(PtySession)` when the child session starts and
 ///          `Err(message)` when the platform lacks PTY support, startup fails,
 ///          or validation traps would have been raised by rt_pty_open().
@@ -43,7 +43,7 @@ void *rt_pty_open(
 /// @param env Seq of KEY=value strings, or NULL to inherit the environment.
 /// @param cols Initial terminal columns (clamped to [1,4096]; 0 -> 80).
 /// @param rows Initial terminal rows (clamped to [1,4096]; 0 -> 24).
-/// @return Opaque Viper.Result object containing a PTY session or error string.
+/// @return Opaque Zanna.Result object containing a PTY session or error string.
 void *rt_pty_open_result(
     rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows);
 

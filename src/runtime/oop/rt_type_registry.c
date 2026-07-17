@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_type_registry.c
 // Purpose: Implements the runtime type registry that stores class and interface
-//          metadata for Viper's OOP features. Supports class registration with
+//          metadata for Zanna's OOP features. Supports class registration with
 //          vtables, interface registration with slot counts, interface binding
 //          (itable association), and type-ID-based inheritance checks.
 //

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Zia language REPL adapter.
 /// @details Compiles each REPL input by building a synthetic Zia source file
@@ -162,4 +162,4 @@ class ZiaReplAdapter : public ReplAdapter {
     il::frontends::zia::CompletionEngine completionEngine_;
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

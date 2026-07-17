@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,12 +22,12 @@
 /// @file
 /// @brief In-process BASIC-to-IL golden test batch runner.
 /// @details The default CTest entry for BASIC-to-IL goldens uses this binary to
-///          compile every case without launching the `viper` executable for each
+///          compile every case without launching the `zanna` executable for each
 ///          file.  The old one-test-per-case CTest declarations remain available
-///          through `VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS`.
+///          through `ZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS`.
 
 #include "frontends/basic/BasicCompiler.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -116,9 +116,9 @@ void replaceAll(std::string &text, std::string_view needle, std::string_view rep
     return std::regex_replace(text, std::regex("^il [0-9]+\\.[0-9]+\\.[0-9]+"), "il VERSION");
 }
 
-/// @brief Normalize legacy runtime helper aliases to canonical Viper names.
+/// @brief Normalize legacy runtime helper aliases to canonical Zanna names.
 /// @details The BASIC lowering goldens accept either legacy `rt_*` helper names
-///          or the canonical `Viper.*` symbols while the runtime namespace
+///          or the canonical `Zanna.*` symbols while the runtime namespace
 ///          transition remains dual-published.  Bounds-check cases additionally
 ///          normalize `rt_diag_assert`.
 /// @param text IL text to normalize.
@@ -131,24 +131,24 @@ void replaceAll(std::string &text, std::string_view needle, std::string_view rep
     };
 
     const std::vector<AliasPair> aliases = {
-        {"rt_print_str", "Viper.Terminal.PrintStr"},
-        {"rt_print_i64", "Viper.Terminal.PrintI64"},
-        {"rt_print_f64", "Viper.Terminal.PrintF64"},
-        {"rt_str_substr", "Viper.String.Substring"},
-        {"rt_trap_string", "Viper.Diagnostics.Trap"},
-        {"rt_trap", "Viper.Diagnostics.Trap"},
-        {"rt_str_concat", "Viper.String.Concat"},
-        {"rt_input_line", "Viper.Terminal.ReadLine"},
-        {"rt_to_int", "Viper.Core.Convert.ToInt64"},
-        {"rt_to_double", "Viper.Core.Convert.ToDouble"},
-        {"rt_parse_int64", "Viper.Core.Parse.TryInt"},
-        {"rt_parse_double", "Viper.Core.Parse.TryDouble"},
-        {"rt_int_to_str", "Viper.Core.Convert.ToStringInt"},
-        {"rt_f64_to_str", "Viper.Core.Convert.ToStringDouble"},
-        {"rt_str_split_fields", "Viper.String.SplitFields"},
-        {"rt_str_i16_alloc", "Viper.String.FromI16"},
-        {"rt_str_i32_alloc", "Viper.String.FromI32"},
-        {"rt_str_f_alloc", "Viper.String.FromSingle"},
+        {"rt_print_str", "Zanna.Terminal.PrintStr"},
+        {"rt_print_i64", "Zanna.Terminal.PrintI64"},
+        {"rt_print_f64", "Zanna.Terminal.PrintF64"},
+        {"rt_str_substr", "Zanna.String.Substring"},
+        {"rt_trap_string", "Zanna.Diagnostics.Trap"},
+        {"rt_trap", "Zanna.Diagnostics.Trap"},
+        {"rt_str_concat", "Zanna.String.Concat"},
+        {"rt_input_line", "Zanna.Terminal.ReadLine"},
+        {"rt_to_int", "Zanna.Core.Convert.ToInt64"},
+        {"rt_to_double", "Zanna.Core.Convert.ToDouble"},
+        {"rt_parse_int64", "Zanna.Core.Parse.TryInt"},
+        {"rt_parse_double", "Zanna.Core.Parse.TryDouble"},
+        {"rt_int_to_str", "Zanna.Core.Convert.ToStringInt"},
+        {"rt_f64_to_str", "Zanna.Core.Convert.ToStringDouble"},
+        {"rt_str_split_fields", "Zanna.String.SplitFields"},
+        {"rt_str_i16_alloc", "Zanna.String.FromI16"},
+        {"rt_str_i32_alloc", "Zanna.String.FromI32"},
+        {"rt_str_f_alloc", "Zanna.String.FromSingle"},
     };
     for (const auto &alias : aliases) {
         replaceAll(
@@ -158,8 +158,8 @@ void replaceAll(std::string &text, std::string_view needle, std::string_view rep
                    "extern @" + std::string(alias.canonical));
     }
     if (includeDiagAssert) {
-        replaceAll(text, "@rt_diag_assert(", "@Viper.Diagnostics.Assert(");
-        replaceAll(text, "extern @rt_diag_assert", "extern @Viper.Diagnostics.Assert");
+        replaceAll(text, "@rt_diag_assert(", "@Zanna.Diagnostics.Assert(");
+        replaceAll(text, "extern @rt_diag_assert", "extern @Zanna.Diagnostics.Assert");
     }
     return text;
 }
@@ -328,7 +328,7 @@ void replaceAll(std::string &text, std::string_view needle, std::string_view rep
 }
 
 /// @brief Compile a BASIC file to serialized IL in-process.
-/// @details Mirrors `viper front basic -emit-il` for the pieces relevant to
+/// @details Mirrors `zanna front basic -emit-il` for the pieces relevant to
 ///          golden tests: it reads the file, invokes @ref compileBasic, prints
 ///          BASIC diagnostics on failure, and serializes the resulting module.
 /// @param sourcePath BASIC source file path.
@@ -439,7 +439,7 @@ void replaceAll(std::string &text, std::string_view needle, std::string_view rep
 /// @param test Case metadata.
 /// @return True when the case passes.
 [[nodiscard]] bool runCase(const TestCase &test) {
-    // `viper front basic -emit-il` enables bounds checks by default.
+    // `zanna front basic -emit-il` enables bounds checks by default.
     const bool boundsChecks = true;
     auto compiled = compileBasicToIl(test.basicPath, boundsChecks);
     if (!compiled) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 namespace {
 
@@ -191,8 +191,8 @@ AllocationResult LinearAllocator::run() {
 
     // Tier 1: pin the hottest phi/cross-block frame slots to callee-saved
     // registers so their loads and stores become register moves.
-    // VIPER_NO_GLOBAL_RA=1 disables the tier for triage.
-    if (std::getenv("VIPER_NO_GLOBAL_RA") == nullptr) {
+    // ZANNA_NO_GLOBAL_RA=1 disables the tier for triage.
+    if (std::getenv("ZANNA_NO_GLOBAL_RA") == nullptr) {
         assignPinnedSlots();
     }
 
@@ -221,7 +221,7 @@ void LinearAllocator::assignPinnedSlots() {
     for (std::size_t bi = 0; bi < blockCount; ++bi) {
         succs[bi] = liveness_.successors(bi);
     }
-    const std::vector<unsigned> loopDepth = viper::codegen::ra::computeLoopDepths(succs);
+    const std::vector<unsigned> loopDepth = zanna::codegen::ra::computeLoopDepths(succs);
 
     // Calls inside a loop defeat pinning: every callee activation (and every
     // iteration around the call) pays the enlarged prologue/epilogue for the
@@ -396,7 +396,7 @@ void LinearAllocator::assignPinnedSlots() {
         }
     }
 
-    if (std::getenv("VIPER_DEBUG_PINSLOTS")) {
+    if (std::getenv("ZANNA_DEBUG_PINSLOTS")) {
         std::fprintf(stderr, "[pin-slots] fn=%s\n", fn_.name.c_str());
         for (const auto &[off, entry] : ranked) {
             const bool pinnedG = pinnedSlotGPR_.count(off) != 0;
@@ -1402,4 +1402,4 @@ void LinearAllocator::recordCalleeSavedUsage() {
     }
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

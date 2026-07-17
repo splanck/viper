@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Windows Platform Backend
+// ZannaAUD Windows Platform Backend
 //
 // Implements audio output using WASAPI (Windows Audio Session API).
 // WASAPI is the modern low-level audio API on Windows (Vista and later),
@@ -25,7 +25,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Windows WASAPI audio backend for ViperAUD.
+/// @brief Windows WASAPI audio backend for ZannaAUD.
 
 #if defined(_WIN32)
 

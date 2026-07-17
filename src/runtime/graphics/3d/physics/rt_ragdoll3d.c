@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_ragdoll3d.h"
 #include "rt_animcontroller3d.h"
@@ -1134,4 +1134,4 @@ void rt_ragdoll3d_step(void *obj, double dt) {
         ragdoll3d_step_blend(ragdoll, dt);
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

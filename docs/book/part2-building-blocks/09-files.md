@@ -82,7 +82,7 @@ On Linux and Mac, the root is simply `/`:
 │   └── config.ini
 └── usr/
     └── bin/
-        └── viper
+        └── zanna
 ```
 
 On Windows, each drive has its own root (C:\, D:\, etc.):
@@ -97,8 +97,8 @@ C:\
 │       └── Pictures\
 │           └── vacation.jpg
 └── Program Files\
-    └── Viper\
-        └── viper.exe
+    └── Zanna\
+        └── zanna.exe
 ```
 
 ### Absolute Paths
@@ -109,21 +109,21 @@ An *absolute path* specifies the complete location of a file, starting from the 
 ```rust
 "/home/alice/Documents/report.txt"
 "/etc/config.ini"
-"/usr/bin/viper"
+"/usr/bin/zanna"
 ```
 
 **Windows examples:**
 ```rust
 "C:\\Users\\Alice\\Documents\\report.txt"
-"C:\\Program Files\\Viper\\viper.exe"
+"C:\\Program Files\\Zanna\\zanna.exe"
 ```
 
 Notice Windows uses backslashes (`\`), but since backslash is also the escape character in strings, you need to write `\\` to get a single backslash.
 
-**Good news:** Viper handles this automatically. You can use forward slashes everywhere, and Viper will convert them appropriately for the operating system:
+**Good news:** Zanna handles this automatically. You can use forward slashes everywhere, and Zanna will convert them appropriately for the operating system:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // This works on ALL operating systems
 var path = "C:/Users/Alice/Documents/report.txt";
@@ -169,7 +169,7 @@ If your program is running from `/home/alice/myprogram/`, then:
 The `Path` module helps work with paths safely:
 
 ```rust
-bind Viper.IO.Path as Path;
+bind Zanna.IO.Path as Path;
 
 var path = "/home/alice/documents/report.txt";
 
@@ -187,7 +187,7 @@ var full = Path.Join(dir, file);  // "/home/alice/documents/report.txt"
 Always use `Path.Join` instead of string concatenation:
 
 ```rust
-bind Viper.IO.Path as Path;
+bind Zanna.IO.Path as Path;
 
 // Bad: might produce "/home/alice//documents" or wrong separators
 var directory = "/home/alice";
@@ -214,8 +214,8 @@ If you're writing software that might run on different operating systems, keep t
 To get standard locations portably:
 
 ```rust
-bind Viper.System.Machine as Machine;
-bind Viper.IO.Dir as Dir;
+bind Zanna.System.Machine as Machine;
+bind Zanna.IO.Dir as Dir;
 
 var home = Machine.Home;        // User's home directory
 var temp = Machine.Temp;        // Temporary file directory
@@ -268,7 +268,7 @@ When an API exposes a long-lived file handle, closing it is crucial:
 3. Allows other programs to access the file
 4. Frees up system resources
 
-Viper's current `Viper.IO.File` helpers (`ReadAllText`, `WriteAllText`, `Append`, and related calls) open and close the file for each operation. If you use an API that gives you an explicit handle, close it when you're done. Failing to close file handles can cause:
+Zanna's current `Zanna.IO.File` helpers (`ReadAllText`, `WriteAllText`, `Append`, and related calls) open and close the file for each operation. If you use an API that gives you an explicit handle, close it when you're done. Failing to close file handles can cause:
 - Data loss (unflushed buffers)
 - Resource exhaustion (too many open files)
 - Files being locked (other programs can't access them)
@@ -285,7 +285,7 @@ When you open a file, you specify what you intend to do with it. This is called 
 Read mode opens an existing file for reading. The file must already exist — if it doesn't, you'll get an error.
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 var content = File.ReadAllText("data.txt");
 ```
@@ -297,7 +297,7 @@ The file is opened, read from beginning to end, and then closed automatically. Y
 Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText("output.txt", "Hello, World!");
 ```
@@ -309,7 +309,7 @@ File.WriteAllText("output.txt", "Hello, World!");
 Append mode adds data to the end of an existing file, or creates a new file if it doesn't exist. Existing content is preserved.
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.Append("log.txt", "New entry\n");
 ```
@@ -337,15 +337,15 @@ Let's explore file reading in detail, from simple to advanced techniques.
 The simplest approach loads the entire file into memory:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var content = File.ReadAllText("message.txt");
 Say(content);
 ```
 
 **What happens:**
-1. Viper opens `message.txt` for reading
+1. Zanna opens `message.txt` for reading
 2. Reads all bytes from beginning to end
 3. Converts bytes to a string
 4. Closes the file
@@ -360,8 +360,8 @@ Say(content);
 Often you want to process a file line by line. `ReadAllLines` returns a typed sequence of strings:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var lines = File.ReadAllLines("data.txt");
 
@@ -382,8 +382,8 @@ This is still loading everything at once, but having lines as separate strings i
 When line-by-line processing is clearer than working with one large string, use `ReadAllLines` and process the returned sequence:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var lines = File.ReadAllLines("huge.txt");
 
@@ -399,14 +399,14 @@ for line in lines {
 3. You process each line in order
 4. The file is closed automatically
 
-**When to use:** Files that fit comfortably in memory, but are naturally processed as records or lines. The current `Viper.IO.File` API is whole-file oriented; it does not expose explicit stream reader handles.
+**When to use:** Files that fit comfortably in memory, but are naturally processed as records or lines. The current `Zanna.IO.File` API is whole-file oriented; it does not expose explicit stream reader handles.
 
 ### Reading with a Position
 
 Sometimes you need to jump to a specific location:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 var bytes = File.ReadAllBytes("data.bin");
 
@@ -425,8 +425,8 @@ Writing is where things can go wrong in ways that lose data. Let's understand ho
 ### Simple Writing
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 var content = "Hello, File!\nThis is line two.\nAnd line three.";
 File.WriteAllText("output.txt", content);
@@ -434,7 +434,7 @@ Say("File written!");
 ```
 
 **What happens:**
-1. Viper checks if the file exists (if so, it will be overwritten!)
+1. Zanna checks if the file exists (if so, it will be overwritten!)
 2. Creates or opens the file for writing
 3. Writes all the bytes
 4. Closes the file
@@ -445,7 +445,7 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 ### Appending Data
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.Append("log.txt", "Event 1 occurred\n");
 File.Append("log.txt", "Event 2 occurred\n");
@@ -466,8 +466,8 @@ Append is safer than write because you can't accidentally erase data.
 For generated output, build the content first and then write it in one call:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Text.StringBuilder as SB;
+bind File = Zanna.IO.File;
+bind Zanna.Text.StringBuilder as SB;
 
 var builder = new SB();
 
@@ -490,7 +490,7 @@ File.WriteAllText("output.txt", builder.ToString());
 `WriteAllText`, `WriteAllBytes`, and `Append` open the file, perform the write, and close it before returning:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText("critical.txt", "Important data\n");
 File.Append("critical.txt", "More data\n");
@@ -522,7 +522,7 @@ Each byte represents a character code (usually ASCII or UTF-8).
 - Linux/Mac: `\n` (line feed, byte 10)
 - Windows: `\r\n` (carriage return + line feed, bytes 13 and 10)
 
-Viper handles common line-ending differences when you use `ReadAllLines` and `WriteAllText`.
+Zanna handles common line-ending differences when you use `ReadAllLines` and `WriteAllText`.
 
 ### What Are Binary Files?
 
@@ -535,8 +535,8 @@ If you open a binary file in Notepad, you see gibberish — because the bytes ar
 A simple example — storing numbers efficiently:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Collections.Bytes as Bytes;
+bind File = Zanna.IO.File;
+bind Zanna.Collections.Bytes as Bytes;
 
 // Store the number 1000000 as text: needs 7 bytes ("1000000")
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
@@ -570,9 +570,9 @@ var bytes = File.ReadAllBytes("number.bin");
 ### Working with Binary Files
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Collections.Bytes as Bytes;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Collections.Bytes as Bytes;
+bind Zanna.Terminal;
 
 // Writing binary data
 var data = new Bytes(4);
@@ -601,8 +601,8 @@ Binary file handling is more complex and usually requires understanding the spec
 Before reading, you might want to check if a file exists:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 if File.Exists("config.txt") {
     var config = File.ReadAllText("config.txt");
@@ -617,7 +617,7 @@ if File.Exists("config.txt") {
 There's a subtle issue with check-then-read:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 if File.Exists("data.txt") {
     // Another program could delete the file RIGHT HERE
@@ -630,8 +630,8 @@ Between checking and reading, another program (or user) could delete the file. T
 For critical code, consider using try-catch instead:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText("data.txt");
@@ -649,13 +649,13 @@ For most programs, the check-then-read approach is fine. Race conditions mainly 
 
 ## Working with Directories
 
-Files are organized in directories. Viper provides tools to work with them.
+Files are organized in directories. Zanna provides tools to work with them.
 
 ### Checking and Creating Directories
 
 ```rust
-bind Viper.IO.Dir as Dir;
-bind Viper.Terminal;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.Terminal;
 
 // Check if directory exists
 if Dir.Exists("saves") {
@@ -672,8 +672,8 @@ Dir.MakeAll("output/data/processed");
 ### Listing Directory Contents
 
 ```rust
-bind Viper.IO.Dir as Dir;
-bind Viper.Terminal;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.Terminal;
 
 // List all files in a directory
 var files = Dir.FilesSeq("data");
@@ -694,9 +694,9 @@ var all = Dir.ListSeq("documents");
 ### Practical Example: Finding All Text Files
 
 ```rust
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.Path as Path;
-bind Viper.Terminal;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.Path as Path;
+bind Zanna.Terminal;
 
 func findTextFiles(directory: String) {
     for entry in Dir.ListSeq(directory) {
@@ -726,7 +726,7 @@ Files are a major source of errors. The file might not exist. You might not have
 
 **File not found:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // The file doesn't exist
 var content = File.ReadAllText("nonexistent.txt");
@@ -735,7 +735,7 @@ var content = File.ReadAllText("nonexistent.txt");
 
 **Permission denied:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // You don't have permission to read/write this file
 var content = File.ReadAllText("/etc/shadow");
@@ -744,7 +744,7 @@ var content = File.ReadAllText("/etc/shadow");
 
 **Disk full:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // No space left on the storage device
 var massiveData = "very large content";
@@ -754,7 +754,7 @@ File.WriteAllText("huge.txt", massiveData);
 
 **Path is a directory:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Trying to read a directory as a file
 var content = File.ReadAllText("my_folder");
@@ -763,7 +763,7 @@ var content = File.ReadAllText("my_folder");
 
 **Invalid path:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Path contains invalid characters or is malformed
 var content = File.ReadAllText("file\0name.txt");
@@ -775,8 +775,8 @@ var content = File.ReadAllText("file\0name.txt");
 Never let file errors crash your program unexpectedly. Handle them:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func loadConfig() -> String {
     try {
@@ -802,8 +802,8 @@ func loadConfig() -> String {
 Don't show raw error messages to users. Translate them:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func openUserFile(path: String) -> String {
     try {
@@ -833,7 +833,7 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 ### The Danger of Direct Overwriting
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
 var newData = "replacement content";
@@ -847,7 +847,7 @@ If power fails, or your program crashes, or the disk has an error during the wri
 The professional approach:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func safeWrite(filename: String, content: String) {
     var tempFile = filename + ".tmp";
@@ -875,7 +875,7 @@ Why is this safer?
 For critical data, keep a backup:
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
@@ -895,8 +895,8 @@ If something goes wrong, the user still has their `.backup` file.
 
 **Confirm before overwriting:**
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func saveFile(filename: String, content: String) {
     if File.Exists(filename) {
@@ -914,7 +914,7 @@ func saveFile(filename: String, content: String) {
 
 **Generate unique names:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func uniqueFilename(base: String, ext: String) -> String {
     var filename = base + ext;
@@ -945,9 +945,9 @@ Programs often store settings in configuration files:
 ```rust
 module Config;
 
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
 
@@ -1024,8 +1024,8 @@ Recording events for debugging and auditing:
 ```rust
 module Logger;
 
-bind Viper.Time.DateTime as DateTime;
-bind File = Viper.IO.File;
+bind Zanna.Time.DateTime as DateTime;
+bind File = Zanna.IO.File;
 
 final LOG_FILE = "application.log";
 
@@ -1078,11 +1078,11 @@ Games need to persist player progress:
 ```rust
 module GameSave;
 
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.Path as Path;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.Path as Path;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 final SAVE_DIR = "saves";
 
@@ -1143,10 +1143,10 @@ func listSaves() -> List[Integer] {
 Exporting data for spreadsheets or other programs:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.String as Str;
-bind Viper.Terminal;
-bind Seq = Viper.Collections.Seq;
+bind File = Zanna.IO.File;
+bind Zanna.String as Str;
+bind Zanna.Terminal;
+bind Seq = Zanna.Collections.Seq;
 
 func escapeCSV(value: String) -> String {
     if value.Contains(",") || value.Contains("\"") {
@@ -1193,11 +1193,11 @@ func start() {
 Reading data from CSV files:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.String as Str;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.String as Str;
+bind Zanna.Terminal;
 
-func importFromCSV(filename: String) -> Viper.Collections.Seq {
+func importFromCSV(filename: String) -> Zanna.Collections.Seq {
     return File.ReadAllLines(filename);
 }
 
@@ -1223,9 +1223,9 @@ Let's build a full application that demonstrates proper file handling:
 ```rust
 module NoteKeeper;
 
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
@@ -1479,7 +1479,7 @@ This program demonstrates:
 
 **Zia**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Read
 var content = File.ReadAllText("file.txt");
@@ -1533,8 +1533,8 @@ BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR
 
 **Forgetting the file might not exist:**
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // Crashes if file doesn't exist
 var content = File.ReadAllText("maybe.txt");
@@ -1554,7 +1554,7 @@ try {
 
 **Overwriting when you meant to append:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText("log.txt", "Entry 1\n");
 File.WriteAllText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
@@ -1566,8 +1566,8 @@ File.Append("log.txt", "Entry 2\n");  // Both entries preserved
 
 **Hardcoding paths:**
 ```rust
-bind Viper.System.Machine as Machine;
-bind Viper.IO.Path as Path;
+bind Zanna.System.Machine as Machine;
+bind Zanna.IO.Path as Path;
 
 // Bad: only works on your machine
 var absoluteFile = "C:\\Users\\Alice\\Documents\\data.txt";
@@ -1582,8 +1582,8 @@ var documentsFile = Path.Join(home, "Documents/data.txt");
 
 **Expecting stream handles from whole-file APIs:**
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // The current File API does not expose openRead/openWrite stream handles.
 // Use whole-file helpers instead.
@@ -1595,7 +1595,7 @@ for line in lines {
 
 **Looking for a Flush method on whole-file writes:**
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 File.WriteAllText("important.txt", "Critical data\n");
 File.Append("important.txt", "More data\n");
@@ -1604,12 +1604,12 @@ File.Append("important.txt", "More data\n");
 
 **Not handling paths cross-platform:**
 ```rust
-bind Viper.IO.Path as Path;
+bind Zanna.IO.Path as Path;
 
 // Bad: backslash doesn't work on Mac/Linux
 var windowsPath = "data\\files\\scores.txt";
 
-// Good: forward slash works everywhere (Viper converts as needed)
+// Good: forward slash works everywhere (Zanna converts as needed)
 var portablePath = "data/files/scores.txt";
 
 // Best: use Path.Join

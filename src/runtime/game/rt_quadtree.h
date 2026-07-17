@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_quadtree.h
@@ -102,14 +102,14 @@ int64_t rt_quadtree_query_rect(
 
 /// @brief Query items intersecting a rectangle and return a snapshot result.
 /// @details Performs the same query as rt_quadtree_query_rect, then copies the
-///          result IDs into an immutable Viper.Game.QueryResult. The returned
+///          result IDs into an immutable Zanna.Game.QueryResult. The returned
 ///          result remains valid after later quadtree queries or mutations.
 /// @param tree The quadtree.
 /// @param x Query region X.
 /// @param y Query region Y.
 /// @param width Query region width.
 /// @param height Query region height.
-/// @return New Viper.Game.QueryResult object, or NULL on allocation failure.
+/// @return New Zanna.Game.QueryResult object, or NULL on allocation failure.
 void *rt_quadtree_query_rect_result(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height);
 
@@ -124,12 +124,12 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
 
 /// @brief Query items near a point and return a snapshot result.
 /// @details Performs the same query as rt_quadtree_query_point, then copies the
-///          filtered result IDs into an immutable Viper.Game.QueryResult.
+///          filtered result IDs into an immutable Zanna.Game.QueryResult.
 /// @param tree The quadtree.
 /// @param x Center X of the search area.
 /// @param y Center Y of the search area.
 /// @param radius Search radius around the point.
-/// @return New Viper.Game.QueryResult object, or NULL on allocation failure.
+/// @return New Zanna.Game.QueryResult object, or NULL on allocation failure.
 void *rt_quadtree_query_point_result(rt_quadtree tree, int64_t x, int64_t y, int64_t radius);
 
 /// @brief Get an item ID from the last query result.
@@ -144,30 +144,30 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index);
 int64_t rt_quadtree_result_count(rt_quadtree tree);
 
 /// @brief Return the number of IDs in a QueryResult.
-/// @param result Viper.Game.QueryResult object.
+/// @param result Zanna.Game.QueryResult object.
 /// @return Result count, or 0 for invalid input.
 int64_t rt_game_query_result_count(void *result);
 
 /// @brief Read an item ID from a QueryResult by index.
-/// @param result Viper.Game.QueryResult object.
+/// @param result Zanna.Game.QueryResult object.
 /// @param index Zero-based item index.
 /// @return Item ID, or -1 if the index is invalid.
 int64_t rt_game_query_result_get_id(void *result, int64_t index);
 
 /// @brief Test whether a QueryResult contains an item ID.
-/// @param result Viper.Game.QueryResult object.
+/// @param result Zanna.Game.QueryResult object.
 /// @param id Item ID to search for.
 /// @return 1 when the ID exists in the result, otherwise 0.
 int8_t rt_game_query_result_contains(void *result, int64_t id);
 
 /// @brief Check whether a QueryResult is partial because storage growth failed.
-/// @param result Viper.Game.QueryResult object.
+/// @param result Zanna.Game.QueryResult object.
 /// @return 1 when the underlying quadtree query was truncated, otherwise 0.
 int8_t rt_game_query_result_truncated(void *result);
 
-/// @brief Copy QueryResult IDs into a new Viper.Collections.Seq.
+/// @brief Copy QueryResult IDs into a new Zanna.Collections.Seq.
 /// @details Each ID is boxed as an integer. The caller owns the returned Seq.
-/// @param result Viper.Game.QueryResult object.
+/// @param result Zanna.Game.QueryResult object.
 /// @return New Seq of boxed item IDs, or an empty Seq for invalid input.
 void *rt_game_query_result_ids(void *result);
 
@@ -195,9 +195,9 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree);
 
 /// @brief Compute broad-phase collision pairs and return a snapshot result.
 /// @details Performs the same operation as rt_quadtree_get_pairs, then copies
-///          pair IDs into an immutable Viper.Game.QuadtreePairResult.
+///          pair IDs into an immutable Zanna.Game.QuadtreePairResult.
 /// @param tree The quadtree.
-/// @return New Viper.Game.QuadtreePairResult object, or NULL on allocation failure.
+/// @return New Zanna.Game.QuadtreePairResult object, or NULL on allocation failure.
 void *rt_quadtree_query_pairs(rt_quadtree tree);
 
 /// @brief Get the first item ID of a collision pair.
@@ -221,24 +221,24 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index);
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree);
 
 /// @brief Return the number of pairs in a QuadtreePairResult.
-/// @param result Viper.Game.QuadtreePairResult object.
+/// @param result Zanna.Game.QuadtreePairResult object.
 /// @return Pair count, or 0 for invalid input.
 int64_t rt_quadtree_pair_result_count(void *result);
 
 /// @brief Read the first item ID from a pair result by index.
-/// @param result Viper.Game.QuadtreePairResult object.
+/// @param result Zanna.Game.QuadtreePairResult object.
 /// @param index Zero-based pair index.
 /// @return First item ID, or -1 if @p index is invalid.
 int64_t rt_quadtree_pair_result_first(void *result, int64_t index);
 
 /// @brief Read the second item ID from a pair result by index.
-/// @param result Viper.Game.QuadtreePairResult object.
+/// @param result Zanna.Game.QuadtreePairResult object.
 /// @param index Zero-based pair index.
 /// @return Second item ID, or -1 if @p index is invalid.
 int64_t rt_quadtree_pair_result_second(void *result, int64_t index);
 
 /// @brief Check whether a pair result is partial because storage growth failed.
-/// @param result Viper.Game.QuadtreePairResult object.
+/// @param result Zanna.Game.QuadtreePairResult object.
 /// @return 1 when the underlying pair collection was truncated, otherwise 0.
 int8_t rt_quadtree_pair_result_truncated(void *result);
 

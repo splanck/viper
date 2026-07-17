@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Input (All Classes) ==="
+PRINT "=== API Audit: Zanna.Input (All Classes) ==="
 PRINT "NOTE: Input classes require a window/event loop. API surface documentation only."
 PRINT ""
 PRINT "--- Keyboard ---"

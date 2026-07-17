@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,10 +37,10 @@
 namespace il::tools::basic {
 
 namespace {
-#ifdef VIPER_BASIC_TOOL_USAGE
-constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
+#ifdef ZANNA_BASIC_TOOL_USAGE
+constexpr const char *kUsageMessage = ZANNA_BASIC_TOOL_USAGE;
 #else
-#error "VIPER_BASIC_TOOL_USAGE must be defined for BASIC tool builds"
+#error "ZANNA_BASIC_TOOL_USAGE must be defined for BASIC tool builds"
 #endif
 } // namespace
 

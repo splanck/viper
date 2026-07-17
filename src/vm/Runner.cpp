@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 
 #include "support/source_manager.hpp"
 #include "vm/OpHandlerAccess.hpp"
@@ -53,7 +53,7 @@ class Runner::Impl {
         // Forward polling configuration to the underlying VM; allow env override.
         uint32_t everyN = config.interruptEveryN;
         if (everyN == 0) {
-            if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N")) {
+            if (const char *envEvery = std::getenv("ZANNA_INTERRUPT_EVERY_N")) {
                 char *end = nullptr;
                 unsigned long n = std::strtoul(envEvery, &end, 10);
                 if (end && *end == '\0')
@@ -103,7 +103,7 @@ class Runner::Impl {
         return vm.lastTrapMessage();
     }
 
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const {
         return vm.opcodeCounts();
     }
@@ -433,7 +433,7 @@ std::optional<std::string> Runner::lastTrapMessage() const {
 }
 
 const std::array<uint64_t, il::core::kNumOpcodes> &Runner::opcodeCounts() const {
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     return impl->opcodeCounts();
 #else
     static const std::array<uint64_t, il::core::kNumOpcodes> kEmpty{};
@@ -442,13 +442,13 @@ const std::array<uint64_t, il::core::kNumOpcodes> &Runner::opcodeCounts() const 
 }
 
 void Runner::resetOpcodeCounts() {
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     impl->resetOpcodeCounts();
 #endif
 }
 
 std::vector<std::pair<int, uint64_t>> Runner::topOpcodes(std::size_t n) const {
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     return impl->topOpcodes(n);
 #else
     return {};

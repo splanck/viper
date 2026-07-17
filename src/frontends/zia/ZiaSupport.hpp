@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //   - kInvalidIndex is the single canonical "no index" sentinel for size_t.
 //   - toIndex() never produces a wrapped (huge) index from a negative input;
 //     it traps instead, converting a latent OOB into a controlled abort.
-//   - VIPER_ZIA_ASSERT fires in ALL build configurations (unlike <cassert>,
+//   - ZANNA_ZIA_ASSERT fires in ALL build configurations (unlike <cassert>,
 //     which is disabled under NDEBUG), so frontend invariants are enforced in
 //     release builds too.
 // Ownership/Lifetime:
@@ -89,7 +89,7 @@ inline std::size_t toIndex(long long value, const char *context = "index") {
 /// @details Unlike `assert()` from <cassert>, this is NOT compiled out under
 ///          NDEBUG. Use for invariants that must hold in every build (scope
 ///          stack non-empty, index < size before a cast, etc.).
-#define VIPER_ZIA_ASSERT(cond, msg)                                                                \
+#define ZANNA_ZIA_ASSERT(cond, msg)                                                                \
     do {                                                                                           \
         if (!(cond))                                                                               \
             ::il::frontends::zia::ziaAssertFail(#cond, (msg), __FILE__, __LINE__);                 \

@@ -1,9 +1,9 @@
 # Example smoke manifest.
 # Columns: source_glob<TAB>lane<TAB>labels<TAB>target<TAB>reason
 # lane values:
-#   check-smoke  Fast lane: run `viper check` for the target.
-#   check        Full lane: run `viper check` for the target only under --all.
-#   il-run-smoke Fast lane: run the IL file through `viper -run`.
+#   check-smoke  Fast lane: run `zanna check` for the target.
+#   check        Full lane: run `zanna check` for the target only under --all.
+#   il-run-smoke Fast lane: run the IL file through `zanna -run`.
 #   classified  Audit-only classification for non-standalone sources.
 # target values:
 #   SELF     Use each matching source file as its own target.

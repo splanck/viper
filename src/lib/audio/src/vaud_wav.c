@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD WAV File Parser
+// ZannaAUD WAV File Parser
 //
 // Parses RIFF WAV files containing PCM audio data. Supports:
 // - 8-bit unsigned PCM
@@ -33,7 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief WAV file parser for ViperAUD.
+/// @brief WAV file parser for ZannaAUD.
 
 #if !defined(_WIN32) && !defined(_FILE_OFFSET_BITS)
 #define _FILE_OFFSET_BITS 64

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 using namespace il::core;
 
 /// @file
-/// @brief Memory and pointer opcode handlers for the Viper virtual machine.
+/// @brief Memory and pointer opcode handlers for the Zanna virtual machine.
 /// @details The handlers in this file evaluate IL instructions that manipulate
 ///          memory addresses or interact with runtime-managed buffers.  They
 ///          ensure stack allocations stay in-bounds, pointer arithmetic obeys

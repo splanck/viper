@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_codeeditor.c
-// Purpose: Runtime bindings for the ViperGUI CodeEditor widget. Implements
+// Purpose: Runtime bindings for the ZannaGUI CodeEditor widget. Implements
 //   syntax highlighting (Zia and BASIC keyword/type color tables), gutter icon
 //   management, code folding, multiple cursors, edit operations, and completion
 //   helpers. MessageBox, FileDialog, and FindBar live in separate files.
@@ -96,7 +96,7 @@ static void *rt_codeeditor_perf_stats_map(uint64_t total_height_scans,
     return map;
 }
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 // CodeEditor Enhancements - Gutter & Line Numbers (Phase 4)
 //=============================================================================
@@ -1841,7 +1841,7 @@ int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor) {
 }
 
 //=============================================================================
-// EditorBuffer — detachable per-document editor state (Viper.GUI.EditorBuffer)
+// EditorBuffer — detachable per-document editor state (Zanna.GUI.EditorBuffer)
 //=============================================================================
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -1954,14 +1954,14 @@ void *rt_codeeditor_attach_buffer(void *editor, void *bufHandle) {
     return rt_editorbuffer_wrap(prev);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 //=============================================================================
 // CodeEditor Stubs (graphics disabled)
 //=============================================================================
 //
 // Every public CodeEditor API has a no-op stub below so headless / server
-// builds (without VIPER_ENABLE_GRAPHICS) link cleanly. Each stub:
+// builds (without ZANNA_ENABLE_GRAPHICS) link cleanly. Each stub:
 //   - swallows its arguments via `(void)` casts to silence unused warnings
 //   - returns a "neutral" value (0/-1/empty string) for getter signatures
 //
@@ -2496,4 +2496,4 @@ void *rt_codeeditor_attach_buffer(void *editor, void *bufHandle) {
     return NULL;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

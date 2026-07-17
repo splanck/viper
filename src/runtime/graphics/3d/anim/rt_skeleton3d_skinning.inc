@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/anim/rt_skeleton3d_skinning.inc  (#included from rt_skeleton3d.c;
 // not a standalone translation unit) Purpose: Mesh3D skinning extensions and Canvas3D
 // DrawMeshSkinned

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_serialize.c
-// Purpose: Implements a unified serialization facade for the Viper.Data.Serialize
+// Purpose: Implements a unified serialization facade for the Zanna.Data.Serialize
 //          class. Dispatches Parse/Format/Convert calls to format-specific
 //          implementations based on the requested format enum.
 //
@@ -14,7 +14,7 @@
 //   - Supported formats: JSON, XML, YAML, TOML, and CSV.
 //   - Unknown format enums return an empty string/NULL and set rt_serialize_error().
 //   - Serialization produces a string; deserialization parses a string into
-//     Viper maps, sequences, XML nodes, strings, boxed primitives, or NULL.
+//     Zanna maps, sequences, XML nodes, strings, boxed primitives, or NULL.
 //   - Cross-format conversion uses the native backends plus generic projections.
 //   - Error state is thread-local.
 //
@@ -112,7 +112,7 @@ static void release_obj(void *obj) {
 ///          error text becomes `Err(message)`.
 /// @param value Parsed value returned by a serialize parse API.
 /// @param fallback Fallback error message used only if an error has no text.
-/// @return Owned `Viper.Result` carrying @p value or an error string.
+/// @return Owned `Zanna.Result` carrying @p value or an error string.
 static void *serialize_parse_value_to_result(void *value, const char *fallback) {
     rt_string err = rt_serialize_error();
     if (!value && err && rt_str_len(err) > 0) {
@@ -164,7 +164,7 @@ static int str_eq_cstr(rt_string s, const char *cstr) {
     return slen >= 0 && (size_t)slen == clen && memcmp(rt_string_cstr(s), cstr, clen) == 0;
 }
 
-/// @brief Convert any Viper value to a plain string for use as XML text/attribute content.
+/// @brief Convert any Zanna value to a plain string for use as XML text/attribute content.
 ///        NULL→"null", bool→"true"/"false", int/float→numeric, boxed str→unwrapped,
 ///        anything else→JSON-formatted fallback.
 static rt_string scalar_to_string(void *obj) {
@@ -232,7 +232,7 @@ static rt_string sanitized_xml_name(const char *name, size_t name_len, const cha
     return result;
 }
 
-/// @brief Recursively convert any Viper value into an XML element named `name`.
+/// @brief Recursively convert any Zanna value into an XML element named `name`.
 ///        Map keys become child elements; `@attrs` keys become XML attributes;
 ///        `@text`/`#text` keys become text content; Seq items become `<item>` children;
 ///        scalars become element text content.
@@ -366,7 +366,7 @@ static void *xml_document_to_generic(void *doc) {
     return map;
 }
 
-/// @brief Recursively convert an XML node to a generic Viper value (Map/Seq/String).
+/// @brief Recursively convert an XML node to a generic Zanna value (Map/Seq/String).
 ///        Element attributes go into `@attrs`; mixed text goes into `@text`;
 ///        child elements become map entries (grouped into Seq on repeated tags).
 ///        Text-only elements with no attributes return the text string directly.
@@ -612,7 +612,7 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
 ///
 /// @param text Input text.
 /// @param format Serialization format enum.
-/// @return Owned `Viper.Result` carrying the parsed value or an error string.
+/// @return Owned `Zanna.Result` carrying the parsed value or an error string.
 void *rt_serialize_parse_result(rt_string text, int64_t format) {
     void *value = rt_serialize_parse(text, format);
     return serialize_parse_value_to_result(value, "Serialize.Parse failed");
@@ -861,7 +861,7 @@ void *rt_serialize_auto_parse(rt_string text) {
 /// `Serialize.Error()`.
 ///
 /// @param text Input text.
-/// @return Owned `Viper.Result` carrying the parsed value or an error string.
+/// @return Owned `Zanna.Result` carrying the parsed value or an error string.
 void *rt_serialize_auto_parse_result(rt_string text) {
     void *value = rt_serialize_auto_parse(text);
     return serialize_parse_value_to_result(value, "Serialize.AutoParse failed");

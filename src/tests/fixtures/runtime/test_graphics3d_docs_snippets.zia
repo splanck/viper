@@ -1,8 +1,8 @@
 module test_graphics3d_docs_snippets;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);

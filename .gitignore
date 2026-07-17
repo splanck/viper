@@ -109,7 +109,7 @@ lcov.info
 **/tests/**/output/
 **/tests/**/out/
 **/build/test-out/
-/src/viperide/bin/
+/src/zannaide/bin/
 *.s
 # Baseball franchise shell save root (created on first interactive run).
 baseball_saves/
@@ -162,9 +162,9 @@ examples/bin/
 scratch/
 
 # --- Root-level scratch/analysis files ---
-viper_issues*.txt
-viper_runtime_*.md
-viper_zia_issues.md
+zanna_issues*.txt
+zanna_runtime_*.md
+zanna_zia_issues.md
 /frogger_highscores.txt
 
 # --- Private project workspace (not for public repo) ---

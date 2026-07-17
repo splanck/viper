@@ -142,11 +142,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Comparison operator**: An operator that compares two values and returns a boolean. Includes `==` (equal), `!=` (not equal), `<`, `>`, `<=`, `>=`. Example: `5 > 3` returns `true`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Boolean*, *Operator*.
 
-**Compile**: To transform source code into machine code or intermediate code that can be executed. The compiler catches many errors before the program runs. See [Chapter 25](../part5-mastery/25-how-viper-works.md). See also *Compiler*, *Runtime*.
+**Compile**: To transform source code into machine code or intermediate code that can be executed. The compiler catches many errors before the program runs. See [Chapter 25](../part5-mastery/25-how-zanna-works.md). See also *Compiler*, *Runtime*.
 
 **Compile-time**: The time when code is being compiled, before it runs. Errors caught at compile-time are easier to fix than runtime errors. See also *Runtime*, *Compile*.
 
-**Compiler**: A program that translates source code into executable code. Takes the human-readable code you write and converts it to something the computer can run. See [Chapter 25](../part5-mastery/25-how-viper-works.md). See also *Interpreter*, *Compile*.
+**Compiler**: A program that translates source code into executable code. Takes the human-readable code you write and converts it to something the computer can run. See [Chapter 25](../part5-mastery/25-how-zanna-works.md). See also *Interpreter*, *Compile*.
 
 **Concatenation** (kon-KAT-eh-NAY-shun): Joining strings together end-to-end. Like gluing words together. In Zia, use the `+` operator: `"Hello" + " " + "World"` produces `"Hello World"`. From Latin *concatenare*, "to chain together." See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *String*.
 
@@ -326,7 +326,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **If statement**: A conditional statement that executes code only when a condition is true. Example: `if (age >= 18) { allowVoting(); }`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Conditional*, *Else*, *Condition*.
 
-**IL** (Intermediate Language): Viper's internal representation between source code and execution. The compiler produces IL, which the runtime then executes. Allows code written in different Viper languages to work together. See [Chapter 25](../part5-mastery/25-how-viper-works.md). See also *Compiler*, *Runtime*.
+**IL** (Intermediate Language): Zanna's internal representation between source code and execution. The compiler produces IL, which the runtime then executes. Allows code written in different Zanna languages to work together. See [Chapter 25](../part5-mastery/25-how-zanna-works.md). See also *Compiler*, *Runtime*.
 
 **Immutable** (ih-MYOO-tuh-bul): Cannot be changed after creation. Once an immutable value is set, it stays that way forever. Strings are often immutable. `final` variables are immutable. Opposite of mutable. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Mutable*, *Final*, *Constant*.
 
@@ -336,7 +336,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Implicit**: Not explicitly stated; inferred or assumed. Type inference is implicit - the compiler figures out the type without you stating it. Opposite of explicit. Example: `var x = 5` implicitly has type `Integer`. See also *Explicit*, *Type inference*.
 
-**Import**: To bring code from another module into the current file. Makes external functions, entities, and values available for use. Example: `import Viper.Math`. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Export*, *Module*.
+**Import**: To bring code from another module into the current file. Makes external functions, entities, and values available for use. Example: `import Zanna.Math`. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Export*, *Module*.
 
 **Increment**: To increase a value by 1. Example: `count += 1` or `count = count + 1`. See [Chapter 5](../part1-foundations/05-repetition.md). See also *Decrement*.
 
@@ -430,7 +430,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Magic number**: A numeric literal in code without explanation. Bad practice because its meaning is unclear. Example: `if (age > 17)` - what's special about 17? Better: `final VOTING_AGE = 18; if (age >= VOTING_AGE)`. See also *Constant*.
 
-**Main function**: The entry point of a program - the function that runs first. In Viper, typically called `start()`. See [Chapter 2](../part1-foundations/02-first-program.md).
+**Main function**: The entry point of a program - the function that runs first. In Zanna, typically called `start()`. See [Chapter 2](../part1-foundations/02-first-program.md).
 
 **Map**: A collection of key-value pairs where each key is associated with a value. Also called dictionary, hash map, or associative array. Example: mapping names to phone numbers. See [Chapter 6](../part1-foundations/06-collections.md). See also *Key*, *Value*, *Hash map*.
 
@@ -458,7 +458,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## N
 
-**Namespace**: A container that groups related code and prevents naming conflicts. Two functions can have the same name if they're in different namespaces. Example: `Viper.Math.Sqrt()` is in the `Viper.Math` namespace. See also *Module*, *Scope*.
+**Namespace**: A container that groups related code and prevents naming conflicts. Two functions can have the same name if they're in different namespaces. Example: `Zanna.Math.Sqrt()` is in the `Zanna.Math` namespace. See also *Module*, *Scope*.
 
 **Native code**: Machine code that runs directly on the CPU, without interpretation. Compiled programs produce native code. Fastest execution but platform-specific. See also *Compiler*, *IL*.
 
@@ -532,7 +532,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Primitive type**: A basic built-in type provided by the language. Integers, floats, booleans, and characters are primitives. Not composed of other types. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Value type*.
 
-**Print**: To display text on the screen. In Zia: `Viper.Terminal.Say()` prints with a newline; `Viper.Terminal.Print()` prints without. See [Chapter 2](../part1-foundations/02-first-program.md).
+**Print**: To display text on the screen. In Zia: `Zanna.Terminal.Say()` prints with a newline; `Zanna.Terminal.Print()` prints without. See [Chapter 2](../part1-foundations/02-first-program.md).
 
 **Private**: Accessible only within the class that defines it. Hidden from external code. **[Zia]** Use the `hide` keyword instead of "private." See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
 
@@ -590,7 +590,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Run**: To execute a program. See also *Execute*, *Runtime*.
 
-**Runtime**: (1) The period when a program is executing, as opposed to compile-time. (2) The supporting software that runs programs - memory management, standard library, etc. See [Chapter 25](../part5-mastery/25-how-viper-works.md). See also *Compile-time*, *Runtime error*.
+**Runtime**: (1) The period when a program is executing, as opposed to compile-time. (2) The supporting software that runs programs - memory management, standard library, etc. See [Chapter 25](../part5-mastery/25-how-zanna-works.md). See also *Compile-time*, *Runtime error*.
 
 **Runtime error**: An error that occurs while a program is running, not during compilation. Examples: division by zero, file not found, null pointer access. See [Chapter 10](../part2-building-blocks/10-errors.md). See also *Compile-time*, *Exception*.
 
@@ -636,7 +636,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Stack trace**: A list of function calls that led to an error. Shows where the program was and how it got there. Essential for debugging. See also *Call stack*, *Debug*.
 
-**Standard library**: The library of functions, types, and utilities that comes with a programming language. Available without extra installation. In Viper, includes `Viper.Terminal`, `Viper.Math`, `Viper.Time`, etc. See [Chapter 13](../part2-building-blocks/13-stdlib.md). See also *Library*.
+**Standard library**: The library of functions, types, and utilities that comes with a programming language. Available without extra installation. In Zanna, includes `Zanna.Terminal`, `Zanna.Math`, `Zanna.Time`, etc. See [Chapter 13](../part2-building-blocks/13-stdlib.md). See also *Library*.
 
 **State**: The current condition of a program or object - all the values of all variables at a particular moment. Objects have state (their field values) that can change over time. See [Chapter 14](../part3-objects/14-objects.md). See also *Mutable*, *Immutable*.
 
@@ -708,7 +708,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Type**: A classification defining what values a variable can hold and what operations are valid. Every value and expression has a type. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Static typing*, *Type inference*.
 
-**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Core.Convert.ToInt64("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
+**Type conversion**: Changing a value from one type to another. Also called casting. `Zanna.Core.Convert.ToInt64("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
 
 **Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-zia-reference.md). See also *Implicit*, *Static typing*.
 

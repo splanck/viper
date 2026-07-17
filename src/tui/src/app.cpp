@@ -1,26 +1,26 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/app.cpp
 // Purpose: Implement the minimal headless application driver that powers the
-//          Viper terminal UI toolkit.
+//          Zanna terminal UI toolkit.
 // Key invariants: Each tick drains queued input events exactly once, applies
 //                 focus changes prior to widget dispatch, and renders a fresh
 //                 frame into the backing screen buffer.
 // Ownership/Lifetime: App owns the widget tree, focus manager, and screen
 //                     buffer; it borrows the terminal I/O backend supplied by
 //                     the embedder.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
 #include "tui/app.hpp"
 
-namespace viper::tui {
+namespace zanna::tui {
 /// @brief Construct an application driver with the provided root widget and terminal.
 /// @details Transfers ownership of the root widget into the application, wires
 ///          up the ANSI renderer to the supplied terminal I/O implementation,
@@ -33,7 +33,7 @@ namespace viper::tui {
 /// @param cols Initial terminal column count.
 /// @param truecolor Whether the renderer should emit 24-bit colour sequences.
 App::App(std::unique_ptr<ui::Widget> root,
-         ::viper::tui::term::TermIO &tio,
+         ::zanna::tui::term::TermIO &tio,
          int rows,
          int cols,
          bool truecolor)
@@ -127,4 +127,4 @@ void App::resize(int rows, int cols) {
     screen_.resize(rows_, cols_);
 }
 
-} // namespace viper::tui
+} // namespace zanna::tui

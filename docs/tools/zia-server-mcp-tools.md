@@ -55,7 +55,7 @@ Type-check Zia source code and return diagnostics (no code generation).
 - `notes`: array of related locations `{message, file, line, column}` (e.g., "previous definition is here")
 - `fixits`: array of machine-applicable replacements `{message, replacement, line, column, endLine, endColumn}` over half-open 1-based ranges; `endLine`/`endColumn` of `0` means insertion at the start position. Did-you-mean suggestions for undefined identifiers arrive here.
 
-Use `viper explain <code>` (or `viper --print-error-codes --json`) to resolve diagnostic codes to descriptions.
+Use `zanna explain <code>` (or `zanna --print-error-codes --json`) to resolve diagnostic codes to descriptions.
 
 **Example:**
 ```jsonl
@@ -77,7 +77,7 @@ Full compilation including IL code generation. Returns success status and diagno
 
 **Example:**
 ```jsonl
-→ {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zia/compile","arguments":{"source":"module T;\nfunc start() { Viper.Terminal.Say(\"hi\"); }"}}}
+→ {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zia/compile","arguments":{"source":"module T;\nfunc start() { Zanna.Terminal.Say(\"hi\"); }"}}}
 ← {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"succeeded\":true,\"diagnostics\":[]}"}]}}
 ```
 
@@ -178,12 +178,12 @@ Dump the token stream.
 
 ## zia/runtime-classes
 
-List all Viper runtime classes with member counts and canonical documentation.
+List all Zanna runtime classes with member counts and canonical documentation.
 
 **Input Schema:** Empty object `{}`.
 
 **Result:** JSON object with a `classes` array. Each class has:
-- `qname`: Fully qualified name (e.g., `"Viper.Terminal"`)
+- `qname`: Fully qualified name (e.g., `"Zanna.Terminal"`)
 - `propertyCount`: Number of properties
 - `methodCount`: Number of methods
 - `documentation`: `{summary, details, format}` where `format` is `"markdown"`
@@ -199,7 +199,7 @@ List methods and properties for a specific runtime class.
 {
   "type": "object",
   "properties": {
-    "className": {"type": "string", "description": "Fully qualified class name (e.g., \"Viper.Terminal\")"}
+    "className": {"type": "string", "description": "Fully qualified class name (e.g., \"Zanna.Terminal\")"}
   },
   "required": ["className"]
 }
@@ -216,7 +216,7 @@ Returns empty array if class not found.
 
 ## zia/runtime-search
 
-Search Viper runtime APIs by keyword (case-insensitive substring match).
+Search Zanna runtime APIs by keyword (case-insensitive substring match).
 
 **Input Schema:**
 ```json
@@ -229,7 +229,7 @@ Search Viper runtime APIs by keyword (case-insensitive substring match).
 }
 ```
 
-**Result:** JSON array of matching entries (same format as `zia/runtime-methods`), including class names that match. The `name` field uses dotted notation (e.g., `"Viper.Terminal.Say"`).
+**Result:** JSON array of matching entries (same format as `zia/runtime-methods`), including class names that match. The `name` field uses dotted notation (e.g., `"Zanna.Terminal.Say"`).
 
 ---
 

@@ -23,7 +23,7 @@ public.
 
 Tree, tab, split-pane, radio, and label classes expose only a subset of existing
 toolkit state. Color controls exist below the runtime but ColorPicker painting
-is incomplete and no color class is registered publicly. `Viper.GUI.Grid` is a
+is incomplete and no color class is registered publicly. `Zanna.GUI.Grid` is a
 non-interactive display table. `VirtualList` and `VirtualTree` are detached data
 models; list selection lookup scans rows, visible tree materialization is not
 viewport-bounded, and the models do not drive visual controls.
@@ -51,7 +51,7 @@ so an ADR is required.
 - Finish toolkit `ColorSwatch`, `ColorPalette`, and `ColorPicker` rendering,
   keyboard interaction, focus visuals, high-contrast behavior, semantic roles,
   and revision events; then expose managed public classes.
-- Evolve `Viper.GUI.Grid` in place into a viewport-aware interactive table with
+- Evolve `Zanna.GUI.Grid` in place into a viewport-aware interactive table with
   selection, keyboard navigation, stable row/column state, sorting, resizing,
   editing, and scrolling. Display-only callers retain prior behavior until they
   enable interaction.
@@ -65,7 +65,7 @@ so an ADR is required.
 
 ## Consequences
 
-- Viper applications can use the toolkit's real layout and editing capability
+- Zanna applications can use the toolkit's real layout and editing capability
   without dropping into C or hand-rolling containers.
 - `Grid`, list, and tree controls support large data sets without full model
   scans or full materialization.

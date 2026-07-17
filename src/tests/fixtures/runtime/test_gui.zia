@@ -1,18 +1,18 @@
 module TestGui;
 
 bind "./_support";
-bind Viper.GUI.Align as Align;
-bind Viper.GUI.Justify as Justify;
-bind Viper.GUI.FlexDirection as FlexDirection;
-bind Viper.GUI.FlexWrap as FlexWrap;
-bind Viper.GUI.Dock as Dock;
-bind Viper.GUI.ThemeMode as ThemeMode;
-bind Viper.GUI.AccessibleRole as AccessibleRole;
-bind Viper.GUI.LiveRegionMode as LiveRegionMode;
-bind Viper.GUI.DialogButtonRole as DialogButtonRole;
-bind Viper.GUI.DialogStatus as DialogStatus;
-bind Viper.GUI.ImageFilter as ImageFilter;
-bind Viper.GUI.SortDirection as SortDirection;
+bind Zanna.GUI.Align as Align;
+bind Zanna.GUI.Justify as Justify;
+bind Zanna.GUI.FlexDirection as FlexDirection;
+bind Zanna.GUI.FlexWrap as FlexWrap;
+bind Zanna.GUI.Dock as Dock;
+bind Zanna.GUI.ThemeMode as ThemeMode;
+bind Zanna.GUI.AccessibleRole as AccessibleRole;
+bind Zanna.GUI.LiveRegionMode as LiveRegionMode;
+bind Zanna.GUI.DialogButtonRole as DialogButtonRole;
+bind Zanna.GUI.DialogStatus as DialogStatus;
+bind Zanna.GUI.ImageFilter as ImageFilter;
+bind Zanna.GUI.SortDirection as SortDirection;
 
 // EXPECT_OUT: RESULT: ok
 // NOTE: GUI tests are limited since they require display/window system
@@ -52,7 +52,7 @@ func testGuiStructures() {
     // - Layout and rendering
 
     // Since we can't create GUI without a display, we just pass
-    Viper.Terminal.Say("GUI tests require display - skipping window creation");
+    Zanna.Terminal.Say("GUI tests require display - skipping window creation");
     pass();
 }
 
@@ -60,15 +60,15 @@ func testGuiWidgetTypes() {
     setTest("GuiWidgetTypes");
 
     // Document widget types that would be tested:
-    // - Viper.GUI.Label - text display
-    // - Viper.GUI.Button - clickable button
-    // - Viper.GUI.TextInput - text entry
-    // - Viper.GUI.Checkbox - toggle
-    // - Viper.GUI.ScrollView - scrollable container
-    // - Viper.GUI.TreeView - hierarchical data
-    // - Viper.GUI.TabBar - tab navigation
+    // - Zanna.GUI.Label - text display
+    // - Zanna.GUI.Button - clickable button
+    // - Zanna.GUI.TextInput - text entry
+    // - Zanna.GUI.Checkbox - toggle
+    // - Zanna.GUI.ScrollView - scrollable container
+    // - Zanna.GUI.TreeView - hierarchical data
+    // - Zanna.GUI.TabBar - tab navigation
 
-    Viper.Terminal.Say("Widget types documented for manual testing");
+    Zanna.Terminal.Say("Widget types documented for manual testing");
     pass();
 }
 
@@ -83,16 +83,16 @@ func testGuiEvents() {
     // - App.Poll() - event processing
     // - App.get_ShouldClose() - window close request
 
-    Viper.Terminal.Say("Event handling documented for manual testing");
+    Zanna.Terminal.Say("Event handling documented for manual testing");
     pass();
 }
 
 func start() {
-    Viper.Terminal.Say("GUI Runtime Tests");
-    Viper.Terminal.Say("==================");
-    Viper.Terminal.Say("Note: Full GUI testing requires a display environment.");
-    Viper.Terminal.Say("This test documents what should be manually verified.");
-    Viper.Terminal.Say("");
+    Zanna.Terminal.Say("GUI Runtime Tests");
+    Zanna.Terminal.Say("==================");
+    Zanna.Terminal.Say("Note: Full GUI testing requires a display environment.");
+    Zanna.Terminal.Say("This test documents what should be manually verified.");
+    Zanna.Terminal.Say("");
 
     testGuiStructures();
     testGuiWidgetTypes();

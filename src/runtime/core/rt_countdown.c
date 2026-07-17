@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_countdown.c
-// Purpose: Implements the Countdown timer class for the Viper runtime.
+// Purpose: Implements the Countdown timer class for the Zanna runtime.
 //          A countdown tracks elapsed time against a fixed target interval and
 //          exposes HasExpired/Remaining/Reset semantics for timeouts, cooldowns,
 //          rate limiters, and game turn timers.
@@ -27,7 +27,7 @@
 // Ownership/Lifetime:
 //   - Countdown instances are heap-allocated via rt_obj_new_i64 and managed
 //     by the runtime GC; no manual free is required by callers.
-//   - The internal ViperCountdown struct contains no pointers to external
+//   - The internal ZannaCountdown struct contains no pointers to external
 //     resources; finalizer is a no-op.
 //
 // Links: src/runtime/core/rt_countdown.h (public API),
@@ -81,7 +81,7 @@ typedef struct {
     int64_t accumulated_ms; ///< Total accumulated ms from completed intervals.
     int64_t start_time_ms;  ///< Timestamp when current interval started (if running).
     bool running;           ///< True if countdown is currently timing.
-} ViperCountdown;
+} ZannaCountdown;
 
 /// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow, 0 on success.
 /// @details Used by the countdown deadline math so a malformed timer setup can be reported
@@ -151,17 +151,17 @@ static int64_t countdown_tick_count_ms(void) {
 
 /// @brief Validate that @p obj is a live Countdown receiver, trapping otherwise.
 /// @details Centralises the receiver guard so every public Countdown method reads
-///          like `ViperCountdown *cd = require_countdown(obj); if (!cd) return ...;`.
+///          like `ZannaCountdown *cd = require_countdown(obj); if (!cd) return ...;`.
 ///          Verifies the heap kind, class ID, and payload size via
 ///          rt_obj_is_instance so a null receiver *or* an unrelated object (e.g. a
 ///          Seq passed to the static compatibility form) traps instead of being
 ///          reinterpreted as a Countdown payload (VDOC-229).
-static ViperCountdown *require_countdown(void *obj) {
-    if (!rt_obj_is_instance(obj, RT_COUNTDOWN_CLASS_ID, sizeof(ViperCountdown))) {
+static ZannaCountdown *require_countdown(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_COUNTDOWN_CLASS_ID, sizeof(ZannaCountdown))) {
         rt_trap("Countdown: invalid receiver");
         return NULL;
     }
-    return (ViperCountdown *)obj;
+    return (ZannaCountdown *)obj;
 }
 
 /// @brief POSIX: convert a `struct timespec` into a millisecond `int64_t`, trapping on overflow.
@@ -231,7 +231,7 @@ static int64_t get_timestamp_ms(void) {
 /// @brief Internal helper to get total elapsed milliseconds.
 /// @param cd Countdown pointer.
 /// @return Total elapsed milliseconds including current interval if running.
-static int64_t countdown_get_elapsed_ms(ViperCountdown *cd) {
+static int64_t countdown_get_elapsed_ms(ZannaCountdown *cd) {
     int64_t total = cd->accumulated_ms;
 
     if (cd->running) {
@@ -292,8 +292,8 @@ static void sleep_ms(int64_t ms) {
 /// @see rt_countdown_remaining For checking time left
 /// @see rt_countdown_expired For checking if expired
 void *rt_countdown_new(int64_t interval_ms) {
-    ViperCountdown *cd =
-        (ViperCountdown *)rt_obj_new_i64(RT_COUNTDOWN_CLASS_ID, (int64_t)sizeof(ViperCountdown));
+    ZannaCountdown *cd =
+        (ZannaCountdown *)rt_obj_new_i64(RT_COUNTDOWN_CLASS_ID, (int64_t)sizeof(ZannaCountdown));
     if (!cd) {
         rt_trap("Countdown: memory allocation failed");
         return NULL; // Unreachable after trap
@@ -334,7 +334,7 @@ void *rt_countdown_new(int64_t interval_ms) {
 /// @see rt_countdown_stop For pausing the countdown
 /// @see rt_countdown_reset For resetting to initial state
 void rt_countdown_start(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
 
     if (!cd->running) {
         cd->start_time_ms = get_timestamp_ms();
@@ -372,7 +372,7 @@ void rt_countdown_start(void *obj) {
 /// @see rt_countdown_start For resuming the countdown
 /// @see rt_countdown_reset For clearing elapsed time
 void rt_countdown_stop(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
 
     if (cd->running) {
         int64_t now = get_timestamp_ms();
@@ -411,7 +411,7 @@ void rt_countdown_stop(void *obj) {
 /// @see rt_countdown_start For starting after reset
 /// @see rt_countdown_set_interval For changing the interval
 void rt_countdown_reset(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
 
     cd->accumulated_ms = 0;
     cd->start_time_ms = 0;
@@ -475,7 +475,7 @@ int64_t rt_countdown_elapsed(void *obj) {
 /// @see rt_countdown_elapsed For total time passed
 /// @see rt_countdown_expired For boolean expiration check
 int64_t rt_countdown_remaining(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
     int64_t elapsed = countdown_get_elapsed_ms(cd);
     int64_t remaining;
     if (countdown_checked_sub_i64(cd->interval_ms, elapsed, &remaining)) {
@@ -517,7 +517,7 @@ int64_t rt_countdown_remaining(void *obj) {
 /// @see rt_countdown_remaining For checking exact time left
 /// @see rt_countdown_reset For restarting after expiration
 int8_t rt_countdown_expired(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
     int64_t elapsed = countdown_get_elapsed_ms(cd);
     return elapsed >= cd->interval_ms ? 1 : 0;
 }
@@ -645,7 +645,7 @@ int8_t rt_countdown_is_running(void *obj) {
 /// @see rt_countdown_remaining For non-blocking time checks
 /// @see rt_countdown_expired For non-blocking expiration checks
 void rt_countdown_wait(void *obj) {
-    ViperCountdown *cd = require_countdown(obj);
+    ZannaCountdown *cd = require_countdown(obj);
 
     // Start if not running
     if (!cd->running) {

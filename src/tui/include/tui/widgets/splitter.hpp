@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the HSplitter and VSplitter widgets for Viper's TUI
+// This file declares the HSplitter and VSplitter widgets for Zanna's TUI
 // framework, which divide a rectangular area into two resizable child regions.
 //
 // HSplitter splits horizontally (left | right) and VSplitter splits
@@ -32,7 +32,7 @@
 
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 namespace detail {
 /// @brief Clamp splitter ratios to a practical interactive range.
@@ -90,7 +90,7 @@ class HSplitter : public SplitterBase<HSplitter> {
     void layout(const ui::Rect &r) override;
 
     /// @brief Handle keyboard events for adjusting split ratio.
-    bool onKeyEvent(const viper::tui::term::KeyEvent &ev);
+    bool onKeyEvent(const zanna::tui::term::KeyEvent &ev);
 
   private:
     friend class SplitterBase<HSplitter>;
@@ -114,7 +114,7 @@ class VSplitter : public SplitterBase<VSplitter> {
     void layout(const ui::Rect &r) override;
 
     /// @brief Handle keyboard events for adjusting split ratio.
-    bool onKeyEvent(const viper::tui::term::KeyEvent &ev);
+    bool onKeyEvent(const zanna::tui::term::KeyEvent &ev);
 
   private:
     friend class SplitterBase<VSplitter>;
@@ -122,4 +122,4 @@ class VSplitter : public SplitterBase<VSplitter> {
     std::unique_ptr<ui::Widget> second_{}; // bottom
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

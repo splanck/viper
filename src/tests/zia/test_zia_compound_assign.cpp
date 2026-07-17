@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@ module Test;
 
 func start() {    var x: Integer = 10;
     x += 5;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "plus_eq.zia"};
@@ -81,7 +81,7 @@ module Test;
 
 func start() {    var x: Integer = 10;
     x -= 3;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "minus_eq.zia"};
@@ -111,7 +111,7 @@ module Test;
 
 func start() {    var x: Integer = 10;
     x *= 2;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "star_eq.zia"};
@@ -141,7 +141,7 @@ module Test;
 
 func start() {    var x: Integer = 10;
     x /= 2;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "slash_eq.zia"};
@@ -168,7 +168,7 @@ module Test;
 
 func start() {    var x: Integer = 10;
     x %= 3;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "percent_eq.zia"};
@@ -203,7 +203,7 @@ class Counter {
 func start() {    var c = new Counter();
     c.count = 0;
     c.increment();
-    Viper.Terminal.SayInt(c.count);
+    Zanna.Terminal.SayInt(c.count);
 }
 )";
     CompilerInput input{.source = source, .path = "field_compound.zia"};
@@ -232,7 +232,7 @@ func start() {    var x: Integer = 10;
     x += 5;
     x -= 2;
     x *= 3;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "multi_compound.zia"};
@@ -260,7 +260,7 @@ module Test;
 func start() {    var x: Number = 1.5;
     x += 2.5;
     x *= 3.0;
-    Viper.Terminal.SayNum(x);
+    Zanna.Terminal.SayNum(x);
 }
 )";
     CompilerInput input{.source = source, .path = "float_compound.zia"};
@@ -284,5 +284,5 @@ func start() {    var x: Number = 1.5;
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

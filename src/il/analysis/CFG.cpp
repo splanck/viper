@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 namespace {
 
 const std::vector<il::core::Block *> &emptyBlockList() {
@@ -336,4 +336,4 @@ bool isAcyclic(const CFGContext &ctx, il::core::Function &F) {
     return order.size() == F.blocks.size();
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

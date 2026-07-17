@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@ extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 //=============================================================================
 // PNG Constants
@@ -653,4 +653,4 @@ PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

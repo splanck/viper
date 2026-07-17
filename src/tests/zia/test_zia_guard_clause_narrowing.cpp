@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@ func greet(p: Person?) {    if (p == null) {
     }
     // After guard clause, p should be narrowed to Person
     var name: String = p.name;
-    Viper.Terminal.Say(name);
+    Zanna.Terminal.Say(name);
 }
 
 func start() {    greet(new Person("Alice"));
@@ -92,8 +92,8 @@ func process(p: Person?, item: Item?) {    if (p == null) {
         return;
     }
     // Both p and item should be narrowed
-    Viper.Terminal.Say(p.name);
-    Viper.Terminal.Say(item.label);
+    Zanna.Terminal.Say(p.name);
+    Zanna.Terminal.Say(item.label);
 }
 
 func start() {    process(new Person("Bob"), new Item("sword"));
@@ -126,8 +126,8 @@ func emitValue(x: Integer?) {    if (x == null) {
     }
 
     var narrowed: Integer = x;
-    Viper.Terminal.SayInt(x);
-    Viper.Terminal.SayInt(narrowed);
+    Zanna.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(narrowed);
 }
 
 func start() {    emitValue(42);
@@ -161,8 +161,8 @@ func emitValue(x: Integer?) {
     }
 
     var narrowed: Integer = x;
-    Viper.Terminal.SayInt(x);
-    Viper.Terminal.SayInt(narrowed);
+    Zanna.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(narrowed);
 }
 
 func start() {    emitValue(42);
@@ -188,6 +188,6 @@ func start() {    emitValue(42);
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

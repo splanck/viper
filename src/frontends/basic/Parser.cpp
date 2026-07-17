@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -70,7 +70,7 @@ Parser::Parser(std::string_view src,
     tokens_.push_back(lexer_.next());
 
     if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces()) {
-        knownNamespaces_.insert("viper");
+        knownNamespaces_.insert("zanna");
     }
 
     // Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.

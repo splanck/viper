@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/FileWrappersTests.c
-// Purpose: Validate runtime file wrappers using Viper string inputs.
+// Purpose: Validate runtime file wrappers using Zanna string inputs.
 // Key invariants: Missing files return Err_FileNotFound; closing unopened channel is invalid.
 // Ownership/Lifetime: Uses runtime library; relies on shared literals.
 // Links: docs/internals/codemap.md
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "tests/common/PosixCompat.h"
 #include <assert.h>

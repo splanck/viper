@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTVec3Tests.cpp
-// Purpose: Tests for Viper.Vec3 3D vector math utilities.
+// Purpose: Tests for Zanna.Vec3 3D vector math utilities.
 // Key invariants:
 //   - Pure Vec3 operations return new objects and leave receivers unchanged.
 //   - Explicit Set*/CopyFrom mutators update receivers in place.
@@ -305,7 +305,7 @@ static void test_cross_perpendicular() {
 }
 
 int main() {
-    printf("=== Viper.Vec3 Tests ===\n\n");
+    printf("=== Zanna.Vec3 Tests ===\n\n");
 
     // Constructors
     test_new();

@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/oop/rt_sb_bridge.h
 // Purpose: Prototypes for the StringBuilder bridge that creates a heap-managed,
-// reference-counted StringBuilder object for Viper.Text.StringBuilder.
+// reference-counted StringBuilder object for Zanna.Text.StringBuilder.
 //
 // Key invariants:
 //   - Constructors return heap-managed, reference-counted object pointers.
@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-/// @brief Allocate an opaque object instance for Viper.Text.StringBuilder.
+/// @brief Allocate an opaque object instance for Zanna.Text.StringBuilder.
 /// @details Bridges OOP allocation to the C runtime for use by the VM.
 ///          Creates a heap-managed object with the appropriate vtable and
 ///          internal state (an embedded rt_string_builder).

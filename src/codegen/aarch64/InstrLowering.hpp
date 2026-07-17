@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include <string>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 //===----------------------------------------------------------------------===//
 // Value Materialization
@@ -389,4 +389,4 @@ bool lowerRet(const il::core::Instr &ins,
               LoweringContext &ctx,
               MBasicBlock &out);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

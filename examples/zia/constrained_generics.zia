@@ -22,5 +22,5 @@ func describe[T: Named](value: T) -> String {
 
 func start() {
     var player = new Player("Ada");
-    Viper.Terminal.Say(describe[Player](player));
+    Zanna.Terminal.Say(describe[Player](player));
 }

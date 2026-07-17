@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //          Ported from src/runtime/text/rt_hash.c with all GC deps removed.
 //
 // Key invariants:
-//   - No runtime (viper_rt_*) dependencies — fully self-contained.
+//   - No runtime (zanna_rt_*) dependencies — fully self-contained.
 //   - Produces RFC 1321 compliant 16-byte digests.
 //
 // Ownership/Lifetime:
@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Compute MD5 digest of input data.
 /// @param data Input bytes.
@@ -39,4 +39,4 @@ void md5(const uint8_t *data, size_t len, uint8_t digest[16]);
 /// @return Hex-encoded MD5 digest string.
 std::string md5hex(const uint8_t *data, size_t len);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

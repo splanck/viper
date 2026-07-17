@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include <cctype>
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 
 bool parseHexColor(const std::string &s, render::RGBA &out) {
     if (s.empty()) {
@@ -65,4 +65,4 @@ bool parseHexColor(const std::string &s, render::RGBA &out) {
     return true;
 }
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

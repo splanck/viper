@@ -1,20 +1,20 @@
 REM Use procedural helpers to avoid BASIC keyword collisions and binding gaps
 
-DIM sb AS Viper.Text.StringBuilder
-sb = NEW Viper.Text.StringBuilder()
+DIM sb AS Zanna.Text.StringBuilder
+sb = NEW Zanna.Text.StringBuilder()
 
-Viper.IO.File.WriteAllText("tmp_oop.txt", "hi")
+Zanna.IO.File.WriteAllText("tmp_oop.txt", "hi")
 
 DIM s AS STRING
-s = Viper.IO.File.ReadAllText("tmp_oop.txt")
+s = Zanna.IO.File.ReadAllText("tmp_oop.txt")
 
-sb = Viper.Text.StringBuilder.Append(sb, s)
-sb = Viper.Text.StringBuilder.Append(sb, "!")
+sb = Zanna.Text.StringBuilder.Append(sb, s)
+sb = Zanna.Text.StringBuilder.Append(sb, "!")
 
 PRINT sb.Length
 PRINT sb.ToString()
 
 REM Avoid DELETE keyword; leave file for cleanup by harness if needed
-REM Viper.IO.File.Delete("tmp_oop.txt")
+REM Zanna.IO.File.Delete("tmp_oop.txt")
 
 END

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Validate in-memory binary stream operations in rt_memstream.c.
 // Key invariants: MemStream provides correct little-endian encoding,
 //                 automatic growth, and proper position tracking.
-// Links: docs/viperlib/io.md
+// Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
 

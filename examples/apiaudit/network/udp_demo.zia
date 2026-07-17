@@ -1,8 +1,8 @@
 module UdpDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Network.Udp ===");
+    Say("=== API Audit: Zanna.Network.Udp ===");
     Say("NOTE: UDP requires socket binding. API surface test only.");
     Say("Constructor: New(), Bind(port), BindAt(address,port)");
     Say("Properties: Port() -> i64, Address() -> str, IsBound() -> bool");

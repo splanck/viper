@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_harness.h
-// Purpose: Lightweight test harness utilities for ViperGFX C tests.
+// Purpose: Lightweight test harness utilities for ZannaGFX C tests.
 // Key invariants: Header-only; no global state; safe for inclusion in multiple
 //                 translation units.
 // Ownership/Lifetime: N/A (declarations/macros only).
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Simple Test Harness
+ * ZannaGFX - Simple Test Harness
  * Provides assertion macros for unit testing
  */
 
@@ -148,13 +148,13 @@ static const char *_test_current = NULL;
 #endif
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_harness.h
-// Purpose: Lightweight test harness utilities for ViperGFX C tests.
+// Purpose: Lightweight test harness utilities for ZannaGFX C tests.
 // Key invariants: Header-only; no global state; safe for inclusion in multiple
 //                 translation units.
 // Ownership/Lifetime: N/A (declarations/macros only).

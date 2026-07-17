@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //          and reserved-root validation.
 // Key invariants:
 //   - USING applies at file scope or inside NAMESPACE blocks; not inside procedures.
-//   - "Viper" root namespace is reserved.
+//   - "Zanna" root namespace is reserved.
 //   - Alias names cannot duplicate existing aliases or namespace names.
 // Ownership/Lifetime: Borrows DiagnosticEmitter; no AST ownership.
 // Links: docs/internals/codemap.md
@@ -46,11 +46,11 @@ static bool iequals(std::string_view a, std::string_view b) {
 /// @details Sets sawDecl_ to true to enforce USING placement rules.
 ///          Also maintains nsStack_ for nested namespace tracking.
 void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl) {
-    // Check for reserved "Viper" root namespace: declarations are never allowed
+    // Check for reserved "Zanna" root namespace: declarations are never allowed
     // under the reserved root. Emit a dedicated diagnostic.
-    if (!decl.path.empty() && iequals(decl.path[0], "Viper")) {
+    if (!decl.path.empty() && iequals(decl.path[0], "Zanna")) {
         // Use the established E_NS_009 diagnostic for reserved root violations.
-        de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
+        de.emit(diag::BasicDiag::NsReservedZanna, decl.loc, 1, {});
         return;
     }
 
@@ -212,7 +212,7 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl) {
 ///          - USING cannot appear inside namespace blocks.
 ///          - Referenced namespace must exist.
 ///          - Aliases must be unique and not shadow namespaces.
-///          - "Viper" root is reserved.
+///          - "Zanna" root is reserved.
 void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl) {
     // Placement rules (per docs/tutorials/basic-tutorial.md):
     // - USING must appear at file scope (not inside namespace blocks)
@@ -252,18 +252,18 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl) {
     if (nsPath.empty())
         return;
 
-    // Reserved root "Viper": by default, reject imports under the reserved root.
-    // When runtime namespaces are enabled, permit USING for any Viper.* subtree
+    // Reserved root "Zanna": by default, reject imports under the reserved root.
+    // When runtime namespaces are enabled, permit USING for any Zanna.* subtree
     // (Console, Strings, Convert, Parse, Diagnostics, Math, IO, ...). Bare
-    // "USING Viper" (root only) remains rejected to avoid ambiguous imports.
-    if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper")) {
+    // "USING Zanna" (root only) remains rejected to avoid ambiguous imports.
+    if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Zanna")) {
         const bool allow = FrontendOptions::enableRuntimeNamespaces() &&
-                           decl.namespacePath.size() >= 2; // allow any Viper.<child>
+                           decl.namespacePath.size() >= 2; // allow any Zanna.<child>
         if (!allow) {
-            de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
+            de.emit(diag::BasicDiag::NsReservedZanna, decl.loc, 1, {});
             return;
         }
-        // Accepted: USING Viper.<any> (and sub-names). Proceed with normal checks.
+        // Accepted: USING Zanna.<any> (and sub-names). Proceed with normal checks.
     }
 
     // E_NS_001: Namespace must exist in registry (error severity).

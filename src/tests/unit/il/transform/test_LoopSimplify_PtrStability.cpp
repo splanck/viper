@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -218,10 +218,10 @@ int main() {
         registry.registerFunctionAnalysis<il::transform::CFGInfo>(
             "cfg",
             [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-        registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+        registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
             "dominators", [](Module &mod, Function &fnRef) {
-                viper::analysis::CFGContext ctx(mod);
-                return viper::analysis::computeDominatorTree(ctx, fnRef);
+                zanna::analysis::CFGContext ctx(mod);
+                return zanna::analysis::computeDominatorTree(ctx, fnRef);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
             "loop-info", [](Module &mod, Function &fnRef) {
@@ -402,10 +402,10 @@ int main() {
         registry.registerFunctionAnalysis<il::transform::CFGInfo>(
             "cfg",
             [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-        registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+        registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
             "dominators", [](Module &mod, Function &fnRef) {
-                viper::analysis::CFGContext ctx(mod);
-                return viper::analysis::computeDominatorTree(ctx, fnRef);
+                zanna::analysis::CFGContext ctx(mod);
+                return zanna::analysis::computeDominatorTree(ctx, fnRef);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
             "loop-info", [](Module &mod, Function &fnRef) {

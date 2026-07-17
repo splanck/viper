@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-05-31
 ---
 
-# Getting Started with Viper
+# Getting Started with Zanna
 
-Welcome to Viper! This guide will help you build and run the Viper compiler toolchain.
+Welcome to Zanna! This guide will help you build and run the Zanna compiler toolchain.
 
 ---
 
@@ -31,21 +31,21 @@ Before you begin, ensure you have:
 
 ---
 
-## Building Viper
+## Building Zanna
 
-The platform build scripts configure, compile, test, and install Viper in one step:
+The platform build scripts configure, compile, test, and install Zanna in one step:
 
 ```sh
 # macOS
-./scripts/build_viper_mac.sh
+./scripts/build_zanna_mac.sh
 
 # Linux
-./scripts/build_viper_linux.sh
+./scripts/build_zanna_linux.sh
 
 # Windows
-scripts\build_viper_win.cmd
+scripts\build_zanna_win.cmd
 ```
-The macOS and Linux scripts are thin wrappers over `./scripts/build_viper_unix.sh`, which you can also run directly on any Unix system.
+The macOS and Linux scripts are thin wrappers over `./scripts/build_zanna_unix.sh`, which you can also run directly on any Unix system.
 
 ### Build Directory Layout
 
@@ -55,7 +55,7 @@ not get confused with the normal toolchain:
 
 | Directory | Produced by |
 |-----------|-------------|
-| `build/` | `build_viper_mac.sh`, `build_viper_linux.sh`, `build_viper_win.cmd` |
+| `build/` | `build_zanna_mac.sh`, `build_zanna_linux.sh`, `build_zanna_win.cmd` |
 | `build-coverage/` | `scripts/coverage.sh` |
 | `build-fuzz/` | `scripts/fuzz_smoke.sh` |
 | `build_asan_full/`, `build_ubsan_full/`, `build_tsan_full/` | `scripts/ci_full_sanitizer.sh` |
@@ -64,7 +64,7 @@ not get confused with the normal toolchain:
 
 Use `./scripts/clean.sh` or `scripts\clean.ps1` to remove generated build/report
 directories after confirming the printed list. If a command behaves unexpectedly, verify
-which binary you are running with `which viper` (or `where viper` on Windows).
+which binary you are running with `which zanna` (or `where zanna` on Windows).
 
 ---
 
@@ -73,33 +73,33 @@ which binary you are running with `which viper` (or `where viper` on Windows).
 After building, confirm the primary tool works correctly:
 
 ```sh
-viper --version
+zanna --version
 ```
 
-This should display the Viper version and IL version without errors.
+This should display the Zanna version and IL version without errors.
 
 ---
 
 ## Create a New Project
 
-Use `viper init` to scaffold a new project:
+Use `zanna init` to scaffold a new project:
 
 ```sh
-viper init my-app
+zanna init my-app
 ```
 
 This creates a project directory with a manifest and entry-point source file:
 
 ```text
 my-app/
-  viper.project    # Project manifest (name, version, language, entry point)
+  zanna.project    # Project manifest (name, version, language, entry point)
   main.zia         # Entry-point source file
 ```
 
 Run the new project:
 
 ```sh
-viper run my-app
+zanna run my-app
 ```
 
 ### Options
@@ -113,10 +113,10 @@ viper run my-app
 
 ```sh
 # Create a Zia project (default)
-viper init my-app
+zanna init my-app
 
 # Create a BASIC project
-viper init calculator --lang basic
+zanna init calculator --lang basic
 ```
 
 ---
@@ -126,7 +126,7 @@ viper init calculator --lang basic
 ### BASIC
 
 ```sh
-viper run examples/basic/ex1_hello_cond.bas
+zanna run examples/basic/ex1_hello_cond.bas
 ```
 
 **Expected output:**
@@ -145,7 +145,7 @@ Create a file `hello.zia`:
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -155,7 +155,7 @@ func start() {
 Run it:
 
 ```sh
-viper run hello.zia
+zanna run hello.zia
 ```
 
 **Expected output:**
@@ -171,7 +171,7 @@ Hello, World!
 For quick experimentation, launch the interactive REPL:
 
 ```sh
-viper repl
+zanna repl
 ```
 
 The REPL lets you type Zia code and see results immediately:
@@ -199,13 +199,13 @@ You can inspect the generated IL or run IL programs directly:
 
 ```sh
 # Emit IL from BASIC
-viper build examples/basic/ex1_hello_cond.bas
+zanna build examples/basic/ex1_hello_cond.bas
 
 # Emit IL from Zia
-viper build hello.zia
+zanna build hello.zia
 
 # Save IL to a file
-viper build examples/basic/ex1_hello_cond.bas -o hello.il
+zanna build examples/basic/ex1_hello_cond.bas -o hello.il
 
 # Run the IL program directly
 ilrun hello.il
@@ -222,15 +222,15 @@ For more examples, see the **[BASIC Tutorial](tutorials/basic-tutorial.md)**,
 
 | Tool        | Purpose                                   | Example                     |
 |-------------|-------------------------------------------|-----------------------------|
-| `viper`     | Unified compiler driver — run and build   | `viper run program.zia`     |
-| `viper init`| Scaffold a new project                    | `viper init my-app`         |
+| `zanna`     | Unified compiler driver — run and build   | `zanna run program.zia`     |
+| `zanna init`| Scaffold a new project                    | `zanna init my-app`         |
 | `vbasic`    | Run/compile BASIC programs                | `vbasic script.bas`         |
 | `zia`       | Run/compile Zia programs                  | `zia program.zia`           |
 | `ilrun`     | Execute IL programs                       | `ilrun program.il`          |
 | `il-verify` | Verify IL correctness                     | `il-verify program.il`      |
 | `il-dis`    | Disassemble IL                            | `il-dis program.il`         |
 
-> **Note:** `viper run` is the recommended way to run programs. It auto-detects the language
+> **Note:** `zanna run` is the recommended way to run programs. It auto-detects the language
 and can run entire project directories.
 
 ---
@@ -246,7 +246,7 @@ point.
 
 ### Deterministic Numerics
 
-Viper guarantees consistent numeric behavior across all platforms and execution modes:
+Zanna guarantees consistent numeric behavior across all platforms and execution modes:
 
 - **Overflow checking**: Zia defaults to checked arithmetic (traps on overflow); BASIC uses wrapping
 - **Division**: Zia `/` on integers is integer division; BASIC has separate `/` (float) and `\` (integer)
@@ -262,7 +262,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 **Language Documentation:**
 
-- **[BASIC Tutorial](tutorials/basic-tutorial.md)** — Learn Viper BASIC by example
+- **[BASIC Tutorial](tutorials/basic-tutorial.md)** — Learn Zanna BASIC by example
 - **[BASIC Reference](languages/basic-reference.md)** — Complete BASIC language reference
 - **[Zia Tutorial](tutorials/zia-tutorial.md)** — Learn Zia by example
 - **[Zia Reference](languages/zia-reference.md)** — Complete Zia language reference

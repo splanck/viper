@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,12 +13,12 @@
 // Ownership/Lifetime:
 //   - Tests release any GC-managed runtime objects they receive.
 //   - Temporary files are created under /tmp and removed by each test.
-// Links: rt_asset_error.h, docs/viperlib/graphics/rendering3d.md
+// Links: rt_asset_error.h, docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_asset_error.h"
@@ -58,7 +58,7 @@ extern "C" void vm_trap(const char *msg) {
 using LoaderFn = void *(*)(rt_string path);
 
 static std::string tmp_path(const char *name) {
-    return std::string("/tmp/viper_asset_error_") + name;
+    return std::string("/tmp/zanna_asset_error_") + name;
 }
 
 static void write_bytes(const char *path, const void *data, size_t size) {
@@ -318,7 +318,7 @@ TEST(AssetLoadErrors, MissingObjMaterialTextureRecordsOneWarning) {
     std::string mtl_path = tmp_path("textured_missing.mtl");
     write_text(mtl_path.c_str(), "newmtl bark\nmap_Kd missing_albedo.png\n");
     write_text(obj_path.c_str(),
-               "mtllib viper_asset_error_textured_missing.mtl\n"
+               "mtllib zanna_asset_error_textured_missing.mtl\n"
                "v 0 0 0\n"
                "v 1 0 0\n"
                "v 0 1 0\n"
@@ -340,6 +340,6 @@ TEST(AssetLoadErrors, MissingObjMaterialTextureRecordsOneWarning) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 //   1. Pauses gameplay.
 //   2. Fades in a text panel.
 //   3. Types out the lore entry character-by-character via
-//      `Viper.Game.Typewriter` — faster than a cutscene but
+//      `Zanna.Game.Typewriter` — faster than a cutscene but
 //      slower than plain text, which draws the player's
 //      eye.
 //   4. Records the entry in a "collected" bitmask (shown in
@@ -63,7 +63,7 @@
 //                                 `displayLore(index)`.
 //     menu.zia    ──►  reads `collectedMask` for the lore-
 //                      browser tab.
-//     Viper.Game.Typewriter ──► runtime text-reveal effect.
+//     Zanna.Game.Typewriter ──► runtime text-reveal effect.
 //
 // HOW TO READ THIS FILE
 // ---------------------
@@ -79,13 +79,13 @@
 
 module lore;
 
-bind Viper.Graphics;
-bind Viper.Game;
-bind Viper.Input;
-bind Viper.Text.Fmt;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
-bind Viper.Text.TextWrapper as TextWrapper;
+bind Zanna.Graphics;
+bind Zanna.Game;
+bind Zanna.Input;
+bind Zanna.Text.Fmt;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
+bind Zanna.Text.TextWrapper as TextWrapper;
 bind "./accessibility";
 bind "./config";
 bind "./palette";

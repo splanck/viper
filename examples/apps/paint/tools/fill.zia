@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,10 +16,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// fill.zia - Flood fill tool for Viper Paint
+// fill.zia - Flood fill tool for Zanna Paint
 module fill;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "../canvas";

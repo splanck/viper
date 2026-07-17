@@ -23,7 +23,7 @@
 // viewport.zia - Scrollable/zoomable drawing viewport
 module viewport;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "./config";
 

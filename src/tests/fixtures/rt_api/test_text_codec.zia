@@ -1,9 +1,9 @@
 // test_text_codec.zia — Codec, Pattern, StringBuilder
 module TestTextCodec;
 
-bind Viper.Terminal;
-bind Viper.Text.Codec;
-bind Viper.Text.Pattern;
+bind Zanna.Terminal;
+bind Zanna.Text.Codec;
+bind Zanna.Text.Pattern;
 
 func start() {
     Say(Base64Encode("hello world"));
@@ -20,7 +20,7 @@ func start() {
     Say(ReplaceFirst("[0-9]+", "abc123def456", "NUM"));
     Say(Escape("a.b+c"));
 
-    var sb = new Viper.Text.StringBuilder();
+    var sb = new Zanna.Text.StringBuilder();
     sb.Append("hello");
     sb.Append(" ");
     sb.Append("world");

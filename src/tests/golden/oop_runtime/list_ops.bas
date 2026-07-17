@@ -1,17 +1,17 @@
-DIM l AS Viper.Collections.List
-l = NEW Viper.Collections.List()
+DIM l AS Zanna.Collections.List
+l = NEW Zanna.Collections.List()
 
-DIM a AS Viper.Collections.List
-DIM b AS Viper.Collections.List
-DIM c AS Viper.Collections.List
-DIM d AS Viper.Collections.List
-DIM e AS Viper.Collections.List
+DIM a AS Zanna.Collections.List
+DIM b AS Zanna.Collections.List
+DIM c AS Zanna.Collections.List
+DIM d AS Zanna.Collections.List
+DIM e AS Zanna.Collections.List
 
-a = NEW Viper.Collections.List()
-b = NEW Viper.Collections.List()
-c = NEW Viper.Collections.List()
-d = NEW Viper.Collections.List()
-e = NEW Viper.Collections.List()
+a = NEW Zanna.Collections.List()
+b = NEW Zanna.Collections.List()
+c = NEW Zanna.Collections.List()
+d = NEW Zanna.Collections.List()
+e = NEW Zanna.Collections.List()
 
 ' Has on empty list
 IF l.Has(a) THEN
@@ -24,20 +24,20 @@ END IF
 l.Push(a)
 l.Push(c)
 
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(b), -1)
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(c), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(a), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(b), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(c), -1)
 
 ' Insert in the middle: [a, b, c]
 l.Insert(1, b)
 
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(b), -1)
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(c), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(a), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(b), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(c), -1)
 
 ' Append via Insert(index == Count): [a, b, c, d]
 l.Insert(l.Count, d)
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(d), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(d), -1)
 
 ' Remove missing element
 IF l.Remove(e) THEN
@@ -57,6 +57,6 @@ ELSE
 END IF
 
 PRINT l.Count
-PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
+PRINT Zanna.Option.UnwrapOrI64(l.FindOption(a), -1)
 
 END

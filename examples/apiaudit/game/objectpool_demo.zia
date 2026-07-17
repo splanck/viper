@@ -1,11 +1,11 @@
-// objectpool_demo.zia - Comprehensive API audit for Viper.Game.ObjectPool
+// objectpool_demo.zia - Comprehensive API audit for Zanna.Game.ObjectPool
 // Tests: New, Acquire, Release, IsActive, ActiveCount, FreeCount, Capacity,
 //        IsFull, IsEmpty, Clear, FirstActive, NextActive, SetData, GetData
 
 module ObjectPoolDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== ObjectPool API Audit ===");

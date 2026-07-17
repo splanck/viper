@@ -1,27 +1,27 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_asset.c
 // Purpose: Runtime asset manager implementation. Provides transparent loading
-//          from embedded VPA blobs, mounted .vpa pack files, and filesystem.
+//          from embedded ZPAK blobs, mounted .zpak pack files, and filesystem.
 //
 // Key invariants:
 //   - Initialization is idempotent (safe to call multiple times).
 //   - Resolution order: embedded → mounted packs (LIFO) → filesystem.
-//   - Pack auto-discovery scans exe directory for *.vpa files on init.
+//   - Pack auto-discovery scans exe directory for *.zpak files on init.
 //   - Type dispatch in Assets.Load() is based on file extension.
 //   - All returned objects are GC-managed.
 //
 // Ownership/Lifetime:
 //   - Embedded blob pointer is borrowed (lives in .rodata, never freed).
 //   - Mounted pack handles are owned and closed on unmount or process exit.
-//   - Data buffers from vpa_read_entry are freed after creating GC objects.
+//   - Data buffers from zpak_read_entry are freed after creating GC objects.
 //
-// Links: rt_vpa_reader.h, rt_path_exe.c, rt_compress.h
+// Links: rt_zpak_reader.h, rt_path_exe.c, rt_compress.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,7 +29,7 @@
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
-#include "rt_vpa_reader.h"
+#include "rt_zpak_reader.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -137,15 +137,15 @@ static int asset_path_equal(const char *a, const char *b) {
 
 // ─── Weak default for embedded asset blob ───────────────────────────────────
 // These are overridden by the stronger definitions in the generated asset .o
-// file when assets are embedded via `embed` directives in viper.project.
+// file when assets are embedded via `embed` directives in zanna.project.
 // When no assets are embedded, these defaults ensure clean linking.
 
 #ifdef _WIN32
-__declspec(selectany) const unsigned char viper_asset_blob[1] = {0};
-__declspec(selectany) const unsigned long long viper_asset_blob_size = 0;
+__declspec(selectany) const unsigned char zanna_asset_blob[1] = {0};
+__declspec(selectany) const unsigned long long zanna_asset_blob_size = 0;
 #else
-__attribute__((weak)) const unsigned char viper_asset_blob[1] = {0};
-__attribute__((weak)) const unsigned long long viper_asset_blob_size = 0;
+__attribute__((weak)) const unsigned char zanna_asset_blob[1] = {0};
+__attribute__((weak)) const unsigned long long zanna_asset_blob_size = 0;
 #endif
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -156,8 +156,8 @@ __attribute__((weak)) const unsigned long long viper_asset_blob_size = 0;
 
 /// @brief Singleton asset manager state — all fields guarded by g_asset_lock.
 static struct {
-    vpa_archive_t *embedded;                  ///< Embedded .rodata VPA blob, or NULL.
-    vpa_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Mounted pack file archives (LIFO).
+    zpak_archive_t *embedded;                  ///< Embedded .rodata ZPAK blob, or NULL.
+    zpak_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Mounted pack file archives (LIFO).
     char *pack_paths[RT_ASSET_MAX_PACKS];     ///< Canonical paths for each mounted pack.
     int pack_count;                           ///< Number of currently mounted packs.
     int initialized;                          ///< Non-zero after the first call to rt_asset_init.
@@ -207,11 +207,11 @@ static void asset_unlock(void) {
 /// Returns NULL if `name` is empty or contains an embedded null byte
 /// (which would produce a silent truncation on strcmp-based lookups).
 ///
-/// @param name Viper string containing the asset name.
+/// @param name Zanna string containing the asset name.
 /// @return Borrowed C string pointer, or NULL if the name is invalid.
 static const char *asset_name_cstr(rt_string name) {
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_view((const ViperString *)name, &data);
+    size_t len = rt_file_string_view((const ZannaString *)name, &data);
     if (!data)
         return NULL;
     if (memchr(data, '\0', len) != NULL)
@@ -444,31 +444,31 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
 /// @brief Resolve an asset name across the layered asset sources.
 ///
 /// Lookup order (first-hit wins):
-///   1. The embedded VPA baked into the executable's .rodata — always
+///   1. The embedded ZPAK baked into the executable's .rodata — always
 ///      tried first so shipped binaries stay self-contained.
 ///   2. Mounted packs, iterated in *reverse* mount order — later
 ///      mounts shadow earlier ones, letting mod/DLC loads override
 ///      the base game's assets cleanly.
 ///   3. The filesystem, relative to the current working directory —
 ///      dev-mode convenience that lets you drop a file in-place
-///      without rebuilding a VPA.
+///      without rebuilding a ZPAK.
 /// Returns a heap-allocated buffer (caller frees) or NULL if not found
 /// or on any read error.
 static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     // 1. Embedded registry
     if (g_asset_mgr.embedded) {
-        const vpa_entry_t *e = vpa_find(g_asset_mgr.embedded, name);
+        const zpak_entry_t *e = zpak_find(g_asset_mgr.embedded, name);
         if (e)
-            return vpa_read_entry(g_asset_mgr.embedded, e, out_size);
+            return zpak_read_entry(g_asset_mgr.embedded, e, out_size);
     }
 
     // 2. Mounted packs (reverse order — last mounted wins)
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
         if (!g_asset_mgr.packs[i])
             continue;
-        const vpa_entry_t *e = vpa_find(g_asset_mgr.packs[i], name);
+        const zpak_entry_t *e = zpak_find(g_asset_mgr.packs[i], name);
         if (e)
-            return vpa_read_entry(g_asset_mgr.packs[i], e, out_size);
+            return zpak_read_entry(g_asset_mgr.packs[i], e, out_size);
     }
 
     // 3. Filesystem fallback (CWD-relative)
@@ -479,7 +479,7 @@ static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     return NULL;
 }
 
-/// @brief Scan a directory for *.vpa files and auto-mount them.
+/// @brief Scan a directory for *.zpak files and auto-mount them.
 static void discover_packs(const char *dir) {
     if (!dir)
         return;
@@ -488,7 +488,7 @@ static void discover_packs(const char *dir) {
     wchar_t *wdir = rt_file_path_utf8_to_wide(dir);
     if (!wdir)
         return;
-    wchar_t *pattern = asset_win_join_wide(wdir, L"*.vpa");
+    wchar_t *pattern = asset_win_join_wide(wdir, L"*.zpak");
     if (!pattern) {
         free(wdir);
         return;
@@ -509,11 +509,11 @@ static void discover_packs(const char *dir) {
         if (!path)
             continue;
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
-            vpa_archive_t *archive = vpa_open_file_no_follow(path);
+            zpak_archive_t *archive = zpak_open_file_no_follow(path);
             if (archive) {
                 char *path_copy = strdup(path);
                 if (!path_copy) {
-                    vpa_close(archive);
+                    zpak_close(archive);
                     continue;
                 }
                 g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
@@ -534,7 +534,7 @@ static void discover_packs(const char *dir) {
         size_t nlen = strlen(entry->d_name);
         if (nlen < 5)
             continue;
-        if (strcmp(entry->d_name + nlen - 4, ".vpa") != 0)
+        if (strcmp(entry->d_name + nlen - 4, ".zpak") != 0)
             continue;
 
         size_t dir_len = strlen(dir);
@@ -559,11 +559,11 @@ static void discover_packs(const char *dir) {
         }
 
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
-            vpa_archive_t *archive = vpa_open_file_no_follow(path);
+            zpak_archive_t *archive = zpak_open_file_no_follow(path);
             if (archive) {
                 char *path_copy = strdup(path);
                 if (!path_copy) {
-                    vpa_close(archive);
+                    zpak_close(archive);
                     continue;
                 }
                 g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
@@ -588,9 +588,9 @@ static void ensure_init(void) {
 
 // ─── rt_asset_init ──────────────────────────────────────────────────────────
 
-/// @brief Initialize the asset manager with an optional embedded VPA blob.
+/// @brief Initialize the asset manager with an optional embedded ZPAK blob.
 /// @details Parses the embedded blob (from linked .rodata or explicit argument),
-///          then auto-discovers .vpa pack files next to the executable. On macOS,
+///          then auto-discovers .zpak pack files next to the executable. On macOS,
 ///          also scans the .app bundle's Resources directory. Idempotent — safe
 ///          to call multiple times; only the first call has effect.
 void rt_asset_init(const uint8_t *blob, uint64_t size) {
@@ -603,18 +603,18 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
 
     // Parse embedded blob (explicit argument)
     if (blob && size >= 32) {
-        g_asset_mgr.embedded = vpa_open_memory(blob, (size_t)size);
+        g_asset_mgr.embedded = zpak_open_memory(blob, (size_t)size);
     }
 
     // Auto-discover embedded blob from linked asset .o file.
-    // The AssetCompiler generates a C file with viper_asset_blob[] and
-    // viper_asset_blob_size. When linked, these override the weak defaults below.
+    // The AssetCompiler generates a C file with zanna_asset_blob[] and
+    // zanna_asset_blob_size. When linked, these override the weak defaults below.
     if (!g_asset_mgr.embedded) {
-        if (viper_asset_blob_size >= 32)
-            g_asset_mgr.embedded = vpa_open_memory(viper_asset_blob, (size_t)viper_asset_blob_size);
+        if (zanna_asset_blob_size >= 32)
+            g_asset_mgr.embedded = zpak_open_memory(zanna_asset_blob, (size_t)zanna_asset_blob_size);
     }
 
-    // Auto-discover .vpa packs next to executable
+    // Auto-discover .zpak packs next to executable
     char *exe_dir = rt_path_exe_dir_cstr();
     if (exe_dir) {
         discover_packs(exe_dir);
@@ -730,14 +730,14 @@ int64_t rt_asset_exists(rt_string name) {
 
     asset_lock();
     // Check embedded
-    if (g_asset_mgr.embedded && vpa_find(g_asset_mgr.embedded, cname)) {
+    if (g_asset_mgr.embedded && zpak_find(g_asset_mgr.embedded, cname)) {
         asset_unlock();
         return 1;
     }
 
     // Check mounted packs
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
-        if (g_asset_mgr.packs[i] && vpa_find(g_asset_mgr.packs[i], cname)) {
+        if (g_asset_mgr.packs[i] && zpak_find(g_asset_mgr.packs[i], cname)) {
             asset_unlock();
             return 1;
         }
@@ -768,7 +768,7 @@ int64_t rt_asset_size(rt_string name) {
     asset_lock();
     // Check embedded
     if (g_asset_mgr.embedded) {
-        const vpa_entry_t *e = vpa_find(g_asset_mgr.embedded, cname);
+        const zpak_entry_t *e = zpak_find(g_asset_mgr.embedded, cname);
         if (e) {
             asset_unlock();
             return (int64_t)e->data_size;
@@ -779,7 +779,7 @@ int64_t rt_asset_size(rt_string name) {
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
         if (!g_asset_mgr.packs[i])
             continue;
-        const vpa_entry_t *e = vpa_find(g_asset_mgr.packs[i], cname);
+        const zpak_entry_t *e = zpak_find(g_asset_mgr.packs[i], cname);
         if (e) {
             asset_unlock();
             return (int64_t)e->data_size;
@@ -835,22 +835,22 @@ void *rt_asset_list(void) {
 
 // ─── rt_asset_mount ─────────────────────────────────────────────────────────
 
-/// @brief Mount an additional VPA pack file at runtime (assets become available immediately).
+/// @brief Mount an additional ZPAK pack file at runtime (assets become available immediately).
 int64_t rt_asset_mount(rt_string path) {
     if (!path)
         return 0;
     ensure_init();
 
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
-    vpa_archive_t *archive = vpa_open_file(cpath);
+    zpak_archive_t *archive = zpak_open_file(cpath);
     if (!archive)
         return 0;
 
     char *path_copy = asset_canonical_path_dup(cpath);
     if (!path_copy) {
-        vpa_close(archive);
+        zpak_close(archive);
         return 0;
     }
 
@@ -858,14 +858,14 @@ int64_t rt_asset_mount(rt_string path) {
     if (g_asset_mgr.pack_count >= RT_ASSET_MAX_PACKS) {
         asset_unlock();
         free(path_copy);
-        vpa_close(archive);
+        zpak_close(archive);
         return 0;
     }
     for (int i = 0; i < g_asset_mgr.pack_count; ++i) {
         if (g_asset_mgr.pack_paths[i] && asset_path_equal(g_asset_mgr.pack_paths[i], path_copy)) {
             asset_unlock();
             free(path_copy);
-            vpa_close(archive);
+            zpak_close(archive);
             return 1;
         }
     }
@@ -878,14 +878,14 @@ int64_t rt_asset_mount(rt_string path) {
 
 // ─── rt_asset_unmount ───────────────────────────────────────────────────────
 
-/// @brief Unmount a previously-mounted VPA pack file.
+/// @brief Unmount a previously-mounted ZPAK pack file.
 int64_t rt_asset_unmount(rt_string path) {
     if (!path)
         return 0;
     ensure_init();
 
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
     char *search_path = asset_canonical_path_dup(cpath);
     if (!search_path)
@@ -912,7 +912,7 @@ int64_t rt_asset_unmount(rt_string path) {
             match = -1;
     }
     if (match >= 0) {
-        vpa_close(g_asset_mgr.packs[match]);
+        zpak_close(g_asset_mgr.packs[match]);
         free(g_asset_mgr.pack_paths[match]);
 
         // Shift remaining packs down

@@ -1,12 +1,12 @@
 module TemplateDemo;
-bind Viper.Terminal;
-bind Viper.Text.Template as Tpl;
-bind Viper.Collections.Map as Map;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Box as Box;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.Template as Tpl;
+bind Zanna.Collections.Map as Map;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Box as Box;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Text.Template API Audit ===");
+    Say("=== Zanna.Text.Template API Audit ===");
 
     // --- Render ---
     Say("--- Render ---");

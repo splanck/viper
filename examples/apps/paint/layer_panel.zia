@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,8 +22,8 @@
 // layer_panel.zia - Layer list rendering and interaction for Paint
 module layer_panel;
 
-bind Viper.Graphics;
-bind Str = Viper.String;
+bind Zanna.Graphics;
+bind Str = Zanna.String;
 
 bind "./canvas";
 bind "./config";

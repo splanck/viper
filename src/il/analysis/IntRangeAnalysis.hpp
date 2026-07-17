@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@ struct Instr;
 struct Value;
 } // namespace il::core
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Map from SSA temp id to its known signed integer range.
 using RangeMap = std::unordered_map<unsigned, ::il::utils::IntRange>;
@@ -118,4 +118,4 @@ std::optional<::il::utils::IntRange> matchPow2ModuloRange(const ::il::core::Basi
 /// @return Entry range facts for each reachable block.
 IntRangeInfo computeIntRanges(const ::il::core::Function &fn);
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

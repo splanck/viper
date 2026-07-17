@@ -1,7 +1,7 @@
 module bouncing;
 
 // ============================================================================
-// BOUNCING.VIPER - Bouncing Balls Physics Demo
+// BOUNCING.ZANNA - Bouncing Balls Physics Demo
 // ============================================================================
 // Demonstrates physics simulation with bouncing balls.
 // Features gravity, elasticity, and ball-to-ball collisions.
@@ -9,13 +9,13 @@ module bouncing;
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Text.Fmt;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Text.Fmt;
+bind Zanna.Time;
 
 // Ball entity with physics
 class Ball {
@@ -281,6 +281,6 @@ func bouncingRun(canvas: Canvas) {
         canvas.TextBg(10, height - 30, "SPACE: Add | UP/DOWN: Gravity | C: Clear | R: Reset | ESC: Exit", colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

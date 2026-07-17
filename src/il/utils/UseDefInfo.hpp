@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,12 +27,12 @@ struct BasicBlock;
 struct Instr;
 } // namespace il::core
 
-namespace viper::il {
+namespace zanna::il {
 
 /// @brief Tracks temporary use counts and provides safe value replacement.
 /// @details The original implementation cached raw operand pointers so
 ///          replacements could touch only direct use sites. That strategy is
-///          not safe for Viper IL because most optimization passes mutate
+///          not safe for Zanna IL because most optimization passes mutate
 ///          `BasicBlock::instructions` vectors in place, invalidating cached
 ///          addresses after insert/erase operations. The current implementation
 ///          keeps a pointer to the owning function, maintains best-effort use
@@ -88,4 +88,4 @@ class UseDefInfo {
     void recordUse(::il::core::Value &v);
 };
 
-} // namespace viper::il
+} // namespace zanna::il

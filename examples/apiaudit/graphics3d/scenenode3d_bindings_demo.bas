@@ -14,46 +14,46 @@ DIM rootBone AS INTEGER
 
 PRINT "SceneNode bindings demo"
 
-scene = Viper.Graphics3D.SceneGraph.New()
-parent = Viper.Graphics3D.SceneNode.New()
-child = Viper.Graphics3D.SceneNode.New()
-body = Viper.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
+scene = Zanna.Graphics3D.SceneGraph.New()
+parent = Zanna.Graphics3D.SceneNode.New()
+child = Zanna.Graphics3D.SceneNode.New()
+body = Zanna.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
 
-Viper.Graphics3D.SceneNode.SetPosition(parent, 5.0, 0.0, 0.0)
-Viper.Graphics3D.SceneNode.AddChild(parent, child)
-Viper.Graphics3D.SceneGraph.Add(scene, parent)
+Zanna.Graphics3D.SceneNode.SetPosition(parent, 5.0, 0.0, 0.0)
+Zanna.Graphics3D.SceneNode.AddChild(parent, child)
+Zanna.Graphics3D.SceneGraph.Add(scene, parent)
 
 child.BindBody(body)
 child.SyncMode = 0
-Viper.Graphics3D.PhysicsBody3D.SetPosition(body, 6.0, 1.5, -2.0)
+Zanna.Graphics3D.PhysicsBody3D.SetPosition(body, 6.0, 1.5, -2.0)
 scene.SyncBindings(0.016)
 
 childPos = child.Position
-PRINT "Child local X from body = "; Viper.Math.Vec3.get_X(childPos)
+PRINT "Child local X from body = "; Zanna.Math.Vec3.get_X(childPos)
 
-skel = Viper.Graphics3D.Skeleton3D.New()
-rootBone = Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
-Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
+skel = Zanna.Graphics3D.Skeleton3D.New()
+rootBone = Zanna.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Zanna.Math.Mat4.Identity())
+Zanna.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
 
-walk = Viper.Graphics3D.Animation3D.New("walk", 1.0)
-Viper.Graphics3D.Animation3D.set_Looping(walk, 1)
-rot = Viper.Math.Quat.Identity()
-scl = Viper.Math.Vec3.One()
-Viper.Graphics3D.Animation3D.AddKeyframe(walk, rootBone, 0.0, Viper.Math.Vec3.Zero(), rot, scl)
-Viper.Graphics3D.Animation3D.AddKeyframe(walk, rootBone, 1.0, Viper.Math.Vec3.New(4.0, 0.0, 0.0), rot, scl)
+walk = Zanna.Graphics3D.Animation3D.New("walk", 1.0)
+Zanna.Graphics3D.Animation3D.set_Looping(walk, 1)
+rot = Zanna.Math.Quat.Identity()
+scl = Zanna.Math.Vec3.One()
+Zanna.Graphics3D.Animation3D.AddKeyframe(walk, rootBone, 0.0, Zanna.Math.Vec3.Zero(), rot, scl)
+Zanna.Graphics3D.Animation3D.AddKeyframe(walk, rootBone, 1.0, Zanna.Math.Vec3.New(4.0, 0.0, 0.0), rot, scl)
 
-controller = Viper.Graphics3D.AnimController3D.New(skel)
-Viper.Graphics3D.AnimController3D.AddState(controller, "walk", walk)
-Viper.Graphics3D.AnimController3D.SetRootMotionBone(controller, rootBone)
-Viper.Graphics3D.AnimController3D.Play(controller, "walk")
-Viper.Graphics3D.AnimController3D.Update(controller, 0.5)
+controller = Zanna.Graphics3D.AnimController3D.New(skel)
+Zanna.Graphics3D.AnimController3D.AddState(controller, "walk", walk)
+Zanna.Graphics3D.AnimController3D.SetRootMotionBone(controller, rootBone)
+Zanna.Graphics3D.AnimController3D.Play(controller, "walk")
+Zanna.Graphics3D.AnimController3D.Update(controller, 0.5)
 
-animNode = Viper.Graphics3D.SceneNode.New()
+animNode = Zanna.Graphics3D.SceneNode.New()
 animNode.BindAnimator(controller)
 animNode.SyncMode = 2
-Viper.Graphics3D.SceneGraph.Add(scene, animNode)
+Zanna.Graphics3D.SceneGraph.Add(scene, animNode)
 scene.SyncBindings(0.016)
 
 animPos = animNode.Position
-PRINT "Animator root motion X = "; Viper.Math.Vec3.get_X(animPos)
+PRINT "Animator root motion X = "; Zanna.Math.Vec3.get_X(animPos)
 PRINT "Sync mode = "; animNode.SyncMode

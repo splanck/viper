@@ -1,10 +1,10 @@
 // Regression: binding a broad runtime namespace must not make nested class
-// properties shadow Viper.String.get_Length as an unqualified function.
+// properties shadow Zanna.String.get_Length as an unqualified function.
 module namespace_length_collision;
 
-bind Viper.Game;
-bind Viper.String;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.String;
+bind Zanna.Terminal;
 
 func start() {
     var s = "abcdef";

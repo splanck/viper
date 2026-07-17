@@ -3,17 +3,17 @@ module TestDiagnostics;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Time.Stopwatch
+// COVER: Zanna.Time.Stopwatch
 
 func testStopwatch() {
     setTest("Stopwatch");
 
-    var sw = new Viper.Time.Stopwatch();
+    var sw = new Zanna.Time.Stopwatch();
     assertFalse(sw.IsRunning, "new stopwatch is stopped");
 
     sw.Start();
     assertTrue(sw.IsRunning, "stopwatch starts");
-    Viper.Time.Clock.Sleep(1);
+    Zanna.Time.Clock.Sleep(1);
     sw.Stop();
     assertFalse(sw.IsRunning, "stopwatch stops");
     assertGteInt(sw.ElapsedNs, 0, "elapsed ns non-negative");

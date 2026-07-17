@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 
 #include "il/core/Value.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 #include "vm/Trap.hpp"
 
 #include <array>
@@ -32,7 +32,7 @@
 namespace il::vm {
 
 using StringRef = std::string_view;
-using ViperString = ::rt_string;
+using ZannaString = ::rt_string;
 
 /// @brief Indicates whether a string view is guaranteed to be null-terminated.
 enum class AssumeNullTerminated : bool {
@@ -62,7 +62,7 @@ inline constexpr uint64_t kMaxBridgeStringBytes =
 struct ResultBuffers {
     int64_t i64 = 0;
     double f64 = 0.0;
-    ViperString str = nullptr;
+    ZannaString str = nullptr;
     void *ptr = nullptr;
 };
 
@@ -83,14 +83,14 @@ struct PowTrapOutcome {
 /// @param assumeNullTerminated Hint indicating whether @p text is null-terminated,
 ///        allowing the implementation to skip a copy when possible.
 /// @return Runtime string handle wrapping the converted text.
-ViperString toViperString(StringRef text,
+ZannaString toZannaString(StringRef text,
                           AssumeNullTerminated assumeNullTerminated = AssumeNullTerminated::No);
 
 /// @brief Extract a host string view from a runtime string handle.
 /// @param str Runtime string handle to read from.
 /// @return String view referencing the handle's character data. The view does
 ///         not extend the lifetime of the underlying buffer.
-StringRef fromViperString(const ViperString &str);
+StringRef fromZannaString(const ZannaString &str);
 
 //===----------------------------------------------------------------------===//
 // Constant Scalar Conversion Helpers

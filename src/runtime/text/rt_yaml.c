@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_yaml.c
 // Purpose: Implements a practical YAML 1.2 subset parser and formatter for the
-//          Viper.Data.Yaml class. Supports scalars (string, int, float, bool,
+//          Zanna.Data.Yaml class. Supports scalars (string, int, float, bool,
 //          null), block/flow sequences, block/flow mappings, quoted strings,
 //          comments (#), and block scalar parsing (| and >).
 //
@@ -329,7 +329,7 @@ static bool looks_like_decimal_float(const char *str, size_t len) {
     return i == len && (has_dot || has_exp) && (digits_before || digits_after);
 }
 
-/// @brief Parse a raw scalar token into its strongest matching Viper type.
+/// @brief Parse a raw scalar token into its strongest matching Zanna type.
 ///
 /// Tries, in order: null (special tokens / empty) → bool → integer
 /// (decimal, 0x hex, 0o octal) → float → string. The first
@@ -1322,7 +1322,7 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 // Public API - Parsing
 //=============================================================================
 
-/// @brief `Yaml.Parse(text)` — parse a YAML 1.2 document into Viper values.
+/// @brief `Yaml.Parse(text)` — parse a YAML 1.2 document into Zanna values.
 ///
 /// YAML types map to: null→NULL, bool→Box.I1, int→Box.I64, float→Box.F64,
 /// string→rt_string, sequence→Seq, mapping→Map. Multi-document streams
@@ -1331,7 +1331,7 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 /// `rt_yaml_error()` to distinguish the two cases.
 ///
 /// @param text UTF-8 YAML source to parse.
-/// @return Owned Viper value, or NULL on empty/null/error.
+/// @return Owned Zanna value, or NULL on empty/null/error.
 void *rt_yaml_parse(rt_string text) {
     clear_error();
 
@@ -1442,7 +1442,7 @@ void *rt_yaml_parse(rt_string text) {
 /// valid and therefore return `Ok(NULL)`. Invalid YAML returns `Err(message)`.
 ///
 /// @param text YAML source text.
-/// @return Owned `Viper.Result` carrying either a parsed value or an error string.
+/// @return Owned `Zanna.Result` carrying either a parsed value or an error string.
 void *rt_yaml_parse_result(rt_string text) {
     void *value = rt_yaml_parse(text);
     rt_string err = rt_yaml_error();

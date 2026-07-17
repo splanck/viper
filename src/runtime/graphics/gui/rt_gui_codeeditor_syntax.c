@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //          Split out of rt_gui_codeeditor.c.
 //
 // Key invariants:
-//   - Mirrors rt_gui_codeeditor.c's VIPER_ENABLE_GRAPHICS guard: real syntax
+//   - Mirrors rt_gui_codeeditor.c's ZANNA_ENABLE_GRAPHICS guard: real syntax
 //     functions when graphics is enabled, no-op stubs otherwise.
 //   - The shared helpers (rt_codeeditor_handle_checked, column conversion,
 //     normalize_selection) are exported via rt_gui_codeeditor_internal.h.
@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Duplicate a syntax keyword token with malloc ownership.
 /// @details Custom keyword lists are stored as `char *` entries and released
@@ -601,7 +601,7 @@ static void rt_zia_syntax_cb(
                     color = c_function;
                 } else if (wlen > 0 && text[start] >= 'A' && text[start] <= 'Z') {
                     // Identifiers starting with an uppercase letter are
-                    // type / class / module names (Foo, MyClass, Math, Viper).
+                    // type / class / module names (Foo, MyClass, Math, Zanna).
                     // Matches VS Code / IntelliJ convention; gives the
                     // highlighter a much richer feel than a hand-curated
                     // 11-name type list.
@@ -630,7 +630,7 @@ static void rt_zia_syntax_cb(
     }
 }
 
-// ─── Viper BASIC language tokenizer ───────────────────────────────────────
+// ─── Zanna BASIC language tokenizer ───────────────────────────────────────
 
 static const char *const basic_keywords[] = {
     "AND",       "AS",        "CALL",      "CASE",   "CLASS",  "CLOSE",     "CONST",
@@ -644,11 +644,11 @@ static const char *const basic_keywords[] = {
     "SWAP",      "THEN",      "TO",        "TRUE",   "TYPE",   "UNTIL",     "USING",
     "WEND",      "WHILE",     "XOR",       NULL};
 
-/// @brief Viper BASIC built-in type names — coloured as types, not keywords.
+/// @brief Zanna BASIC built-in type names — coloured as types, not keywords.
 static const char *const basic_types[] = {"BOOLEAN", "DOUBLE",  "FLOAT", "INT", "INTEGER",
                                           "LONG",    "SINGLE",  "STRING", NULL};
 
-/// @brief Tokenize a Viper BASIC source line.
+/// @brief Tokenize a Zanna BASIC source line.
 ///
 /// Differences from Zia:
 ///   - Comments use `'` (apostrophe) or the `REM` keyword.
@@ -734,14 +734,14 @@ static void rt_basic_syntax_cb(
     }
 }
 
-// ─── Viper IL language tokenizer ──────────────────────────────────────────
+// ─── Zanna IL language tokenizer ──────────────────────────────────────────
 
 // Structural keywords of the IL textual format (header, declarations, blocks).
-static const char *const viper_keywords[] = {
+static const char *const zanna_keywords[] = {
     "il", "extern", "global", "func", "const", "block", NULL};
 
 // IL value types.
-static const char *const viper_types[] = {"i1",
+static const char *const zanna_types[] = {"i1",
                                           "i8",
                                           "i16",
                                           "i32",
@@ -755,9 +755,9 @@ static const char *const viper_types[] = {"i1",
                                           "resume_tok",
                                           NULL};
 
-// IL opcode mnemonics (kept in sync with `viper --dump-opcodes`). Opcodes embed
+// IL opcode mnemonics (kept in sync with `zanna --dump-opcodes`). Opcodes embed
 // '.' and '_', so the IL identifier scan treats '.' as a continuation char.
-static const char *const viper_opcodes[] = {"add",
+static const char *const zanna_opcodes[] = {"add",
                                             "sub",
                                             "mul",
                                             "iadd.ovf",
@@ -847,7 +847,7 @@ static int syn_is_il_id_cont(char c) {
     return syn_is_id_cont(c) || c == '.';
 }
 
-/// @brief Tokenize a Viper IL source line.
+/// @brief Tokenize a Zanna IL source line.
 ///
 /// IL specifics:
 ///   - `#` or `//` introduce a line comment.
@@ -855,7 +855,7 @@ static int syn_is_il_id_cont(char c) {
 ///     SSA temp (parameter color).
 ///   - Opcode mnemonics may embed `.`/`_` (`iadd.ovf`, `cast.si_to_fp`), so the
 ///     identifier scan treats `.` as a continuation character.
-static void rt_viper_syntax_cb(
+static void rt_zanna_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
     (void)line_num;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
@@ -921,11 +921,11 @@ static void rt_viper_syntax_cb(
                 i++;
             size_t wlen = i - start;
             uint32_t color = c_default;
-            if (syn_is_keyword(text + start, wlen, viper_keywords))
+            if (syn_is_keyword(text + start, wlen, zanna_keywords))
                 color = c_keyword;
-            else if (syn_is_keyword(text + start, wlen, viper_types))
+            else if (syn_is_keyword(text + start, wlen, zanna_types))
                 color = c_type;
-            else if (syn_is_keyword(text + start, wlen, viper_opcodes))
+            else if (syn_is_keyword(text + start, wlen, zanna_opcodes))
                 color = c_keyword;
             syn_fill(colors, start, wlen, color);
             continue;
@@ -946,7 +946,7 @@ static void rt_viper_syntax_cb(
 
 /// @brief `CodeEditor.SetLanguage(language)` — install a syntax-highlight callback.
 ///
-/// Recognized values: `"zia"`, `"basic"`, `"viper"`/`"il"`. Anything else
+/// Recognized values: `"zia"`, `"basic"`, `"zanna"`/`"il"`. Anything else
 /// (including empty string) installs the no-op highlighter (plain text).
 /// The editor pointer itself is the `user_data` for the callback so
 /// the tokenizer can read the per-editor color overrides + custom
@@ -967,8 +967,8 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
         vg_codeeditor_set_syntax(ce, rt_zia_syntax_cb, ce);
     else if (strcmp(clang, "basic") == 0)
         vg_codeeditor_set_syntax(ce, rt_basic_syntax_cb, ce);
-    else if (strcmp(clang, "viper") == 0 || strcmp(clang, "il") == 0)
-        vg_codeeditor_set_syntax(ce, rt_viper_syntax_cb, ce);
+    else if (strcmp(clang, "zanna") == 0 || strcmp(clang, "il") == 0)
+        vg_codeeditor_set_syntax(ce, rt_zanna_syntax_cb, ce);
     else
         vg_codeeditor_set_syntax(ce, NULL, NULL); // plain text
 
@@ -1263,7 +1263,7 @@ int64_t rt_codeeditor_get_inlay_hint_count(void *editor) {
 
 //=============================================================================
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: `CodeEditor.SetLanguage` is a no-op without graphics.
 void rt_codeeditor_set_language(void *editor, rt_string language) {
@@ -1345,4 +1345,4 @@ int64_t rt_codeeditor_get_inlay_hint_count(void *editor) {
     return 0;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

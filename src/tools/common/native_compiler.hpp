@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <optional>
 #include <string>
 
-namespace viper::tools {
+namespace zanna::tools {
 
 /// @brief Target architecture for native code generation.
 enum class TargetArch { ARM64, X64 };
@@ -49,7 +49,7 @@ bool isNativeOutputPath(const std::string &path);
 /// @param ilPath Path to the IL text file on disk.
 /// @param outputPath Path for the output native binary.
 /// @param arch Target architecture (defaults to host architecture).
-/// @param assetBlobPath Path to VPA asset blob for .rodata embedding (optional).
+/// @param assetBlobPath Path to ZPAK asset blob for .rodata embedding (optional).
 /// @param assetObjPath  Path to extra .o file with asset blob C array (optional).
 /// @param backendOptimizeLevel Backend optimization level to preserve after frontend IL
 /// optimization.
@@ -83,7 +83,7 @@ int compileToNative(const std::string &ilPath,
 /// @param debugSourcePath Original source path recorded for debug info/diagnostics.
 /// @param outputPath Path for the output native binary.
 /// @param arch Target architecture (defaults to host architecture).
-/// @param assetBlobPath Path to VPA asset blob for .rodata embedding (optional).
+/// @param assetBlobPath Path to ZPAK asset blob for .rodata embedding (optional).
 /// @param assetObjPath Path to extra .o file with asset blob C array (optional).
 /// @param backendOptimizeLevel Backend optimization level applied during codegen.
 /// @param skipIlOptimization True when the module has already run the frontend/project pipeline.
@@ -116,7 +116,7 @@ std::string generateTempIlPath();
 std::string generateTempFilePath(const char *prefix, const char *extension);
 
 /// @brief Generate a unique temporary file path for asset blob.
-/// @return A path in the system temp directory with a .vpa extension.
+/// @return A path in the system temp directory with a .zpak extension.
 std::string generateTempAssetPath();
 
-} // namespace viper::tools
+} // namespace zanna::tools

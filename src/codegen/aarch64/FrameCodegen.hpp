@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// Iterate over a register list in forward-pair order for callee save (prologue).
 ///
@@ -127,4 +127,4 @@ void iterateEpilogue(const std::vector<PhysReg> &savedGPRs,
     s.ret();
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

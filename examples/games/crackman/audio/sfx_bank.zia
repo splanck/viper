@@ -16,7 +16,7 @@
 
 module sfx_bank;
 
-bind Viper.Audio;
+bind Zanna.Audio;
 
 /// @brief Register every named sound effect into the given SoundBank.
 expose func registerSfx(bank: SoundBank) {

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_pixels.c
-// Purpose: Core operations for Viper.Graphics.Pixels — the CPU-side software
+// Purpose: Core operations for Zanna.Graphics.Pixels — the CPU-side software
 //   image buffer. Contains allocation, pixel access, fill/clear, copy/clone,
 //   and byte conversion. Image I/O lives in rt_pixels_io.c, transforms in
 //   rt_pixels_transform.c, and drawing primitives in rt_pixels_draw.c.
@@ -72,7 +72,7 @@ static uint64_t pixels_next_cache_identity(void) {
 ///          class id) reports the same wording. @p op is preferred when
 ///          provided; @p fallback covers paths where the operation context
 ///          isn't known at the trap site.
-void viper_pixels_trap_invalid_handle(const char *op, const char *fallback) {
+void zanna_pixels_trap_invalid_handle(const char *op, const char *fallback) {
     rt_trap(op ? op : fallback);
 }
 
@@ -246,7 +246,7 @@ int64_t rt_pixels_get_rgba(void *pixels, int64_t x, int64_t y) {
     return (int64_t)p->data[y * p->width + x];
 }
 
-/// @brief Read a pixel as a Viper.Graphics.Color-compatible value.
+/// @brief Read a pixel as a Zanna.Graphics.Color-compatible value.
 int64_t rt_pixels_get_color(void *pixels, int64_t x, int64_t y) {
     uint32_t rgba = (uint32_t)rt_pixels_get_rgba(pixels, x, y);
     return rt_pixels_rgba_to_color(rgba);

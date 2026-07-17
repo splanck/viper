@@ -1,7 +1,7 @@
 module starfield;
 
 // ============================================================================
-// STARFIELD.VIPER - 3D Starfield Animation
+// STARFIELD.ZANNA - 3D Starfield Animation
 // ============================================================================
 // Classic "warp speed" starfield effect where stars fly toward the viewer.
 // Uses perspective projection to simulate 3D depth.
@@ -9,12 +9,12 @@ module starfield;
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Time;
 
 // Star entity representing a single star in 3D space
 class Star {
@@ -221,6 +221,6 @@ func starfieldRun(canvas: Canvas) {
         canvas.Flip();
         frameCount = frameCount + 1;
 
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

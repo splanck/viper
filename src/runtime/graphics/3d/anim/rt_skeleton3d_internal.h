@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 
 #include "rt_skeleton3d.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #define VGFX3D_MAX_BONES 256
 /* Skeleton-level bone ceiling: rigs may exceed the 256-slot draw palette; meshes

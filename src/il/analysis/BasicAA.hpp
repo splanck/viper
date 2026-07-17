@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 namespace detail {
 
@@ -514,4 +514,4 @@ inline ModRefResult BasicAA::modRef(const il::core::Instr &instr) const {
     return ModRefResult::ModRef;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

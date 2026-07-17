@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "support/source_location.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Machine IR opcodes for AArch64 code generation.
 ///
@@ -48,7 +48,7 @@ namespace viper::codegen::aarch64 {
 /// the single source of truth for opcode names. Add new opcodes ONLY in
 /// MOpcodeDef.inc; the enum and name table are auto-generated from that file.
 enum class MOpcode {
-#define VIPER_MIR_OPCODE(name) name,
+#define ZANNA_MIR_OPCODE(name) name,
 #include "codegen/aarch64/MOpcodeDef.inc"
 };
 
@@ -240,4 +240,4 @@ struct MFunction {
 /// @brief Render a function to string form.
 [[nodiscard]] std::string toString(const MFunction &func);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

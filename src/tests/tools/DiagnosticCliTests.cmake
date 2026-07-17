@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED VIPER_EXE)
-    message(FATAL_ERROR "VIPER_EXE must be provided")
+if (NOT DEFINED ZANNA_EXE)
+    message(FATAL_ERROR "ZANNA_EXE must be provided")
 endif ()
 if (NOT DEFINED TEST_WORK_DIR)
     message(FATAL_ERROR "TEST_WORK_DIR must be provided")
@@ -14,7 +14,7 @@ set(_unused_zia "${TEST_WORK_DIR}/unused.zia")
 file(WRITE "${_unused_zia}" "module T;\nfunc start() {    var x = 5;\n}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il "${_unused_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il "${_unused_zia}"
         RESULT_VARIABLE _unused_rc
         OUTPUT_VARIABLE _unused_out
         ERROR_VARIABLE _unused_err)
@@ -26,7 +26,7 @@ if (NOT _unused_err MATCHES "warning\\[W001\\]")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il --quiet-warnings "${_unused_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il --quiet-warnings "${_unused_zia}"
         RESULT_VARIABLE _quiet_rc
         OUTPUT_VARIABLE _quiet_out
         ERROR_VARIABLE _quiet_err)
@@ -38,7 +38,7 @@ if (_quiet_err MATCHES "warning\\[W001\\]")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il --diagnostic-format=json "${_unused_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il --diagnostic-format=json "${_unused_zia}"
         RESULT_VARIABLE _json_rc
         OUTPUT_VARIABLE _json_out
         ERROR_VARIABLE _json_err)
@@ -53,7 +53,7 @@ set(_div0_zia "${TEST_WORK_DIR}/div0.zia")
 file(WRITE "${_div0_zia}" "module T;\nfunc start() {    var x = 10 / 0;\n}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il "${_div0_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il "${_div0_zia}"
         RESULT_VARIABLE _div0_default_rc
         OUTPUT_VARIABLE _div0_default_out
         ERROR_VARIABLE _div0_default_err)
@@ -65,7 +65,7 @@ if (NOT _div0_default_err MATCHES "error\\[W010\\]")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il --strict-diagnostics "${_div0_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il --strict-diagnostics "${_div0_zia}"
         RESULT_VARIABLE _div0_rc
         OUTPUT_VARIABLE _div0_out
         ERROR_VARIABLE _div0_err)
@@ -77,7 +77,7 @@ if (NOT _div0_err MATCHES "error\\[W010\\]")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il --no-strict-diagnostics "${_div0_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il --no-strict-diagnostics "${_div0_zia}"
         RESULT_VARIABLE _nostrict_rc
         OUTPUT_VARIABLE _nostrict_out
         ERROR_VARIABLE _nostrict_err)
@@ -92,7 +92,7 @@ set(_bad_comment_zia "${TEST_WORK_DIR}/bad_comment.zia")
 file(WRITE "${_bad_comment_zia}" "module T;\n/* unterminated\nfunc start() {}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il "${_bad_comment_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il "${_bad_comment_zia}"
         RESULT_VARIABLE _bad_comment_rc
         OUTPUT_VARIABLE _bad_comment_out
         ERROR_VARIABLE _bad_comment_err)
@@ -115,7 +115,7 @@ file(WRITE "${_fixed_oob_zia}" "module T;\n"
         "func start() { var n = new Numbers(); n.bad(); }\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" front zia -emit-il "${_fixed_oob_zia}"
+        COMMAND "${ZANNA_EXE}" front zia -emit-il "${_fixed_oob_zia}"
         RESULT_VARIABLE _fixed_oob_rc
         OUTPUT_VARIABLE _fixed_oob_out
         ERROR_VARIABLE _fixed_oob_err)
@@ -136,7 +136,7 @@ file(WRITE "${_gaddr_il}" "il 0.3.0\n"
         "}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" -run "${_gaddr_il}" --bytecode --dump-trap
+        COMMAND "${ZANNA_EXE}" -run "${_gaddr_il}" --bytecode --dump-trap
         RESULT_VARIABLE _gaddr_rc
         OUTPUT_VARIABLE _gaddr_out
         ERROR_VARIABLE _gaddr_err)

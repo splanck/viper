@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -111,7 +111,7 @@ void *rt_scenemanager_new(void) {
 /// @brief Register a named scene. The first scene added becomes the current scene.
 void rt_scenemanager_add(void *mgr, void *name) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.Add: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.Add: expected Zanna.Game.SceneManager");
     if (!sm || !name)
         return;
     if (sm->count >= SM_MAX_SCENES)
@@ -135,7 +135,7 @@ void rt_scenemanager_add(void *mgr, void *name) {
 /// @brief Instantly switch to a named scene (sets just_entered and just_exited flags).
 void rt_scenemanager_switch(void *mgr, void *name) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.Switch: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.Switch: expected Zanna.Game.SceneManager");
     if (!sm || !name)
         return;
     char cname[SM_SCENE_NAME_MAX];
@@ -158,7 +158,7 @@ void rt_scenemanager_switch(void *mgr, void *name) {
 /// @brief Begin a timed transition to a new scene (completes after duration_ms).
 void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_ms) {
     scenemanager_impl *sm = checked_scenemanager(
-        mgr, "SceneManager.SwitchTransition: expected Viper.Game.SceneManager");
+        mgr, "SceneManager.SwitchTransition: expected Zanna.Game.SceneManager");
     if (!sm || !name)
         return;
     char cname[SM_SCENE_NAME_MAX];
@@ -178,7 +178,7 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
 /// transitions.
 void rt_scenemanager_update(void *mgr, int64_t dt) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.Update: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.Update: expected Zanna.Game.SceneManager");
     if (!sm)
         return;
     sm->transition_completed = 0;
@@ -203,7 +203,7 @@ void rt_scenemanager_update(void *mgr, int64_t dt) {
 /// @brief Get the name of the currently active scene.
 void *rt_scenemanager_current(void *mgr) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.Current: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.Current: expected Zanna.Game.SceneManager");
     if (!sm)
         return (void *)rt_const_cstr("");
     if (sm->current >= 0 && sm->current < sm->count)
@@ -214,7 +214,7 @@ void *rt_scenemanager_current(void *mgr) {
 /// @brief Get the name of the previously active scene (before the last transition).
 void *rt_scenemanager_previous(void *mgr) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.Previous: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.Previous: expected Zanna.Game.SceneManager");
     if (!sm)
         return (void *)rt_const_cstr("");
     if (sm->previous >= 0 && sm->previous < sm->count)
@@ -225,7 +225,7 @@ void *rt_scenemanager_previous(void *mgr) {
 /// @brief Check whether the current scene matches the given name.
 int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.IsScene: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.IsScene: expected Zanna.Game.SceneManager");
     if (!sm || !name)
         return 0;
     if (sm->current < 0)
@@ -239,28 +239,28 @@ int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
 /// @brief Check whether a scene was entered this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_entered(void *mgr) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.JustEntered: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.JustEntered: expected Zanna.Game.SceneManager");
     return sm ? sm->just_entered : 0;
 }
 
 /// @brief Check whether a scene was exited this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_exited(void *mgr) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.JustExited: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.JustExited: expected Zanna.Game.SceneManager");
     return sm ? sm->just_exited : 0;
 }
 
 /// @brief Check whether a timed scene transition is currently in progress.
 int8_t rt_scenemanager_is_transitioning(void *mgr) {
     scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.IsTransitioning: expected Viper.Game.SceneManager");
+        checked_scenemanager(mgr, "SceneManager.IsTransitioning: expected Zanna.Game.SceneManager");
     return sm ? sm->transitioning : 0;
 }
 
 /// @brief Get the transition progress as a ratio (0.0 = start, 1.0 = complete).
 double rt_scenemanager_transition_progress(void *mgr) {
     scenemanager_impl *sm = checked_scenemanager(
-        mgr, "SceneManager.TransitionProgress: expected Viper.Game.SceneManager");
+        mgr, "SceneManager.TransitionProgress: expected Zanna.Game.SceneManager");
     if (!sm)
         return 0.0;
     if (sm->transition_completed)

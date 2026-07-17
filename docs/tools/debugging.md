@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-05-02
 ---
 
-# Viper Debugging Guide
+# Zanna Debugging Guide
 
-This guide covers all debugging features available in the Viper platform, including both the VM and the Zia/BASIC frontends.
+This guide covers all debugging features available in the Zanna platform, including both the VM and the Zia/BASIC frontends.
 
 ---
 
@@ -42,7 +42,7 @@ Tracing prints detailed execution information to stderr as the VM runs each inst
 ### IL Trace Mode
 
 ```sh
-viper -run program.il --trace=il
+zanna -run program.il --trace=il
 ```
 
 Output format:
@@ -55,7 +55,7 @@ Each line shows: function name, block label, instruction index, opcode, operands
 ### Source Trace Mode
 
 ```sh
-viper -run program.il --trace=src
+zanna -run program.il --trace=src
 ```
 
 Output format:
@@ -69,7 +69,7 @@ Shows the original source file, line, and column for each executed instruction. 
 
 - Both trace modes write to stderr, so program output on stdout remains clean.
 - Tracing is **all-or-nothing** per mode; there is no per-function or per-file filter.
-- In `viper run` and the legacy `viper front zia` / `viper front basic` entry points, source-driven trace runs disable IL optimization to preserve the instruction-to-source mapping.
+- In `zanna run` and the legacy `zanna front zia` / `zanna front basic` entry points, source-driven trace runs disable IL optimization to preserve the instruction-to-source mapping.
 
 ---
 
@@ -81,14 +81,14 @@ Source breakpoints are resolved by the IL runner. Build the source target to IL
 first, then debug the resulting module:
 
 ```sh
-viper build program.zia -o /tmp/program.il
-viper -run /tmp/program.il --break-src program.zia:42
+zanna build program.zia -o /tmp/program.il
+zanna -run /tmp/program.il --break-src program.zia:42
 ```
 
 ### Source-Line Breakpoints
 
 ```sh
-viper -run program.il --break-src main.zia:42
+zanna -run program.il --break-src main.zia:42
 ```
 
 Pauses before executing any instruction originating from line 42 of `main.zia`. File paths are normalized automatically (forward slashes, case-insensitive on Windows).
@@ -96,13 +96,13 @@ Pauses before executing any instruction originating from line 42 of `main.zia`. 
 ### Block-Label Breakpoints
 
 ```sh
-viper -run program.il --break entry
+zanna -run program.il --break entry
 ```
 
 Pauses when the VM enters a block with the given label. Also supports `file:line` format as a shorthand for `--break-src`:
 
 ```sh
-viper -run program.il --break main.zia:42
+zanna -run program.il --break main.zia:42
 ```
 
 ### Multiple Breakpoints
@@ -110,7 +110,7 @@ viper -run program.il --break main.zia:42
 Specify multiple `--break` or `--break-src` flags:
 
 ```sh
-viper -run program.il --break-src main.zia:10 --break-src util.zia:25
+zanna -run program.il --break-src main.zia:10 --break-src util.zia:25
 ```
 
 ### Breakpoint Coalescing
@@ -124,7 +124,7 @@ Repeated hits on the same source line are coalesced — the debugger does not sp
 Watches report every time a named variable is stored to during execution.
 
 ```sh
-viper -run program.il --watch x --watch total
+zanna -run program.il --watch x --watch total
 ```
 
 Output format:
@@ -171,7 +171,7 @@ Memory watches use binary search for efficient lookup when 8+ watches are active
 ### Single-Step on Entry
 
 ```sh
-viper -run program.il --step
+zanna -run program.il --step
 ```
 
 Executes one instruction at the entry point, then continues to completion. Useful for verifying the program starts correctly.
@@ -179,7 +179,7 @@ Executes one instruction at the entry point, then continues to completion. Usefu
 ### Step Budget
 
 ```sh
-viper -run program.il --max-steps 10000
+zanna -run program.il --max-steps 10000
 ```
 
 Limits the total number of IL instructions executed. When exceeded, execution stops with `RunStatus::StepBudgetExceeded`. Set to 0 (default) for unlimited.
@@ -187,7 +187,7 @@ Limits the total number of IL instructions executed. When exceeded, execution st
 ### Debug Script Automation
 
 ```sh
-viper -run program.il --debug-cmds script.dbg
+zanna -run program.il --debug-cmds script.dbg
 ```
 
 The debug script file contains one command per line:
@@ -263,11 +263,11 @@ Diagnostic codes are prefixed by subsystem:
 - `V-CG-*` — native backend/codegen
 - `V-SRC-*` — shared source loading/registration
 
-Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, stage, location, range, source line, help text, fix-its, and notes when available.
+Use `--diagnostic-format=json` on `zanna` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, stage, location, range, source line, help text, fix-its, and notes when available.
 
-Diagnostic codes are documented in a central catalog: `viper explain <code>`
+Diagnostic codes are documented in a central catalog: `zanna explain <code>`
 describes one code (`--json` for structured output), and
-`viper --print-error-codes --json` dumps the whole catalog. Codes not yet
+`zanna --print-error-codes --json` dumps the whole catalog. Codes not yet
 cataloged still resolve to their subsystem family by prefix.
 
 ### Source Snippets
@@ -284,12 +284,12 @@ Several checks now run before a binary or VM run can start:
 - BASIC assignment and operator type mismatches, such as assigning a string-valued expression to an integer variable or using `MOD` with a float operand, are reported during semantic analysis with `B2001` before IL is emitted.
 - Optimization pipeline failures are surfaced as diagnostics instead of continuing with potentially invalid IL.
 - Bytecode compilation uses checked diagnostics for unsupported or malformed IL, so the VM reports compile failure instead of crashing during execution.
-- File-based native codegen loads and verifies textual IL before backend lowering. `viper build` reuses the already
+- File-based native codegen loads and verifies textual IL before backend lowering. `zanna build` reuses the already
   verified in-memory module from the frontend pipeline.
 - Zia lexer errors and semantic errors stop compilation before lowering, so bad token streams cannot still produce IL.
 - Literal fixed-array indexes are checked at compile time when the array length is known.
 
-`viper run`, `viper build`, and `viper front zia` enable strict diagnostics by default. Safety-critical Zia warnings are promoted to errors before execution or emission; this currently includes missing returns, division by zero, uninitialized variables, optional access without a check, and non-exhaustive matches. Use `--no-strict-diagnostics` only when you intentionally want those findings to remain warnings.
+`zanna run`, `zanna build`, and `zanna front zia` enable strict diagnostics by default. Safety-critical Zia warnings are promoted to errors before execution or emission; this currently includes missing returns, division by zero, uninitialized variables, optional access without a check, and non-exhaustive matches. Use `--no-strict-diagnostics` only when you intentionally want those findings to remain warnings.
 
 Warnings are printed even when compilation succeeds. Use `--quiet-warnings` or `--no-warnings` to suppress successful warning output.
 
@@ -331,15 +331,15 @@ Use `--dump-trap` to ensure trap messages are printed to stderr even when the pr
 
 ## 7. Runtime Logging
 
-### Viper.Diagnostics.Log API (Zia / BASIC)
+### Zanna.Diagnostics.Log API (Zia / BASIC)
 
 The runtime provides a leveled logging system accessible from both Zia and BASIC:
 
 ```rust
-Viper.Diagnostics.Log.Debug("detailed info")
-Viper.Diagnostics.Log.Info("normal info")
-Viper.Diagnostics.Log.Warn("potential issue")
-Viper.Diagnostics.Log.Error("something failed")
+Zanna.Diagnostics.Log.Debug("detailed info")
+Zanna.Diagnostics.Log.Info("normal info")
+Zanna.Diagnostics.Log.Warn("potential issue")
+Zanna.Diagnostics.Log.Error("something failed")
 ```
 
 Output format:
@@ -351,7 +351,7 @@ Log levels (lowest to highest): DEBUG (0), INFO (1), WARN (2), ERROR (3), OFF (4
 
 Default level: INFO. Messages below the current level are suppressed.
 
-### Viper.Core.Diagnostics API
+### Zanna.Core.Diagnostics API
 
 The runtime assertion library provides assertion variants for test and debug use. Every assertion
 takes a trailing `msg: str` argument that describes the failure:
@@ -372,33 +372,33 @@ takes a trailing `msg: str` argument that describes the failure:
 | `AssertLte(a, b, msg)` | `void(i64, i64, str)` | Assert `a <= b` |
 | `Trap(msg)` | `void(str)` | Raise a runtime trap with message |
 
-These are exposed as static methods on `Viper.Core.Diagnostics` and registered in
+These are exposed as static methods on `Zanna.Core.Diagnostics` and registered in
 `runtime.def:1148-1160`.
 
 ### Debug Print
 
-There is no `Viper.Debug` namespace. For quick debugging, route messages through `Viper.Diagnostics.Log` (see
+There is no `Zanna.Debug` namespace. For quick debugging, route messages through `Zanna.Diagnostics.Log` (see
 above) or directly to the terminal:
 
-```viper
-Viper.Diagnostics.Log.Debug("value=" + IntToStr(value))    // Goes through the leveled logger
-Viper.Terminal.Print("debug: " + msg)          // Prints to stdout
+```zanna
+Zanna.Diagnostics.Log.Debug("value=" + IntToStr(value))    // Goes through the leveled logger
+Zanna.Terminal.Print("debug: " + msg)          // Prints to stdout
 ```
 
-`Viper.Diagnostics.Log.*` writes to stderr (or the configured log sink) and is suppressed when the active level
+`Zanna.Diagnostics.Log.*` writes to stderr (or the configured log sink) and is suppressed when the active level
 is above the call's level.
 
 ---
 
 ## 8. Pipeline Dump Flags
 
-The compiler supports dump flags for inspecting intermediate results at every stage of the pipeline. All dumps go to **stderr** so they don't interfere with program output or `-emit-il`. These work with `viper run` and the legacy `viper front zia` / `viper front basic` commands.
+The compiler supports dump flags for inspecting intermediate results at every stage of the pipeline. All dumps go to **stderr** so they don't interfere with program output or `-emit-il`. These work with `zanna run` and the legacy `zanna front zia` / `zanna front basic` commands.
 
 ### Token Stream
 
 ```sh
-viper run --dump-tokens program.zia
-viper front basic -run program.bas --dump-tokens
+zanna run --dump-tokens program.zia
+zanna front basic -run program.bas --dump-tokens
 ```
 
 Prints every token produced by the lexer with location, kind, text, and literal values:
@@ -417,7 +417,7 @@ Prints every token produced by the lexer with location, kind, text, and literal 
 ### AST Dump
 
 ```sh
-viper run --dump-ast program.zia
+zanna run --dump-ast program.zia
 ```
 
 Prints the parsed AST (abstract syntax tree) as an indented tree. For Zia, this includes source locations, node kinds, operators, and literal values:
@@ -443,7 +443,7 @@ For BASIC, the AST uses the existing `AstPrinter` format.
 ### AST Dump After Semantic Analysis (Zia Only)
 
 ```sh
-viper run --dump-sema-ast program.zia
+zanna run --dump-sema-ast program.zia
 ```
 
 Prints the AST after semantic analysis has run. This is useful for seeing what sema has annotated or transformed — comparing `--dump-ast` with `--dump-sema-ast` shows what the semantic pass changed.
@@ -451,7 +451,7 @@ Prints the AST after semantic analysis has run. This is useful for seeing what s
 ### IL After Lowering
 
 ```sh
-viper run --dump-il program.zia
+zanna run --dump-il program.zia
 ```
 
 Prints the IL module immediately after lowering from the AST, before any optimization:
@@ -459,11 +459,11 @@ Prints the IL module immediately after lowering from the AST, before any optimiz
 ```il
 === IL after lowering ===
 il 0.3.0
-extern @Viper.Terminal.SayInt(i64) -> void
+extern @Zanna.Terminal.SayInt(i64) -> void
 func @main() -> void {
 entry_0:
   .loc 1 3 26
-  call @Viper.Terminal.SayInt(42)
+  call @Zanna.Terminal.SayInt(42)
   .loc 1 2 1
   ret
 }
@@ -473,7 +473,7 @@ entry_0:
 ### IL Per-Pass Dump
 
 ```sh
-viper run -O1 --dump-il-passes program.zia
+zanna run -O1 --dump-il-passes program.zia
 ```
 
 Prints the full IL module before and after each optimization pass. Requires `-O1` or `-O2` (at `-O0`, the only passes are SimplifyCFG and DCE). Uses the PassManager's built-in instrumentation hooks:
@@ -490,7 +490,7 @@ Prints the full IL module before and after each optimization pass. Requires `-O1
 ### IL After Optimization
 
 ```sh
-viper run -O1 --dump-il-opt program.zia
+zanna run -O1 --dump-il-opt program.zia
 ```
 
 Prints the IL module after the entire optimization pipeline has completed:
@@ -506,7 +506,7 @@ Prints the IL module after the entire optimization pipeline has completed:
 All dump flags can be combined freely. They print in pipeline order:
 
 ```sh
-viper run --dump-tokens --dump-ast --dump-il --dump-il-opt program.zia
+zanna run --dump-tokens --dump-ast --dump-il --dump-il-opt program.zia
 ```
 
 This prints the token stream, then the AST, then the pre-optimization IL, then the post-optimization IL.
@@ -566,13 +566,13 @@ IL modules can be serialized in two modes:
 - **Pretty mode** — Human-readable with indentation and comments
 - **Canonical mode** — Deterministic output suitable for golden tests
 
-Use `zia --emit-il`, `vbasic --emit-il`, or the legacy `viper front ... -emit-il`
+Use `zia --emit-il`, `vbasic --emit-il`, or the legacy `zanna front ... -emit-il`
 commands to output the final IL module to stdout. Use `--dump-il` /
 `--dump-il-opt` to print specific pipeline stages to stderr:
 
 ```sh
-viper front zia -emit-il program.zia          # Final IL to stdout
-viper front zia -run program.zia --dump-il    # IL after lowering to stderr
+zanna front zia -emit-il program.zia          # Final IL to stdout
+zanna front zia -run program.zia --dump-il    # IL after lowering to stderr
 ```
 
 ### Verification
@@ -624,7 +624,7 @@ config.pollCallback = [&]() -> bool {
 
 ### IL Exception Model
 
-Viper IL uses structured exception handling with `eh.push` / `eh.pop` opcodes that bracket the
+Zanna IL uses structured exception handling with `eh.push` / `eh.pop` opcodes that bracket the
 protected region, plus an `eh.entry` marker inside the handler block:
 
 ```il
@@ -659,10 +659,10 @@ When a trap occurs:
 
 ## 12. Benchmarking
 
-### `viper bench` Command
+### `zanna bench` Command
 
 ```sh
-viper bench program.il -n 5 --all
+zanna bench program.il -n 5 --all
 ```
 
 Runs the program multiple times across different VM dispatch strategies and reports timing:
@@ -685,12 +685,12 @@ BENCH program.il table instr=50000 time_ms=12 insns_per_sec=4166666
 ### JSON Output
 
 ```sh
-viper bench program.il --json
+zanna bench program.il --json
 ```
 
 ### Opcode Counting
 
-When compiled with `VIPER_VM_OPCOUNTS=1` (default in Debug builds):
+When compiled with `ZANNA_VM_OPCOUNTS=1` (default in Debug builds):
 
 ```cpp
 Runner runner(module);
@@ -707,7 +707,7 @@ runner.resetOpcodeCounts();               // Reset counters
 ### Instruction Count
 
 ```sh
-viper -run program.il --count
+zanna -run program.il --count
 ```
 
 Output:
@@ -718,7 +718,7 @@ Output:
 ### Execution Time
 
 ```sh
-viper -run program.il --time
+zanna -run program.il --time
 ```
 
 Output:
@@ -729,7 +729,7 @@ Output:
 Both flags can be combined:
 
 ```sh
-viper -run program.il --count --time
+zanna -run program.il --count --time
 ```
 
 ---
@@ -739,7 +739,7 @@ viper -run program.il --count --time
 ### Complete Example
 
 ```cpp
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 
 // Load module
 auto module = loadModule("program.il");
@@ -800,4 +800,4 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Debug Adapter Protocol | Not implemented | No IDE integration (VS Code, etc.) |
 | Signal/crash handler | Not implemented | Native crashes produce no diagnostic output |
 | In-VM profiling | Not implemented | No function-level timing or allocation tracking |
-| Subsystem log filtering | Not implemented | VM trace and Viper.Diagnostics.Log are all-or-nothing |
+| Subsystem log filtering | Not implemented | VM trace and Zanna.Diagnostics.Log are all-or-nothing |

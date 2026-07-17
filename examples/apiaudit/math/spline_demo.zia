@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Math.Spline - Curve Interpolation
+// API Audit: Zanna.Math.Spline - Curve Interpolation
 // =============================================================================
 // Tests: CatmullRom, Bezier, Linear, Eval, Tangent, PointCount, PointAt,
 //        ArcLength, Sample
 // =============================================================================
 
 module SplineDemo;
-bind Viper.Math;
-bind Viper.Collections;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Collections;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Spline ===");
+    Say("=== API Audit: Zanna.Math.Spline ===");
 
     // Build control points for CatmullRom and Linear splines
     var points = Seq.New();

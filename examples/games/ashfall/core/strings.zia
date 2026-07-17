@@ -8,8 +8,8 @@
 // =============================================================================
 module strings;
 
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
 bind "./mathutil" as M;
 
 func intStr(i: Integer) -> String {

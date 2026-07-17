@@ -1,6 +1,6 @@
 il 0.1
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 
 global const str @.L0 = "HELLO"
 global const str @.L1 = "READY"
@@ -19,35 +19,35 @@ entry:
   store i64, %y_slot, %t1
 
   %s0 = const_str @.L0
-  call @Viper.Terminal.PrintStr(%s0)
+  call @Zanna.Terminal.PrintStr(%s0)
   %nl0 = const_str @.L2
-  call @Viper.Terminal.PrintStr(%nl0)
+  call @Zanna.Terminal.PrintStr(%nl0)
 
   %s1 = const_str @.L1
-  call @Viper.Terminal.PrintStr(%s1)
+  call @Zanna.Terminal.PrintStr(%s1)
   %nl1 = const_str @.L2
-  call @Viper.Terminal.PrintStr(%nl1)
+  call @Zanna.Terminal.PrintStr(%nl1)
 
   %yv0 = load i64, %y_slot
-  call @Viper.Terminal.PrintI64(%yv0)
+  call @Zanna.Terminal.PrintI64(%yv0)
   %nl2 = const_str @.L2
-  call @Viper.Terminal.PrintStr(%nl2)
+  call @Zanna.Terminal.PrintStr(%nl2)
 
   %yv1 = load i64, %y_slot
   %cond = scmp_gt %yv1, 8
   cbr %cond, label then80, label else60
 
 else60:
-  call @Viper.Terminal.PrintI64(4)
+  call @Zanna.Terminal.PrintI64(4)
   %nl3 = const_str @.L2
-  call @Viper.Terminal.PrintStr(%nl3)
+  call @Zanna.Terminal.PrintStr(%nl3)
   br label after
 
 then80:
   %yv2 = load i64, %y_slot
-  call @Viper.Terminal.PrintI64(%yv2)
+  call @Zanna.Terminal.PrintI64(%yv2)
   %nl4 = const_str @.L2
-  call @Viper.Terminal.PrintStr(%nl4)
+  call @Zanna.Terminal.PrintStr(%nl4)
   br label after
 
 after:

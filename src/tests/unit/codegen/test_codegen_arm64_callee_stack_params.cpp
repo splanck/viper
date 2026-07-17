@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_callee_stack_params.cpp
 // Purpose: Verify callee correctly loads parameters passed on the stack
@@ -13,9 +13,9 @@
 #include <sstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -143,6 +143,6 @@ TEST(Arm64CLI, CalleeStackParams13Wide) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

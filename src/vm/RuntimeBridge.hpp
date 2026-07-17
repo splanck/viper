@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 
 #include "rt.hpp"
 #include "support/source_location.hpp"
-#include "viper/vm/RuntimeBridge.hpp"
+#include "zanna/vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 
 #include <cstddef>

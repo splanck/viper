@@ -1,5 +1,5 @@
-if (NOT DEFINED VIPER_EXE)
-    message(FATAL_ERROR "VIPER_EXE must be provided")
+if (NOT DEFINED ZANNA_EXE)
+    message(FATAL_ERROR "ZANNA_EXE must be provided")
 endif ()
 
 if (NOT DEFINED TEST_FILE)
@@ -18,7 +18,7 @@ if (DEFINED OPT_FLAG AND NOT OPT_FLAG STREQUAL "")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_EXE}" build ${_build_args}
+        COMMAND "${ZANNA_EXE}" build ${_build_args}
         RESULT_VARIABLE _build_rc
         OUTPUT_VARIABLE _build_out
         ERROR_VARIABLE _build_err)

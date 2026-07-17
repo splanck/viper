@@ -1,14 +1,14 @@
 // =============================================================================
-// API Audit: Viper.Data.Yaml - YAML Processing
+// API Audit: Zanna.Data.Yaml - YAML Processing
 // =============================================================================
 // Tests: ParseResult, Parse, Error, IsValid, Format, FormatIndent, TypeOf
 // =============================================================================
 
 module YamlDemo;
-bind Viper.Terminal;
-bind Viper.Data.Yaml as Yaml;
+bind Zanna.Terminal;
+bind Zanna.Data.Yaml as Yaml;
 func start() {
-    Say("=== API Audit: Viper.Data.Yaml ===");
+    Say("=== API Audit: Zanna.Data.Yaml ===");
 
     // --- IsValid ---
     Say("--- IsValid ---");
@@ -19,7 +19,7 @@ func start() {
 
     // --- ParseResult ---
     Say("--- ParseResult ---");
-    var yamlStr = "name: Alice\nage: 30\nactive: true\ntags:\n  - viper\n  - lang\n";
+    var yamlStr = "name: Alice\nage: 30\nactive: true\ntags:\n  - zanna\n  - lang\n";
     var parsed = Yaml.ParseResult(yamlStr);
     SayBool(parsed.IsOk);
     var doc = parsed.Unwrap();

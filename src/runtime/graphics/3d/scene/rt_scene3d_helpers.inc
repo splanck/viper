@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc  (#included from rt_scene3d.c; not a
 // standalone translation unit) Purpose: Scene3D transform/world-matrix, node lifecycle, light, and
 // bounds helpers

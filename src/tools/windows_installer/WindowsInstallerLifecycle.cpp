@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //   - A package/scope/destination mutex serializes every lifecycle operation.
 //   - The complete selected payload is verified in a same-volume staging tree
 //     before the existing installation is renamed.
-//   - Upgrades preserve files not listed in Viper's ownership manifest.
+//   - Upgrades preserve files not listed in Zanna's ownership manifest.
 //   - A journal makes every pre-commit directory state recoverable.
 //   - PATH, file associations, shortcuts, cache, and ARP values are changed only
 //     after the new tree is active and are rolled back on synchronous failure.
@@ -56,7 +56,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::installer {
+namespace zanna::installer {
 namespace {
 
 constexpr wchar_t kUninstallBase[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\";
@@ -64,8 +64,8 @@ constexpr wchar_t kUserEnvironment[] = L"Environment";
 constexpr wchar_t kMachineEnvironment[] =
     L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
 constexpr wchar_t kClassesBase[] = L"Software\\Classes\\";
-constexpr wchar_t kManifestHeader[] = L"VIPER-INSTALL-MANIFEST\t2";
-constexpr wchar_t kStateHeader[] = L"VIPER-INSTALL-STATE\t2";
+constexpr wchar_t kManifestHeader[] = L"ZANNA-INSTALL-MANIFEST\t2";
+constexpr wchar_t kStateHeader[] = L"ZANNA-INSTALL-STATE\t2";
 
 void cancellationPoint(Logger &logger) {
     if (logger.cancellationRequested())
@@ -450,7 +450,7 @@ InstalledRecord readInstalledRecord(std::string_view identifier, InstallScope sc
     RegKey key = openKey(rootKey(scope), uninstallSubkey(identifier), KEY_READ, false);
     if (!key)
         return record;
-    const auto marker = queryRegistryString(key.get(), L"ViperPackageIdentifier");
+    const auto marker = queryRegistryString(key.get(), L"ZannaPackageIdentifier");
     if (!marker || wideToUtf8(*marker) != identifier)
         return record;
     const auto location = queryRegistryString(key.get(), L"InstallLocation");
@@ -460,23 +460,23 @@ InstalledRecord readInstalledRecord(std::string_view identifier, InstallScope sc
     record.present = true;
     record.installRoot = *location;
     record.version = wideToUtf8(*version);
-    if (const auto cache = queryRegistryString(key.get(), L"ViperMaintenanceCache"))
+    if (const auto cache = queryRegistryString(key.get(), L"ZannaMaintenanceCache"))
         record.cacheExecutable = *cache;
-    if (const auto components = queryRegistryString(key.get(), L"ViperComponents"))
+    if (const auto components = queryRegistryString(key.get(), L"ZannaComponents"))
         record.components = parseComponentList(*components);
-    if (const auto path = queryRegistryString(key.get(), L"ViperPathEntry"))
+    if (const auto path = queryRegistryString(key.get(), L"ZannaPathEntry"))
         record.pathEntry = *path;
-    if (const auto shortcuts = queryRegistryString(key.get(), L"ViperShortcutPaths")) {
+    if (const auto shortcuts = queryRegistryString(key.get(), L"ZannaShortcutPaths")) {
         for (const std::wstring &line : splitLines(*shortcuts))
             record.shortcuts.emplace_back(line);
     }
-    if (queryRegistryDword(key.get(), L"ViperSettingsVersion").value_or(0) == 1U) {
+    if (queryRegistryDword(key.get(), L"ZannaSettingsVersion").value_or(0) == 1U) {
         record.settingsPresent = true;
-        record.addToPath = queryRegistryDword(key.get(), L"ViperAddToPath").value_or(0) != 0;
+        record.addToPath = queryRegistryDword(key.get(), L"ZannaAddToPath").value_or(0) != 0;
         record.registerAssociations =
-            queryRegistryDword(key.get(), L"ViperAssociations").value_or(0) != 0;
+            queryRegistryDword(key.get(), L"ZannaAssociations").value_or(0) != 0;
         record.createShortcuts =
-            queryRegistryDword(key.get(), L"ViperCreateShortcuts").value_or(0) != 0;
+            queryRegistryDword(key.get(), L"ZannaCreateShortcuts").value_or(0) != 0;
     }
     return record;
 }
@@ -500,7 +500,7 @@ std::wstring hashHex(uint64_t value) {
 fs::path cacheExecutablePath(InstallScope scope, std::string_view identifier) {
     const fs::path base = scope == InstallScope::User ? fs::path(knownFolder(FOLDERID_LocalAppData))
                                                       : fs::path(knownFolder(FOLDERID_ProgramData));
-    return base / L"Viper" / L"InstallerCache" / hashHex(fnv1a64(utf8ToWide(identifier))) /
+    return base / L"Zanna" / L"InstallerCache" / hashHex(fnv1a64(utf8ToWide(identifier))) /
            L"maintenance.exe";
 }
 
@@ -643,8 +643,8 @@ std::vector<int> parseVersion(std::string_view version, std::string &prerelease)
 void preflightWindowsVersion(const HostPackage &package, Logger &logger) {
     std::array<int, 3> installed{};
     bool testOverride = false;
-#if defined(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
-    if (const wchar_t *value = _wgetenv(L"VIPER_INSTALLER_TEST_WINDOWS_VERSION")) {
+#if defined(ZANNA_INSTALLER_ENABLE_TEST_HOOKS)
+    if (const wchar_t *value = _wgetenv(L"ZANNA_INSTALLER_TEST_WINDOWS_VERSION")) {
         std::string testPrerelease;
         std::vector<int> testVersion = parseVersion(wideToUtf8(value), testPrerelease);
         if (!testPrerelease.empty() || testVersion.size() > installed.size())
@@ -787,7 +787,7 @@ void ensureParentWritable(const fs::path &path) {
     if (existing.empty())
         throw std::runtime_error("installation destination has no existing parent directory");
     const fs::path probe =
-        existing / (L".viper-write-probe-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+        existing / (L".zanna-write-probe-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                     hashHex(GetTickCount64()));
     UniqueHandle file(CreateFileW(probe.c_str(),
                                   GENERIC_WRITE,
@@ -855,7 +855,7 @@ InstallationPlan makePlan(const HostPackage &package,
             const InstalledRecord &opposite = plan.scope == InstallScope::User ? machine : user;
             if (!plan.existing.present && opposite.present) {
                 throw std::runtime_error(
-                    "Viper is already installed in the other scope; use Modify to keep that "
+                    "Zanna is already installed in the other scope; use Modify to keep that "
                     "scope or uninstall it before changing scope");
             }
         } else if (user.present != machine.present) {
@@ -864,7 +864,7 @@ InstallationPlan makePlan(const HostPackage &package,
         } else if (user.present && machine.present) {
             if (options.uiLevel != UiLevel::Full)
                 throw std::runtime_error(
-                    "Viper is registered for both scopes; specify /scope user or /scope machine");
+                    "Zanna is registered for both scopes; specify /scope user or /scope machine");
             plan.scope = package.metadata.defaultScope == "machine" ? InstallScope::Machine
                                                                     : InstallScope::User;
             plan.existing = plan.scope == InstallScope::User ? user : machine;
@@ -898,7 +898,7 @@ InstallationPlan makePlan(const HostPackage &package,
     if ((plan.operation == Operation::Modify || plan.operation == Operation::Repair ||
          plan.operation == Operation::Uninstall) &&
         !plan.existing.present) {
-        throw std::runtime_error("no matching Viper installation is registered for this scope");
+        throw std::runtime_error("no matching Zanna installation is registered for this scope");
     }
     if (!options.destination.empty())
         plan.installRoot = canonicalDestination(options.destination);
@@ -933,7 +933,7 @@ InstallationPlan makePlan(const HostPackage &package,
         const auto associationPayload =
             std::find_if(package.metadata.payloadFiles.begin(),
                          package.metadata.payloadFiles.end(),
-                         [&](const viper::pkg::WindowsInstallerPayloadMetadata &file) {
+                         [&](const zanna::pkg::WindowsInstallerPayloadMetadata &file) {
                              return normalizedPathKey(file.path) == associationPath;
                          });
         if (associationPayload != package.metadata.payloadFiles.end() &&
@@ -959,7 +959,7 @@ InstallationPlan makePlan(const HostPackage &package,
     }
     if (package.metadata.packageMode == "maintenance" && plan.operation != Operation::Uninstall) {
         const std::string selfHash =
-            viper::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size());
+            zanna::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size());
         if (package.executableBytes.size() >
             std::numeric_limits<uint64_t>::max() - plan.selectedSizeBytes) {
             throw std::runtime_error("selected installer payload size overflow");
@@ -981,7 +981,7 @@ void preflightVersion(const HostPackage &package,
     if (comparison < 0 && !options.allowDowngrade)
         throw InstallerError(
             kExitNewerVersionInstalled,
-            "a newer Viper version is already installed; use /allowDowngrade to proceed");
+            "a newer Zanna version is already installed; use /allowDowngrade to proceed");
 }
 
 std::set<std::string> loadOwnershipManifest(const fs::path &installRoot,
@@ -1105,7 +1105,7 @@ class LifecycleMutex {
                                   (plan.scope == InstallScope::User ? L"user|" : L"machine|") +
                                   lowerWide(plan.installRoot.wstring());
         const std::wstring name = (plan.scope == InstallScope::Machine ? L"Global\\" : L"Local\\") +
-                                  std::wstring(L"ViperInstaller-") + hashHex(fnv1a64(seed));
+                                  std::wstring(L"ZannaInstaller-") + hashHex(fnv1a64(seed));
         handle_.reset(CreateMutexW(nullptr, FALSE, name.c_str()));
         if (!handle_)
             throw std::runtime_error("cannot create installer lifecycle mutex");
@@ -1226,15 +1226,15 @@ void handleFilesInUse(RestartManagerSession &restart,
     logger.warning(L"Files are in use by: " + names);
     bool close = options.closeApplications;
     if (!close && options.uiLevel == UiLevel::Full) {
-        const std::wstring message = L"Viper files are in use by:\r\n\r\n" + names +
+        const std::wstring message = L"Zanna files are in use by:\r\n\r\n" + names +
                                      L"\r\n\r\nClose these applications and continue?";
         close = MessageBoxW(nullptr,
                             message.c_str(),
-                            L"Viper Tools Installer - Files in Use",
+                            L"Zanna Tools Installer - Files in Use",
                             MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND) == IDYES;
     }
     if (!close)
-        throw std::runtime_error("Viper files are in use; close applications and retry");
+        throw std::runtime_error("Zanna files are in use; close applications and retry");
     restart.closeApplications();
 }
 
@@ -1282,7 +1282,7 @@ fs::path recoveryMarkerPath(const fs::path &cacheExecutable) {
 
 void writeRecoveryMarker(const InstallationPlan &plan, std::string_view identifier) {
     std::wostringstream text;
-    text << L"VIPER-RECOVERY\t2\r\n"
+    text << L"ZANNA-RECOVERY\t2\r\n"
          << L"identifier\t" << utf8ToWide(identifier) << L"\r\n"
          << L"scope\t" << (plan.scope == InstallScope::User ? L"user" : L"machine") << L"\r\n"
          << L"root\t" << plan.installRoot.wstring() << L"\r\n";
@@ -1313,7 +1313,7 @@ std::optional<InstalledRecord> readRecoveryRecord(const HostPackage &package,
         if (!fs::is_regular_file(markerPath))
             continue;
         const std::wstring text = readTextFileWide(markerPath);
-        if (text.rfind(L"VIPER-RECOVERY\t2\r\n", 0) != 0)
+        if (text.rfind(L"ZANNA-RECOVERY\t2\r\n", 0) != 0)
             throw std::runtime_error("installer recovery marker has an invalid schema");
         std::wstring identifier;
         std::wstring scopeText;
@@ -1338,7 +1338,7 @@ std::optional<InstalledRecord> readRecoveryRecord(const HostPackage &package,
         }
         const fs::path root = canonicalDestination(rootText);
         const fs::path transaction =
-            root.parent_path() / (L"." + root.filename().wstring() + L".viper-transaction-" +
+            root.parent_path() / (L"." + root.filename().wstring() + L".zanna-transaction-" +
                                   hashHex(fnv1a64(utf8ToWide(package.metadata.identifier))));
         if (!fs::is_directory(transaction)) {
             logger.warning(L"Removed a stale installer recovery marker");
@@ -1490,7 +1490,7 @@ std::set<std::string> loadUpgradeOwnership(const HostPackage &incomingPackage,
         const HostPackage previous = loadHostPackage(uninstaller);
         if (previous.metadata.identifier != incomingPackage.metadata.identifier)
             throw std::runtime_error("existing maintenance package identifier does not match");
-        logger.warning(L"Migrating a verified Viper installation with a missing ownership "
+        logger.warning(L"Migrating a verified Zanna installation with a missing ownership "
                        L"manifest");
         return packageOwnedPaths(previous);
     } catch (const std::exception &error) {
@@ -1540,7 +1540,7 @@ void copyUnownedFiles(const fs::path &oldRoot,
         if (owned.find(normalizedPathKey(relative)) != owned.end())
             continue;
         if (fs::exists(destination)) {
-            throw std::runtime_error("unowned file conflicts with the new Viper payload: " +
+            throw std::runtime_error("unowned file conflicts with the new Zanna payload: " +
                                      relative);
         }
         fs::create_directories(destination.parent_path());
@@ -1598,18 +1598,18 @@ std::vector<SelectedFile> stageSelectedTree(const HostPackage &package,
                                             const InstallationPlan &plan,
                                             const fs::path &newRoot,
                                             Logger &logger) {
-    viper::pkg::ZipReader payload(package.payloadZip.data(), package.payloadZip.size());
+    zanna::pkg::ZipReader payload(package.payloadZip.data(), package.payloadZip.size());
     std::vector<SelectedFile> installed;
     for (const auto &record : package.metadata.payloadFiles) {
         cancellationPoint(logger);
         if (!componentEnabled(record.componentId, plan.components))
             continue;
-        const viper::pkg::ZipEntry *entry = payload.find(record.path);
+        const zanna::pkg::ZipEntry *entry = payload.find(record.path);
         if (!entry)
             throw std::runtime_error("selected payload entry is missing");
         std::vector<uint8_t> bytes = payload.extract(*entry);
         if (bytes.size() != record.sizeBytes ||
-            viper::pkg::sha256Hex(bytes.data(), bytes.size()) != record.sha256) {
+            zanna::pkg::sha256Hex(bytes.data(), bytes.size()) != record.sha256) {
             throw std::runtime_error("selected payload entry failed SHA-256 verification");
         }
         const fs::path destination = safeJoin(newRoot, record.path);
@@ -1620,14 +1620,14 @@ std::vector<SelectedFile> stageSelectedTree(const HostPackage &package,
     const std::vector<uint8_t> uninstaller = maintenanceBytes(package);
     cancellationPoint(logger);
     const std::string uninstallerHash =
-        viper::pkg::sha256Hex(uninstaller.data(), uninstaller.size());
+        zanna::pkg::sha256Hex(uninstaller.data(), uninstaller.size());
     writeBytesAtomic(safeJoin(newRoot, package.metadata.uninstallerRelativePath), uninstaller);
     installed.push_back(
         {package.metadata.uninstallerRelativePath, uninstallerHash, uninstaller.size()});
 
     const std::wstring state = stateText(package, plan);
     const std::string stateUtf8 = wideToUtf8(state);
-    const std::string stateHash = viper::pkg::sha256Hex(
+    const std::string stateHash = zanna::pkg::sha256Hex(
         reinterpret_cast<const uint8_t *>(stateUtf8.data()), stateUtf8.size());
     writeTextAtomic(safeJoin(newRoot, package.metadata.stateRelativePath), state);
     const std::wstring manifest = manifestText(package, installed, stateHash, stateUtf8.size());
@@ -1694,7 +1694,7 @@ struct TransactionPaths {
 TransactionPaths transactionPaths(const InstallationPlan &plan, std::string_view identifier) {
     const fs::path directory = plan.installRoot.parent_path() /
                                (L"." + plan.installRoot.filename().wstring() +
-                                L".viper-transaction-" + hashHex(fnv1a64(utf8ToWide(identifier))));
+                                L".zanna-transaction-" + hashHex(fnv1a64(utf8ToWide(identifier))));
     return {directory,
             directory / L"new",
             directory / L"old",
@@ -1763,21 +1763,21 @@ void recoverTransaction(const HostPackage &package,
                         Logger &logger);
 
 void maybeInjectFailure(std::string_view stage) {
-#if defined(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
-    const wchar_t *value = _wgetenv(L"VIPER_INSTALLER_TEST_CANCEL_AT");
+#if defined(ZANNA_INSTALLER_ENABLE_TEST_HOOKS)
+    const wchar_t *value = _wgetenv(L"ZANNA_INSTALLER_TEST_CANCEL_AT");
     if (value && wideToUtf8(value) == stage)
         throw InstallerError(kExitUserCancelled,
                              "injected installer cancellation at " + std::string(stage));
-    value = _wgetenv(L"VIPER_INSTALLER_TEST_FAIL_AT");
+    value = _wgetenv(L"ZANNA_INSTALLER_TEST_FAIL_AT");
     if (value && wideToUtf8(value) == stage)
         throw std::runtime_error("injected installer failure at " + std::string(stage));
-    value = _wgetenv(L"VIPER_INSTALLER_TEST_CRASH_AT");
+    value = _wgetenv(L"ZANNA_INSTALLER_TEST_CRASH_AT");
     if (value && wideToUtf8(value) == stage)
         TerminateProcess(GetCurrentProcess(), static_cast<UINT>(kExitFatalError));
-    value = _wgetenv(L"VIPER_INSTALLER_TEST_PAUSE_AT");
+    value = _wgetenv(L"ZANNA_INSTALLER_TEST_PAUSE_AT");
     if (value && wideToUtf8(value) == stage) {
         DWORD milliseconds = 3000U;
-        if (const wchar_t *duration = _wgetenv(L"VIPER_INSTALLER_TEST_PAUSE_MS")) {
+        if (const wchar_t *duration = _wgetenv(L"ZANNA_INSTALLER_TEST_PAUSE_MS")) {
             wchar_t *end = nullptr;
             errno = 0;
             const unsigned long parsed = std::wcstoul(duration, &end, 10);
@@ -1792,8 +1792,8 @@ void maybeInjectFailure(std::string_view stage) {
 }
 
 uint64_t testLimitedFreeBytes(uint64_t available) {
-#if defined(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
-    const wchar_t *value = _wgetenv(L"VIPER_INSTALLER_TEST_FREE_BYTES");
+#if defined(ZANNA_INSTALLER_ENABLE_TEST_HOOKS)
+    const wchar_t *value = _wgetenv(L"ZANNA_INSTALLER_TEST_FREE_BYTES");
     if (value && *value) {
         wchar_t *end = nullptr;
         errno = 0;
@@ -1939,7 +1939,7 @@ PathBackup readCurrentPath(InstallScope scope) {
 void writePathBackup(const TransactionPaths &paths, InstallScope scope) {
     const PathBackup backup = readCurrentPath(scope);
     std::wostringstream text;
-    text << L"VIPER-PATH-BACKUP\t1\r\n"
+    text << L"ZANNA-PATH-BACKUP\t1\r\n"
          << L"present\t" << (backup.present ? L'1' : L'0') << L"\r\n"
          << L"type\t" << backup.type << L"\r\n"
          << L"value\t" << bytesToHex(wideToUtf8(backup.value)) << L"\r\n";
@@ -1948,7 +1948,7 @@ void writePathBackup(const TransactionPaths &paths, InstallScope scope) {
 
 PathBackup readPathBackup(const TransactionPaths &paths) {
     const std::wstring text = readTextFileWide(paths.pathBackup);
-    if (text.rfind(L"VIPER-PATH-BACKUP\t1\r\n", 0) != 0)
+    if (text.rfind(L"ZANNA-PATH-BACKUP\t1\r\n", 0) != 0)
         throw std::runtime_error("installer transaction PATH backup is missing or invalid");
     PathBackup result;
     bool sawPresent = false;
@@ -2002,7 +2002,7 @@ void restorePathBackup(const TransactionPaths &paths, InstallScope scope) {
 }
 
 void initializeAppliedShortcuts(const TransactionPaths &paths) {
-    writeTextAtomic(paths.appliedShortcuts, L"VIPER-APPLIED-SHORTCUTS\t1\r\n");
+    writeTextAtomic(paths.appliedShortcuts, L"ZANNA-APPLIED-SHORTCUTS\t1\r\n");
 }
 
 void recordAppliedShortcut(const TransactionPaths &paths, const fs::path &path) {
@@ -2026,7 +2026,7 @@ void recordAppliedShortcut(const TransactionPaths &paths, const fs::path &path) 
 
 std::vector<fs::path> readAppliedShortcuts(const TransactionPaths &paths) {
     const std::wstring text = readTextFileWide(paths.appliedShortcuts);
-    if (text.rfind(L"VIPER-APPLIED-SHORTCUTS\t1\r\n", 0) != 0)
+    if (text.rfind(L"ZANNA-APPLIED-SHORTCUTS\t1\r\n", 0) != 0)
         throw std::runtime_error("shortcut rollback journal is missing or invalid");
     std::vector<fs::path> result;
     const std::vector<std::wstring> lines = splitLines(text);
@@ -2041,7 +2041,7 @@ void unregisterAssociations(const HostPackage &package, InstallScope scope) {
     for (const auto &association : package.metadata.associations) {
         const std::wstring progIdKey = std::wstring(kClassesBase) + utf8ToWide(association.progId);
         if (RegKey key = openKey(rootKey(scope), progIdKey, KEY_READ, false)) {
-            const auto owner = queryRegistryString(key.get(), L"ViperOwner");
+            const auto owner = queryRegistryString(key.get(), L"ZannaOwner");
             if (owner && wideToUtf8(*owner) == package.metadata.identifier) {
                 const std::wstring extensionKey = std::wstring(kClassesBase) +
                                                   utf8ToWide(association.extension) +
@@ -2053,7 +2053,7 @@ void unregisterAssociations(const HostPackage &package, InstallScope scope) {
                         const LONG removed =
                             RegDeleteValueW(openWith.get(), utf8ToWide(association.progId).c_str());
                         if (removed != ERROR_SUCCESS && removed != ERROR_FILE_NOT_FOUND)
-                            throw std::runtime_error("cannot remove a Viper Open-With entry");
+                            throw std::runtime_error("cannot remove a Zanna Open-With entry");
                         DWORD subkeys = 0;
                         DWORD values = 0;
                         if (RegQueryInfoKeyW(openWith.get(),
@@ -2101,7 +2101,7 @@ void unregisterAssociations(const HostPackage &package, InstallScope scope) {
                 }
                 const LONG removed = RegDeleteTreeW(rootKey(scope), progIdKey.c_str());
                 if (removed != ERROR_SUCCESS && removed != ERROR_FILE_NOT_FOUND)
-                    throw std::runtime_error("cannot remove a Viper file-association ProgID");
+                    throw std::runtime_error("cannot remove a Zanna file-association ProgID");
             }
         }
     }
@@ -2116,7 +2116,7 @@ void registerAssociations(const HostPackage &package,
         return;
     const fs::path executable = safeJoin(plan.installRoot, package.metadata.associationExecutable);
     if (!fs::is_regular_file(executable)) {
-        logger.warning(L"File associations were skipped because ViperIDE is not selected");
+        logger.warning(L"File associations were skipped because ZannaIDE is not selected");
         return;
     }
     for (const auto &association : package.metadata.associations) {
@@ -2126,21 +2126,21 @@ void registerAssociations(const HostPackage &package,
         const std::wstring progId = utf8ToWide(association.progId);
         const std::wstring progIdBase = std::wstring(kClassesBase) + progId;
         if (RegKey existing = openKey(rootKey(plan.scope), progIdBase, KEY_READ, false)) {
-            const auto owner = queryRegistryString(existing.get(), L"ViperOwner");
+            const auto owner = queryRegistryString(existing.get(), L"ZannaOwner");
             if (!owner || wideToUtf8(*owner) != package.metadata.identifier) {
                 logger.warning(L"Skipped unowned file-association ProgID collision: " + progId);
                 continue;
             }
         }
         RegKey prog = openKey(rootKey(plan.scope), progIdBase, KEY_SET_VALUE, true);
-        setRegistryString(prog.get(), L"ViperOwner", utf8ToWide(package.metadata.identifier));
+        setRegistryString(prog.get(), L"ZannaOwner", utf8ToWide(package.metadata.identifier));
         setRegistryString(prog.get(), {}, utf8ToWide(association.description));
         RegKey openWith =
             openKey(rootKey(plan.scope), extensionBase + L"\\OpenWithProgids", KEY_SET_VALUE, true);
         const LONG noneResult =
             RegSetValueExW(openWith.get(), progId.c_str(), 0, REG_NONE, nullptr, 0);
         if (noneResult != ERROR_SUCCESS)
-            throw std::runtime_error("cannot register Viper Open-With association");
+            throw std::runtime_error("cannot register Zanna Open-With association");
         RegKey icon =
             openKey(rootKey(plan.scope), progIdBase + L"\\DefaultIcon", KEY_SET_VALUE, true);
         const fs::path iconPath =
@@ -2183,7 +2183,7 @@ fs::path resolveShortcutPath(const InstallationPlan &plan,
     return relative.empty() ? base : safeJoin(base, relative);
 }
 
-std::wstring shortcutArguments(const viper::pkg::WindowsInstallerShortcutMetadata &metadata,
+std::wstring shortcutArguments(const zanna::pkg::WindowsInstallerShortcutMetadata &metadata,
                                const InstallationPlan &plan) {
     if (metadata.argumentPath.empty())
         return {};
@@ -2193,7 +2193,7 @@ std::wstring shortcutArguments(const viper::pkg::WindowsInstallerShortcutMetadat
 }
 
 bool shellLinkMatches(const fs::path &path,
-                      const viper::pkg::WindowsInstallerShortcutMetadata &metadata,
+                      const zanna::pkg::WindowsInstallerShortcutMetadata &metadata,
                       const InstallationPlan &plan) {
     const HRESULT apartment =
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -2252,7 +2252,7 @@ bool shellLinkMatches(const fs::path &path,
     return true;
 }
 
-void createShellLink(const viper::pkg::WindowsInstallerShortcutMetadata &metadata,
+void createShellLink(const zanna::pkg::WindowsInstallerShortcutMetadata &metadata,
                      const InstallationPlan &plan,
                      const fs::path &destination) {
     const HRESULT apartment =
@@ -2342,7 +2342,7 @@ std::vector<fs::path> installShortcuts(const HostPackage &package,
         if (!recorded && fs::is_regular_file(destination) &&
             shellLinkMatches(destination, shortcut, plan)) {
             recognized.shortcuts.push_back(destination);
-            logger.warning(L"Recovered ownership of a matching Viper shortcut: " +
+            logger.warning(L"Recovered ownership of a matching Zanna shortcut: " +
                            destination.wstring());
         }
     }
@@ -2388,7 +2388,7 @@ void removeShortcuts(const InstalledRecord &record) {
         std::error_code error;
         fs::remove(path, error);
         if (error || fs::exists(path))
-            throw std::runtime_error("cannot remove an installed Viper shortcut");
+            throw std::runtime_error("cannot remove an installed Zanna shortcut");
         fs::path parent = path.parent_path();
         if (!parent.empty()) {
             error.clear();
@@ -2397,7 +2397,7 @@ void removeShortcuts(const InstalledRecord &record) {
                 error.clear();
             }
             if (error)
-                throw std::runtime_error("cannot clean the Viper shortcut directory");
+                throw std::runtime_error("cannot clean the Zanna shortcut directory");
         }
     }
 }
@@ -2465,24 +2465,24 @@ void registerArp(const HostPackage &package,
     setRegistryString(key.get(), L"Comments", utf8ToWide(package.metadata.description));
     setRegistryString(key.get(), L"Contact", utf8ToWide(package.metadata.contact));
     setRegistryString(
-        key.get(), L"ViperPackageIdentifier", utf8ToWide(package.metadata.identifier));
-    setRegistryString(key.get(), L"ViperArchitecture", utf8ToWide(package.metadata.architecture));
-    setRegistryString(key.get(), L"ViperChannel", utf8ToWide(package.metadata.channel));
-    setRegistryString(key.get(), L"ViperCommit", utf8ToWide(package.metadata.commit));
-    setRegistryString(key.get(), L"ViperPackageSha256", utf8ToWide(package.executableSha256));
-    setRegistryString(key.get(), L"ViperLastInstallerLog", logger.path().wstring());
-    setRegistryString(key.get(), L"ViperComponents", joinComponents(plan.components));
-    setRegistryString(key.get(), L"ViperMaintenanceCache", plan.cacheExecutable.wstring());
-    setRegistryString(key.get(), L"ViperPathEntry", pathEntry);
+        key.get(), L"ZannaPackageIdentifier", utf8ToWide(package.metadata.identifier));
+    setRegistryString(key.get(), L"ZannaArchitecture", utf8ToWide(package.metadata.architecture));
+    setRegistryString(key.get(), L"ZannaChannel", utf8ToWide(package.metadata.channel));
+    setRegistryString(key.get(), L"ZannaCommit", utf8ToWide(package.metadata.commit));
+    setRegistryString(key.get(), L"ZannaPackageSha256", utf8ToWide(package.executableSha256));
+    setRegistryString(key.get(), L"ZannaLastInstallerLog", logger.path().wstring());
+    setRegistryString(key.get(), L"ZannaComponents", joinComponents(plan.components));
+    setRegistryString(key.get(), L"ZannaMaintenanceCache", plan.cacheExecutable.wstring());
+    setRegistryString(key.get(), L"ZannaPathEntry", pathEntry);
     std::wstring shortcutText;
     for (const fs::path &shortcut : shortcuts)
         shortcutText += shortcut.wstring() + L"\r\n";
-    setRegistryString(key.get(), L"ViperShortcutPaths", shortcutText);
-    setRegistryDword(key.get(), L"ViperInstallSchema", 2);
-    setRegistryDword(key.get(), L"ViperSettingsVersion", 1);
-    setRegistryDword(key.get(), L"ViperAddToPath", plan.addToPath ? 1U : 0U);
-    setRegistryDword(key.get(), L"ViperAssociations", plan.registerAssociations ? 1U : 0U);
-    setRegistryDword(key.get(), L"ViperCreateShortcuts", plan.createShortcuts ? 1U : 0U);
+    setRegistryString(key.get(), L"ZannaShortcutPaths", shortcutText);
+    setRegistryDword(key.get(), L"ZannaInstallSchema", 2);
+    setRegistryDword(key.get(), L"ZannaSettingsVersion", 1);
+    setRegistryDword(key.get(), L"ZannaAddToPath", plan.addToPath ? 1U : 0U);
+    setRegistryDword(key.get(), L"ZannaAssociations", plan.registerAssociations ? 1U : 0U);
+    setRegistryDword(key.get(), L"ZannaCreateShortcuts", plan.createShortcuts ? 1U : 0U);
 }
 
 void removeArp(const HostPackage &package, InstallScope scope) {
@@ -2513,8 +2513,8 @@ std::vector<uint8_t> readFileBytes(const fs::path &path) {
 void ensureMaintenanceCache(const fs::path &path, const std::vector<uint8_t> &maintenance) {
     if (fs::is_regular_file(path)) {
         const std::vector<uint8_t> old = readFileBytes(path);
-        if (viper::pkg::sha256Hex(old.data(), old.size()) ==
-            viper::pkg::sha256Hex(maintenance.data(), maintenance.size())) {
+        if (zanna::pkg::sha256Hex(old.data(), old.size()) ==
+            zanna::pkg::sha256Hex(maintenance.data(), maintenance.size())) {
             return;
         }
     }
@@ -2584,7 +2584,7 @@ bool launchDetachedCleanup(const HostPackage &package,
     wchar_t guidText[40]{};
     if (StringFromGUID2(guid, guidText, static_cast<int>(std::size(guidText))) == 0)
         throw std::runtime_error("cannot format the cleanup helper name");
-    std::wstring directoryName = L"ViperCleanup-" + std::wstring(guidText);
+    std::wstring directoryName = L"ZannaCleanup-" + std::wstring(guidText);
     directoryName.erase(std::remove_if(directoryName.begin(),
                                        directoryName.end(),
                                        [](wchar_t ch) { return ch == L'{' || ch == L'}'; }),
@@ -2722,8 +2722,8 @@ int launchMaintenanceHandoff(const HostPackage &package,
     const HostPackage cached = loadHostPackage(plan.cacheExecutable);
     if (cached.metadata.identifier != package.metadata.identifier ||
         cached.metadata.version != package.metadata.version ||
-        viper::pkg::sha256Hex(cached.executableBytes.data(), cached.executableBytes.size()) !=
-            viper::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size())) {
+        zanna::pkg::sha256Hex(cached.executableBytes.data(), cached.executableBytes.size()) !=
+            zanna::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size())) {
         throw std::runtime_error("the maintenance cache does not match the installed package");
     }
 
@@ -3144,15 +3144,15 @@ void launchPostInstallActions(const HostPackage &package,
         const UINT length =
             GetSystemDirectoryW(systemDirectory, static_cast<UINT>(std::size(systemDirectory)));
         if (length > 0 && length < std::size(systemDirectory)) {
-            const fs::path script = plan.installRoot / L"bin" / L"viper-dev.cmd";
+            const fs::path script = plan.installRoot / L"bin" / L"zanna-dev.cmd";
             const std::wstring parameters = L"/k " + quoteCommandLineArgument(script.wstring());
             open(fs::path(systemDirectory) / L"cmd.exe", parameters.c_str());
         }
     }
     if (options.openQuickstart) {
         const std::array<fs::path, 3> candidates = {
-            plan.installRoot / L"share" / L"viper" / L"README.windows-prerequisites.txt",
-            plan.installRoot / L"share" / L"doc" / L"viper" / L"README.md",
+            plan.installRoot / L"share" / L"zanna" / L"README.windows-prerequisites.txt",
+            plan.installRoot / L"share" / L"doc" / L"zanna" / L"README.md",
             plan.installRoot / L"README.md"};
         const auto found =
             std::find_if(candidates.begin(), candidates.end(), [](const fs::path &path) {
@@ -3161,7 +3161,7 @@ void launchPostInstallActions(const HostPackage &package,
         open(found == candidates.end() ? fs::path{} : *found);
     }
     if (options.openSamples)
-        open(plan.installRoot / L"share" / L"viper" / L"samples");
+        open(plan.installRoot / L"share" / L"zanna" / L"samples");
 }
 
 } // namespace
@@ -3241,7 +3241,7 @@ int runLifecycle(HINSTANCE instance,
     }
     LifecycleMutex mutex(plan, package.metadata.identifier);
     if (!mutex.acquired()) {
-        logger.error(L"Another Viper lifecycle operation is already active");
+        logger.error(L"Another Zanna lifecycle operation is already active");
         return kExitAnotherInstallRunning;
     }
     preflightVersion(package, options, plan);
@@ -3262,4 +3262,4 @@ int runLifecycle(HINSTANCE instance,
     return result;
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer

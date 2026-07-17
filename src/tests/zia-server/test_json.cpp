@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <stdexcept>
 #include <string>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 // ===== Constructors and Type =====
 
@@ -106,11 +106,11 @@ TEST(Json, EmptyObject) {
 
 TEST(Json, ObjectWithMembers) {
     auto v = JsonValue::object({
-        {"name", JsonValue("viper")},
+        {"name", JsonValue("zanna")},
         {"version", JsonValue(1)},
     });
     EXPECT_EQ(v.size(), size_t(2));
-    EXPECT_EQ(v["name"].asString(), "viper");
+    EXPECT_EQ(v["name"].asString(), "zanna");
     EXPECT_EQ(v["version"].asInt(), 1);
     EXPECT_TRUE(v.has("name"));
     EXPECT_FALSE(v.has("missing"));
@@ -292,8 +292,8 @@ TEST(Json, ParseEmptyObject) {
 }
 
 TEST(Json, ParseObject) {
-    auto v = JsonValue::parse("{\"name\": \"viper\", \"version\": 1}");
-    EXPECT_EQ(v["name"].asString(), "viper");
+    auto v = JsonValue::parse("{\"name\": \"zanna\", \"version\": 1}");
+    EXPECT_EQ(v["name"].asString(), "zanna");
     EXPECT_EQ(v["version"].asInt(), 1);
 }
 
@@ -453,6 +453,6 @@ TEST(Json, EqualityTypeMismatch) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

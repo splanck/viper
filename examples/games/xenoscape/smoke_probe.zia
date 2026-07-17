@@ -53,8 +53,8 @@
 
 module smoke_probe;
 
-bind Viper.Graphics;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics;
+bind Zanna.Terminal as Terminal;
 bind "./config";
 bind "./palette";
 bind "./sprites";

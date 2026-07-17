@@ -8,7 +8,7 @@ overlay calls.
 Run the deterministic smoke:
 
 ```sh
-VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run game3d/game3d_setup.zia
+ZANNA_3D_BACKEND=software ../../../build/src/tools/zanna/zanna run game3d/game3d_setup.zia
 ```
 
 Line-count comparison for the migration gate:

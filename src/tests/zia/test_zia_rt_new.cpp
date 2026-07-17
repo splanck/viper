@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ bool compileFails(const std::string &source) {
 TEST(ZiaRtNew, FrozenSetNamedFactoryIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestFS;
-bind Viper.Collections;
+bind Zanna.Collections;
 /// @brief Start.
 func start() {    var s = new Seq();
     var x = new FrozenSet(s);
@@ -52,7 +52,7 @@ func start() {    var s = new Seq();
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestFSFactory;
-bind Viper.Collections;
+bind Zanna.Collections;
 /// @brief Start.
 func start() {    var s = new Seq();
     var x = FrozenSet.FromSeq(s);
@@ -63,7 +63,7 @@ func start() {    var s = new Seq();
 TEST(ZiaRtNew, FrozenMapNamedFactoryIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestFM;
-bind Viper.Collections;
+bind Zanna.Collections;
 /// @brief Start.
 func start() {    var keys = new Seq();
     var vals = new Seq();
@@ -72,7 +72,7 @@ func start() {    var keys = new Seq();
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestFMFactory;
-bind Viper.Collections;
+bind Zanna.Collections;
 /// @brief Start.
 func start() {    var keys = new Seq();
     var vals = new Seq();
@@ -84,14 +84,14 @@ func start() {    var keys = new Seq();
 TEST(ZiaRtNew, VersionParseIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestVer;
-bind Viper.Text;
+bind Zanna.Text;
 /// @brief Start.
 func start() {    var v = new Version("1.0.0");
 }
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestVerFactory;
-bind Viper.Text;
+bind Zanna.Text;
 /// @brief Start.
 func start() {    var v = Version.Parse("1.0.0");
 }
@@ -102,7 +102,7 @@ func start() {    var v = Version.Parse("1.0.0");
 TEST(ZiaRtNew, CompiledPatternNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestCP;
-bind Viper.Text;
+bind Zanna.Text;
 /// @brief Start.
 func start() {    var p = new CompiledPattern("hello.*");
 }
@@ -113,7 +113,7 @@ func start() {    var p = new CompiledPattern("hello.*");
 TEST(ZiaRtNew, ScannerNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestScanner;
-bind Viper.Text;
+bind Zanna.Text;
 /// @brief Start.
 func start() {    var s = new Scanner("hello world");
 }
@@ -123,14 +123,14 @@ func start() {    var s = new Scanner("hello world");
 TEST(ZiaRtNew, DateOnlyTodayIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestDate;
-bind Viper.Time;
+bind Zanna.Time;
 /// @brief Start.
 func start() {    var d = new DateOnly();
 }
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestDateFactory;
-bind Viper.Time;
+bind Zanna.Time;
 /// @brief Start.
 func start() {    var d = DateOnly.Today();
 }
@@ -140,14 +140,14 @@ func start() {    var d = DateOnly.Today();
 TEST(ZiaRtNew, BinFileOpenIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestBF;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var f = new BinFile("/tmp/test.dat", "rw");
 }
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestBFFactory;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var f = BinFile.Open("/tmp/test.dat", "rw");
 }
@@ -157,14 +157,14 @@ func start() {    var f = BinFile.Open("/tmp/test.dat", "rw");
 TEST(ZiaRtNew, LineReaderOpenIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestLR;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var r = new LineReader("/tmp/test.txt");
 }
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestLRFactory;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var r = LineReader.Open("/tmp/test.txt");
 }
@@ -174,14 +174,14 @@ func start() {    var r = LineReader.Open("/tmp/test.txt");
 TEST(ZiaRtNew, LineWriterOpenIsNotNew) {
     EXPECT_TRUE(compileFails(R"(
 module TestLW;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var w = new LineWriter("/tmp/test_out.txt");
 }
 )"));
     EXPECT_TRUE(compileOk(R"(
 module TestLWFactory;
-bind Viper.IO;
+bind Zanna.IO;
 /// @brief Start.
 func start() {    var w = LineWriter.Open("/tmp/test_out.txt");
 }
@@ -191,5 +191,5 @@ func start() {    var w = LineWriter.Open("/tmp/test_out.txt");
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

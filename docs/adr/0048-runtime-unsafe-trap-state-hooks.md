@@ -12,10 +12,10 @@ Accepted
 
 ## Context
 
-`Viper.Diagnostics.CurrentTrap` is the application-facing way to read trap
+`Zanna.Diagnostics.CurrentTrap` is the application-facing way to read trap
 metadata, but the runtime still exposes mutable trap-state hooks under
-`Viper.Error`. Those hooks are needed by generated code, runtime bridges, and
-low-level tests, but names such as `Viper.Error.SetTrapFields` make them look
+`Zanna.Error`. Those hooks are needed by generated code, runtime bridges, and
+low-level tests, but names such as `Zanna.Error.SetTrapFields` make them look
 like ordinary application APIs.
 
 The overhaul policy keeps powerful low-level features available while naming
@@ -25,17 +25,17 @@ them according to their risk.
 
 Expose canonical unsafe names:
 
-- `Viper.Runtime.Unsafe.SetThrowMsg(message)`
-- `Viper.Runtime.Unsafe.ClearThrowMsg()`
-- `Viper.Runtime.Unsafe.SetTrapFields(kind, code, line)`
-- `Viper.Runtime.Unsafe.RaiseKind(kind, code, line)`
+- `Zanna.Runtime.Unsafe.SetThrowMsg(message)`
+- `Zanna.Runtime.Unsafe.ClearThrowMsg()`
+- `Zanna.Runtime.Unsafe.SetTrapFields(kind, code, line)`
+- `Zanna.Runtime.Unsafe.RaiseKind(kind, code, line)`
 
-The existing `Viper.Error.SetThrowMsg`, `ClearThrowMsg`, `SetTrapFields`, and
+The existing `Zanna.Error.SetThrowMsg`, `ClearThrowMsg`, `SetTrapFields`, and
 `RaiseKind` rows remain available for compatibility and carry migration targets
 to the unsafe namespace.
 
-Read-only trap inspection remains under `Viper.Diagnostics.CurrentTrap()`.
-Existing `Viper.Error.GetThrowMsg` and `GetTrap*` getters continue to point
+Read-only trap inspection remains under `Zanna.Diagnostics.CurrentTrap()`.
+Existing `Zanna.Error.GetThrowMsg` and `GetTrap*` getters continue to point
 callers toward `CurrentTrap` in runtime API metadata.
 
 ## Consequences

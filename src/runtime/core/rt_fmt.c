@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_fmt.c
-// Purpose: Implements the Viper.Text.Fmt namespace — value-to-string formatting
+// Purpose: Implements the Zanna.Text.Fmt namespace — value-to-string formatting
 //          helpers for integers, floats, booleans, and radix-based encodings.
 //          All functions are defensive: invalid inputs produce empty strings
 //          or sensible defaults rather than trapping.
@@ -552,7 +552,7 @@ rt_string rt_fmt_int_pad(int64_t value, int64_t width, rt_string pad_char) {
 
 /// @brief Format a floating-point number with default precision.
 /// @details Uses `%.15g` — 15 significant digits, trailing zeros stripped.
-///          Matches the historical Viper / BASIC golden format; not a strict
+///          Matches the historical Zanna / BASIC golden format; not a strict
 ///          IEEE-754 round-trip (values like 1.0/3.0 lose precision). NaN and
 ///          infinity map to "NaN" / "Infinity" / "-Infinity".
 /// @param value Floating-point value to format.
@@ -568,7 +568,7 @@ rt_string rt_fmt_num(double value) {
         value = 0.0;
 
     char buffer[FMT_BUFFER_SIZE];
-    // %.15g is the historical Viper default — 15 significant digits matches
+    // %.15g is the historical Zanna default — 15 significant digits matches
     // Python repr()-style output, strips trailing zeros via %g, and produces
     // the text that golden tests (including basic_random_repro and the
     // comprehensive_control_flow_strings suite) were recorded against.
@@ -690,7 +690,7 @@ rt_string rt_fmt_num_pct(double value, int64_t decimals) {
 }
 
 /// @brief Format a boolean as lowercase "true"/"false".
-/// @details This mirrors the canonical Viper boolean spelling used in
+/// @details This mirrors the canonical Zanna boolean spelling used in
 ///          diagnostics and string conversions.
 /// @param value Boolean value to format.
 /// @return Newly allocated runtime string with "true" or "false".

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_screenfx.c
-// Purpose: Screen effects manager for Viper games. Provides camera shake,
+// Purpose: Screen effects manager for Zanna games. Provides camera shake,
 //   color flash, fade-in, and fade-out effects that are composited each frame.
 //   Effects are stored in a growable slot array and updated with a delta-time
 //   value (milliseconds). Multiple effects of different types can run
@@ -38,7 +38,7 @@
 //     finalisation also reclaims the allocation automatically.
 //
 // Links: src/runtime/game/rt_screenfx.h (public API),
-//        docs/viperlib/game.md (ScreenFX section, color format table)
+//        docs/zannalib/game.md (ScreenFX section, color format table)
 //
 //===----------------------------------------------------------------------===//
 
@@ -248,7 +248,7 @@ static uint32_t clamp_channel(int64_t v) {
 
 /// @brief Pack a Flash/FadeIn/FadeOut overlay color as 0xRRGGBBAA (alpha low byte).
 /// This is deliberately a different byte order from the canonical
-/// Viper.Graphics.Color (0xAARRGGBB) — see the header note.
+/// Zanna.Graphics.Color (0xAARRGGBB) — see the header note.
 int64_t rt_screenfx_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     return (int64_t)((clamp_channel(r) << 24) | (clamp_channel(g) << 16) |
                      (clamp_channel(b) << 8) | clamp_channel(a));
@@ -290,7 +290,7 @@ rt_screenfx rt_screenfx_new(void) {
 /// @brief Release the ScreenFX manager; frees the inline struct when refcount hits zero.
 /// Provided for API symmetry — GC finalization also reclaims the allocation automatically.
 void rt_screenfx_destroy(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.Destroy: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Destroy: expected Zanna.Game.ScreenFX");
     if (fx && rt_obj_release_check0(fx))
         rt_obj_free(fx);
 }
@@ -435,7 +435,7 @@ static void screenfx_recompute(rt_screenfx fx) {
 /// reclaimed on the following update. This separates "finished advancing" from "removed" so a
 /// covering fade/wipe cannot vanish before its last frame is observed (VDOC-265).
 void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
-    fx = checked_screenfx(fx, "ScreenFX.Update: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Update: expected Zanna.Game.ScreenFX");
     if (!fx || dt <= 0)
         return;
 
@@ -468,7 +468,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
 /// damped over `duration` ms by the `decay` model (0 = constant, 1000 = linear, ≥1500 = quadratic).
 /// Replaces any existing shake in place — only one shake runs at a time.
 void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay) {
-    fx = checked_screenfx(fx, "ScreenFX.Shake: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Shake: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
     if (intensity < 0)
@@ -495,7 +495,7 @@ void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int6
 /// alpha fades from peak to 0 over `duration` ms. Useful for hit-frames, lightning, screen blasts.
 /// Multiple simultaneous flashes pick the one with the highest current alpha.
 void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.Flash: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Flash: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -515,7 +515,7 @@ void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
 /// @brief Fade FROM the color TO clear (alpha goes peak→0). Used at scene-entry — start covered,
 /// reveal underlying gameplay. Cancels any in-flight FADE_IN/FADE_OUT first so fades don't stack.
 void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.FadeIn: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.FadeIn: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -539,7 +539,7 @@ void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
 /// @brief Fade FROM clear TO the color (alpha goes 0→peak). Used at scene-exit — start clear,
 /// end covered. Cancels any in-flight FADE_IN/FADE_OUT first.
 void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.FadeOut: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.FadeOut: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -563,7 +563,7 @@ void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
 /// @brief Stop every active effect immediately and zero the composited shake/overlay state.
 /// Use between scene transitions to guarantee a clean slate.
 void rt_screenfx_cancel_all(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.CancelAll: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.CancelAll: expected Zanna.Game.ScreenFX");
     if (!fx)
         return;
 
@@ -584,7 +584,7 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
 /// camera offset (VDOC-266). When nothing of that type was active the recompute is a cheap no-op
 /// over the same slots the caller would have scanned anyway.
 void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
-    fx = checked_screenfx(fx, "ScreenFX.CancelType: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.CancelType: expected Zanna.Game.ScreenFX");
     if (!fx)
         return;
 
@@ -600,7 +600,7 @@ void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
 
 /// @brief Returns 1 if any effect slot is currently in use.
 int8_t rt_screenfx_is_active(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.IsActive: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.IsActive: expected Zanna.Game.ScreenFX");
     if (!fx)
         return 0;
 
@@ -614,7 +614,7 @@ int8_t rt_screenfx_is_active(rt_screenfx fx) {
 /// @brief Returns 1 if at least one slot of the given effect type is active. Useful for guarding
 /// "don't restart this effect if it's still running" patterns.
 int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
-    fx = checked_screenfx(fx, "ScreenFX.IsTypeActive: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.IsTypeActive: expected Zanna.Game.ScreenFX");
     if (!fx)
         return 0;
 
@@ -628,27 +628,27 @@ int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
 /// @brief Read the composited X-axis camera-shake offset for the current frame. Caller adds this
 /// to the camera position before drawing the world.
 int64_t rt_screenfx_get_shake_x(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.ShakeX: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.ShakeX: expected Zanna.Game.ScreenFX");
     return fx ? fx->shake_x : 0;
 }
 
 /// @brief Read the composited Y-axis camera-shake offset for the current frame.
 int64_t rt_screenfx_get_shake_y(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.ShakeY: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.ShakeY: expected Zanna.Game.ScreenFX");
     return fx ? fx->shake_y : 0;
 }
 
 /// @brief Read the current overlay color (RGB packed in upper 24 bits, alpha in low byte = 0).
 /// Use together with `get_overlay_alpha` to render a full-screen tinted box on top of gameplay.
 int64_t rt_screenfx_get_overlay_color(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.OverlayColor: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.OverlayColor: expected Zanna.Game.ScreenFX");
     return fx ? fx->overlay_color : 0;
 }
 
 /// @brief Read the current overlay alpha (0–255). Effects use max-alpha compositing — the
 /// brightest active overlay (FLASH, FADE_IN, FADE_OUT) wins.
 int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.OverlayAlpha: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.OverlayAlpha: expected Zanna.Game.ScreenFX");
     return fx ? fx->overlay_alpha : 0;
 }
 
@@ -660,7 +660,7 @@ int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
 /// out-of-range values default to LEFT. The colored rectangle grows from one screen edge across the
 /// duration, rendered in `draw()`.
 void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.Wipe: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Wipe: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
     if (direction < 0 || direction > 3)
@@ -685,7 +685,7 @@ void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t 
 /// surrounding the visible circle (cheap; no per-pixel mask required).
 void rt_screenfx_circle_in(
     rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.CircleIn: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.CircleIn: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -708,7 +708,7 @@ void rt_screenfx_circle_in(
 /// to `circle_in` — pair them across a scene boundary for a smooth iris transition.
 void rt_screenfx_circle_out(
     rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.CircleOut: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.CircleOut: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -731,7 +731,7 @@ void rt_screenfx_circle_out(
 /// sweeps 0→255 over the duration. Visually a pleasing "scatter" effect; rendered pixel-by-pixel
 /// in `draw()` (avoid for very high-resolution canvases).
 void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.Dissolve: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Dissolve: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
 
@@ -754,7 +754,7 @@ void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
 /// by drawing a darkening grid overlay rather than true block-averaging — the visual hint of
 /// pixelation without the readback cost.
 void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration) {
-    fx = checked_screenfx(fx, "ScreenFX.Pixelate: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Pixelate: expected Zanna.Game.ScreenFX");
     if (!fx || duration <= 0)
         return;
     if (max_block_size < 2)
@@ -777,7 +777,7 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
 /// @brief Returns 1 when no slots are active. Useful for chaining transitions ("when fade-out
 /// finishes, load the next scene"). Treats a NULL handle as finished (returns 1).
 int8_t rt_screenfx_is_finished(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.IsFinished: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.IsFinished: expected Zanna.Game.ScreenFX");
     if (!fx)
         return 1;
 
@@ -792,7 +792,7 @@ int8_t rt_screenfx_is_finished(rt_screenfx fx) {
 /// CIRCLE_*, DISSOLVE, PIXELATE). Returns 0 when no transition is running, 1000 when complete.
 /// Used to drive scene-load timing — kick off the next scene at progress=500 (mid-transition).
 int64_t rt_screenfx_get_transition_progress(rt_screenfx fx) {
-    fx = checked_screenfx(fx, "ScreenFX.TransitionProgress: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.TransitionProgress: expected Zanna.Game.ScreenFX");
     if (!fx)
         return 0;
 
@@ -862,7 +862,7 @@ static const uint8_t bayer4x4[4][4] = {
 ///   - **PIXELATE:** semi-transparent grid overlay simulating block-pixelation without read-back.
 /// Caller provides the canvas dimensions explicitly so this function never queries the canvas.
 void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h) {
-    fx = checked_screenfx(fx, "ScreenFX.Draw: expected Viper.Game.ScreenFX");
+    fx = checked_screenfx(fx, "ScreenFX.Draw: expected Zanna.Game.ScreenFX");
     if (!fx || !canvas || screen_w <= 0 || screen_h <= 0)
         return;
 

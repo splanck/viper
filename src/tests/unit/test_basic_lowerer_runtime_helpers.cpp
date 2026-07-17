@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,19 +54,19 @@ int main() {
     auto names = collectExternNames(module);
     assert(names.count("rt_arr_i64_set") == 1);
     // Accept either legacy aliases or canonical runtime names
-    assert(names.count("rt_str_split_fields") == 1 || names.count("Viper.String.SplitFields") == 1);
-    assert(names.count("rt_to_int") == 1 || names.count("Viper.Core.Convert.ToInt64") == 1);
+    assert(names.count("rt_str_split_fields") == 1 || names.count("Zanna.String.SplitFields") == 1);
+    assert(names.count("rt_to_int") == 1 || names.count("Zanna.Core.Convert.ToInt64") == 1);
 
     const std::string stringHelpers[] = {
         "rt_str_i16_alloc",
         "rt_str_i32_alloc",
         "rt_str_f_alloc",
         "rt_f64_to_str",
-        // Canonical spellings under Viper.* runtime namespaces
-        "Viper.String.FromI16",
-        "Viper.String.FromI32",
-        "Viper.String.FromSingle",
-        "Viper.Core.Convert.ToString_Double",
+        // Canonical spellings under Zanna.* runtime namespaces
+        "Zanna.String.FromI16",
+        "Zanna.String.FromI32",
+        "Zanna.String.FromSingle",
+        "Zanna.Core.Convert.ToString_Double",
     };
     bool foundStringHelper = false;
     for (const auto &helper : stringHelpers)

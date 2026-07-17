@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the ListView widget used in the Viper terminal UI toolkit.  The
+// Implements the ListView widget used in the Zanna terminal UI toolkit.  The
 // widget renders a vertical list of strings, tracks cursor movement, and manages
 // single- or multi-selection depending on modifier keys supplied with navigation
 // events.  Rendering behaviour is customisable via a callback while sensible
@@ -34,7 +34,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Initialise a list view with items and a shared theme reference.
 /// @details Copies @p items into the internal storage, primes the selection
@@ -190,4 +190,4 @@ void ListView::selectRange(int a, int b) {
     }
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

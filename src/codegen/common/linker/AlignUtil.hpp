@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Round \p val up to the next multiple of \p align.
 /// \p align must be 0 (no-op) or a power of two.
@@ -39,4 +39,4 @@ inline size_t alignUp(size_t val, size_t align) {
     return (val + align - 1) & ~(align - 1);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

@@ -1,4 +1,4 @@
-' heap_demo.bas - Comprehensive API audit for Viper.Collections.Heap
+' heap_demo.bas - Comprehensive API audit for Zanna.Collections.Heap
 ' Tests: New, NewMax, Push(priority, value), Pop, Peek, Len, IsEmpty,
 '        Clear, IsMax, TryPeekOption, TryPopOption, ToSeq
 
@@ -6,8 +6,8 @@ PRINT "=== Heap API Audit ==="
 
 ' --- New (min-heap) ---
 PRINT "--- New (min-heap) ---"
-DIM h AS Viper.Collections.Heap
-h = Viper.Collections.Heap.New()
+DIM h AS Zanna.Collections.Heap
+h = Zanna.Collections.Heap.New()
 PRINT h.Count       ' 0
 PRINT h.IsEmpty   ' 1
 PRINT h.IsMax     ' 0
@@ -45,8 +45,8 @@ PRINT tpop.IsNone ' 1
 
 ' --- NewMax (max-heap) ---
 PRINT "--- NewMax ---"
-DIM mh AS Viper.Collections.Heap
-mh = Viper.Collections.Heap.NewMax(1)
+DIM mh AS Zanna.Collections.Heap
+mh = Zanna.Collections.Heap.NewMax(1)
 PRINT mh.IsMax    ' 1
 mh.Push(1, "low")
 mh.Push(5, "high")
@@ -60,8 +60,8 @@ PRINT mh.Pop()    ' low (priority 1)
 
 ' --- ToSeq ---
 PRINT "--- ToSeq ---"
-DIM h2 AS Viper.Collections.Heap
-h2 = Viper.Collections.Heap.New()
+DIM h2 AS Zanna.Collections.Heap
+h2 = Zanna.Collections.Heap.New()
 h2.Push(5, "e")
 h2.Push(1, "a")
 h2.Push(3, "c")
@@ -73,8 +73,8 @@ PRINT seq.Count     ' 5
 
 ' --- Clear ---
 PRINT "--- Clear ---"
-DIM h3 AS Viper.Collections.Heap
-h3 = Viper.Collections.Heap.New()
+DIM h3 AS Zanna.Collections.Heap
+h3 = Zanna.Collections.Heap.New()
 h3.Push(1, "x")
 h3.Push(2, "y")
 PRINT h3.Count      ' 2

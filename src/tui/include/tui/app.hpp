@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the App class, the top-level application driver for
-// Viper's TUI framework. App orchestrates a widget tree, focus management,
+// Zanna's TUI framework. App orchestrates a widget tree, focus management,
 // input event processing, and screen rendering in a headless-capable loop.
 //
 // The tick() method implements a simple game-loop style update: pending
@@ -36,7 +36,7 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui {
+namespace zanna::tui {
 /// @brief Top-level TUI application that drives the widget tree, focus ring, and rendering loop.
 /// @details Manages the complete lifecycle of a terminal UI session: event
 ///          queueing, focus-aware dispatch, layout computation, and differential
@@ -50,7 +50,7 @@ class App {
     /// @param cols   Initial terminal width in columns.
     /// @param truecolor Enable 24-bit true-color rendering (default: false for 256-color).
     App(std::unique_ptr<ui::Widget> root,
-        ::viper::tui::term::TermIO &tio,
+        ::zanna::tui::term::TermIO &tio,
         int rows,
         int cols,
         bool truecolor = false);
@@ -97,4 +97,4 @@ class App {
     input::Keymap *keymap_{nullptr};
 };
 
-} // namespace viper::tui
+} // namespace zanna::tui

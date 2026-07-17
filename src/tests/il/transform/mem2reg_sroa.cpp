@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -171,7 +171,7 @@ TEST(IL, test_scalarize_two_fields) {
     Module M;
     M.functions.push_back(makeTwoFieldAggregate());
 
-    viper::passes::mem2reg(M);
+    zanna::passes::mem2reg(M);
 
     const Function &F = M.functions.front();
     ASSERT_FALSE(hasOp(F, Opcode::Alloca));
@@ -184,7 +184,7 @@ TEST(IL, test_skip_dynamic_gep) {
     Module M;
     M.functions.push_back(makeDynamicGEP());
 
-    viper::passes::mem2reg(M);
+    zanna::passes::mem2reg(M);
 
     const Function &F = M.functions.front();
     ASSERT_TRUE(hasOp(F, Opcode::Load));
@@ -193,6 +193,6 @@ TEST(IL, test_skip_dynamic_gep) {
 
 /// @brief Main.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

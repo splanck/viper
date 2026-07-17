@@ -1,6 +1,6 @@
-# vTRIS - Advanced Tetris Demo for Viper BASIC
+# vTRIS - Advanced Tetris Demo for Zanna BASIC
 
-A feature-rich, colorful Tetris implementation showcasing Viper BASIC's OOP capabilities, ANSI graphics, and game development features.
+A feature-rich, colorful Tetris implementation showcasing Zanna BASIC's OOP capabilities, ANSI graphics, and game development features.
 
 ## Features
 
@@ -25,7 +25,7 @@ A feature-rich, colorful Tetris implementation showcasing Viper BASIC's OOP capa
   - 3 Lines = 900 points (3²×100)
   - 4 Lines = 1600 points (4²×100)
 - **All-Time High Scores** - Top 10 leaderboard
-- **Default Champions** - HAL, GLaDOS, VIPER, BYTE, CODE
+- **Default Champions** - HAL, GLaDOS, ZANNA, BYTE, CODE
 
 ### 📈 Level System
 - **Progressive Difficulty** - Speed increases every 10 lines
@@ -52,7 +52,7 @@ demos/vTris/
 ## How to Run
 
 ```bash
-cd /Users/stephen/git/viper
+cd /Users/stephen/git/zanna
 
 # Run the demo
 ./build/src/tools/ilc/ilc front basic -run demos/vTris/vtris.bas
@@ -104,7 +104,7 @@ cd /Users/stephen/git/viper
 
 ## Development Notes
 
-Created as a comprehensive stress test and demonstration of Viper BASIC's capabilities:
+Created as a comprehensive stress test and demonstration of Zanna BASIC's capabilities:
 - ✅ OOP features (classes, methods, constructors)
 - ✅ Arrays in classes (2D arrays, object arrays)
 - ✅ ANSI terminal control (CLS, COLOR, LOCATE)
@@ -121,7 +121,7 @@ Created as a comprehensive stress test and demonstration of Viper BASIC's capabi
 ## Credits
 
 **Game Design**: Classic Tetris mechanics
-**Implementation**: Viper BASIC Demo
+**Implementation**: Zanna BASIC Demo
 **Purpose**: Showcase compiler OOP capabilities
 **Test Suite**: 15+ verification tests in `/bugs/bug_testing/`
 

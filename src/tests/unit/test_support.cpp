@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -301,7 +301,7 @@ int main() {
 
     {
         const auto tempPath =
-            std::filesystem::temp_directory_path() / "viper_support_source_manager_lines.tmp";
+            std::filesystem::temp_directory_path() / "zanna_support_source_manager_lines.tmp";
         std::filesystem::remove(tempPath);
         il::support::SourceManager fileSm;
         const uint32_t tempId = fileSm.addFile(tempPath.string());
@@ -330,7 +330,7 @@ int main() {
 
     {
         const auto emptyPath =
-            std::filesystem::temp_directory_path() / "viper_support_source_manager_empty.tmp";
+            std::filesystem::temp_directory_path() / "zanna_support_source_manager_empty.tmp";
         {
             std::ofstream out(emptyPath, std::ios::binary);
         }
@@ -343,7 +343,7 @@ int main() {
 
     {
         const auto tempDir =
-            std::filesystem::temp_directory_path() / "viper_support_source_manager_cwd";
+            std::filesystem::temp_directory_path() / "zanna_support_source_manager_cwd";
         std::filesystem::create_directories(tempDir);
         const auto oldCwd = std::filesystem::current_path();
         const auto relFile = tempDir / "relative.bas";
@@ -362,7 +362,7 @@ int main() {
 
     {
         const auto tempRoot =
-            std::filesystem::temp_directory_path() / "viper_support_source_manager_cwd_dedupe";
+            std::filesystem::temp_directory_path() / "zanna_support_source_manager_cwd_dedupe";
         const auto dirA = tempRoot / "a";
         const auto dirB = tempRoot / "b";
         std::filesystem::remove_all(tempRoot);

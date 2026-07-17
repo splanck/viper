@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -207,11 +207,11 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr) {
             }
         }
 
-        // Runtime class property (e.g., Viper.String) getter sugar via catalog
+        // Runtime class property (e.g., Zanna.String) getter sugar via catalog
         if (expr.base) {
             // Lower base to inspect IL kind and to pass as arg0
             RVal base = lowerExpr(*expr.base);
-            // Detect STRING alias → Viper.String
+            // Detect STRING alias → Zanna.String
             std::string qClass;
             // Prefer object class resolution when available
             {

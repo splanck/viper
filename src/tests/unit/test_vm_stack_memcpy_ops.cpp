@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include "VMTestHook.hpp"
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <cassert>
 #include <cstring>

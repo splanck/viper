@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/audio/rt_audio.c
-// Purpose: Implements the runtime bridge between the Viper audio API and the
-//          ViperAUD (vaud) library. Provides Init/Shutdown, LoadSound,
+// Purpose: Implements the runtime bridge between the Zanna audio API and the
+//          ZannaAUD (vaud) library. Provides Init/Shutdown, LoadSound,
 //          LoadMusic, Play/Stop/Pause/Resume for sounds and music, volume
 //          control, and IsPlaying queries. When audio is disabled at compile
 //          time, capability probes remain available and public playback/load
@@ -20,7 +20,7 @@
 //   - Shutdown releases all loaded sounds/music and destroys the context.
 //   - Sounds use ref-counting; the caller owns the reference from LoadSound.
 //   - Music is loaded as a single stream; only one music track plays at a time.
-//   - The VIPER_ENABLE_AUDIO compile flag controls whether real or stub impls
+//   - The ZANNA_ENABLE_AUDIO compile flag controls whether real or stub impls
 //     are compiled; stub playback/load entry points fail loudly.
 //
 // Ownership/Lifetime:
@@ -28,7 +28,7 @@
 //   - The global audio context is owned by this module and freed on Shutdown.
 //
 // Links: src/runtime/audio/rt_audio.h (public API),
-//        src/lib/audio/include/vaud.h (ViperAUD low-level audio library)
+//        src/lib/audio/include/vaud.h (ZannaAUD low-level audio library)
 //
 //===----------------------------------------------------------------------===//
 
@@ -139,7 +139,7 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     dst[len] = '\0';
 }
 
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
 static const char *audio_path_cstr(rt_string path) {
     if (!path)
         return NULL;
@@ -151,7 +151,7 @@ static const char *audio_path_cstr(rt_string path) {
         return NULL;
     return path_str;
 }
-#endif /* VIPER_ENABLE_AUDIO */
+#endif /* ZANNA_ENABLE_AUDIO */
 
 /// @brief Find an in-use mix group by name. @return its group id, or -1 if
 ///        no such group (empty/NULL name yields -1). Caller holds the lock.
@@ -199,7 +199,7 @@ static int8_t audio_group_id_valid_unlocked(int64_t group) {
 
 /// @brief Convert a fade/duration in seconds to whole milliseconds, saturating
 ///        at INT64_MAX; non-finite or non-positive input yields 0.
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
 static int64_t seconds_to_ms_i64(float seconds) {
     if (!isfinite(seconds) || seconds <= 0.0f)
         return 0;
@@ -208,7 +208,7 @@ static int64_t seconds_to_ms_i64(float seconds) {
         return INT64_MAX;
     return (int64_t)(ms + 0.5);
 }
-#endif /* VIPER_ENABLE_AUDIO */
+#endif /* ZANNA_ENABLE_AUDIO */
 
 // The audio-state spinlock is available in BOTH configurations (VDOC-117):
 // audio-disabled builds still mutate the shared mix-group tables and must
@@ -256,7 +256,7 @@ static void audio_state_unlock(void) {
 #endif
 }
 
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
 #include "vaud.h"
 
 #define RT_SOUND_MAGIC 0x56534E44u /* VSND */
@@ -326,7 +326,7 @@ typedef struct {
 typedef struct rt_sound {
     void *vptr;            ///< VTable pointer (reserved for future use)
     uint32_t magic;        ///< Runtime wrapper discriminator.
-    vaud_sound_t sound;    ///< ViperAUD sound handle
+    vaud_sound_t sound;    ///< ZannaAUD sound handle
     struct rt_sound *prev; ///< Registry linkage
     struct rt_sound *next; ///< Registry linkage
 } rt_sound;
@@ -411,7 +411,7 @@ static void rt_sound_finalize(void *obj) {
 typedef struct rt_music {
     void *vptr;             ///< VTable pointer (reserved for future use)
     uint32_t magic;         ///< Runtime wrapper discriminator.
-    vaud_music_t music;     ///< ViperAUD music handle
+    vaud_music_t music;     ///< ZannaAUD music handle
     int64_t logical_volume; ///< User-facing 0-100 volume before mix-group scaling
     int8_t logical_loop;    ///< User-facing loop preference preserved across crossfades
     int8_t paused;          ///< Runtime pause state used by Resume() arbitration
@@ -494,7 +494,7 @@ static void rt_music_finalize(void *obj) {
 /// Mirror of the stub layer's `rt_audio_is_available` (in
 /// `rt_audio_stubs.c`). The graphics-enabled implementation always
 /// returns 1 — Audio doesn't depend on the windowing backend so it's
-/// available wherever ViperAUD is linked. Cheap; safe to call every frame.
+/// available wherever ZannaAUD is linked. Cheap; safe to call every frame.
 ///
 /// @return Always `1` in the real implementation; the stubbed
 ///         `audio-disabled` build returns `0`.
@@ -877,7 +877,7 @@ static void rt_audio_refresh_voice_group_volumes(int64_t group) {
 /// @details Called during `rt_audio_shutdown()` so user code that still
 ///          holds Sound/Music handles after shutdown sees them go inert
 ///          (handles remain valid as objects, but playback fails because
-///          the underlying ViperAUD context is gone). The wrappers
+///          the underlying ZannaAUD context is gone). The wrappers
 ///          themselves stay alive until the GC frees them; only the
 ///          backend pointers are nulled.
 static void rt_audio_invalidate_wrappers_for_shutdown(void) {
@@ -1173,18 +1173,18 @@ void rt_audio_stop_all_sounds(void) {
     audio_state_unlock();
 }
 
-/// @brief Clamp a ViperAUD unsigned diagnostic counter into the runtime signed range.
-/// @param value Monotonic ViperAUD counter.
+/// @brief Clamp a ZannaAUD unsigned diagnostic counter into the runtime signed range.
+/// @param value Monotonic ZannaAUD counter.
 /// @return Signed runtime value saturated at INT64_MAX.
 static int64_t rt_audio_counter_to_i64(uint64_t value) {
     return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
 }
 
-/// @brief Copy the current audio context's ViperAUD statistics without forcing initialization.
+/// @brief Copy the current audio context's ZannaAUD statistics without forcing initialization.
 /// @details The debug counters should be readable before `Audio.Init()` and after failed
 ///          initialization. This helper therefore snapshots the existing context only when one is
 ///          live, otherwise returning zero-filled counters.
-/// @return ViperAUD statistics snapshot for the current context, or zeros.
+/// @return ZannaAUD statistics snapshot for the current context, or zeros.
 static vaud_stats_t rt_audio_stats_snapshot(void) {
     vaud_stats_t stats;
     memset(&stats, 0, sizeof(stats));
@@ -1195,7 +1195,7 @@ static vaud_stats_t rt_audio_stats_snapshot(void) {
     return stats;
 }
 
-/// @brief Runtime accessor for ViperAUD mixer render callbacks.
+/// @brief Runtime accessor for ZannaAUD mixer render callbacks.
 /// @return Monotonic render callback count for the live audio context, or zero.
 int64_t rt_audio_get_render_calls(void) {
     vaud_stats_t stats = rt_audio_stats_snapshot();
@@ -1258,7 +1258,7 @@ int64_t rt_audio_get_backend_write_failures(void) {
 /// @brief Detect audio file format from an in-memory header.
 /// @return 1=WAV/RIFF, 2=OGG, 3=MP3, 0=unknown
 
-/// @brief Wrap a freshly-loaded ViperAUD sound in an `rt_sound` heap object.
+/// @brief Wrap a freshly-loaded ZannaAUD sound in an `rt_sound` heap object.
 /// @details Allocates an `rt_sound` via `rt_obj_new_i64`, stamps the
 ///          discriminator magic (`RT_SOUND_MAGIC`), installs the finalizer
 ///          (@ref rt_sound_finalize) so the underlying `vaud_sound_t` is
@@ -1267,7 +1267,7 @@ int64_t rt_audio_get_backend_write_failures(void) {
 ///          allocation failure the raw `vaud_sound_t` is freed so the
 ///          caller does not need to. `_locked` suffix — caller must hold
 ///          the audio state lock.
-/// @param snd Ownership-transferring ViperAUD sound handle (may be NULL).
+/// @param snd Ownership-transferring ZannaAUD sound handle (may be NULL).
 /// @return New `rt_sound` wrapper, or NULL on allocation failure / NULL input.
 static void *rt_sound_wrap_loaded_locked(vaud_sound_t snd) {
     if (!snd)
@@ -1434,7 +1434,7 @@ void rt_sound_destroy(void *sound) {
 /// @details Clamps @p volume to 0..100 and @p pan to -100..100, normalises
 ///          out-of-range @p group to `RT_MIXGROUP_SFX`, then dispatches to
 ///          `vaud_play_loop` or `vaud_play_ex` against the wrapped
-///          ViperAUD sound. The voice id is stamped into the tracked-voice
+///          ZannaAUD sound. The voice id is stamped into the tracked-voice
 ///          table (after pruning stale slots) so subsequent group-volume
 ///          changes and `rt_voice_*` queries can address it. Returns -1
 ///          on NULL input or when the wrapper is no longer valid (e.g.
@@ -1489,7 +1489,7 @@ int64_t rt_sound_is_handle(void *sound) {
 /// @brief True when @p sound is a valid wrapper whose backend Sound is still
 ///        attached to the live audio context, i.e. it can actually play now.
 /// @details Stricter than @ref rt_sound_is_handle: wrappers survive
-///          `Audio.Shutdown()` in the registry with their ViperAUD handles
+///          `Audio.Shutdown()` in the registry with their ZannaAUD handles
 ///          detached, and such zombies must not register as playable
 ///          (VDOC-121).
 int64_t rt_sound_is_playable(void *sound) {
@@ -1722,7 +1722,7 @@ void *rt_music_load(rt_string path) {
     if (!ensure_audio_init())
         return NULL;
 
-    /* Detect format and load via appropriate ViperAUD function */
+    /* Detect format and load via appropriate ZannaAUD function */
     int fmt = detect_audio_format(path_str);
     vaud_music_t mus = NULL;
     void *wrapper_obj = NULL;
@@ -1845,7 +1845,7 @@ void rt_music_resume(void *music) {
 ///          fading-out side of an active crossfade, the underlying
 ///          stream's loop flag is forced to 0 (so the dying track ends
 ///          when the file ends, even if the user requested looping);
-///          otherwise the logical loop value is mirrored to ViperAUD.
+///          otherwise the logical loop value is mirrored to ZannaAUD.
 /// @param music Music wrapper handle.
 /// @param loop  Non-zero to enable continuous looping.
 void rt_music_set_loop(void *music, int64_t loop) {
@@ -2216,7 +2216,7 @@ int64_t rt_audio_find_group(rt_string group_name) {
 ///          registered groups return `SomeI64(id)`, while missing groups return
 ///          None.
 /// @param group_name Group name.
-/// @return Opaque Viper.Option containing the group id, or None.
+/// @return Opaque Zanna.Option containing the group id, or None.
 void *rt_audio_find_group_option(rt_string group_name) {
     int64_t id = rt_audio_find_group(group_name);
     return id >= 0 ? rt_option_some_i64(id) : rt_option_none();
@@ -2540,7 +2540,7 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
     return rt_sound_play_internal(sound, volume, pan, 1, group);
 }
 
-#else /* !VIPER_ENABLE_AUDIO */
+#else /* !ZANNA_ENABLE_AUDIO */
 
 //===----------------------------------------------------------------------===//
 // Stub implementations when audio library is not available
@@ -2550,7 +2550,7 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
 ///
 /// Mirror of `rt_graphics_unavailable_` in `rt_graphics_stubs.c`.
 /// Shared trap sink used by every Sound / Music entry point in this
-/// `#else` branch so failures from a `VIPER_ENABLE_AUDIO=OFF` build all
+/// `#else` branch so failures from a `ZANNA_ENABLE_AUDIO=OFF` build all
 /// surface at the offending call site with a consistent error code.
 ///
 /// @param msg Diagnostic string; the convention is
@@ -3108,7 +3108,7 @@ int64_t rt_audio_find_group(rt_string group_name) {
 ///          registered groups return `SomeI64(id)`, while missing groups return
 ///          None.
 /// @param group_name Group name.
-/// @return Opaque Viper.Option containing the group id, or None.
+/// @return Opaque Zanna.Option containing the group id, or None.
 void *rt_audio_find_group_option(rt_string group_name) {
     int64_t id = rt_audio_find_group(group_name);
     return id >= 0 ? rt_option_some_i64(id) : rt_option_none();
@@ -3286,4 +3286,4 @@ void rt_snd_group_clear_fx(int64_t group) {
     rt_audio_unavailable_("Audio.GroupClearFx: audio support not compiled in");
 }
 
-#endif /* VIPER_ENABLE_AUDIO */
+#endif /* ZANNA_ENABLE_AUDIO */

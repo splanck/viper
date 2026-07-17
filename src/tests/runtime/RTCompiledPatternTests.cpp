@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Purpose: Tests for Viper.Text.CompiledPattern — regex compilation,
+// Purpose: Tests for Zanna.Text.CompiledPattern — regex compilation,
 //   matching, find, replace, and split operations.
 //
 //===----------------------------------------------------------------------===//

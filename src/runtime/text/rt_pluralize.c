@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_pluralize.c
 // Purpose: Implements English noun pluralization and singularization for the
-//          Viper.Text.Pluralize class. Handles regular inflection rules
+//          Zanna.Text.Pluralize class. Handles regular inflection rules
 //          (e.g. -s, -es, -ies), common irregular forms (child/children,
 //          mouse/mice), and uncountable nouns (sheep, fish).
 //

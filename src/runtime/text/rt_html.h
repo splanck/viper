@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_html.h
-// Purpose: Tolerant HTML parser and utilities for Viper.Text.Html, providing parsing to a tree
+// Purpose: Tolerant HTML parser and utilities for Zanna.Text.Html, providing parsing to a tree
 // structure, text extraction, escaping, and unescaping of HTML entities.
 //
 // Key invariants:

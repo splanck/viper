@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -70,8 +70,8 @@ class Person {
 func start() {    var p: Person = new Person(30, 100);
     var age: Integer = p.age;
     var method_age: Integer = p.getAge();
-    Viper.Terminal.SayInt(age);
-    Viper.Terminal.SayInt(method_age);
+    Zanna.Terminal.SayInt(age);
+    Zanna.Terminal.SayInt(method_age);
 }
 )";
     CompilerInput input{.source = source, .path = "class.zia"};
@@ -114,7 +114,7 @@ class Frog {
     expose Integer x;
 }
 
-func useFrog(f: Frog) {    Viper.Terminal.SayInt(f.x);
+func useFrog(f: Frog) {    Zanna.Terminal.SayInt(f.x);
 }
 
 func start() {    var f = new Frog();
@@ -243,7 +243,7 @@ class IdentityBox {
 func start() {
     var box = new IdentityBox();
     var value: Integer = box.id[Integer](42);
-    Viper.Terminal.SayInt(value);
+    Zanna.Terminal.SayInt(value);
 }
 )";
     CompilerInput input{.source = source, .path = "generic_type_param_members.zia"};
@@ -271,8 +271,8 @@ func start() {
     var ok: bool = true;
     var ratio: double = 1.5;
     var bytes: Bytes;
-    Viper.Terminal.SayInt(count);
-    Viper.Terminal.SayBool(ok);
+    Zanna.Terminal.SayInt(count);
+    Zanna.Terminal.SayBool(ok);
 }
 )";
     CompilerInput input{.source = source, .path = "type_aliases_bytes.zia"};
@@ -318,5 +318,5 @@ func start() {}
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

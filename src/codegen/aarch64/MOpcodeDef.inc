@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: codegen/aarch64/MOpcodeDef.inc
 // Purpose: X-macro definition file for AArch64 Machine IR opcodes. This is the
 //          single source of truth for the MOpcode enum and name table. Include
-//          this file with VIPER_MIR_OPCODE(name) defined to generate:
+//          this file with ZANNA_MIR_OPCODE(name) defined to generate:
 //            - The enum body (in MachineIR.hpp)
 //            - The opcodeName switch cases (in MachineIR.cpp)
 //            - Any future metadata tables
@@ -23,144 +23,144 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_MIR_OPCODE
-#error "Define VIPER_MIR_OPCODE(name) before including MOpcodeDef.inc"
+#ifndef ZANNA_MIR_OPCODE
+#error "Define ZANNA_MIR_OPCODE(name) before including MOpcodeDef.inc"
 #endif
 
 // --- GPR move ---
-VIPER_MIR_OPCODE(MovRR)
-VIPER_MIR_OPCODE(MovRI)
+ZANNA_MIR_OPCODE(MovRR)
+ZANNA_MIR_OPCODE(MovRI)
 // --- Floating-point (64-bit, scalar) ---
-VIPER_MIR_OPCODE(FMovRR)
-VIPER_MIR_OPCODE(FMovRI)
-VIPER_MIR_OPCODE(FMovGR)
-VIPER_MIR_OPCODE(FAddRRR)
-VIPER_MIR_OPCODE(FSubRRR)
-VIPER_MIR_OPCODE(FMulRRR)
-VIPER_MIR_OPCODE(FDivRRR)
-VIPER_MIR_OPCODE(FCmpRR)
+ZANNA_MIR_OPCODE(FMovRR)
+ZANNA_MIR_OPCODE(FMovRI)
+ZANNA_MIR_OPCODE(FMovGR)
+ZANNA_MIR_OPCODE(FAddRRR)
+ZANNA_MIR_OPCODE(FSubRRR)
+ZANNA_MIR_OPCODE(FMulRRR)
+ZANNA_MIR_OPCODE(FDivRRR)
+ZANNA_MIR_OPCODE(FCmpRR)
 // --- Integer<->Float conversions (64-bit) ---
-VIPER_MIR_OPCODE(SCvtF)
-VIPER_MIR_OPCODE(FCvtZS)
-VIPER_MIR_OPCODE(UCvtF)
-VIPER_MIR_OPCODE(FCvtZU)
+ZANNA_MIR_OPCODE(SCvtF)
+ZANNA_MIR_OPCODE(FCvtZS)
+ZANNA_MIR_OPCODE(UCvtF)
+ZANNA_MIR_OPCODE(FCvtZU)
 // --- Floating-point rounding ---
-VIPER_MIR_OPCODE(FRintN)
+ZANNA_MIR_OPCODE(FRintN)
 // --- Stack pointer adjust ---
-VIPER_MIR_OPCODE(SubSpImm)
-VIPER_MIR_OPCODE(AddSpImm)
+ZANNA_MIR_OPCODE(SubSpImm)
+ZANNA_MIR_OPCODE(AddSpImm)
 // --- Store to outgoing arg area ---
-VIPER_MIR_OPCODE(StrRegSpImm)
-VIPER_MIR_OPCODE(StrFprSpImm)
+ZANNA_MIR_OPCODE(StrRegSpImm)
+ZANNA_MIR_OPCODE(StrFprSpImm)
 // --- Load/store from frame pointer ---
-VIPER_MIR_OPCODE(LdrRegFpImm)
-VIPER_MIR_OPCODE(StrRegFpImm)
-VIPER_MIR_OPCODE(Ldr8RegFpImm)
-VIPER_MIR_OPCODE(Str8RegFpImm)
-VIPER_MIR_OPCODE(Ldr16RegFpImm)
-VIPER_MIR_OPCODE(Str16RegFpImm)
-VIPER_MIR_OPCODE(Ldr32RegFpImm)
-VIPER_MIR_OPCODE(Str32RegFpImm)
-VIPER_MIR_OPCODE(LdrFprFpImm)
-VIPER_MIR_OPCODE(StrFprFpImm)
+ZANNA_MIR_OPCODE(LdrRegFpImm)
+ZANNA_MIR_OPCODE(StrRegFpImm)
+ZANNA_MIR_OPCODE(Ldr8RegFpImm)
+ZANNA_MIR_OPCODE(Str8RegFpImm)
+ZANNA_MIR_OPCODE(Ldr16RegFpImm)
+ZANNA_MIR_OPCODE(Str16RegFpImm)
+ZANNA_MIR_OPCODE(Ldr32RegFpImm)
+ZANNA_MIR_OPCODE(Str32RegFpImm)
+ZANNA_MIR_OPCODE(LdrFprFpImm)
+ZANNA_MIR_OPCODE(StrFprFpImm)
 // --- Phi-edge copies ---
-VIPER_MIR_OPCODE(PhiStoreGPR)
-VIPER_MIR_OPCODE(PhiStoreFPR)
-VIPER_MIR_OPCODE(AddFpImm)
+ZANNA_MIR_OPCODE(PhiStoreGPR)
+ZANNA_MIR_OPCODE(PhiStoreFPR)
+ZANNA_MIR_OPCODE(AddFpImm)
 // --- Load/store from arbitrary base register ---
-VIPER_MIR_OPCODE(LdrRegBaseImm)
-VIPER_MIR_OPCODE(StrRegBaseImm)
-VIPER_MIR_OPCODE(Ldr8RegBaseImm)
-VIPER_MIR_OPCODE(Str8RegBaseImm)
-VIPER_MIR_OPCODE(Ldr16RegBaseImm)
-VIPER_MIR_OPCODE(Str16RegBaseImm)
-VIPER_MIR_OPCODE(Ldr32RegBaseImm)
-VIPER_MIR_OPCODE(Str32RegBaseImm)
-VIPER_MIR_OPCODE(LdrFprBaseImm)
-VIPER_MIR_OPCODE(StrFprBaseImm)
+ZANNA_MIR_OPCODE(LdrRegBaseImm)
+ZANNA_MIR_OPCODE(StrRegBaseImm)
+ZANNA_MIR_OPCODE(Ldr8RegBaseImm)
+ZANNA_MIR_OPCODE(Str8RegBaseImm)
+ZANNA_MIR_OPCODE(Ldr16RegBaseImm)
+ZANNA_MIR_OPCODE(Str16RegBaseImm)
+ZANNA_MIR_OPCODE(Ldr32RegBaseImm)
+ZANNA_MIR_OPCODE(Str32RegBaseImm)
+ZANNA_MIR_OPCODE(LdrFprBaseImm)
+ZANNA_MIR_OPCODE(StrFprBaseImm)
 // --- Load/store with scaled register offset: [base, index, lsl #k] ---
-VIPER_MIR_OPCODE(LdrRegBaseRegLsl)
-VIPER_MIR_OPCODE(StrRegBaseRegLsl)
-VIPER_MIR_OPCODE(Ldr32RegBaseRegLsl)
-VIPER_MIR_OPCODE(Str32RegBaseRegLsl)
-VIPER_MIR_OPCODE(LdrFprBaseRegLsl)
-VIPER_MIR_OPCODE(StrFprBaseRegLsl)
+ZANNA_MIR_OPCODE(LdrRegBaseRegLsl)
+ZANNA_MIR_OPCODE(StrRegBaseRegLsl)
+ZANNA_MIR_OPCODE(Ldr32RegBaseRegLsl)
+ZANNA_MIR_OPCODE(Str32RegBaseRegLsl)
+ZANNA_MIR_OPCODE(LdrFprBaseRegLsl)
+ZANNA_MIR_OPCODE(StrFprBaseRegLsl)
 // --- Integer arithmetic ---
-VIPER_MIR_OPCODE(AddRRR)
-VIPER_MIR_OPCODE(SubRRR)
-VIPER_MIR_OPCODE(MulRRR)
-VIPER_MIR_OPCODE(SmulhRRR)
-VIPER_MIR_OPCODE(UmulhRRR)
-VIPER_MIR_OPCODE(SDivRRR)
-VIPER_MIR_OPCODE(UDivRRR)
-VIPER_MIR_OPCODE(MSubRRRR)
+ZANNA_MIR_OPCODE(AddRRR)
+ZANNA_MIR_OPCODE(SubRRR)
+ZANNA_MIR_OPCODE(MulRRR)
+ZANNA_MIR_OPCODE(SmulhRRR)
+ZANNA_MIR_OPCODE(UmulhRRR)
+ZANNA_MIR_OPCODE(SDivRRR)
+ZANNA_MIR_OPCODE(UDivRRR)
+ZANNA_MIR_OPCODE(MSubRRRR)
 // --- Compare and branch ---
-VIPER_MIR_OPCODE(Cbz)
+ZANNA_MIR_OPCODE(Cbz)
 // --- Bitwise ---
-VIPER_MIR_OPCODE(AndRRR)
-VIPER_MIR_OPCODE(OrrRRR)
-VIPER_MIR_OPCODE(EorRRR)
+ZANNA_MIR_OPCODE(AndRRR)
+ZANNA_MIR_OPCODE(OrrRRR)
+ZANNA_MIR_OPCODE(EorRRR)
 // --- Shifted-operand ALU: dst = a op (b << k) ---
-VIPER_MIR_OPCODE(AddRRRLsl)
-VIPER_MIR_OPCODE(SubRRRLsl)
-VIPER_MIR_OPCODE(AndRRRLsl)
-VIPER_MIR_OPCODE(OrrRRRLsl)
-VIPER_MIR_OPCODE(EorRRRLsl)
-VIPER_MIR_OPCODE(AndRI)
-VIPER_MIR_OPCODE(OrrRI)
-VIPER_MIR_OPCODE(EorRI)
+ZANNA_MIR_OPCODE(AddRRRLsl)
+ZANNA_MIR_OPCODE(SubRRRLsl)
+ZANNA_MIR_OPCODE(AndRRRLsl)
+ZANNA_MIR_OPCODE(OrrRRRLsl)
+ZANNA_MIR_OPCODE(EorRRRLsl)
+ZANNA_MIR_OPCODE(AndRI)
+ZANNA_MIR_OPCODE(OrrRI)
+ZANNA_MIR_OPCODE(EorRI)
 // --- Immediate arithmetic ---
-VIPER_MIR_OPCODE(AddRI)
-VIPER_MIR_OPCODE(SubRI)
+ZANNA_MIR_OPCODE(AddRI)
+ZANNA_MIR_OPCODE(SubRI)
 // --- Shifts ---
-VIPER_MIR_OPCODE(LslRI)
-VIPER_MIR_OPCODE(LsrRI)
-VIPER_MIR_OPCODE(AsrRI)
-VIPER_MIR_OPCODE(LslvRRR)
-VIPER_MIR_OPCODE(LsrvRRR)
-VIPER_MIR_OPCODE(AsrvRRR)
+ZANNA_MIR_OPCODE(LslRI)
+ZANNA_MIR_OPCODE(LsrRI)
+ZANNA_MIR_OPCODE(AsrRI)
+ZANNA_MIR_OPCODE(LslvRRR)
+ZANNA_MIR_OPCODE(LsrvRRR)
+ZANNA_MIR_OPCODE(AsrvRRR)
 // --- Compare ---
-VIPER_MIR_OPCODE(CmpRR)
-VIPER_MIR_OPCODE(CmpRI)
-VIPER_MIR_OPCODE(TstRR)
-VIPER_MIR_OPCODE(Cset)
+ZANNA_MIR_OPCODE(CmpRR)
+ZANNA_MIR_OPCODE(CmpRI)
+ZANNA_MIR_OPCODE(TstRR)
+ZANNA_MIR_OPCODE(Cset)
 // --- Control flow ---
-VIPER_MIR_OPCODE(Br)
-VIPER_MIR_OPCODE(BCond)
-VIPER_MIR_OPCODE(Bl)
-VIPER_MIR_OPCODE(Blr)
-VIPER_MIR_OPCODE(Ret)
+ZANNA_MIR_OPCODE(Br)
+ZANNA_MIR_OPCODE(BCond)
+ZANNA_MIR_OPCODE(Bl)
+ZANNA_MIR_OPCODE(Blr)
+ZANNA_MIR_OPCODE(Ret)
 // --- Address materialisation ---
-VIPER_MIR_OPCODE(AdrPage)
-VIPER_MIR_OPCODE(AddPageOff)
+ZANNA_MIR_OPCODE(AdrPage)
+ZANNA_MIR_OPCODE(AddPageOff)
 // --- Peephole optimization opcodes ---
-VIPER_MIR_OPCODE(Cbnz)
-VIPER_MIR_OPCODE(MAddRRRR)
-VIPER_MIR_OPCODE(Csel)
-VIPER_MIR_OPCODE(FCsel)
-VIPER_MIR_OPCODE(LdpRegFpImm)
-VIPER_MIR_OPCODE(StpRegFpImm)
-VIPER_MIR_OPCODE(LdpFprFpImm)
-VIPER_MIR_OPCODE(StpFprFpImm)
+ZANNA_MIR_OPCODE(Cbnz)
+ZANNA_MIR_OPCODE(MAddRRRR)
+ZANNA_MIR_OPCODE(Csel)
+ZANNA_MIR_OPCODE(FCsel)
+ZANNA_MIR_OPCODE(LdpRegFpImm)
+ZANNA_MIR_OPCODE(StpRegFpImm)
+ZANNA_MIR_OPCODE(LdpFprFpImm)
+ZANNA_MIR_OPCODE(StpFprFpImm)
 // --- Flag-setting arithmetic ---
-VIPER_MIR_OPCODE(AddsRRR)
-VIPER_MIR_OPCODE(SubsRRR)
-VIPER_MIR_OPCODE(AddsRI)
-VIPER_MIR_OPCODE(SubsRI)
+ZANNA_MIR_OPCODE(AddsRRR)
+ZANNA_MIR_OPCODE(SubsRRR)
+ZANNA_MIR_OPCODE(AddsRI)
+ZANNA_MIR_OPCODE(SubsRI)
 // --- Overflow-checked pseudo-opcodes ---
-VIPER_MIR_OPCODE(AddOvfRRR)
-VIPER_MIR_OPCODE(SubOvfRRR)
-VIPER_MIR_OPCODE(AddOvfRI)
-VIPER_MIR_OPCODE(SubOvfRI)
-VIPER_MIR_OPCODE(MulOvfRRR)
+ZANNA_MIR_OPCODE(AddOvfRRR)
+ZANNA_MIR_OPCODE(SubOvfRRR)
+ZANNA_MIR_OPCODE(AddOvfRI)
+ZANNA_MIR_OPCODE(SubOvfRI)
+ZANNA_MIR_OPCODE(MulOvfRRR)
 // --- Test-bit-and-branch (peephole-created): tbz/tbnz reg, #bit, label ---
 // Operands: [0]=reg (use), [1]=label, [2]=bit immediate — label kept at
 // index 1 so every Cbz/Cbnz label-position assumption applies unchanged.
-VIPER_MIR_OPCODE(Tbz)
-VIPER_MIR_OPCODE(Tbnz)
+ZANNA_MIR_OPCODE(Tbz)
+ZANNA_MIR_OPCODE(Tbnz)
 // --- Jump-table dispatch terminator: adr/ldrsw/add/br + inline table ---
 // Operands: [0]=index (use), [1]=address temp (def), [2]=entry temp (def),
 // [3]=table name label (text-asm only), [4..]=case labels.
-VIPER_MIR_OPCODE(JumpTable)
+ZANNA_MIR_OPCODE(JumpTable)
 
-#undef VIPER_MIR_OPCODE
+#undef ZANNA_MIR_OPCODE

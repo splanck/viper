@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Script: coverage.sh
-# Purpose: Build Viper with Clang source-based coverage and emit local reports.
+# Purpose: Build Zanna with Clang source-based coverage and emit local reports.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-BUILD_DIR="${VIPER_COVERAGE_BUILD_DIR:-${ROOT_DIR}/build-coverage}"
-REPORT_DIR="${VIPER_COVERAGE_REPORT_DIR:-${ROOT_DIR}/coverage}"
-JOBS="${VIPER_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+BUILD_DIR="${ZANNA_COVERAGE_BUILD_DIR:-${ROOT_DIR}/build-coverage}"
+REPORT_DIR="${ZANNA_COVERAGE_REPORT_DIR:-${ROOT_DIR}/coverage}"
+JOBS="${ZANNA_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 SELF_TEST=false
 
 usage() {
@@ -61,8 +61,8 @@ resolve_llvm_tool() {
     fi
 
     local dir candidate
-    IFS=: read -r -a _viper_path_dirs <<< "${PATH:-}"
-    for dir in "${_viper_path_dirs[@]}"; do
+    IFS=: read -r -a _zanna_path_dirs <<< "${PATH:-}"
+    for dir in "${_zanna_path_dirs[@]}"; do
         [[ -n "$dir" ]] || dir="."
         for candidate in "${dir}/${tool}-"*; do
             if [[ -x "$candidate" && ! -d "$candidate" ]]; then
@@ -90,8 +90,8 @@ if [[ -z "$LLVM_COV" ]]; then
 fi
 
 if $SELF_TEST; then
-    if ! grep -q 'VIPER_ENABLE_COVERAGE' "${ROOT_DIR}/CMakeLists.txt"; then
-        echo "coverage self-test: missing VIPER_ENABLE_COVERAGE CMake option" >&2
+    if ! grep -q 'ZANNA_ENABLE_COVERAGE' "${ROOT_DIR}/CMakeLists.txt"; then
+        echo "coverage self-test: missing ZANNA_ENABLE_COVERAGE CMake option" >&2
         exit 1
     fi
     echo "coverage self-test: ok"
@@ -103,7 +103,7 @@ mkdir -p "$REPORT_DIR/raw" "$REPORT_DIR/html"
 
 cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DVIPER_ENABLE_COVERAGE=ON \
+    -DZANNA_ENABLE_COVERAGE=ON \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
 

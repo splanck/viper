@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <cstdlib>
 #include <variant>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
 
 /// @brief Compare two register operands for equality (phys flag, class, id).
@@ -247,7 +247,7 @@ namespace {
 /// @param fn Function rewritten in place.
 /// @return Number of loads folded away.
 std::size_t runLoadAluFusion(MFunction &fn) {
-    if (std::getenv("VIPER_NO_LOAD_FUSE") != nullptr)
+    if (std::getenv("ZANNA_NO_LOAD_FUSE") != nullptr)
         return 0;
 
     std::size_t fused = 0;
@@ -322,4 +322,4 @@ std::size_t runPreRegAllocOpt(MFunction &fn) {
     return removed;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

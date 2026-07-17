@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Graphics.Color
+// API Audit: Zanna.Graphics.Color
 // =============================================================================
 // Tests: RGB, RGBA, FromHSL, GetR, GetG, GetB, GetA, GetH, GetS, GetL,
 //        Lerp, Brighten, Darken, FromHex, ToHex, Saturate, Desaturate,
@@ -7,12 +7,12 @@
 // =============================================================================
 
 module ColorDemo;
-bind Viper.Graphics.Color as Color;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Graphics.Color as Color;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Graphics.Color ===");
+    Say("=== API Audit: Zanna.Graphics.Color ===");
 
     // --- RGB ---
     Say("--- RGB ---");

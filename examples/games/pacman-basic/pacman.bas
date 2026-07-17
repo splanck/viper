@@ -1,7 +1,7 @@
 ' ============================================================================
-' PACMAN - Classic Arcade Game for Viper BASIC
+' PACMAN - Classic Arcade Game for Zanna BASIC
 ' ============================================================================
-' A comprehensive Pacman clone to stress test Viper BASIC and runtime
+' A comprehensive Pacman clone to stress test Zanna BASIC and runtime
 ' Features: OOP classes, terminal graphics, game AI, scoring system
 ' ============================================================================
 
@@ -86,39 +86,39 @@ End Sub
 ' ============================================================================
 Sub DrawHUD()
     ' Score
-    Viper.Terminal.SetPosition(1, MAZE_LEFT)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(1, MAZE_LEFT)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "SCORE: ";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT ThePacman.GetScore();
     PRINT "     ";
 
     ' Lives
-    Viper.Terminal.SetPosition(1, MAZE_LEFT + 18)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(1, MAZE_LEFT + 18)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "LIVES: ";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT ThePacman.GetLives();
 
     ' Level
-    Viper.Terminal.SetPosition(1, MAZE_LEFT + 28)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(1, MAZE_LEFT + 28)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "LVL: ";
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT Level;
 
     ' Instructions
-    Viper.Terminal.SetPosition(MAZE_TOP + 32, MAZE_LEFT)
-    Viper.Terminal.SetColor(8, 0)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 32, MAZE_LEFT)
+    Zanna.Terminal.SetColor(8, 0)
     PRINT "WASD=Move  P=Pause  Q=Quit";
 
     ' Dots remaining
-    Viper.Terminal.SetPosition(MAZE_TOP + 33, MAZE_LEFT)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 33, MAZE_LEFT)
     PRINT "Dots: ";
     PRINT TheMaze.GetDotsRemaining();
     PRINT "  ";
 
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 End Sub
 
 ' ============================================================================
@@ -126,7 +126,7 @@ End Sub
 ' ============================================================================
 Sub HandleInput()
     Dim key As String
-    key = Viper.Terminal.PollKey()
+    key = Zanna.Terminal.PollKey()
 
     If Len(key) > 0 Then
         If key = "w" Or key = "W" Then
@@ -140,8 +140,8 @@ Sub HandleInput()
         ElseIf key = "p" Or key = "P" Then
             GamePaused = 1 - GamePaused
             If GamePaused = 1 Then
-                Viper.Terminal.SetPosition(MAZE_TOP + 15, MAZE_LEFT + 8)
-                Viper.Terminal.SetColor(14, 0)
+                Zanna.Terminal.SetPosition(MAZE_TOP + 15, MAZE_LEFT + 8)
+                Zanna.Terminal.SetColor(14, 0)
                 PRINT "*** PAUSED ***";
             End If
         ElseIf key = "q" Or key = "Q" Then
@@ -223,8 +223,8 @@ Function CheckGhostCollisions() As Integer
                 GhostPointsMultiplier = GhostPointsMultiplier * 2
 
                 ' Show points briefly
-                Viper.Terminal.SetPosition(MAZE_TOP + py, MAZE_LEFT + px)
-                Viper.Terminal.SetColor(11, 0)
+                Zanna.Terminal.SetPosition(MAZE_TOP + py, MAZE_LEFT + px)
+                Zanna.Terminal.SetColor(11, 0)
                 PRINT "*";
             ElseIf Ghosts(i).GetMode() <> MODE_EATEN Then
                 ' Pacman dies
@@ -262,7 +262,7 @@ Sub ResetAfterDeath()
     Next i
 
     ' Brief pause
-    Viper.Time.Clock.Sleep(1000)
+    Zanna.Time.Clock.Sleep(1000)
 End Sub
 
 ' ============================================================================
@@ -329,12 +329,12 @@ Sub UpdateGame()
         Next i
 
         ' Show level message
-        Viper.Terminal.SetPosition(MAZE_TOP + 15, MAZE_LEFT + 6)
-        Viper.Terminal.SetColor(10, 0)
+        Zanna.Terminal.SetPosition(MAZE_TOP + 15, MAZE_LEFT + 6)
+        Zanna.Terminal.SetColor(10, 0)
         PRINT "*** LEVEL ";
         PRINT Level;
         PRINT " ***";
-        Viper.Time.Clock.Sleep(2000)
+        Zanna.Time.Clock.Sleep(2000)
 
         ' Redraw maze
         TheMaze.Draw()
@@ -364,7 +364,7 @@ End Sub
 ' ============================================================================
 Sub GameLoop()
     ' Clear screen
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
 
     ' Draw initial maze
     TheMaze.Draw()
@@ -379,12 +379,12 @@ Sub GameLoop()
         End If
 
         FrameCount = FrameCount + 1
-        Viper.Time.Clock.Sleep(80)
+        Zanna.Time.Clock.Sleep(80)
     Loop
 
     ' Game over screen
-    Viper.Terminal.SetPosition(MAZE_TOP + 14, MAZE_LEFT + 6)
-    Viper.Terminal.SetColor(12, 0)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 14, MAZE_LEFT + 6)
+    Zanna.Terminal.SetColor(12, 0)
 
     If TheMaze.GetDotsRemaining() = 0 Then
         PRINT "*** CONGRATULATIONS! ***"
@@ -394,90 +394,90 @@ Sub GameLoop()
         PRINT "*** QUIT ***"
     End If
 
-    Viper.Terminal.SetPosition(MAZE_TOP + 16, MAZE_LEFT + 6)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 16, MAZE_LEFT + 6)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "Final Score: ";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT ThePacman.GetScore()
 
-    Viper.Terminal.SetPosition(MAZE_TOP + 17, MAZE_LEFT + 6)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 17, MAZE_LEFT + 6)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "Level Reached: ";
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT Level
 
-    Viper.Terminal.SetPosition(MAZE_TOP + 19, MAZE_LEFT + 4)
-    Viper.Terminal.SetColor(8, 0)
+    Zanna.Terminal.SetPosition(MAZE_TOP + 19, MAZE_LEFT + 4)
+    Zanna.Terminal.SetColor(8, 0)
     PRINT "Press any key to exit..."
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 
     ' Wait for key
     Dim exitKey As String
-    exitKey = Viper.Terminal.ReadKey()
+    exitKey = Zanna.Terminal.ReadKey()
 End Sub
 
 ' ============================================================================
 ' Show Title Screen
 ' ============================================================================
 Sub ShowTitleScreen()
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
 
-    Viper.Terminal.SetPosition(5, 15)
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(5, 15)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "##############################"
 
-    Viper.Terminal.SetPosition(6, 15)
+    Zanna.Terminal.SetPosition(6, 15)
     PRINT "#                            #"
 
-    Viper.Terminal.SetPosition(7, 15)
+    Zanna.Terminal.SetPosition(7, 15)
     PRINT "#   ";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "P A C M A N";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "            #"
 
-    Viper.Terminal.SetPosition(8, 15)
+    Zanna.Terminal.SetPosition(8, 15)
     PRINT "#                            #"
 
-    Viper.Terminal.SetPosition(9, 15)
+    Zanna.Terminal.SetPosition(9, 15)
     PRINT "##############################"
 
-    Viper.Terminal.SetPosition(12, 18)
-    Viper.Terminal.SetColor(15, 0)
-    PRINT "Viper BASIC Demo 2024"
+    Zanna.Terminal.SetPosition(12, 18)
+    Zanna.Terminal.SetColor(15, 0)
+    PRINT "Zanna BASIC Demo 2024"
 
-    Viper.Terminal.SetPosition(15, 20)
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(15, 20)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "C ";
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
     PRINT "- Pacman"
 
-    Viper.Terminal.SetPosition(16, 20)
-    Viper.Terminal.SetColor(9, 0)
+    Zanna.Terminal.SetPosition(16, 20)
+    Zanna.Terminal.SetColor(9, 0)
     PRINT "M ";
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
     PRINT "- Ghost (Blinky)"
 
-    Viper.Terminal.SetPosition(17, 20)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(17, 20)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT ". ";
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
     PRINT "- Dot (10 pts)"
 
-    Viper.Terminal.SetPosition(18, 20)
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(18, 20)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "o ";
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
     PRINT "- Power Pellet (50 pts)"
 
-    Viper.Terminal.SetPosition(21, 15)
-    Viper.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetPosition(21, 15)
+    Zanna.Terminal.SetColor(10, 0)
     PRINT "Press any key to start..."
 
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 
     Dim startKey As String
-    startKey = Viper.Terminal.ReadKey()
+    startKey = Zanna.Terminal.ReadKey()
 End Sub
 
 ' ============================================================================
@@ -487,9 +487,9 @@ ShowTitleScreen()
 InitGame()
 GameLoop()
 
-Viper.Terminal.Clear()
-Viper.Terminal.SetPosition(1, 1)
-Viper.Terminal.SetColor(7, 0)
+Zanna.Terminal.Clear()
+Zanna.Terminal.SetPosition(1, 1)
+Zanna.Terminal.SetColor(7, 0)
 PRINT "Thanks for playing PACMAN!"
 PRINT ""
 PRINT "Frames played: ";

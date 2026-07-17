@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_memory.c
-// Purpose: Heap allocation shim for the Viper runtime C ABI. Validates
+// Purpose: Heap allocation shim for the Zanna runtime C ABI. Validates
 //   requested sizes, enforces non-negative limits, and guarantees that callers
 //   receive zero-initialised buffers even for zero-byte requests. Mirrors the
 //   VM's allocation semantics so that diagnostics and trap conditions remain

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_smoothvalue.c
-// Purpose: Exponential-smoothing scalar for Viper games. A SmoothValue glides
+// Purpose: Exponential-smoothing scalar for Zanna games. A SmoothValue glides
 //   its current value toward a target each frame using the classic
 //   "exponential moving average" formula:
 //       current = current × smoothing + target × (1 - smoothing)
@@ -34,7 +34,7 @@
 //     calls rt_obj_free() explicitly; the GC also collects them automatically.
 //
 // Links: src/runtime/game/rt_smoothvalue.h (public API),
-//        docs/viperlib/game.md (SmoothValue section)
+//        docs/zannalib/game.md (SmoothValue section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -117,14 +117,14 @@ rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing) {
 
 /// @brief Release resources and destroy the smoothvalue.
 void rt_smoothvalue_destroy(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Destroy: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Destroy: expected Zanna.Game.SmoothValue");
     if (sv && rt_obj_release_check0(sv))
         rt_obj_free(sv);
 }
 
 /// @brief Get the current smoothed value.
 double rt_smoothvalue_get(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Value: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Value: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->current;
@@ -132,7 +132,7 @@ double rt_smoothvalue_get(rt_smoothvalue sv) {
 
 /// @brief Return the current smoothed value rounded to the nearest integer.
 int64_t rt_smoothvalue_get_i64(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.ValueI64: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.ValueI64: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 0;
     return smooth_round_to_i64(sv->current);
@@ -140,7 +140,7 @@ int64_t rt_smoothvalue_get_i64(rt_smoothvalue sv) {
 
 /// @brief Get the target value that the smooth value is converging toward.
 double rt_smoothvalue_target(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Target: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Target: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->target;
@@ -148,7 +148,7 @@ double rt_smoothvalue_target(rt_smoothvalue sv) {
 
 /// @brief Set a new target value for the smooth interpolation to converge toward.
 void rt_smoothvalue_set_target(rt_smoothvalue sv, double target) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Target.set: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Target.set: expected Zanna.Game.SmoothValue");
     if (!sv)
         return;
     sv->target = smooth_finite_or(target, sv->target);
@@ -156,7 +156,7 @@ void rt_smoothvalue_set_target(rt_smoothvalue sv, double target) {
 
 /// @brief Snap both current and target to a value instantly (no interpolation).
 void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
-    sv = checked_smoothvalue(sv, "SmoothValue.SetImmediate: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.SetImmediate: expected Zanna.Game.SmoothValue");
     if (!sv)
         return;
     value = smooth_finite_or(value, 0.0);
@@ -167,7 +167,7 @@ void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
 
 /// @brief Return the current smoothing factor.
 double rt_smoothvalue_smoothing(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->smoothing;
@@ -175,7 +175,7 @@ double rt_smoothvalue_smoothing(rt_smoothvalue sv) {
 
 /// @brief Set the smoothing factor [0.0, 0.999]; higher = slower interpolation.
 void rt_smoothvalue_set_smoothing(rt_smoothvalue sv, double smoothing) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing.set: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing.set: expected Zanna.Game.SmoothValue");
     if (!sv)
         return;
     sv->smoothing = smooth_clamp_smoothing(smoothing);
@@ -183,7 +183,7 @@ void rt_smoothvalue_set_smoothing(rt_smoothvalue sv, double smoothing) {
 
 /// @brief Update the smoothvalue state (called per frame/tick).
 void rt_smoothvalue_update(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Update: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Update: expected Zanna.Game.SmoothValue");
     if (!sv)
         return;
 
@@ -206,7 +206,7 @@ void rt_smoothvalue_update(rt_smoothvalue sv) {
 
 /// @brief Check whether the current value has converged to the target (within epsilon).
 int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.AtTarget: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.AtTarget: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 1;
     return fabs(sv->current - sv->target) < SMOOTH_EPSILON ? 1 : 0;
@@ -214,7 +214,7 @@ int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
 
 /// @brief Get the per-frame velocity (change in value since last update).
 double rt_smoothvalue_velocity(rt_smoothvalue sv) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Velocity: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Velocity: expected Zanna.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->velocity;
@@ -222,7 +222,7 @@ double rt_smoothvalue_velocity(rt_smoothvalue sv) {
 
 /// @brief Apply an instant offset to the current value (bypasses smoothing).
 void rt_smoothvalue_impulse(rt_smoothvalue sv, double impulse) {
-    sv = checked_smoothvalue(sv, "SmoothValue.Impulse: expected Viper.Game.SmoothValue");
+    sv = checked_smoothvalue(sv, "SmoothValue.Impulse: expected Zanna.Game.SmoothValue");
     if (!sv)
         return;
     if (!isfinite(impulse))

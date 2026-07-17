@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Mach-O object file writer for macOS (x86_64 and AArch64).
 class MachOWriter : public ObjectFileWriter {
@@ -49,4 +49,4 @@ class MachOWriter : public ObjectFileWriter {
     ObjArch arch_;
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

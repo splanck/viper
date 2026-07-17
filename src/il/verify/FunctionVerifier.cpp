@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -127,7 +127,7 @@ bool isRuntimeExplicitRelease(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return false;
     return instr.callee == "rt_str_release" || instr.callee == "rt_str_release_maybe" ||
-           instr.callee == "Viper.String.ReleaseMaybe" || instr.callee == "rt_arr_i32_release" ||
+           instr.callee == "Zanna.String.ReleaseMaybe" || instr.callee == "rt_arr_i32_release" ||
            instr.callee == "rt_arr_i64_release" || instr.callee == "rt_arr_f64_release" ||
            instr.callee == "rt_arr_str_release" || instr.callee == "rt_arr_obj_release" ||
            instr.callee == "rt_obj_release_check0" || instr.callee == "rt_obj_release_known_check0";

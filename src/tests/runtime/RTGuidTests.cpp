@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTGuidTests.cpp
-// Purpose: Validate Viper.Text.Guid runtime functions.
+// Purpose: Validate Zanna.Text.Guid runtime functions.
 // Key invariants: New() generates valid format, unique values on successive calls,
 //                 IsValid() correctly identifies valid/invalid GUIDs, ToBytes/FromBytes
 //                 roundtrip correctly.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_bytes.h"
 #include "rt_guid.h"

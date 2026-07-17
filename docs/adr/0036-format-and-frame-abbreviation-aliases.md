@@ -15,8 +15,8 @@ Accepted
 The runtime overhaul naming policy expands ambiguous abbreviations in public
 runtime leaves. Two remaining high-visibility areas used terse names:
 
-- `Viper.Text.Fmt.NumSci`, `NumPct`, and `BoolYN`
-- `Viper.Graphics.Canvas.SetDTMax` and `Viper.Graphics3D.Canvas3D.SetDTMax`
+- `Zanna.Text.Fmt.NumSci`, `NumPct`, and `BoolYN`
+- `Zanna.Graphics.Canvas.SetDTMax` and `Zanna.Graphics3D.Canvas3D.SetDTMax`
 
 The old names are compact but require users to already know the abbreviation.
 Removing them would break existing examples and source.
@@ -25,11 +25,11 @@ Removing them would break existing examples and source.
 
 Add canonical aliases:
 
-- `Viper.Text.Fmt.Scientific(f64, i64) -> str`
-- `Viper.Text.Fmt.Percent(f64, i64) -> str`
-- `Viper.Text.Fmt.YesNo(i1) -> str`
-- `Viper.Graphics.Canvas.SetMaxDeltaTime(i64)`
-- `Viper.Graphics3D.Canvas3D.SetMaxDeltaTime(i64)`
+- `Zanna.Text.Fmt.Scientific(f64, i64) -> str`
+- `Zanna.Text.Fmt.Percent(f64, i64) -> str`
+- `Zanna.Text.Fmt.YesNo(i1) -> str`
+- `Zanna.Graphics.Canvas.SetMaxDeltaTime(i64)`
+- `Zanna.Graphics3D.Canvas3D.SetMaxDeltaTime(i64)`
 
 Keep compatibility aliases:
 

@@ -1,5 +1,5 @@
 ' index.bas - Index Classes for SQL Database
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 '=============================================================================
 ' INDEX STRUCTURES

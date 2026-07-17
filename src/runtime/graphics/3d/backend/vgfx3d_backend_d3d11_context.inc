@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc  (#included from
 // vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11
 // device/swapchain/context creation, state objects, and teardown
@@ -83,7 +83,7 @@ static void d3d11_fill_swap_chain_desc(DXGI_SWAP_CHAIN_DESC *swap_desc,
 ///   remoting/composition environments do not expose a parent factory.
 static void d3d11_disable_implicit_fullscreen(d3d11_context_t *ctx, HWND hwnd) {
     /* Keep the interface id in the adapter instead of referencing IID_IDXGIFactory from
-     * dxguid.lib. Viper's native-link pipeline does not consume MSVC #pragma comment records. */
+     * dxguid.lib. Zanna's native-link pipeline does not consume MSVC #pragma comment records. */
     static const GUID factory_iid = {
         0x7b7166ec, 0x21c7, 0x44ae, {0xb2, 0x1a, 0xc9, 0xae, 0x32, 0x1a, 0xe3, 0x69}};
     IDXGIFactory *factory = NULL;

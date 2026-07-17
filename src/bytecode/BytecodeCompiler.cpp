@@ -1,4 +1,4 @@
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 
 #include "bytecode/BytecodeCompiler.hpp"
@@ -22,7 +22,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 namespace {
 class BytecodeCompileFailure final : public std::exception {
@@ -2171,4 +2171,4 @@ void BytecodeCompiler::compileReturn(const il::core::Instr &instr) {
 }
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

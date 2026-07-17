@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,19 +30,19 @@
 
 #include <cstddef>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 struct FrameInfo;
 
-using CallArg = viper::codegen::common::CallArg;
-using CallArgClass = viper::codegen::common::CallArgClass;
-using CallArgKind = viper::codegen::common::CallArgKind;
-using CallArgLayout = viper::codegen::common::CallArgLayout;
-using CallArgLocation = viper::codegen::common::CallArgLocation;
-using CallArgLayoutConfig = viper::codegen::common::CallArgLayoutConfig;
-using CallLoweringPlan = viper::codegen::common::CallLoweringPlan;
-using CallSlotModel = viper::codegen::common::CallSlotModel;
-using AggregatePassKind = viper::codegen::common::AggregatePassKind;
+using CallArg = zanna::codegen::common::CallArg;
+using CallArgClass = zanna::codegen::common::CallArgClass;
+using CallArgKind = zanna::codegen::common::CallArgKind;
+using CallArgLayout = zanna::codegen::common::CallArgLayout;
+using CallArgLocation = zanna::codegen::common::CallArgLocation;
+using CallArgLayoutConfig = zanna::codegen::common::CallArgLayoutConfig;
+using CallLoweringPlan = zanna::codegen::common::CallLoweringPlan;
+using CallSlotModel = zanna::codegen::common::CallSlotModel;
+using AggregatePassKind = zanna::codegen::common::AggregatePassKind;
 
 /// \brief Emit Machine IR that prepares arguments and issues a call instruction.
 ///
@@ -60,4 +60,4 @@ void lowerCall(MBasicBlock &block,
                const TargetInfo &target,
                FrameInfo &frame);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

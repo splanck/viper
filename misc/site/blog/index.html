@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blog — Viper</title>
-  <meta name="description" content="Viper documentation: Blog">
+  <title>Blog — Zanna</title>
+  <meta name="description" content="Zanna documentation: Blog">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -31,14 +31,14 @@
 <div class="section">
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
     <h1>Blog</h1>
-<p>Release notes and announcements for the Viper platform.</p>
+<p>Release notes and announcements for the Zanna platform.</p>
 
 <a href="v0-2-7.html" class="release-card-link">
 <div class="release-card">
   <span class="version-badge">v0.2.7</span>
   <span class="release-date">June 2026</span>
-  <h3>Graphics3D Stability, ViperIDE Workbench &amp; Debugger, Fail-Closed Hardening</h3>
-  <p>Graphics3D stops flickering and gains spot-light shadows, a deterministic multi-threaded software rasterizer, and node animation over a rebuilt glTF/FBX importer; ViperIDE becomes a real workbench with a VM debugger, git source control, multi-root workspaces, and an integrated terminal; a new agent-facing CLI gives editors and scripts machine-readable diagnostics; and a runtime hardening backbone makes recoverable traps and asset loaders fail closed while the tree-walking VM and both bytecode engines produce identical results.</p>
+  <h3>Graphics3D Stability, ZannaIDE Workbench &amp; Debugger, Fail-Closed Hardening</h3>
+  <p>Graphics3D stops flickering and gains spot-light shadows, a deterministic multi-threaded software rasterizer, and node animation over a rebuilt glTF/FBX importer; ZannaIDE becomes a real workbench with a VM debugger, git source control, multi-root workspaces, and an integrated terminal; a new agent-facing CLI gives editors and scripts machine-readable diagnostics; and a runtime hardening backbone makes recoverable traps and asset loaders fail closed while the tree-walking VM and both bytecode engines produce identical results.</p>
 </div>
 </a>
 
@@ -46,8 +46,8 @@
 <div class="release-card">
   <span class="version-badge">v0.2.6</span>
   <span class="release-date">June 2026</span>
-  <h3>Game3D Engine, ViperIDE Editor, Pointer-Safety Gate, Deep Hardening</h3>
-  <p>A code-first <code>Viper.Game3D</code> engine over the 3D runtime, a real ViperIDE editor with build/run and live language services, a pointer-safety gate that removes raw <code>Ptr</code> from both frontends, Zia language-stability work (defer, structured try/catch/finally, Result[T]), a breaking standard-library namespace de-clutter, multi-backend 3D graphics and Physics3D hardening with a from-scratch glTF/FBX/OBJ asset pipeline, native cross-platform toolchain installers, and a hardening sweep across memory, threads, crypto, networking, the native toolchain, and packaging.</p>
+  <h3>Game3D Engine, ZannaIDE Editor, Pointer-Safety Gate, Deep Hardening</h3>
+  <p>A code-first <code>Zanna.Game3D</code> engine over the 3D runtime, a real ZannaIDE editor with build/run and live language services, a pointer-safety gate that removes raw <code>Ptr</code> from both frontends, Zia language-stability work (defer, structured try/catch/finally, Result[T]), a breaking standard-library namespace de-clutter, multi-backend 3D graphics and Physics3D hardening with a from-scratch glTF/FBX/OBJ asset pipeline, native cross-platform toolchain installers, and a hardening sweep across memory, threads, crypto, networking, the native toolchain, and packaging.</p>
 </div>
 </a>
 
@@ -56,7 +56,7 @@
   <span class="version-badge">v0.2.5</span>
   <span class="release-date">May 2026</span>
   <h3>Runtime Hardening, HTTP/2, Localization, Compiler Throughput</h3>
-  <p>Hardening pass across every runtime subsystem, ~40 new 2D graphics classes, full 3D asset pipeline with glTF/FBX skeletons and skinning, TLS-backed HTTPS/WSS servers, from-scratch HTTP/2, native RSA + X.509 validator, Viper.Localization.* (11-class namespace, zero deps), structured diagnostics with caret underlines, parallel IL optimizer and codegen, zero-copy codegen pipeline, text-mode baseball franchise simulator demo.</p>
+  <p>Hardening pass across every runtime subsystem, ~40 new 2D graphics classes, full 3D asset pipeline with glTF/FBX skeletons and skinning, TLS-backed HTTPS/WSS servers, from-scratch HTTP/2, native RSA + X.509 validator, Zanna.Localization.* (11-class namespace, zero deps), structured diagnostics with caret underlines, parallel IL optimizer and codegen, zero-copy codegen pipeline, text-mode baseball franchise simulator demo.</p>
 </div>
 </a>
 
@@ -65,7 +65,7 @@
   <span class="version-badge">v0.2.4</span>
   <span class="release-date">April 2026</span>
   <h3>Game Engine, Native Linker, 3D Backends, Toolchain Packaging</h3>
-  <p>Full PE/COFF + ELF dynamic linking, Metal &amp; D3D11 GPU backends feature-complete, PBR materials, Physics3D + Collider3D, MJPEG/Theora video, JPEG/PNG/GIF/OGG/MP3 codecs, VPA asset embedding, 10 new game engine systems, 17K-line XENOSCAPE sidescroller, 3D bowling demo, native macOS menu bar, GUI hover events &amp; overlay render pass, Zia variadic params + lambdas + type aliases, `entity`/`value` renamed to `class`/`struct`.</p>
+  <p>Full PE/COFF + ELF dynamic linking, Metal &amp; D3D11 GPU backends feature-complete, PBR materials, Physics3D + Collider3D, MJPEG/Theora video, JPEG/PNG/GIF/OGG/MP3 codecs, ZPAK asset embedding, 10 new game engine systems, 17K-line XENOSCAPE sidescroller, 3D bowling demo, native macOS menu bar, GUI hover events &amp; overlay render pass, Zia variadic params + lambdas + type aliases, `entity`/`value` renamed to `class`/`struct`.</p>
 </div>
 </a>
 
@@ -118,13 +118,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

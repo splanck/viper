@@ -1,18 +1,18 @@
 // =============================================================================
-// API Audit: Viper.IO.Dir - Directory Operations
+// API Audit: Zanna.IO.Dir - Directory Operations
 // =============================================================================
 // Tests: Current, Exists, Make, MakeAll, FilesSeq, DirsSeq, ListSeq, Entries,
 //        Remove, RemoveAll, SetCurrent
 // =============================================================================
 
 module DirDemo;
-bind Viper.Terminal;
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
+bind Zanna.Terminal;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
 func start() {
-    Say("=== API Audit: Viper.IO.Dir ===");
+    Say("=== API Audit: Zanna.IO.Dir ===");
 
     // --- Current ---
     Say("--- Current ---");
@@ -21,7 +21,7 @@ func start() {
     Say(cwd);
 
     var tmpDir = TempFile.Dir();
-    var testDir = Path.Join(tmpDir, "viper_dir_audit");
+    var testDir = Path.Join(tmpDir, "zanna_dir_audit");
     var subDir = Path.Join(testDir, "sub1");
     var deepDir = Path.Join(testDir, "a/b/c");
 

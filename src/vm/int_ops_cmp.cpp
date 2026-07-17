@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 // File: src/vm/int_ops_cmp.cpp
 //
 // Summary:
-//   Defines the integer comparison opcode handlers for the Viper virtual
+//   Defines the integer comparison opcode handlers for the Zanna virtual
 //   machine.  Each handler delegates to the shared comparison helper while
 //   supplying the predicate that implements the desired IL semantics.
 //

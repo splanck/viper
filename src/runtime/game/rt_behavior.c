@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -156,7 +156,7 @@ void *rt_behavior_new(void) {
 
 /// @brief Add horizontal patrol behavior (entity walks left/right at given speed).
 void rt_behavior_add_patrol(void *bhv, int64_t speed) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddPatrol: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddPatrol: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_PATROL;
@@ -165,7 +165,7 @@ void rt_behavior_add_patrol(void *bhv, int64_t speed) {
 
 /// @brief Add chase-target behavior (entity moves toward the target when within range).
 void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddChase: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddChase: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_CHASE;
@@ -175,7 +175,7 @@ void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
 
 /// @brief Add gravity behavior (applies downward acceleration with a terminal velocity).
 void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddGravity: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddGravity: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_GRAVITY;
@@ -186,7 +186,7 @@ void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
 /// @brief Add edge-reverse behavior (entity turns around at platform edges).
 void rt_behavior_add_edge_reverse(void *bhv) {
     behavior_impl *b =
-        checked_behavior(bhv, "Behavior.AddEdgeReverse: expected Viper.Game.Behavior");
+        checked_behavior(bhv, "Behavior.AddEdgeReverse: expected Zanna.Game.Behavior");
     if (b)
         b->flags |= BHV_EDGE_REVERSE;
 }
@@ -194,14 +194,14 @@ void rt_behavior_add_edge_reverse(void *bhv) {
 /// @brief Add wall-reverse behavior (entity turns around when hitting a wall).
 void rt_behavior_add_wall_reverse(void *bhv) {
     behavior_impl *b =
-        checked_behavior(bhv, "Behavior.AddWallReverse: expected Viper.Game.Behavior");
+        checked_behavior(bhv, "Behavior.AddWallReverse: expected Zanna.Game.Behavior");
     if (b)
         b->flags |= BHV_WALL_REVERSE;
 }
 
 /// @brief Add shoot-on-cooldown behavior (shoot_ready flag sets after cooldown elapses).
 void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddShoot: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddShoot: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_SHOOT;
@@ -211,7 +211,7 @@ void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
 
 /// @brief Add sine-wave floating behavior (vertical oscillation for hovering enemies).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddSineFloat: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddSineFloat: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_SINE_FLOAT;
@@ -221,7 +221,7 @@ void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
 
 /// @brief Add frame-based animation loop (cycles through frames at the given interval).
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AddAnimLoop: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddAnimLoop: expected Zanna.Game.Behavior");
     if (!b)
         return;
     b->flags |= BHV_ANIM_LOOP;
@@ -235,7 +235,7 @@ void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_fr
 ///          then animation loop. The target_x/target_y are the chase target position.
 void rt_behavior_update(
     void *bhv, void *entity, void *tilemap, int64_t target_x, int64_t target_y, int64_t dt) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.Update: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.Update: expected Zanna.Game.Behavior");
     if (!b || !entity || dt <= 0)
         return;
     uint32_t f = b->flags;
@@ -317,7 +317,7 @@ void rt_behavior_update(
 
 /// @brief Check and consume the shoot-ready flag (returns 1 once, then resets).
 int8_t rt_behavior_shoot_ready(void *bhv) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.ShootReady: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.ShootReady: expected Zanna.Game.Behavior");
     if (!b)
         return 0;
     if (b->shoot_ready) {
@@ -329,6 +329,6 @@ int8_t rt_behavior_shoot_ready(void *bhv) {
 
 /// @brief Get the current animation frame index from the animation loop behavior.
 int64_t rt_behavior_anim_frame(void *bhv) {
-    behavior_impl *b = checked_behavior(bhv, "Behavior.AnimFrame: expected Viper.Game.Behavior");
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AnimFrame: expected Zanna.Game.Behavior");
     return b ? b->anim_frame : 0;
 }

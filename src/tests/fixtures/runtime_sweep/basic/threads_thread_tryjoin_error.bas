@@ -1,8 +1,8 @@
 ' EXPECT_EXIT: 1
 ' EXPECT_ERR: Thread.TryJoin: null thread
-' COVER: Viper.Threads.Thread.TryJoin
+' COVER: Zanna.Threads.Thread.TryJoin
 
-DIM t AS Viper.Threads.Thread
+DIM t AS Zanna.Threads.Thread
 t = NOTHING
 
 t.TryJoin()

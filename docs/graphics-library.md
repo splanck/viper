@@ -4,17 +4,17 @@ audience: public
 last-verified: 2026-07-16
 ---
 
-# ViperGFX Graphics Library
+# ZannaGFX Graphics Library
 
 **Version:** 1.0.0
 **Location:** `/src/lib/graphics`
-**Status:** ✅ Integrated into Viper build system
+**Status:** ✅ Integrated into Zanna build system
 
 ---
 
 ## Overview
 
-ViperGFX is a cross-platform software 2D graphics library integrated into the Viper project. It provides window
+ZannaGFX is a cross-platform software 2D graphics library integrated into the Zanna project. It provides window
 management, pixel operations, drawing primitives, and input handling through a simple C API.
 
 ### Key Features
@@ -51,11 +51,11 @@ management, pixel operations, drawing primitives, and input handling through a s
 
 ### Building
 
-ViperGFX builds as part of the main Viper build:
+ZannaGFX builds as part of the main Zanna build:
 
 ```bash
-./scripts/build_viper_linux.sh   # Linux
-./scripts/build_viper_mac.sh     # macOS
+./scripts/build_zanna_linux.sh   # Linux
+./scripts/build_zanna_mac.sh     # macOS
 ```
 
 Or build the graphics library standalone:
@@ -232,7 +232,7 @@ void vgfx_clipboard_set_text(const char *text);
 void vgfx_clipboard_clear(void);
 ```
 
-The clipboard helpers operate on UTF-8 text and back the higher-level `Viper.GUI.ClipboardText` and `Viper.System.Clipboard` runtime surfaces. Linux/X11 uses the modern `CLIPBOARD` selection with `UTF8_STRING` conversion rather than legacy cut buffers.
+The clipboard helpers operate on UTF-8 text and back the higher-level `Zanna.GUI.ClipboardText` and `Zanna.System.Clipboard` runtime surfaces. Linux/X11 uses the modern `CLIPBOARD` selection with `UTF8_STRING` conversion rather than legacy cut buffers.
 
 ---
 
@@ -240,7 +240,7 @@ The clipboard helpers operate on UTF-8 text and back the higher-level `Viper.GUI
 
 ### Unit Tests
 
-ViperGFX includes comprehensive unit tests using the mock backend:
+ZannaGFX includes comprehensive unit tests using the mock backend:
 
 ```bash
 # Build tests
@@ -279,13 +279,13 @@ cmake --build build --target basic_draw quick_test
 
 ---
 
-## Integration with Viper
+## Integration with Zanna
 
 ### Using from CMake
 
 ```cmake
-# Link against ViperGFX
-target_link_libraries(your_target PRIVATE vipergfx)
+# Link against ZannaGFX
+target_link_libraries(your_target PRIVATE zannagfx)
 
 # Include headers
 target_include_directories(your_target PRIVATE
@@ -295,10 +295,10 @@ target_include_directories(your_target PRIVATE
 
 ### BASIC / Zia Integration
 
-Both BASIC and Zia access graphics through the `Viper.Graphics.*` runtime namespace, which wraps ViperGFX internally. Example:
+Both BASIC and Zia access graphics through the `Zanna.Graphics.*` runtime namespace, which wraps ZannaGFX internally. Example:
 
 ```basic
-USING Viper.Graphics
+USING Zanna.Graphics
 DIM c AS Canvas
 LET c = Canvas.New("My Window", 800, 600)
 Canvas.Clear(c, Color.RGB(0, 0, 0))
@@ -383,13 +383,13 @@ Full API documentation is available in the header comments:
 
 ```cmake
 # Standalone build options
-option(VGFX_BUILD_TESTS "Build ViperGFX tests" ON)
-option(VGFX_BUILD_EXAMPLES "Build ViperGFX examples" ON)
+option(VGFX_BUILD_TESTS "Build ZannaGFX tests" ON)
+option(VGFX_BUILD_EXAMPLES "Build ZannaGFX examples" ON)
 ```
 
-When building as part of Viper:
+When building as part of Zanna:
 
-- Tests are controlled by `VIPER_BUILD_TESTING`
+- Tests are controlled by `ZANNA_BUILD_TESTING`
 - Examples are controlled by `BUILD_EXAMPLES`
 
 ### Platform Detection
@@ -406,11 +406,11 @@ The build system automatically selects the correct backend:
 
 ### Implemented in Runtime Layer
 
-The following features have been implemented in the Viper runtime layer (`Viper.Graphics.*`):
+The following features have been implemented in the Zanna runtime layer (`Zanna.Graphics.*`):
 
-- ✅ **Sprites** — `Viper.Graphics.Sprite` class with animation and collision detection
-- ✅ **Tilemaps** — `Viper.Graphics2D.Tilemap` class for tile-based game rendering
-- ✅ **Camera** — `Viper.Graphics.Camera` class for 2D viewport management
+- ✅ **Sprites** — `Zanna.Graphics.Sprite` class with animation and collision detection
+- ✅ **Tilemaps** — `Zanna.Graphics2D.Tilemap` class for tile-based game rendering
+- ✅ **Camera** — `Zanna.Graphics.Camera` class for 2D viewport management
 - ✅ **Image processing** — Invert, grayscale, tint, blur, bilinear resize
 - ✅ **Color utilities** — HSL conversion, lerp, brighten/darken
 - ✅ **Gradients** — Horizontal and vertical gradient drawing
@@ -421,7 +421,7 @@ The following features have been implemented in the Viper runtime layer (`Viper.
 - **Palette modes** — 8-bit indexed color
 - **Multiple windows** — Multi-window support
 
-> **Note:** Bitmap font rendering is already available via `Viper.Graphics.BitmapFont` in the runtime layer.
+> **Note:** Bitmap font rendering is already available via `Zanna.Graphics.BitmapFont` in the runtime layer.
 
 ---
 
@@ -429,7 +429,7 @@ The following features have been implemented in the Viper runtime layer (`Viper.
 
 ### Rendering Performance
 
-ViperGFX uses pure software rendering with the following characteristics:
+ZannaGFX uses pure software rendering with the following characteristics:
 
 - **Framebuffer format**: 32-bit RGBA (4 bytes per pixel)
 - **Drawing algorithms**: Integer-only Bresenham (lines) and midpoint (circles)
@@ -448,18 +448,18 @@ On modern hardware (2020+ Mac):
 
 ## License
 
-ViperGFX is part of the Viper project and distributed under the GNU GPL v3.
+ZannaGFX is part of the Zanna project and distributed under the GNU GPL v3.
 See [LICENSE](../LICENSE) for details.
 
 ---
 
 ## Summary
 
-ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution for the Viper project:
+ZannaGFX provides a simple, deterministic, cross-platform 2D graphics solution for the Zanna project:
 
-✅ **Integrated** — Builds as part of Viper
+✅ **Integrated** — Builds as part of Zanna
 ✅ **Tested** — 20/20 tests passing (100%)
 ✅ **Documented** — Complete API reference and examples
 ✅ **Cross-Platform** — Fully implemented on macOS (Cocoa), Linux (X11), and Windows (Win32)
 
-For questions or contributions, see the [main Viper documentation](README.md).
+For questions or contributions, see the [main Zanna documentation](README.md).

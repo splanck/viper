@@ -1,30 +1,30 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Threads.Thread.Start
-' COVER: Viper.Threads.Thread.Join
-' COVER: Viper.Threads.Thread.TryJoin
-' COVER: Viper.Threads.Thread.JoinFor
-' COVER: Viper.Threads.Thread.Id
-' COVER: Viper.Threads.Thread.IsAlive
-' COVER: Viper.Threads.SafeI64.New
-' COVER: Viper.Threads.SafeI64.Get
-' COVER: Viper.Threads.SafeI64.Set
-' COVER: Viper.Threads.SafeI64.Add
+' COVER: Zanna.Threads.Thread.Start
+' COVER: Zanna.Threads.Thread.Join
+' COVER: Zanna.Threads.Thread.TryJoin
+' COVER: Zanna.Threads.Thread.JoinFor
+' COVER: Zanna.Threads.Thread.Id
+' COVER: Zanna.Threads.Thread.IsAlive
+' COVER: Zanna.Threads.SafeI64.New
+' COVER: Zanna.Threads.SafeI64.Get
+' COVER: Zanna.Threads.SafeI64.Set
+' COVER: Zanna.Threads.SafeI64.Add
 
-DIM threadRan AS Viper.Threads.SafeI64
-threadRan = NEW Viper.Threads.SafeI64(0)
+DIM threadRan AS Zanna.Threads.SafeI64
+threadRan = NEW Zanna.Threads.SafeI64(0)
 
 SUB WorkerThread()
-    Viper.Threads.Thread.Sleep(50)
+    Zanna.Threads.Thread.Sleep(50)
     threadRan.Set(1)
 END SUB
 
-DIM t AS Viper.Threads.Thread
-t = Viper.Threads.Thread.Start(ADDRESSOF WorkerThread, NOTHING)
+DIM t AS Zanna.Threads.Thread
+t = Zanna.Threads.Thread.Start(ADDRESSOF WorkerThread, NOTHING)
 
-Viper.Core.Diagnostics.Assert(t.Id > 0, "thread.id")
+Zanna.Core.Diagnostics.Assert(t.Id > 0, "thread.id")
 DIM alive AS INTEGER
 alive = t.IsAlive
-Viper.Core.Diagnostics.Assert(alive = 0 OR alive = 1 OR alive = -1, "thread.isalive")
+Zanna.Core.Diagnostics.Assert(alive = 0 OR alive = 1 OR alive = -1, "thread.isalive")
 
 DIM joined AS INTEGER
 joined = t.JoinFor(1)
@@ -35,10 +35,10 @@ IF joined = 0 THEN
     t.Join()
 END IF
 
-Viper.Core.Diagnostics.Assert(threadRan.Get() = 1, "thread.ran")
+Zanna.Core.Diagnostics.Assert(threadRan.Get() = 1, "thread.ran")
 
-DIM sharedCounter AS Viper.Threads.SafeI64
-sharedCounter = NEW Viper.Threads.SafeI64(0)
+DIM sharedCounter AS Zanna.Threads.SafeI64
+sharedCounter = NEW Zanna.Threads.SafeI64(0)
 
 SUB IncrementWorker()
     DIM i AS INTEGER
@@ -47,15 +47,15 @@ SUB IncrementWorker()
     NEXT i
 END SUB
 
-DIM t1 AS Viper.Threads.Thread
-DIM t2 AS Viper.Threads.Thread
-t1 = Viper.Threads.Thread.Start(ADDRESSOF IncrementWorker, NOTHING)
-t2 = Viper.Threads.Thread.Start(ADDRESSOF IncrementWorker, NOTHING)
+DIM t1 AS Zanna.Threads.Thread
+DIM t2 AS Zanna.Threads.Thread
+t1 = Zanna.Threads.Thread.Start(ADDRESSOF IncrementWorker, NOTHING)
+t2 = Zanna.Threads.Thread.Start(ADDRESSOF IncrementWorker, NOTHING)
 
 t1.Join()
 t2.Join()
 
-Viper.Core.Diagnostics.AssertEq(sharedCounter.Get(), 200, "thread.sharedcounter")
+Zanna.Core.Diagnostics.AssertEq(sharedCounter.Get(), 200, "thread.sharedcounter")
 
 PRINT "RESULT: ok"
 END

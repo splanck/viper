@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,11 +23,11 @@ static void call_alloc_negative() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_alloc_negative);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_alloc_negative);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(call_alloc_negative);
+    auto result = zanna::tests::runIsolated(call_alloc_negative);
     bool ok = result.stderrText.find("negative allocation") != std::string::npos;
     assert(ok);
     return 0;

@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/vgfx3d_backend_metal.m
-// Purpose: Metal GPU backend for Viper.Graphics3D.
+// Purpose: Metal GPU backend for Zanna.Graphics3D.
 //
 // Links: vgfx3d_backend.h, plans/3d/02-metal-backend.md
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(__APPLE__) && defined(VIPER_ENABLE_GRAPHICS)
+#if defined(__APPLE__) && defined(ZANNA_ENABLE_GRAPHICS)
 
 /* Include sys/types.h before Metal headers to define BSD types (u_int, u_char)
  * that are hidden by _POSIX_C_SOURCE but required by macOS system headers. */
@@ -417,4 +417,4 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .read_depth_probe = metal_read_depth_probe,
 };
 
-#endif /* __APPLE__ && VIPER_ENABLE_GRAPHICS */
+#endif /* __APPLE__ && ZANNA_ENABLE_GRAPHICS */

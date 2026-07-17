@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,8 +45,8 @@ namespace {
 ///          compare trap classes without depending on exact source formatting.
 struct BytecodeRunResult {
     bool trapped = false;                                      ///< True when BytecodeVM trapped.
-    viper::bytecode::TrapKind trapKind =                      ///< Bytecode trap kind on failure.
-        viper::bytecode::TrapKind::None;
+    zanna::bytecode::TrapKind trapKind =                      ///< Bytecode trap kind on failure.
+        zanna::bytecode::TrapKind::None;
     int64_t value = 0;                                         ///< Returned i64 value on success.
     std::string message;                                       ///< Bytecode trap diagnostic text.
 };
@@ -68,7 +68,7 @@ void appendReturn(BasicBlock &block, Value value) {
 /// @param threaded True to use computed-goto threaded dispatch when available.
 /// @return Captured value or trap details from BytecodeVM.
 BytecodeRunResult runBytecode(const Module &module, bool threaded) {
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto compiled = compiler.compileChecked(module, nullptr, true);
     if (!compiled) {
         std::cerr << "bytecode scalar conformance compile failed: "
@@ -76,14 +76,14 @@ BytecodeRunResult runBytecode(const Module &module, bool threaded) {
         std::abort();
     }
 
-    viper::bytecode::BytecodeModule bytecode = std::move(compiled.value());
-    viper::bytecode::BytecodeVM vm;
+    zanna::bytecode::BytecodeModule bytecode = std::move(compiled.value());
+    zanna::bytecode::BytecodeVM vm;
     vm.setThreadedDispatch(threaded);
     vm.load(&bytecode);
-    const viper::bytecode::BCSlot result = vm.exec("main", {});
+    const zanna::bytecode::BCSlot result = vm.exec("main", {});
 
     BytecodeRunResult captured;
-    captured.trapped = vm.state() == viper::bytecode::VMState::Trapped;
+    captured.trapped = vm.state() == zanna::bytecode::VMState::Trapped;
     captured.trapKind = vm.trapKind();
     captured.value = result.i64;
     captured.message = vm.trapMessage();
@@ -113,7 +113,7 @@ void expectBytecodeValue(const Module &module, int64_t expected) {
 /// @brief Execute a module on both bytecode dispatch modes and require a trap.
 /// @param module Source IL module to compile and run.
 /// @param expected Expected bytecode trap kind in both dispatch engines.
-void expectBytecodeTrap(const Module &module, viper::bytecode::TrapKind expected) {
+void expectBytecodeTrap(const Module &module, zanna::bytecode::TrapKind expected) {
     for (bool threaded : {false, true}) {
         const BytecodeRunResult result = runBytecode(module, threaded);
         if (!result.trapped) {
@@ -233,7 +233,7 @@ Module buildSignedNarrowModule(Type::Kind type, int64_t value) {
 /// @param module Source IL module to execute in an isolated child process.
 /// @param fragment Substring expected in the captured trap diagnostic.
 void expectIlTrapContains(Module &module, const char *fragment) {
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string trapText = fixture.captureTrap(module);
     if (trapText.find(fragment) == std::string::npos) {
         std::cerr << "IL VM trap text did not contain '" << fragment
@@ -247,7 +247,7 @@ void expectIlTrapContains(Module &module, const char *fragment) {
 ///          the raw index.  IL semantics return `idx - lo` on success.
 void testIdxChkNormalizesLikeIlVm() {
     Module module = buildIdxChkModule(Type::Kind::I64, 15, 10, 20);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const int64_t ilResult = fixture.run(module);
     if (ilResult != 5) {
         std::cerr << "IL VM should normalize idx.chk to idx - lo, got "
@@ -264,7 +264,7 @@ void testI16CheckedDivOverflowMatchesIlVm() {
     Module module =
         buildBinaryIntegerModule(Opcode::SDivChk0, Type::Kind::I16, INT64_C(-32768), -1);
     expectIlTrapContains(module, "Overflow");
-    expectBytecodeTrap(module, viper::bytecode::TrapKind::Overflow);
+    expectBytecodeTrap(module, zanna::bytecode::TrapKind::Overflow);
 }
 
 /// @brief Test that checked f64-to-i16 casts use the target width in bytecode.
@@ -274,7 +274,7 @@ void testF64ToI16CheckedCastOverflowMatchesIlVm() {
     Module module = buildCheckedFpCastModule(
         Opcode::CastFpToSiRteChk, Type::Kind::I16, 32768.0);
     expectIlTrapContains(module, "Overflow");
-    expectBytecodeTrap(module, viper::bytecode::TrapKind::Overflow);
+    expectBytecodeTrap(module, zanna::bytecode::TrapKind::Overflow);
 }
 
 /// @brief Test that checked signed narrowing uses InvalidCast in every VM.
@@ -284,7 +284,7 @@ void testF64ToI16CheckedCastOverflowMatchesIlVm() {
 void testSignedNarrowTrapKindMatchesIlVm() {
     Module module = buildSignedNarrowModule(Type::Kind::I16, 32768);
     expectIlTrapContains(module, "InvalidCast");
-    expectBytecodeTrap(module, viper::bytecode::TrapKind::InvalidCast);
+    expectBytecodeTrap(module, zanna::bytecode::TrapKind::InvalidCast);
 }
 
 } // namespace
@@ -295,7 +295,7 @@ void testSignedNarrowTrapKindMatchesIlVm() {
 ///             the process isolation helper.
 /// @return Zero on success.
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     std::cout << "Running VM/Bytecode scalar semantic conformance tests...\n";

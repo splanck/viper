@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/world/rt_terrain3d_build.inc  (#included from rt_terrain3d.c; not a
 // standalone translation unit) Purpose: Terrain3D construction, splat map/texture, and chunk
 // surface/skirt building

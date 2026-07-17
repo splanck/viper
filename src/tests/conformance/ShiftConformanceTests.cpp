@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,7 +54,7 @@ void buildShiftFunction(Module &module, Opcode op, int64_t val, int64_t shift) {
 int64_t runShift(Opcode op, int64_t val, int64_t shift) {
     Module module;
     buildShiftFunction(module, op, val, shift);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/audio/rt_playlist.h
@@ -40,7 +40,7 @@ typedef enum {
 } rt_playlist_repeat_t;
 
 //=============================================================================
-// Viper.Sound.Playlist
+// Zanna.Sound.Playlist
 //=============================================================================
 
 /// @brief Create a new empty playlist.

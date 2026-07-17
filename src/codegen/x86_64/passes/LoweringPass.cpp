@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,12 +40,12 @@
 #include <unordered_map>
 #include <utility>
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 namespace {
 
 /// @brief Emit a backend-unsupported diagnostic and terminate lowering.
 [[noreturn]] void reportUnsupported(std::string detail) {
-    viper::codegen::x64::phaseAUnsupported(detail.c_str());
+    zanna::codegen::x64::phaseAUnsupported(detail.c_str());
 }
 
 /// @brief Adapter module builder that converts IL to backend IR.
@@ -1403,4 +1403,4 @@ bool LoweringPass::run(Module &module, Diagnostics &diags) {
     }
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

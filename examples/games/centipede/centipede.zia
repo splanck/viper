@@ -12,8 +12,8 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
-bind Viper.Game;
-bind Viper.Graphics;
+bind Zanna.Game;
+bind Zanna.Graphics;
 
 // =============================================================================
 // SEGMENT ENTITY - Individual segment of the centipede

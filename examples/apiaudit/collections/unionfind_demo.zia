@@ -1,12 +1,12 @@
-// unionfind_demo.zia - Comprehensive API audit for Viper.Collections.UnionFind
+// unionfind_demo.zia - Comprehensive API audit for Zanna.Collections.UnionFind
 // Tests: New, Find, FindRootOption, Union, Connected, Count, SetSize, Reset
 
 module UnionFindDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== UnionFind API Audit ===");

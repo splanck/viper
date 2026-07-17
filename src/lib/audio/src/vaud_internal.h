@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Internal Definitions
+// ZannaAUD Internal Definitions
 //
 // Internal structures and functions shared between the core library and
 // platform backends. Not part of the public API.
@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief ViperAUD internal definitions (not public API).
+/// @brief ZannaAUD internal definitions (not public API).
 
 #pragma once
 
@@ -323,7 +323,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames);
 /// @brief Render one device-bound audio buffer, applying the process-level
 ///        silent-output policy after advancing normal mixer state.
 /// @details Unlike vaud_mixer_render(), this entry point zeros the completed PCM
-///          when VIPER_AUDIO_SILENT was enabled as the context was created.
+///          when ZANNA_AUDIO_SILENT was enabled as the context was created.
 ///          Platform backends must use this function; offline mixer tests should
 ///          continue to call vaud_mixer_render() directly.
 void vaud_mixer_render_device(vaud_context_t ctx, int16_t *output, int32_t frames);

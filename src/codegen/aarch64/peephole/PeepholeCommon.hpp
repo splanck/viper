@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,10 +34,10 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 // Bring the shared compaction helper into this namespace scope.
-using viper::codegen::common::removeMarkedInstructions;
+using zanna::codegen::common::removeMarkedInstructions;
 
 // ---- Register query helpers ------------------------------------------------
 
@@ -129,4 +129,4 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts);
 /// @brief Get the physical register defined by an instruction, if any.
 [[nodiscard]] std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept;
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

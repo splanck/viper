@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTKeyboardTests.cpp
-// Purpose: Tests for Viper.Input.Keyboard static class.
+// Purpose: Tests for Zanna.Input.Keyboard static class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -67,7 +67,7 @@ static void test_vgfx_special_key_translation() {
     rt_keyboard_init();
     rt_keyboard_begin_frame();
 
-    // vgfx special-key values differ from the public Viper.Input key constants.
+    // vgfx special-key values differ from the public Zanna.Input key constants.
     rt_keyboard_on_vgfx_key_down(264); // VGFX_KEY_TAB
     assert(rt_keyboard_was_pressed(rt_keyboard_key_tab()) == 1);
     assert(rt_keyboard_was_pressed(rt_keyboard_key_down()) == 0);
@@ -339,7 +339,7 @@ static void test_boundary_cases() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Input.Keyboard Tests ===\n\n");
+    printf("=== Zanna.Input.Keyboard Tests ===\n\n");
 
     test_key_constants();
     test_vgfx_special_key_translation();

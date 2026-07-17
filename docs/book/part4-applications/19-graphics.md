@@ -206,7 +206,7 @@ Color.Magenta   // (255, 0, 255)
 Now that we understand the concepts, let's write code. Everything starts with creating a canvas — a window where we can draw:
 
 ```rust
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var canvas = Canvas.New("My First Window", 800, 600);  // 800 pixels wide, 600 tall
@@ -423,7 +423,7 @@ Let's draw a simple scene — a house with the sun — and trace through every s
 ```rust
 module DrawingDemo;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var canvas = Canvas.New("Drawing Demo", 640, 480);
@@ -556,8 +556,8 @@ Let's see the game loop in action:
 ```rust
 module BouncingBall;
 
-bind Viper.Graphics;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Graphics;
+bind Zanna.Time.Clock as Clock;
 
 func start() {
     var canvas = Canvas.New("Bouncing Ball", 800, 600);
@@ -695,7 +695,7 @@ Same code, different results!
 Instead of moving a fixed amount per frame, we move based on how much time has passed:
 
 ```rust
-bind Viper.Time;
+bind Zanna.Time;
 
 var lastTime = Time.Clock.Ticks();
 
@@ -734,7 +734,7 @@ Same distance covered in the same real-world time, regardless of frame rate!
 ### Delta Time in Practice
 
 ```rust
-bind Viper.Time;
+bind Zanna.Time;
 
 var x = 400.0;
 var y = 300.0;
@@ -874,8 +874,8 @@ Let's put everything together into a reusable structure:
 ```rust
 module GameFramework;
 
-bind Viper.Graphics;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Graphics;
+bind Zanna.Time.Clock as Clock;
 
 struct Vec2 {
     expose Integer x;
@@ -1134,7 +1134,7 @@ When your graphics don't look right, here's a systematic approach:
 Print key values to the console:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("x=" + x + ", y=" + y + ", dx=" + dx);
 ```
@@ -1162,7 +1162,7 @@ canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy 
 Make things move slowly so you can watch:
 
 ```rust
-bind Viper.Time;
+bind Zanna.Time;
 
 Time.Clock.Sleep(500);  // Half second between frames
 ```
@@ -1216,7 +1216,7 @@ canvas.Text(405, 315, "(400,300)", Color.White);
 
 **Zia**
 ```rust
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 var canvas = Canvas.New("Demo", 800, 600);
 canvas.Box(100, 100, 200, 150, Color.Red);
@@ -1231,7 +1231,7 @@ FILL RECT 100, 100, 200, 150
 REFRESH
 ```
 
-The concepts are language-neutral. The current Viper graphics API is exposed through Zia runtime classes such as `Viper.Graphics.Canvas` and `Viper.Graphics.Color`; the BASIC-style block above is illustrative pseudocode rather than current BASIC syntax.
+The concepts are language-neutral. The current Zanna graphics API is exposed through Zia runtime classes such as `Zanna.Graphics.Canvas` and `Zanna.Graphics.Color`; the BASIC-style block above is illustrative pseudocode rather than current BASIC syntax.
 
 ---
 

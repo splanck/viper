@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -204,7 +204,7 @@ class Counter {
 
 func start() {    var c = new Counter();
     c.count = 42;
-    Viper.Terminal.SayInt(c.count);
+    Zanna.Terminal.SayInt(c.count);
 }
 )";
 
@@ -380,7 +380,7 @@ class Config {
 
 func start() {
     Config.count = Config.count + 1;
-    Viper.Terminal.SayInt(Config.count);
+    Zanna.Terminal.SayInt(Config.count);
 }
 )";
 
@@ -397,7 +397,7 @@ func start() {
 
     ASSERT_TRUE(result.succeeded());
     EXPECT_GE(countCallsTo(result.module, "main", "rt_modvar_addr_i64"), static_cast<size_t>(3));
-    EXPECT_TRUE(hasCallee(result.module, "main", "Viper.Terminal.SayInt"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "Zanna.Terminal.SayInt"));
     EXPECT_TRUE(hasStringGlobalValue(result.module, "Config.count"));
 }
 
@@ -457,5 +457,5 @@ func start() {    var b = new Box();
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

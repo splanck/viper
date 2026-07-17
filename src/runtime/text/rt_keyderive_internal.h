@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_keyderive_internal.h
@@ -34,7 +34,7 @@ extern "C" {
 /// @brief Raw PBKDF2-HMAC-SHA256 key derivation (RFC 2898 / RFC 8018).
 /// @details Derives a key of arbitrary length from a password and salt by
 ///          iteratively applying HMAC-SHA256. This is the low-level C function
-///          used by all password-based encryption in Viper. It operates on raw
+///          used by all password-based encryption in Zanna. It operates on raw
 ///          byte buffers and does not allocate — the caller provides the output.
 /// @param password     Password bytes (not NUL-terminated).
 /// @param password_len Password length in bytes.

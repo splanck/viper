@@ -1,10 +1,10 @@
 // Demo: FBX loader — load a complex binary FBX file and display all meshes.
 module DemoFBXLoader;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("FBX Loader Demo", 800, 600);

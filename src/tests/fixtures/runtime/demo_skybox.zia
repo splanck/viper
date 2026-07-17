@@ -1,10 +1,10 @@
 // Demo: Skybox — colored cube map background with orbiting camera
 module DemoSkybox;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Skybox Demo", 640, 480);
@@ -12,24 +12,24 @@ func start() {
     // Create 6 colored face textures for the cube map
     // Each face is a solid color so we can verify orientation
     var size = 64;
-    var face_px = new Viper.Graphics.Pixels(size, size); // +X = red
-    var face_nx = new Viper.Graphics.Pixels(size, size); // -X = cyan
-    var face_py = new Viper.Graphics.Pixels(size, size); // +Y = green
-    var face_ny = new Viper.Graphics.Pixels(size, size); // -Y = magenta
-    var face_pz = new Viper.Graphics.Pixels(size, size); // +Z = blue
-    var face_nz = new Viper.Graphics.Pixels(size, size); // -Z = yellow
+    var face_px = new Zanna.Graphics.Pixels(size, size); // +X = red
+    var face_nx = new Zanna.Graphics.Pixels(size, size); // -X = cyan
+    var face_py = new Zanna.Graphics.Pixels(size, size); // +Y = green
+    var face_ny = new Zanna.Graphics.Pixels(size, size); // -Y = magenta
+    var face_pz = new Zanna.Graphics.Pixels(size, size); // +Z = blue
+    var face_nz = new Zanna.Graphics.Pixels(size, size); // -Z = yellow
 
     // Fill each face with its color (Pixels format: 0xRRGGBBAA)
     var x = 0;
     while (x < size) {
         var y = 0;
         while (y < size) {
-            Viper.Graphics.Pixels.Set(face_px, x, y, 0xCC333300 + 0xFF);
-            Viper.Graphics.Pixels.Set(face_nx, x, y, 0x33CCCC00 + 0xFF);
-            Viper.Graphics.Pixels.Set(face_py, x, y, 0x33CC3300 + 0xFF);
-            Viper.Graphics.Pixels.Set(face_ny, x, y, 0xCC33CC00 + 0xFF);
-            Viper.Graphics.Pixels.Set(face_pz, x, y, 0x3333CC00 + 0xFF);
-            Viper.Graphics.Pixels.Set(face_nz, x, y, 0xCCCC3300 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_px, x, y, 0xCC333300 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_nx, x, y, 0x33CCCC00 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_py, x, y, 0x33CC3300 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_ny, x, y, 0xCC33CC00 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_pz, x, y, 0x3333CC00 + 0xFF);
+            Zanna.Graphics.Pixels.Set(face_nz, x, y, 0xCCCC3300 + 0xFF);
             y = y + 1;
         }
         x = x + 1;

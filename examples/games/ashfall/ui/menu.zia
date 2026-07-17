@@ -14,11 +14,11 @@
 // =============================================================================
 module menu;
 
-bind Viper.Graphics3D as G3D;
-bind Viper.Collections.Map as Map;
-bind Viper.String as Str;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math as Math;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Collections.Map as Map;
+bind Zanna.String as Str;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../core/strings" as S;
@@ -570,16 +570,16 @@ class MenuSystem {
         if sub == SUB_ARMORY && Str.get_Length(armoryMessage) > 0 {
             centerText(canvas, w, listY + count * 34 + 2, armoryMessage, COL_TEXT, 1.0);
         }
-        G3D.Canvas3D.DrawText2DAA(canvas, 16, h - 24, "ASHFALL pre-alpha  |  Viper engine", 0x606878, 1.0);
+        G3D.Canvas3D.DrawText2DAA(canvas, 16, h - 24, "ASHFALL pre-alpha  |  Zanna engine", 0x606878, 1.0);
     }
 
     hide func drawCredits(canvas: G3D.Canvas3D, w: Integer, h: Integer) {
         G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, 0, w, h, 0x000000, 0.7);
         var y = h - M.roundi(creditsScroll);
         creditsLine(canvas, w, y, "A S H F A L L", COL_TEXT, 3.0);
-        creditsLine(canvas, w, y + 70, "a Viper engine showcase", COL_DIM, 1.4);
+        creditsLine(canvas, w, y + 70, "a Zanna engine showcase", COL_DIM, 1.4);
         creditsLine(canvas, w, y + 130, "GAME + ENGINE", COL_ACCENT, 1.6);
-        creditsLine(canvas, w, y + 160, "The Viper project", COL_TEXT, 1.3);
+        creditsLine(canvas, w, y + 160, "The Zanna project", COL_TEXT, 1.3);
         creditsLine(canvas, w, y + 220, "CC0 ASSET PACKS", COL_ACCENT, 1.6);
         creditsLine(canvas, w, y + 250, "Quaternius - Animated Mech Pack", COL_TEXT, 1.3);
         creditsLine(canvas, w, y + 275, "Quaternius - Ultimate Monsters Pack", COL_TEXT, 1.3);

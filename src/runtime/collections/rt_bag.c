@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -101,12 +101,12 @@ static rt_bag_impl *as_bag(void *obj, const char *what) {
     return (rt_bag_impl *)obj;
 }
 
-/// @brief Extracts C string data and length from a Viper string.
+/// @brief Extracts C string data and length from a Zanna string.
 ///
 /// Helper function to safely get the underlying character data from a
-/// Viper string object for use with the hash table operations.
+/// Zanna string object for use with the hash table operations.
 ///
-/// @param key The Viper string to extract data from.
+/// @param key The Zanna string to extract data from.
 /// @param out_len Pointer to receive the string length.
 ///
 /// @return Pointer to the string's character data (not owned by caller).
@@ -163,7 +163,7 @@ static void free_entry(rt_bag_entry *entry) {
 
 /// @brief Finalizer callback invoked when a Bag is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// Bag object becomes unreachable. It:
 /// 1. Clears all entries (freeing the copied key strings)
 /// 2. Frees the buckets array

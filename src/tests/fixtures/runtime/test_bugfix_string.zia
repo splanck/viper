@@ -1,8 +1,8 @@
 module TestBugfixString;
 
 bind "./_support";
-bind Viper.Terminal;
-bind Viper.String as Str;
+bind Zanna.Terminal;
+bind Zanna.String as Str;
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Bug #6 - String.Equals returns boolean

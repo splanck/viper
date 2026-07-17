@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTStringExtTests.cpp
-// Purpose: Comprehensive tests for Viper.String extended functions.
+// Purpose: Comprehensive tests for Zanna.String extended functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -719,7 +719,7 @@ int main() {
     test_hamming();
     test_case_conversion_more_than_128_words();
 
-    // --- R7: Viper.Text.Char identifier classification (first character, ASCII rules). ---
+    // --- R7: Zanna.Text.Char identifier classification (first character, ASCII rules). ---
     assert(rt_text_char_is_identifier_start(make_str("a")) == 1);
     assert(rt_text_char_is_identifier_start(make_str("Z")) == 1);
     assert(rt_text_char_is_identifier_start(make_str("_")) == 1);

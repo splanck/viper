@@ -1,9 +1,9 @@
 module test_game3d_audio_immersion_probe;
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math as Math;
-bind Viper.Audio as Sound;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math as Math;
+bind Zanna.Audio as Sound;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var world = Game3D.World3D.New("Audio Immersion Probe", 64, 48);

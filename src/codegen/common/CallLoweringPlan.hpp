@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Register class for a call argument or aggregate eightbyte.
 /// @details Target-independent classification used before register assignment.
@@ -84,4 +84,4 @@ struct CallLoweringPlan {
                                  ///< Args beyond this index are variadic.
 };
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

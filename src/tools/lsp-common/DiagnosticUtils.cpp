@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Resolve a file id to its registered path, or empty when unknown.
 static std::string resolvePath(const il::support::SourceManager *sm, uint32_t fileId) {
@@ -99,4 +99,4 @@ std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngi
     return result;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

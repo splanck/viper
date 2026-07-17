@@ -1,6 +1,6 @@
 module test_bugs;
 
-bind Viper.Math;
+bind Zanna.Math;
 
 // Test BUG-005: Mixed type arithmetic
 func testBug005() {

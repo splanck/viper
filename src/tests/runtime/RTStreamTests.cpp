@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: tests/runtime/RTStreamTests.cpp
 // Purpose: Validate unified Stream interface.
 // Key invariants: Stream wraps BinFile/MemStream transparently.
-// Links: docs/viperlib/io.md
+// Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -97,9 +97,9 @@ static const char *stream_test_file() {
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = ".";
-    snprintf(path, sizeof(path), "%s\\viper_stream_test.bin", tmp);
+    snprintf(path, sizeof(path), "%s\\zanna_stream_test.bin", tmp);
 #else
-    snprintf(path, sizeof(path), "/tmp/viper_stream_test_%d.bin", (int)getpid());
+    snprintf(path, sizeof(path), "/tmp/zanna_stream_test_%d.bin", (int)getpid());
 #endif
     return path;
 }

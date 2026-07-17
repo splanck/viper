@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Compress data into an RFC 1950 zlib stream.
 /// @param data Input bytes to compress (may be null only when @p len is 0).
@@ -39,4 +39,4 @@ std::vector<uint8_t> zlibCompress(const uint8_t *data, size_t len, int level = 6
 ///         mismatch, or an Adler-32 mismatch.
 std::vector<uint8_t> zlibDecompress(const uint8_t *data, size_t len, size_t expectedSize);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

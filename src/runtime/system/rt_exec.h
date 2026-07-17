@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/system/rt_exec.h
-// Purpose: External command execution for Viper.System.Exec, providing Run, Capture, and Shell
+// Purpose: External command execution for Zanna.System.Exec, providing Run, Capture, and Shell
 // variants with argument arrays and exit code capture.
 //
 // Key invariants:
@@ -80,7 +80,7 @@ rt_string rt_exec_shell_full(rt_string command);
 /// @details This is the side-channel-free replacement for calling
 ///          rt_exec_shell_full() followed by rt_exec_last_exit_code().
 /// @param command Shell command string (passed to /bin/sh -c or cmd /c).
-/// @return Opaque Viper.System.CommandResult object containing stdout and exit code.
+/// @return Opaque Zanna.System.CommandResult object containing stdout and exit code.
 /// @warning Do not pass unsanitized user input - shell injection risk.
 void *rt_exec_shell_result(rt_string command);
 
@@ -89,17 +89,17 @@ void *rt_exec_shell_result(rt_string command);
 int64_t rt_exec_last_exit_code(void);
 
 /// @brief Return the captured stdout from a CommandResult.
-/// @param result Opaque Viper.System.CommandResult object.
+/// @param result Opaque Zanna.System.CommandResult object.
 /// @return Retained runtime string containing captured stdout.
 rt_string rt_exec_command_result_output(void *result);
 
 /// @brief Return the exit code from a CommandResult.
-/// @param result Opaque Viper.System.CommandResult object.
+/// @param result Opaque Zanna.System.CommandResult object.
 /// @return Process exit code, or -1 for invalid input.
 int64_t rt_exec_command_result_exit_code(void *result);
 
 /// @brief Return whether a CommandResult exited successfully.
-/// @param result Opaque Viper.System.CommandResult object.
+/// @param result Opaque Zanna.System.CommandResult object.
 /// @return 1 when ExitCode is 0, otherwise 0.
 int8_t rt_exec_command_result_succeeded(void *result);
 

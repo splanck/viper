@@ -1,5 +1,5 @@
 ' stmt.bas - Statement Types
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "expr.bas"
 
@@ -49,7 +49,7 @@ CLASS CreateTableStmt
 END CLASS
 
 ' InsertStmt - holds parsed INSERT statement
-' Note: Using 1D array with manual indexing due to Viper Basic bug #010 (2D array corruption)
+' Note: Using 1D array with manual indexing due to Zanna Basic bug #010 (2D array corruption)
 CONST VALUES_ARRAY_SIZE = 6400  ' MAX_VALUE_ROWS * MAX_STMT_VALUES
 
 CLASS InsertStmt

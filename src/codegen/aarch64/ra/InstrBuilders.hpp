@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Build a GPR-to-GPR register move: `mov dst, src`.
 [[maybe_unused]] inline MInstr makeMovRR(PhysReg dst, PhysReg src) {
@@ -41,4 +41,4 @@ inline MInstr makeStrFp(PhysReg src, int offset) {
     return MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(src), MOperand::immOp(offset)}};
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

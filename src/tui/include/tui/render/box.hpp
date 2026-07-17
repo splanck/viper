@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 
 /// @brief Draw a bordered box with optional fill into a screen buffer.
 /// @details Renders a rectangular border using ASCII box-drawing characters
@@ -43,4 +43,4 @@ void drawBox(ScreenBuffer &sb,
              const Style *fillStyle = nullptr,
              bool fill = true);
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

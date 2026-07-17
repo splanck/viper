@@ -1,6 +1,6 @@
 ' ============================================================================
 ' MODULE: vtris.bas
-' PURPOSE: vTRIS — a Tetris demo for Viper BASIC. This is the program entry
+' PURPOSE: vTRIS — a Tetris demo for Zanna BASIC. This is the program entry
 '          point and the orchestrator for the menu, game loop, and
 '          game-over screen. All gameplay logic lives in `pieces.bas`,
 '          `board.bas`, and `scoreboard.bas`; this file wires them
@@ -130,7 +130,7 @@ Sub ShowMainMenu()
     LOCATE 10, 1
     Print "          ║    ";
     COLOR 10, 0
-    Print "Viper BASIC Demo";
+    Print "Zanna BASIC Demo";
     LOCATE 10, 40
     COLOR 14, 0
     Print "║"
@@ -820,5 +820,5 @@ COLOR 11, 0
 Print "     Thanks for playing vTRIS!"
 LOCATE 13, 1
 COLOR 7, 0
-Print "     A Viper BASIC Demonstration"
+Print "     A Zanna BASIC Demonstration"
 LOCATE 15, 1

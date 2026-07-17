@@ -201,22 +201,22 @@ Class GameField
         screenX = FIELD_LEFT + x
         screenY = FIELD_TOP + y
 
-        Viper.Terminal.SetPosition(screenY, screenX)
+        Zanna.Terminal.SetPosition(screenY, screenX)
 
         If health = 0 Then
-            Viper.Terminal.SetColor(0, 0)
+            Zanna.Terminal.SetColor(0, 0)
             PRINT " "
         ElseIf health = 4 Then
-            Viper.Terminal.SetColor(10, 0)  ' Bright green = full health.
+            Zanna.Terminal.SetColor(10, 0)  ' Bright green = full health.
             PRINT "@"
         ElseIf health = 3 Then
-            Viper.Terminal.SetColor(2, 0)   ' Green.
+            Zanna.Terminal.SetColor(2, 0)   ' Green.
             PRINT "@"
         ElseIf health = 2 Then
-            Viper.Terminal.SetColor(3, 0)   ' Cyan.
+            Zanna.Terminal.SetColor(3, 0)   ' Cyan.
             PRINT "o"
         Else
-            Viper.Terminal.SetColor(8, 0)   ' Dark gray = about to die.
+            Zanna.Terminal.SetColor(8, 0)   ' Dark gray = about to die.
             PRINT "."
         End If
     End Sub
@@ -232,11 +232,11 @@ Class GameField
 
         ' Vertical borders flank the playfield from one row above to one
         ' row below, giving a visual frame.
-        Viper.Terminal.SetColor(8, 0)
+        Zanna.Terminal.SetColor(8, 0)
         For y = FIELD_TOP - 1 To FIELD_TOP + FIELD_HEIGHT
-            Viper.Terminal.SetPosition(y, FIELD_LEFT - 1)
+            Zanna.Terminal.SetPosition(y, FIELD_LEFT - 1)
             PRINT "|"
-            Viper.Terminal.SetPosition(y, FIELD_LEFT + FIELD_WIDTH)
+            Zanna.Terminal.SetPosition(y, FIELD_LEFT + FIELD_WIDTH)
             PRINT "|"
         Next y
 
@@ -266,8 +266,8 @@ Class GameField
         If health > 0 Then
             Me.DrawMushroom(x, y)
         Else
-            Viper.Terminal.SetPosition(screenY, screenX)
-            Viper.Terminal.SetColor(0, 0)
+            Zanna.Terminal.SetPosition(screenY, screenX)
+            Zanna.Terminal.SetColor(0, 0)
             PRINT " "
         End If
     End Sub

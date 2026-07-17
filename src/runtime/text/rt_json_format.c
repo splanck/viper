@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_json_format.c
 // Purpose: JSON serialization and value-type classification for the
-//          Viper.Text.Json class per RFC 8259 §7. Walks a Viper value tree
+//          Zanna.Text.Json class per RFC 8259 §7. Walks a Zanna value tree
 //          (Map/Seq/String/boxed primitives) and emits compact or
 //          pretty-printed JSON text.
 //
@@ -365,7 +365,7 @@ static void format_string(string_builder *sb, rt_string s) {
 // Value Formatting
 //=============================================================================
 
-/// @brief Forward declaration: serialise any Viper value as JSON.
+/// @brief Forward declaration: serialise any Zanna value as JSON.
 static void format_value(
     string_builder *sb, void *obj, int64_t indent, int64_t level, format_context *ctx);
 
@@ -414,7 +414,7 @@ static void format_array(
 
 /// @brief Emit a Map as a JSON object, optionally pretty-printed.
 ///
-/// Iterates the map in insertion order (Viper Maps preserve it).
+/// Iterates the map in insertion order (Zanna Maps preserve it).
 /// Each key is forced to its string form via `format_string`; non-
 /// string keys are silently coerced.
 static void format_object(
@@ -468,7 +468,7 @@ static void format_object(
     format_ctx_exit(ctx, map);
 }
 
-/// @brief Recursive JSON emitter for any Viper value.
+/// @brief Recursive JSON emitter for any Zanna value.
 ///
 /// Dispatches by type:
 ///   - NULL                  → `null`
@@ -565,9 +565,9 @@ static void format_value(
 // Public API
 //=============================================================================
 
-/// @brief Formats a Viper value as compact JSON.
+/// @brief Formats a Zanna value as compact JSON.
 ///
-/// Converts a Viper value to its JSON representation without extra whitespace.
+/// Converts a Zanna value to its JSON representation without extra whitespace.
 /// Produces minimal, single-line output suitable for APIs and storage.
 ///
 /// **Type mappings:**
@@ -587,7 +587,7 @@ static void format_value(
 /// ' Output: {"name":"Alice","age":30}
 /// ```
 ///
-/// @param obj The Viper value to format.
+/// @param obj The Zanna value to format.
 ///
 /// @return Compact JSON string.
 ///
@@ -608,9 +608,9 @@ rt_string rt_json_format(void *obj) {
     return sb_finish(&sb);
 }
 
-/// @brief Formats a Viper value as pretty-printed JSON.
+/// @brief Formats a Zanna value as pretty-printed JSON.
 ///
-/// Converts a Viper value to its JSON representation with indentation and
+/// Converts a Zanna value to its JSON representation with indentation and
 /// newlines for human readability. Each nesting level is indented by the
 /// specified number of spaces.
 ///
@@ -633,7 +633,7 @@ rt_string rt_json_format(void *obj) {
 /// ' }
 /// ```
 ///
-/// @param obj The Viper value to format.
+/// @param obj The Zanna value to format.
 /// @param indent Number of spaces per indentation level (typically 2 or 4).
 ///
 /// @return Pretty-printed JSON string.

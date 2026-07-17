@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -59,7 +59,7 @@ void usage() {
 
 int main() {
     const std::filesystem::path tmpDir =
-        std::filesystem::temp_directory_path() / "viper_cli_break_plain";
+        std::filesystem::temp_directory_path() / "zanna_cli_break_plain";
     std::error_code ec;
     std::filesystem::create_directories(tmpDir, ec);
 

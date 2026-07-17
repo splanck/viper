@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Renderer class, which converts ScreenBuffer diffs
-// into ANSI terminal escape sequences for Viper's TUI. The Renderer is the
+// into ANSI terminal escape sequences for Zanna's TUI. The Renderer is the
 // final stage of the rendering pipeline, translating abstract cell changes
 // into concrete terminal output.
 //
@@ -33,7 +33,7 @@
 #include "tui/render/screen.hpp"
 #include "tui/term/term_io.hpp"
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 
 /// @brief Converts ScreenBuffer diffs into ANSI escape sequences for terminal output.
 /// @details The final stage of the TUI rendering pipeline. Computes differential
@@ -45,7 +45,7 @@ class Renderer {
     /// @brief Construct renderer targeting a TermIO.
     /// @param tio Terminal I/O sink used for writes and flushes.
     /// @param truecolor Emit 24-bit color codes when true; otherwise 256-color.
-    explicit Renderer(::viper::tui::term::TermIO &tio, bool truecolor = false);
+    explicit Renderer(::zanna::tui::term::TermIO &tio, bool truecolor = false);
 
     /// @brief Draw changed spans from screen buffer to terminal.
     /// @param sb Screen buffer with current and previous state for diffing.
@@ -61,11 +61,11 @@ class Renderer {
     void moveCursor(int y, int x);
 
   private:
-    ::viper::tui::term::TermIO &tio_;
+    ::zanna::tui::term::TermIO &tio_;
     Style currentStyle_{};
     int cursorY_{-1};
     int cursorX_{-1};
     bool truecolor_{false};
 };
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

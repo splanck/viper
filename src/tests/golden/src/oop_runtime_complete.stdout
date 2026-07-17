@@ -1,4 +1,4 @@
-=== Viper.String ===
+=== Zanna.String ===
 Original: '  Hello World  '
 Length: 15
 Trim: 'Hello World'
@@ -14,20 +14,20 @@ IndexOf 'World': 7
 Substring(1,5): Hello
 Empty string length is 0: PASS
 
-=== Viper.Text.StringBuilder ===
+=== Zanna.Text.StringBuilder ===
 Initial Length: 0
 After 'Hello' Length: 5
 After ' World' Length: 11
 ToString: Hello World
 After Clear Length: 0
 
-=== Viper.Collections.List ===
+=== Zanna.Collections.List ===
 Initial Count: 0
 After 3 Add: 3
 After RemoveAt(1): 2
 After Clear: 0
 
-=== Viper.Math ===
+=== Zanna.Math ===
 Sqrt(16): 4
 Abs(-5): 5
 Abs(-3.14): 3.14
@@ -45,17 +45,17 @@ Sgn(-5): -1
 Sgn(0): 0
 Sgn(5): 1
 
-=== Viper.Random ===
+=== Zanna.Random ===
 Seeded random (12345):
   r1 in [0,1): -1
   r2 in [0,1): -1
   r3 in [0,1): -1
 Reproducible with same seed: PASS
 
-=== Viper.Terminal ===
+=== Zanna.Terminal ===
 WriteLine test: PASS
 
-=== Viper.Core.Convert ===
+=== Zanna.Core.Convert ===
 ToInt64('42'): 42
 ToDouble('3.14159'): 3.14159
 ToString_Int(123): '123'

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_machine.c
-// Purpose: Implements system information queries for the Viper.System.Machine class.
+// Purpose: Implements system information queries for the Zanna.System.Machine class.
 //          Provides CPU count, hostname, OS name/version, architecture,
 //          total/free-memory estimates, page/pointer size, and endianness using
 //          platform-specific APIs.
@@ -411,7 +411,7 @@ rt_string rt_machine_os_ver(void) {
 rt_string rt_machine_host(void) {
 #ifdef _WIN32
     // Wide API + validated UTF-8 conversion so non-ASCII host names survive,
-    // matching Viper.System.Environment (VDOC-217).
+    // matching Zanna.System.Environment (VDOC-217).
     wchar_t buf[256];
     DWORD len = (DWORD)(sizeof(buf) / sizeof(buf[0]));
     if (GetComputerNameW(buf, &len))

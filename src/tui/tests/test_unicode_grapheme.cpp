@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,15 +24,15 @@
 #include "tests/TestHarness.hpp"
 #include <string>
 
-using viper::tui::render::ScreenBuffer;
-using viper::tui::style::Role;
-using viper::tui::style::Theme;
-using viper::tui::term::KeyEvent;
-using viper::tui::text::TextBuffer;
-using viper::tui::ui::Event;
-using viper::tui::util::char_width;
-using viper::tui::util::decode_utf8;
-using viper::tui::views::TextView;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::style::Role;
+using zanna::tui::style::Theme;
+using zanna::tui::term::KeyEvent;
+using zanna::tui::text::TextBuffer;
+using zanna::tui::ui::Event;
+using zanna::tui::util::char_width;
+using zanna::tui::util::decode_utf8;
+using zanna::tui::views::TextView;
 
 // UTF-8 byte sequences for test characters:
 // 中 = E4 B8 AD (U+4E2D)
@@ -508,6 +508,6 @@ TEST(TUI, UnicodeGrapheme) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

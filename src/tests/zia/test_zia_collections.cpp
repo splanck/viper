@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,8 +76,8 @@ func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
     var maybeAliceAge: Integer? = ages.get("Alice");
     var aliceAge: Integer = maybeAliceAge ?? 0;
     var count: Integer = ages.count();
-    Viper.Terminal.SayInt(aliceAge);
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(aliceAge);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "map.zia"};
@@ -103,11 +103,11 @@ func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call) {
-                        if (instr.callee == "Viper.Collections.Map.New")
+                        if (instr.callee == "Zanna.Collections.Map.New")
                             foundMapNew = true;
-                        if (instr.callee == "Viper.Collections.Map.Set")
+                        if (instr.callee == "Zanna.Collections.Map.Set")
                             foundMapSet = true;
-                        if (instr.callee == "Viper.Collections.Map.Get")
+                        if (instr.callee == "Zanna.Collections.Map.Get")
                             foundMapGet = true;
                     }
                 }
@@ -129,7 +129,7 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
     names["one"] = "One";
     names["two"] = "Two";
     var name: String = names["one"];
-    Viper.Terminal.Say(name);
+    Zanna.Terminal.Say(name);
 }
 )";
     CompilerInput input{.source = source, .path = "mapindex.zia"};
@@ -155,11 +155,11 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call) {
-                        if (instr.callee == "Viper.Collections.Map.Set")
+                        if (instr.callee == "Zanna.Collections.Map.Set")
                             foundMapSet = true;
-                        if (instr.callee == "Viper.Collections.Map.Get")
+                        if (instr.callee == "Zanna.Collections.Map.Get")
                             foundMapGet = true;
-                        if (instr.callee == "Viper.Collections.Map.Has")
+                        if (instr.callee == "Zanna.Collections.Map.Has")
                             foundMapHas = true;
                     }
                 }
@@ -194,8 +194,8 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
 
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.GetOptStr"), static_cast<size_t>(1));
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Collections.Map.GetStr"), static_cast<size_t>(0));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Map.GetOptStr"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, "Zanna.Collections.Map.GetStr"), static_cast<size_t>(0));
 }
 
 /// @brief Test that Map helpers like getOr and setIfMissing lower correctly.
@@ -208,9 +208,9 @@ func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
     var initial: Integer = ages.getOr("Alice", 0);
     var inserted: Boolean = ages.setIfMissing("Alice", 42);
     var hasAlice: Boolean = ages.has("Alice");
-    Viper.Terminal.SayInt(initial);
-    Viper.Terminal.SayInt(inserted ? 1 : 0);
-    Viper.Terminal.SayInt(hasAlice ? 1 : 0);
+    Zanna.Terminal.SayInt(initial);
+    Zanna.Terminal.SayInt(inserted ? 1 : 0);
+    Zanna.Terminal.SayInt(hasAlice ? 1 : 0);
 }
 )";
     CompilerInput input{.source = source, .path = "map_helpers.zia"};
@@ -236,11 +236,11 @@ func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call) {
-                        if (instr.callee == "Viper.Collections.Map.GetOr")
+                        if (instr.callee == "Zanna.Collections.Map.GetOr")
                             foundGetOr = true;
-                        if (instr.callee == "Viper.Collections.Map.SetIfMissing")
+                        if (instr.callee == "Zanna.Collections.Map.SetIfMissing")
                             foundSetIfMissing = true;
-                        if (instr.callee == "Viper.Collections.Map.Has")
+                        if (instr.callee == "Zanna.Collections.Map.Has")
                             foundHas = true;
                     }
                 }
@@ -269,14 +269,14 @@ func start() {    var names: Map[Integer, String] = new Map[Integer, String]();
     var count: Integer = names.count();
     for key in names.keys() {
         var id: Integer = key;
-        Viper.Terminal.SayInt(id);
+        Zanna.Terminal.SayInt(id);
     }
     for value in names.values() {
         var label: String = value;
-        Viper.Terminal.Say(label);
+        Zanna.Terminal.Say(label);
     }
-    Viper.Terminal.Say(maybeTwo ?? three);
-    Viper.Terminal.SayInt((inserted && hasOne && removed) ? count : 0);
+    Zanna.Terminal.Say(maybeTwo ?? three);
+    Zanna.Terminal.SayInt((inserted && hasOne && removed) ? count : 0);
 }
 )";
     CompilerInput input{.source = source, .path = "integer_map_key_type.zia"};
@@ -295,15 +295,15 @@ func start() {    var names: Map[Integer, String] = new Map[Integer, String]();
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.New"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Set"), static_cast<size_t>(2));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Get"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.GetOr"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Has"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Remove"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Keys"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Values"), static_cast<size_t>(1));
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Collections.Map.New"), static_cast<size_t>(0));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.New"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Set"), static_cast<size_t>(2));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Get"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.GetOr"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Has"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Remove"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Keys"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.IntMap.Values"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, "Zanna.Collections.Map.New"), static_cast<size_t>(0));
 }
 
 /// @brief Test that map key expressions must match the declared key type.
@@ -344,7 +344,7 @@ module Test;
 func start() {    var numbers: List[Integer] = [];
     numbers.add(42);
     var first: Integer = numbers.get(0);
-    Viper.Terminal.SayInt(first);
+    Zanna.Terminal.SayInt(first);
 }
 )";
     CompilerInput input{.source = source, .path = "emptylist.zia"};
@@ -379,7 +379,7 @@ func start() {    var frogs: List[Frog] = [];
     f.x = 5;
     frogs.add(f);
     var count: Integer = frogs.count();
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "list_entity.zia"};
@@ -422,7 +422,7 @@ func start() {
     ages.set("Alice", 30);
     var maybeAge: Integer? = ages.get("Alice");
     var age: Integer = maybeAge ?? 0;
-    Viper.Terminal.SayInt(age);
+    Zanna.Terminal.SayInt(age);
 }
 )",
                                 sm);
@@ -522,11 +522,11 @@ func start() {
     ages.set("Ada", 36);
     for key in ages.keys() {
         var name: String = key;
-        Viper.Terminal.Say(name);
+        Zanna.Terminal.Say(name);
     }
     for value in ages.values() {
         var age: Integer = value;
-        Viper.Terminal.SayInt(age);
+        Zanna.Terminal.SayInt(age);
     }
 }
 )",
@@ -542,8 +542,8 @@ func start() {
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.Keys"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.Values"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Map.Keys"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Map.Values"), static_cast<size_t>(1));
 }
 
 TEST(ZiaCollections, SetRemoveReturnsBoolean) {
@@ -553,7 +553,7 @@ module Test;
 func start() {
     var numbers: Set[Integer] = {1, 2, 3};
     var removed: Boolean = numbers.remove(2);
-    Viper.Terminal.SayBool(removed);
+    Zanna.Terminal.SayBool(removed);
 }
 )",
                                 sm);
@@ -568,11 +568,11 @@ func start() {
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Set.Remove"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.Set.Remove"), static_cast<size_t>(1));
 }
 
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

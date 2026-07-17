@@ -5,7 +5,7 @@ bind "./_support";
 // Fmt (formatting) tests
 
 func start() {
-    Viper.Terminal.Say("=== Fmt Tests ===");
+    Zanna.Terminal.Say("=== Fmt Tests ===");
 
     testInt();
     testNum();
@@ -17,41 +17,41 @@ func start() {
 }
 
 func testInt() {
-    assertEqStr(Viper.Text.Fmt.Int(42), "42", "int positive");
-    assertEqStr(Viper.Text.Fmt.Int(-7), "-7", "int negative");
-    assertEqStr(Viper.Text.Fmt.Int(0), "0", "int zero");
+    assertEqStr(Zanna.Text.Fmt.Int(42), "42", "int positive");
+    assertEqStr(Zanna.Text.Fmt.Int(-7), "-7", "int negative");
+    assertEqStr(Zanna.Text.Fmt.Int(0), "0", "int zero");
 }
 
 func testNum() {
-    assertEqStr(Viper.Text.Fmt.Num(3.14), "3.14", "num pi");
-    assertEqStr(Viper.Text.Fmt.Num(0.0), "0", "num zero");
-    assertEqStr(Viper.Text.Fmt.Num(-1.5), "-1.5", "num negative");
+    assertEqStr(Zanna.Text.Fmt.Num(3.14), "3.14", "num pi");
+    assertEqStr(Zanna.Text.Fmt.Num(0.0), "0", "num zero");
+    assertEqStr(Zanna.Text.Fmt.Num(-1.5), "-1.5", "num negative");
 }
 
 func testBool() {
-    assertEqStr(Viper.Text.Fmt.Bool(true), "true", "bool true");
-    assertEqStr(Viper.Text.Fmt.Bool(false), "false", "bool false");
+    assertEqStr(Zanna.Text.Fmt.Bool(true), "true", "bool true");
+    assertEqStr(Zanna.Text.Fmt.Bool(false), "false", "bool false");
 }
 
 func testRadix() {
     // Hex
-    assertEqStr(Viper.Text.Fmt.Hex(255), "ff", "hex ff");
-    assertEqStr(Viper.Text.Fmt.Hex(16), "10", "hex 10");
-    assertEqStr(Viper.Text.Fmt.Hex(0), "0", "hex zero");
+    assertEqStr(Zanna.Text.Fmt.Hex(255), "ff", "hex ff");
+    assertEqStr(Zanna.Text.Fmt.Hex(16), "10", "hex 10");
+    assertEqStr(Zanna.Text.Fmt.Hex(0), "0", "hex zero");
 
     // Octal
-    assertEqStr(Viper.Text.Fmt.Oct(8), "10", "oct 8");
-    assertEqStr(Viper.Text.Fmt.Oct(64), "100", "oct 64");
+    assertEqStr(Zanna.Text.Fmt.Oct(8), "10", "oct 8");
+    assertEqStr(Zanna.Text.Fmt.Oct(64), "100", "oct 64");
 
     // Binary
-    assertEqStr(Viper.Text.Fmt.Bin(5), "101", "bin 5");
-    assertEqStr(Viper.Text.Fmt.Bin(8), "1000", "bin 8");
+    assertEqStr(Zanna.Text.Fmt.Bin(5), "101", "bin 5");
+    assertEqStr(Zanna.Text.Fmt.Bin(8), "1000", "bin 8");
 }
 
 func testSize() {
     // Size formatting
-    assertEqStr(Viper.Text.Fmt.SizeBytes(0), "0 B", "size zero");
-    assertEqStr(Viper.Text.Fmt.SizeBytes(512), "512 B", "size bytes");
-    assertEqStr(Viper.Text.Fmt.SizeBytes(1024), "1.0 KB", "size kb");
-    assertEqStr(Viper.Text.Fmt.SizeBytes(1048576), "1.0 MB", "size mb");
+    assertEqStr(Zanna.Text.Fmt.SizeBytes(0), "0 B", "size zero");
+    assertEqStr(Zanna.Text.Fmt.SizeBytes(512), "512 B", "size bytes");
+    assertEqStr(Zanna.Text.Fmt.SizeBytes(1024), "1.0 KB", "size kb");
+    assertEqStr(Zanna.Text.Fmt.SizeBytes(1048576), "1.0 MB", "size mb");
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -211,7 +211,7 @@ typedef enum vg_key {
 } vg_key_t;
 
 /// @brief Inline UTF-8 capacity of a toolkit composition event, including its terminator.
-/// @details This matches the ViperGFX platform event bound. Keeping composition text inline makes
+/// @details This matches the ZannaGFX platform event bound. Keeping composition text inline makes
 ///          `vg_event_t` a self-contained value with no allocation or borrowed lifetime.
 enum { VG_COMPOSITION_TEXT_CAPACITY = 4096 };
 
@@ -257,7 +257,7 @@ typedef struct vg_event {
         } key;
 
         /// @brief Payload for native IME composition lifecycle events.
-        /// @details Text is byte-counted UTF-8 copied from ViperGFX. Selection offsets are Unicode
+        /// @details Text is byte-counted UTF-8 copied from ZannaGFX. Selection offsets are Unicode
         ///          codepoint indices within preedit text; replacement offsets are codepoint
         ///          indices within committed text. A replacement start of -1 instructs the
         ///          focused editor to use its current selection. TextInput converts all offsets to

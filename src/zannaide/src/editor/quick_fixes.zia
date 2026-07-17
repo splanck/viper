@@ -1,0 +1,103 @@
+module quick_fixes;
+
+bind Map = Zanna.Collections.Map;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: quick_fixes
+// PURPOSE: Interpret diagnostic records into user-visible quick-fix actions.
+//
+// WHERE-THIS-FITS: LiveDiagnostics and diagnostic edit commands use this module
+//          to classify structured toolchain records without embedding diagnostic
+//          string matching in UI controllers.
+//
+// TEACHING-NOTE: Diagnostic actions should be deterministic and conservative.
+//          Return "No quick fix" unless the diagnostic shape is known and the
+//          resulting source edit is safe to explain before applying.
+// ============================================================================
+
+expose func ProblemActionForDiagnosticRecord(record: Any) -> String {
+    if record == null { return "No quick fix"; }
+    if Map.GetBool(record, "hasFixit") {
+        var label = Map.GetStr(record, "fixitMessage");
+        if label != "" { return label; }
+        return "Apply Fix-It";
+    }
+    if MissingRuntimeBindIdentifierForRecord(record) != "" {
+        return "Create Missing Bind";
+    }
+    return "No quick fix";
+}
+
+expose func MissingRuntimeBindIdentifierForRecord(record: Any) -> String {
+    var name = UndefinedIdentifierForRecord(record);
+    if RuntimeBindLineForIdentifier(name) == "" { return ""; }
+    return name;
+}
+
+expose func UndefinedIdentifierForRecord(record: Any) -> String {
+    if record == null { return ""; }
+    if Map.GetStr(record, "code") != "V-ZIA-UNDEFINED" { return ""; }
+    return UndefinedIdentifierName(Map.GetStr(record, "message"));
+}
+
+expose func UndefinedIdentifierName(message: String) -> String {
+    var prefix = "Undefined identifier: ";
+    if Str.StartsWith(message, prefix) == false { return ""; }
+    var pos = Str.get_Length(prefix) + 1;
+    var name = "";
+    while pos <= Str.get_Length(message) {
+        var ch = Str.MidLen(message, pos, 1);
+        if IsIdentPart(ch) == false { break; }
+        name = name + ch;
+        pos = pos + 1;
+    }
+    return name;
+}
+
+expose func RuntimeBindLineForIdentifier(name: String) -> String {
+    var target = RuntimeBindTargetForIdentifier(name);
+    if target == "" { return ""; }
+    return "bind " + name + " = " + target + ";";
+}
+
+func RuntimeBindTargetForIdentifier(name: String) -> String {
+    if name == "Terminal" { return "Zanna.Terminal"; }
+    if name == "GUI" { return "Zanna.GUI"; }
+    if name == "Input" { return "Zanna.Input"; }
+    if name == "Math" { return "Zanna.Math"; }
+    if name == "Str" { return "Zanna.String"; }
+    if name == "String" { return "Zanna.String"; }
+    if name == "Seq" { return "Zanna.Collections.Seq"; }
+    if name == "Map" { return "Zanna.Collections.Map"; }
+    if name == "Obj" { return "Zanna.Core.Object"; }
+    if name == "Convert" { return "Zanna.Core.Convert"; }
+    if name == "IO" { return "Zanna.IO"; }
+    if name == "File" { return "Zanna.IO.File"; }
+    if name == "Dir" { return "Zanna.IO.Dir"; }
+    if name == "Path" { return "Zanna.IO.Path"; }
+    if name == "TempFile" { return "Zanna.IO.TempFile"; }
+    if name == "Clock" { return "Zanna.Time.Clock"; }
+    if name == "Time" { return "Zanna.Time"; }
+    if name == "Env" { return "Zanna.System.Environment"; }
+    if name == "Machine" { return "Zanna.System.Machine"; }
+    if name == "Exec" { return "Zanna.System.Exec"; }
+    if name == "Process" { return "Zanna.System.Process"; }
+    if name == "Ini" { return "Zanna.Data.Ini"; }
+    if name == "Json" { return "Zanna.Data.Json"; }
+    if name == "ProjectIndex" { return "Zanna.Zia.ProjectIndex"; }
+    if name == "ZiaToolchain" { return "Zanna.Zia.Toolchain"; }
+    if name == "ZiaCompletion" { return "Zanna.Zia.Completion"; }
+    if name == "SemanticJob" { return "Zanna.Zia.SemanticJob"; }
+    if name == "FileIndex" { return "Zanna.Workspace.FileIndex"; }
+    if name == "WorkspaceEdit" { return "Zanna.Workspace.Edit"; }
+    if name == "SceneDocument" { return "Zanna.Game2D.SceneDocument"; }
+    return "";
+}
+
+func IsIdentPart(ch: String) -> Boolean {
+    if ch >= "a" and ch <= "z" { return true; }
+    if ch >= "A" and ch <= "Z" { return true; }
+    if ch >= "0" and ch <= "9" { return true; }
+    return ch == "_";
+}

@@ -1,88 +1,88 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.String.IsEmpty
-' COVER: Viper.String.get_Length
-' COVER: Viper.String.Asc
-' COVER: Viper.String.Chr
-' COVER: Viper.String.Compare
-' COVER: Viper.String.CompareIgnoreCase
-' COVER: Viper.String.Concat
-' COVER: Viper.String.Count
-' COVER: Viper.String.EndsWith
-' COVER: Viper.String.Reverse
-' COVER: Viper.String.Contains
-' COVER: Viper.String.IndexOf
-' COVER: Viper.String.IndexOfFrom
-' COVER: Viper.String.Left
-' COVER: Viper.String.Mid
-' COVER: Viper.String.MidLen
-' COVER: Viper.String.PadLeft
-' COVER: Viper.String.PadRight
-' COVER: Viper.String.Repeat
-' COVER: Viper.String.Replace
-' COVER: Viper.String.Right
-' COVER: Viper.String.Split
-' COVER: Viper.String.StartsWith
-' COVER: Viper.String.Substring
-' COVER: Viper.String.ToLower
-' COVER: Viper.String.ToUpper
-' COVER: Viper.String.Trim
-' COVER: Viper.String.TrimEnd
-' COVER: Viper.String.TrimStart
-' COVER: Viper.Core.Object.Equals
-' COVER: Viper.Core.Object.HashCode
-' COVER: Viper.Core.Object.ToString
+' COVER: Zanna.String.IsEmpty
+' COVER: Zanna.String.get_Length
+' COVER: Zanna.String.Asc
+' COVER: Zanna.String.Chr
+' COVER: Zanna.String.Compare
+' COVER: Zanna.String.CompareIgnoreCase
+' COVER: Zanna.String.Concat
+' COVER: Zanna.String.Count
+' COVER: Zanna.String.EndsWith
+' COVER: Zanna.String.Reverse
+' COVER: Zanna.String.Contains
+' COVER: Zanna.String.IndexOf
+' COVER: Zanna.String.IndexOfFrom
+' COVER: Zanna.String.Left
+' COVER: Zanna.String.Mid
+' COVER: Zanna.String.MidLen
+' COVER: Zanna.String.PadLeft
+' COVER: Zanna.String.PadRight
+' COVER: Zanna.String.Repeat
+' COVER: Zanna.String.Replace
+' COVER: Zanna.String.Right
+' COVER: Zanna.String.Split
+' COVER: Zanna.String.StartsWith
+' COVER: Zanna.String.Substring
+' COVER: Zanna.String.ToLower
+' COVER: Zanna.String.ToUpper
+' COVER: Zanna.String.Trim
+' COVER: Zanna.String.TrimEnd
+' COVER: Zanna.String.TrimStart
+' COVER: Zanna.Core.Object.Equals
+' COVER: Zanna.Core.Object.HashCode
+' COVER: Zanna.Core.Object.ToString
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
-    IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Core.Diagnostics.Assert(FALSE, msg)
+    IF Zanna.Math.Abs(actual - expected) > eps THEN
+        Zanna.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
 DIM s AS STRING
 s = "  AbCd  "
-Viper.Core.Diagnostics.Assert(("".IsEmpty), "str.empty")
-Viper.Core.Diagnostics.AssertEq(("abcd").Length, 4, "str.len")
+Zanna.Core.Diagnostics.Assert(("".IsEmpty), "str.empty")
+Zanna.Core.Diagnostics.AssertEq(("abcd").Length, 4, "str.len")
 
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Trim(s), "AbCd", "str.trim")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.TrimStart(s), "AbCd  ", "str.trimstart")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.TrimEnd(s), "  AbCd", "str.trimend")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Left("abcd", 2), "ab", "str.left")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Right("abcd", 2), "cd", "str.right")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Mid("abcd", 2), "bcd", "str.mid")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.MidLen("abcd", 2, 2), "bc", "str.midlen")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Substring("abcd", 1, 2), "bc", "str.substr")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Concat("ab", "cd"), "abcd", "str.concat")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.ToUpper("aB"), "AB", "str.upper")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.ToLower("aB"), "ab", "str.lower")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Replace("a-b-a", "-", "+"), "a+b+a", "str.replace")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.PadLeft("7", 3, "0"), "007", "str.padleft")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.PadRight("7", 3, "."), "7..", "str.padright")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Repeat("ab", 3), "ababab", "str.repeat")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Reverse("abc"), "cba", "str.flip")
-Viper.Core.Diagnostics.AssertEqStr(Viper.String.Chr(66), "B", "str.chr")
-Viper.Core.Diagnostics.AssertEq(Viper.String.Asc("A"), 65, "str.asc")
-Viper.Core.Diagnostics.AssertEq(Viper.String.IndexOf("abcd", "cd"), 3, "str.indexof")
-Viper.Core.Diagnostics.AssertEq(Viper.String.IndexOfFrom("ababa", 2, "ba"), 2, "str.indexoffrom")
-Viper.Core.Diagnostics.AssertEq(Viper.String.Count("abab", "ab"), 2, "str.count")
-Viper.Core.Diagnostics.Assert(Viper.String.Contains("hello", "ell"), "str.has")
-Viper.Core.Diagnostics.Assert(Viper.String.StartsWith("hello", "he"), "str.startswith")
-Viper.Core.Diagnostics.Assert(Viper.String.EndsWith("hello", "lo"), "str.endswith")
-Viper.Core.Diagnostics.AssertEq(Viper.String.Compare("a", "b"), -1, "str.cmp")
-Viper.Core.Diagnostics.AssertEq(Viper.String.CompareIgnoreCase("A", "a"), 0, "str.cmpnocase")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Trim(s), "AbCd", "str.trim")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.TrimStart(s), "AbCd  ", "str.trimstart")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.TrimEnd(s), "  AbCd", "str.trimend")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Left("abcd", 2), "ab", "str.left")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Right("abcd", 2), "cd", "str.right")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Mid("abcd", 2), "bcd", "str.mid")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.MidLen("abcd", 2, 2), "bc", "str.midlen")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Substring("abcd", 1, 2), "bc", "str.substr")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Concat("ab", "cd"), "abcd", "str.concat")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.ToUpper("aB"), "AB", "str.upper")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.ToLower("aB"), "ab", "str.lower")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Replace("a-b-a", "-", "+"), "a+b+a", "str.replace")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.PadLeft("7", 3, "0"), "007", "str.padleft")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.PadRight("7", 3, "."), "7..", "str.padright")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Repeat("ab", 3), "ababab", "str.repeat")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Reverse("abc"), "cba", "str.flip")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.String.Chr(66), "B", "str.chr")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.Asc("A"), 65, "str.asc")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.IndexOf("abcd", "cd"), 3, "str.indexof")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.IndexOfFrom("ababa", 2, "ba"), 2, "str.indexoffrom")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.Count("abab", "ab"), 2, "str.count")
+Zanna.Core.Diagnostics.Assert(Zanna.String.Contains("hello", "ell"), "str.has")
+Zanna.Core.Diagnostics.Assert(Zanna.String.StartsWith("hello", "he"), "str.startswith")
+Zanna.Core.Diagnostics.Assert(Zanna.String.EndsWith("hello", "lo"), "str.endswith")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.Compare("a", "b"), -1, "str.cmp")
+Zanna.Core.Diagnostics.AssertEq(Zanna.String.CompareIgnoreCase("A", "a"), 0, "str.cmpnocase")
 
-DIM parts AS Viper.Collections.Seq
-parts = Viper.String.Split("a,b,c", ",")
-Viper.Core.Diagnostics.AssertEq(parts.Count, 3, "str.split.len")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(parts.Get(0)), "a", "str.split.get")
+DIM parts AS Zanna.Collections.Seq
+parts = Zanna.String.Split("a,b,c", ",")
+Zanna.Core.Diagnostics.AssertEq(parts.Count, 3, "str.split.len")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Core.Box.ToStr(parts.Get(0)), "a", "str.split.get")
 
-DIM objA AS Viper.Collections.List
-DIM objB AS Viper.Collections.List
-objA = NEW Viper.Collections.List()
-objB = NEW Viper.Collections.List()
-Viper.Core.Diagnostics.Assert(Viper.Core.Object.Equals(objA, objA), "obj.equals.self")
-Viper.Core.Diagnostics.Assert(Viper.Core.Object.Equals(objA, objB) = FALSE, "obj.equals.other")
-Viper.Core.Diagnostics.Assert(Viper.Core.Object.ToString(objA) <> "", "obj.tostring")
-Viper.Core.Diagnostics.Assert(Viper.Core.Object.HashCode(objA) <> 0, "obj.hash")
+DIM objA AS Zanna.Collections.List
+DIM objB AS Zanna.Collections.List
+objA = NEW Zanna.Collections.List()
+objB = NEW Zanna.Collections.List()
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Object.Equals(objA, objA), "obj.equals.self")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Object.Equals(objA, objB) = FALSE, "obj.equals.other")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Object.ToString(objA) <> "", "obj.tostring")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Object.HashCode(objA) <> 0, "obj.hash")
 
 PRINT "RESULT: ok"
 END

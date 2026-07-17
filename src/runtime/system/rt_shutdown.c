@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_shutdown.c
-// Purpose: Implements Viper.System.Shutdown's poll-based graceful shutdown
+// Purpose: Implements Zanna.System.Shutdown's poll-based graceful shutdown
 //          request bitmask.
 // Key invariants: Polling is cooperative and signal-safe work is kept in the
 //                 VM/platform layer; this module only stores ordinary atomic

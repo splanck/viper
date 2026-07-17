@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,11 +30,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 struct AllocationResult;
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 struct VirtualAllocation; // Forward declaration defined in Allocator.hpp.
 
@@ -146,4 +146,4 @@ class Spiller {
     [[nodiscard]] Operand makeFrameOperand(RegClass cls, int slot) const;
 };
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

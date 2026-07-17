@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_constants.c
-// Purpose: Implement allocation-free scalar getters for Viper.GUI typed constants.
+// Purpose: Implement allocation-free scalar getters for Zanna.GUI typed constants.
 // Key invariants:
 //   - Numeric values are the public runtime ABI, not inferred toolkit enum ordinals.
 //   - Getters have identical behavior in graphics-enabled and headless runtime builds.
@@ -13,7 +13,7 @@
 //   - No getter allocates, retains, releases, or references process-global state.
 // Links: src/runtime/graphics/gui/rt_gui_constants.h,
 //        src/il/runtime/defs/api/gui_layout.def,
-//        docs/viperlib/gui/application.md
+//        docs/zannalib/gui/application.md
 //
 //===----------------------------------------------------------------------===//
 

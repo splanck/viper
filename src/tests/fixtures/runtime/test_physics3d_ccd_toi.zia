@@ -1,9 +1,9 @@
 module TestPhysics3DCcdToi;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Convert;
 
 // Swept-CCD anti-tunneling coverage: a fast small sphere must be stopped by a
 // thin static wall when UseCcd is on, at multiple speeds and wall thicknesses.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 //   - VG_IMAGE_SCALE_FIT scales uniformly to fit inside the widget bounds.
 //   - VG_IMAGE_SCALE_FILL scales uniformly to fill, cropping excess pixels.
 //   - opacity is clamped to [0.0, 1.0]; 0.0 = fully transparent, 1.0 = opaque.
-//   - paint respects the canvas clip rectangle reported by ViperGFX.
+//   - paint respects the canvas clip rectangle reported by ZannaGFX.
 //   - Failed validation/allocation never replaces or partially mutates pixels.
 //   - Nearest and bilinear resize output is deterministic and cacheable.
 // Ownership/Lifetime:

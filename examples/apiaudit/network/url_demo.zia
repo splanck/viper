@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Network.Url
+// API Audit: Zanna.Network.Url
 // =============================================================================
 // Tests: Parse, New, Scheme, Host, Port, Path, Query, Fragment, User, Pass,
 //        Authority, HostPort, Full, SetQueryParam, GetQueryParam,
@@ -8,10 +8,10 @@
 // =============================================================================
 
 module UrlDemo;
-bind Viper.Terminal;
-bind Viper.Network.Url as Url;
+bind Zanna.Terminal;
+bind Zanna.Network.Url as Url;
 func start() {
-    Say("=== API Audit: Viper.Network.Url ===");
+    Say("=== API Audit: Zanna.Network.Url ===");
 
     // --- Parse ---
     Say("--- Parse ---");

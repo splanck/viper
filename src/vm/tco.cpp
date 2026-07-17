@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Tail-call optimisation (TCO) for reusing the current execution frame.
 //
 // Key invariants:
-//   - VIPER_VM_TAILCALL compile flag controls TCO availability.
+//   - ZANNA_VM_TAILCALL compile flag controls TCO availability.
 //   - Callee must have a valid entry block; null callee or empty blocks fail.
 //   - Argument arity must match entry block parameter count.
 //   - String ownership follows retain/release semantics.
@@ -54,7 +54,7 @@ namespace il::vm {
 /// @param args Arguments to seed into the callee's entry parameters.
 /// @return True if the tail call was performed; false if not eligible.
 bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot> args) {
-#if !defined(VIPER_VM_TAILCALL) || !VIPER_VM_TAILCALL
+#if !defined(ZANNA_VM_TAILCALL) || !ZANNA_VM_TAILCALL
     (void)vm;
     (void)callee;
     (void)args;

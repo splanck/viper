@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: tests/runtime/RTCryptoTests.cpp
 // Purpose: Validate HMAC, PBKDF2, and secure random functions.
 // Key invariants: Results match known test vectors (RFC 2202, RFC 6070).
-// Links: docs/viperlib/crypto.md
+// Links: docs/zannalib/crypto.md
 //
 //===----------------------------------------------------------------------===//
 

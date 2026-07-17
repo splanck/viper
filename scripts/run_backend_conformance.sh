@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 #     output (rasterizer determinism), needing no display or GPU.
 #   - GPU backends are compared with tolerance for AA/precision variance.
 # Ownership/Lifetime:
-#   - Writes only /tmp/viper_conformance_*.png scratch images.
+#   - Writes only /tmp/zanna_conformance_*.png scratch images.
 # Links: src/tests/graphics_conformance/conformance_scene.zia,
 #        src/tests/graphics_conformance/conformance_compare.zia
 #
@@ -70,18 +70,18 @@ render() {
     # render <backend> <out.png> [postfx01]
     local backend="$1" out="$2" postfx="${3:-0}"
     echo "== render backend=${backend} postfx=${postfx} -> ${out}"
-    VIPER_3D_BACKEND="${backend}" \
-    VIPER_CONFORMANCE_OUT="${out}" \
-    VIPER_CONFORMANCE_POSTFX="${postfx}" \
+    ZANNA_3D_BACKEND="${backend}" \
+    ZANNA_CONFORMANCE_OUT="${out}" \
+    ZANNA_CONFORMANCE_POSTFX="${postfx}" \
         "${ZIA}" "${SCENE}" | grep -E "CONFORMANCE|RESULT" || true
 }
 
 compare_images() {
     # compare_images <a.png> <b.png> <exact01>
     local a="$1" b="$2" exact="$3"
-    VIPER_CONFORMANCE_A="${a}" \
-    VIPER_CONFORMANCE_B="${b}" \
-    VIPER_CONFORMANCE_EXACT="${exact}" \
+    ZANNA_CONFORMANCE_A="${a}" \
+    ZANNA_CONFORMANCE_B="${b}" \
+    ZANNA_CONFORMANCE_EXACT="${exact}" \
         "${ZIA}" "${COMPARE}"
 }
 
@@ -90,15 +90,15 @@ fail=0
 if [[ "${SELF_CHECK}" -eq 1 ]]; then
     # Display-free determinism gate: the software rasterizer must reproduce the
     # scene exactly across runs. Runs standalone (used by the smoke test).
-    render software /tmp/viper_conformance_sw_a.png 0
-    render software /tmp/viper_conformance_sw_b.png 0
-    if cmp -s /tmp/viper_conformance_sw_a.png /tmp/viper_conformance_sw_b.png; then
+    render software /tmp/zanna_conformance_sw_a.png 0
+    render software /tmp/zanna_conformance_sw_b.png 0
+    if cmp -s /tmp/zanna_conformance_sw_a.png /tmp/zanna_conformance_sw_b.png; then
         echo "SELF-CHECK: software renders are byte-identical"
     else
         echo "SELF-CHECK: software PNG bytes differ; checking pixels" >&2
     fi
-    if ! compare_images /tmp/viper_conformance_sw_a.png \
-                        /tmp/viper_conformance_sw_b.png 1 | tee /dev/stderr |
+    if ! compare_images /tmp/zanna_conformance_sw_a.png \
+                        /tmp/zanna_conformance_sw_b.png 1 | tee /dev/stderr |
             grep -q "RESULT: ok"; then
         echo "FAIL: software rasterizer is not deterministic" >&2
         echo "RESULT: fail"
@@ -113,11 +113,11 @@ variants="0"
 for postfx in ${variants}; do
     suffix=""
     [[ "${postfx}" == "1" ]] && suffix="_postfx"
-    golden="/tmp/viper_conformance_software${suffix}.png"
+    golden="/tmp/zanna_conformance_software${suffix}.png"
     render software "${golden}" "${postfx}"
     for backend in ${BACKENDS}; do
         [[ "${backend}" == "software" ]] && continue
-        candidate="/tmp/viper_conformance_${backend}${suffix}.png"
+        candidate="/tmp/zanna_conformance_${backend}${suffix}.png"
         render "${backend}" "${candidate}" "${postfx}"
         if [[ ! -f "${candidate}" ]]; then
             echo "FAIL: backend ${backend} produced no image" >&2

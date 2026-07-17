@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -56,7 +56,7 @@
 // ------------------------------
 // "Is the player overlapping any enemy?" naively walks every
 // enemy.  At a few dozen enemies that's fine; for a swarm
-// fight it gets expensive.  We maintain a `Viper.Game.Quadtree`
+// fight it gets expensive.  We maintain a `Zanna.Game.Quadtree`
 // that re-bins enemies each frame; queries become O(log N).
 // Worth it for the boss rooms with 30+ adds.
 //
@@ -100,9 +100,9 @@
 
 module enemy;
 
-bind Viper.Graphics;
-bind Viper.Game;
-bind Viper.Game.Raycast as Raycast;
+bind Zanna.Graphics;
+bind Zanna.Game;
+bind Zanna.Game.Raycast as Raycast;
 bind "./config";
 bind "./difficulty";
 bind "./level";

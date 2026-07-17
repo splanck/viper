@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -63,7 +63,7 @@ int detect_audio_format(const char *filepath) {
 
 /// @brief Pack decoded PCM samples into a self-contained WAV byte buffer.
 /// @details Builds a 44-byte RIFF/WAVE header followed by the PCM data so
-///          the result can be fed back to the WAV-based ViperAUD loader.
+///          the result can be fed back to the WAV-based ZannaAUD loader.
 ///          Used by the OGG/MP3 paths to convert decoded streams into WAV
 ///          form for a single uniform sound-loading code path. Validates
 ///          channels (1 or 2 only) and sample rate (`> 0` and

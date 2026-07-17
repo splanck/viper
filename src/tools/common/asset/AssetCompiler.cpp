@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/asset/AssetCompiler.cpp
 // Purpose: Build-time asset compilation. Resolves embed/pack directives,
-//          enumerates directories, reads file data, and produces VPA blobs
-//          and standalone .vpa pack files.
+//          enumerates directories, reads file data, and produces ZPAK blobs
+//          and standalone .zpak pack files.
 //
 // Key invariants:
 //   - Source paths are resolved relative to ProjectConfig::rootDir.
@@ -17,16 +17,16 @@
 //   - Empty projects produce an empty AssetBundle (no error).
 //
 // Ownership/Lifetime:
-//   - File data is read into temporary vectors and consumed by VpaWriter.
+//   - File data is read into temporary vectors and consumed by ZpakWriter.
 //   - Output pack files are written to the specified output directory.
 //
-// Links: VpaWriter.hpp, AssetCompiler.hpp, project_loader.hpp
+// Links: ZpakWriter.hpp, AssetCompiler.hpp, project_loader.hpp
 //
 //===----------------------------------------------------------------------===//
 
 #include "AssetCompiler.hpp"
 
-#include "VpaWriter.hpp"
+#include "ZpakWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "tools/common/packaging/PkgHash.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
@@ -49,7 +49,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::asset {
+namespace zanna::asset {
 namespace {
 constexpr std::uintmax_t kMaxAssetFileBytes = 256ULL * 1024ULL * 1024ULL;
 constexpr std::size_t kMaxAssetCacheEntries = 64;
@@ -165,8 +165,8 @@ static std::string contentHashForFile(const fs::path &path) {
     if (auto cached = lookupCachedAssetFile(path, size, mtime))
         return cached->hash;
     auto data = readAssetFileUncached(path, size);
-    std::string hash = data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
-                                    : viper::pkg::sha256Hex(data.data(), data.size());
+    std::string hash = data.empty() ? zanna::pkg::sha256Hex(nullptr, 0)
+                                    : zanna::pkg::sha256Hex(data.data(), data.size());
     rememberCachedAssetFile(path, size, mtime, hash, std::move(data));
     return hash;
 }
@@ -211,13 +211,13 @@ static void appendSourceFingerprint(const fs::path &rootDir,
                                     bool compressed,
                                     std::string &key) {
     fs::path absPath =
-        viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
+        zanna::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
     key += compressed ? "C:" : "U:";
     std::error_code ec;
     if (fs::is_directory(absPath, ec)) {
         std::vector<fs::path> files;
-        viper::pkg::safeDirectoryIterateResolved(
-            absPath, rootDir, [&](const viper::pkg::SafeDirectoryEntry &entry) {
+        zanna::pkg::safeDirectoryIterateResolved(
+            absPath, rootDir, [&](const zanna::pkg::SafeDirectoryEntry &entry) {
                 if (entry.regularFile)
                     files.push_back(entry.resolvedPath);
             });
@@ -279,14 +279,14 @@ static std::uintmax_t &assetBundleCacheBytes() {
 ///          limit enforced by asset validation. Reading here keeps cache
 ///          validation self-contained and catches same-size external rewrites.
 static std::string hashGeneratedPackFile(const fs::path &path) {
-    const auto data = viper::pkg::readFile(path.string());
-    return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
-                        : viper::pkg::sha256Hex(data.data(), data.size());
+    const auto data = zanna::pkg::readFile(path.string());
+    return data.empty() ? zanna::pkg::sha256Hex(nullptr, 0)
+                        : zanna::pkg::sha256Hex(data.data(), data.size());
 }
 
 /// @brief Return true when asset compilation should print progress messages.
 static bool assetVerboseEnabled() {
-    const char *value = std::getenv("VIPER_ASSET_VERBOSE");
+    const char *value = std::getenv("ZANNA_ASSET_VERBOSE");
     return value && value[0] != '\0' && std::string_view(value) != "0";
 }
 
@@ -325,8 +325,8 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
         err = ex.what();
         return false;
     }
-    std::string hash = out.empty() ? viper::pkg::sha256Hex(nullptr, 0)
-                                   : viper::pkg::sha256Hex(out.data(), out.size());
+    std::string hash = out.empty() ? zanna::pkg::sha256Hex(nullptr, 0)
+                                   : zanna::pkg::sha256Hex(out.data(), out.size());
     rememberCachedAssetFile(path, size, mtime, std::move(hash), out);
     return true;
 }
@@ -344,8 +344,8 @@ static bool enumerateDir(const fs::path &dir,
                          std::vector<std::pair<std::string, fs::path>> &entries,
                          std::string &err) {
     try {
-        viper::pkg::safeDirectoryIterateResolved(
-            dir, rootDir, [&](const viper::pkg::SafeDirectoryEntry &entry) {
+        zanna::pkg::safeDirectoryIterateResolved(
+            dir, rootDir, [&](const zanna::pkg::SafeDirectoryEntry &entry) {
                 if (!entry.regularFile)
                     return;
                 std::error_code ec;
@@ -382,9 +382,9 @@ static bool resolveAssetSourcePath(const std::string &sourcePath,
                                    std::string &cleanPath,
                                    std::string &err) {
     try {
-        cleanPath = viper::pkg::sanitizePackageRelativePath(sourcePath, "asset source path");
+        cleanPath = zanna::pkg::sanitizePackageRelativePath(sourcePath, "asset source path");
         resolvedPath =
-            viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
+            zanna::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
     } catch (const std::exception &e) {
         err = e.what();
         return false;
@@ -409,7 +409,7 @@ static bool validateAssetSources(const il::tools::common::ProjectConfig &config,
     }
     for (const auto &group : config.packGroups) {
         try {
-            (void)viper::pkg::normalizeExecName(group.name);
+            (void)zanna::pkg::normalizeExecName(group.name);
         } catch (const std::exception &e) {
             err = std::string("invalid asset pack name '") + group.name + "': " + e.what();
             return false;
@@ -422,18 +422,18 @@ static bool validateAssetSources(const il::tools::common::ProjectConfig &config,
     return true;
 }
 
-// ─── Add entries to a VpaWriter ─────────────────────────────────────────────
+// ─── Add entries to a ZpakWriter ─────────────────────────────────────────────
 
-/// @brief Resolve a source path (file or dir) and add entries to a VpaWriter.
+/// @brief Resolve a source path (file or dir) and add entries to a ZpakWriter.
 /// @param sourcePath  Path relative to project root.
 /// @param rootDir     Absolute project root.
-/// @param writer      VPA writer to add entries to.
+/// @param writer      ZPAK writer to add entries to.
 /// @param compress    Whether to compress entries.
 /// @param err         Set on error.
 /// @return true on success.
 static bool addSourceToWriter(const std::string &sourcePath,
                               const fs::path &rootDir,
-                              VpaWriter &writer,
+                              ZpakWriter &writer,
                               bool compress,
                               std::string &err) {
     fs::path absPath;
@@ -487,8 +487,8 @@ static bool addSourceToWriter(const std::string &sourcePath,
 /// @details Validates all sources first, then consults a process-local cache
 ///          keyed by assetCacheKey() and guarded by a static mutex: a hit whose
 ///          pack files still exist on disk is returned without rebuilding. On a
-///          miss, embed directives are gathered into a single in-memory VPA blob
-///          and each pack group is written to `<outputDir>/<project>-<pack>.vpa`,
+///          miss, embed directives are gathered into a single in-memory ZPAK blob
+///          and each pack group is written to `<outputDir>/<project>-<pack>.zpak`,
 ///          and the resulting bundle is cached before returning. See the header
 ///          for the parameter and return contract.
 std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig &config,
@@ -544,10 +544,10 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
     AssetBundle bundle;
     fs::path rootDir(config.rootDir);
 
-    // ── 1. Process embed directives → VPA blob for .rodata ──
+    // ── 1. Process embed directives → ZPAK blob for .rodata ──
 
     if (!config.embedAssets.empty()) {
-        VpaWriter embedWriter;
+        ZpakWriter embedWriter;
 
         for (const auto &entry : config.embedAssets) {
             if (!addSourceToWriter(entry.sourcePath, rootDir, embedWriter, false, err))
@@ -563,10 +563,10 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
         }
     }
 
-    // ── 2. Process pack groups → .vpa files ──
+    // ── 2. Process pack groups → .zpak files ──
 
     for (const auto &group : config.packGroups) {
-        VpaWriter packWriter;
+        ZpakWriter packWriter;
 
         for (const auto &src : group.sources) {
             if (!addSourceToWriter(src, rootDir, packWriter, group.compressed, err))
@@ -579,36 +579,36 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
         std::string safeProjectName;
         std::string safeGroupName;
         try {
-            safeProjectName = viper::pkg::normalizeExecName(config.name);
-            safeGroupName = viper::pkg::normalizeExecName(group.name);
+            safeProjectName = zanna::pkg::normalizeExecName(config.name);
+            safeGroupName = zanna::pkg::normalizeExecName(group.name);
         } catch (const std::exception &e) {
             err = e.what();
             return std::nullopt;
         }
 
-        // Output path: <outputDir>/<projectName>-<packName>.vpa
-        std::string vpaName = safeProjectName + "-" + safeGroupName + ".vpa";
-        fs::path vpaPath = fs::path(outputDir) / vpaName;
+        // Output path: <outputDir>/<projectName>-<packName>.zpak
+        std::string zpakName = safeProjectName + "-" + safeGroupName + ".zpak";
+        fs::path zpakPath = fs::path(outputDir) / zpakName;
 
-        if (!packWriter.writeToFile(vpaPath.string(), err))
+        if (!packWriter.writeToFile(zpakPath.string(), err))
             return std::nullopt;
 
-        bundle.packFilePaths.push_back(vpaPath.string());
+        bundle.packFilePaths.push_back(zpakPath.string());
         std::error_code sizeEc;
-        const auto vpaSize = fs::file_size(vpaPath, sizeEc);
+        const auto zpakSize = fs::file_size(zpakPath, sizeEc);
         if (sizeEc) {
-            err = "cannot stat generated asset pack: " + vpaPath.string();
+            err = "cannot stat generated asset pack: " + zpakPath.string();
             return std::nullopt;
         }
-        bundle.packFileSizes.push_back(vpaSize);
+        bundle.packFileSizes.push_back(zpakSize);
         try {
-            bundle.packFileHashes.push_back(hashGeneratedPackFile(vpaPath));
+            bundle.packFileHashes.push_back(hashGeneratedPackFile(zpakPath));
         } catch (const std::exception &ex) {
             err = "cannot hash generated asset pack: " + std::string(ex.what());
             return std::nullopt;
         }
         if (assetVerboseEnabled())
-            std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName
+            std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << zpakName
                       << "\n";
     }
 
@@ -639,16 +639,16 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
 // ─── writeAssetBlobObject ───────────────────────────────────────────────────
 
-/// @brief Emit a native .o exposing the VPA blob as two .rodata symbols.
-/// @details Builds an object file (via Viper's own ObjectFileWriter for the host
+/// @brief Emit a native .o exposing the ZPAK blob as two .rodata symbols.
+/// @details Builds an object file (via Zanna's own ObjectFileWriter for the host
 ///          format/arch, so no external assembler is needed) containing an empty
-///          .text and a .rodata section defining `viper_asset_blob` (the bytes)
-///          and `viper_asset_blob_size` (a uint64 length). See the header for the
+///          .text and a .rodata section defining `zanna_asset_blob` (the bytes)
+///          and `zanna_asset_blob_size` (a uint64 length). See the header for the
 ///          parameter and return contract.
 bool writeAssetBlobObject(const std::vector<uint8_t> &blob,
                           const std::string &outPath,
                           std::string &err) {
-    using namespace viper::codegen::objfile;
+    using namespace zanna::codegen::objfile;
 
     // Create an empty .text section (no code).
     CodeSection text;
@@ -656,13 +656,13 @@ bool writeAssetBlobObject(const std::vector<uint8_t> &blob,
     // Create .rodata section with blob data and size symbol.
     CodeSection rodata;
     rodata.alignTo(16);
-    rodata.defineSymbol("viper_asset_blob", SymbolBinding::Global, SymbolSection::Rodata);
+    rodata.defineSymbol("zanna_asset_blob", SymbolBinding::Global, SymbolSection::Rodata);
     rodata.emitBytes(blob.data(), blob.size());
     rodata.alignTo(8);
-    rodata.defineSymbol("viper_asset_blob_size", SymbolBinding::Global, SymbolSection::Rodata);
+    rodata.defineSymbol("zanna_asset_blob_size", SymbolBinding::Global, SymbolSection::Rodata);
     rodata.emit64LE(static_cast<uint64_t>(blob.size()));
 
-    // Write using Viper's own object file writer for the host platform.
+    // Write using Zanna's own object file writer for the host platform.
     auto writer = createObjectFileWriter(detectHostFormat(), detectHostArch());
     if (!writer) {
         err = "no object file writer for this platform";
@@ -678,4 +678,4 @@ bool writeAssetBlobObject(const std::vector<uint8_t> &blob,
     return true;
 }
 
-} // namespace viper::asset
+} // namespace zanna::asset

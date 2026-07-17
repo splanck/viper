@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Apply peephole optimisations to all MIR functions after register allocation.
 class PeepholePass final : public Pass {
@@ -41,4 +41,4 @@ class PeepholePass final : public Pass {
     Mode mode_{Mode::Full};
 };
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

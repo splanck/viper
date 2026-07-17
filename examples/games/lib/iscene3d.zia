@@ -15,7 +15,7 @@ module iscene3d;
 //                           Canvas3D.DrawText2D / DrawRect2D / widgets
 // ============================================================================
 
-bind Viper.Game3D;
+bind Zanna.Game3D;
 
 interface IScene3D {
     func onEnter(world: World3D);

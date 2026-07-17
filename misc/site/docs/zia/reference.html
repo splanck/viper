@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zia Language Reference — Viper</title>
-  <meta name="description" content="Viper documentation: Zia Language Reference">
+  <title>Zia Language Reference — Zanna</title>
+  <meta name="description" content="Zanna documentation: Zia Language Reference">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -71,7 +71,7 @@
 <li><strong>Exception handling</strong>: <code>try</code>/<code>catch</code>/<code>finally</code> with structured error propagation</li>
 <li><strong>Modules</strong>: File-based modules with bind system</li>
 <li><strong>C-like syntax</strong>: Familiar braces, semicolons, and operators</li>
-<li><strong>Runtime library</strong>: Full access to Viper.* classes</li>
+<li><strong>Runtime library</strong>: Full access to Zanna.* classes</li>
 </ul>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
@@ -95,7 +95,7 @@
 <p>---</p>
 <h2 id="program-structure">Program Structure</h2>
 <p>A Zia source file has the following structure:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module ModuleName;
 
 // Bind declarations (bring other modules into scope)
@@ -120,7 +120,7 @@ func start() { ... }
 </code></pre>
 <h3 id="entry-point">Entry Point</h3>
 <p>The <code>start()</code> function is the program entry point. It takes no parameters and returns void:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func start() {
     // Program execution begins here
 }
@@ -128,7 +128,7 @@ func start() {
 <p>---</p>
 <h2 id="lexical-elements">Lexical Elements</h2>
 <h3 id="comments">Comments</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 // Single-line comment
 
 /* Multi-line
@@ -141,20 +141,20 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 </code></pre>
 <h3 id="literals">Literals</h3>
 <h4 id="integer-literals">Integer Literals</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 42          // Decimal
 0xFF        // Hexadecimal
 0b1010      // Binary
 ()          // Unit literal (void value)
 </code></pre>
 <h4 id="floating-point-literals">Floating-Point Literals</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 3.14159     // Decimal
 1e10        // Scientific notation
 2.5e-3      // Scientific with negative exponent
 </code></pre>
 <h4 id="string-literals">String Literals</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 &quot;Hello, World!&quot;           // Basic string
 &quot;Line 1\nLine 2&quot;          // With escape sequences
 &quot;Value: ${expression}&quot;    // String interpolation
@@ -206,12 +206,12 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 </tr>
 </tbody></table>
 <h4 id="boolean-literals">Boolean Literals</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 true
 false
 </code></pre>
 <h4 id="null-literal">Null Literal</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 null    // Used with optional types
 </code></pre>
 <p>---</p>
@@ -250,14 +250,14 @@ null    // Used with optional types
 </tbody></table>
 <h3 id="optional-types">Optional Types</h3>
 <p>Optional types can hold a value or <code>null</code>:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 </code></pre>
 <p>Optional values support safe access with <code>?.</code>, defaults with <code>??</code>, and force-unwrap with <code>!</code>.</p>
 <h3 id="generic-types">Generic Types</h3>
 <p>Parameterized types with type arguments:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 List[Integer]           // List of integers
 List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
@@ -265,40 +265,40 @@ Map[String, Integer]    // Map from strings to integers
 <p>Map keys are restricted to <code>String</code>.</p>
 <h3 id="class-types">Class Types</h3>
 <p>Reference types defined with the <code>class</code> keyword (renamed from <code>entity</code> in v0.2.4):</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var player: Player = new Player();
 </code></pre>
 <h3 id="struct-types">Struct Types (Value Types)</h3>
 <p>Copy-semantics types defined with the <code>struct</code> keyword (renamed from <code>value</code> in v0.2.4):</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var point: Point;
 </code></pre>
 <h3 id="tuple-types">Tuple Types</h3>
 <p>Tuple types group multiple values into a single type:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var pair: (Integer, String) = (42, &quot;hello&quot;);
 var x = pair.0;     // Access by index
 </code></pre>
 <h3 id="fixed-size-array-types">Fixed-Size Array Types</h3>
 <p>Arrays with a compile-time size:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var grid: Integer[100];     // Fixed array of 100 integers
 </code></pre>
 <h3 id="set-types">Set Types</h3>
 <p>Sets hold unique values. Created with set literals or the <code>Set</code> constructor:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var s: Set[Integer] = {1, 2, 3};
 </code></pre>
 <h3 id="function-types">Function Types</h3>
 <p>Function signatures as types:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 (Integer, Integer) -&gt; Integer   // Function taking two ints, returning int
 () -&gt; void                      // Function taking nothing, returning void
 </code></pre>
 <p>---</p>
 <h2 id="expressions">Expressions</h2>
 <h3 id="literals">Literals</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 42                  // Integer literal
 3.14                // Number literal
 &quot;hello&quot;             // String literal
@@ -306,7 +306,7 @@ true                // Boolean literal
 null                // Null literal
 </code></pre>
 <h3 id="identifiers">Identifiers</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 variableName        // Variable reference
 </code></pre>
 <h3 id="unary-operators">Unary Operators</h3>
@@ -338,8 +338,8 @@ variableName        // Variable reference
 </tbody></table>
 <h3 id="function-references">Function References</h3>
 <p>The <code>&amp;</code> operator obtains a reference (pointer) to a function, which can be stored in a variable or passed as an argument:</p>
-<pre><code data-lang="viper">
-bind Viper.Threads;
+<pre><code data-lang="zanna">
+bind Zanna.Threads;
 
 func handler(arg: Ptr) {
     // Handle something
@@ -361,7 +361,7 @@ func start() {
 <ul>
 <li>The <code>&amp;</code> operator can only be applied to function names, not variables or expressions</li>
 <li>Function references are stored as <code>Ptr</code> type</li>
-<li>Use with <code>Viper.Threads.Thread.Start()</code> to spawn threads with custom entry points</li>
+<li>Use with <code>Zanna.Threads.Thread.Start()</code> to spawn threads with custom entry points</li>
 </ul>
 <h3 id="binary-operators">Binary Operators</h3>
 <h4 id="arithmetic">Arithmetic</h4>
@@ -487,11 +487,11 @@ func start() {
 </tbody></table>
 <p>Compound assignment operators desugar to <code>a = a op b</code> at parse time. The left-hand side must be a mutable variable, field, or indexed expression.</p>
 <h3 id="ternary-operator">Ternary Operator</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 condition ? thenValue : elseValue
 </code></pre>
 <h3 id="match-expression">Match Expression</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var result = match value {
     0 =&gt; &quot;zero&quot;;
     n if n &gt; 0 =&gt; &quot;positive&quot;;
@@ -499,12 +499,12 @@ var result = match value {
 };
 </code></pre>
 <h3 id="field-access">Field Access</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 object.field            // Access field
 object.method()         // Call method
 </code></pre>
 <h3 id="optional-chaining-and-unwrapping">Optional Chaining and Unwrapping</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 object?.field           // Null if object is null, otherwise optional field value
 object?.field?.subfield // Chained optional access
 value ?? defaultValue   // Returns defaultValue if value is null
@@ -513,18 +513,18 @@ value!                  // Force-unwrap: converts T? to T, traps if null
 <p>The force-unwrap operator <code>!</code> asserts that an optional value is non-null and extracts</p>
 <p>the inner value. If the value is null at runtime, the program terminates. Use after</p>
 <p>a null guard or when you are certain the value is non-null:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 if maybePage == null { return null; }
 var page = maybePage!;              // Safe: null was handled above
 </code></pre>
 <h3 id="indexing">Indexing</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 list[index]             // Access list element
 map[&quot;key&quot;]              // Access map value (keys are String)
 </code></pre>
 <h3 id="block-expressions">Block Expressions</h3>
 <p>A block can produce a value when the last statement is an expression without a trailing semicolon:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var x = {
     var a = 10;
     var b = 20;
@@ -533,37 +533,37 @@ var x = {
 </code></pre>
 <h3 id="if-expressions">If Expressions</h3>
 <p><code>if</code>/<code>else</code> can be used as value-producing expressions:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var sign = if x &gt; 0 { &quot;positive&quot; } else { &quot;non-positive&quot; };
 </code></pre>
 <p>Both branches must be present and produce the same type.</p>
 <h3 id="try-expression">Try Expression</h3>
 <p>The postfix <code>?</code> operator propagates null or error values from an expression. If the operand is null (or an error), the enclosing function returns immediately with that null/error. Otherwise, the inner value is unwrapped:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func findUser(id: Integer) -&gt; User? {
     var record = database.lookup(id)?;  // Returns null if lookup returns null
     return record.toUser();
 }
 </code></pre>
 <h3 id="function-method-calls">Function/Method Calls</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 functionName(arg1, arg2)
 object.methodName(arg1)
 </code></pre>
 <h4 id="named-arguments">Named Arguments</h4>
 <p>Arguments can be passed by name using <code>name: value</code> syntax:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -&gt; Rect { ... }
 
 var r = createRect(x: 10, y: 20, w: 100, h: 50);
 </code></pre>
 <h3 id="object-creation">Object Creation</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 new EntityType()        // Create class instance
 </code></pre>
 <h3 id="value-type-initialization-struct-literals">Value Type Initialization (Struct Literals)</h3>
 <p>Value types can be initialized with field assignments:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 struct Point {
     Integer x;
     Integer y;
@@ -573,29 +573,29 @@ var p = Point { x = 10, y = 20 };
 </code></pre>
 <h3 id="tuple-expressions">Tuple Expressions</h3>
 <p>Tuples group multiple values. Access elements with <code>.0</code>, <code>.1</code>, etc.:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var pair = (42, &quot;hello&quot;);
 var num = pair.0;           // 42
 var str = pair.1;           // &quot;hello&quot;
 </code></pre>
 <h3 id="collection-literals">Collection Literals</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var list = [1, 2, 3];              // List[Integer]
 var map = {&quot;key&quot;: 42, &quot;other&quot;: 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
 </code></pre>
 <h3 id="range-expressions">Range Expressions</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 start..end              // Exclusive range [start, end)
 start..=end             // Inclusive range [start, end]
 </code></pre>
 <h3 id="type-operations">Type Operations</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 value is Type           // Type check (returns Boolean)
 value as Type           // Type cast
 </code></pre>
 <h3 id="lambda-expressions">Lambda Expressions</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 (x) =&gt; x + 1                    // Single parameter
 (a, b) =&gt; a + b                 // Multiple parameters
 (x: Integer) =&gt; x * 2           // Typed parameter
@@ -603,7 +603,7 @@ value as Type           // Type cast
 <p>---</p>
 <h2 id="statements">Statements</h2>
 <h3 id="variable-declaration">Variable Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var name = value;                   // Type inferred
 var name: Type = value;             // Explicit type
 var name: Type;                     // Default initialized
@@ -611,20 +611,20 @@ final name = value;                 // Immutable
 </code></pre>
 <h3 id="expression-statement">Expression Statement</h3>
 <p>Any expression can be used as a statement:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 functionCall();
 object.method();
 x = x + 1;
 </code></pre>
 <h3 id="block-statement">Block Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 {
     statement1;
     statement2;
 }
 </code></pre>
 <h3 id="if-statement">If Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 if condition {
     // then branch
 }
@@ -645,13 +645,13 @@ if condition1 {
 </code></pre>
 <p>Note: Parentheses around conditions are optional.</p>
 <h3 id="while-statement">While Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 while condition {
     // body
 }
 </code></pre>
 <h3 id="for-statement-c-style">For Statement (C-style)</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 for (init; condition; update) {
     // body
 }
@@ -662,7 +662,7 @@ for (var i = 0; i &lt; 10; i = i + 1) {
 }
 </code></pre>
 <h3 id="for-in-statement">For-In Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 for variable in iterable {
     // body
 }
@@ -692,27 +692,27 @@ for i in 0..=10 {       // 0 to 10
 }
 </code></pre>
 <h3 id="return-statement">Return Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 return;                 // Return void
 return expression;      // Return value
 </code></pre>
 <h3 id="break-statement">Break Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 break;                  // Exit innermost loop
 </code></pre>
 <h3 id="continue-statement">Continue Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 continue;               // Skip to next iteration
 </code></pre>
 <h3 id="guard-statement">Guard Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 guard condition else {
     return;             // Must exit scope
 }
 // condition is true here
 </code></pre>
 <h3 id="match-statement">Match Statement</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 match value {
     pattern1 =&gt; { /* body */ }
     pattern2 =&gt; { /* body */ }
@@ -730,7 +730,7 @@ match value {
 </ul>
 <h3 id="try-catch-finally-statement">Try/Catch/Finally Statement</h3>
 <p>Structured exception handling for runtime errors:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 try {
     riskyOperation();
 } catch (e: Error) {
@@ -747,13 +747,13 @@ try {
 </ul>
 <h3 id="throw-statement">Throw Statement</h3>
 <p>Raises a runtime error:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 throw someErrorValue;
 </code></pre>
 <p>---</p>
 <h2 id="declarations">Declarations</h2>
 <h3 id="function-declaration">Function Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func functionName(param1: Type1, param2: Type2) -&gt; ReturnType {
     // body
     return value;
@@ -766,7 +766,7 @@ func noReturn(param: Type) {
 </code></pre>
 <h4 id="default-parameter-values">Default Parameter Values</h4>
 <p>Parameters may have default values. When a call omits trailing arguments, the default expressions are used:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func greet(name: String, greeting: String = &quot;Hello&quot;) -&gt; String {
     return greeting + &quot;, &quot; + name;
 }
@@ -779,7 +779,7 @@ func start() {
 <p>Default values must be trailing — a parameter with a default cannot be followed by a parameter without one.</p>
 <h3 id="generic-function-declaration">Generic Function Declaration</h3>
 <p>Functions can be parameterized over types with optional constraints:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func idclass[T](x: T) -&gt; T {
     return x;
 }
@@ -791,7 +791,7 @@ func findMax[T: Comparable](a: T, b: T) -&gt; T {
 </code></pre>
 <p>Type parameters are declared in <code>[...]</code> after the function name. Constraints (like <code>T: Comparable</code>) restrict the type parameter to types implementing the named interface.</p>
 <h3 id="global-variable-declaration">Global Variable Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var globalName: Type = initialValue;
 final CONSTANT = value;
 </code></pre>
@@ -799,7 +799,7 @@ final CONSTANT = value;
 <h2 id="class-types">Entity Types</h2>
 <p>Entities are reference types with idclass, stored on the heap.</p>
 <h3 id="class-declaration">Entity Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class EntityName {
     // Fields
     Type fieldName;
@@ -817,7 +817,7 @@ class EntityName {
 </code></pre>
 <h3 id="field-visibility">Field Visibility</h3>
 <p>Fields and methods can be marked with visibility:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
@@ -825,14 +825,14 @@ class Player {
 }
 </code></pre>
 <h3 id="class-inheritance">Entity Inheritance</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class ChildEntity extends ParentEntity {
     // Additional fields and methods
 }
 </code></pre>
 <h4 id="the-super-keyword">The `super` Keyword</h4>
 <p>Within a child class, <code>super</code> refers to the parent class&#x27;s implementation. Use it to call the parent&#x27;s methods:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Child extends Parent {
     override func greet() -&gt; String {
         return super.greet() + &quot; (child)&quot;;
@@ -841,7 +841,7 @@ class Child extends Parent {
 </code></pre>
 <h4 id="the-override-keyword">The `override` Keyword</h4>
 <p>Methods that override a parent&#x27;s method must be marked with <code>override</code>:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Base {
     func describe() -&gt; String { return &quot;Base&quot;; }
 }
@@ -851,13 +851,13 @@ class Derived extends Base {
 }
 </code></pre>
 <h3 id="creating-classes">Creating Entities</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var class = new EntityType();
 class.init(args);
 </code></pre>
 <h3 id="self-reference">Self Reference</h3>
 <p>Within methods, fields can be accessed directly or with <code>self</code>:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Counter {
     Integer count;
 
@@ -869,7 +869,7 @@ class Counter {
 </code></pre>
 <h3 id="properties">Properties</h3>
 <p>Properties provide computed get/set accessors for class fields:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Temperature {
     Number celsius;
 
@@ -887,7 +887,7 @@ class Temperature {
 </ul>
 <h3 id="static-members">Static Members</h3>
 <p>Fields and methods marked <code>static</code> belong to the class type, not to instances:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Counter {
     static Integer instanceCount;
 
@@ -907,7 +907,7 @@ class Counter {
 </ul>
 <h3 id="destructors">Destructors</h3>
 <p>The <code>deinit</code> block defines cleanup logic that runs when an object is destroyed:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class FileHandle {
     Integer fd;
 
@@ -926,7 +926,7 @@ class FileHandle {
 <h2 id="value-types">Value Types</h2>
 <p>Value types have copy semantics — assignments copy the entire value.</p>
 <h3 id="value-declaration">Value Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 struct StructName {
     // Fields
     Type fieldName;
@@ -938,7 +938,7 @@ struct StructName {
 }
 </code></pre>
 <h3 id="using-value-types">Using Value Types</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 struct Point {
     Integer x;
     Integer y;
@@ -958,13 +958,13 @@ func start() {
 <h2 id="interfaces">Interfaces</h2>
 <p>Interfaces define contracts that classes and values can implement.</p>
 <h3 id="interface-declaration">Interface Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 interface InterfaceName {
     func methodSignature(params) -&gt; ReturnType;
 }
 </code></pre>
 <h3 id="implementing-interfaces">Implementing Interfaces</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class MyClass implements InterfaceName {
     expose func methodSignature(params) -&gt; ReturnType {
         // Implementation
@@ -974,7 +974,7 @@ class MyClass implements InterfaceName {
 <p>Implementing methods must be marked <code>expose</code> (public visibility).</p>
 <h3 id="interface-dispatch">Interface Dispatch</h3>
 <p>Interface-typed variables use runtime itable dispatch. Calling a method on an interface variable performs a lookup through the interface table (itable) to find the correct implementation:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 interface IShape {
     func area() -&gt; Number;
 }
@@ -994,7 +994,7 @@ func printArea(s: IShape) {
 <h2 id="enums">Enums</h2>
 <p>Enums define a type with a fixed set of named integer constants. Each variant is lowered to an <code>I64</code> constant at the IL level — no new opcodes or runtime support required.</p>
 <h3 id="declaration">Declaration</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 enum Color {
     Red,
     Green,
@@ -1004,7 +1004,7 @@ enum Color {
 <p>Variants are automatically numbered starting from 0. A trailing comma after the last variant is permitted.</p>
 <h3 id="explicit-values">Explicit Values</h3>
 <p>Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 enum HttpStatus {
     OK = 200,
     NOT_FOUND = 404,
@@ -1012,7 +1012,7 @@ enum HttpStatus {
 }
 </code></pre>
 <p>Mixed auto-increment and explicit values:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 enum Priority {
     Low,          // 0
     Medium = 5,   // 5
@@ -1023,19 +1023,19 @@ enum Priority {
 <p>Negative values are supported: <code>Backward = -1</code>.</p>
 <h3 id="variant-access">Variant Access</h3>
 <p>Access variants with dot notation:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var c: Color = Color.Red;
 var s = HttpStatus.NOT_FOUND;
 </code></pre>
 <p>Enum values can be compared with <code>==</code> and <code>!=</code>:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 if c != Color.Red {
     // ...
 }
 </code></pre>
 <h3 id="visibility">Visibility</h3>
 <p>Use <code>expose</code> to make an enum accessible from other modules:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 expose enum Direction {
     North,
     South,
@@ -1045,7 +1045,7 @@ expose enum Direction {
 </code></pre>
 <h3 id="match-exhaustiveness">Match Exhaustiveness</h3>
 <p>When matching on an enum, the compiler verifies that all variants are covered:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 // Error: Non-exhaustive patterns: missing variants Direction.East, Direction.West
 match dir {
     Direction.North =&gt; handleNorth();
@@ -1053,7 +1053,7 @@ match dir {
 }
 </code></pre>
 <p>Use the wildcard <code>_</code> to cover remaining variants:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 match dir {
     Direction.North =&gt; handleNorth();
     _ =&gt; handleOther();
@@ -1061,7 +1061,7 @@ match dir {
 </code></pre>
 <h3 id="as-function-parameters-and-return-types">As Function Parameters and Return Types</h3>
 <p>Enums can be used as parameter types, return types, and variable types:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 func describeColor(c: Color) -&gt; String {
     return match c {
         Color.Red =&gt; &quot;red&quot;,
@@ -1079,23 +1079,23 @@ enumVariant ::= IDENT [&quot;=&quot; [&quot;-&quot;] INTEGER]
 <h2 id="modules-and-imports">Modules and Imports</h2>
 <h3 id="module-declaration">Module Declaration</h3>
 <p>Every source file begins with a module declaration:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module ModuleName;
 </code></pre>
 <h3 id="bind-declaration">Bind Declaration</h3>
 <p>Bind modules or runtime namespaces to use their types and functions:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 // File binds - import Zia source files
 bind &quot;path/to/module&quot;;          // Relative or simple path
 bind &quot;./sibling&quot;;               // Same directory
 bind &quot;../parent/module&quot;;        // Parent directory
 bind &quot;./utils&quot; as U;            // With alias
 
-// Namespace binds - import Viper runtime namespaces
-bind Viper.Terminal;            // Import all symbols
-bind Viper.Graphics;            // Now Canvas, Sprite, etc. available
-bind Viper.Math as M;           // With alias: M.Sqrt(), M.Sin()
-bind Viper.Terminal { Say };    // Import specific symbols only
+// Namespace binds - import Zanna runtime namespaces
+bind Zanna.Terminal;            // Import all symbols
+bind Zanna.Graphics;            // Now Canvas, Sprite, etc. available
+bind Zanna.Math as M;           // With alias: M.Sqrt(), M.Sin()
+bind Zanna.Terminal { Say };    // Import specific symbols only
 </code></pre>
 <p><strong>File Path Resolution:</strong></p>
 <ul>
@@ -1104,23 +1104,23 @@ bind Viper.Terminal { Say };    // Import specific symbols only
 <li><code>&quot;name&quot;</code> — Resolves to <code>name.zia</code> in the same directory</li>
 </ul>
 <p><strong>Namespace Imports:</strong></p>
-<p>When you bind a runtime namespace like <code>Viper.Terminal</code>, all its functions</p>
+<p>When you bind a runtime namespace like <code>Zanna.Terminal</code>, all its functions</p>
 <p>become available without qualification:</p>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
-Say(&quot;Hello!&quot;);           // Instead of Viper.Terminal.Say(&quot;Hello!&quot;)
-var name = ReadLine();   // Instead of Viper.Terminal.ReadLine()
+Say(&quot;Hello!&quot;);           // Instead of Zanna.Terminal.Say(&quot;Hello!&quot;)
+var name = ReadLine();   // Instead of Zanna.Terminal.ReadLine()
 </code></pre>
 <p>You can also use an alias to avoid conflicts:</p>
-<pre><code data-lang="viper">
-bind Viper.Terminal as T;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal as T;
 
 T.Say(&quot;Hello!&quot;);
 </code></pre>
 <p>Or import only specific items:</p>
-<pre><code data-lang="viper">
-bind Viper.Terminal { Say, ReadLine };
+<pre><code data-lang="zanna">
+bind Zanna.Terminal { Say, ReadLine };
 
 Say(&quot;Hello!&quot;);      // Works
 // Print(&quot;x&quot;);      // Error: Print not imported
@@ -1131,7 +1131,7 @@ Say(&quot;Hello!&quot;);      // Works
 <h2 id="namespaces">Namespaces</h2>
 <p>Namespaces organize declarations under qualified names to prevent name collisions and provide logical grouping.</p>
 <h3 id="basic-namespace">Basic Namespace</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 namespace MyLib {
     func helper() -&gt; Integer {
         return 42;
@@ -1147,13 +1147,13 @@ namespace MyLib {
 }
 </code></pre>
 <p>Access namespaced members using dot notation:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var result = MyLib.helper();
 var p = new MyLib.Parser();
 </code></pre>
 <h3 id="dotted-namespace-names">Dotted Namespace Names</h3>
 <p>Namespaces can use dotted names for nested organization:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 namespace MyLib.Internal {
     func secret() -&gt; String {
         return &quot;hidden&quot;;
@@ -1165,7 +1165,7 @@ var s = MyLib.Internal.secret();
 </code></pre>
 <h3 id="nested-namespaces">Nested Namespaces</h3>
 <p>Namespaces can be nested within other namespaces:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 namespace Outer {
     namespace Inner {
         func nested() -&gt; Integer {
@@ -1187,7 +1187,7 @@ var n = Outer.Inner.nested();
 <li>Global variables (final or var)</li>
 <li>Other namespaces</li>
 </ul>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 namespace Config {
     final VERSION = 42;
     var debug = false;
@@ -1207,14 +1207,14 @@ namespace Config {
 }
 </code></pre>
 <h3 id="built-in-namespaces">Built-in Namespaces</h3>
-<p>The <code>Viper.*</code> namespaces (Viper.Terminal, Viper.Math, etc.) use the same namespace mechanism as user-defined namespaces.</p>
+<p>The <code>Zanna.*</code> namespaces (Zanna.Terminal, Zanna.Math, etc.) use the same namespace mechanism as user-defined namespaces.</p>
 <p>---</p>
 <h2 id="runtime-library-access">Runtime Library Access</h2>
-<p>Zia programs have access to the full Viper Runtime through the <code>Viper.*</code> namespace.</p>
+<p>Zia programs have access to the full Zanna Runtime through the <code>Zanna.*</code> namespace.</p>
 <h3 id="common-runtime-classes">Common Runtime Classes</h3>
 <h4 id="terminal-i-o">Terminal I/O</h4>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 // Output with newline
 Say(str);            // Print string with newline
@@ -1250,13 +1250,13 @@ EndBatch();          // End batch output and flush
 Flush();             // Flush output buffer
 </code></pre>
 <h4 id="time">Time</h4>
-<pre><code data-lang="viper">
-Viper.Time.Clock.Sleep(ms);         // Sleep for milliseconds
-Viper.Time.Clock.Ticks();       // Milliseconds since epoch
+<pre><code data-lang="zanna">
+Zanna.Time.Clock.Sleep(ms);         // Sleep for milliseconds
+Zanna.Time.Clock.Ticks();       // Milliseconds since epoch
 </code></pre>
 <h4 id="math">Math</h4>
-<pre><code data-lang="viper">
-bind Viper.Math;
+<pre><code data-lang="zanna">
+bind Zanna.Math;
 
 Abs(x);                  // Absolute value (f64)
 AbsInt(x);               // Absolute value (i64)
@@ -1268,15 +1268,15 @@ Clamp(x, lo, hi);        // Clamp f64 to range
 ClampInt(x, lo, hi);     // Clamp i64 to range
 Floor(x);                // Floor
 Ceil(x);                 // Ceiling
-// ... and many more (see Viper.Math.* in runtime.def)
+// ... and many more (see Zanna.Math.* in runtime.def)
 </code></pre>
 <h4 id="random">Random</h4>
-<pre><code data-lang="viper">
-// Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
-Viper.Math.Random.NextInt(max);   // Random integer [0, max)
+<pre><code data-lang="zanna">
+// Use the fully qualified name, or bind Zanna.Math and use Zanna.Math.Random.NextInt
+Zanna.Math.Random.NextInt(max);   // Random integer [0, max)
 </code></pre>
 <h4 id="collections">Collections</h4>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 // List operations
 list.add(value);                    // Add element
 list.get(index);                    // Get element
@@ -1298,7 +1298,7 @@ map.keys();                         // Sequence of keys
 map.values();                       // Sequence of values
 map.Length;                         // Entry count
 </code></pre>
-<p>For complete runtime documentation, see <strong>[Runtime Library Reference](viperlib/README.md)</strong>.</p>
+<p>For complete runtime documentation, see <strong>[Runtime Library Reference](zannalib/README.md)</strong>.</p>
 <p>---</p>
 <h2 id="operator-precedence">Operator Precedence</h2>
 <p>From highest to lowest:</p>
@@ -1485,7 +1485,7 @@ type        ::= IDENT [&quot;[&quot; typeList &quot;]&quot;] [&quot;?&quot;]
 <h2 id="see-also">See Also</h2>
 <ul>
 <li>[Zia Getting Started](zia-getting-started.md) — Tutorial introduction</li>
-<li>[Runtime Library Reference](viperlib/README.md) — Complete API documentation</li>
+<li>[Runtime Library Reference](zannalib/README.md) — Complete API documentation</li>
 <li>[IL Guide](il-guide.md) — Understanding compiled output</li>
 <li>[Frontend How-To](frontend-howto.md) — Building language frontends</li>
 </ul>
@@ -1512,13 +1512,13 @@ type        ::= IDENT [&quot;[&quot; typeList &quot;]&quot;] [&quot;?&quot;]
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 namespace {
 
@@ -132,7 +132,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     }
 
     // Set up debug line table for address→line mapping when requested.
-    viper::codegen::DebugLineTable debugLines;
+    zanna::codegen::DebugLineTable debugLines;
     if (module.emitDebugLines)
         seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
     uint64_t debugBias = 0;
@@ -141,7 +141,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         for (const auto &fn : module.mir) {
             // Emit each function into its own CodeSection for per-function dead stripping.
             module.binaryTextSections.emplace_back();
-            viper::codegen::DebugLineTable funcDebugLines;
+            zanna::codegen::DebugLineTable funcDebugLines;
             if (module.emitDebugLines)
                 seedDebugFiles(funcDebugLines, fn, module.debugSourcePath);
             binenc::A64BinaryEncoder funcEncoder;
@@ -234,4 +234,4 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

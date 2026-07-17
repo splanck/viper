@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,8 +23,8 @@
 #include "tui/render/screen.hpp"
 #include "tui/util/string.hpp"
 
-namespace viper::tui::widgets {
-using viper::tui::term::KeyEvent;
+namespace zanna::tui::widgets {
+using zanna::tui::term::KeyEvent;
 
 /// @brief Construct a command palette bound to an existing keymap and theme.
 /// @details Stores references to collaborators and immediately generates the
@@ -119,4 +119,4 @@ void CommandPalette::paint(render::ScreenBuffer &sb) {
     }
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

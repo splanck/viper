@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/world/rt_world3d_common.h
-// Purpose: Shared numeric-sanitization inline helpers for the Viper.Graphics3D world
+// Purpose: Shared numeric-sanitization inline helpers for the Zanna.Graphics3D world
 //   subsystem (terrain/water/vegetation/particles) — finite/range clamping and
 //   overflow-checked size multiplication used to harden untrusted scalar inputs from
 //   scripts and assets before they reach allocation sizing or GPU state.

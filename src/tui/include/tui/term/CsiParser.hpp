@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the CsiParser class, which interprets ANSI CSI
-// (Control Sequence Introducer) escape sequences for Viper's TUI input
+// (Control Sequence Introducer) escape sequences for Zanna's TUI input
 // decoder. CSI sequences begin with ESC [ and encode special keys,
 // mouse events, and terminal mode changes.
 //
@@ -35,7 +35,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 /// @brief Outcome of processing a CSI escape sequence.
 /// @details Indicates whether the sequence was successfully mapped to an input
 ///          event and whether it triggered bracketed paste mode entry.
@@ -88,4 +88,4 @@ class CsiParser {
     std::string &paste_buffer_;
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

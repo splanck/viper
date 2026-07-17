@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <iostream>
 #include <stdexcept>
 
-using namespace viper::codegen::objfile;
+using namespace zanna::codegen::objfile;
 
 static int gFail = 0;
 

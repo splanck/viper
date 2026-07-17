@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //
 // What this handles:
 //   - Static method calls on user-defined classes
-//   - Static method calls on runtime classes (Viper.String, Viper.Core.Object, etc.)
+//   - Static method calls on runtime classes (Zanna.String, Zanna.Core.Object, etc.)
 //   - Instance method calls with virtual dispatch
 //   - Interface dispatch (IFace.Method pattern)
 //   - Runtime method catalog lookups
@@ -82,7 +82,7 @@ inline il::core::Type::Kind basicTypeToILKind(BasicType t) {
 ///   - Class.Method(args) - static method calls
 ///   - (obj AS IFace).Method(args) - interface dispatch
 ///   - BASE.Method(args) - explicit base class calls (non-virtual)
-///   - Runtime class methods (Viper.String.Substring, etc.)
+///   - Runtime class methods (Zanna.String.Substring, etc.)
 ///
 /// Invariants expected:
 ///   - Lowerer must have valid OopIndex with class/interface metadata
@@ -171,7 +171,7 @@ class MethodDispatchResolver {
                                     std::size_t argCount);
 
     /// @brief Check if a method call on a runtime class can be handled by catalog.
-    /// @details Looks up Viper.String, Viper.Core.Object, etc. in the runtime method index.
+    /// @details Looks up Zanna.String, Zanna.Core.Object, etc. in the runtime method index.
     /// @param classQName Runtime class qualified name.
     /// @param methodName Method to look up.
     /// @param argCount Number of user arguments (excluding receiver).

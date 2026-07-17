@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -70,7 +70,7 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password);
 ///          captures its failure paths into an explicit value.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_result(void *ciphertext, rt_string password);
 
 /// @brief Attempt password-based decryption and discard diagnostic details.
@@ -80,7 +80,7 @@ void *rt_cipher_decrypt_result(void *ciphertext, rt_string password);
 ///          failure message.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt(void *ciphertext, rt_string password);
 
 /// @brief Decrypt password-encrypted data while authenticating caller-supplied AAD.
@@ -93,7 +93,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad);
 /// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_aad.
 /// @param password Password string used for key derivation.
 /// @param aad Additional authenticated data; may be NULL when encryption used none.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *aad);
 
 /// @brief Attempt password-based AAD decryption and discard diagnostic details.
@@ -103,7 +103,7 @@ void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *a
 /// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_aad.
 /// @param password Password string used for key derivation.
 /// @param aad Additional authenticated data; may be NULL when encryption used none.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad);
 
 //=========================================================================
@@ -135,7 +135,7 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key);
 ///          or other traps raised by the legacy decryptor.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param key Bytes object containing exactly 32 bytes.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key);
 
 /// @brief Attempt raw-key decryption and discard diagnostic details.
@@ -143,7 +143,7 @@ void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key);
 ///          for authentication, format, key-size, or runtime-trap failures.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param key Bytes object containing exactly 32 bytes.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_with_key(void *ciphertext, void *key);
 
 /// @brief Decrypt key-encrypted data while authenticating caller-supplied AAD.
@@ -156,7 +156,7 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key, void *aad);
 /// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_with_key_aad.
 /// @param key Bytes object containing exactly 32 bytes.
 /// @param aad Additional authenticated data; may be NULL when encryption used none.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key, void *aad);
 
 /// @brief Attempt raw-key AAD decryption and discard diagnostic details.
@@ -165,7 +165,7 @@ void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key, void *a
 /// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_with_key_aad.
 /// @param key Bytes object containing exactly 32 bytes.
 /// @param aad Additional authenticated data; may be NULL when encryption used none.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_with_key_aad(void *ciphertext, void *key, void *aad);
 
 //=========================================================================

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the LineIndex class, which maintains a sorted vector
-// of line start offsets for efficient line-number lookups in Viper's TUI
+// of line start offsets for efficient line-number lookups in Zanna's TUI
 // text buffer. The line index is incrementally updated when text is
 // inserted or erased, avoiding full rescans of the document.
 //
@@ -31,7 +31,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Maintains sorted line-start byte offsets for fast line-number access.
 /// @details Tracks newline character positions to enable O(1) lookup of line start
 ///          offsets and O(n) incremental updates on insert/erase where n is the
@@ -73,4 +73,4 @@ class LineIndex {
   private:
     std::vector<std::size_t> line_starts_{0};
 };
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

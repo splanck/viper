@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_network_http_api.c
-// Purpose: Viper-facing HTTP classes — the Http static class plus the HttpReq
+// Purpose: Zanna-facing HTTP classes — the Http static class plus the HttpReq
 //          and HttpRes instance classes. Split out of rt_network_http.c; these
 //          wrappers build rt_http_req_t requests and drive the HTTP client core
 //          (do_http_request etc.) declared in rt_network_http_internal.h.
 //
 // Key invariants:
 //   - Request/response data structures and the client core live in
-//     rt_network_http.c; this layer only marshals Viper types in and out.
+//     rt_network_http.c; this layer only marshals Zanna types in and out.
 //   - Header/body builders validate method tokens and reject embedded NULs.
 //
 // Ownership/Lifetime:
@@ -87,7 +87,7 @@ static rt_string http_current_error_message(const char *fallback) {
 ///          HTTP status; successful HTTP responses of any status code are Ok.
 /// @param response HttpRes object returned by the transport.
 /// @param null_message Error text used when @p response is NULL.
-/// @return Opaque `Viper.Result`.
+/// @return Opaque `Zanna.Result`.
 static void *http_response_result(void *response, const char *null_message) {
     if (!response)
         return rt_result_err_str(
@@ -98,7 +98,7 @@ static void *http_response_result(void *response, const char *null_message) {
 }
 
 /// @brief Build a sibling temporary path for an HTTP download target.
-/// @details The returned path appends a hidden `.viper-download-N.tmp` suffix to
+/// @details The returned path appends a hidden `.zanna-download-N.tmp` suffix to
 ///          the final filename, keeping the temp on the same filesystem so
 ///          rename-based replacement can be used after a successful transfer.
 /// @param dest Final destination path.
@@ -113,7 +113,7 @@ static char *http_download_temp_path(const char *dest, const char *kind) {
         return NULL;
     size_t dest_len = strlen(dest);
     size_t kind_len = strlen(kind);
-    const char *marker = ".viper-download-";
+    const char *marker = ".zanna-download-";
     size_t marker_len = strlen(marker);
     if (dest_len > SIZE_MAX - marker_len - kind_len - 64u)
         return NULL;

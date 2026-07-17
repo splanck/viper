@@ -49,7 +49,7 @@ FOR i% = 0 TO 3
 NEXT i%
 
 ' Note about Collections:
-' Viper.Collections.List/Map work with object types
+' Zanna.Collections.List/Map work with object types
 ' Requires boxing for primitive values
 PRINT ""
 PRINT "Note: Collections require object boxing"

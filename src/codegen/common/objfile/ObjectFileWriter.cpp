@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include <fstream>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 bool ObjectFileWriter::write(const std::string &path,
                              const std::vector<CodeSection> &textSections,
@@ -106,4 +106,4 @@ std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjAr
     return nullptr;
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

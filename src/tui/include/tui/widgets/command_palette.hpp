@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the CommandPalette widget for Viper's TUI framework.
+// This file declares the CommandPalette widget for Zanna's TUI framework.
 // The command palette provides an incremental search interface over all
 // registered commands in a Keymap, similar to the command palette found
 // in modern code editors (Ctrl+Shift+P / Cmd+Shift+P).
@@ -33,7 +33,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Incremental search command palette for discovering and executing commands.
 /// @details Displays a text input field and a filtered list of registered commands.
@@ -64,4 +64,4 @@ class CommandPalette : public ui::Widget {
     void update();
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

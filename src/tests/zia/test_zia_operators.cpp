@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,8 +33,8 @@ module Test;
 func start() {    var a: Integer = 10 + 20;
     var b: Integer = -5 + 5;
     var c = 1.5 + 2.5;
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
 }
 )";
     CompilerInput input{.source = source, .path = "add.zia"};
@@ -54,8 +54,8 @@ module Test;
 func start() {    var a: Integer = 30 - 10;
     var b: Integer = 5 - 10;
     var c = 5.0 - 2.5;
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
 }
 )";
     CompilerInput input{.source = source, .path = "sub.zia"};
@@ -75,8 +75,8 @@ module Test;
 func start() {    var a: Integer = 6 * 7;
     var b: Integer = -3 * 4;
     var c = 2.5 * 4.0;
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
 }
 )";
     CompilerInput input{.source = source, .path = "mul.zia"};
@@ -96,8 +96,8 @@ module Test;
 func start() {    var a: Integer = 20 / 4;
     var b: Integer = 17 / 5;
     var c = 10.0 / 4.0;
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
 }
 )";
     CompilerInput input{.source = source, .path = "div.zia"};
@@ -117,9 +117,9 @@ module Test;
 func start() {    var a: Integer = 17 % 5;
     var b: Integer = 10 % 3;
     var c: Integer = 8 % 4;
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "mod.zia"};
@@ -140,8 +140,8 @@ func start() {    var a: Integer = 5;
     var b: Integer = -a;
     var c: Integer = -(-10);
     var d = -3.14;
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "neg.zia"};
@@ -167,9 +167,9 @@ func start() {    // Multiplication before addition
     // Mixed operations
     var c: Integer = 10 - 2 * 3 + 4;  // 10 - 6 + 4 = 8
 
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "precedence.zia"};
@@ -194,10 +194,10 @@ func start() {    var a: Boolean = 5 == 5;
     var b: Boolean = 5 == 6;
     var c: Boolean = 5 != 6;
     var d: Boolean = 5 != 5;
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
 }
 )";
     CompilerInput input{.source = source, .path = "equality.zia"};
@@ -220,7 +220,7 @@ module Test;
 func start() {
     var values: List[Integer] = [];
     if (values == null) {
-        Viper.Terminal.Say("missing");
+        Zanna.Terminal.Say("missing");
     }
 }
 )";
@@ -252,12 +252,12 @@ func start() {    var a: Boolean = 5 < 10;
     var d: Boolean = 5 > 3;
     var e: Boolean = 3 > 5;
     var f: Boolean = 5 >= 5;
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
-    Viper.Terminal.SayBool(e);
-    Viper.Terminal.SayBool(f);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(e);
+    Zanna.Terminal.SayBool(f);
 }
 )";
     CompilerInput input{.source = source, .path = "relational.zia"};
@@ -278,10 +278,10 @@ func start() {    var a: Boolean = "hello" == "hello";
     var b: Boolean = "hello" == "world";
     var c: Boolean = "hello" != "world";
     var d: Boolean = "" == "";
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
 }
 )";
     CompilerInput input{.source = source, .path = "strcomp.zia"};
@@ -311,12 +311,12 @@ func start() {    var a: Boolean = true && true;
     var e: Boolean = true and true;
     var f: Boolean = true and false;
 
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
-    Viper.Terminal.SayBool(e);
-    Viper.Terminal.SayBool(f);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(e);
+    Zanna.Terminal.SayBool(f);
 }
 )";
     CompilerInput input{.source = source, .path = "logand.zia"};
@@ -342,12 +342,12 @@ func start() {    var a: Boolean = true || true;
     var e: Boolean = true or false;
     var f: Boolean = false or false;
 
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
-    Viper.Terminal.SayBool(e);
-    Viper.Terminal.SayBool(f);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(e);
+    Zanna.Terminal.SayBool(f);
 }
 )";
     CompilerInput input{.source = source, .path = "logor.zia"};
@@ -372,11 +372,11 @@ func start() {    var a: Boolean = !true;
     var d: Boolean = not true;
     var e: Boolean = not false;
 
-    Viper.Terminal.SayBool(a);
-    Viper.Terminal.SayBool(b);
-    Viper.Terminal.SayBool(c);
-    Viper.Terminal.SayBool(d);
-    Viper.Terminal.SayBool(e);
+    Zanna.Terminal.SayBool(a);
+    Zanna.Terminal.SayBool(b);
+    Zanna.Terminal.SayBool(c);
+    Zanna.Terminal.SayBool(d);
+    Zanna.Terminal.SayBool(e);
 }
 )";
     CompilerInput input{.source = source, .path = "lognot.zia"};
@@ -405,7 +405,7 @@ func start() {    // With &&, second operand not evaluated if first is false
     // With ||, second operand not evaluated if first is true
     var b: Boolean = true || increment();
 
-    Viper.Terminal.SayInt(counter);  // Should be 0
+    Zanna.Terminal.SayInt(counter);  // Should be 0
 }
 )";
     CompilerInput input{.source = source, .path = "shortcircuit.zia"};
@@ -431,9 +431,9 @@ func start() {    var a: Integer = true ? 1 : 2;
     var x: Integer = 5;
     var c: Integer = x > 0 ? x : -x;  // abs
 
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "ternary.zia"};
@@ -452,7 +452,7 @@ module Test;
 
 func start() {    var x: Integer = 5;
     var result: String = x < 0 ? "negative" : (x == 0 ? "zero" : "positive");
-    Viper.Terminal.Say(result);
+    Zanna.Terminal.Say(result);
 }
 )";
     CompilerInput input{.source = source, .path = "nestedternary.zia"};
@@ -476,7 +476,7 @@ module Test;
 func start() {    var x = 10;
     x = 20;
     x = x + 5;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "assign.zia"};
@@ -500,9 +500,9 @@ func start() {    var a = 1;
     // Chained reassignment
     a = b = c = 10;
 
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "chainassign.zia"};
@@ -529,8 +529,8 @@ func start() {    var a: String? = null;
     var c: String = a ?? "default";
     var d: String = b ?? "default";
 
-    Viper.Terminal.Say(c);
-    Viper.Terminal.Say(d);
+    Zanna.Terminal.Say(c);
+    Zanna.Terminal.Say(d);
 }
 )";
     CompilerInput input{.source = source, .path = "coalesce.zia"};
@@ -555,7 +555,7 @@ func start() {    var person: Person? = null;
     var name: String? = person?.name;
 
     if name == null {
-        Viper.Terminal.Say("no name");
+        Zanna.Terminal.Say("no name");
     }
 }
 )";
@@ -570,5 +570,5 @@ func start() {    var person: Person? = null;
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

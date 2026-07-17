@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,7 +53,7 @@ int main() {
         const auto *byName = il::runtime::findRuntimeDescriptor(entry.name);
         assert(byName == &entry && "descriptor lookup by name mismatch");
 
-        if (entry.publicSurface && entry.name.rfind("Viper.", 0) == 0) {
+        if (entry.publicSurface && entry.name.rfind("Zanna.", 0) == 0) {
             assert(!containsRawPointerToken(entry.signatureText) &&
                    "frontend-visible runtime descriptor exposes raw pointer signature text");
         }
@@ -106,11 +106,11 @@ int main() {
     assert(strEqDescriptor->signature.paramTypes[1].kind == il::core::Type::Kind::Str &&
            "string equality runtime descriptor second parameter mismatch");
 
-    const auto *randomNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.NextDouble");
+    const auto *randomNext = il::runtime::findRuntimeDescriptor("Zanna.Math.Random.NextDouble");
     assert(randomNext && "static Random.NextDouble descriptor missing");
     assert(randomNext->publicSurface && "static Random.NextDouble should remain public");
 
-    const auto *randomInstNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.inst_Next");
+    const auto *randomInstNext = il::runtime::findRuntimeDescriptor("Zanna.Math.Random.inst_Next");
     assert(randomInstNext && "Random.Next instance target descriptor missing");
     assert(!randomInstNext->publicSurface &&
            "Random instance implementation target must not be public API");

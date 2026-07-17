@@ -10,7 +10,7 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](../languag
 
 > **What is Zia?**
 > A modern, statically-typed language with C-like syntax, first-class classes (reference types), struct types,
-> generics, and module bindings. It runs on Viper's VM and can be compiled to native code.
+> generics, and module bindings. It runs on Zanna's VM and can be compiled to native code.
 
 ---
 
@@ -37,7 +37,7 @@ Create a file named `hello.zia`:
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -47,14 +47,14 @@ func start() {
 Run it:
 
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
 **Key points:**
 
 - Every file starts with a `module` declaration
 - `start()` is the entry point (like `main()` in C)
-- Use `bind Viper.Terminal;` to import terminal functions, then `Say()` for console output with newline
+- Use `bind Zanna.Terminal;` to import terminal functions, then `Say()` for console output with newline
 - Statements end with semicolons; blocks use `{ }`
 - Comments use `//` for single-line and `/* */` for multi-line
 
@@ -65,7 +65,7 @@ viper run hello.zia
 Before writing files, you can experiment with Zia in the interactive REPL:
 
 ```bash
-viper repl
+zanna repl
 ```
 
 The REPL lets you type Zia code and see results immediately:
@@ -117,17 +117,17 @@ let answer = 42;         // Also immutable
 | `Unit` | Explicit no-value marker for `Result[Unit]` and `()` | `()` |
 
 Common lowercase aliases are accepted, such as `int`, `bool`, `double`, and
-`string`. `Bytes` names the runtime class `Viper.Collections.Bytes`.
+`string`. `Bytes` names the runtime class `Zanna.Collections.Bytes`.
 
 Zia code does not use raw pointers. Runtime handles are represented by typed
-Viper runtime classes, collections, `Any`, and callback bridges.
+Zanna runtime classes, collections, `Any`, and callback bridges.
 
 ### String Interpolation
 
 Embed expressions in strings with `${...}`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = "Alice";
 var age = 30;
@@ -141,7 +141,7 @@ Say("${name} is ${age} years old");
 ### If Statements
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if score > 100 {
     Say("High score!");
@@ -157,7 +157,7 @@ Note: Parentheses around conditions are optional.
 ### While Loops
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var i = 0;
 while i < 10 {
@@ -171,7 +171,7 @@ while i < 10 {
 C-style for loops:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for (var i = 0; i < 10; i = i + 1) {
     PrintInt(i);
@@ -181,7 +181,7 @@ for (var i = 0; i < 10; i = i + 1) {
 ### For-In Loops (Ranges)
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Exclusive range: 0 to 9
 for i in 0..10 {
@@ -208,7 +208,7 @@ compile time; dynamic non-positive steps trap before iteration starts.
 ### Basic Functions
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say("Hello, ${name}!");
@@ -252,7 +252,7 @@ Use `foreign func` to declare a function defined in another module (e.g., a
 BASIC library). Foreign declarations have no body:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 expose foreign func Factorial(n: Integer) -> Integer;
 
@@ -312,7 +312,7 @@ class Player {
 ### Using Classes
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Create a new class instance
@@ -341,7 +341,7 @@ func start() {
 Struct types have copy semantics — assignments create copies.
 
 ```rust
-bind Viper.Math;
+bind Zanna.Math;
 
 struct Point {
     Integer x;
@@ -364,12 +364,12 @@ struct Point {
 
 Zia has language-level generic collections such as `List[T]`, `Map[String, T]`,
 and `Set[T]`. These are distinct from the object-style runtime classes under
-`Viper.Collections.*`.
+`Zanna.Collections.*`.
 
 ### Lists
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Create a list of integers
 var numbers: List[Integer] = [];
@@ -394,7 +394,7 @@ while i < numbers.count() {
 ### Maps
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Empty map literal: {}. Map literals also support {key: value, ...}.
 var scores: Map[String, Integer] = {};
@@ -426,7 +426,7 @@ players.add(p2);
 ```
 
 When you need the object-based runtime collection classes instead, bind
-`Viper.Collections` and use constructors such as `List.New()`, `Map.New()`, or
+`Zanna.Collections` and use constructors such as `List.New()`, `Map.New()`, or
 `Set.New()`.
 
 ---
@@ -477,39 +477,39 @@ var b: Beta.WishDup = new Beta.WishDup();
 
 ### Binding Runtime Namespaces
 
-Bind Viper runtime namespaces to use their functions without qualification:
+Bind Zanna runtime namespaces to use their functions without qualification:
 
 ```rust
 module Game;
 
-bind Viper.Terminal;     // Import terminal functions
-bind Viper.Graphics;     // Import graphics classes
+bind Zanna.Terminal;     // Import terminal functions
+bind Zanna.Graphics;     // Import graphics classes
 
 func start() {
-    Say("Hello from Zia!");           // No need for Viper.Terminal.Say()
+    Say("Hello from Zia!");           // No need for Zanna.Terminal.Say()
     var canvas = new Canvas("Game", 800, 600);
-    Viper.Time.Clock.Sleep(16);           // SleepMs is under Viper.Time
+    Zanna.Time.Clock.Sleep(16);           // SleepMs is under Zanna.Time
 }
 ```
 
 **Namespace bind options:**
 
-- `bind Viper.Terminal;` — Import all symbols
-- `bind Viper.Terminal as T;` — Import with alias (use `T.Say()`)
-- `bind Viper.Terminal { Say };` — Import specific symbols only
+- `bind Zanna.Terminal;` — Import all symbols
+- `bind Zanna.Terminal as T;` — Import with alias (use `T.Say()`)
+- `bind Zanna.Terminal { Say };` — Import specific symbols only
 
 ---
 
 ## 9. Working with the Runtime
 
-Zia programs have access to the registered Viper runtime APIs. Import namespaces
+Zia programs have access to the registered Zanna runtime APIs. Import namespaces
 with `bind` or use fully qualified names; the exposed surface is generated from
 `src/il/runtime/runtime.def`.
 
 ### Terminal I/O
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Output
 Say("Hello");           // Print with newline
@@ -531,7 +531,7 @@ SetColor(fg, bg);       // Set foreground/background (0-15)
 SetCursorVisible(false);    // Hide cursor
 ```
 
-> **Note:** You can also use fully qualified names like `Viper.Terminal.Say()` without binding.
+> **Note:** You can also use fully qualified names like `Zanna.Terminal.Say()` without binding.
 
 ### Color Codes
 
@@ -550,18 +550,18 @@ SetCursorVisible(false);    // Hide cursor
 ### Time Functions
 
 ```rust
-// SleepMs is available as Viper.Time.Clock.Sleep (use fully qualified name or bind)
-Viper.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
+// SleepMs is available as Zanna.Time.Clock.Sleep (use fully qualified name or bind)
+Zanna.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions
 
 ```rust
-bind Viper.Math;
+bind Zanna.Math;
 
 var abs = AbsInt(-42);                       // 42
 var sqrt = Sqrt(16.0);                       // 4.0
-var rand = Viper.Math.Random.NextInt(100);   // Random 0-99
+var rand = Zanna.Math.Random.NextInt(100);   // Random 0-99
 ```
 
 ---
@@ -573,7 +573,7 @@ Here's a complete mini-game demonstrating Zia features:
 ```rust
 module GuessGame;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var secretNumber = 0;
 var guessCount = 0;
@@ -584,7 +584,7 @@ func start() {
     Say("I'm thinking of a number between 1 and 100.");
 
     // Generate random number 1-100
-    secretNumber = Viper.Math.Random.NextInt(100) + 1;
+    secretNumber = Zanna.Math.Random.NextInt(100) + 1;
     guessCount = 0;
     gameOver = 0;
 
@@ -626,7 +626,7 @@ For more complete examples, see the `examples/games/` directory:
 **Language Documentation:**
 
 - [Zia Reference](../languages/zia-reference.md) — Complete language specification
-- [Runtime Library](../viperlib/README.md) — All available classes and methods
+- [Runtime Library](../zannalib/README.md) — All available classes and methods
 
 **Examples:**
 

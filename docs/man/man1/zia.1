@@ -1,4 +1,4 @@
-.TH zia 1 "Viper" "zia" "User Commands"
+.TH zia 1 "Zanna" "zia" "User Commands"
 .SH NAME
 zia \- compile or run Zia source files
 .SH SYNOPSIS
@@ -10,7 +10,7 @@ frontend and either executes the program or emits textual IL.
 .PP
 Zia source files must begin with a module declaration such as
 \fCmodule Hello;\fR. For project, directory, REPL, native-build, and packaging
-workflows, use \fBviper\fR(1).
+workflows, use \fBzanna\fR(1).
 .SH MODES
 .TP
 Run (default)
@@ -74,8 +74,8 @@ Zia uses \fBvar\fR for mutable bindings and \fBfinal\fR for immutable bindings;
 \fBexpose\fR is the canonical public-visibility keyword; \fBexport\fR and
 \fBpublic\fR are accepted aliases.
 .PP
-\fBbind\fR imports Zia modules and Viper runtime namespaces. The canonical alias
-form is \fCbind Viper.Math as Math;\fR.
+\fBbind\fR imports Zia modules and Zanna runtime namespaces. The canonical alias
+form is \fCbind Zanna.Math as Math;\fR.
 .SH EXAMPLES
 .TP
 Run a source file
@@ -93,4 +93,4 @@ Save IL to a file
 zia hello.zia -o hello.il
 .fi
 .SH SEE ALSO
-\fBviper\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1)
+\fBzanna\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1)

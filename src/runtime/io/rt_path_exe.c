@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: src/runtime/io/rt_path_exe.c
 // Purpose: Cross-platform detection of the running executable's directory.
 //          Provides Path.ExeDir() for Zia/BASIC and a C helper for the asset
-//          manager's auto-discovery of .vpa pack files.
+//          manager's auto-discovery of .zpak pack files.
 //
 // Key invariants:
 //   - Returns the directory containing the executable, not the exe path itself.
@@ -190,7 +190,7 @@ char *rt_path_exe_dir_cstr(void) {
 
 // ─── rt_path_exe_dir_str (runtime API) ──────────────────────────────────────
 
-/// @brief Viper.IO.Path.ExeDir() — returns directory of the running executable.
+/// @brief Zanna.IO.Path.ExeDir() — returns directory of the running executable.
 /// @return Runtime string (GC-managed). Returns "." if detection fails.
 rt_string rt_path_exe_dir_str(void) {
     char *dir = rt_path_exe_dir_cstr();

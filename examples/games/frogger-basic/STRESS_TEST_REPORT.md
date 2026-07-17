@@ -1,6 +1,6 @@
 # Frogger Stress Test Report
 **Date:** 2025-11-18
-**Purpose:** Comprehensive OOP and features validation for Viper BASIC
+**Purpose:** Comprehensive OOP and features validation for Zanna BASIC
 **Result:** ✅ SUCCESS with 1 bug discovered
 
 ## Test Objectives
@@ -178,7 +178,7 @@ No performance issues detected.
 
 ## Conclusion
 
-Viper BASIC successfully handles a complete, non-trivial OOP application with:
+Zanna BASIC successfully handles a complete, non-trivial OOP application with:
 - Complex object graphs
 - Real-time game loop
 - Module system
@@ -201,4 +201,4 @@ All test files remain in `/tmp/bug_testing/` for future reference:
 
 ## Final Game Location
 
-Complete, playable game in: `/Users/stephen/git/viper/demos/basic/frogger/`
+Complete, playable game in: `/Users/stephen/git/zanna/demos/basic/frogger/`

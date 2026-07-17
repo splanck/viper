@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,12 +41,12 @@
 #include <windows.h>
 #endif
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Internal implementation hiding TUI headers from the public interface.
 struct ReplLineEditor::Impl {
-    viper::tui::TerminalSession session;
-    viper::tui::term::InputDecoder decoder;
+    zanna::tui::TerminalSession session;
+    zanna::tui::term::InputDecoder decoder;
 
     std::vector<std::string> history;
     size_t maxHistory{1000};
@@ -353,8 +353,8 @@ void ReplLineEditor::addHistory(const std::string &entry) {
 }
 
 ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line) {
-    using Code = viper::tui::term::KeyEvent::Code;
-    using Mods = viper::tui::term::KeyEvent::Mods;
+    using Code = zanna::tui::term::KeyEvent::Code;
+    using Mods = zanna::tui::term::KeyEvent::Mods;
 
     impl_->buf.clear();
     impl_->cursor = 0;
@@ -600,4 +600,4 @@ bool ReplLineEditor::saveHistory(const std::filesystem::path &path) const {
     return ReplHistoryCodec::save(path, impl_->history);
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

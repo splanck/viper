@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -69,7 +69,7 @@ std::string run_and_collect_errors(const std::string &srcPath,
 
 int main() {
     namespace fs = std::filesystem;
-    const fs::path tempRoot = fs::temp_directory_path() / "viper_addfile_tests" /
+    const fs::path tempRoot = fs::temp_directory_path() / "zanna_addfile_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
 
     // Test 1: Positive include merges content

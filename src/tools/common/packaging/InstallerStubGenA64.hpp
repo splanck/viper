@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief AArch64 general-purpose register identifiers.
 enum class A64Reg : uint8_t {
@@ -142,4 +142,4 @@ class InstallerStubGenA64 {
     }
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Register a widget as focusable if it opts in via wantsFocus().
 ///
 /// @details The manager ignores @c nullptr values as well as widgets that
@@ -131,4 +131,4 @@ Widget *FocusManager::current() const {
     return ring_[index_];
 }
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

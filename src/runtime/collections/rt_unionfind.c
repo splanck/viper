@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -160,7 +160,7 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
     return root;
 }
 
-/// @brief Return the representative root as a Viper.Option.
+/// @brief Return the representative root as a Zanna.Option.
 /// @param uf_ptr UnionFind object pointer, or NULL.
 /// @param x Element index to resolve.
 /// @return Some(root) for valid elements, or None for NULL/out-of-range input.

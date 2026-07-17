@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -501,7 +501,7 @@ static void test_camera_smooth_follow_deadzone_and_system_clipboard() {
 
     rt_string previous = rt_system_clipboard_get();
     int64_t had_previous = rt_system_clipboard_has_text();
-    const char *sentinel = "viper-runtime-clipboard-\303\251";
+    const char *sentinel = "zanna-runtime-clipboard-\303\251";
     rt_string sentinel_text = rt_const_cstr(sentinel);
     rt_system_clipboard_set(sentinel_text);
     rt_string roundtrip = rt_system_clipboard_get();

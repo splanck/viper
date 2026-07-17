@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -197,8 +197,8 @@ static bool is_thread_sanitizer_build() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_reduce_final_combine_trap);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_reduce_final_combine_trap);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     printf("=== Parallel.Reduce Tests ===\n\n");
@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
     test_reduce_large();
     test_reduce_null_seq();
     test_reduce_identity_applied_once();
-    auto result = viper::tests::runIsolated(call_reduce_final_combine_trap);
+    auto result = zanna::tests::runIsolated(call_reduce_final_combine_trap);
     assert(result.trapped());
     if (!is_thread_sanitizer_build())
         assert(result.stderrText.find("final combine trap") != std::string::npos);

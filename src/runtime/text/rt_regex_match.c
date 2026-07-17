@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex_match.c
-// Purpose: Backtracking matching engine for the Viper regex AST. Runs a
+// Purpose: Backtracking matching engine for the Zanna regex AST. Runs a
 //          compiled re_node tree against a subject string, with and without
 //          capture-group tracking. Split out of rt_regex.c; shares AST types
 //          and class primitives via rt_regex_internal.h.

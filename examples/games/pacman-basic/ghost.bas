@@ -316,7 +316,7 @@ Class Ghost
         screenX = MAZE_LEFT + x
         screenY = MAZE_TOP + y
 
-        Viper.Terminal.SetPosition(screenY, screenX)
+        Zanna.Terminal.SetPosition(screenY, screenX)
 
         If mode = MODE_FRIGHTENED Then
             drawColor = COLOR_FRIGHTENED
@@ -329,9 +329,9 @@ Class Ghost
             ch = "M"  ' Normal ghost
         End If
 
-        Viper.Terminal.SetColor(drawColor, 0)
+        Zanna.Terminal.SetColor(drawColor, 0)
         PRINT ch;
-        Viper.Terminal.SetColor(7, 0)
+        Zanna.Terminal.SetColor(7, 0)
     End Sub
 
     ' Clear ghost from current position

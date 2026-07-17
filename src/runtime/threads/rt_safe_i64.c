@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_safe_i64.c
-// Purpose: Implements a thread-safe int64 cell for the Viper.Threads.SafeI64
+// Purpose: Implements a thread-safe int64 cell for the Zanna.Threads.SafeI64
 //          class. Provides Get, Set, Add (returns new value), and
 //          CompareExchange (CAS) operations synchronized via a monitor.
 //
@@ -168,7 +168,7 @@ static RtSafeI64 *require_safe(void *obj, const char *what) {
 /// @brief Creates a new SafeI64 with an initial value.
 ///
 /// Allocates and initializes a new thread-safe integer container. The returned
-/// object is managed by Viper's garbage collector.
+/// object is managed by Zanna's garbage collector.
 ///
 /// **Example:**
 /// ```

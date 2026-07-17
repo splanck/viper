@@ -1,18 +1,18 @@
-# Viper Paint → First-Class Drawing Application
+# Zanna Paint → First-Class Drawing Application
 
 > Approved plan. Progress tracked in `paint-progress.md` (same dir).
 
 ## Context
 
-`examples/apps/paint/` is a Zia drawing app (~5,300 lines, 25 core modules) built on `Viper.Graphics.Canvas`. It is well-architected (fat-controller + composition-over-inheritance, cached layer compositing, zoomable viewport, snapshot undo) but its own module headers describe it as an **MVP**: several behaviors are deliberately stubbed at "good enough for a demo" quality, and large swaths of the `Viper.Graphics` runtime go unused. The goal is a **maximal push** to a genuinely first-class paint program across four pillars — **pro color, more tools, layer power, visual/UX polish** — while fixing poor API usage and correctness gaps along the way. As a flagship demo it must both *look* polished and be *correct*.
+`examples/apps/paint/` is a Zia drawing app (~5,300 lines, 25 core modules) built on `Zanna.Graphics.Canvas`. It is well-architected (fat-controller + composition-over-inheritance, cached layer compositing, zoomable viewport, snapshot undo) but its own module headers describe it as an **MVP**: several behaviors are deliberately stubbed at "good enough for a demo" quality, and large swaths of the `Zanna.Graphics` runtime go unused. The goal is a **maximal push** to a genuinely first-class paint program across four pillars — **pro color, more tools, layer power, visual/UX polish** — while fixing poor API usage and correctness gaps along the way. As a flagship demo it must both *look* polished and be *correct*.
 
 Three findings from the deep read drive the plan:
 1. **The layer model already carries true alpha** (`layers.zia:319-336` blends `alpha = raw % 256`), but tools don't use it — the eraser writes background color opaquely (`eraser.zia:97`) and the eyedropper guesses transparency with `if color != 0` (`eyedropper.zia:44`). These are correctness debts fixable with the *existing* runtime.
-2. **`Viper.Graphics.Canvas` and `Viper.GUI.App` are different window systems.** Paint correctly stays on `Canvas` and uses `Viper.Game.UI` widgets; only the *global* `Viper.GUI` helpers (`FileDialog`, `MessageBox`, `Theme`, and — to add — `Clipboard`, `Cursor`) compose with a Canvas window. "Use Viper.GUI" means leveraging those globals + the rich `Viper.Graphics` drawing surface, **not** a chrome rewrite onto the widget tree.
-3. **The richest unused surface is `Viper.Graphics`:** `Color.FromHSL/FromHex/ToHex/GetH/S/L/Brighten/Darken/Complement`, `Canvas.Bezier/Arc/Polygon/GradientH/V`, `Pixels.DrawBezier/DrawTriangle/Rotate/RotateCW/Resize/Tint/Set(raw)`, and `Gradient2D` — all confirmed present in the runtime.
+2. **`Zanna.Graphics.Canvas` and `Zanna.GUI.App` are different window systems.** Paint correctly stays on `Canvas` and uses `Zanna.Game.UI` widgets; only the *global* `Zanna.GUI` helpers (`FileDialog`, `MessageBox`, `Theme`, and — to add — `Clipboard`, `Cursor`) compose with a Canvas window. "Use Zanna.GUI" means leveraging those globals + the rich `Zanna.Graphics` drawing surface, **not** a chrome rewrite onto the widget tree.
+3. **The richest unused surface is `Zanna.Graphics`:** `Color.FromHSL/FromHex/ToHex/GetH/S/L/Brighten/Darken/Complement`, `Canvas.Bezier/Arc/Polygon/GradientH/V`, `Pixels.DrawBezier/DrawTriangle/Rotate/RotateCW/Resize/Tint/Set(raw)`, and `Gradient2D` — all confirmed present in the runtime.
 
 ### Architecture decision (keep, don't rewrite)
-Stay on `Viper.Graphics.Canvas` with immediate-mode UI. Build new chrome (menus, color picker, toasts, context menus) as in-canvas widgets consistent with the existing `ui/` modules. This guarantees compatibility, honors the existing design, and is the only way a custom zoomable paint document can work. Maintain the **dark theme** throughout (accessibility requirement — user is visually impaired).
+Stay on `Zanna.Graphics.Canvas` with immediate-mode UI. Build new chrome (menus, color picker, toasts, context menus) as in-canvas widgets consistent with the existing `ui/` modules. This guarantees compatibility, honors the existing design, and is the only way a custom zoomable paint document can work. Maintain the **dark theme** throughout (accessibility requirement — user is visually impaired).
 
 ### Delivery
 "Maximal push" = all four pillars, but **sequenced to keep the app building + running green at every step** (CLAUDE.md "always green locally"). Workstream A (structure + correctness) lands first because everything else builds on it.
@@ -46,8 +46,8 @@ Bundle tool dependencies into a `ToolContext` (canvas, colors, brushSettings, se
 ## Workstream B — Pillar 1: Pro color system
 
 **B1. `ui/color_picker.zia`** — a real picker drawn in-canvas: hue bar + saturation/value square (or H/S/L sliders), live preview, and a hex field. Backed entirely by `Color.FromHSL`, `Color.GetH/GetS/GetL`, `Color.FromHex`, `Color.ToHex`, `Color.RGB`, `Color.GetR/G/B`. Clicking the foreground/background swatch (`app.zia:1084-1095`) opens it.
-**B2. RGB/hex readout** next to swatches; type-in hex via `Viper.GUI.Clipboard` paste support.
-**B3. Editable + savable palette** (`colors.zia`): replace the hardcoded 64 colors with an editable set; add custom-swatch assignment (right-drag a color in), and load/save a palette file (simple text via `Viper.IO`). Add "recent colors" strip (model already exists, `colors.zia:107-124` — just needs UI).
+**B2. RGB/hex readout** next to swatches; type-in hex via `Zanna.GUI.Clipboard` paste support.
+**B3. Editable + savable palette** (`colors.zia`): replace the hardcoded 64 colors with an editable set; add custom-swatch assignment (right-drag a color in), and load/save a palette file (simple text via `Zanna.IO`). Add "recent colors" strip (model already exists, `colors.zia:107-124` — just needs UI).
 **B4. Color harmony helpers** — buttons for `Color.Complement/Brighten/Darken/Saturate` to generate related swatches.
 
 ---
@@ -60,7 +60,7 @@ New tool IDs in `config.zia` (extend past `TOOL_SELECT=8`): `TOOL_GRADIENT`, `TO
 - **C2. Gradient tool** (`tools/gradient.zia`): drag to define direction/length; fill selection-or-layer between foreground and background using `Gradient2D` (`Sample(t)` per pixel along the drag vector; `FillHorizontal/FillVertical` fast path for axis-aligned). Linear first; radial as stretch.
 - **C3. Bezier curve tool** (`tools/curve.zia`): click anchors + drag control point(s); preview with `Canvas.Bezier`, commit with `Pixels.DrawBezier`. *Confirm arity* — runtime `Canvas.Bezier` is cubic (`rt_drawing_advanced.c:1086`); `Pixels.DrawBezier` is quadratic per docs. Match the tool to the available signatures.
 - **C4. Polygon/polyline tool** (`tools/polygon.zia`): click to add vertices, double-click/Enter to close; outline via repeated `Pixels.DrawLine`, optional fill for convex via `Pixels.DrawTriangle` fan.
-- **C5. Spray/airbrush** (`tools/spray.zia`): time-accumulated random dots within brush radius using `Viper.Math.Random` + `setPixelBlend`. *Confirm Random API name* via `viper --dump-runtime-api`.
+- **C5. Spray/airbrush** (`tools/spray.zia`): time-accumulated random dots within brush radius using `Zanna.Math.Random` + `setPixelBlend`. *Confirm Random API name* via `zanna --dump-runtime-api`.
 - **C6. Text tool** (`tools/text.zia`): type a string, place on layer. No `Pixels` text primitive exists, so render glyphs with `Canvas.Text` onto an offscreen region and grab them via `Canvas.CopyRect → Pixels`, then `Pixels.Copy` into the active layer. *Mark as the riskiest tool*; if `CopyRect` proves unsuitable, scope text to an overlay annotation and note the runtime gap (no `Pixels.DrawText`).
 - **C7. Shape fill/outline toggle**: surface the existing `filled` flag on rectangle/ellipse in the UI; add a round/square brush toggle (model exists: `brush.zia:97 toggleShape`).
 
@@ -79,9 +79,9 @@ New tool IDs in `config.zia` (extend past `TOOL_SELECT=8`): `TOOL_GRADIENT`, `TO
 ## Workstream E — Pillar 4: Visual & UX polish
 
 - **E1. Live brush cursor preview** (`ui/chrome.zia` overlay): draw a ring/box at the cursor showing brush size+shape, scaled by `view.zoom` (use `gfx.Ring`/`gfx.Frame`, coords via `view.canvasToScreenX/Y` + `canvasSizeToScreen`). Crosshair for shape/fill tools.
-- **E2. Tool-specific OS cursors** via `Viper.GUI.Cursor.Set` (`rt_gui_system.c` confirmed); fallback to custom-drawn cursor if it no-ops on a Canvas window (verify early).
+- **E2. Tool-specific OS cursors** via `Zanna.GUI.Cursor.Set` (`rt_gui_system.c` confirmed); fallback to custom-drawn cursor if it no-ops on a Canvas window (verify early).
 - **E3. Custom menu bar** (`ui/menu.zia`): in-canvas File / Edit / Image / Layer / View dropdowns. Declutters the 13-button toolbar (`app.zia:284-340`) and is expected of a first-class app. Toolbar becomes a small icon row of common actions.
-- **E4. On-canvas toasts** (`feedback.zia`): transient, fading notifications (timed via `gfx.DeltaTime`) for save/error/import events, replacing blocking `MessageBox` for non-critical feedback (keep MessageBox for true errors). Avoids `Viper.GUI.Toast` (needs the widget tree).
+- **E4. On-canvas toasts** (`feedback.zia`): transient, fading notifications (timed via `gfx.DeltaTime`) for save/error/import events, replacing blocking `MessageBox` for non-critical feedback (keep MessageBox for true errors). Avoids `Zanna.GUI.Toast` (needs the widget tree).
 - **E5. Refined dark chrome**: vertical gradients on panels/toolbar (`gfx.GradientV`), consistent rounded buttons + accent color, section headers, an accent focus glow, improved spacing/typography. New palette constants in `config.zia`.
 - **E6. Keyboard help overlay** (F1/`?`) listing shortcuts; "?" toolbar button.
 - **E7. Status bar polish**: tool + brush + zoom + cursor coords + selection size, with separators.
@@ -92,20 +92,20 @@ New tool IDs in `config.zia` (extend past `TOOL_SELECT=8`): `TOOL_GRADIENT`, `TO
 
 **New:** `tools/tool.zia` (interface + `ToolContext`), `tools/registry.zia`, `tools/select.zia`, `tools/gradient.zia`, `tools/curve.zia`, `tools/polygon.zia`, `tools/spray.zia`, `tools/text.zia`, `selection.zia`, `clipboard.zia`, `ui/color_picker.zia`, `ui/menu.zia`, `ui/chrome.zia`, `input_router.zia`.
 **Heavily modified:** `app.zia` (slim to orchestration), `layers.zia` (blend modes, merge), `canvas.zia` (erase/transparent, transforms, composite-pixel read), `colors.zia` (editable palette, harmony), `layer_panel.zia` (redesign), `eraser.zia`, `eyedropper.zia`, `config.zia` (tool IDs, new colors), `actions.zia` (new bindings), `tool_palette.zia`, `file_service.zia` (export options), `viewport.zia` (alpha display), `main.zia` (new `bind`s), `README.md` (feature list).
-**Constraint:** keep each existing tool `implements Tool`; every new/modified file gets the standard Viper GPL header (this is the public repo).
+**Constraint:** keep each existing tool `implements Tool`; every new/modified file gets the standard Zanna GPL header (this is the public repo).
 
 ## Reused runtime APIs (confirmed present)
 - Color: `Color.FromHSL/FromHex/ToHex/GetH/GetS/GetL/GetA/RGB/RGBA/Brighten/Darken/Saturate/Complement/Lerp` (`rt_graphics.h`).
 - Pixels: `Set`(raw)/`Get`/`DrawBezier`/`DrawTriangle`/`RotateCW/RotateCCW/Rotate`/`Resize`/`Tint`/`Copy`/`FlipV`/`Scale`/`Clone` (`rt_pixels_*.c`).
 - Canvas: `Bezier`/`Arc`/`Polygon`/`Polyline`/`GradientH/V`/`CopyRect`/`Ring`/`Frame` (`rt_drawing_advanced.c`, `rt_graphics2d_*`).
-- `Gradient2D` (`rt_graphics2d.h`); `Viper.GUI.Cursor`/`Clipboard` (`rt_gui_system.c`); `Viper.Math.Random`.
-- *Confirm before use* (signatures/arity/names): `Canvas.Bezier` cubic vs `Pixels.DrawBezier` quadratic; `Color.FromHSL` ranges; `Math.Random` method name; `Cursor.Set` behavior on a Canvas window — via `docs/viperlib/` + `viper --dump-runtime-api`.
+- `Gradient2D` (`rt_graphics2d.h`); `Zanna.GUI.Cursor`/`Clipboard` (`rt_gui_system.c`); `Zanna.Math.Random`.
+- *Confirm before use* (signatures/arity/names): `Canvas.Bezier` cubic vs `Pixels.DrawBezier` quadratic; `Color.FromHSL` ranges; `Math.Random` method name; `Cursor.Set` behavior on a Canvas window — via `docs/zannalib/` + `zanna --dump-runtime-api`.
 
 ## Verification
-1. **Fast type-check after each module:** `viper check examples/apps/paint/main.zia --diagnostic-format=json` (exit 0 clean).
-2. **Build the demo:** `./scripts/build_demos.sh` (and `viper run` from `examples/apps/paint/` per `viper.project` `entry main.zia`) — compile clean, app launches.
+1. **Fast type-check after each module:** `zanna check examples/apps/paint/main.zia --diagnostic-format=json` (exit 0 clean).
+2. **Build the demo:** `./scripts/build_demos.sh` (and `zanna run` from `examples/apps/paint/` per `zanna.project` `entry main.zia`) — compile clean, app launches.
 3. **Cross-platform gates** (CLAUDE.md): `./scripts/lint_platform_policy.sh` + `./scripts/run_cross_platform_smoke.sh`. (Pure-Zia app, but run per policy.)
 4. **Manual run-through per pillar** (no automated UI test harness for demos): each tool draws + previews + commits + undoes; eraser reveals transparency over checkerboard; color picker round-trips HSL/hex; blend modes visibly differ; layer panel opacity/merge/reorder work; save/open PNG+BMP round-trip; export preserves alpha (no checker baked in).
 5. **Regression:** existing shortcuts (README list) still work; undo/redo across all new ops; zoom/pan unaffected.
-6. **Full green:** finish with a no-skip `./scripts/build_viper_unix.sh` + demo build before reporting done.
+6. **Full green:** finish with a no-skip `./scripts/build_zanna_unix.sh` + demo build before reporting done.
 7. Remove the leftover `*_probe.zia` / `*_test.zia` scratch files in the paint dir (or fold into a smoke check) so the demo ships clean.

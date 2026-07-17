@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Keymap class and supporting types for Viper's TUI
+// This file declares the Keymap class and supporting types for Zanna's TUI
 // command binding system. Keymap maps key chords (key + modifiers) to named
 // commands, supporting both global bindings and per-widget bindings.
 //
@@ -39,7 +39,7 @@
 #include "tui/term/input.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::input {
+namespace zanna::tui::input {
 
 using CommandId = std::string;
 
@@ -125,4 +125,4 @@ class Keymap {
         widget_{};
 };
 
-} // namespace viper::tui::input
+} // namespace zanna::tui::input

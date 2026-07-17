@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
@@ -8,15 +8,15 @@
 # File: src/tests/e2e/test_windows_native_environment.cmake
 # Purpose: Regression probes for Windows native Environment runtime startup.
 # Key invariants:
-#   - Each generated probe must build as a native executable with viper build.
+#   - Each generated probe must build as a native executable with zanna build.
 #   - Each probe runs under a short timeout so argument/env startup hangs fail fast.
 # Ownership/Lifetime:
 #   - Test sources and executables are generated under TEST_WORK_DIR.
 #
 #===----------------------------------------------------------------------===//
 
-if (NOT DEFINED VIPER_EXE)
-    message(FATAL_ERROR "VIPER_EXE must be provided")
+if (NOT DEFINED ZANNA_EXE)
+    message(FATAL_ERROR "ZANNA_EXE must be provided")
 endif ()
 
 if (NOT DEFINED TEST_WORK_DIR)
@@ -34,7 +34,7 @@ endfunction()
 
 function(build_probe name)
     execute_process(
-            COMMAND "${VIPER_EXE}" build "${${name}_SRC}" -o "${${name}_EXE}" --quiet-warnings
+            COMMAND "${ZANNA_EXE}" build "${${name}_SRC}" -o "${${name}_EXE}" --quiet-warnings
             TIMEOUT 30
             RESULT_VARIABLE _build_rc
             OUTPUT_VARIABLE _build_out
@@ -74,34 +74,34 @@ endfunction()
 write_probe(native_env_arg_count
 "module NativeEnvArgCount;
 func start() {
-    Viper.Terminal.SayInt(Viper.System.Environment.GetArgumentCount());
+    Zanna.Terminal.SayInt(Zanna.System.Environment.GetArgumentCount());
 }
 ")
 
 write_probe(native_env_arg_get
 "module NativeEnvArgGet;
 func start() {
-    var count = Viper.System.Environment.GetArgumentCount();
+    var count = Zanna.System.Environment.GetArgumentCount();
     if count > 0 {
-        var arg0 = Viper.System.Environment.GetArgument(0);
-        if Viper.String.get_Length(arg0) > 0 {
-            Viper.Terminal.Say(\"RESULT: ok\");
+        var arg0 = Zanna.System.Environment.GetArgument(0);
+        if Zanna.String.get_Length(arg0) > 0 {
+            Zanna.Terminal.Say(\"RESULT: ok\");
             return;
         }
     }
-    Viper.Terminal.Say(\"RESULT: fail\");
+    Zanna.Terminal.Say(\"RESULT: fail\");
 }
 ")
 
 write_probe(native_env_get_missing
 "module NativeEnvGetMissing;
 func start() {
-    var value = Viper.System.Environment.GetVariable(\"VIPER_NATIVE_ENV_MISSING_SENTINEL\");
+    var value = Zanna.System.Environment.GetVariable(\"ZANNA_NATIVE_ENV_MISSING_SENTINEL\");
     if value == \"\" {
-        Viper.Terminal.Say(\"RESULT: ok\");
+        Zanna.Terminal.Say(\"RESULT: ok\");
         return;
     }
-    Viper.Terminal.Say(\"RESULT: fail\");
+    Zanna.Terminal.Say(\"RESULT: fail\");
 }
 ")
 
@@ -109,43 +109,43 @@ write_probe(native_env_long_heap_string
 "module NativeEnvLongHeapString;
 func start() {
     var value = \"abcdefghijklmnopqrstuvwxyz\" + \"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\";
-    if Viper.String.get_Length(value) > 40 {
-        Viper.Terminal.Say(\"RESULT: ok\");
+    if Zanna.String.get_Length(value) > 40 {
+        Zanna.Terminal.Say(\"RESULT: ok\");
         return;
     }
-    Viper.Terminal.Say(\"RESULT: fail\");
+    Zanna.Terminal.Say(\"RESULT: fail\");
 }
 ")
 
 write_probe(native_env_set_get_long
 "module NativeEnvSetGetLong;
 func start() {
-    var name = \"VIPER_NATIVE_ENV_SET_GET_LONG_SENTINEL\";
+    var name = \"ZANNA_NATIVE_ENV_SET_GET_LONG_SENTINEL\";
     var value = \"native-environment-value-\" + \"abcdefghijklmnopqrstuvwxyz0123456789\";
-    Viper.System.Environment.SetVariable(name, value);
-    if Viper.System.Environment.HasVariable(name) && Viper.System.Environment.GetVariable(name) == value {
-        Viper.Terminal.Say(\"RESULT: ok\");
+    Zanna.System.Environment.SetVariable(name, value);
+    if Zanna.System.Environment.HasVariable(name) && Zanna.System.Environment.GetVariable(name) == value {
+        Zanna.Terminal.Say(\"RESULT: ok\");
         return;
     }
-    Viper.Terminal.Say(\"RESULT: fail\");
+    Zanna.Terminal.Say(\"RESULT: fail\");
 }
 ")
 
 write_probe(native_env_is_native
 "module NativeEnvIsNative;
 func start() {
-    if Viper.System.Environment.IsNative() {
-        Viper.Terminal.Say(\"RESULT: ok\");
+    if Zanna.System.Environment.IsNative() {
+        Zanna.Terminal.Say(\"RESULT: ok\");
         return;
     }
-    Viper.Terminal.Say(\"RESULT: fail\");
+    Zanna.Terminal.Say(\"RESULT: fail\");
 }
 ")
 
 write_probe(native_env_end_program
 "module NativeEnvEndProgram;
 func start() {
-    Viper.System.Environment.Exit(7);
+    Zanna.System.Environment.Exit(7);
 }
 ")
 

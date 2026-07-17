@@ -57,7 +57,7 @@ The second approach is polymorphism. One piece of code, many types of vehicles, 
 When you buy something, the cashier says "How would you like to pay?" You might use cash, credit card, debit card, mobile payment, or gift card. The cashier doesn't need different training for each payment method. They just need to know: "Can this payment method complete the transaction?"
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface PaymentMethod {
     func pay(amount: Number) -> Boolean;
@@ -88,7 +88,7 @@ class MobilePayment implements PaymentMethod {
 The cashier's checkout code doesn't care which specific payment method you use:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func checkout(items: List[Item], payment: PaymentMethod) {
     var total = calculateTotal(items);
@@ -163,7 +163,7 @@ This is called the *Open-Closed Principle*: code should be open for extension bu
 Want to test your payment processing without actually charging credit cards? With polymorphism, create a `MockPaymentMethod` that always succeeds:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class MockPayment implements PaymentMethod {
     expose func pay(amount: Number) -> Boolean {
@@ -190,7 +190,7 @@ There are two flavors of polymorphism, and understanding both will deepen your m
 This is what we've been discussing: the decision about which method to call happens *at runtime*, based on the actual object type.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     expose func speak() {
@@ -228,7 +228,7 @@ The answer: **Dog's version**. The actual object type determines the method call
 This is called *dynamic dispatch* or *late binding*. The decision is made at runtime because the compiler can't always know what type an object will be. Consider:
 
 ```rust
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 func makeRandomAnimal() -> Animal {
     var r = Random.Range(0, 2);
@@ -263,8 +263,8 @@ This happens automatically. You just write `object.method()` and the right imple
 The other form of polymorphism happens at compile time: *method overloading*.
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 class Printer {
     expose func print(text: String) {
@@ -488,7 +488,7 @@ class MarkdownExporter implements Exporter {
 The export menu:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class ExportMenu {
     expose List[Exporter] exporters;
@@ -545,7 +545,7 @@ No existing code was modified. The ExportMenu didn't change. The other exporters
 This extensibility is the foundation of plugin systems:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Plugin {
     func getName() -> String;
@@ -650,7 +650,7 @@ The Strategy pattern lets you swap algorithms without changing the code that use
 Polymorphism excels at event-driven systems:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface EventHandler {
     func handle(event: Event);
@@ -961,7 +961,7 @@ Let's build a complete rendering system that demonstrates polymorphism's power:
 ```rust
 module DrawingSystem;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -1163,7 +1163,7 @@ Notice how `Group` is itself `Drawable`. This is the *Composite Pattern* — tre
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Animal {
     func speak();
@@ -1217,7 +1217,7 @@ NEXT
 
 ## Enums and Pattern Matching
 
-Polymorphism isn't limited to classes and interfaces. Viper also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
+Polymorphism isn't limited to classes and interfaces. Zanna also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
 
 ```rust
 enum Direction { North, South, East, West }
@@ -1257,7 +1257,7 @@ Interfaces define *what*, not *how*. You can't put implementation in an interfac
 // Wrong!
 interface Drawable {
     func draw() {
-        Viper.Terminal.Say("Drawing");  // Can't do this
+        Zanna.Terminal.Say("Drawing");  // Can't do this
     }
 }
 

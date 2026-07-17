@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_controllers.c
-// Purpose: Camera/character controllers for the Viper.Game3D layer —
+// Purpose: Camera/character controllers for the Zanna.Game3D layer —
 //   CharacterController3D, FirstPerson, FreeFly, Orbit, and Follow controllers,
 //   plus their finalizers and the entity/node sync helpers. Split out of
 //   rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.

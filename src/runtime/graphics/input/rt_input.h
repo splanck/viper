@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_input.h
-// Purpose: Keyboard, mouse, and gamepad input handling for the Viper.Input runtime namespace,
+// Purpose: Keyboard, mouse, and gamepad input handling for the Zanna.Input runtime namespace,
 // providing per-frame key state, mouse position/button, and gamepad queries.
 //
 // Key invariants:
@@ -34,120 +34,120 @@ extern "C" {
 //=========================================================================
 
 // Unknown key
-#define VIPER_KEY_UNKNOWN 0
+#define ZANNA_KEY_UNKNOWN 0
 
 // Printable ASCII keys (letters and numbers match ASCII)
-#define VIPER_KEY_SPACE 32
-#define VIPER_KEY_QUOTE 39  // '
-#define VIPER_KEY_COMMA 44  // ,
-#define VIPER_KEY_MINUS 45  // -
-#define VIPER_KEY_PERIOD 46 // .
-#define VIPER_KEY_SLASH 47  // /
+#define ZANNA_KEY_SPACE 32
+#define ZANNA_KEY_QUOTE 39  // '
+#define ZANNA_KEY_COMMA 44  // ,
+#define ZANNA_KEY_MINUS 45  // -
+#define ZANNA_KEY_PERIOD 46 // .
+#define ZANNA_KEY_SLASH 47  // /
 
-#define VIPER_KEY_0 48
-#define VIPER_KEY_1 49
-#define VIPER_KEY_2 50
-#define VIPER_KEY_3 51
-#define VIPER_KEY_4 52
-#define VIPER_KEY_5 53
-#define VIPER_KEY_6 54
-#define VIPER_KEY_7 55
-#define VIPER_KEY_8 56
-#define VIPER_KEY_9 57
+#define ZANNA_KEY_0 48
+#define ZANNA_KEY_1 49
+#define ZANNA_KEY_2 50
+#define ZANNA_KEY_3 51
+#define ZANNA_KEY_4 52
+#define ZANNA_KEY_5 53
+#define ZANNA_KEY_6 54
+#define ZANNA_KEY_7 55
+#define ZANNA_KEY_8 56
+#define ZANNA_KEY_9 57
 
-#define VIPER_KEY_SEMICOLON 59 // ;
-#define VIPER_KEY_EQUALS 61    // =
+#define ZANNA_KEY_SEMICOLON 59 // ;
+#define ZANNA_KEY_EQUALS 61    // =
 
-#define VIPER_KEY_A 65
-#define VIPER_KEY_B 66
-#define VIPER_KEY_C 67
-#define VIPER_KEY_D 68
-#define VIPER_KEY_E 69
-#define VIPER_KEY_F 70
-#define VIPER_KEY_G 71
-#define VIPER_KEY_H 72
-#define VIPER_KEY_I 73
-#define VIPER_KEY_J 74
-#define VIPER_KEY_K 75
-#define VIPER_KEY_L 76
-#define VIPER_KEY_M 77
-#define VIPER_KEY_N 78
-#define VIPER_KEY_O 79
-#define VIPER_KEY_P 80
-#define VIPER_KEY_Q 81
-#define VIPER_KEY_R 82
-#define VIPER_KEY_S 83
-#define VIPER_KEY_T 84
-#define VIPER_KEY_U 85
-#define VIPER_KEY_V 86
-#define VIPER_KEY_W 87
-#define VIPER_KEY_X 88
-#define VIPER_KEY_Y 89
-#define VIPER_KEY_Z 90
+#define ZANNA_KEY_A 65
+#define ZANNA_KEY_B 66
+#define ZANNA_KEY_C 67
+#define ZANNA_KEY_D 68
+#define ZANNA_KEY_E 69
+#define ZANNA_KEY_F 70
+#define ZANNA_KEY_G 71
+#define ZANNA_KEY_H 72
+#define ZANNA_KEY_I 73
+#define ZANNA_KEY_J 74
+#define ZANNA_KEY_K 75
+#define ZANNA_KEY_L 76
+#define ZANNA_KEY_M 77
+#define ZANNA_KEY_N 78
+#define ZANNA_KEY_O 79
+#define ZANNA_KEY_P 80
+#define ZANNA_KEY_Q 81
+#define ZANNA_KEY_R 82
+#define ZANNA_KEY_S 83
+#define ZANNA_KEY_T 84
+#define ZANNA_KEY_U 85
+#define ZANNA_KEY_V 86
+#define ZANNA_KEY_W 87
+#define ZANNA_KEY_X 88
+#define ZANNA_KEY_Y 89
+#define ZANNA_KEY_Z 90
 
-#define VIPER_KEY_LBRACKET 91  // [
-#define VIPER_KEY_BACKSLASH 92 // backslash
-#define VIPER_KEY_RBRACKET 93  // ]
-#define VIPER_KEY_GRAVE 96     // `
+#define ZANNA_KEY_LBRACKET 91  // [
+#define ZANNA_KEY_BACKSLASH 92 // backslash
+#define ZANNA_KEY_RBRACKET 93  // ]
+#define ZANNA_KEY_GRAVE 96     // `
 
 // Special keys (GLFW-style values >= 256)
-#define VIPER_KEY_ESCAPE 256
-#define VIPER_KEY_ENTER 257
-#define VIPER_KEY_TAB 258
-#define VIPER_KEY_BACKSPACE 259
-#define VIPER_KEY_INSERT 260
-#define VIPER_KEY_DELETE 261
-#define VIPER_KEY_RIGHT 262
-#define VIPER_KEY_LEFT 263
-#define VIPER_KEY_DOWN 264
-#define VIPER_KEY_UP 265
-#define VIPER_KEY_PAGEUP 266
-#define VIPER_KEY_PAGEDOWN 267
-#define VIPER_KEY_HOME 268
-#define VIPER_KEY_END 269
+#define ZANNA_KEY_ESCAPE 256
+#define ZANNA_KEY_ENTER 257
+#define ZANNA_KEY_TAB 258
+#define ZANNA_KEY_BACKSPACE 259
+#define ZANNA_KEY_INSERT 260
+#define ZANNA_KEY_DELETE 261
+#define ZANNA_KEY_RIGHT 262
+#define ZANNA_KEY_LEFT 263
+#define ZANNA_KEY_DOWN 264
+#define ZANNA_KEY_UP 265
+#define ZANNA_KEY_PAGEUP 266
+#define ZANNA_KEY_PAGEDOWN 267
+#define ZANNA_KEY_HOME 268
+#define ZANNA_KEY_END 269
 
 // Function keys
-#define VIPER_KEY_F1 290
-#define VIPER_KEY_F2 291
-#define VIPER_KEY_F3 292
-#define VIPER_KEY_F4 293
-#define VIPER_KEY_F5 294
-#define VIPER_KEY_F6 295
-#define VIPER_KEY_F7 296
-#define VIPER_KEY_F8 297
-#define VIPER_KEY_F9 298
-#define VIPER_KEY_F10 299
-#define VIPER_KEY_F11 300
-#define VIPER_KEY_F12 301
+#define ZANNA_KEY_F1 290
+#define ZANNA_KEY_F2 291
+#define ZANNA_KEY_F3 292
+#define ZANNA_KEY_F4 293
+#define ZANNA_KEY_F5 294
+#define ZANNA_KEY_F6 295
+#define ZANNA_KEY_F7 296
+#define ZANNA_KEY_F8 297
+#define ZANNA_KEY_F9 298
+#define ZANNA_KEY_F10 299
+#define ZANNA_KEY_F11 300
+#define ZANNA_KEY_F12 301
 
 // Numpad keys
-#define VIPER_KEY_NUM0 320
-#define VIPER_KEY_NUM1 321
-#define VIPER_KEY_NUM2 322
-#define VIPER_KEY_NUM3 323
-#define VIPER_KEY_NUM4 324
-#define VIPER_KEY_NUM5 325
-#define VIPER_KEY_NUM6 326
-#define VIPER_KEY_NUM7 327
-#define VIPER_KEY_NUM8 328
-#define VIPER_KEY_NUM9 329
-#define VIPER_KEY_NUMDOT 330
-#define VIPER_KEY_NUMDIV 331
-#define VIPER_KEY_NUMMUL 332
-#define VIPER_KEY_NUMSUB 333
-#define VIPER_KEY_NUMADD 334
-#define VIPER_KEY_NUMENTER 335
+#define ZANNA_KEY_NUM0 320
+#define ZANNA_KEY_NUM1 321
+#define ZANNA_KEY_NUM2 322
+#define ZANNA_KEY_NUM3 323
+#define ZANNA_KEY_NUM4 324
+#define ZANNA_KEY_NUM5 325
+#define ZANNA_KEY_NUM6 326
+#define ZANNA_KEY_NUM7 327
+#define ZANNA_KEY_NUM8 328
+#define ZANNA_KEY_NUM9 329
+#define ZANNA_KEY_NUMDOT 330
+#define ZANNA_KEY_NUMDIV 331
+#define ZANNA_KEY_NUMMUL 332
+#define ZANNA_KEY_NUMSUB 333
+#define ZANNA_KEY_NUMADD 334
+#define ZANNA_KEY_NUMENTER 335
 
 // Modifier keys
-#define VIPER_KEY_LSHIFT 340
-#define VIPER_KEY_LCTRL 341
-#define VIPER_KEY_LALT 342
-#define VIPER_KEY_RSHIFT 344
-#define VIPER_KEY_RCTRL 345
-#define VIPER_KEY_RALT 346
+#define ZANNA_KEY_LSHIFT 340
+#define ZANNA_KEY_LCTRL 341
+#define ZANNA_KEY_LALT 342
+#define ZANNA_KEY_RSHIFT 344
+#define ZANNA_KEY_RCTRL 345
+#define ZANNA_KEY_RALT 346
 
 // Maximum key code we track
-#define VIPER_KEY_MAX 512
+#define ZANNA_KEY_MAX 512
 
 //=========================================================================
 // Keyboard State Management
@@ -162,11 +162,11 @@ void rt_keyboard_init(void);
 void rt_keyboard_begin_frame(void);
 
 /// @brief Register a key press event.
-/// @param key Public VIPER_KEY_* key code.
+/// @param key Public ZANNA_KEY_* key code.
 void rt_keyboard_on_key_down(int64_t key);
 
 /// @brief Register a key release event.
-/// @param key Public VIPER_KEY_* key code.
+/// @param key Public ZANNA_KEY_* key code.
 void rt_keyboard_on_key_up(int64_t key);
 
 /// @brief Register a key press event from a vgfx window event.
@@ -277,7 +277,7 @@ rt_string rt_keyboard_key_name(int64_t key);
 // Key Code Constants (Runtime getters)
 //
 /// @brief Runtime accessors returning the stable integer key code for each
-///        named key (the function-call equivalents of the VIPER_KEY_*
+///        named key (the function-call equivalents of the ZANNA_KEY_*
 ///        macros, for front-ends that bind functions rather than macros).
 /// @details One getter per key; the function name is the key
 ///          (`rt_keyboard_key_a` → the 'A' key code, `rt_keyboard_key_f1` →
@@ -392,12 +392,12 @@ int64_t rt_keyboard_key_numdot(void);
 // Mouse Button Constants
 //=========================================================================
 
-#define VIPER_MOUSE_BUTTON_LEFT 0
-#define VIPER_MOUSE_BUTTON_RIGHT 1
-#define VIPER_MOUSE_BUTTON_MIDDLE 2
-#define VIPER_MOUSE_BUTTON_X1 3
-#define VIPER_MOUSE_BUTTON_X2 4
-#define VIPER_MOUSE_BUTTON_MAX 5
+#define ZANNA_MOUSE_BUTTON_LEFT 0
+#define ZANNA_MOUSE_BUTTON_RIGHT 1
+#define ZANNA_MOUSE_BUTTON_MIDDLE 2
+#define ZANNA_MOUSE_BUTTON_X1 3
+#define ZANNA_MOUSE_BUTTON_X2 4
+#define ZANNA_MOUSE_BUTTON_MAX 5
 
 //=========================================================================
 // Mouse State Management
@@ -609,7 +609,7 @@ void rt_mouse_set_pos(int64_t x, int64_t y);
 // Button Constant Getters
 //
 /// @brief Runtime accessors returning the integer code for each mouse button
-///        (function-call equivalents of the VIPER_MOUSE_BUTTON_* macros). The
+///        (function-call equivalents of the ZANNA_MOUSE_BUTTON_* macros). The
 ///        name is the button (`rt_mouse_button_left` → left button, `x1`/`x2`
 ///        → the side buttons); the code is what rt_mouse_* queries expect.
 //=========================================================================
@@ -628,25 +628,25 @@ int64_t rt_mouse_button_x2(void);
 // Gamepad Button Constants (Standard Gamepad Layout)
 //=========================================================================
 
-#define VIPER_PAD_A 0      // Xbox A / PlayStation Cross
-#define VIPER_PAD_B 1      // Xbox B / PlayStation Circle
-#define VIPER_PAD_X 2      // Xbox X / PlayStation Square
-#define VIPER_PAD_Y 3      // Xbox Y / PlayStation Triangle
-#define VIPER_PAD_LB 4     // Left bumper/shoulder
-#define VIPER_PAD_RB 5     // Right bumper/shoulder
-#define VIPER_PAD_BACK 6   // Back/Select/Share
-#define VIPER_PAD_START 7  // Start/Options
-#define VIPER_PAD_LSTICK 8 // Left stick click
-#define VIPER_PAD_RSTICK 9 // Right stick click
-#define VIPER_PAD_UP 10    // D-pad up
-#define VIPER_PAD_DOWN 11  // D-pad down
-#define VIPER_PAD_LEFT 12  // D-pad left
-#define VIPER_PAD_RIGHT 13 // D-pad right
-#define VIPER_PAD_GUIDE 14 // Xbox button / PlayStation button
-#define VIPER_PAD_BUTTON_MAX 15
+#define ZANNA_PAD_A 0      // Xbox A / PlayStation Cross
+#define ZANNA_PAD_B 1      // Xbox B / PlayStation Circle
+#define ZANNA_PAD_X 2      // Xbox X / PlayStation Square
+#define ZANNA_PAD_Y 3      // Xbox Y / PlayStation Triangle
+#define ZANNA_PAD_LB 4     // Left bumper/shoulder
+#define ZANNA_PAD_RB 5     // Right bumper/shoulder
+#define ZANNA_PAD_BACK 6   // Back/Select/Share
+#define ZANNA_PAD_START 7  // Start/Options
+#define ZANNA_PAD_LSTICK 8 // Left stick click
+#define ZANNA_PAD_RSTICK 9 // Right stick click
+#define ZANNA_PAD_UP 10    // D-pad up
+#define ZANNA_PAD_DOWN 11  // D-pad down
+#define ZANNA_PAD_LEFT 12  // D-pad left
+#define ZANNA_PAD_RIGHT 13 // D-pad right
+#define ZANNA_PAD_GUIDE 14 // Xbox button / PlayStation button
+#define ZANNA_PAD_BUTTON_MAX 15
 
 // Maximum number of supported controllers
-#define VIPER_PAD_MAX 4
+#define ZANNA_PAD_MAX 4
 
 //=========================================================================
 // Gamepad State Management
@@ -688,13 +688,13 @@ rt_string rt_pad_name(int64_t index);
 
 /// @brief Check if a button is currently pressed.
 /// @param index Controller index (0-3).
-/// @param button Button constant (VIPER_PAD_*).
+/// @param button Button constant (ZANNA_PAD_*).
 /// @return 1 if pressed, 0 otherwise.
 int8_t rt_pad_is_down(int64_t index, int64_t button);
 
 /// @brief Check if a button is currently released.
 /// @param index Controller index (0-3).
-/// @param button Button constant (VIPER_PAD_*).
+/// @param button Button constant (ZANNA_PAD_*).
 /// @return 1 if released, 0 otherwise.
 int8_t rt_pad_is_up(int64_t index, int64_t button);
 

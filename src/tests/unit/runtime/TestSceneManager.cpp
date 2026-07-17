@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - Each test owns its SceneManager for the duration of one test case.
 //   - Runtime strings passed to Add and Switch are copied or immutable.
-// Links: src/runtime/game/rt_scenemanager.c, docs/viperlib/game/scenemanager.md
+// Links: src/runtime/game/rt_scenemanager.c, docs/zannalib/game/scenemanager.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -206,5 +206,5 @@ TEST(SceneManager, OverlongSceneNamesAreRejectedNotAliased) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

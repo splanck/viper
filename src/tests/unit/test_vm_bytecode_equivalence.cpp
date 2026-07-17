@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@
 
 using namespace il::core;
 using namespace il::build;
-using namespace viper::bytecode;
+using namespace zanna::bytecode;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -489,7 +489,7 @@ static void test_multistep_equivalence() {
 //===----------------------------------------------------------------------===//
 
 int main() {
-    VIPER_DISABLE_ABORT_DIALOG();
+    ZANNA_DISABLE_ABORT_DIALOG();
     std::cout << "Running VM vs BytecodeVM equivalence tests...\n";
 
     test_add_equivalence();

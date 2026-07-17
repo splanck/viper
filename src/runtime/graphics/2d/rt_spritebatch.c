@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_spritebatch.c
-// Purpose: Batched sprite renderer for Viper games. Accumulates a list of
+// Purpose: Batched sprite renderer for Zanna games. Accumulates a list of
 //   draw commands (sprite + position + optional transform) each frame and
 //   submits them to the Canvas in a single pass. Reduces per-sprite overhead
 //   compared to individual canvas.Blit() calls from Zia, and enables sorting
@@ -33,7 +33,7 @@
 //
 // Links: src/runtime/graphics/rt_spritebatch.h (public API),
 //        src/runtime/graphics/rt_sprite.h (single-sprite API),
-//        docs/viperlib/game.md (SpriteBatch section)
+//        docs/zannalib/game.md (SpriteBatch section)
 //
 //===----------------------------------------------------------------------===//
 

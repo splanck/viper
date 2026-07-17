@@ -27,10 +27,10 @@
 // ============================================================================
 module franchise_shell;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.IO.Path as Path;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.IO.Path as Path;
+bind Zanna.Collections.Seq as Seq;
 bind "../model/constants";
 bind "../season/season_model";
 bind "../season/season_engine";
@@ -465,7 +465,7 @@ class FranchiseShell {
     hide func showTitle() {
         Terminal.Say("");
         Terminal.Say("=================================================================");
-        Terminal.Say("                 VIPER BASEBALL — Franchise Shell");
+        Terminal.Say("                 ZANNA BASEBALL — Franchise Shell");
         Terminal.Say("=================================================================");
         Terminal.Say("");
     }

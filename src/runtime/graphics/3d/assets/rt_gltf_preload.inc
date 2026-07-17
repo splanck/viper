@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_gltf_preload.inc  (#included from rt_gltf.c; not a
 // standalone translation unit) Purpose: glTF preload-bundle staging (buffers, views, accessors,
 // meshes, morphs, images)

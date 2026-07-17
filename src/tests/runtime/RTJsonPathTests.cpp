@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -248,13 +248,13 @@ static void test_get_int_from_parsed_json() {
 
 static void test_get_str_from_parsed_json() {
     // Get string value from parsed JSON
-    rt_string json = make_str("{\"name\":\"viper\",\"ver\":1}");
+    rt_string json = make_str("{\"name\":\"zanna\",\"ver\":1}");
     void *doc = rt_json_parse(json);
     assert(doc != NULL);
 
     rt_string p1 = make_str("name");
     rt_string s1 = rt_jsonpath_get_str(doc, p1);
-    assert(strcmp(rt_string_cstr(s1), "viper") == 0);
+    assert(strcmp(rt_string_cstr(s1), "zanna") == 0);
 
     // Get numeric value as string
     rt_string p2 = make_str("ver");

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: src/tests/vm/HttpServerRuntimeTests.cpp
 // Purpose: Validate VM-side HttpServer.BindHandler integration.
@@ -81,8 +81,8 @@ static TempTlsFiles create_temp_tls_files() {
     if (ec)
         return files;
 
-    files.cert_path = (temp_dir / "viper_vm_https_cert.pem").string();
-    files.key_path = (temp_dir / "viper_vm_https_key.pem").string();
+    files.cert_path = (temp_dir / "zanna_vm_https_cert.pem").string();
+    files.key_path = (temp_dir / "zanna_vm_https_key.pem").string();
     if (!write_text_file(files.cert_path, LOCALHOST_TEST_CERT_PEM) ||
         !write_text_file(files.key_path, LOCALHOST_TEST_KEY_PEM)) {
         files.cert_path.clear();
@@ -97,7 +97,7 @@ int main() {
     Module m;
     il::build::IRBuilder b(m);
 
-    b.addExtern("Viper.Network.ServerRes.Send",
+    b.addExtern("Zanna.Network.ServerRes.Send",
                 Type(Type::Kind::Void),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Str)});
     b.addExtern("test.http.selector", Type(Type::Kind::I64), {});
@@ -125,7 +125,7 @@ int main() {
     makeStr.loc = {1, 1, 1};
     entry.instructions.push_back(makeStr);
 
-    b.emitCall("Viper.Network.ServerRes.Send",
+    b.emitCall("Zanna.Network.ServerRes.Send",
                {b.blockParam(entry, 1), Value::temp(*makeStr.result)},
                std::optional<Value>{},
                {1, 1, 2});
@@ -155,7 +155,7 @@ int main() {
     {
         il::vm::ActiveVMGuard guard(&vm);
         (void)il::vm::RuntimeBridge::call(ctx,
-                                          "Viper.Network.HttpServer.BindHandler",
+                                          "Zanna.Network.HttpServer.BindHandler",
                                           std::vector<il::vm::Slot>{serverArg, tagArg, entryArg},
                                           {},
                                           "bind_http_handler",
@@ -190,7 +190,7 @@ int main() {
         il::vm::ActiveVMGuard guard(&vm);
         (void)il::vm::RuntimeBridge::call(
             ctx,
-            "Viper.Network.HttpsServer.BindHandler",
+            "Zanna.Network.HttpsServer.BindHandler",
             std::vector<il::vm::Slot>{httpsServerArg, httpsTagArg, entryArg},
             {},
             "bind_https_handler",

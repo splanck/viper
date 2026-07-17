@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Normalize lowered AArch64 MIR before register allocation.
 class LegalizePass final : public Pass {
@@ -32,4 +32,4 @@ class LegalizePass final : public Pass {
     bool run(AArch64Module &module, Diagnostics &diags) override;
 };
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

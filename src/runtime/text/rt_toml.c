@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_toml.c
-// Purpose: Implements a TOML-subset parser and formatter for the Viper.Data.Toml
+// Purpose: Implements a TOML-subset parser and formatter for the Zanna.Data.Toml
 //          class. Produces an rt_map tree from a TOML document supporting
 //          tables ([table]), arrays of tables ([[array]]), inline tables,
 //          basic/literal/multi-line strings, and array values. This is NOT a

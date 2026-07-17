@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,10 +21,10 @@
 #include "tests/TestHarness.hpp"
 #include <memory>
 
-using viper::tui::App;
-using viper::tui::render::ScreenBuffer;
-using viper::tui::term::StringTermIO;
-using viper::tui::ui::Widget;
+using zanna::tui::App;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::term::StringTermIO;
+using zanna::tui::ui::Widget;
 
 struct CharWidget : Widget {
     char ch;
@@ -56,6 +56,6 @@ TEST(TUI, AppResize) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

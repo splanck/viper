@@ -1,8 +1,8 @@
 module CodecDemo;
-bind Viper.Terminal;
-bind Viper.Text.Codec as Codec;
+bind Zanna.Terminal;
+bind Zanna.Text.Codec as Codec;
 func start() {
-    Say("=== Viper.Text.Codec API Audit ===");
+    Say("=== Zanna.Text.Codec API Audit ===");
 
     // --- Base64Enc / Base64Dec ---
     Say("--- Base64 ---");
@@ -10,7 +10,7 @@ func start() {
     Say(b64);
     Say(Codec.Base64Decode(b64));
 
-    var b64_2 = Codec.Base64Encode("Viper Language");
+    var b64_2 = Codec.Base64Encode("Zanna Language");
     Say(b64_2);
     Say(Codec.Base64Decode(b64_2));
 

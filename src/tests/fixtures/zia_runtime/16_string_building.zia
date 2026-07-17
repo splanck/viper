@@ -4,12 +4,12 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 
-func start() {    var t = Viper.String.Trim("  aB  ");
-    var u = Viper.String.ToUpper(t);
-    var v = Viper.String.Concat(u, "!");
+func start() {    var t = Zanna.String.Trim("  aB  ");
+    var u = Zanna.String.ToUpper(t);
+    var v = Zanna.String.Concat(u, "!");
     assertEqStr(v, "AB!", "concat");
 
-    var m = Viper.String.Mid("xyz", 2);
+    var m = Zanna.String.Mid("xyz", 2);
     assertEqStr(m, "yz", "mid");
 
     report();

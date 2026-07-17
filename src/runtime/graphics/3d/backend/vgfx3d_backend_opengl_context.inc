@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_context.inc  (#included from
 // vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL context creation,
 // shader/program/object init, and teardown
@@ -108,7 +108,7 @@ static void gl_query_default_framebuffer_buffer(gl_context_t *ctx) {
 /// @details Some Linux GLX/X11 combinations create a context successfully but silently keep the
 ///          window drawable's RGB channels black. Offscreen FBO rendering still works in that
 ///          configuration, so the backend can fall back to presenting the final offscreen image
-///          through ViperGFX. The probe saves and restores framebuffer state and only runs during
+///          through ZannaGFX. The probe saves and restores framebuffer state and only runs during
 ///          context creation before user-visible rendering begins.
 static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
     gl_framebuffer_state_t saved;
@@ -711,13 +711,13 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     /* Reversed-Z depth precision: with GL_ZERO_TO_ONE clip control the
      * fixed [-1,1]->[0,1] window remap is dropped, so the reversed depth
      * distribution keeps its float density at the far field. Opt-in via
-     * VIPER_GL_CLIP_CONTROL=1 until validated on a live Linux/GL machine
+     * ZANNA_GL_CLIP_CONTROL=1 until validated on a live Linux/GL machine
      * (this TU has no compile or run coverage on the macOS dev host); the
      * shader prologue (compile_shader_parts) and the VS z remap key off
      * gl_zero_to_one_clip, so flipping the default is a one-line change. */
     gl_zero_to_one_clip = 0;
     {
-        const char *clip_opt = getenv("VIPER_GL_CLIP_CONTROL");
+        const char *clip_opt = getenv("ZANNA_GL_CLIP_CONTROL");
         if (clip_opt && strcmp(clip_opt, "1") == 0 && gl.ClipControl) {
             gl.ClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
             gl_zero_to_one_clip = 1;
@@ -732,7 +732,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             /*
              * Linux GLX default drawables can pass a clear/read probe while still rejecting the
              * fullscreen shader resolve used by post-FX. Keep all final color composition in
-             * backend-owned FBOs and present through ViperGFX unless the user explicitly opts into
+             * backend-owned FBOs and present through ZannaGFX unless the user explicitly opts into
              * auto/direct presentation for parity debugging.
              */
             ctx->default_framebuffer_writable = 0;

@@ -1,9 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// This source file is part of the Viper project.
+// This source file is part of the Zanna project.
 //
 // File: src/frontends/basic/constfold/FoldCasts.cpp
 // Purpose: House the cast-oriented entry point for the BASIC constant folder,

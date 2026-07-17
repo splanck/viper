@@ -45,7 +45,7 @@
 
 module palette;
 
-bind Viper.Graphics.Color;
+bind Zanna.Graphics.Color;
 
 /// @brief The named-colour vocabulary.  One field per swatch
 ///        the game ever draws with.  All fields are populated

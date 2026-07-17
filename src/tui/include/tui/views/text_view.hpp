@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the TextView class, the primary text editing view for
-// Viper's TUI. TextView displays the contents of a TextBuffer with cursor
+// Zanna's TUI. TextView displays the contents of a TextBuffer with cursor
 // navigation, text selection, scrolling, optional line numbers, syntax
 // highlighting, and match highlighting.
 //
@@ -45,11 +45,11 @@
 #include "tui/ui/widget.hpp"
 #include "tui/util/unicode.hpp"
 
-namespace viper::tui::syntax {
+namespace zanna::tui::syntax {
 class SyntaxRuleSet;
 }
 
-namespace viper::tui::views {
+namespace zanna::tui::views {
 
 /// @brief Interactive text editing view bound to a TextBuffer.
 /// @details Renders buffer content with optional line numbers, syntax
@@ -135,4 +135,4 @@ class TextView : public ui::Widget {
     void setCursor(std::size_t row, std::size_t col, bool shift, bool updateTarget);
 };
 
-} // namespace viper::tui::views
+} // namespace zanna::tui::views

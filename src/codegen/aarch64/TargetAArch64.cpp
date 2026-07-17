@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include "TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 namespace {
 
 /// @brief Build the Darwin/macOS AArch64 TargetInfo with AAPCS64 register tables,
@@ -380,4 +380,4 @@ const char *regName(PhysReg reg) noexcept {
     }
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

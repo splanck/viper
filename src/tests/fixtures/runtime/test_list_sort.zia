@@ -3,15 +3,15 @@ module TestListSort;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Collections.List.Sort
-// COVER: Viper.Collections.List.SortDesc
+// COVER: Zanna.Collections.List.Sort
+// COVER: Zanna.Collections.List.SortDesc
 
 func testSortStrings() {
     setTest("SortStrings");
 
     var list = ["cherry", "apple", "banana"];
 
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqStr(list[0], "apple", "sorted first");
     assertEqStr(list[1], "banana", "sorted second");
@@ -23,7 +23,7 @@ func testSortAlreadySorted() {
 
     var list = ["alpha", "beta", "gamma"];
 
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqStr(list[0], "alpha", "already sorted first");
     assertEqStr(list[1], "beta", "already sorted second");
@@ -35,7 +35,7 @@ func testSortDescStrings() {
 
     var list = ["cherry", "apple", "banana"];
 
-    Viper.Collections.List.SortDesc(list);
+    Zanna.Collections.List.SortDesc(list);
 
     assertEqStr(list[0], "cherry", "desc first");
     assertEqStr(list[1], "banana", "desc second");
@@ -46,7 +46,7 @@ func testSortEmpty() {
     setTest("SortEmpty");
 
     var list = [];
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqInt(list.count(), 0, "empty list after sort");
     pass(); // no crash
@@ -57,7 +57,7 @@ func testSortSingle() {
 
     var list = ["only"];
 
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqInt(list.count(), 1, "single element list len");
     assertEqStr(list[0], "only", "single element unchanged");
@@ -69,8 +69,8 @@ func testSortIdempotent() {
     var list = ["zoo", "ant", "mid"];
 
     // Sort twice
-    Viper.Collections.List.Sort(list);
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqStr(list[0], "ant", "idempotent first");
     assertEqStr(list[1], "mid", "idempotent second");
@@ -82,7 +82,7 @@ func testSortReversed() {
 
     var list = ["z", "y", "x", "w", "v"];
 
-    Viper.Collections.List.Sort(list);
+    Zanna.Collections.List.Sort(list);
 
     assertEqStr(list[0], "v", "reversed sort 0");
     assertEqStr(list[1], "w", "reversed sort 1");

@@ -162,8 +162,8 @@ Class Player
         screenX = FIELD_LEFT + Me.X
         screenY = FIELD_TOP + Me.Y
 
-        Viper.Terminal.SetPosition(screenY, screenX)
-        Viper.Terminal.SetColor(15, 0)  ' Bright white.
+        Zanna.Terminal.SetPosition(screenY, screenX)
+        Zanna.Terminal.SetColor(15, 0)  ' Bright white.
         PRINT "A"
     End Sub
 
@@ -184,8 +184,8 @@ Class Player
             screenX = FIELD_LEFT + Me.BulletX
             screenY = FIELD_TOP + Me.BulletY
 
-            Viper.Terminal.SetPosition(screenY, screenX)
-            Viper.Terminal.SetColor(14, 0)  ' Yellow.
+            Zanna.Terminal.SetPosition(screenY, screenX)
+            Zanna.Terminal.SetColor(14, 0)  ' Yellow.
             PRINT "|"
         End If
     End Sub
@@ -206,16 +206,16 @@ Class Player
     ' third A). This is the same "print trailing spaces to clear stale
     ' characters" idiom used in vtris's score panel.
     Sub DrawHUD()
-        Viper.Terminal.SetPosition(1, FIELD_LEFT)
-        Viper.Terminal.SetColor(11, 0)
+        Zanna.Terminal.SetPosition(1, FIELD_LEFT)
+        Zanna.Terminal.SetColor(11, 0)
         PRINT "SCORE: "
-        Viper.Terminal.SetColor(15, 0)
+        Zanna.Terminal.SetColor(15, 0)
         PRINT Me.Score
 
-        Viper.Terminal.SetPosition(1, FIELD_LEFT + 20)
-        Viper.Terminal.SetColor(12, 0)
+        Zanna.Terminal.SetPosition(1, FIELD_LEFT + 20)
+        Zanna.Terminal.SetColor(12, 0)
         PRINT "LIVES: "
-        Viper.Terminal.SetColor(15, 0)
+        Zanna.Terminal.SetColor(15, 0)
         Dim i As Integer
         For i = 1 To Me.Lives
             PRINT "A "

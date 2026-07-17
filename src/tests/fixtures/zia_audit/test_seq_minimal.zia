@@ -3,13 +3,13 @@ module TestSeqMinimal;
 // Test: Minimal Seq
 
 func start() {
-    Viper.Terminal.Say("=== Seq Minimal Test ===");
+    Zanna.Terminal.Say("=== Seq Minimal Test ===");
 
-    var arr: Viper.Collections.Seq = Viper.Collections.Seq.New(5);
-    Viper.Terminal.Say("Created seq");
+    var arr: Zanna.Collections.Seq = Zanna.Collections.Seq.New(5);
+    Zanna.Terminal.Say("Created seq");
 
-    Viper.Collections.Seq.Set(arr, 0, 10);
-    Viper.Terminal.Say("Set element");
+    Zanna.Collections.Seq.Set(arr, 0, 10);
+    Zanna.Terminal.Say("Set element");
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

@@ -1,6 +1,6 @@
 module TestBitwise;
 
-// Test: Bitwise operators (both language operators and Viper.Bits runtime)
+// Test: Bitwise operators (both language operators and Zanna.Bits runtime)
 
 var passed: Integer = 0;
 var failed: Integer = 0;
@@ -10,7 +10,7 @@ func check(name: String, actual: Integer, expected: Integer) {
         passed = passed + 1;
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.String.FromInt(expected) + ", got " + Viper.String.FromInt(actual));
+        Zanna.Terminal.Say("FAIL: " + name + " - expected " + Zanna.String.FromInt(expected) + ", got " + Zanna.String.FromInt(actual));
     }
 }
 
@@ -19,12 +19,12 @@ func checkBool(name: String, actual: Boolean, expected: Boolean) {
         passed = passed + 1;
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name);
+        Zanna.Terminal.Say("FAIL: " + name);
     }
 }
 
 func start() {
-    Viper.Terminal.Say("=== Bitwise Operator Tests ===");
+    Zanna.Terminal.Say("=== Bitwise Operator Tests ===");
 
     // Language bitwise operators
     check("Bitwise AND 0xFF & 0x0F", 0xFF & 0x0F, 0x0F);
@@ -32,61 +32,61 @@ func start() {
     check("Bitwise XOR 0xFF ^ 0x0F", 0xFF ^ 0x0F, 0xF0);
     check("Bitwise NOT ~0", ~0, -1);
 
-    // Viper.Bits runtime functions
-    check("Bits.And", Viper.Math.Bits.And(0xFF, 0x0F), 0x0F);
-    check("Bits.Or", Viper.Math.Bits.Or(0xF0, 0x0F), 0xFF);
-    check("Bits.Xor", Viper.Math.Bits.Xor(0xFF, 0x0F), 0xF0);
-    check("Bits.Not 0", Viper.Math.Bits.Not(0), -1);
+    // Zanna.Bits runtime functions
+    check("Bits.And", Zanna.Math.Bits.And(0xFF, 0x0F), 0x0F);
+    check("Bits.Or", Zanna.Math.Bits.Or(0xF0, 0x0F), 0xFF);
+    check("Bits.Xor", Zanna.Math.Bits.Xor(0xFF, 0x0F), 0xF0);
+    check("Bits.Not 0", Zanna.Math.Bits.Not(0), -1);
     // Bits.Flip is BIT REVERSAL (reverse bit order), not bitwise NOT
     // Flip(0) = 0 because reversing zeros = zeros
     // Flip(1) = -9223372036854775808 (0x8000000000000000) because bit 0 moves to bit 63
-    check("Bits.Flip 0", Viper.Math.Bits.Flip(0), 0);
+    check("Bits.Flip 0", Zanna.Math.Bits.Flip(0), 0);
 
     // Shift operations
-    check("Bits.Shl 1 << 4", Viper.Math.Bits.Shl(1, 4), 16);
-    check("Bits.Shl 0xFF << 8", Viper.Math.Bits.Shl(0xFF, 8), 0xFF00);
-    check("Bits.Shr 16 >> 2", Viper.Math.Bits.Shr(16, 2), 4);
-    check("Bits.Shr -16 >> 2", Viper.Math.Bits.Shr(-16, 2), -4);  // Arithmetic shift
+    check("Bits.Shl 1 << 4", Zanna.Math.Bits.Shl(1, 4), 16);
+    check("Bits.Shl 0xFF << 8", Zanna.Math.Bits.Shl(0xFF, 8), 0xFF00);
+    check("Bits.Shr 16 >> 2", Zanna.Math.Bits.Shr(16, 2), 4);
+    check("Bits.Shr -16 >> 2", Zanna.Math.Bits.Shr(-16, 2), -4);  // Arithmetic shift
 
     // Bit manipulation
-    check("Bits.Set 0 bit 3", Viper.Math.Bits.Set(0, 3), 8);
-    check("Bits.Set 0 bit 0", Viper.Math.Bits.Set(0, 0), 1);
-    check("Bits.Clear 0xFF bit 0", Viper.Math.Bits.Clear(0xFF, 0), 0xFE);
-    check("Bits.Clear 0xFF bit 7", Viper.Math.Bits.Clear(0xFF, 7), 0x7F);
-    check("Bits.Toggle 0 bit 3", Viper.Math.Bits.Toggle(0, 3), 8);
-    check("Bits.Toggle 8 bit 3", Viper.Math.Bits.Toggle(8, 3), 0);
+    check("Bits.Set 0 bit 3", Zanna.Math.Bits.Set(0, 3), 8);
+    check("Bits.Set 0 bit 0", Zanna.Math.Bits.Set(0, 0), 1);
+    check("Bits.Clear 0xFF bit 0", Zanna.Math.Bits.Clear(0xFF, 0), 0xFE);
+    check("Bits.Clear 0xFF bit 7", Zanna.Math.Bits.Clear(0xFF, 7), 0x7F);
+    check("Bits.Toggle 0 bit 3", Zanna.Math.Bits.Toggle(0, 3), 8);
+    check("Bits.Toggle 8 bit 3", Zanna.Math.Bits.Toggle(8, 3), 0);
 
     // Bit queries
-    checkBool("Bits.Get 8 bit 3", Viper.Math.Bits.Get(8, 3), true);
-    checkBool("Bits.Get 8 bit 0", Viper.Math.Bits.Get(8, 0), false);
-    checkBool("Bits.Get 0xFF bit 7", Viper.Math.Bits.Get(0xFF, 7), true);
+    checkBool("Bits.Get 8 bit 3", Zanna.Math.Bits.Get(8, 3), true);
+    checkBool("Bits.Get 8 bit 0", Zanna.Math.Bits.Get(8, 0), false);
+    checkBool("Bits.Get 0xFF bit 7", Zanna.Math.Bits.Get(0xFF, 7), true);
 
     // Bit counting
-    check("Bits.Count 0", Viper.Math.Bits.CountOnes(0), 0);
-    check("Bits.Count 1", Viper.Math.Bits.CountOnes(1), 1);
-    check("Bits.Count 0xFF", Viper.Math.Bits.CountOnes(0xFF), 8);
-    check("Bits.Count 0xFFFF", Viper.Math.Bits.CountOnes(0xFFFF), 16);
+    check("Bits.Count 0", Zanna.Math.Bits.CountOnes(0), 0);
+    check("Bits.Count 1", Zanna.Math.Bits.CountOnes(1), 1);
+    check("Bits.Count 0xFF", Zanna.Math.Bits.CountOnes(0xFF), 8);
+    check("Bits.Count 0xFFFF", Zanna.Math.Bits.CountOnes(0xFFFF), 16);
 
     // Leading/trailing zeros
-    check("Bits.LeadZ 1", Viper.Math.Bits.CountLeadingZeros(1), 63);
-    check("Bits.LeadZ min", Viper.Math.Bits.CountLeadingZeros(0x8000000000000000), 0);
-    check("Bits.TrailZ 1", Viper.Math.Bits.CountTrailingZeros(1), 0);
-    check("Bits.TrailZ min", Viper.Math.Bits.CountTrailingZeros(0x8000000000000000), 63);
-    check("Bits.TrailZ 8", Viper.Math.Bits.CountTrailingZeros(8), 3);
-    check("Bits.TrailZ 16", Viper.Math.Bits.CountTrailingZeros(16), 4);
+    check("Bits.LeadZ 1", Zanna.Math.Bits.CountLeadingZeros(1), 63);
+    check("Bits.LeadZ min", Zanna.Math.Bits.CountLeadingZeros(0x8000000000000000), 0);
+    check("Bits.TrailZ 1", Zanna.Math.Bits.CountTrailingZeros(1), 0);
+    check("Bits.TrailZ min", Zanna.Math.Bits.CountTrailingZeros(0x8000000000000000), 63);
+    check("Bits.TrailZ 8", Zanna.Math.Bits.CountTrailingZeros(8), 3);
+    check("Bits.TrailZ 16", Zanna.Math.Bits.CountTrailingZeros(16), 4);
 
     // Rotation
-    check("Bits.Rotl 1 by 4", Viper.Math.Bits.RotateLeft(1, 4), 16);
-    check("Bits.Rotr 16 by 4", Viper.Math.Bits.RotateRight(16, 4), 1);
+    check("Bits.Rotl 1 by 4", Zanna.Math.Bits.RotateLeft(1, 4), 16);
+    check("Bits.Rotr 16 by 4", Zanna.Math.Bits.RotateRight(16, 4), 1);
 
     // Report results
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.String.FromInt(passed));
-    Viper.Terminal.Say("Failed: " + Viper.String.FromInt(failed));
+    Zanna.Terminal.Say("=== Results ===");
+    Zanna.Terminal.Say("Passed: " + Zanna.String.FromInt(passed));
+    Zanna.Terminal.Say("Failed: " + Zanna.String.FromInt(failed));
 
     if (failed == 0) {
-        Viper.Terminal.Say("RESULT: ok");
+        Zanna.Terminal.Say("RESULT: ok");
     } else {
-        Viper.Terminal.Say("RESULT: fail");
+        Zanna.Terminal.Say("RESULT: fail");
     }
 }

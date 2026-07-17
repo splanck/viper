@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.IO.Compress - Compression
+// API Audit: Zanna.IO.Compress - Compression
 // =============================================================================
 // Tests: DeflateStr, InflateStr, GzipStr, GunzipStr (roundtrip)
 // =============================================================================
 
 module CompressDemo;
-bind Viper.Terminal;
-bind Viper.IO.Compress as Compress;
+bind Zanna.Terminal;
+bind Zanna.IO.Compress as Compress;
 func start() {
-    Say("=== API Audit: Viper.IO.Compress ===");
+    Say("=== API Audit: Zanna.IO.Compress ===");
 
-    var testStr = "Hello, Viper compression! This is a test string for deflate and gzip.";
+    var testStr = "Hello, Zanna compression! This is a test string for deflate and gzip.";
 
     // --- DeflateStr / InflateStr ---
     Say("--- DeflateStr / InflateStr ---");

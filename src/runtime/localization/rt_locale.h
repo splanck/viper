@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale.h
-// Purpose: Public C API for the Viper.Localization.Locale class — an immutable
+// Purpose: Public C API for the Zanna.Localization.Locale class — an immutable
 //          reference-counted handle representing a BCP-47 language tag. Holds
 //          a non-owning pointer to the locale-data record registered with
 //          LocaleManager; the data pointer may be NULL when the locale has
@@ -99,7 +99,7 @@ void *rt_locale_try_parse(rt_string tag);
 /// @details Returns `Some(Locale)` for valid tags and `None` for NULL, empty,
 ///          or invalid input.
 /// @param tag Input string; may be NULL.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_locale_try_parse_option(rt_string tag);
 
 /// @brief Build a Locale from pre-split subtag components.

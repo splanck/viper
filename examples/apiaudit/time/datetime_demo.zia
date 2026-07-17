@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Time.DateTime - Date/Time Operations
+// API Audit: Zanna.Time.DateTime - Date/Time Operations
 // =============================================================================
 // Tests: Now, NowMs, Create, Year, Month, Day, Hour, Minute, Second,
 //        DayOfWeek, AddDays, AddSeconds, Diff, Format, ToISO
 // =============================================================================
 
 module DateTimeDemo;
-bind Viper.Terminal;
-bind Viper.Time.DateTime as DT;
+bind Zanna.Terminal;
+bind Zanna.Time.DateTime as DT;
 func start() {
-    Say("=== API Audit: Viper.Time.DateTime ===");
+    Say("=== API Audit: Zanna.Time.DateTime ===");
 
     // --- Now ---
     Say("--- Now ---");

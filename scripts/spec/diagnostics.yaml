@@ -189,7 +189,7 @@
   code: E_NS_008
   severity: error
   format: "USING cannot appear inside a namespace block"
-- id: NS_RESERVED_VIPER
+- id: NS_RESERVED_ZANNA
   code: E_NS_009
   severity: error
-  format: "reserved root namespace 'Viper' cannot be declared or imported"
+  format: "reserved root namespace 'Zanna' cannot be declared or imported"

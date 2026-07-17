@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_message_bundle.h
-// Purpose: Public C API for Viper.Localization.MessageBundle — a translation
+// Purpose: Public C API for Zanna.Localization.MessageBundle — a translation
 //          catalog keyed by message ID. Supports placeholder interpolation
 //          ({name} and positional {0}/{1}/…), fallback chains (bundles stack
 //          so missing keys cascade up), and CLDR plural selection via
@@ -25,7 +25,7 @@
 //
 // Links: src/runtime/localization/rt_message_bundle.c (implementation),
 //        src/runtime/localization/rt_plural_rules.h (category evaluator),
-//        docs/viperlib/localization/messages.md (user documentation).
+//        docs/zannalib/localization/messages.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -50,7 +50,7 @@ void *rt_message_bundle_new(void);
 ///          are rejected. Traps on file/JSON errors.
 void *rt_message_bundle_load_from_json(void *locale, rt_string path);
 
-/// @brief Load a translation map from a VPA-embedded asset by @p name.
+/// @brief Load a translation map from a ZPAK-embedded asset by @p name.
 void *rt_message_bundle_load_from_asset(void *locale, rt_string name);
 
 /// @brief Construct from a preexisting rt_map<rt_string, rt_string>.

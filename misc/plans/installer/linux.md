@@ -26,7 +26,7 @@ Depends on **X1 config plumbing** (macOS session).
   extracts the appended tar.gz payload to `$XDG_CACHE_HOME`/`$TMPDIR` and `exec`s `AppRun`.
 - Payload = `TarWriter` + `PkgGzip`. It embeds `AppRun`, `.desktop` (`DesktopEntryGenerator`),
   `.png` AppIcon (`PkgPNG`/`IconGenerator`), file-association metadata, and the staged toolchain.
-- Output `Viper-<ver>-<arch>.AppImage` (+ `chmod +x` bit). Wired a new `appimage` target into the
+- Output `Zanna-<ver>-<arch>.AppImage` (+ `chmod +x` bit). Wired a new `appimage` target into the
   enum/parse/usage/filename/build/verify sites in `cmd_install_package.cpp` and
   `LinuxPackageBuilder`.
 - **Depth upgrade (flagged, larger, out of v1):** true type-2 **squashfs** payload + FUSE mount —
@@ -43,18 +43,18 @@ Depends on **X1 config plumbing** (macOS session).
 - Tightened the existing Linux deb/rpm smoke tests to assert maintainer/license/dependency metadata.
 - Added `scripts/validate-linux-toolchain-installer.sh` for Linux validation, including AppImage
   build/verify/execute and installer-labeled CTest coverage. Privileged deb/rpm installation remains
-  gated by `VIPER_RUN_LINUX_INSTALLER_SMOKE=1` and root, matching the existing smoke tests.
+  gated by `ZANNA_RUN_LINUX_INSTALLER_SMOKE=1` and root, matching the existing smoke tests.
 
 ## Critical files
 
 New `LinuxRuntimeStubGen.{hpp,cpp}`; `src/tools/common/packaging/LinuxPackageBuilder.{hpp,cpp}`,
 `TarWriter.*`, `PkgGzip.*`, `DesktopEntryGenerator.*`, `PkgPNG.*`, `IconGenerator.*`;
-`src/tools/viper/cmd_install_package.cpp`; new `scripts/validate-linux-toolchain-installer.sh`.
+`src/tools/zanna/cmd_install_package.cpp`; new `scripts/validate-linux-toolchain-installer.sh`.
 
 ## Verification
 
 - Host (Mac) pre-checks: `LinuxRuntimeStubGen` encoder unit tests; `PkgVerify`/`readelf`-style
   structural check on the emitted ELF + AppImage layout.
-- Linux E2E (required): `chmod +x Viper-*.AppImage && ./Viper-*.AppImage` on a clean distro (or
+- Linux E2E (required): `chmod +x Zanna-*.AppImage && ./Zanna-*.AppImage` on a clean distro (or
   QEMU) — confirm extract-and-exec, icon/.desktop integration; `dpkg -i`/`rpm -i` install + removal;
   `scripts/validate-linux-toolchain-installer.sh`.

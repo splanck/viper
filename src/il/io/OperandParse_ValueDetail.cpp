@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 ///          advance the caller's cursor while reporting errors via @ref Expected
 ///          so the surrounding parser can continue after recoverable mistakes.
 
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include "il/core/Function.hpp"
 #include "il/core/Value.hpp"
@@ -39,7 +39,7 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 namespace {
 using ::il::core::Value;
 using ::il::io::detail::ParserState;
@@ -246,7 +246,7 @@ Expected<size_t> tryParseMemory(std::string_view text, Context &ctx, bool &match
 }
 
 /// @brief Parse an immediate literal operand.
-/// @details Wraps the string slice in a @ref viper::parse::Cursor so it can
+/// @details Wraps the string slice in a @ref zanna::parse::Cursor so it can
 ///          reuse @ref parseConstOperand, ensuring literal handling matches the
 ///          constant parser used elsewhere.  The resulting cursor offset reveals
 ///          how many characters were consumed and is returned to the caller.
@@ -255,7 +255,7 @@ Expected<size_t> tryParseMemory(std::string_view text, Context &ctx, bool &match
 /// @param ctx Parser context providing literal parsing utilities.
 /// @return Characters consumed or a diagnostic on failure.
 Expected<size_t> parseImmediate(std::string_view text, Value &out, Context &ctx) {
-    viper::parse::Cursor literalCursor{text, viper::parse::SourcePos{ctx.state.lineNo, 0}};
+    zanna::parse::Cursor literalCursor{text, zanna::parse::SourcePos{ctx.state.lineNo, 0}};
     auto parsed = parseConstOperand(literalCursor, ctx);
     if (!parsed.ok())
         return Expected<size_t>{parsed.status.error()};
@@ -335,4 +335,4 @@ Expected<size_t> parseValueTokenComponents(std::string_view &text, Value &out, C
     return imm;
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

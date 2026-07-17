@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTThreadsThreadTests.cpp
-// Purpose: Validate Viper.Threads.Thread and SafeI64 runtime primitives.
+// Purpose: Validate Zanna.Threads.Thread and SafeI64 runtime primitives.
 // Key invariants: Thread join/timeout semantics work; SafeI64 operations are thread-safe.
 // Ownership/Lifetime: Uses runtime library and OS threads; skip on Windows.
 //
@@ -207,31 +207,31 @@ static void test_safe_thread_methods_accept_regular_thread_handle() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_thread_start_null);
-    viper::tests::registerChildFunction(call_thread_join_null);
-    viper::tests::registerChildFunction(call_thread_join_fake_magic_wrong_class);
-    viper::tests::registerChildFunction(call_thread_start_owned_retain_overflow);
-    viper::tests::registerChildFunction(call_thread_start_safe_owned_retain_overflow);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_thread_start_null);
+    zanna::tests::registerChildFunction(call_thread_join_null);
+    zanna::tests::registerChildFunction(call_thread_join_fake_magic_wrong_class);
+    zanna::tests::registerChildFunction(call_thread_start_owned_retain_overflow);
+    zanna::tests::registerChildFunction(call_thread_start_safe_owned_retain_overflow);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Trap messages should be stable.
-    auto result = viper::tests::runIsolated(call_thread_start_null);
+    auto result = zanna::tests::runIsolated(call_thread_start_null);
     assert(result.stderrText.find("Thread.Start: null entry") != std::string::npos);
 
-    result = viper::tests::runIsolated(call_thread_join_null);
+    result = zanna::tests::runIsolated(call_thread_join_null);
     assert(result.stderrText.find("Thread.Join: null thread") != std::string::npos);
 
     call_thread_join_twice();
     call_thread_try_join_after_join();
 
-    result = viper::tests::runIsolated(call_thread_join_fake_magic_wrong_class);
+    result = zanna::tests::runIsolated(call_thread_join_fake_magic_wrong_class);
     assert(result.stderrText.find("Thread: invalid thread handle") != std::string::npos);
 
-    result = viper::tests::runIsolated(call_thread_start_owned_retain_overflow);
+    result = zanna::tests::runIsolated(call_thread_start_owned_retain_overflow);
     assert(result.stderrText.find("refcount overflow") != std::string::npos);
 
-    result = viper::tests::runIsolated(call_thread_start_safe_owned_retain_overflow);
+    result = zanna::tests::runIsolated(call_thread_start_safe_owned_retain_overflow);
     assert(result.stderrText.find("refcount overflow") != std::string::npos);
 
     test_thread_join_for_timeout();

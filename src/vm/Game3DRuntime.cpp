@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/vm/Game3DRuntime.cpp
-// Purpose: VM-aware Game3D callback-loop bridges for interpreted Viper code.
+// Purpose: VM-aware Game3D callback-loop bridges for interpreted Zanna code.
 // Key invariants:
 //   - Script callback references are resolved against the active VM module.
 //   - Runtime receives only native C-callable trampoline pointers.
@@ -326,22 +326,22 @@ static void registerExtern(const char *name,
 } // namespace
 
 void registerGame3DRuntimeExternals() {
-    registerExtern("Viper.Game3D.World3D.Run",
+    registerExtern("Zanna.Game3D.World3D.Run",
                    {SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_handler));
-    registerExtern("Viper.Game3D.World3D.RunWithOverlay",
+    registerExtern("Zanna.Game3D.World3D.RunWithOverlay",
                    {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_with_overlay_handler));
-    registerExtern("Viper.Game3D.World3D.RunFixed",
+    registerExtern("Zanna.Game3D.World3D.RunFixed",
                    {SigParam::Ptr, SigParam::F64, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_fixed_handler));
-    registerExtern("Viper.Game3D.World3D.RunFixedWithOverlay",
+    registerExtern("Zanna.Game3D.World3D.RunFixedWithOverlay",
                    {SigParam::Ptr, SigParam::F64, SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_fixed_with_overlay_handler));
-    registerExtern("Viper.Game3D.World3D.RunFrames",
+    registerExtern("Zanna.Game3D.World3D.RunFrames",
                    {SigParam::Ptr, SigParam::I64, SigParam::F64, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_frames_handler));
-    registerExtern("Viper.Game3D.World3D.DrawOverlay",
+    registerExtern("Zanna.Game3D.World3D.DrawOverlay",
                    {SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_draw_overlay_handler));
 }

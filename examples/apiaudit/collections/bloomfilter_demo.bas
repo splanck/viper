@@ -1,4 +1,4 @@
-' bloomfilter_demo.bas - Comprehensive API audit for Viper.Collections.BloomFilter
+' bloomfilter_demo.bas - Comprehensive API audit for Zanna.Collections.BloomFilter
 ' Tests: New, Add, MightContain, Count, FalsePositiveRate, Clear, Merge
 
 PRINT "=== BloomFilter API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== BloomFilter API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM bf AS OBJECT
-bf = Viper.Collections.BloomFilter.New(100, 0.01)
+bf = Zanna.Collections.BloomFilter.New(100, 0.01)
 PRINT bf.Count       ' 0
 
 ' --- Add ---
@@ -37,7 +37,7 @@ PRINT bf.Count       ' 6
 ' --- Merge ---
 PRINT "--- Merge ---"
 DIM bf2 AS OBJECT
-bf2 = Viper.Collections.BloomFilter.New(100, 0.01)
+bf2 = Zanna.Collections.BloomFilter.New(100, 0.01)
 bf2.Add("grape")
 bf2.Add("honeydew")
 bf2.Add("kiwi")

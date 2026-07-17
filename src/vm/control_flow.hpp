@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <variant>
 #include <vector>
 
-namespace viper::vm {
+namespace zanna::vm {
 
 /// @brief Enumerates dispatch strategies available for switch instructions.
 enum class SwitchMode {
@@ -77,4 +77,4 @@ struct SwitchCache {
     }
 };
 
-} // namespace viper::vm
+} // namespace zanna::vm

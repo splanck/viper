@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTCodecTests.cpp
-// Purpose: Validate Viper.Text.Codec runtime functions for URL, Base64, and Hex encoding.
+// Purpose: Validate Zanna.Text.Codec runtime functions for URL, Base64, and Hex encoding.
 // Key invariants: All encoding functions are reversible; invalid input traps appropriately.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_codec.h"
 #include "rt_string.h"

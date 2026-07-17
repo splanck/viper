@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_ops.c
-// Purpose: Core string operations for the Viper runtime. Contains memory
+// Purpose: Core string operations for the Zanna runtime. Contains memory
 //   management (alloc, refcount, retain/release), basic operations (concat,
 //   substr, left/right/mid), searching (index_of, instr), trimming, case
 //   conversion (ucase/lcase), and comparison operators. Extended operations
@@ -714,7 +714,7 @@ int64_t rt_str_is_empty(rt_string s) {
 }
 
 /// @brief Retaining constructor from an existing runtime string handle.
-/// @details Used as a thin shim for Viper.String.FromStr. The runtime string
+/// @details Used as a thin shim for Zanna.String.FromStr. The runtime string
 ///          return ABI transfers an owned reference to callers, so this helper
 ///          retains before returning even though the underlying handle is shared.
 /// @param s Runtime string handle.
@@ -1068,7 +1068,7 @@ int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle) {
 }
 
 /// @brief Find the first occurrence of @p needle in @p hay starting at a one-based position.
-/// @details This is the Viper.String.IndexOfFrom ABI entry point.  It intentionally
+/// @details This is the Zanna.String.IndexOfFrom ABI entry point.  It intentionally
 ///          preserves BASIC/INSTR semantics: @p start is one-based, successful
 ///          matches are one-based, and zero means "not found".
 int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle) {

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Script: benchmark_compare.sh
-# Purpose: Compare benchmark result files and flag Viper performance regressions.
+# Purpose: Compare benchmark result files and flag Zanna performance regressions.
 
 set -euo pipefail
 
 # ============================================================================
-# Viper Benchmark Comparison Tool
+# Zanna Benchmark Comparison Tool
 # ============================================================================
 # Compares two benchmark runs and displays a color-coded delta table.
 #
@@ -15,7 +15,7 @@ set -euo pipefail
 #   scripts/benchmark_compare.sh <head.jsonl>              # head vs baseline
 #   scripts/benchmark_compare.sh --run N                   # Nth run vs baseline
 #
-# Exit code: 1 if any Viper mode regressed >5%, 0 otherwise.
+# Exit code: 1 if any Zanna mode regressed >5%, 0 otherwise.
 # ============================================================================
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
@@ -161,11 +161,11 @@ preferred_mode_order = [
     'rust-O', 'lua', 'python3', 'java', 'csharp'
 ]
 
-viper_modes = {'bc-switch','bc-threaded','native-arm64','native-x86_64'}
+zanna_modes = {'bc-switch','bc-threaded','native-arm64','native-x86_64'}
 
 print()
 print(f"{BOLD}{'='*72}{NC}")
-print(f"{BOLD}                      VIPER BENCHMARK COMPARISON{NC}")
+print(f"{BOLD}                      ZANNA BENCHMARK COMPARISON{NC}")
 print(f"{BOLD}{'='*72}{NC}")
 print()
 print(f"  Base: {bm.get('timestamp','?')[:16]}  commit {bm.get('commit','?')}  ({bm.get('platform','?')})")
@@ -182,7 +182,7 @@ missing_in_base = sorted(head_programs - set(base_idx))
 improved = 0
 regressed = 0
 stable = 0
-viper_regressed = False
+zanna_regressed = False
 
 def fmt_time(t):
     if t >= 10000:
@@ -222,8 +222,8 @@ for bh in head.get('benchmarks', []):
         elif pct > 5:
             color = RED
             regressed += 1
-            if mode in viper_modes:
-                viper_regressed = True
+            if mode in zanna_modes:
+                zanna_regressed = True
         else:
             color = ''
             stable += 1
@@ -251,6 +251,6 @@ print()
 print(f"{BOLD}{'='*72}{NC}")
 print()
 
-if viper_regressed:
+if zanna_regressed:
     sys.exit(1)
 PYEOF

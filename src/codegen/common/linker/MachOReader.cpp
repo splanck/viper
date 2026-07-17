@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,13 +29,13 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
-using viper::codegen::objfile::checkedAdd;
-using viper::codegen::objfile::checkedMul;
-using viper::codegen::objfile::checkedRange;
-using viper::codegen::objfile::readLE32;
-using viper::codegen::objfile::readLE64;
+using zanna::codegen::objfile::checkedAdd;
+using zanna::codegen::objfile::checkedMul;
+using zanna::codegen::objfile::checkedRange;
+using zanna::codegen::objfile::readLE32;
+using zanna::codegen::objfile::readLE64;
 
 namespace macho {
 static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
@@ -386,7 +386,7 @@ static bool extractMachOAddend(const uint8_t *sectionData,
             case macho_a64::kTlvpLoadPageOff12: {
                 uint32_t pageOff = (insn >> 10) & 0xFFFu;
                 uint32_t shift = 0;
-                if (viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
+                if (zanna::codegen::a64UnsignedLdStOffsetShift(insn, shift))
                     pageOff <<= shift;
                 out = static_cast<int64_t>(pageOff);
                 return true;
@@ -984,4 +984,4 @@ bool readMachOObj(
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

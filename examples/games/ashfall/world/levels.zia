@@ -9,7 +9,7 @@
 // =============================================================================
 module levels;
 
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "./level_base" as level_base;
 bind "./objectives" as objectives;

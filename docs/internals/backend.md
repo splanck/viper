@@ -4,9 +4,9 @@ audience: developers
 last-verified: 2026-07-16
 ---
 
-# Viper Backend — Native Code Generation
+# Zanna Backend — Native Code Generation
 
-Comprehensive guide to the Viper native backends (x86-64 and AArch64), which compile Viper IL programs to executable
+Comprehensive guide to the Zanna native backends (x86-64 and AArch64), which compile Zanna IL programs to executable
 machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies,
 and source code organization.
 
@@ -36,10 +36,10 @@ and source code organization.
 
 ## Overview
 
-### What is the Viper Backend?
+### What is the Zanna Backend?
 
-The Viper backend is a **native code generator** that translates Viper IL (Intermediate Language) programs into
-executable machine code for x86-64 and AArch64. It implements the final compilation stage in the Viper toolchain:
+The Zanna backend is a **native code generator** that translates Zanna IL (Intermediate Language) programs into
+executable machine code for x86-64 and AArch64. It implements the final compilation stage in the Zanna toolchain:
 
 ```text
 Source → Frontend → IL → Backend → Assembly → Executable
@@ -56,7 +56,7 @@ Source → Frontend → IL → Backend → Assembly → Executable
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
 | **Validation**    | x86_64 validated on Windows; AArch64 validated on Apple Silicon |
 
-Native builds from `viper build` keep frontend/project IL optimization and backend optimization separate. The driver
+Native builds from `zanna build` keep frontend/project IL optimization and backend optimization separate. The driver
 hands the verified, already-optimized IL module directly to the backend, tells the backend to skip its own IL
 optimization pass, and still forwards the selected `O0`/`O1`/`O2` level to MIR/codegen passes such as pre-regalloc
 cleanup, block layout, scheduling, and peephole optimization.
@@ -163,7 +163,7 @@ class PassManager {
 - Failure in any pass short-circuits the pipeline
 - Diagnostics accumulate throughout execution
 - Each pass reports success/failure via return value
-- `VIPER_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts and MIR size/memory
+- `ZANNA_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts and MIR size/memory
   mix counters
 - AArch64 post-RA join coalescing handles acyclic joins and true loop headers only when the natural loop is call-free.
   Loop headers with call-containing bodies stay on stack-backed phi slots until the pass has full liveness proof for
@@ -352,7 +352,7 @@ struct LoweringRule {
 **Rule selection:**
 
 ```cpp
-const LoweringRule* rule = viper_select_rule(ilInstr);
+const LoweringRule* rule = zanna_select_rule(ilInstr);
 if (rule) {
     rule->emit(ilInstr, builder);
 }
@@ -968,14 +968,14 @@ src/codegen/aarch64/
 
 ```bash
 # Generate ARM assembly from IL
-viper codegen arm64 program.il -S program.s
+zanna codegen arm64 program.il -S program.s
 
 # Assemble and link (macOS, simple/monolithic runtime)
 as program.s -o program.o
-clang++ program.o build/src/runtime/libviper_runtime.a -o program
+clang++ program.o build/src/runtime/libzanna_runtime.a -o program
 
-# Recommended: let viper link the native executable (auto-selects required runtime components)
-viper codegen arm64 program.il -run-native
+# Recommended: let zanna link the native executable (auto-selects required runtime components)
+zanna codegen arm64 program.il -run-native
 ```
 
 ---
@@ -1112,7 +1112,7 @@ src/codegen/
 
 ## Further Reading
 
-**Viper Documentation:**
+**Zanna Documentation:**
 
 - **[IL Guide](../il/il-guide.md)** — IL specification and semantics
 - **[IL Reference](../il/il-guide.md#reference)** — Complete opcode catalog

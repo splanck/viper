@@ -392,7 +392,7 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
 - Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
 - x86_64 branch and signed PC-relative relocation sites are serialized using the platform raw-field convention:
-  Viper's internal addend `-4` is written as a zero displacement field, and the object reader normalizes it back to
+  Zanna's internal addend `-4` is written as a zero displacement field, and the object reader normalizes it back to
   `-4` when linking.
 - AArch64 non-zero addends are range-checked as signed 24-bit values and serialized with paired
   `ARM64_RELOC_ADDEND` records before the target relocation. Addend+target pairs stay adjacent even when multiple

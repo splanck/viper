@@ -8,11 +8,11 @@
 //     normal-offset + slope-scaled bias) with a shadow-casting sun
 //   - Post-processing: mip-chain bloom + ACES tonemap, TAA where the backend
 //     supports it (FXAA fallback), validated at bind time via PostFX3D.LastError
-//   - HUD widgets on Canvas3D: the same Viper.Game.UI widgets 2D games use
+//   - HUD widgets on Canvas3D: the same Zanna.Game.UI widgets 2D games use
 //     (Panel/Bar/HudLabel), plus the new overlay clip-rect marquee
 //   - Behavior3D presets + GameBase3D/IScene3D scene framework with fades
 //
-// Run: viper run examples/3d/overhaul_showcase/main.zia
+// Run: zanna run examples/3d/overhaul_showcase/main.zia
 // Press ENTER on the menu to start; ESC in play returns to the menu.
 // ============================================================================
 

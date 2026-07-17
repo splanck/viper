@@ -35,7 +35,7 @@ hot path of essentially every numeric loop.
 ## Decision
 
 1. **One shared analysis.** A whole-function forward value-range dataflow,
-   `viper::analysis::computeIntRanges` (`src/il/analysis/IntRangeAnalysis.*`),
+   `zanna::analysis::computeIntRanges` (`src/il/analysis/IntRangeAnalysis.*`),
    computes block-entry range facts for every SSA temp: edge facts start from
    the predecessor's exit state, are refined by the branch condition on the
    edge, bind branch arguments to block params, and merge at joins by interval

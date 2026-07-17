@@ -1,10 +1,10 @@
 module JsonPathDemo;
-bind Viper.Terminal;
-bind Viper.Data.Json as Json;
-bind Viper.Data.JsonPath as JP;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.Data.Json as Json;
+bind Zanna.Data.JsonPath as JP;
+bind Zanna.Collections.Seq as Seq;
 func start() {
-    Say("=== Viper.Data.JsonPath API Audit ===");
+    Say("=== Zanna.Data.JsonPath API Audit ===");
 
     var json = "{\"store\":{\"book\":[{\"title\":\"Moby Dick\",\"price\":10},{\"title\":\"1984\",\"price\":8}],\"name\":\"Books R Us\"}}";
     var doc = Json.Parse(json);

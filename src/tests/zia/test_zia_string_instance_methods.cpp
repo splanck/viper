@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,10 +42,10 @@ func start() {    var trimmed = "  hello  ".Trim();
     var right = "hi  ".TrimEnd();
     var middle = "abcdef".Substring(1, 3);
 
-    Viper.Terminal.Say(lower);
-    Viper.Terminal.Say(left);
-    Viper.Terminal.Say(right);
-    Viper.Terminal.Say(middle);
+    Zanna.Terminal.Say(lower);
+    Zanna.Terminal.Say(left);
+    Zanna.Terminal.Say(right);
+    Zanna.Terminal.Say(middle);
 }
 )";
 
@@ -61,17 +61,17 @@ func start() {    var trimmed = "  hello  ".Trim();
     }
 
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.Trim"));
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.ToUpper"));
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.ToLower"));
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.TrimStart"));
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.TrimEnd"));
-    EXPECT_TRUE(hasCallee(result.module, "Viper.String.Substring"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.Trim"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.ToUpper"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.ToLower"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.TrimStart"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.TrimEnd"));
+    EXPECT_TRUE(hasCallee(result.module, "Zanna.String.Substring"));
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

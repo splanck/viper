@@ -1,9 +1,9 @@
-// API Audit: Viper.Game.ButtonGroup (Zia)
+// API Audit: Zanna.Game.ButtonGroup (Zia)
 module ButtonGroupDemo;
-bind Viper.Terminal;
-bind Viper.Game.ButtonGroup as BG;
+bind Zanna.Terminal;
+bind Zanna.Game.ButtonGroup as BG;
 func start() {
-    Say("=== API Audit: Viper.Game.ButtonGroup ===");
+    Say("=== API Audit: Zanna.Game.ButtonGroup ===");
 
     // --- New (takes 0 args) ---
     Say("--- New ---");

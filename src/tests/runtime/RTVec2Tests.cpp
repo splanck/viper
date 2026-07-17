@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTVec2Tests.cpp
-// Purpose: Tests for Viper.Vec2 2D vector math utilities.
+// Purpose: Tests for Zanna.Vec2 2D vector math utilities.
 //
 //===----------------------------------------------------------------------===//
 
@@ -269,7 +269,7 @@ static void test_perpendicular() {
 }
 
 int main() {
-    printf("=== Viper.Vec2 Tests ===\n\n");
+    printf("=== Zanna.Vec2 Tests ===\n\n");
 
     // Constructors
     test_new();

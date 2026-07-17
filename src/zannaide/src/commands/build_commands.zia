@@ -1,0 +1,363 @@
+module build_commands;
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../build/build_system";
+bind "../build/diagnostic";
+bind "../build/run_config";
+bind "../commands/file_commands";
+bind "../services/locations";
+
+bind Zanna.GUI;
+bind Convert = Zanna.Core.Convert;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+
+// ============================================================================
+// MODULE: build_commands
+// PURPOSE: Build / BuildAndRun / Run / Stop command handlers. Saves the
+//          active document, starts argument-vector Process jobs through
+//          BuildSystem, and routes streamed output + diagnostics to the
+//          output panel, diagnostics panel, minimap, and status bar.
+//
+// WHERE-THIS-FITS: Command handlers wired into main.zia's command
+//          dispatcher. Each handler receives the AppShell, document
+//          manager, editor engine, and BuildSystem so it can update
+//          every relevant surface.
+//
+// KEY-DESIGN-CHOICES:
+//   * SAVE-BEFORE-BUILD. Every handler calls SaveEditorState +
+//     docMgr.SaveActive so the on-disk file matches what the user sees.
+//     Untitled documents bail with "Save file before building" — we
+//     don't want to silently invent a filename.
+//   * TOAST + STATUS BAR. Every result reports through both the toast
+//     popup AND the status bar. Toast is for ephemeral notification;
+//     the status bar persists so the user can re-read the result later.
+//   * DIRECT ARGS, NOT SHELL STRINGS. RunConfig stores program + Seq args;
+//     paths with spaces are passed as a single argument.
+//   * IDE-OWNED JOBS. The frame loop calls UpdateJob so long-running
+//     processes can stream output and be stopped without freezing the IDE.
+//   * UpdateDiagnostics IS SHARED. Both Build and BuildAndRun call it
+//     to refresh the panel/minimap/output. Keeping it in one place
+//     prevents drift between the two paths.
+// ============================================================================
+
+final ERROR_MARKER_COLOR = 16711680;     // red    (0xFF0000)
+final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
+final INFO_MARKER_COLOR = 10066329;      // grey   (0x999999)
+
+/// @brief Build the active file, refresh diagnostics, report status.
+func handleBuild(shell: app_shell.AppShell,
+                 docMgr: document_manager.DocumentManager,
+                 projMgr: project_manager.ProjectManager,
+                 engine: editor_engine.EditorEngine,
+                 tabs: editor_tabs.EditorTabs,
+                 buildSys: build_system.BuildSystem,
+                 locStore: locations.LocationStore,
+                 saveAllBeforeBuild: Boolean) {
+    if EnsureNoActiveJob(shell, buildSys, "start a new build") == false { return; }
+    file_commands.SaveEditorState(docMgr, engine);
+    var buildDoc = docMgr.GetActive();
+    if buildDoc != null {
+        if buildDoc.isNew == false {
+            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                                  saveAllBeforeBuild);
+            if saveResult.success == false {
+                if saveResult.message != "" {
+                    shell.SetStatusLeft("Build canceled: " + saveResult.message);
+                } else {
+                    shell.SetStatusLeft("Build canceled: files were not saved");
+                }
+                return;
+            }
+            file_commands.SaveEditorState(docMgr, engine);
+            var cfg = run_config.ForDocument(run_config.ACTION_BUILD, buildDoc, projMgr);
+            if buildSys.StartConfig(cfg) {
+                shell.SetBuildJobActive(true, buildSys.activeName);
+                shell.SetStatusLeft("Building: " + cfg.targetPath);
+                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
+            } else {
+                shell.SetBuildJobActive(false, "");
+                shell.SetStatusLeft("Build failed to start");
+                GUI.Toast.Error("Build did not start");
+                PopulateBuildOutput(shell, buildSys, locStore);
+            }
+        } else {
+            shell.SetStatusLeft("Save file before building");
+        }
+    }
+}
+
+/// @brief Build and run in one step; refresh diagnostics; report status.
+func handleBuildAndRun(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       projMgr: project_manager.ProjectManager,
+                       engine: editor_engine.EditorEngine,
+                       tabs: editor_tabs.EditorTabs,
+                       buildSys: build_system.BuildSystem,
+                       locStore: locations.LocationStore,
+                       saveAllBeforeBuild: Boolean) {
+    if EnsureNoActiveJob(shell, buildSys, "start a new run") == false { return; }
+    file_commands.SaveEditorState(docMgr, engine);
+    var runDoc = docMgr.GetActive();
+    if runDoc != null {
+        if runDoc.isNew == false {
+            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                                  saveAllBeforeBuild);
+            if saveResult.success == false {
+                if saveResult.message != "" {
+                    shell.SetStatusLeft("Run canceled: " + saveResult.message);
+                } else {
+                    shell.SetStatusLeft("Run canceled: files were not saved");
+                }
+                return;
+            }
+            file_commands.SaveEditorState(docMgr, engine);
+            var cfg = run_config.ForDocument(run_config.ACTION_RUN, runDoc, projMgr);
+            if buildSys.StartConfig(cfg) {
+                shell.SetBuildJobActive(true, buildSys.activeName);
+                shell.SetStatusLeft("Running: " + cfg.targetPath);
+                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
+            } else {
+                shell.SetBuildJobActive(false, "");
+                shell.SetStatusLeft("Run failed to start");
+                GUI.Toast.Error("Run did not start");
+                PopulateBuildOutput(shell, buildSys, locStore);
+            }
+        } else {
+            shell.SetStatusLeft("Save file before running");
+        }
+    }
+}
+
+/// @brief Run the active file through the configured Zanna run pipeline.
+/// @details The Zanna toolchain compiles before execution, so this command is
+///          intentionally equivalent to Build and Run while keeping a separate
+///          shortcut and call site for future cached-artifact workflows.
+func handleRun(shell: app_shell.AppShell,
+               docMgr: document_manager.DocumentManager,
+               projMgr: project_manager.ProjectManager,
+               engine: editor_engine.EditorEngine,
+               tabs: editor_tabs.EditorTabs,
+               buildSys: build_system.BuildSystem,
+               locStore: locations.LocationStore,
+               saveAllBeforeBuild: Boolean) {
+    handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore,
+                      saveAllBeforeBuild);
+}
+
+func handleStop(shell: app_shell.AppShell,
+                buildSys: build_system.BuildSystem) {
+    if buildSys.Stop() {
+        shell.SetBuildJobActive(false, "");
+        shell.SetStatusLeft("Stopped job");
+        GUI.Toast.Info("Stopped running job");
+    } else {
+        shell.SetBuildJobActive(false, "");
+        shell.SetStatusLeft("No running job");
+    }
+}
+
+func UpdateJob(shell: app_shell.AppShell,
+               buildSys: build_system.BuildSystem,
+               locStore: locations.LocationStore) {
+    if buildSys == null { return; }
+    var wasActive = buildSys.IsActive();
+    if wasActive {
+        buildSys.Update();
+        var outputDelta = buildSys.TakeOutputDelta();
+        if outputDelta != "" {
+            shell.toolPanels.AppendBuildOutput(outputDelta);
+        }
+        if buildSys.IsActive() == false {
+            shell.SetBuildJobActive(false, "");
+            var errs = buildSys.GetErrorCount();
+            var warns = buildSys.GetWarningCount();
+            if buildSys.lastBuildSuccess {
+                var okMsg = buildSys.activeName + " succeeded in " + buildSys.GetBuildTime();
+                if warns > 0 {
+                    okMsg = okMsg + " — " + countLabel(warns, "warning");
+                    GUI.Toast.Warning(buildSys.activeName + " succeeded with " + countLabel(warns, "warning"));
+                } else {
+                    GUI.Toast.Success(buildSys.activeName + " succeeded");
+                }
+                shell.SetStatusLeft(okMsg);
+            } else {
+                var detail = problemSummary(errs, warns);
+                var failMsg = buildSys.activeName + " failed in " + buildSys.GetBuildTime();
+                if detail != "" {
+                    failMsg = failMsg + " — " + detail;
+                } else {
+                    failMsg = failMsg + " (exit " + buildSys.exitCode + ")";
+                }
+                shell.SetStatusLeft(failMsg);
+                GUI.Toast.Error(buildSys.activeName + " failed");
+            }
+            UpdateDiagnostics(shell, buildSys, locStore);
+        }
+    }
+}
+
+/// @brief Repopulate the diagnostics listbox + minimap markers + build
+///        output panel from the most recent BuildSystem run.
+/// @note Hides the diagnostics panel entirely when there are zero
+///       diagnostics so it doesn't waste vertical space.
+func UpdateDiagnostics(shell: app_shell.AppShell,
+                       buildSys: build_system.BuildSystem,
+                       locStore: locations.LocationStore) {
+    shell.toolPanels.BeginProblems();
+    shell.workbench.minimap.ClearMarkers();
+
+    var diagCount = buildSys.diagnostics.count();
+    if diagCount > 0 {
+        var i = 0;
+        while i < diagCount {
+            var diag = buildSys.diagnostics.get(i);
+            if diag == null {
+                i = i + 1;
+                continue;
+            }
+            var sevLabel = "error";
+            var markerColor = ERROR_MARKER_COLOR;
+            if diag.severity == 1 {
+                sevLabel = "warning";
+                markerColor = WARNING_MARKER_COLOR;
+            } else if diag.severity == 2 {
+                sevLabel = "info";
+                markerColor = INFO_MARKER_COLOR;
+            }
+            var action = "No quick fix";
+            if diag.fixitCount > 0 {
+                action = diag.fixitMessage;
+                if action == "" { action = "Quick fix available"; }
+            }
+            var item = shell.toolPanels.AddProblem(sevLabel, "build", diag.filePath, diag.line, diag.column,
+                                        diag.code, diag.message, action);
+            var endLine = diag.endLine;
+            var endColumn = diag.endColumn;
+            if endLine <= 0 { endLine = diag.line; }
+            if endColumn <= 0 { endColumn = diag.column + 1; }
+            var locId = locStore.Add(diag.filePath, diag.line, diag.column,
+                                     endLine, endColumn,
+                                     locations.KIND_BUILD, diag.message);
+            GUI.ListBox.ItemSetData(item, locId);
+            shell.workbench.minimap.AddMarker(diag.line, 1, markerColor);
+            i = i + 1;
+        }
+    }
+    shell.toolPanels.FinishProblems(diagCount);
+
+    PopulateBuildOutput(shell, buildSys, locStore);
+    // Land on the Problems tab when there is something to triage — those rows are
+    // click-to-navigate — while a clean build stays on the Output log.
+    if diagCount > 0 {
+        shell.toolPanels.ShowProblemsPanel();
+    }
+}
+
+func PopulateBuildOutput(shell: app_shell.AppShell,
+                         buildSys: build_system.BuildSystem,
+                         locStore: locations.LocationStore) {
+    shell.toolPanels.BeginOutputRows();
+    var output = buildSys.GetOutput();
+    if output == "" {
+        shell.toolPanels.HideOutputPanel();
+        return;
+    }
+    var lines = Zanna.String.Split(output, "\n");
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if line != "" {
+            var item = shell.toolPanels.AddOutputDisplayLine(line);
+            var diag = buildSys.ParseDiagnosticLine(line);
+            if item != null {
+                if diag != null {
+                    var d = diag!;
+                    if d.severity == diagnostic.SEV_WARNING {
+                        GUI.ListBox.ItemSetTextColor(item, WARNING_MARKER_COLOR);
+                    } else if d.severity == diagnostic.SEV_INFO {
+                        GUI.ListBox.ItemSetTextColor(item, INFO_MARKER_COLOR);
+                    } else {
+                        GUI.ListBox.ItemSetTextColor(item, ERROR_MARKER_COLOR);
+                    }
+                    var locId = locStore.Add(d.filePath, d.line, d.column,
+                                             d.line, d.column + 1,
+                                             locations.KIND_BUILD, d.message);
+                    GUI.ListBox.ItemSetData(item, locId);
+                } else {
+                    shell.toolPanels.ApplyOutputLineColor(item, line);
+                }
+            }
+        }
+        i = i + 1;
+    }
+    if shell.toolPanels.outputAutoScroll {
+        shell.toolPanels.outputListBox.ScrollToBottom();
+    }
+    shell.toolPanels.ShowOutputPanel();
+}
+
+func FormatCommand(cfg: run_config.RunConfig) -> String {
+    if cfg == null { return ""; }
+    var text = DisplayArg(cfg.program);
+    var i = 0;
+    while i < Seq.get_Count(cfg.args) {
+        text = text + " " + DisplayArg(Obj.ToString(Seq.Get(cfg.args, i)));
+        i = i + 1;
+    }
+    return text;
+}
+
+/// @brief Quote one argv item for display in build/output status text.
+/// @details Build execution uses structured argv through Process.StartWithEnv;
+///          this helper is only for human-readable output. It quotes whitespace
+///          and embedded quotes so paths with spaces are not visually misleading.
+/// @param arg Program path or argv element.
+/// @return Display-safe token.
+func DisplayArg(arg: String) -> String {
+    if arg == "" { return "\"\""; }
+    if Str.IndexOf(arg, " ") == 0
+       and Str.IndexOf(arg, "\t") == 0
+       and Str.IndexOf(arg, "\"") == 0 {
+        return arg;
+    }
+    return "\"" + Str.Replace(arg, "\"", "\\\"") + "\"";
+}
+
+/// @brief Pluralize a count for status text ("1 error" / "3 errors").
+func countLabel(n: Integer, noun: String) -> String {
+    if n == 1 { return "1 " + noun; }
+    return "" + n + " " + noun + "s";
+}
+
+/// @brief Combine error and warning counts into a readable summary, or "" when
+///        the build produced no parsed diagnostics (a raw exit-code failure).
+func problemSummary(errors: Integer, warnings: Integer) -> String {
+    if errors > 0 and warnings > 0 {
+        return countLabel(errors, "error") + ", " + countLabel(warnings, "warning");
+    }
+    if errors > 0 { return countLabel(errors, "error"); }
+    if warnings > 0 { return countLabel(warnings, "warning"); }
+    return "";
+}
+
+func EnsureNoActiveJob(shell: app_shell.AppShell,
+                       buildSys: build_system.BuildSystem,
+                       nextAction: String) -> Boolean {
+    if buildSys == null or buildSys.IsActive() == false { return true; }
+    var confirmed = GUI.MessageBox.Confirm(
+        "Job Already Active",
+        "Stop the current job and " + nextAction + "?");
+    if confirmed == 0 {
+        shell.SetStatusLeft("Existing job kept running");
+        return false;
+    }
+    buildSys.Stop();
+    shell.SetBuildJobActive(false, "");
+    shell.toolPanels.SetBuildOutput(buildSys.GetOutput());
+    return true;
+}

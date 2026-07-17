@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,14 +26,14 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
-using viper::codegen::objfile::checkedAdd;
-using viper::codegen::objfile::checkedMul;
-using viper::codegen::objfile::checkedRange;
-using viper::codegen::objfile::readLE16;
-using viper::codegen::objfile::readLE32;
-using viper::codegen::objfile::readLE64;
+using zanna::codegen::objfile::checkedAdd;
+using zanna::codegen::objfile::checkedMul;
+using zanna::codegen::objfile::checkedRange;
+using zanna::codegen::objfile::readLE16;
+using zanna::codegen::objfile::readLE32;
+using zanna::codegen::objfile::readLE64;
 
 namespace coff {
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
@@ -400,7 +400,7 @@ static bool extractCoffAddend(uint16_t machine,
             return true;
         case coff_a64::kPageOff12L: {
             uint32_t shift = 0;
-            if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
+            if (!zanna::codegen::a64UnsignedLdStOffsetShift(insn, shift))
                 return false;
             out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
             return true;
@@ -413,7 +413,7 @@ static bool extractCoffAddend(uint16_t machine,
             return true;
         case coff_a64::kSecRelLow12L: {
             uint32_t shift = 0;
-            if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
+            if (!zanna::codegen::a64UnsignedLdStOffsetShift(insn, shift))
                 return false;
             out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
             return true;
@@ -948,4 +948,4 @@ bool readCoffObj(
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

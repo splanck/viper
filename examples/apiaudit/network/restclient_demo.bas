@@ -1,8 +1,8 @@
-' API Audit: Viper.Network.RestClient (BASIC)
-PRINT "=== API Audit: Viper.Network.RestClient ==="
+' API Audit: Zanna.Network.RestClient (BASIC)
+PRINT "=== API Audit: Zanna.Network.RestClient ==="
 
 PRINT "--- New ---"
-DIM rc AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+DIM rc AS OBJECT = Zanna.Network.RestClient.New("https://api.example.com")
 PRINT rc.BaseUrl
 
 PRINT "--- SetHeader ---"

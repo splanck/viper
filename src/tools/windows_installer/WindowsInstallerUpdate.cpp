@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,7 +42,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::installer {
+namespace zanna::installer {
 namespace {
 
 constexpr std::size_t kMaximumManifestBytes = 64U * 1024U;
@@ -239,7 +239,7 @@ bool sameOrigin(const ParsedUrl &left, const ParsedUrl &right) {
 
 std::string downloadManifest(std::string_view manifestUrl, std::string_view version) {
     const ParsedUrl url = parseHttpsUrl(manifestUrl, "manifest URL");
-    const std::wstring agent = L"Viper-Installer/" + utf8ToWide(version);
+    const std::wstring agent = L"Zanna-Installer/" + utf8ToWide(version);
     InternetHandle session(
         WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0));
     if (!session) {
@@ -332,7 +332,7 @@ std::string fieldValue(const std::string &line, std::string_view name, bool allo
     return value;
 }
 
-void verifySignature(const viper::pkg::WindowsInstallerMetadata &metadata,
+void verifySignature(const zanna::pkg::WindowsInstallerMetadata &metadata,
                      std::string_view canonical,
                      std::string_view signatureHex) {
     const std::vector<uint8_t> modulus = decodeHex(metadata.updateRsaModulus, "update RSA modulus");
@@ -341,7 +341,7 @@ void verifySignature(const viper::pkg::WindowsInstallerMetadata &metadata,
     const std::vector<uint8_t> signature = decodeHex(signatureHex, "update manifest signature");
     if (signature.size() != modulus.size())
         throw std::runtime_error("update manifest signature size does not match its pinned key");
-    const std::string hashHex = viper::pkg::sha256Hex(
+    const std::string hashHex = zanna::pkg::sha256Hex(
         reinterpret_cast<const uint8_t *>(canonical.data()), canonical.size());
     const std::vector<uint8_t> hash = decodeHex(hashHex, "update manifest digest");
 
@@ -406,8 +406,8 @@ UpdateCheckResult verifyUpdateManifest(const HostPackage &package, std::string_v
             line.pop_back();
         lines.push_back(line);
     }
-    if (lines.size() != 8U || lines[0] != "VIPER-WINDOWS-UPDATE\t1")
-        throw std::runtime_error("unsupported or malformed Viper update manifest");
+    if (lines.size() != 8U || lines[0] != "ZANNA-WINDOWS-UPDATE\t1")
+        throw std::runtime_error("unsupported or malformed Zanna update manifest");
 
     UpdateCheckResult result;
     result.currentVersion = package.metadata.version;
@@ -485,12 +485,12 @@ void showUpdateResult(HINSTANCE instance,
         instruction = L"Update discovery is not configured";
         content = L"This development package has no pinned signed update service.";
     } else if (result.status == UpdateStatus::Current) {
-        instruction = L"Viper is up to date";
+        instruction = L"Zanna is up to date";
         content = L"Installed/package version: " + utf8ToWide(result.currentVersion) +
                   L"\r\nChannel: " + utf8ToWide(result.channel) + L"  |  " +
                   utf8ToWide(result.architecture);
     } else {
-        instruction = L"A newer Viper version is available";
+        instruction = L"A newer Zanna version is available";
         content = L"Current: " + utf8ToWide(result.currentVersion) + L"\r\nAvailable: " +
                   utf8ToWide(result.availableVersion) + L"\r\nChannel: " +
                   utf8ToWide(result.channel) + L"  |  " + utf8ToWide(result.architecture) +
@@ -507,7 +507,7 @@ void showUpdateResult(HINSTANCE instance,
     config.pszContent = content.c_str();
     config.dwFlags = TDF_SIZE_TO_CONTENT | TDF_USE_COMMAND_LINKS | TDF_USE_HICON_MAIN;
     config.hMainIcon = static_cast<HICON>(LoadImageW(instance,
-                                                     MAKEINTRESOURCEW(IDI_VIPER_INSTALLER),
+                                                     MAKEINTRESOURCEW(IDI_ZANNA_INSTALLER),
                                                      IMAGE_ICON,
                                                      0,
                                                      0,
@@ -517,15 +517,15 @@ void showUpdateResult(HINSTANCE instance,
     config.nDefaultButton = result.status == UpdateStatus::Available ? kOpenUpdate : IDCLOSE;
     int selected = IDCLOSE;
     if (FAILED(TaskDialogIndirect(&config, &selected, nullptr, nullptr)))
-        throw std::runtime_error("cannot display the Viper update result");
+        throw std::runtime_error("cannot display the Zanna update result");
     if (selected == kOpenUpdate) {
         const std::wstring url = utf8ToWide(
             result.releaseNotesUrl.empty() ? result.downloadUrl : result.releaseNotesUrl);
         const INT_PTR launched = reinterpret_cast<INT_PTR>(
             ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
         if (launched <= 32)
-            throw std::runtime_error("cannot open the authenticated Viper release URL");
+            throw std::runtime_error("cannot open the authenticated Zanna release URL");
     }
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer

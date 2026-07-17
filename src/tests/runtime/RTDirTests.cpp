@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //                 handled correctly.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated strings
 //                     and sequences that must be released.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt.hpp"
 #include "rt_dir.h"
@@ -77,11 +77,11 @@ static const char *get_test_base() {
         tmp = getenv("TMP");
     if (!tmp)
         tmp = "C:\\Temp";
-    snprintf(buf, sizeof(buf), "%s\\viper_dir_test_%d", tmp, (int)getpid());
+    snprintf(buf, sizeof(buf), "%s\\zanna_dir_test_%d", tmp, (int)getpid());
     return buf;
 #else
     static char buf[256];
-    snprintf(buf, sizeof(buf), "/tmp/viper_dir_test_%d", (int)getpid());
+    snprintf(buf, sizeof(buf), "/tmp/zanna_dir_test_%d", (int)getpid());
     return buf;
 #endif
 }
@@ -622,7 +622,7 @@ static void test_current() {
     // The current path should end with our test directory name
     // (may have different prefix due to realpath)
     const char *current_cstr = rt_string_cstr(current);
-    test_result("changed directory", strstr(current_cstr, "viper_dir_test_") != NULL);
+    test_result("changed directory", strstr(current_cstr, "zanna_dir_test_") != NULL);
     rt_string_unref(current);
 
     // Restore original directory
@@ -742,7 +742,7 @@ static void test_entries_missing_dir_traps() {
     rt_string path = rt_const_cstr(missing);
     EXPECT_TRAP(rt_dir_entries_seq(path));
 
-    bool ok = g_last_trap && strstr(g_last_trap, "Viper.IO.Dir.Entries") != NULL;
+    bool ok = g_last_trap && strstr(g_last_trap, "Zanna.IO.Dir.Entries") != NULL;
     test_result("trap message mentions Entries", ok);
 
     printf("\n");
@@ -752,7 +752,7 @@ static void test_entries_missing_dir_traps() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
+    ZANNA_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     printf("=== RT Dir Tests ===\n\n");
 

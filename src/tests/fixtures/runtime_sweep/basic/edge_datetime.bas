@@ -6,95 +6,95 @@ DIM result AS STRING
 ' === Epoch and basic dates ===
 PRINT "=== DateTime Basic ==="
 
-ts = Viper.Time.DateTime.Now()
+ts = Zanna.Time.DateTime.Now()
 PRINT "Now(): "; ts
-PRINT "Year: "; Viper.Time.DateTime.Year(ts)
-PRINT "Month: "; Viper.Time.DateTime.Month(ts)
-PRINT "Day: "; Viper.Time.DateTime.Day(ts)
-PRINT "ToISO: "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "Year: "; Zanna.Time.DateTime.Year(ts)
+PRINT "Month: "; Zanna.Time.DateTime.Month(ts)
+PRINT "Day: "; Zanna.Time.DateTime.Day(ts)
+PRINT "ToISO: "; Zanna.Time.DateTime.ToIso8601(ts)
 PRINT ""
 
 ' Unix epoch
 ts = 0
 PRINT "=== Unix Epoch (0) ==="
-PRINT "Year(0): "; Viper.Time.DateTime.Year(0)
-PRINT "Month(0): "; Viper.Time.DateTime.Month(0)
-PRINT "Day(0): "; Viper.Time.DateTime.Day(0)
-PRINT "Hour(0): "; Viper.Time.DateTime.Hour(0)
-PRINT "ToISO(0): "; Viper.Time.DateTime.ToIso8601(0)
+PRINT "Year(0): "; Zanna.Time.DateTime.Year(0)
+PRINT "Month(0): "; Zanna.Time.DateTime.Month(0)
+PRINT "Day(0): "; Zanna.Time.DateTime.Day(0)
+PRINT "Hour(0): "; Zanna.Time.DateTime.Hour(0)
+PRINT "ToISO(0): "; Zanna.Time.DateTime.ToIso8601(0)
 PRINT ""
 
 ' Negative timestamp (before epoch)
 PRINT "=== Before Epoch (-86400) ==="
 ts = -86400
-PRINT "Year(-86400): "; Viper.Time.DateTime.Year(ts)
-PRINT "Month(-86400): "; Viper.Time.DateTime.Month(ts)
-PRINT "Day(-86400): "; Viper.Time.DateTime.Day(ts)
-PRINT "ToISO(-86400): "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "Year(-86400): "; Zanna.Time.DateTime.Year(ts)
+PRINT "Month(-86400): "; Zanna.Time.DateTime.Month(ts)
+PRINT "Day(-86400): "; Zanna.Time.DateTime.Day(ts)
+PRINT "ToISO(-86400): "; Zanna.Time.DateTime.ToIso8601(ts)
 PRINT ""
 
 ' Large timestamp (far future)
 PRINT "=== Far Future ==="
 ts = 4102444800  ' 2100-01-01
-PRINT "Year(4102444800): "; Viper.Time.DateTime.Year(ts)
-PRINT "ToISO(4102444800): "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "Year(4102444800): "; Zanna.Time.DateTime.Year(ts)
+PRINT "ToISO(4102444800): "; Zanna.Time.DateTime.ToIso8601(ts)
 PRINT ""
 
 ' Very large timestamp
 PRINT "=== Very Large Timestamp ==="
 ts = 253402300799  ' 9999-12-31 23:59:59
-PRINT "Year(253402300799): "; Viper.Time.DateTime.Year(ts)
-PRINT "ToISO: "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "Year(253402300799): "; Zanna.Time.DateTime.Year(ts)
+PRINT "ToISO: "; Zanna.Time.DateTime.ToIso8601(ts)
 PRINT ""
 
 ' === Date arithmetic ===
 PRINT "=== Date Arithmetic ==="
 ts = 1704067200  ' 2024-01-01 00:00:00
-PRINT "Base: "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "Base: "; Zanna.Time.DateTime.ToIso8601(ts)
 
 DIM newTs AS INTEGER
-newTs = Viper.Time.DateTime.AddDays(ts, 1)
-PRINT "AddDays(1): "; Viper.Time.DateTime.ToIso8601(newTs)
+newTs = Zanna.Time.DateTime.AddDays(ts, 1)
+PRINT "AddDays(1): "; Zanna.Time.DateTime.ToIso8601(newTs)
 
-newTs = Viper.Time.DateTime.AddDays(ts, -1)
-PRINT "AddDays(-1): "; Viper.Time.DateTime.ToIso8601(newTs)
+newTs = Zanna.Time.DateTime.AddDays(ts, -1)
+PRINT "AddDays(-1): "; Zanna.Time.DateTime.ToIso8601(newTs)
 
-newTs = Viper.Time.DateTime.AddDays(ts, 365)
-PRINT "AddDays(365): "; Viper.Time.DateTime.ToIso8601(newTs)
+newTs = Zanna.Time.DateTime.AddDays(ts, 365)
+PRINT "AddDays(365): "; Zanna.Time.DateTime.ToIso8601(newTs)
 
-newTs = Viper.Time.DateTime.AddSeconds(ts, 3600)
-PRINT "AddSeconds(3600): "; Viper.Time.DateTime.ToIso8601(newTs)
+newTs = Zanna.Time.DateTime.AddSeconds(ts, 3600)
+PRINT "AddSeconds(3600): "; Zanna.Time.DateTime.ToIso8601(newTs)
 
-newTs = Viper.Time.DateTime.AddSeconds(ts, -3600)
-PRINT "AddSeconds(-3600): "; Viper.Time.DateTime.ToIso8601(newTs)
+newTs = Zanna.Time.DateTime.AddSeconds(ts, -3600)
+PRINT "AddSeconds(-3600): "; Zanna.Time.DateTime.ToIso8601(newTs)
 PRINT ""
 
 ' === Create date ===
 PRINT "=== Create Date ==="
-ts = Viper.Time.DateTime.FromParts(2024, 6, 15, 12, 30, 45)
-PRINT "Create(2024,6,15,12,30,45): "; Viper.Time.DateTime.ToIso8601(ts)
+ts = Zanna.Time.DateTime.FromParts(2024, 6, 15, 12, 30, 45)
+PRINT "Create(2024,6,15,12,30,45): "; Zanna.Time.DateTime.ToIso8601(ts)
 
 ' Invalid date creation
-ts = Viper.Time.DateTime.FromParts(2024, 13, 1, 0, 0, 0)
-PRINT "Create(2024,13,1,...) [invalid month]: "; Viper.Time.DateTime.ToIso8601(ts)
+ts = Zanna.Time.DateTime.FromParts(2024, 13, 1, 0, 0, 0)
+PRINT "Create(2024,13,1,...) [invalid month]: "; Zanna.Time.DateTime.ToIso8601(ts)
 
-ts = Viper.Time.DateTime.FromParts(2024, 2, 30, 0, 0, 0)
-PRINT "Create(2024,2,30,...) [invalid day]: "; Viper.Time.DateTime.ToIso8601(ts)
+ts = Zanna.Time.DateTime.FromParts(2024, 2, 30, 0, 0, 0)
+PRINT "Create(2024,2,30,...) [invalid day]: "; Zanna.Time.DateTime.ToIso8601(ts)
 
-ts = Viper.Time.DateTime.FromParts(2024, 1, 1, 25, 0, 0)
-PRINT "Create(2024,1,1,25,...) [invalid hour]: "; Viper.Time.DateTime.ToIso8601(ts)
+ts = Zanna.Time.DateTime.FromParts(2024, 1, 1, 25, 0, 0)
+PRINT "Create(2024,1,1,25,...) [invalid hour]: "; Zanna.Time.DateTime.ToIso8601(ts)
 PRINT ""
 
 ' === Diff ===
 PRINT "=== Date Diff ==="
 DIM ts1 AS INTEGER
 DIM ts2 AS INTEGER
-ts1 = Viper.Time.DateTime.FromParts(2024, 1, 1, 0, 0, 0)
-ts2 = Viper.Time.DateTime.FromParts(2024, 1, 2, 0, 0, 0)
-PRINT "Diff(Jan 1, Jan 2): "; Viper.Time.DateTime.Diff(ts1, ts2); " seconds"
+ts1 = Zanna.Time.DateTime.FromParts(2024, 1, 1, 0, 0, 0)
+ts2 = Zanna.Time.DateTime.FromParts(2024, 1, 2, 0, 0, 0)
+PRINT "Diff(Jan 1, Jan 2): "; Zanna.Time.DateTime.Diff(ts1, ts2); " seconds"
 
-ts2 = Viper.Time.DateTime.FromParts(2023, 12, 31, 0, 0, 0)
-PRINT "Diff(Jan 1 2024, Dec 31 2023): "; Viper.Time.DateTime.Diff(ts1, ts2); " seconds"
+ts2 = Zanna.Time.DateTime.FromParts(2023, 12, 31, 0, 0, 0)
+PRINT "Diff(Jan 1 2024, Dec 31 2023): "; Zanna.Time.DateTime.Diff(ts1, ts2); " seconds"
 
 PRINT ""
 PRINT "=== DateTime Edge Case Tests Complete ==="

@@ -1,8 +1,8 @@
 module test_sky3d_procedural;
-bind Viper.Graphics3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var canvas = Canvas3D.New("sky", 64, 64);

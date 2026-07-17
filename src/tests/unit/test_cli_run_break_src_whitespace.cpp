@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/common/PlatformSkip.h"
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -53,7 +53,7 @@ void usage() {}
 int main() {
 #ifdef _WIN32
     // Skip on Windows: cmdRunIL has Windows-specific path handling issues
-    VIPER_PLATFORM_SKIP("cmdRunIL path handling differs on Windows");
+    ZANNA_PLATFORM_SKIP("cmdRunIL path handling differs on Windows");
 #endif
     const std::filesystem::path unitDir = std::filesystem::path(__FILE__).parent_path();
     const std::filesystem::path testsDir = unitDir.parent_path();

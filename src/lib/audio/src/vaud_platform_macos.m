@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD macOS Platform Backend
+// ZannaAUD macOS Platform Backend
 //
 // Implements audio output using Apple's AudioQueue Services, part of the
 // AudioToolbox framework. AudioQueue provides a simple callback-based API
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief macOS AudioQueue audio backend for ViperAUD.
+/// @brief macOS AudioQueue audio backend for ZannaAUD.
 
 #ifdef __APPLE__
 

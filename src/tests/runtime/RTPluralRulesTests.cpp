@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTPluralRulesTests.cpp
-// Purpose: Validate Viper.Localization.PluralRules against the baked en-US
+// Purpose: Validate Zanna.Localization.PluralRules against the baked en-US
 //          CLDR cardinal and ordinal rule tables. Locales other than en-US
 //          are not yet available (JSON loader lands in a later phase), so
 //          the test matrix focuses on exercising every AST node kind
@@ -68,7 +68,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_plural_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_plural_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }

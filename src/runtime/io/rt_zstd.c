@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,7 +54,7 @@ static uint64_t xxh_rotl64(uint64_t x, int r) {
 static uint64_t xxh_read64(const uint8_t *p) {
     uint64_t v;
     memcpy(&v, p, sizeof(v));
-    return v; /* zstd frames are little-endian; Viper targets are little-endian */
+    return v; /* zstd frames are little-endian; Zanna targets are little-endian */
 }
 
 static uint32_t xxh_read32(const uint8_t *p) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -82,7 +82,7 @@ static void test_text_centered_scaled_zero_scale() {
 // TextScaledWidth (pure math — no canvas needed)
 // ============================================================================
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 static void test_text_scaled_width_basic() {
     // "hello" = 5 chars, scale 1 → 5 * 8 * 1 = 40
@@ -190,7 +190,7 @@ static void test_text_centered_scaled_runs_without_crash() {
     printf("  test_text_centered_scaled_runs_without_crash: PASSED\n");
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */
 
 // ============================================================================
 // Main
@@ -208,7 +208,7 @@ int main() {
     test_text_centered_scaled_null_text();
     test_text_centered_scaled_zero_scale();
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     printf("\n--- TextScaledWidth ---\n");
     test_text_scaled_width_basic();
     test_text_scaled_width_scaled();
@@ -221,7 +221,7 @@ int main() {
     test_text_right_runs_without_crash();
     test_text_centered_scaled_runs_without_crash();
 #else
-    printf("\n  (struct-level tests skipped — VIPER_ENABLE_GRAPHICS not defined)\n");
+    printf("\n  (struct-level tests skipped — ZANNA_ENABLE_GRAPHICS not defined)\n");
 #endif
 
     printf("\n=== All RTCanvasTextLayoutTests passed! ===\n");

@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_gui.h
-// Purpose: Runtime bridge functions for the ViperGUI widget library, providing widget creation,
+// Purpose: Runtime bridge functions for the ZannaGUI widget library, providing widget creation,
 // layout, event handling, and rendering for GUI application development.
 //
 // Key invariants:
@@ -99,14 +99,14 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height);
 
 /// @brief Attempt to create a GUI application without trapping on expected backend failures.
 /// @details This is the fallible companion to @ref rt_gui_app_new. On success the returned
-///          `Viper.Result` owns the application handle. On failure it contains one stable error
+///          `Zanna.Result` owns the application handle. On failure it contains one stable error
 ///          string describing unavailable GUI support, application-state allocation, native-window
 ///          creation, or root-widget allocation. Width and height use the same clamping rules as
 ///          the compatibility constructor.
-/// @param title Window title copied during construction; NULL selects `Viper GUI`.
+/// @param title Window title copied during construction; NULL selects `Zanna GUI`.
 /// @param width Initial logical width, clamped to the native signed 32-bit range.
 /// @param height Initial logical height, clamped to the native signed 32-bit range.
-/// @return Caller-owned opaque `Viper.Result` containing the app or an error string.
+/// @return Caller-owned opaque `Zanna.Result` containing the app or an error string.
 void *rt_gui_app_try_new(rt_string title, int64_t width, int64_t height);
 
 /// @brief Destroy a GUI application and free resources.
@@ -189,19 +189,19 @@ void rt_gui_app_set_font(void *app, void *font, double size);
 void *rt_font_load(rt_string path);
 
 /// @brief Load the host's regular proportional system UI font at a logical size.
-/// @details Resolution uses Viper's zero-dependency platform adapter and falls back to the
+/// @details Resolution uses Zanna's zero-dependency platform adapter and falls back to the
 ///          embedded deterministic font when host candidates are unavailable. The successful
 ///          Font payload is runtime-managed and safe to retain in Result, themes, and user code.
 ///          Graphics-disabled builds return Result.ErrStr with the stable capability reason.
 /// @param size Finite logical-point size in the inclusive range [1,512].
-/// @return Caller-owned Viper.Result containing a managed Font or a stable error string.
+/// @return Caller-owned Zanna.Result containing a managed Font or a stable error string.
 void *rt_font_load_system_ui(double size);
 
 /// @brief Load the host's bold proportional system UI font at a logical size.
 /// @details This follows the same managed ownership, deterministic fallback, validation, and
 ///          graphics-disabled contract as @ref rt_font_load_system_ui, but prefers bold faces.
 /// @param size Finite logical-point size in the inclusive range [1,512].
-/// @return Caller-owned Viper.Result containing a managed Font or a stable error string.
+/// @return Caller-owned Zanna.Result containing a managed Font or a stable error string.
 void *rt_font_load_system_ui_bold(double size);
 
 /// @brief Return the unscaled logical-point size preserved by a Font.
@@ -396,11 +396,11 @@ double rt_widget_get_screen_height(void *widget);
 void rt_widget_add_child(void *parent, void *child);
 
 /// @brief Return the direct parent as an explicit optional value.
-/// @details The returned `Viper.Option` contains a borrowed live widget handle. Root and detached
+/// @details The returned `Zanna.Option` contains a borrowed live widget handle. Root and detached
 ///          widgets return `None`; invalid handles also return `None`. Releasing the Option does
 ///          not destroy the widget.
 /// @param widget Widget handle.
-/// @return Owned `Viper.Option<Widget>` runtime object.
+/// @return Owned `Zanna.Option<Widget>` runtime object.
 void *rt_widget_get_parent_option(void *widget);
 
 /// @brief Return the number of direct child widgets.
@@ -413,7 +413,7 @@ int64_t rt_widget_get_child_count(void *widget);
 ///          out-of-range indices return `None` without changing the tree.
 /// @param widget Parent widget handle.
 /// @param index Zero-based direct-child index.
-/// @return Owned `Viper.Option<Widget>` runtime object.
+/// @return Owned `Zanna.Option<Widget>` runtime object.
 void *rt_widget_get_child_at_option(void *widget, int64_t index);
 
 /// @brief Detach one direct child without destroying it.
@@ -456,7 +456,7 @@ int64_t rt_widget_get_id(void *widget);
 ///          roots return `None`. The successful Option contains a borrowed widget handle.
 /// @param root Subtree root widget handle.
 /// @param id Positive ID previously returned by @ref rt_widget_get_id.
-/// @return Owned `Viper.Option<Widget>` runtime object.
+/// @return Owned `Zanna.Option<Widget>` runtime object.
 void *rt_widget_find_by_id_option(void *root, int64_t id);
 
 /// @brief Find the first case-sensitive widget name within a subtree.
@@ -464,7 +464,7 @@ void *rt_widget_find_by_id_option(void *root, int64_t id);
 ///          names return `None` without mutating the tree. The payload is a borrowed handle.
 /// @param root Subtree root widget handle.
 /// @param name Runtime UTF-8 lookup name.
-/// @return Owned `Viper.Option<Widget>` runtime object.
+/// @return Owned `Zanna.Option<Widget>` runtime object.
 void *rt_widget_find_by_name_option(void *root, rt_string name);
 
 /// @brief Test whether a logical screen point belongs to this widget's effective bounds.
@@ -522,7 +522,7 @@ int64_t rt_widget_was_clicked(void *widget);
 void rt_widget_set_position(void *widget, int64_t x, int64_t y);
 
 /// @brief Set a widget's cross-platform accessibility role.
-/// @details Values outside `Viper.GUI.AccessibleRole` become `None`. Invalid or destroyed handles
+/// @details Values outside `Zanna.GUI.AccessibleRole` become `None`. Invalid or destroyed handles
 ///          are ignored. The mutation advances the widget's non-consuming semantic revision.
 /// @param widget Opaque widget handle; may be NULL or stale.
 /// @param role Stable accessible-role integer.
@@ -603,7 +603,7 @@ int64_t rt_widget_get_revision(void *widget);
 ///          logical/screen bounds, label/live-region metadata, revisions, and recursively nested
 ///          child Maps. Allocation is permitted; invalid roots return an empty versioned Map.
 /// @param root Root widget handle to snapshot.
-/// @return Owned `Viper.Collections.Map`, or NULL only on initial allocation failure.
+/// @return Owned `Zanna.Collections.Map`, or NULL only on initial allocation failure.
 void *rt_accessibility_snapshot(void *root);
 
 /// @brief Enable or disable high-contrast presentation for the active GUI app.
@@ -1143,21 +1143,21 @@ int64_t rt_treeview_was_activated(void *tree);
 /// @return 1 once after one or more unreported lazy-child requests, otherwise 0.
 int64_t rt_treeview_was_load_children_requested(void *tree);
 
-/// @brief Return the most recent lazy-child request target as `Viper.Option`.
+/// @brief Return the most recent lazy-child request target as `Zanna.Option`.
 /// @details Returns `Some(TreeView.Node)` while the latched target remains live, otherwise `None`.
 ///          Reading the payload does not consume `WasLoadChildrenRequested`; removing the target
 ///          clears the latch. The returned Option is a fresh managed object containing a borrowed,
 ///          owner-validated node handle.
 /// @param tree TreeView widget handle.
-/// @return Owned `Viper.Option` object.
+/// @return Owned `Zanna.Option` object.
 void *rt_treeview_get_load_requested_node_option(void *tree);
 
-/// @brief Return the most recently activated tree node as `Viper.Option`.
+/// @brief Return the most recently activated tree node as `Zanna.Option`.
 /// @details Double-click and Enter update the payload before recording `WasActivated`. Reading the
 ///          Option does not consume that edge. A never-activated, removed, or invalid node yields
 ///          `None`; otherwise the returned managed Option contains a borrowed node handle.
 /// @param tree TreeView widget handle.
-/// @return Owned `Viper.Option` object.
+/// @return Owned `Zanna.Option` object.
 void *rt_treeview_get_activated_node_option(void *tree);
 
 /// @brief Return the TreeView's non-consuming state revision.
@@ -2231,7 +2231,7 @@ int64_t rt_spinner_was_submitted(void *spinner);
 int64_t rt_spinner_get_revision(void *spinner);
 
 //=========================================================================
-// Grid Widget (interactive viewport-aware data table) — Viper.GUI.Grid
+// Grid Widget (interactive viewport-aware data table) — Zanna.GUI.Grid
 //=========================================================================
 
 /// @brief Create a tabular data grid attached to an optional parent.
@@ -2419,7 +2419,7 @@ int64_t rt_datagrid_was_changed(void *grid);
 int64_t rt_datagrid_get_revision(void *grid);
 
 //=========================================================================
-// PopupList Widget (caret-anchored filtered selection list) — Viper.GUI.PopupList
+// PopupList Widget (caret-anchored filtered selection list) — Zanna.GUI.PopupList
 //=========================================================================
 
 /// @brief Create a caret-anchored filtered popup list attached to an optional parent.
@@ -2469,23 +2469,23 @@ int8_t rt_popuplist_is_visible(void *list);
 void *rt_image_new(void *parent);
 
 /// @brief Set image pixels.
-/// @details Pixels must be a Viper.Graphics.Pixels object whose elements are
+/// @details Pixels must be a Zanna.Graphics.Pixels object whose elements are
 ///          packed as 0xRRGGBBAA. Values are converted to byte RGBA for the
 ///          GUI image. Width or height <= 0 uses the source dimensions; larger
 ///          requested dimensions are clamped to the source bounds. NULL pixels
 ///          clears the image.
 /// @param image Image widget handle.
-/// @param pixels Viper.Graphics.Pixels object.
+/// @param pixels Zanna.Graphics.Pixels object.
 /// @param width Image width.
 /// @param height Image height.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height);
 
-/// @brief Atomically upload a Viper.Graphics.Pixels object into an image widget.
+/// @brief Atomically upload a Zanna.Graphics.Pixels object into an image widget.
 /// @details Width or height equal to zero selects the corresponding source dimension. Requested
 ///          dimensions larger than the source are clamped for compatibility with SetPixels.
 ///          Validation or allocation failure preserves the prior image byte-for-byte.
 /// @param image Live image widget handle.
-/// @param pixels Viper.Graphics.Pixels object; NULL is rejected without clearing the image.
+/// @param pixels Zanna.Graphics.Pixels object; NULL is rejected without clearing the image.
 /// @param width Requested copied width, or zero for the source width.
 /// @param height Requested copied height, or zero for the source height.
 /// @return 1 after a complete upload, otherwise 0.
@@ -2495,7 +2495,7 @@ int64_t rt_image_try_set_pixels(void *image, void *pixels, int64_t width, int64_
 /// @details Source and destination rectangles must fit completely. Conversion and validation
 ///          finish before destination mutation, so failure cannot produce a partial update.
 /// @param image Live image widget handle with existing pixel storage.
-/// @param pixels Source Viper.Graphics.Pixels object.
+/// @param pixels Source Zanna.Graphics.Pixels object.
 /// @param source_x Zero-based source left coordinate.
 /// @param source_y Zero-based source top coordinate.
 /// @param width Positive region width.
@@ -2678,7 +2678,7 @@ double rt_theme_palette_get_metric(void *palette, rt_string token);
 void rt_theme_palette_set_motion_enabled(void *palette, int64_t enabled);
 
 /// @brief Assign proportional regular, proportional bold, and monospace font roles atomically.
-/// @details NULL clears a role. Every non-NULL value must be a live Viper.GUI.Font; otherwise none
+/// @details NULL clears a role. Every non-NULL value must be a live Zanna.GUI.Font; otherwise none
 ///          of the three roles changes and Validate reports the first invalid role. Palette roles
 ///          are borrowed; after installation the app's font-retirement mechanism keeps referenced
 ///          fonts safe until the theme no longer uses them.
@@ -2694,7 +2694,7 @@ void rt_theme_palette_set_font_roles(void *palette, void *regular, void *bold, v
 ///          contrast. Invalid handles return an error. The error format is
 ///          `GUI theme token <name> has an invalid value`.
 /// @param palette Live ThemePalette borrowed for validation.
-/// @return Caller-owned `Viper.Result`: Ok(1) when valid, otherwise ErrStr.
+/// @return Caller-owned `Zanna.Result`: Ok(1) when valid, otherwise ErrStr.
 void *rt_theme_palette_validate(void *palette);
 
 //=========================================================================
@@ -2732,7 +2732,7 @@ void rt_vbox_set_align(void *vbox, int64_t align);
 int64_t rt_vbox_get_align(void *vbox);
 
 /// @brief Set the VBox main-axis distribution strategy.
-/// @details Accepted values are the six `Viper.GUI.Justify` constants; invalid
+/// @details Accepted values are the six `Zanna.GUI.Justify` constants; invalid
 ///          values normalize to Start.
 /// @param vbox VBox container handle.
 /// @param justify Public justification constant.
@@ -2899,15 +2899,15 @@ int64_t rt_clipboard_has_text(void);
 /// @brief Clear all clipboard contents.
 void rt_clipboard_clear(void);
 
-/// @brief Set text to the system clipboard through Viper.System.Clipboard.
+/// @brief Set text to the system clipboard through Zanna.System.Clipboard.
 /// @param text Text to copy to clipboard.
 void rt_system_clipboard_set(rt_string text);
 
-/// @brief Get text from the system clipboard through Viper.System.Clipboard.
+/// @brief Get text from the system clipboard through Zanna.System.Clipboard.
 /// @return Text from clipboard, or empty string if not available.
 rt_string rt_system_clipboard_get(void);
 
-/// @brief Check if clipboard contains text through Viper.System.Clipboard.
+/// @brief Check if clipboard contains text through Zanna.System.Clipboard.
 /// @return 1 if text is available, 0 otherwise.
 int64_t rt_system_clipboard_has_text(void);
 
@@ -4230,7 +4230,7 @@ void rt_codeeditor_reset_perf_stats(void *editor);
 ///          `INT64_MAX`; invalid editors and graphics-disabled builds return the complete schema
 ///          with zero counters. The caller owns the returned managed Map.
 /// @param editor CodeEditor handle to inspect; invalid handles produce zero-valued statistics.
-/// @return New `Viper.Collections.Map` with `schemaVersion=1`, or NULL on allocation failure.
+/// @return New `Zanna.Collections.Map` with `schemaVersion=1`, or NULL on allocation failure.
 void *rt_codeeditor_get_perf_stats(void *editor);
 
 /// @brief Return how many times full editor text has been materialized.
@@ -4268,7 +4268,7 @@ int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor);
 //=========================================================================
 
 /// @brief Shared state-machine values for asynchronous file and message dialogs.
-/// @details Values are stable public constants surfaced through `Viper.GUI.DialogStatus`. Idle is
+/// @details Values are stable public constants surfaced through `Zanna.GUI.DialogStatus`. Idle is
 ///          the initial reusable state; Open lasts from successful ShowAsync until one close
 ///          callback; Accepted and Cancelled are terminal user outcomes; Failed carries a
 ///          diagnostic through the dialog's GetError operation.
@@ -4282,7 +4282,7 @@ typedef enum {
 
 /// @brief Semantic roles for localizable custom message-box buttons.
 /// @details Roles, rather than translated labels, determine Enter/Escape behavior and outcome
-///          classification. Values are surfaced by `Viper.GUI.DialogButtonRole` and remain ABI
+///          classification. Values are surfaced by `Zanna.GUI.DialogButtonRole` and remain ABI
 ///          stable for persisted application configuration.
 typedef enum {
     RT_GUI_DIALOG_BUTTON_NORMAL = 0,      ///< Ordinary action with no implicit keyboard binding.
@@ -4344,7 +4344,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message);
 ///          operation, or allocation failure.
 /// @param title Dialog title copied into the lower retained dialog.
 /// @param message Prompt label shown above the editable field.
-/// @return Managed `Viper.Option[str]` owned by the caller's runtime graph.
+/// @return Managed `Zanna.Option[str]` owned by the caller's runtime graph.
 void *rt_messagebox_prompt_option(rt_string title, rt_string message);
 
 /// @brief Create a custom message box.
@@ -4474,7 +4474,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 /// @param title Dialog title.
 /// @param default_path Initial directory path.
 /// @param filter Semicolon-delimited glob filter.
-/// @return Managed `Viper.Option[str]` containing the selected non-empty path, or `None`.
+/// @return Managed `Zanna.Option[str]` containing the selected non-empty path, or `None`.
 void *rt_filedialog_open_option(rt_string title, rt_string default_path, rt_string filter);
 
 /// @brief Show a file open dialog for multiple files.
@@ -4765,7 +4765,7 @@ int64_t rt_findbar_find_next(void *bar);
 ///          Successful searches return SomeI64(current 1-based match index);
 ///          misses, unbound bars, and disabled-graphics stubs return None.
 /// @param bar FindBar handle.
-/// @return Opaque Viper.Option containing an i64 match index, or None.
+/// @return Opaque Zanna.Option containing an i64 match index, or None.
 void *rt_findbar_find_next_option(void *bar);
 
 /// @brief Find previous match.
@@ -4776,7 +4776,7 @@ int64_t rt_findbar_find_previous(void *bar);
 /// @brief Find previous match and return the current match index as an Option.
 /// @details This is the sentinel-free variant of rt_findbar_find_previous().
 /// @param bar FindBar handle.
-/// @return Opaque Viper.Option containing an i64 match index, or None.
+/// @return Opaque Zanna.Option containing an i64 match index, or None.
 void *rt_findbar_find_previous_option(void *bar);
 
 /// @brief Replace current match.
@@ -5536,9 +5536,9 @@ void *rt_zia_semantic_job_diagnostics(void *handle);
 void rt_zia_completion_clear_cache(void);
 
 //=========================================================================
-// Viper BASIC IDE language-service bridge (Phase 4; ADR 0014). Strong impls in
-// fe_basic (rt_basic_completion.cpp), weak stubs in viper_runtime. Result shapes
-// mirror the Viper.Zia.* bridge above. See rt_basic_completion.h.
+// Zanna BASIC IDE language-service bridge (Phase 4; ADR 0014). Strong impls in
+// fe_basic (rt_basic_completion.cpp), weak stubs in zanna_runtime. Result shapes
+// mirror the Zanna.Zia.* bridge above. See rt_basic_completion.h.
 //=========================================================================
 
 /// @brief BASIC diagnostics for @p source as Seq<Map> (same shape as Zia toolchain).

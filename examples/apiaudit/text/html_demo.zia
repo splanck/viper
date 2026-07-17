@@ -1,12 +1,12 @@
 module HtmlDemo;
-bind Viper.Terminal;
-bind Viper.Text.Html as Html;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.Html as Html;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Text.Html API Audit ===");
+    Say("=== Zanna.Text.Html API Audit ===");
 
-    var html = "<html><body><h1>Title</h1><p>Hello <b>World</b></p><a href=\"https://example.com\">Link 1</a><a href=\"https://viper.dev\">Link 2</a></body></html>";
+    var html = "<html><body><h1>Title</h1><p>Hello <b>World</b></p><a href=\"https://example.com\">Link 1</a><a href=\"https://zanna.dev\">Link 2</a></body></html>";
 
     // --- Parse ---
     Say("--- Parse ---");

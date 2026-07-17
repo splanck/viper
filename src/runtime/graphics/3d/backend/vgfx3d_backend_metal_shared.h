@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Layouts here must match the Metal shaders and stay consistent with the
 //     D3D11/OpenGL shared layouts (same bone/light limits).
-//   - Internal to the Metal backend; not part of the public Viper API.
+//   - Internal to the Metal backend; not part of the public Zanna API.
 //
 // Ownership/Lifetime:
 //   - Declarations only; no allocation or ownership semantics here.

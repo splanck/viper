@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale_manager.h
-// Purpose: Public C API for Viper.Localization.LocaleManager. Owns the
+// Purpose: Public C API for Zanna.Localization.LocaleManager. Owns the
 //          process-global registry mapping canonical BCP-47 tags to
 //          rt_locale_data_t records; tracks the "current" and "system"
 //          locale pointers; exposes search-path configuration and the
-//          load/unload/reset lifecycle. Supports baked en-US plus JSON/VPA
+//          load/unload/reset lifecycle. Supports baked en-US plus JSON/ZPAK
 //          loaded records.
 //
 // Key invariants:
 //   - All mutation is serialized through a single process-global rwlock.
-//   - Baked records (arena == NULL) are never freed; JSON/VPA records own
+//   - Baked records (arena == NULL) are never freed; JSON/ZPAK records own
 //     their arena and free it on Unload or Reset.
 //   - Current and System pointers are Locale handles (refcounted). The
 //     registry keeps strong references to them.
@@ -80,7 +80,7 @@ void rt_locale_manager_load_from_json(rt_string path);
 /// @brief Soft variant: returns 0 on any failure; 1 on success. Never traps.
 int8_t rt_locale_manager_try_load_from_json(rt_string path);
 
-/// @brief Load locale data from a VPA-embedded asset by name.
+/// @brief Load locale data from a ZPAK-embedded asset by name.
 /// @details Loads raw asset bytes, decodes them as text, then applies the same
 ///          JSON schema as @ref rt_locale_manager_load_from_json.
 void rt_locale_manager_load_from_asset(rt_string name);

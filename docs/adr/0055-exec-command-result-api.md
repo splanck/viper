@@ -11,9 +11,9 @@ Status: Accepted
 
 ## Context
 
-`Viper.System.Exec.ShellFull(command)` captures stdout but stores the matching
+`Zanna.System.Exec.ShellFull(command)` captures stdout but stores the matching
 exit status in thread-local state read later through
-`Viper.System.Exec.LastExitCode()`. The two-call pattern is easy to misuse: any
+`Zanna.System.Exec.LastExitCode()`. The two-call pattern is easy to misuse: any
 intervening exec call can overwrite the status, and the output/status
 relationship is implicit.
 
@@ -22,7 +22,7 @@ Non-zero command exits are normal process outcomes, not runtime failures, so a
 
 ## Decision
 
-Add `Viper.System.Exec.ShellResult(command) -> Viper.System.CommandResult`.
+Add `Zanna.System.Exec.ShellResult(command) -> Zanna.System.CommandResult`.
 
 `CommandResult` is an immutable snapshot containing:
 

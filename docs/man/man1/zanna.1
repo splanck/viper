@@ -1,0 +1,290 @@
+.TH zanna 1 "Zanna" "zanna" "User Commands"
+.SH NAME
+zanna \- Zanna project driver, IL tool, and native build frontend
+.SH SYNOPSIS
+.B zanna
+\fBrun\fR [\fItarget\fR] [\fIoptions\fR] [\fB--verify-each\fR] [\fB--time-compile\fR] [\fB--\fR \fIprogram-args...\fR]
+.br
+.B zanna
+\fBbuild\fR [\fItarget\fR] [\fB-o\fR \fIoutput\fR] [\fIoptions\fR] [\fB--verify-each\fR] [\fB--time-compile\fR]
+.br
+.B zanna
+\fBcheck\fR [\fItarget\fR] [\fIoptions\fR]
+.br
+.B zanna
+\fBinit\fR \fIproject-name\fR [\fB--lang\fR zia|basic]
+.br
+.B zanna
+\fBrepl\fR [zia|basic]
+.br
+.B zanna
+\fBeval\fR [\fB--lang\fR zia|basic] [\fB--json\fR] [\fB--type\fR] [\fB--il\fR] [\fIcode\fR]
+.br
+.B zanna
+\fBexplain\fR \fIdiagnostic-code\fR [\fB--json\fR] | \fBexplain --list\fR [\fB--json\fR]
+.br
+.B zanna
+\fBpackage\fR [\fItarget\fR] [\fB--target\fR macos|linux|windows|tarball]
+[\fB--arch\fR arm64|x64] [\fB-o\fR \fIoutput\fR]
+.br
+.B zanna
+\fBinstall-package\fR [\fB--target\fR windows|macos|linux-deb|linux-rpm|linux-bundle|tarball|all|all-available]
+[\fB--build-dir\fR \fIDIR\fR|\fB--stage-dir\fR \fIDIR\fR|\fB--verify-only\fR \fIFILE\fR]
+[\fB--arch\fR arm64|x64] [\fB--stage-only\fR] [\fB--keep-stage-dir\fR]
+[\fB--macos-pkg-version\fR \fIVERSION\fR] [\fB--macos-sign-identity\fR \fIIDENTITY\fR]
+[\fB--macos-notary-profile\fR \fIPROFILE\fR] [\fB--macos-staple\fR]
+[\fB--windows-channel\fR \fICHANNEL\fR] [\fB--windows-install-scope\fR user|machine]
+[\fB--windows-install-dir\fR \fINAME\fR] [\fB--windows-identifier\fR \fIID\fR]
+[\fB--release\fR] [\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
+.br
+.B zanna
+\fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
+.br
+.B zanna
+\fBfront zia\fR \fB-emit-il\fR \fIFILE.zia\fR [\fB--bounds-checks\fR] [\fB--no-runtime-namespaces\fR]
+.br
+.B zanna
+\fBfront zia\fR \fB-run\fR \fIFILE.zia\fR [\fIrun-options\fR] [\fB--debug-vm\fR] [\fB--no-runtime-namespaces\fR]
+.br
+.B zanna
+\fBfront basic\fR \fB-emit-il\fR \fIFILE.bas\fR [\fB--bounds-checks\fR] [\fB--no-runtime-namespaces\fR]
+.br
+.B zanna
+\fBfront basic\fR \fB-run\fR \fIFILE.bas\fR [\fIrun-options\fR] [\fB--debug-vm\fR] [\fB--no-runtime-namespaces\fR]
+.br
+.B zanna
+\fBcodegen\fR x64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR] [\fB--debug-lines\fR]
+.br
+.B zanna
+\fBcodegen\fR arm64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR] [\fB--debug-lines\fR]
+.br
+.B zanna
+\fBil-opt\fR \fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--pipeline\fR O0|O1|O2]
+[\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
+[\fB--pass-stats\fR]
+.br
+.B zanna
+\fB--print-error-codes\fR [\fB--json\fR]
+.br
+.B zanna
+\fB--dump-runtime-api\fR | \fB--dump-opcodes\fR
+.br
+.B zanna
+\fB--version\fR
+.SH DESCRIPTION
+\fBzanna\fR is the main user-facing driver for Zia, BASIC, textual IL, and native
+build/package workflows.
+.PP
+\fItarget\fR may be a \fC.zia\fR file, \fC.bas\fR file, directory, or
+\fCzanna.project\fR path. If omitted, the current directory is used.
+.PP
+\fBbuild\fR detects the frontend from the target. With no \fB-o\fR it emits IL to
+stdout. With \fB-o output.il\fR it writes textual IL. With any other output name
+it builds a native executable.
+.PP
+\fBrun\fR builds and runs a Zia or BASIC target, and executes a \fI.il\fR target
+directly on the VM. Legacy IL, Zia, and BASIC entry points remain available
+through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
+.PP
+\fBcheck\fR type-checks and verifies a target without running or emitting
+anything. Exit codes: 0 no errors, 1 usage/target error, 2 compile or
+verification errors. Combine with \fB--diagnostic-format json\fR for
+machine-readable diagnostics including fix-its.
+.PP
+\fBeval\fR evaluates a single Zia or BASIC snippet through a fresh REPL session
+(stdin is read when no code argument is given). \fB--json\fR emits a structured
+result object; \fB--type\fR and \fB--il\fR add the inferred type and generated
+IL for Zia snippets. Exit codes: 0 success, 1 usage, 2 compile/eval error,
+3 runtime trap.
+.PP
+\fBexplain\fR describes a diagnostic code from the central catalog
+(\fB--list\fR prints everything; \fB--print-error-codes\fR is the flag form).
+\fB--dump-runtime-api\fR and \fB--dump-opcodes\fR emit JSON inventories of the
+runtime surface and IL opcode set generated from the live registries.
+.PP
+\fBpackage\fR builds native app artifacts. Manifest paths are project-relative,
+while \fB--executable\fR paths are resolved from the current working directory
+when relative. Default output filenames are sanitized so project metadata cannot
+create nested or parent-directory paths. Asset traversal fails on unreadable
+entries and symlinks that resolve outside the project root. Windows app
+installers overwrite packaged files without deleting unrelated files in an
+existing install root.
+.PP
+\fBinstall-package\fR packages the Zanna toolchain itself from a staged
+\fCcmake --install\fR tree. It can stage from a build tree automatically,
+validate the staged install, emit native installer artifacts, or structurally
+verify an existing installer file.
+.PP
+For staged toolchain packaging, \fBinstall-package\fR requires a detected Zanna
+version, detects platform and architecture from the staged \fCzanna\fR binary
+when possible, including \fCuniversal\fR for macOS fat32 and fat64 Mach-O payloads, and
+rejects native package targets that do not match that staged platform.
+\fB--target all\fR emits the staged platform's native package type plus a
+portable tarball; on Linux it emits Debian, RPM, and the self-extracting
+\fC.run\fR bundle, and fails if \fCrpmbuild\fR is not
+available so release builds do not silently skip an expected artifact.
+\fB--target all-available\fR skips Linux RPM when \fCrpmbuild\fR is absent. Use
+\fB--macos-pkg-version\fR when the Zanna version has suffixes that cannot be
+represented as a dotted numeric macOS package version. macOS toolchain packages
+are native XAR/CPIO product packages that install under \fC/usr/local/zanna\fR,
+add receipt-owned command and manpage symlinks under \fC/usr/local\fR, install a
+LaunchServices handler app for \fC.zia\fR, \fC.bas\fR, and \fC.il\fR files, provide
+\fC/usr/local/zanna/share/zanna/uninstall.sh\fR for local cleanup, signs nested
+code with \fB--macos-app-sign-identity\fR, and can sign the product with \fB--macos-sign-identity\fR, notarize with
+\fB--macos-notary-profile\fR, and stapled with \fB--macos-staple\fR. With
+\fB--macos-dmg\fR, the generated DMG is verified and can be notarized/stapled
+with the same notary options. Generated
+Windows toolchain installers are statically linked native setup and
+maintenance executables; the canonical lifecycle does not invoke PowerShell or
+download dependencies. Stable current-user setup defaults to
+\fC%LocalAppData%\\Programs\\Zanna\fR and machine scope defaults to
+\fC%ProgramFiles%\\Zanna\fR. Unsigned local output uses a separate development
+channel and directory so it can coexist with stable. The wizard offers Typical,
+SDK, Complete, and Custom component paths, validates scope and Unicode
+destination, checks disk and semantic-version policy, reports files in use with
+Restart Manager, and exposes Modify, Repair, and Uninstall through Installed
+apps.
+.PP
+The lifecycle engine verifies the schema-versioned nested inventory, stages and
+atomically swaps selected files in a recoverable journal, rejects reparse
+traversal and unowned collisions, restores files/PATH/registry on failure or
+interruption, removes stale owned files, and preserves unrelated developer
+content. Repair restores exact owned hashes. Detached cleanup removes the
+installed uninstaller, package cache, and empty install root after successful
+removal. PATH, Start Menu shortcuts, and safe \fC.zia\fR/\fC.bas\fR/\fC.il\fR
+Open With entries are ownership-marked and uninstall removes only exact values
+created by that package; associations never take over an existing default or
+execute source on open.
+.PP
+Use \fB--windows-install-scope machine\fR for all users,
+\fB--windows-install-dir\fR and \fB--windows-identifier\fR for a custom product
+identity, \fB--windows-channel\fR for coexistence/update identity,
+\fB--windows-no-path\fR to leave PATH untouched,
+\fB--windows-shortcuts off\fR to omit shortcuts, and
+\fB--windows-file-associations off\fR to skip Open With entries. Windows
+installer generation rejects MSVC Debug CRT payloads unless
+\fB--allow-debug-toolchain\fR is supplied. Release staging installs the
+architecture-matched MSVC runtime DLLs beside \fCbin\\zanna.exe\fR, and package
+generation rejects a PE whose imported compiler runtime is absent from that
+directory. Zanna-owned nested PEs are signed before hashing and the outer setup
+is signed last. Linux toolchain
+packages include desktop/MIME association metadata, hicolor icons, preserve
+staged Unix modes, declare runtime package dependencies for libc/C++/libgcc and
+optional X11/ALSA support. CMake, make, a C++ compiler,
+\fCdesktop-file-utils\fR, \fCshared-mime-info\fR, and \fCman-db\fR are package
+recommendations for developer workflows rather than hard runtime dependencies.
+Linux toolchain tarballs include \fCinstall.sh\fR, \fCuninstall.sh\fR, and an install
+manifest; the scripts honor \fCPREFIX\fR and \fCDESTDIR\fR, remove stale files from
+the previous manifest in a rollback-capable transaction, reject unowned
+conflicts, and remove only files listed in the current manifest during uninstall.
+Every successful toolchain package writes a SHA-256 sidecar and JSON inventory;
+multi-artifact output also writes \fCSHA256SUMS\fR. \fB--release\fR requires
+numeric \fCSOURCE_DATE_EPOCH\fR, a clean immutable source commit, verification,
+collision-free output, and the native platform trust chain. Use
+\fB--require-checksum\fR with
+\fB--verify-only\fR to enforce the sidecar.
+.SH BUILD AND RUN OPTIONS
+These options apply to \fBzanna run\fR and \fBzanna build\fR when relevant, and
+to legacy run modes where noted.
+.TP
+\fB--trace\fR[=\fIil\fR|\fIsrc\fR]
+Enable execution tracing.
+.TP
+\fB--stdin-from\fR \fIFILE\fR
+Redirect stdin from \fIFILE\fR.
+.TP
+\fB--max-steps\fR \fIN\fR
+Limit executed instructions; 0 disables the limit.
+.TP
+\fB--bounds-checks\fR
+Enable runtime bounds checks.
+.TP
+\fB--dump-trap\fR
+Show detailed trap diagnostics.
+.TP
+\fB--debug-vm\fR
+Enable VM debug mode.
+.TP
+\fB--build-profile\fR debug|balanced|release
+Select a build profile. Profiles map to \fBO0\fR, \fBO1\fR, and \fBO2\fR respectively.
+.TP
+\fB-O0\fR, \fB-O1\fR, \fB-O2\fR
+Select optimization level. Explicit \fB-O\fR flags override the build profile.
+.TP
+\fB--arch\fR arm64|x64
+Override the native build architecture.
+.TP
+\fB--verify-each\fR
+Verify IL after each optimizer pass. This is useful for pass debugging and is disabled by default.
+.TP
+\fB--time-compile\fR
+Print compile phase timings and per-pass optimizer statistics.
+.TP
+\fB--no-runtime-namespaces\fR
+Disable runtime namespace emission in generated IL.
+.SH DIAGNOSTIC OPTIONS
+.TP
+\fB--dump-tokens\fR
+Dump frontend tokens.
+.TP
+\fB--dump-ast\fR
+Dump the parsed AST.
+.TP
+\fB--dump-sema-ast\fR
+Dump the post-semantics AST.
+.TP
+\fB--dump-il\fR
+Dump generated IL before execution or codegen.
+.TP
+\fB--dump-il-opt\fR
+Dump optimized IL.
+.TP
+\fB--dump-il-passes\fR
+Dump IL after individual optimization passes.
+.SH LEGACY IL RUN OPTIONS
+These options apply to \fBzanna -run\fR and legacy BASIC run mode:
+.TP
+\fB--break\fR \fILABEL\fR|\fIFILE:LINE\fR
+Set a breakpoint by IL label or source location.
+.TP
+\fB--break-src\fR \fIFILE:LINE\fR
+Set a source breakpoint.
+.TP
+\fB--watch\fR \fINAME\fR
+Watch a variable and log stores.
+.TP
+\fB--count\fR
+Show per-opcode execution counts.
+.TP
+\fB--time\fR
+Show wall-clock runtime.
+.SH CODEGEN OPTIONS
+See SYNOPSIS for target-specific forms. \fB--run-native\fR builds and runs the
+produced executable when toolchains are configured. The native assembler is the
+default; \fB--debug-lines\fR opts into DWARF line-table emission.
+.SH EXAMPLES
+.TP
+Run a Zia project from the current directory
+.nf
+zanna run
+.fi
+.TP
+Build a Zia source file to native output
+.nf
+zanna build hello.zia -o hello
+.fi
+.TP
+Emit IL for a BASIC file
+.nf
+zanna build prog.bas -o prog.il
+.fi
+.TP
+Start a Zia REPL
+.nf
+zanna repl zia
+.fi
+.SH EXIT STATUS
+Returns 0 on success; non-zero on argument, I/O, parse, verification, build, or
+runtime errors.
+.SH SEE ALSO
+\fBzia\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1), \fBil-verify\fR(1)

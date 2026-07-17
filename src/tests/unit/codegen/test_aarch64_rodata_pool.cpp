@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,10 +18,10 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-using viper::codegen::aarch64::darwinTarget;
-using viper::codegen::aarch64::linuxTarget;
-using viper::codegen::aarch64::RodataPool;
-using viper::codegen::aarch64::windowsTarget;
+using zanna::codegen::aarch64::darwinTarget;
+using zanna::codegen::aarch64::linuxTarget;
+using zanna::codegen::aarch64::RodataPool;
+using zanna::codegen::aarch64::windowsTarget;
 
 TEST(AArch64Rodata, DedupAndEmit) {
     il::core::Module m;
@@ -68,6 +68,6 @@ TEST(AArch64Rodata, TargetSpecificSectionsAndFixedWidthOctalEscapes) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

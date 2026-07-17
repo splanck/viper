@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <map>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Generate macOS ICNS icon data from a source image.
 ///
@@ -58,9 +58,9 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage);
 /// @return ICO file data.
 std::vector<uint8_t> generateIco(const PkgImage &srcImage);
 
-/// @brief Generate Viper's built-in fallback toolchain icon as an RGBA image.
+/// @brief Generate Zanna's built-in fallback toolchain icon as an RGBA image.
 ///
-/// The packagers use this when an installer is packaging Viper itself rather
+/// The packagers use this when an installer is packaging Zanna itself rather
 /// than an end-user project with a manifest-provided icon. The image is
 /// generated procedurally so the product remains dependency-free while still
 /// producing branded Windows resources, Linux hicolor icons, and macOS ICNS
@@ -68,7 +68,7 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage);
 ///
 /// @return A 256x256 RGBA image suitable for generateIcns/generateIco and
 ///         generateMultiSizePngs.
-PkgImage defaultViperToolchainIconImage();
+PkgImage defaultZannaToolchainIconImage();
 
 /// @brief Generate multi-size PNG icons from a source image.
 ///
@@ -79,4 +79,4 @@ PkgImage defaultViperToolchainIconImage();
 /// @return Map of pixel size to PNG file data.
 std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &srcImage);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

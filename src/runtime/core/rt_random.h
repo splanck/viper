@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_random.h
@@ -93,14 +93,14 @@ long long rt_rand_chance(double probability);
 
 /// @brief Generate a random boolean value with the given probability.
 /// @details This is the boolean-returning public wrapper for
-///          `Viper.Math.Random.Chance`. It shares the exact sampling behavior of
+///          `Zanna.Math.Random.Chance`. It shares the exact sampling behavior of
 ///          `rt_rand_chance` and returns an `i1`-compatible value.
 /// @param probability Probability of returning true, clamped to [0.0, 1.0].
 /// @return 1 when the chance succeeds, otherwise 0.
 int8_t rt_rand_chance_bool(double probability);
 
 /// @brief Shuffle elements in a Seq randomly.
-/// @param seq A Viper.Collections.Seq object.
+/// @param seq A Zanna.Collections.Seq object.
 /// @details Performs Fisher-Yates shuffle using the current RNG state.
 ///          Deterministic when the RNG is seeded.
 void rt_rand_shuffle(void *seq);

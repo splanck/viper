@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTTextDirectionTests.cpp
-// Purpose: Validate Viper.Localization.TextDirection detection and wrapping
+// Purpose: Validate Zanna.Localization.TextDirection detection and wrapping
 //          across LTR-only, RTL-only, mixed, and neutral-only inputs. Uses
 //          canonical codepoints from each supported RTL script (Hebrew,
 //          Arabic) to ensure the classification table matches the plan.

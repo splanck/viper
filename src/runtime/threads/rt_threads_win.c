@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include "rt_win32_wait.h"
 #include <windows.h>
 
-/// @brief Internal representation of a Viper thread (Windows).
+/// @brief Internal representation of a Zanna thread (Windows).
 ///
 /// Uses Windows CRITICAL_SECTION and CONDITION_VARIABLE for synchronization.
 /// The thread handle is stored for potential future use (e.g., priority changes)
@@ -52,7 +52,7 @@ typedef struct RtThread {
     DWORD threadId;           ///< OS thread ID for self-join detection.
     int finished;             ///< 1 when thread has completed.
     int joined;               ///< Reserved for ABI/debug compatibility; joins are repeatable.
-    int64_t id;               ///< Unique Viper thread identifier.
+    int64_t id;               ///< Unique Zanna thread identifier.
     RtContext *inherited_ctx; ///< Parent's runtime context.
     rt_thread_entry_fn entry; ///< User's entry function.
     void *arg;                ///< Argument to entry function.

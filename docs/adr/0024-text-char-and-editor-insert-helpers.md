@@ -4,13 +4,13 @@ audience: contributors
 last-verified: 2026-06-30
 ---
 
-# ADR 0024: Text/Editing Helpers (Viper.Text.Char + CodeEditor.InsertAndPlaceCursor)
+# ADR 0024: Text/Editing Helpers (Zanna.Text.Char + CodeEditor.InsertAndPlaceCursor)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE is the intended first consumer). Driven by
+Accepted (runtime implemented; ZannaIDE is the intended first consumer). Driven by
 the GUI runtime-additions review, recommendation **R7**
-(`misc/plans/viperide/gui-runtime-additions.md`).
+(`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
@@ -19,7 +19,7 @@ them:
 
 1. **Identifier character classification.** Deciding whether a character can start
    or continue an identifier is needed for completion triggers, word selection, and
-   ctrl-arrow navigation. ViperIDE hand-classifies it inline —
+   ctrl-arrow navigation. ZannaIDE hand-classifies it inline —
    `app/dispatch_helpers.zia:64-80` (`HasIdentifierInput`) loops a string checking
    `ch >= "a" and ch <= "z"`, the digit range, and `"_"`.
 2. **Place the caret inside an insertion.** After inserting a multi-line snippet, the
@@ -32,7 +32,7 @@ functions/methods is a runtime C-ABI surface change, requiring an ADR.
 
 ## Decision
 
-### `Viper.Text.Char` — ASCII identifier classification
+### `Zanna.Text.Char` — ASCII identifier classification
 
 A static class with three predicates, each taking a string and classifying its
 **first character** (so it drops directly into char-by-char string iteration; empty
@@ -46,7 +46,7 @@ Classification uses explicit ASCII ranges (not `ctype.h`), so it is locale- and
 platform-independent. Lives in `src/runtime/core/rt_string_advanced.c` (core, always
 available — not graphics-gated).
 
-### `Viper.GUI.CodeEditor.InsertAndPlaceCursor(text: str, caretOffset: i64)`
+### `Zanna.GUI.CodeEditor.InsertAndPlaceCursor(text: str, caretOffset: i64)`
 
 Insert `text` at the primary cursor, then place the caret `caretOffset` characters
 into the inserted text (counting newlines). It captures the pre-insert position,
@@ -65,7 +65,7 @@ own; the full method is added to the existing `CodeEditor` class (no new class).
 - **Determinism / cross-platform:** the Char predicates are pure ASCII arithmetic;
   the offset math is pure; both are platform-independent. The editor method composes
   existing self-guarding editor calls.
-- **No behavior risk:** purely additive; `Viper.Text.Char` is new, and the editor
+- **No behavior risk:** purely additive; `Zanna.Text.Char` is new, and the editor
   gains one method.
 
 ## Alternatives Considered
@@ -75,8 +75,8 @@ own; the full method is added to the existing `CodeEditor` class (no new class).
   string argument drops in without a separate codepoint conversion. (Identifier rules
   are ASCII, so the first byte is the codepoint for the cases that matter, and a
   multibyte leading byte correctly classifies as a non-identifier character.)
-- **Unicode identifier rules (XID_Start/XID_Continue).** Rejected for now: ViperIDE
-  and the Viper/Zia/BASIC languages use ASCII identifiers; full Unicode tables are a
+- **Unicode identifier rules (XID_Start/XID_Continue).** Rejected for now: ZannaIDE
+  and the Zanna/Zia/BASIC languages use ASCII identifiers; full Unicode tables are a
   large addition with no current consumer. ASCII matches the hand-rolled code being
   replaced.
 - **Expose only the offset math (no `InsertAndPlaceCursor`).** Rejected: the value is

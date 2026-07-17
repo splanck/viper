@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 #include "il/transform/analysis/LoopInfo.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
-#include "viper/pass/PassManager.hpp"
+#include "zanna/pass/PassManager.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -67,10 +67,10 @@ PassManager::PassManager() {
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
         kAnalysisCFG,
         [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
-    analysisRegistry_.registerFunctionAnalysis<viper::analysis::DomTree>(
+    analysisRegistry_.registerFunctionAnalysis<zanna::analysis::DomTree>(
         kAnalysisDominators, [](core::Module &module, core::Function &fn) {
-            viper::analysis::CFGContext ctx(module, fn);
-            return viper::analysis::computeDominatorTree(ctx, fn);
+            zanna::analysis::CFGContext ctx(module, fn);
+            return zanna::analysis::computeDominatorTree(ctx, fn);
         });
     analysisRegistry_.registerFunctionAnalysis<LoopInfo>(
         kAnalysisLoopInfo,
@@ -79,22 +79,22 @@ PassManager::PassManager() {
         kAnalysisLiveness,
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
     // Basic alias analysis for memory disambiguation (available to DSE/LICM etc.)
-    analysisRegistry_.registerFunctionAnalysis<viper::analysis::BasicAA>(
+    analysisRegistry_.registerFunctionAnalysis<zanna::analysis::BasicAA>(
         kAnalysisBasicAA, [](core::Module &module, core::Function &fn) {
-            return viper::analysis::BasicAA(module, fn);
+            return zanna::analysis::BasicAA(module, fn);
         });
     // MemorySSA: precise def-use chains for memory operations; used by DSE for
     // cross-block dead-store elimination without false read-barriers on calls.
-    analysisRegistry_.registerFunctionAnalysis<viper::analysis::MemorySSA>(
+    analysisRegistry_.registerFunctionAnalysis<zanna::analysis::MemorySSA>(
         kAnalysisMemorySSA, [](core::Module &module, core::Function &fn) {
-            viper::analysis::BasicAA aa(module, fn);
-            return viper::analysis::computeMemorySSA(fn, aa);
+            zanna::analysis::BasicAA aa(module, fn);
+            return zanna::analysis::computeMemorySSA(fn, aa);
         });
     // Integer value ranges: whole-function forward dataflow used by CheckOpt
     // to prove overflow, bounds, and divide-by-zero checks redundant.
-    analysisRegistry_.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+    analysisRegistry_.registerFunctionAnalysis<zanna::analysis::IntRangeInfo>(
         kAnalysisIntRanges, [](core::Module &, core::Function &fn) {
-            return viper::analysis::computeIntRanges(fn);
+            return zanna::analysis::computeIntRanges(fn);
         });
 
     addSimplifyCFG(false); // Register simplify-cfg pass (non-aggressive by default)

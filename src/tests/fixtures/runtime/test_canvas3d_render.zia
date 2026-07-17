@@ -2,19 +2,19 @@
 // Label: display_required
 module TestCanvas3DRender;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var canvas = Viper.Graphics3D.Canvas3D.New("3D Render Test", 400, 300);
-    var cam = Viper.Graphics3D.Camera3D.New(60.0, 400.0 / 300.0, 0.1, 100.0);
-    var eye = new Viper.Math.Vec3(0.0, 1.5, 4.0);
-    var target = new Viper.Math.Vec3(0.0, 0.0, 0.0);
-    var up = new Viper.Math.Vec3(0.0, 1.0, 0.0);
-    Viper.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
+    var canvas = Zanna.Graphics3D.Canvas3D.New("3D Render Test", 400, 300);
+    var cam = Zanna.Graphics3D.Camera3D.New(60.0, 400.0 / 300.0, 0.1, 100.0);
+    var eye = new Zanna.Math.Vec3(0.0, 1.5, 4.0);
+    var target = new Zanna.Math.Vec3(0.0, 0.0, 0.0);
+    var up = new Zanna.Math.Vec3(0.0, 1.0, 0.0);
+    Zanna.Graphics3D.Camera3D.LookAt(cam, eye, target, up);
 
-    var box = Viper.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0);
-    var mat = Viper.Graphics3D.Material3D.FromColor(0.8, 0.2, 0.2);
-    var transform = Viper.Math.Mat4.Identity();
+    var box = Zanna.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Zanna.Graphics3D.Material3D.FromColor(0.8, 0.2, 0.2);
+    var transform = Zanna.Math.Mat4.Identity();
 
     var w = canvas.Width;
     var h = canvas.Height;
@@ -23,12 +23,12 @@ func start() {
     // Render 3 frames then exit
     var frame = 0;
     while (frame < 3) {
-        Viper.Graphics3D.Canvas3D.Poll(canvas);
-        Viper.Graphics3D.Canvas3D.Clear(canvas, 0.1, 0.1, 0.2);
-        Viper.Graphics3D.Canvas3D.Begin(canvas, cam);
-        Viper.Graphics3D.Canvas3D.DrawMesh(canvas, box, transform, mat);
-        Viper.Graphics3D.Canvas3D.End(canvas);
-        Viper.Graphics3D.Canvas3D.Flip(canvas);
+        Zanna.Graphics3D.Canvas3D.Poll(canvas);
+        Zanna.Graphics3D.Canvas3D.Clear(canvas, 0.1, 0.1, 0.2);
+        Zanna.Graphics3D.Canvas3D.Begin(canvas, cam);
+        Zanna.Graphics3D.Canvas3D.DrawMesh(canvas, box, transform, mat);
+        Zanna.Graphics3D.Canvas3D.End(canvas);
+        Zanna.Graphics3D.Canvas3D.Flip(canvas);
         frame = frame + 1;
     }
 

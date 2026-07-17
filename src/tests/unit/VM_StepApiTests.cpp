@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 
 #include <cassert>
 

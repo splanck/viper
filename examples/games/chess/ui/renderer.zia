@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,10 +18,10 @@
 
 module renderer;
 
-bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
-bind Clock = Viper.Time.Clock;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Color = Zanna.Graphics.Color;
+bind Clock = Zanna.Time.Clock;
+bind Fmt = Zanna.Text.Fmt;
 bind "../core/config";
 bind "../core/board";
 bind "../settings";
@@ -340,7 +340,7 @@ class BoardRenderer {
         canvas.GradientV(top.x, top.y, top.w, top.h, theme.CARD_BG_ALT, theme.PANEL_BG);
         canvas.Line(0, top.h - 1, WIN_W, top.h - 1, theme.CARD_BORDER_SOFT);
 
-        theme.drawTextScaled(canvas, 30, 18, "VIPER CHESS", 2, theme.ACCENT_GOLD);
+        theme.drawTextScaled(canvas, 30, 18, "ZANNA CHESS", 2, theme.ACCENT_GOLD);
 
         widgets.drawBadge(canvas, turnBadge, turnText, theme.ACCENT_BLUE);
         widgets.drawBadge(canvas, modeBadge, modeString(gameMode), theme.ACCENT_GOLD_SOFT);
@@ -571,7 +571,7 @@ class BoardRenderer {
         var card = layout.menuCardRect();
         widgets.drawCard(canvas, card, theme.ACCENT_GOLD, true);
 
-        theme.drawTextScaled(canvas, card.x + 42, card.y + 30, "VIPER", 2, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 30, "ZANNA", 2, theme.TEXT_MUTED);
         theme.drawTextScaled(canvas, card.x + 42, card.y + 56, "CHESS", 4, theme.ACCENT_GOLD);
         theme.drawTextClipped(canvas, card.x + 42, card.y + 104, card.w - 84,
                               "Native Zia chess with saved games, puzzles, clocks, and engine play.",

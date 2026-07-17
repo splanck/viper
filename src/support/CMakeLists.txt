@@ -1,4 +1,4 @@
-add_library(viper_support STATIC
+add_library(zanna_support STATIC
         string_interner.cpp
         source_manager.cpp
         source_location.cpp
@@ -10,8 +10,8 @@ add_library(viper_support STATIC
         diag_catalog.cpp
 )
 
-target_include_directories(viper_support PUBLIC
+target_include_directories(zanna_support PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/zanna>
 )
-target_link_libraries(viper_support PRIVATE viper_common_opts)
+target_link_libraries(zanna_support PRIVATE zanna_common_opts)

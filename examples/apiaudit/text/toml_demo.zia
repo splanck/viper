@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Data.Toml - TOML Processing
+// API Audit: Zanna.Data.Toml - TOML Processing
 // =============================================================================
 // Tests: Parse, IsValid, Format, Get, GetStr
 // =============================================================================
 
 module TomlDemo;
-bind Viper.Terminal;
-bind Viper.Data.Toml as Toml;
+bind Zanna.Terminal;
+bind Zanna.Data.Toml as Toml;
 func start() {
-    Say("=== API Audit: Viper.Data.Toml ===");
+    Say("=== API Audit: Zanna.Data.Toml ===");
 
-    var tomlStr = "[package]\nname = \"viper\"\nversion = \"1.0.0\"\n\n[settings]\ndebug = true\nport = 8080\n";
+    var tomlStr = "[package]\nname = \"zanna\"\nversion = \"1.0.0\"\n\n[settings]\ndebug = true\nport = 8080\n";
 
     // --- IsValid ---
     Say("--- IsValid ---");

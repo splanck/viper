@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
 namespace detail {
@@ -146,7 +146,7 @@ struct BytecodeFunction {
 /// @details Stores the name and signature information needed to locate and
 ///          invoke a native function through the RuntimeBridge or registered handlers.
 struct NativeFuncRef {
-    std::string name;        ///< Function name (e.g., "Viper.Terminal.Say").
+    std::string name;        ///< Function name (e.g., "Zanna.Terminal.Say").
     uint32_t paramCount = 0; ///< Number of parameters the function expects.
     bool hasReturn = false;  ///< True if the function returns a value.
     const il::runtime::RuntimeDescriptor *runtimeDescriptor =
@@ -302,7 +302,7 @@ struct BytecodeModule {
         ref.runtimeDescriptor = il::runtime::findRuntimeDescriptor(name);
         ref.runtimeSignature = ref.runtimeDescriptor ? &ref.runtimeDescriptor->signature
                                                      : il::runtime::findRuntimeSignature(name);
-        ref.consumesClonedStringArgs = name == "rt_str_concat" || name == "Viper.String.Concat";
+        ref.consumesClonedStringArgs = name == "rt_str_concat" || name == "Zanna.String.Concat";
         ref.consumesOwnedStringArgs = name == "rt_str_release_maybe";
         ref.returnsString =
             ref.runtimeSignature && ref.runtimeSignature->retType.kind == il::core::Type::Kind::Str;
@@ -329,4 +329,4 @@ struct BytecodeModule {
 };
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -222,7 +222,7 @@ static bool write_pcm16_wav_with_trailer(const char *path) {
 }
 
 TEST(WavStreamTest, FloatStreamDecodeUsesFormat) {
-    const char *path = "/tmp/viper_test_float_stream.wav";
+    const char *path = "/tmp/zanna_test_float_stream.wav";
     ASSERT_TRUE(write_float_wav(path));
 
     void *file = nullptr;
@@ -255,7 +255,7 @@ TEST(WavStreamTest, FloatStreamDecodeUsesFormat) {
 }
 
 TEST(WavStreamTest, MetadataHeavyHeaderScansPast256Bytes) {
-    const char *path = "/tmp/viper_test_metadata_stream.wav";
+    const char *path = "/tmp/zanna_test_metadata_stream.wav";
     ASSERT_TRUE(write_metadata_heavy_wav(path));
 
     void *file = nullptr;
@@ -289,7 +289,7 @@ TEST(WavStreamTest, MetadataHeavyHeaderScansPast256Bytes) {
 }
 
 TEST(WavStreamTest, BufferedReaderMatchesAllocatingReader) {
-    const char *path = "/tmp/viper_test_buffered_stream.wav";
+    const char *path = "/tmp/zanna_test_buffered_stream.wav";
     ASSERT_TRUE(write_float_wav(path));
 
     void *file_a = nullptr;
@@ -323,7 +323,7 @@ TEST(WavStreamTest, BufferedReaderMatchesAllocatingReader) {
 }
 
 TEST(WavStreamTest, EmptyStreamSeekFailsInsteadOfPretendingBuffered) {
-    const char *path = "/tmp/viper_test_empty_stream.wav";
+    const char *path = "/tmp/zanna_test_empty_stream.wav";
     ASSERT_TRUE(write_pcm16_wav(path, 0));
 
     void *file = nullptr;
@@ -362,7 +362,7 @@ TEST(WavStreamTest, EmptyStreamSeekFailsInsteadOfPretendingBuffered) {
 }
 
 TEST(WavStreamTest, ExactEndSeekPositionsAtEof) {
-    const char *path = "/tmp/viper_test_exact_end_seek.wav";
+    const char *path = "/tmp/zanna_test_exact_end_seek.wav";
     ASSERT_TRUE(write_pcm16_wav(path, 4));
 
     void *file = nullptr;
@@ -403,7 +403,7 @@ TEST(WavStreamTest, ExactEndSeekPositionsAtEof) {
 }
 
 TEST(WavStreamTest, MusicFillStopsAtWavDataChunk) {
-    const char *path = "/tmp/viper_test_stream_trailer.wav";
+    const char *path = "/tmp/zanna_test_stream_trailer.wav";
     ASSERT_TRUE(write_pcm16_wav_with_trailer(path));
 
     void *file = nullptr;
@@ -463,7 +463,7 @@ TEST(WavStreamTest, MalformedMemoryChunkSizeIsRejected) {
 }
 
 TEST(WavStreamTest, NonFiniteFloatSamplesDecodeAsSilence) {
-    const char *path = "/tmp/viper_test_nonfinite_float.wav";
+    const char *path = "/tmp/zanna_test_nonfinite_float.wav";
     ASSERT_TRUE(write_float_nonfinite_wav(path));
 
     void *file = nullptr;
@@ -550,5 +550,5 @@ TEST(WavStreamTest, VoiceIdsWrapWithoutReusingActiveId) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <string>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Parameters for building a Linux .deb or .tar.gz package.
 struct LinuxBuildParams {
@@ -83,7 +83,7 @@ void signLinuxPackage(const std::string &packagePath, const std::string &gpgKeyI
 struct LinuxToolchainBuildParams {
     ToolchainInstallManifest manifest; ///< Staged files and metadata to package.
     std::string outputPath;            ///< Output package file path.
-    std::string packageName{"viper"};  ///< Package/base name (default "viper").
+    std::string packageName{"zanna"};  ///< Package/base name (default "zanna").
 };
 
 /// @brief Build a Debian toolchain package from a staged install manifest.
@@ -106,4 +106,4 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params);
 /// @throws std::runtime_error on failure.
 void buildToolchainBundle(const LinuxToolchainBuildParams &params);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

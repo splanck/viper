@@ -9,7 +9,7 @@ failure without changing the public AA-text API.
 
 ## Evidence
 
-`examples/games/3dbowling/known_viper_issues/overlay_aa_text_repro.zia`
+`examples/games/3dbowling/known_zanna_issues/overlay_aa_text_repro.zia`
 queues same-size AA text in different colors. Current software output is
 correct. Current Metal can show the later blue texture in the earlier green
 draw region (2026-07-16 rerun: software reports the expected green top region;

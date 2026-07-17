@@ -1,6 +1,6 @@
 module RuntimeTest34;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 async func answer() -> Integer {    return 42;
 }
@@ -13,21 +13,21 @@ async func add(a: Integer, b: Integer) -> Integer {    return a + b;
 
 func start() {    var answerValue: Integer = await answer();
     if (answerValue != 42) {
-        Viper.Terminal.Say("FAIL: await answer");
+        Zanna.Terminal.Say("FAIL: await answer");
         return;
     }
 
-    var echoValue: String = await echo("viper");
-    if (echoValue != "viper") {
-        Viper.Terminal.Say("FAIL: await echo");
+    var echoValue: String = await echo("zanna");
+    if (echoValue != "zanna") {
+        Zanna.Terminal.Say("FAIL: await echo");
         return;
     }
 
     var sumValue: Integer = await add(10, 32);
     if (sumValue != 42) {
-        Viper.Terminal.Say("FAIL: async params");
+        Zanna.Terminal.Say("FAIL: async params");
         return;
     }
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

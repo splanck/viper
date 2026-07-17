@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 namespace {
 
@@ -95,4 +95,4 @@ DominatorSets computeDominators(std::size_t blockCount,
     return result;
 }
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

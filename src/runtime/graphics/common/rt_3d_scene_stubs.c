@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -194,7 +194,7 @@ int64_t rt_scene3d_get_node_count(void *s) {
 }
 
 /// @brief Stub for `Scene3D.Save` — would normally serialize the scene
-///        graph to a `.vscn` file (Viper's native scene format) at
+///        graph to a `.vscn` file (Zanna's native scene format) at
 ///        `path`. The format records node hierarchy, transforms, and
 ///        bound mesh/material references; it does not embed mesh data.
 ///
@@ -211,7 +211,7 @@ int64_t rt_scene3d_save(void *s, rt_string path) {
 }
 
 /// @brief Stub for `Scene3D.Load` — would normally parse a `.vscn`
-///        file (Viper's native scene format) and reconstruct the node
+///        file (Zanna's native scene format) and reconstruct the node
 ///        hierarchy with shared resources.
 ///
 /// Trapping stub.
@@ -630,7 +630,7 @@ void *rt_scene_node3d_get_material(void *n) {
 /// @brief Stub for `SceneNode3D.SetVisible`.
 ///
 /// Silent no-op by default, or an unavailable-graphics trap when
-/// `VIPER_GRAPHICS_STUBS_STRICT` is enabled.
+/// `ZANNA_GRAPHICS_STUBS_STRICT` is enabled.
 ///
 /// @param n SceneNode3D handle (ignored).
 /// @param v Non-zero to make visible (ignored).
@@ -643,7 +643,7 @@ void rt_scene_node3d_set_visible(void *n, int8_t v) {
 /// @brief Stub for `SceneNode3D.Visible` — get the visibility flag.
 ///
 /// Silent stub returning `1`, matching the real implementation default, or an
-/// unavailable-graphics trap when `VIPER_GRAPHICS_STUBS_STRICT` is enabled.
+/// unavailable-graphics trap when `ZANNA_GRAPHICS_STUBS_STRICT` is enabled.
 ///
 /// @param n SceneNode3D handle (ignored).
 ///

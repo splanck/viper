@@ -1,6 +1,6 @@
 module RuntimeTest36;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Counter {
     hide Integer _count;
@@ -21,15 +21,15 @@ class Counter {
 func start() {    var c = new Counter();
     c.count = 42;
     if (c.count != 42) {
-        Viper.Terminal.Say("FAIL: property_setter");
+        Zanna.Terminal.Say("FAIL: property_setter");
         return;
     }
 
     c.count = c.count + 8;
     if (c.count != 50) {
-        Viper.Terminal.Say("FAIL: property_getter");
+        Zanna.Terminal.Say("FAIL: property_getter");
         return;
     }
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

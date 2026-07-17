@@ -1,8 +1,8 @@
 // =============================================================================
 // CENTIPEDE - Main Entry Point (Graphical Version)
 // =============================================================================
-// A comprehensive Centipede clone demonstrating Zia/Viper capabilities
-// using Viper.Graphics.Canvas for pixel-based rendering
+// A comprehensive Centipede clone demonstrating Zia/Zanna capabilities
+// using Zanna.Graphics.Canvas for pixel-based rendering
 // =============================================================================
 //
 // CONTROLS:
@@ -21,18 +21,18 @@ bind "./config";
 bind "./utils";
 bind "./game";
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("===========================================");
-    Say("CENTIPEDE - A Zia/Viper Graphical Demo");
+    Say("CENTIPEDE - A Zia/Zanna Graphical Demo");
     Say("===========================================");
     Say("");
     Say("Demonstrating new game development features:");
-    Say("  - Viper.Graphics.Canvas (graphical rendering)");
-    Say("  - Viper.Game.Grid2D (2D tile storage)");
-    Say("  - Viper.Game.Timer (frame-based timers)");
-    Say("  - Viper.Game.SmoothValue (animated counters)");
+    Say("  - Zanna.Graphics.Canvas (graphical rendering)");
+    Say("  - Zanna.Game.Grid2D (2D tile storage)");
+    Say("  - Zanna.Game.Timer (frame-based timers)");
+    Say("  - Zanna.Game.SmoothValue (animated counters)");
     Say("");
     Say("Controls:");
     Say("  Arrow Keys / WASD - Move");

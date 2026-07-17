@@ -9,7 +9,7 @@ native-host handoff
 This review covered toolchain staging, package generation, artifact
 verification, signing, installer user experience, upgrades, rollback,
 uninstall, release automation, and documentation for Windows, macOS, and Linux.
-It examined `viper install-package`, the package builders and runtime stubs,
+It examined `zanna install-package`, the package builders and runtime stubs,
 installer wrapper/signing scripts, CTest lifecycle smokes, and release workflow
 definitions.
 
@@ -53,7 +53,7 @@ format.
 | 20 | Critical | A signed executable's appended payload could be read or hashed incorrectly. | The backend reads exact overlay ranges from the signed installer and streams SHA-256 verification before extraction. |
 | 21 | Critical | A ZIP that differed from its manifest could install silently. | Install preflight rejects missing files, unexpected files, duplicate/unsafe paths, and manifest hash mismatch. |
 | 22 | Critical | Junctions and reparse points could redirect writes outside the selected destination. | Preflight rejects reparse-point traversal throughout the destination and transaction paths. |
-| 23 | Critical | Upgrade could overwrite a file not owned by Viper. | Unowned collisions abort before mutation; ownership is derived from the installed manifest and recorded metadata. |
+| 23 | Critical | Upgrade could overwrite a file not owned by Zanna. | Unowned collisions abort before mutation; ownership is derived from the installed manifest and recorded metadata. |
 | 24 | Critical | A failed install or metadata update could leave a mixed old/new tree. | Same-volume staging, backups, a journal, explicit commit phases, and rollback cover files, PATH, and registry mutations. |
 | 25 | High | A process interruption could strand a transaction that later setup ignored. | Either architecture's installer or uninstaller detects and recovers an interrupted transaction before continuing. |
 | 26 | High | Upgrades accumulated files removed from newer releases. | Baseline-to-current validation proves stale owned files are deleted while unrelated files survive. |
@@ -65,7 +65,7 @@ format.
 | 32 | Medium | The setup executable looked and behaved like a legacy application on modern displays. | Its manifest enables modern common controls, DPI awareness, and long-path awareness. |
 | 33 | Critical | Timestamp transport and post-sign trust checks were too weak. | Timestamp URLs must be HTTPS and signing is followed by `signtool verify /pa /all /tw /v`. |
 | 34 | High | PFX passwords could be exposed casually in process arguments. | Certificate-store thumbprints are preferred; PFX argv use requires explicit acknowledgement, and the helper validates and prioritizes a 40-hex thumbprint. |
-| 35 | Medium | Batch wrapper inspection could reinterpret metacharacters from extra CMake arguments. | The wrapper queries the environment without expanding its value through `echo` before adding the ViperIDE option. |
+| 35 | Medium | Batch wrapper inspection could reinterpret metacharacters from extra CMake arguments. | The wrapper queries the environment without expanding its value through `echo` before adding the ZannaIDE option. |
 
 ## macOS package and disk image
 
@@ -93,7 +93,7 @@ format.
 | 50 | Critical | Cache symlinks, wrong ownership, permissive modes, and partial extraction could redirect execution. | The runtime rejects symlink components and unsafe ownership, forces mode 0700, verifies the payload, extracts to a private stage, and atomically publishes it. |
 | 51 | High | Concurrent first launches could race or consume an abandoned lock forever. | A per-payload directory lock serializes extraction, waits for a live owner, and recovers missing/stale owner records. |
 | 52 | Medium | Bundle status output was noisy in automation and inconsistent in terminals. | Quiet mode, `NO_COLOR`, TTY-aware color, extraction/help/cache commands, and clear failures are supported without toolchain AppImage aliases. |
-| 53 | High | Debian/RPM hard dependencies included build and desktop-cache tools not required to execute Viper. | Runtime libraries remain hard dependencies; CMake, compilers, make, cache helpers, and man-db tools are recommendations. |
+| 53 | High | Debian/RPM hard dependencies included build and desktop-cache tools not required to execute Zanna. | Runtime libraries remain hard dependencies; CMake, compilers, make, cache helpers, and man-db tools are recommendations. |
 | 54 | High | Native package trust, metadata, and lifecycle validation were incomplete. | Packages include contact/homepage/license/copyright/desktop/MIME data, verify `dpkg-sig`/RPM signatures and RPM structure, and exercise baseline upgrade, installed CMake/native codegen, removal, and unrelated-file preservation. The portable tar installer separately provides conflict preflight, same-filesystem journal/rollback, stale cleanup, recorded prefix, dry-run/force/quiet controls, and transactional uninstall. |
 
 ## Validation status

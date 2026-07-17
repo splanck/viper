@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,11 +53,11 @@ void runUnknownOpcodeChild() {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(runUnknownOpcodeChild);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(runUnknownOpcodeChild);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    const auto result = viper::tests::runIsolated(runUnknownOpcodeChild);
+    const auto result = zanna::tests::runIsolated(runUnknownOpcodeChild);
     assert(result.trapped() && "expected invalid opcode to trap");
 
     const std::string &diag = result.stderrText;

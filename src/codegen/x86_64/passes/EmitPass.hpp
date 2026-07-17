@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// \brief Emit assembly text for a lowered module using the backend facade.
 class EmitPass final : public Pass {
@@ -40,4 +40,4 @@ class EmitPass final : public Pass {
     CodegenOptions options_;
 };
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

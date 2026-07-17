@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,19 +19,19 @@
 
 // RUNTIME CLASSES
 //
-// Classes define the OOP interface exposed to Viper languages.
+// Classes define the OOP interface exposed to Zanna languages.
 // Ordered alphabetically by fully-qualified class name.
 //
 //=============================================================================
 //=============================================================================
 
-// Viper.Math.Bits - bit manipulation utilities
+// Zanna.Math.Bits - bit manipulation utilities
 /// @summary Provides bit manipulation utilities.
 /// @details
-/// `Viper.Math.Bits` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Math.Bits` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `And`, `Clear`,
 /// `CountOnes`, `CountLeadingZeros`.
-RT_CLASS_BEGIN("Viper.Math.Bits", Bits, "obj", none)
+RT_CLASS_BEGIN("Zanna.Math.Bits", Bits, "obj", none)
     RT_METHOD("And", "i64(i64,i64)", BitsAnd)
     RT_METHOD("Clear", "i64(i64,i64)", BitsClear)
     RT_METHOD("CountOnes", "i64(i64)", BitsCount)
@@ -52,19 +52,19 @@ RT_CLASS_BEGIN("Viper.Math.Bits", Bits, "obj", none)
     RT_METHOD("Xor", "i64(i64,i64)", BitsXor)
 RT_CLASS_END()
 
-// Viper.Collections.Bytes - efficient byte array
+// Zanna.Collections.Bytes - efficient byte array
 /// @summary Provides efficient byte array.
 /// @details
-/// Create `Viper.Collections.Bytes` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Bytes` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Length` and operations including `Clone`, `Copy`, `Fill`, `Find`.
-RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj(i64)", BytesNew)
+RT_CLASS_BEGIN("Zanna.Collections.Bytes", Bytes, "obj(i64)", BytesNew)
     RT_PROP("IsEmpty", "i1", BytesIsEmpty, none)
     RT_PROP("Length", "i64", BytesLen, none)
     RT_METHOD("Clone", "obj()", BytesClone)
     RT_METHOD("Copy", "void(i64,obj,i64,i64)", BytesCopy)
     RT_METHOD("Fill", "void(i64)", BytesFill)
-    RT_METHOD("Find", "obj<Viper.Option>(i64)", BytesFindOption)
+    RT_METHOD("Find", "obj<Zanna.Option>(i64)", BytesFindOption)
     RT_METHOD("Get", "i64(i64)", BytesGet)
     RT_METHOD("ReadI16BigEndian", "i64(i64)", BytesReadI16BE)
     RT_METHOD("ReadI16LittleEndian", "i64(i64)", BytesReadI16LE)
@@ -85,20 +85,20 @@ RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj(i64)", BytesNew)
     RT_METHOD("WriteI64LittleEndian", "void(i64,i64)", BytesWriteI64LE)
 RT_CLASS_END()
 
-// Viper.Collections.F64Buffer - packed double-precision numeric buffer
+// Zanna.Collections.F64Buffer - packed double-precision numeric buffer
 /// @summary Provides packed double-precision numeric buffer.
 /// @details
-/// Create `Viper.Collections.F64Buffer` values through its registered constructor and use the
+/// Create `Zanna.Collections.F64Buffer` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
-RT_CLASS_BEGIN("Viper.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
+RT_CLASS_BEGIN("Zanna.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
     RT_PROP("Length", "i64", F64BufLen, none)
-    RT_METHOD("FromSeq", "obj<Viper.Collections.F64Buffer>(obj)", F64BufFromSeq)
+    RT_METHOD("FromSeq", "obj<Zanna.Collections.F64Buffer>(obj)", F64BufFromSeq)
     RT_METHOD("Get", "f64(i64)", F64BufGet)
     RT_METHOD("Set", "void(i64,f64)", F64BufSet)
     RT_METHOD("Fill", "void(f64)", F64BufFill)
     RT_METHOD("CopyFrom", "void(obj)", F64BufCopyFrom)
-    RT_METHOD("Slice", "obj<Viper.Collections.F64Buffer>(i64,i64)", F64BufSlice)
+    RT_METHOD("Slice", "obj<Zanna.Collections.F64Buffer>(i64,i64)", F64BufSlice)
     RT_METHOD("AddScalar", "void(f64)", F64BufAddS)
     RT_METHOD("MulScalar", "void(f64)", F64BufMulS)
     RT_METHOD("AddBuffer", "void(obj)", F64BufAddB)
@@ -106,24 +106,24 @@ RT_CLASS_BEGIN("Viper.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
     RT_METHOD("Dot", "f64(obj)", F64BufDot)
     RT_METHOD("Min", "f64()", F64BufMin)
     RT_METHOD("Max", "f64()", F64BufMax)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", F64BufToList)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", F64BufToSeq)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", F64BufToList)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", F64BufToSeq)
 RT_CLASS_END()
 
-// Viper.Collections.I64Buffer - packed 64-bit integer numeric buffer
+// Zanna.Collections.I64Buffer - packed 64-bit integer numeric buffer
 /// @summary Provides packed 64-bit integer numeric buffer.
 /// @details
-/// Create `Viper.Collections.I64Buffer` values through its registered constructor and use the
+/// Create `Zanna.Collections.I64Buffer` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
-RT_CLASS_BEGIN("Viper.Collections.I64Buffer", I64Buffer, "obj(i64)", I64BufNew)
+RT_CLASS_BEGIN("Zanna.Collections.I64Buffer", I64Buffer, "obj(i64)", I64BufNew)
     RT_PROP("Length", "i64", I64BufLen, none)
-    RT_METHOD("FromSeq", "obj<Viper.Collections.I64Buffer>(obj)", I64BufFromSeq)
+    RT_METHOD("FromSeq", "obj<Zanna.Collections.I64Buffer>(obj)", I64BufFromSeq)
     RT_METHOD("Get", "i64(i64)", I64BufGet)
     RT_METHOD("Set", "void(i64,i64)", I64BufSet)
     RT_METHOD("Fill", "void(i64)", I64BufFill)
     RT_METHOD("CopyFrom", "void(obj)", I64BufCopyFrom)
-    RT_METHOD("Slice", "obj<Viper.Collections.I64Buffer>(i64,i64)", I64BufSlice)
+    RT_METHOD("Slice", "obj<Zanna.Collections.I64Buffer>(i64,i64)", I64BufSlice)
     RT_METHOD("AddScalar", "void(i64)", I64BufAddS)
     RT_METHOD("MulScalar", "void(i64)", I64BufMulS)
     RT_METHOD("AddBuffer", "void(obj)", I64BufAddB)
@@ -131,17 +131,17 @@ RT_CLASS_BEGIN("Viper.Collections.I64Buffer", I64Buffer, "obj(i64)", I64BufNew)
     RT_METHOD("Dot", "i64(obj)", I64BufDot)
     RT_METHOD("Min", "i64()", I64BufMin)
     RT_METHOD("Max", "i64()", I64BufMax)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", I64BufToList)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", I64BufToSeq)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", I64BufToList)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", I64BufToSeq)
 RT_CLASS_END()
 
-// Viper.Collections.BiMap - bidirectional string-to-string map
+// Zanna.Collections.BiMap - bidirectional string-to-string map
 /// @summary Provides bidirectional string-to-string map.
 /// @details
-/// Create `Viper.Collections.BiMap` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.BiMap` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `GetByKey`, `GetByValue`, `HasKey`.
-RT_CLASS_BEGIN("Viper.Collections.BiMap", BiMap, "obj", BiMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.BiMap", BiMap, "obj", BiMapNew)
     RT_PROP("IsEmpty", "i1", BiMapIsEmpty, none)
     RT_PROP("Count", "i64", BiMapLen, none)
     RT_METHOD("Clear", "void()", BiMapClear)
@@ -156,13 +156,13 @@ RT_CLASS_BEGIN("Viper.Collections.BiMap", BiMap, "obj", BiMapNew)
     RT_METHOD("Values", "seq<str>()", BiMapValues)
 RT_CLASS_END()
 
-// Viper.Collections.BitSet - arbitrary-size bit array
+// Zanna.Collections.BitSet - arbitrary-size bit array
 /// @summary Provides arbitrary-size bit array.
 /// @details
-/// Create `Viper.Collections.BitSet` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.BitSet` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Length`, `Count` and operations including `And`, `ClearBit`, `Clear`, `GetBit`.
-RT_CLASS_BEGIN("Viper.Collections.BitSet", BitSet, "obj(i64)", BitSetNew)
+RT_CLASS_BEGIN("Zanna.Collections.BitSet", BitSet, "obj(i64)", BitSetNew)
     RT_PROP("IsEmpty", "i1", BitSetIsEmpty, none)
     RT_PROP("Length", "i64", BitSetLen, none)
     RT_PROP("Count", "i64", BitSetCount, none)
@@ -179,13 +179,13 @@ RT_CLASS_BEGIN("Viper.Collections.BitSet", BitSet, "obj(i64)", BitSetNew)
     RT_METHOD("Xor", "obj(obj)", BitSetXor)
 RT_CLASS_END()
 
-// Viper.Collections.BloomFilter - probabilistic set membership
+// Zanna.Collections.BloomFilter - probabilistic set membership
 /// @summary Provides probabilistic set membership.
 /// @details
-/// Create `Viper.Collections.BloomFilter` values through its registered constructor and use the
+/// Create `Zanna.Collections.BloomFilter` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Add`, `Clear`, `FalsePositiveRate`, `Merge`.
-RT_CLASS_BEGIN("Viper.Collections.BloomFilter", BloomFilter, "obj(i64,f64)", BloomFilterNew)
+RT_CLASS_BEGIN("Zanna.Collections.BloomFilter", BloomFilter, "obj(i64,f64)", BloomFilterNew)
     RT_PROP("Count", "i64", BloomFilterLen, none)
     RT_METHOD("Add", "void(str)", BloomFilterAdd)
     RT_METHOD("Clear", "void()", BloomFilterClear)
@@ -194,28 +194,28 @@ RT_CLASS_BEGIN("Viper.Collections.BloomFilter", BloomFilter, "obj(i64,f64)", Blo
     RT_METHOD("MightContain", "i1(str)", BloomFilterMightContain)
 RT_CLASS_END()
 
-// Viper.Collections.UnionFind - disjoint set data structure
+// Zanna.Collections.UnionFind - disjoint set data structure
 /// @summary Provides disjoint set data structure.
 /// @details
-/// Create `Viper.Collections.UnionFind` values through its registered constructor and use the
+/// Create `Zanna.Collections.UnionFind` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `IsConnected`, `FindRoot`, `Clear`, `ComponentSize`.
-RT_CLASS_BEGIN("Viper.Collections.UnionFind", UnionFind, "obj(i64)", UnionFindNew)
+RT_CLASS_BEGIN("Zanna.Collections.UnionFind", UnionFind, "obj(i64)", UnionFindNew)
     RT_PROP("Count", "i64", UnionFindLen, none)
     RT_METHOD("IsConnected", "i1(i64,i64)", UnionFindConnected)
-    RT_METHOD("FindRoot", "obj<Viper.Option>(i64)", UnionFindFindRootOption)
+    RT_METHOD("FindRoot", "obj<Zanna.Option>(i64)", UnionFindFindRootOption)
     RT_METHOD("Clear", "void()", UnionFindReset)
     RT_METHOD("ComponentSize", "i64(i64)", UnionFindSetSize)
     RT_METHOD("Union", "i64(i64,i64)", UnionFindUnion)
 RT_CLASS_END()
 
-// Viper.Collections.OrderedMap - insertion-order preserving map
+// Zanna.Collections.OrderedMap - insertion-order preserving map
 /// @summary Provides insertion-order preserving map.
 /// @details
-/// Create `Viper.Collections.OrderedMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.OrderedMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Get`, `Has`, `KeyAt`.
-RT_CLASS_BEGIN("Viper.Collections.OrderedMap", OrderedMap, "obj", OrderedMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.OrderedMap", OrderedMap, "obj", OrderedMapNew)
     RT_PROP("IsEmpty", "i1", OrderedMapIsEmpty, none)
     RT_PROP("Count", "i64", OrderedMapLen, none)
     RT_METHOD("Clear", "void()", OrderedMapClear)
@@ -228,13 +228,13 @@ RT_CLASS_BEGIN("Viper.Collections.OrderedMap", OrderedMap, "obj", OrderedMapNew)
     RT_METHOD("Values", "seq<obj>()", OrderedMapValues)
 RT_CLASS_END()
 
-// Viper.Collections.DefaultMap - map with default value for missing keys
+// Zanna.Collections.DefaultMap - map with default value for missing keys
 /// @summary Provides map with default value for missing keys.
 /// @details
-/// Create `Viper.Collections.DefaultMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.DefaultMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count`, `IsEmpty` and operations including `Clear`, `Get`, `GetDefault`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.DefaultMap", DefaultMap, "obj(obj)", DefaultMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.DefaultMap", DefaultMap, "obj(obj)", DefaultMapNew)
     RT_PROP("Count", "i64", DefaultMapLen, none)
     RT_PROP("IsEmpty", "i1", DefaultMapIsEmpty, none)
     RT_METHOD("Clear", "void()", DefaultMapClear)
@@ -246,31 +246,31 @@ RT_CLASS_BEGIN("Viper.Collections.DefaultMap", DefaultMap, "obj(obj)", DefaultMa
     RT_METHOD("Set", "void(str,obj)", DefaultMapSet)
 RT_CLASS_END()
 
-// Viper.Collections.FrozenSet - immutable string set
+// Zanna.Collections.FrozenSet - immutable string set
 /// @summary Provides immutable string set.
 /// @details
-/// `Viper.Collections.FrozenSet` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Collections.FrozenSet` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Difference`, `Equals`, `Has`, `Intersect`.
-RT_CLASS_BEGIN("Viper.Collections.FrozenSet", FrozenSet, "obj(obj)", none)
+RT_CLASS_BEGIN("Zanna.Collections.FrozenSet", FrozenSet, "obj(obj)", none)
     RT_PROP("IsEmpty", "i1", FrozenSetIsEmpty, none)
     RT_PROP("Count", "i64", FrozenSetLen, none)
-    RT_METHOD("Difference", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetDiff)
+    RT_METHOD("Difference", "obj<Zanna.Collections.FrozenSet>(obj)", FrozenSetDiff)
     RT_METHOD("Equals", "i1(obj)", FrozenSetEquals)
     RT_METHOD("Has", "i1(str)", FrozenSetHas)
-    RT_METHOD("Intersect", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetIntersect)
+    RT_METHOD("Intersect", "obj<Zanna.Collections.FrozenSet>(obj)", FrozenSetIntersect)
     RT_METHOD("IsSubset", "i1(obj)", FrozenSetIsSubset)
     RT_METHOD("ToSeq", "seq<str>()", FrozenSetItems)
-    RT_METHOD("Union", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetUnion)
+    RT_METHOD("Union", "obj<Zanna.Collections.FrozenSet>(obj)", FrozenSetUnion)
 RT_CLASS_END()
 
-// Viper.Collections.FrozenMap - immutable string-keyed map
+// Zanna.Collections.FrozenMap - immutable string-keyed map
 /// @summary Provides immutable string-keyed map.
 /// @details
-/// `Viper.Collections.FrozenMap` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Collections.FrozenMap` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Equals`, `Get`, `GetOr`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.FrozenMap", FrozenMap, "obj(obj,obj)", none)
+RT_CLASS_BEGIN("Zanna.Collections.FrozenMap", FrozenMap, "obj(obj,obj)", none)
     RT_PROP("IsEmpty", "i1", FrozenMapIsEmpty, none)
     RT_PROP("Count", "i64", FrozenMapLen, none)
     RT_METHOD("Equals", "i1(obj)", FrozenMapEquals)
@@ -278,17 +278,17 @@ RT_CLASS_BEGIN("Viper.Collections.FrozenMap", FrozenMap, "obj(obj,obj)", none)
     RT_METHOD("GetOr", "obj(str,obj)", FrozenMapGetOr)
     RT_METHOD("Has", "i1(str)", FrozenMapHas)
     RT_METHOD("Keys", "seq<str>()", FrozenMapKeys)
-    RT_METHOD("Merge", "obj<Viper.Collections.FrozenMap>(obj)", FrozenMapMerge)
-    RT_METHOD("Values", "obj<Viper.Collections.Seq>()", FrozenMapValues)
+    RT_METHOD("Merge", "obj<Zanna.Collections.FrozenMap>(obj)", FrozenMapMerge)
+    RT_METHOD("Values", "obj<Zanna.Collections.Seq>()", FrozenMapValues)
 RT_CLASS_END()
 
-// Viper.Collections.SparseArray - memory-efficient sparse array
+// Zanna.Collections.SparseArray - memory-efficient sparse array
 /// @summary Provides memory-efficient sparse array.
 /// @details
-/// Create `Viper.Collections.SparseArray` values through its registered constructor and use the
+/// Create `Zanna.Collections.SparseArray` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Clear`, `Get`, `Has`, `Indices`.
-RT_CLASS_BEGIN("Viper.Collections.SparseArray", SparseArray, "obj", SparseNew)
+RT_CLASS_BEGIN("Zanna.Collections.SparseArray", SparseArray, "obj", SparseNew)
     RT_PROP("Count", "i64", SparseLen, none)
     RT_METHOD("Clear", "void()", SparseClear)
     RT_METHOD("Get", "obj(i64)", SparseGet)
@@ -299,13 +299,13 @@ RT_CLASS_BEGIN("Viper.Collections.SparseArray", SparseArray, "obj", SparseNew)
     RT_METHOD("Values", "seq<obj>()", SparseValues)
 RT_CLASS_END()
 
-// Viper.Collections.WeakMap - map with weak value references
+// Zanna.Collections.WeakMap - map with weak value references
 /// @summary Provides map with weak value references.
 /// @details
-/// Create `Viper.Collections.WeakMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.WeakMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Compact`, `Get`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.WeakMap", WeakMap, "obj", WeakMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.WeakMap", WeakMap, "obj", WeakMapNew)
     RT_PROP("IsEmpty", "i1", WeakMapIsEmpty, none)
     RT_PROP("Count", "i64", WeakMapLen, none)
     RT_METHOD("Clear", "void()", WeakMapClear)
@@ -317,34 +317,34 @@ RT_CLASS_BEGIN("Viper.Collections.WeakMap", WeakMap, "obj", WeakMapNew)
     RT_METHOD("Set", "void(str,obj)", WeakMapSet)
 RT_CLASS_END()
 
-// Viper.Collections.Bag - set of unique strings
+// Zanna.Collections.Bag - set of unique strings
 /// @summary Provides set of unique strings.
 /// @details
-/// Create `Viper.Collections.Bag` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Bag` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Add`.
-RT_CLASS_BEGIN("Viper.Collections.StringSet", Bag, "obj", BagNew)
+RT_CLASS_BEGIN("Zanna.Collections.StringSet", Bag, "obj", BagNew)
     RT_PROP("IsEmpty", "i1", BagIsEmpty, none)
     RT_PROP("Count", "i64", BagLen, none)
     RT_METHOD("Clear", "void()", BagClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.StringSet>()", BagClone)
-    RT_METHOD("Difference", "obj<Viper.Collections.StringSet>(obj)", BagDiff)
+    RT_METHOD("Clone", "obj<Zanna.Collections.StringSet>()", BagClone)
+    RT_METHOD("Difference", "obj<Zanna.Collections.StringSet>(obj)", BagDiff)
     RT_METHOD("Add", "i1(str)", BagAdd)
     RT_METHOD("Has", "i1(str)", BagHas)
-    RT_METHOD("Intersect", "obj<Viper.Collections.StringSet>(obj)", BagIntersect)
+    RT_METHOD("Intersect", "obj<Zanna.Collections.StringSet>(obj)", BagIntersect)
     RT_METHOD("Remove", "i1(str)", BagRemove)
-    RT_METHOD("Union", "obj<Viper.Collections.StringSet>(obj)", BagUnion)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", BagToSeq)
-    RT_METHOD("ToSet", "obj<Viper.Collections.Set>()", BagToSet)
+    RT_METHOD("Union", "obj<Zanna.Collections.StringSet>(obj)", BagUnion)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", BagToSeq)
+    RT_METHOD("ToSet", "obj<Zanna.Collections.Set>()", BagToSet)
 RT_CLASS_END()
 
-// Viper.Collections.CountMap - frequency counting map (string key -> count)
+// Zanna.Collections.CountMap - frequency counting map (string key -> count)
 /// @summary Provides frequency counting map (string key -> count).
 /// @details
-/// Create `Viper.Collections.CountMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.CountMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count`, `Total` and operations including `Clear`, `Decrement`, `Get`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.CountMap", CountMap, "obj", CountMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.CountMap", CountMap, "obj", CountMapNew)
     RT_PROP("IsEmpty", "i1", CountMapIsEmpty, none)
     RT_PROP("Count", "i64", CountMapLen, none)
     RT_PROP("Total", "i64", CountMapTotal, none)
@@ -360,63 +360,63 @@ RT_CLASS_BEGIN("Viper.Collections.CountMap", CountMap, "obj", CountMapNew)
     RT_METHOD("Set", "void(str,i64)", CountMapSet)
 RT_CLASS_END()
 
-// Viper.Collections.Set - generic set of unique objects
+// Zanna.Collections.Set - generic set of unique objects
 /// @summary Provides generic set of unique objects.
 /// @details
-/// Create `Viper.Collections.Set` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Set` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Intersect`.
-RT_CLASS_BEGIN("Viper.Collections.Set", Set, "obj", SetNew)
+RT_CLASS_BEGIN("Zanna.Collections.Set", Set, "obj", SetNew)
     RT_PROP("IsEmpty", "i1", SetIsEmpty, none)
     RT_PROP("Count", "i64", SetLen, none)
     RT_METHOD("Clear", "void()", SetClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Set>()", SetClone)
-    RT_METHOD("Difference", "obj<Viper.Collections.Set>(obj)", SetDiff)
-    RT_METHOD("Intersect", "obj<Viper.Collections.Set>(obj)", SetIntersect)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Set>()", SetClone)
+    RT_METHOD("Difference", "obj<Zanna.Collections.Set>(obj)", SetDiff)
+    RT_METHOD("Intersect", "obj<Zanna.Collections.Set>(obj)", SetIntersect)
     RT_METHOD("Remove", "i1(obj)", SetRemove)
     RT_METHOD("Has", "i1(obj)", SetHas)
     RT_METHOD("IsDisjoint", "i1(obj)", SetIsDisjoint)
     RT_METHOD("IsSubset", "i1(obj)", SetIsSubset)
     RT_METHOD("IsSuperset", "i1(obj)", SetIsSuperset)
-    RT_METHOD("Union", "obj<Viper.Collections.Set>(obj)", SetUnion)
+    RT_METHOD("Union", "obj<Zanna.Collections.Set>(obj)", SetUnion)
     RT_METHOD("Add", "i1(obj)", SetAdd)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", SetToSeq)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", SetToList)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", SetToSeq)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", SetToList)
 RT_CLASS_END()
 
-// Viper.Collections.SortedSet - Sorted set of unique strings
-RT_FUNC(SortedSetNew,       rt_sortedset_new,        "Viper.Collections.SortedSet.New",        "obj()")
-RT_FUNC(SortedSetLen,       rt_sortedset_len,        "Viper.Collections.SortedSet.get_Count",    "i64(obj)")
-RT_FUNC(SortedSetIsEmpty,   rt_sortedset_is_empty,   "Viper.Collections.SortedSet.get_IsEmpty","i1(obj)")
-RT_FUNC(SortedSetClear,     rt_sortedset_clear,      "Viper.Collections.SortedSet.Clear",      "void(obj)")
-RT_FUNC(SortedSetAdd,       rt_sortedset_add,        "Viper.Collections.SortedSet.Add",        "i1(obj,str)")
-RT_FUNC(SortedSetRemove,    rt_sortedset_remove,     "Viper.Collections.SortedSet.Remove",     "i1(obj,str)")
-RT_FUNC(SortedSetHas,       rt_sortedset_has,        "Viper.Collections.SortedSet.Has",        "i1(obj,str)")
-RT_FUNC(SortedSetFirst,     rt_sortedset_first,      "Viper.Collections.SortedSet.First",      "str(obj)")
-RT_FUNC(SortedSetLast,      rt_sortedset_last,       "Viper.Collections.SortedSet.Last",       "str(obj)")
-RT_FUNC(SortedSetFloor,     rt_sortedset_floor,      "Viper.Collections.SortedSet.Floor",      "str(obj,str)")
-RT_FUNC(SortedSetCeil,      rt_sortedset_ceil,       "Viper.Collections.SortedSet.Ceiling",       "str(obj,str)")
-RT_FUNC(SortedSetLower,     rt_sortedset_lower,      "Viper.Collections.SortedSet.Lower",      "str(obj,str)")
-RT_FUNC(SortedSetHigher,    rt_sortedset_higher,     "Viper.Collections.SortedSet.Higher",     "str(obj,str)")
-RT_FUNC(SortedSetAt,        rt_sortedset_at,         "Viper.Collections.SortedSet.At",         "str(obj,i64)")
-RT_FUNC(SortedSetIndexOf,   rt_sortedset_index_of,   "Viper.Collections.SortedSet.IndexOf",    "i64(obj,str)")
-RT_FUNC(SortedSetItems,     rt_sortedset_items,      "Viper.Collections.SortedSet.ToSeq",      "seq<str>(obj)")
-RT_FUNC(SortedSetRange,     rt_sortedset_range,      "Viper.Collections.SortedSet.Range",      "seq<str>(obj,str,str)")
-RT_FUNC(SortedSetTake,      rt_sortedset_take,       "Viper.Collections.SortedSet.Take",       "seq<str>(obj,i64)")
-RT_FUNC(SortedSetSkip,      rt_sortedset_skip,       "Viper.Collections.SortedSet.Skip",       "seq<str>(obj,i64)")
-RT_FUNC(SortedSetUnion,     rt_sortedset_union,      "Viper.Collections.SortedSet.Union",      "obj(obj,obj)")
-RT_FUNC(SortedSetIntersect, rt_sortedset_intersect,  "Viper.Collections.SortedSet.Intersect",  "obj(obj,obj)")
-RT_FUNC(SortedSetDiff,      rt_sortedset_diff,       "Viper.Collections.SortedSet.Difference",       "obj(obj,obj)")
-RT_FUNC(SortedSetIsSubset,  rt_sortedset_is_subset,  "Viper.Collections.SortedSet.IsSubset",   "i1(obj,obj)")
+// Zanna.Collections.SortedSet - Sorted set of unique strings
+RT_FUNC(SortedSetNew,       rt_sortedset_new,        "Zanna.Collections.SortedSet.New",        "obj()")
+RT_FUNC(SortedSetLen,       rt_sortedset_len,        "Zanna.Collections.SortedSet.get_Count",    "i64(obj)")
+RT_FUNC(SortedSetIsEmpty,   rt_sortedset_is_empty,   "Zanna.Collections.SortedSet.get_IsEmpty","i1(obj)")
+RT_FUNC(SortedSetClear,     rt_sortedset_clear,      "Zanna.Collections.SortedSet.Clear",      "void(obj)")
+RT_FUNC(SortedSetAdd,       rt_sortedset_add,        "Zanna.Collections.SortedSet.Add",        "i1(obj,str)")
+RT_FUNC(SortedSetRemove,    rt_sortedset_remove,     "Zanna.Collections.SortedSet.Remove",     "i1(obj,str)")
+RT_FUNC(SortedSetHas,       rt_sortedset_has,        "Zanna.Collections.SortedSet.Has",        "i1(obj,str)")
+RT_FUNC(SortedSetFirst,     rt_sortedset_first,      "Zanna.Collections.SortedSet.First",      "str(obj)")
+RT_FUNC(SortedSetLast,      rt_sortedset_last,       "Zanna.Collections.SortedSet.Last",       "str(obj)")
+RT_FUNC(SortedSetFloor,     rt_sortedset_floor,      "Zanna.Collections.SortedSet.Floor",      "str(obj,str)")
+RT_FUNC(SortedSetCeil,      rt_sortedset_ceil,       "Zanna.Collections.SortedSet.Ceiling",       "str(obj,str)")
+RT_FUNC(SortedSetLower,     rt_sortedset_lower,      "Zanna.Collections.SortedSet.Lower",      "str(obj,str)")
+RT_FUNC(SortedSetHigher,    rt_sortedset_higher,     "Zanna.Collections.SortedSet.Higher",     "str(obj,str)")
+RT_FUNC(SortedSetAt,        rt_sortedset_at,         "Zanna.Collections.SortedSet.At",         "str(obj,i64)")
+RT_FUNC(SortedSetIndexOf,   rt_sortedset_index_of,   "Zanna.Collections.SortedSet.IndexOf",    "i64(obj,str)")
+RT_FUNC(SortedSetItems,     rt_sortedset_items,      "Zanna.Collections.SortedSet.ToSeq",      "seq<str>(obj)")
+RT_FUNC(SortedSetRange,     rt_sortedset_range,      "Zanna.Collections.SortedSet.Range",      "seq<str>(obj,str,str)")
+RT_FUNC(SortedSetTake,      rt_sortedset_take,       "Zanna.Collections.SortedSet.Take",       "seq<str>(obj,i64)")
+RT_FUNC(SortedSetSkip,      rt_sortedset_skip,       "Zanna.Collections.SortedSet.Skip",       "seq<str>(obj,i64)")
+RT_FUNC(SortedSetUnion,     rt_sortedset_union,      "Zanna.Collections.SortedSet.Union",      "obj(obj,obj)")
+RT_FUNC(SortedSetIntersect, rt_sortedset_intersect,  "Zanna.Collections.SortedSet.Intersect",  "obj(obj,obj)")
+RT_FUNC(SortedSetDiff,      rt_sortedset_diff,       "Zanna.Collections.SortedSet.Difference",       "obj(obj,obj)")
+RT_FUNC(SortedSetIsSubset,  rt_sortedset_is_subset,  "Zanna.Collections.SortedSet.IsSubset",   "i1(obj,obj)")
 
 // SortedSet aliases (backward compatibility)
 
 /// @summary Provides Sorted Set functionality for collection-oriented programs.
 /// @details
-/// Create `Viper.Collections.SortedSet` values through its registered constructor and use the
+/// Create `Zanna.Collections.SortedSet` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Add`, `Remove`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.SortedSet", SortedSet, "obj", SortedSetNew)
+RT_CLASS_BEGIN("Zanna.Collections.SortedSet", SortedSet, "obj", SortedSetNew)
     RT_PROP("IsEmpty", "i1", SortedSetIsEmpty, none)
     RT_PROP("Count", "i64", SortedSetLen, none)
     RT_METHOD("Clear", "void()", SortedSetClear)
@@ -441,46 +441,46 @@ RT_CLASS_BEGIN("Viper.Collections.SortedSet", SortedSet, "obj", SortedSetNew)
     RT_METHOD("IsSubset", "i1(obj)", SortedSetIsSubset)
 RT_CLASS_END()
 
-// Viper.Collections.List
+// Zanna.Collections.List
 /// @summary Provides List functionality for collection-oriented programs.
 /// @details
-/// Create `Viper.Collections.List` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.List` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
 /// `IsEmpty` and operations including `Push`, `Pop`, `Clear`, `FindOption`.
-RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
+RT_CLASS_BEGIN("Zanna.Collections.List", List, "obj", ListNew)
     RT_PROP("Count", "i64", ListGetLen, none)
     RT_PROP("IsEmpty", "i1", ListIsEmpty, none)
     RT_METHOD("Push", "void(obj)", ListPush)
     RT_METHOD("Pop", "obj()", ListPop)
     RT_METHOD("Clear", "void()", ListClear)
-    RT_METHOD("FindOption", "obj<Viper.Option>(obj)", ListFindOption)
+    RT_METHOD("FindOption", "obj<Zanna.Option>(obj)", ListFindOption)
     RT_METHOD("Has", "i1(obj)", ListHas)
     RT_METHOD("Insert", "void(i64,obj)", ListInsert)
     RT_METHOD("Remove", "i1(obj)", ListRemove)
     RT_METHOD("RemoveAt", "void(i64)", ListRemoveAt)
     RT_METHOD("Get", "obj(i64)", ListGet)
     RT_METHOD("Set", "void(i64,obj)", ListSet)
-    RT_METHOD("Slice", "obj<Viper.Collections.List>(i64,i64)", ListSlice)
+    RT_METHOD("Slice", "obj<Zanna.Collections.List>(i64,i64)", ListSlice)
     RT_METHOD("Reverse", "void()", ListReverse)
     RT_METHOD("First", "obj()", ListFirst)
     RT_METHOD("Last", "obj()", ListLast)
     RT_METHOD("Sort", "void()", ListSort)
     RT_METHOD("SortDesc", "void()", ListSortDesc)
     RT_METHOD("Shuffle", "void()", ListShuffle)
-    RT_METHOD("Clone", "obj<Viper.Collections.List>()", ListClone)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", ListToSeq)
-    RT_METHOD("ToSet", "obj<Viper.Collections.Set>()", ListToSet)
-    RT_METHOD("ToStack", "obj<Viper.Collections.Stack>()", ListToStack)
-    RT_METHOD("ToQueue", "obj<Viper.Collections.Queue>()", ListToQueue)
+    RT_METHOD("Clone", "obj<Zanna.Collections.List>()", ListClone)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", ListToSeq)
+    RT_METHOD("ToSet", "obj<Zanna.Collections.Set>()", ListToSet)
+    RT_METHOD("ToStack", "obj<Zanna.Collections.Stack>()", ListToStack)
+    RT_METHOD("ToQueue", "obj<Zanna.Collections.Queue>()", ListToQueue)
 RT_CLASS_END()
 
-// Viper.Collections.LruCache - bounded key-value cache with LRU eviction
+// Zanna.Collections.LruCache - bounded key-value cache with LRU eviction
 /// @summary Provides bounded key-value cache with LRU eviction.
 /// @details
-/// Create `Viper.Collections.LruCache` values through its registered constructor and use the
+/// Create `Zanna.Collections.LruCache` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Get`, `Has`, `Keys`.
-RT_CLASS_BEGIN("Viper.Collections.LruCache", LruCache, "obj(i64)", LruCacheNew)
+RT_CLASS_BEGIN("Zanna.Collections.LruCache", LruCache, "obj(i64)", LruCacheNew)
     RT_PROP("Capacity", "i64", LruCacheCapacity, none)
     RT_PROP("IsEmpty", "i1", LruCacheIsEmpty, none)
     RT_PROP("Count", "i64", LruCacheLen, none)
@@ -495,17 +495,17 @@ RT_CLASS_BEGIN("Viper.Collections.LruCache", LruCache, "obj(i64)", LruCacheNew)
     RT_METHOD("Values", "seq<obj>()", LruCacheValues)
 RT_CLASS_END()
 
-// Viper.Collections.Map - key-value dictionary (string keys)
+// Zanna.Collections.Map - key-value dictionary (string keys)
 /// @summary Provides key-value dictionary (string keys).
 /// @details
-/// Create `Viper.Collections.Map` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Map` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
-RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
+RT_CLASS_BEGIN("Zanna.Collections.Map", Map, "obj", MapNew)
     RT_PROP("IsEmpty", "i1", MapIsEmpty, none)
     RT_PROP("Count", "i64", MapLen, none)
     RT_METHOD("Clear", "void()", MapClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Map>()", MapClone)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Map>()", MapClone)
     RT_METHOD("Get", "obj(str)", MapGet)
     RT_METHOD("GetOr", "obj(str,obj)", MapGetOr)
     RT_METHOD("Has", "i1(str)", MapHas)
@@ -527,13 +527,13 @@ RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
     RT_METHOD("GetStr", "str(str)", MapGetStr)
 RT_CLASS_END()
 
-// Viper.Collections.IntMap - integer-keyed dictionary
+// Zanna.Collections.IntMap - integer-keyed dictionary
 /// @summary Provides integer-keyed dictionary.
 /// @details
-/// Create `Viper.Collections.IntMap` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.IntMap` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
 /// `IsEmpty` and operations including `Set`, `Get`, `GetOr`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.IntMap", IntMap, "obj", IntMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.IntMap", IntMap, "obj", IntMapNew)
     RT_PROP("Count", "i64", IntMapLen, none)
     RT_PROP("IsEmpty", "i1", IntMapIsEmpty, none)
     RT_METHOD("Set", "void(i64,obj)", IntMapSet)
@@ -546,14 +546,14 @@ RT_CLASS_BEGIN("Viper.Collections.IntMap", IntMap, "obj", IntMapNew)
     RT_METHOD("Values", "seq<obj>()", IntMapValues)
 RT_CLASS_END()
 
-// Viper.Collections.MultiMap - one key to many values
+// Zanna.Collections.MultiMap - one key to many values
 /// @summary Provides one key to many values.
 /// @details
-/// Create `Viper.Collections.MultiMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.MultiMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `KeyCount`, `Count` and operations including `Clear`, `CountFor`, `Get`,
 /// `GetFirst`.
-RT_CLASS_BEGIN("Viper.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
     RT_PROP("IsEmpty", "i1", MultiMapIsEmpty, none)
     RT_PROP("KeyCount", "i64", MultiMapKeyCount, none)
     RT_PROP("Count", "i64", MultiMapLen, none)
@@ -567,34 +567,34 @@ RT_CLASS_BEGIN("Viper.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
     RT_METHOD("RemoveAll", "i1(str)", MultiMapRemoveAll)
 RT_CLASS_END()
 
-// Viper.Collections.Queue - FIFO collection
+// Zanna.Collections.Queue - FIFO collection
 /// @summary Provides FIFO collection.
 /// @details
-/// Create `Viper.Collections.Queue` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Queue` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
-RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
+RT_CLASS_BEGIN("Zanna.Collections.Queue", Queue, "obj", QueueNew)
     RT_PROP("IsEmpty", "i1", QueueIsEmpty, none)
     RT_PROP("Count", "i64", QueueLen, none)
     RT_METHOD("Clear", "void()", QueueClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Queue>()", QueueClone)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Queue>()", QueueClone)
     RT_METHOD("Has", "i1(obj)", QueueHas)
     RT_METHOD("Peek", "obj()", QueuePeek)
     RT_METHOD("Push", "void(obj)", QueuePush)
     RT_METHOD("Pop", "obj()", QueuePop)
     RT_METHOD("SetOwnsElements", "void(i1)", QueueSetOwnsElements)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", QueueToList)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", QueueToSeq)
-    RT_METHOD("TryPop", "obj<Viper.Option>()", QueueTryPopOption)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", QueueToList)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", QueueToSeq)
+    RT_METHOD("TryPop", "obj<Zanna.Option>()", QueueTryPopOption)
 RT_CLASS_END()
 
-// Viper.Collections.Heap - priority queue (binary heap)
+// Zanna.Collections.Heap - priority queue (binary heap)
 /// @summary Provides priority queue (binary heap).
 /// @details
-/// Create `Viper.Collections.Heap` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Heap` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `IsMax`, `Count` and operations including `Clear`, `Peek`, `Pop`, `Push`.
-RT_CLASS_BEGIN("Viper.Collections.Heap", Heap, "obj", HeapNew)
+RT_CLASS_BEGIN("Zanna.Collections.Heap", Heap, "obj", HeapNew)
     RT_PROP("IsEmpty", "i1", HeapIsEmpty, none)
     RT_PROP("IsMax", "i1", HeapIsMax, none)
     RT_PROP("Count", "i64", HeapLen, none)
@@ -603,17 +603,17 @@ RT_CLASS_BEGIN("Viper.Collections.Heap", Heap, "obj", HeapNew)
     RT_METHOD("Pop", "obj()", HeapPop)
     RT_METHOD("Push", "void(i64,obj)", HeapPush)
     RT_METHOD("ToSeq", "seq<obj>()", HeapToSeq)
-    RT_METHOD("TryPeek", "obj<Viper.Option>()", HeapTryPeekOption)
-    RT_METHOD("TryPop", "obj<Viper.Option>()", HeapTryPopOption)
+    RT_METHOD("TryPeek", "obj<Zanna.Option>()", HeapTryPeekOption)
+    RT_METHOD("TryPop", "obj<Zanna.Option>()", HeapTryPopOption)
 RT_CLASS_END()
 
-// Viper.Collections.Ring - fixed-size circular buffer
+// Zanna.Collections.Ring - fixed-size circular buffer
 /// @summary Provides fixed-size circular buffer.
 /// @details
-/// Create `Viper.Collections.Ring` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Ring` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Capacity`, `First`, `IsEmpty` and operations including `Clear`, `Clone`, `Get`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
+RT_CLASS_BEGIN("Zanna.Collections.Ring", Ring, "obj", RingNew)
     RT_PROP("Capacity", "i64", RingCapacity, none)
     RT_PROP("First", "obj", RingFirst, none)
     RT_PROP("IsEmpty", "i1", RingIsEmpty, none)
@@ -622,7 +622,7 @@ RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
     RT_PROP("Count", "i64", RingLen, none)
     RT_PROP("OwnsElements", "i1", RingOwnsElements, none)
     RT_METHOD("Clear", "void()", RingClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Ring>()", RingClone)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Ring>()", RingClone)
     RT_METHOD("Get", "obj(i64)", RingGet)
     RT_METHOD("Has", "i1(obj)", RingHas)
     RT_METHOD("Peek", "obj()", RingPeek)
@@ -630,24 +630,24 @@ RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
     RT_METHOD("Push", "void(obj)", RingPush)
     RT_METHOD("Reverse", "void()", RingReverse)
     RT_METHOD("SetOwnsElements", "void(i1)", RingSetOwnsElements)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", RingToSeq)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", RingToSeq)
 RT_CLASS_END()
 
-// Viper.Collections.Seq - dynamic sequence/array
+// Zanna.Collections.Seq - dynamic sequence/array
 /// @summary Provides dynamic sequence/array.
 /// @details
-/// Create `Viper.Collections.Seq` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Seq` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Drop`,
 /// `FindOption`.
-RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
+RT_CLASS_BEGIN("Zanna.Collections.Seq", Seq, "obj", SeqNew)
     RT_PROP("Capacity", "i64", SeqCapacity, none)
     RT_PROP("IsEmpty", "i1", SeqIsEmpty, none)
     RT_PROP("Count", "i64", SeqLen, none)
     RT_METHOD("Clear", "void()", SeqClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Seq>()", SeqClone)
-    RT_METHOD("Drop", "obj<Viper.Collections.Seq>(i64)", SeqDrop)
-    RT_METHOD("FindOption", "obj<Viper.Option>(obj)", SeqFindOption)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Seq>()", SeqClone)
+    RT_METHOD("Drop", "obj<Zanna.Collections.Seq>(i64)", SeqDrop)
+    RT_METHOD("FindOption", "obj<Zanna.Option>(obj)", SeqFindOption)
     RT_METHOD("First", "obj()", SeqFirst)
     RT_METHOD("Get", "obj(i64)", SeqGet)
     RT_METHOD("Has", "i1(obj)", SeqHas)
@@ -661,58 +661,58 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("Reverse", "void()", SeqReverse)
     RT_METHOD("Set", "void(i64,obj)", SeqSet)
     RT_METHOD("Shuffle", "void()", SeqShuffle)
-    RT_METHOD("Slice", "obj<Viper.Collections.Seq>(i64,i64)", SeqSlice)
+    RT_METHOD("Slice", "obj<Zanna.Collections.Seq>(i64,i64)", SeqSlice)
     RT_METHOD("Sort", "void()", SeqSort)
     RT_METHOD("SortDesc", "void()", SeqSortDesc)
-    RT_METHOD("Take", "obj<Viper.Collections.Seq>(i64)", SeqTake)
+    RT_METHOD("Take", "obj<Zanna.Collections.Seq>(i64)", SeqTake)
     // Functional operations (predicate/transform passed as function pointer)
-    RT_METHOD("Filter", "obj<Viper.Collections.Seq>(obj)", SeqKeep)
-    RT_METHOD("Reject", "obj<Viper.Collections.Seq>(obj)", SeqReject)
-    RT_METHOD("Map", "obj<Viper.Collections.Seq>(obj)", SeqApply)
+    RT_METHOD("Filter", "obj<Zanna.Collections.Seq>(obj)", SeqKeep)
+    RT_METHOD("Reject", "obj<Zanna.Collections.Seq>(obj)", SeqReject)
+    RT_METHOD("Map", "obj<Zanna.Collections.Seq>(obj)", SeqApply)
     RT_METHOD("All", "i1(obj)", SeqAll)
     RT_METHOD("Any", "i1(obj)", SeqAny)
     RT_METHOD("None", "i1(obj)", SeqNone)
     RT_METHOD("CountWhere", "i64(obj)", SeqCountWhere)
-    RT_METHOD("FindWhereOption", "obj<Viper.Option>(obj)", SeqFindWhereOption)
-    RT_METHOD("TakeWhile", "obj<Viper.Collections.Seq>(obj)", SeqTakeWhile)
-    RT_METHOD("DropWhile", "obj<Viper.Collections.Seq>(obj)", SeqDropWhile)
+    RT_METHOD("FindWhereOption", "obj<Zanna.Option>(obj)", SeqFindWhereOption)
+    RT_METHOD("TakeWhile", "obj<Zanna.Collections.Seq>(obj)", SeqTakeWhile)
+    RT_METHOD("DropWhile", "obj<Zanna.Collections.Seq>(obj)", SeqDropWhile)
     RT_METHOD("Fold", "obj(obj,obj)", SeqFold)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", SeqToList)
-    RT_METHOD("ToSet", "obj<Viper.Collections.Set>()", SeqToSet)
-    RT_METHOD("ToStack", "obj<Viper.Collections.Stack>()", SeqToStack)
-    RT_METHOD("ToQueue", "obj<Viper.Collections.Queue>()", SeqToQueue)
-    RT_METHOD("ToDeque", "obj<Viper.Collections.Deque>()", SeqToDeque)
-    RT_METHOD("ToStringSet", "obj<Viper.Collections.StringSet>()", SeqToBag)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", SeqToList)
+    RT_METHOD("ToSet", "obj<Zanna.Collections.Set>()", SeqToSet)
+    RT_METHOD("ToStack", "obj<Zanna.Collections.Stack>()", SeqToStack)
+    RT_METHOD("ToQueue", "obj<Zanna.Collections.Queue>()", SeqToQueue)
+    RT_METHOD("ToDeque", "obj<Zanna.Collections.Deque>()", SeqToDeque)
+    RT_METHOD("ToStringSet", "obj<Zanna.Collections.StringSet>()", SeqToBag)
 RT_CLASS_END()
 
-// Viper.Collections.Stack - LIFO collection
+// Zanna.Collections.Stack - LIFO collection
 /// @summary Provides LIFO collection.
 /// @details
-/// Create `Viper.Collections.Stack` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Stack` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
-RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
+RT_CLASS_BEGIN("Zanna.Collections.Stack", Stack, "obj", StackNew)
     RT_PROP("IsEmpty", "i1", StackIsEmpty, none)
     RT_PROP("Count", "i64", StackLen, none)
     RT_METHOD("Clear", "void()", StackClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Stack>()", StackClone)
+    RT_METHOD("Clone", "obj<Zanna.Collections.Stack>()", StackClone)
     RT_METHOD("Has", "i1(obj)", StackHas)
     RT_METHOD("Peek", "obj()", StackPeek)
     RT_METHOD("Pop", "obj()", StackPop)
     RT_METHOD("Push", "void(obj)", StackPush)
     RT_METHOD("SetOwnsElements", "void(i1)", StackSetOwnsElements)
-    RT_METHOD("ToList", "obj<Viper.Collections.List>()", StackToList)
-    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", StackToSeq)
-    RT_METHOD("TryPop", "obj<Viper.Option>()", StackTryPopOption)
+    RT_METHOD("ToList", "obj<Zanna.Collections.List>()", StackToList)
+    RT_METHOD("ToSeq", "obj<Zanna.Collections.Seq>()", StackToSeq)
+    RT_METHOD("TryPop", "obj<Zanna.Option>()", StackTryPopOption)
 RT_CLASS_END()
 
-// Viper.Collections.Iterator - unified collection iterator
+// Zanna.Collections.Iterator - unified collection iterator
 /// @summary Provides unified collection iterator.
 /// @details
-/// `Viper.Collections.Iterator` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Collections.Iterator` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Index`,
 /// `Count` and operations including `HasNext`, `Next`, `Peek`, `Reset`.
-RT_CLASS_BEGIN("Viper.Collections.Iterator", Iterator, "obj", none)
+RT_CLASS_BEGIN("Zanna.Collections.Iterator", Iterator, "obj", none)
     RT_PROP("Index", "i64", IterIndex, none)
     RT_PROP("Count", "i64", IterLen, none)
     RT_METHOD("HasNext", "i1()", IterHasNext)
@@ -723,13 +723,13 @@ RT_CLASS_BEGIN("Viper.Collections.Iterator", Iterator, "obj", none)
     RT_METHOD("Skip", "i64(i64)", IterSkip)
 RT_CLASS_END()
 
-// Viper.Collections.TreeMap - sorted key-value map
+// Zanna.Collections.TreeMap - sorted key-value map
 /// @summary Provides sorted key-value map.
 /// @details
-/// Create `Viper.Collections.TreeMap` values through its registered constructor and use the
+/// Create `Zanna.Collections.TreeMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Ceiling`, `Clear`, `Remove`, `First`.
-RT_CLASS_BEGIN("Viper.Collections.SortedMap", TreeMap, "obj", TreeMapNew)
+RT_CLASS_BEGIN("Zanna.Collections.SortedMap", TreeMap, "obj", TreeMapNew)
     RT_PROP("IsEmpty", "i1", TreeMapIsEmpty, none)
     RT_PROP("Count", "i64", TreeMapLen, none)
     RT_METHOD("Ceiling", "str(str)", TreeMapCeil)
@@ -745,13 +745,13 @@ RT_CLASS_BEGIN("Viper.Collections.SortedMap", TreeMap, "obj", TreeMapNew)
     RT_METHOD("Values", "seq<obj>()", TreeMapValues)
 RT_CLASS_END()
 
-// Viper.Collections.Trie - prefix tree for string keys
+// Zanna.Collections.Trie - prefix tree for string keys
 /// @summary Provides prefix tree for string keys.
 /// @details
-/// Create `Viper.Collections.Trie` values through its registered constructor and use the returned
+/// Create `Zanna.Collections.Trie` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `Has`.
-RT_CLASS_BEGIN("Viper.Collections.Trie", Trie, "obj", TrieNew)
+RT_CLASS_BEGIN("Zanna.Collections.Trie", Trie, "obj", TrieNew)
     RT_PROP("IsEmpty", "i1", TrieIsEmpty, none)
     RT_PROP("Count", "i64", TrieLen, none)
     RT_METHOD("Clear", "void()", TrieClear)
@@ -761,19 +761,19 @@ RT_CLASS_BEGIN("Viper.Collections.Trie", Trie, "obj", TrieNew)
     RT_METHOD("HasPrefix", "i1(str)", TrieHasPrefix)
     RT_METHOD("Keys", "seq<str>()", TrieKeys)
     RT_METHOD("LongestPrefix", "str(str)", TrieLongestPrefix)
-    RT_METHOD("LongestPrefixOption", "obj<Viper.Option>(str)", TrieLongestPrefixOption)
+    RT_METHOD("LongestPrefixOption", "obj<Zanna.Option>(str)", TrieLongestPrefixOption)
     RT_METHOD("Set", "void(str,obj)", TrieSet)
     RT_METHOD("Remove", "i1(str)", TrieRemove)
     RT_METHOD("WithPrefix", "seq<str>(str)", TrieWithPrefix)
 RT_CLASS_END()
 
-// Viper.Core.Convert - static utility class
+// Zanna.Core.Convert - static utility class
 /// @summary Provides Convert functionality for core runtime services.
 /// @details
-/// `Viper.Core.Convert` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Core.Convert` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `ToDouble`,
 /// `ToInt64`, `NumToInt`, `ToStringDouble`.
-RT_CLASS_BEGIN("Viper.Core.Convert", Convert, "obj", none)
+RT_CLASS_BEGIN("Zanna.Core.Convert", Convert, "obj", none)
     RT_METHOD("ToDouble", "f64(str)", ToDouble)
     RT_METHOD("ToInt64", "i64(str)", ToInt64)
     RT_METHOD("NumToInt", "i64(f64)", NumToInt)
@@ -781,13 +781,13 @@ RT_CLASS_BEGIN("Viper.Core.Convert", Convert, "obj", none)
     RT_METHOD("ToStringInt", "str(i64)", ToStringIntCanonical)
 RT_CLASS_END()
 
-// Viper.Crypto.Hash - modern hash/HMAC helpers plus legacy compatibility mirrors
+// Zanna.Crypto.Hash - modern hash/HMAC helpers plus legacy compatibility mirrors
 /// @summary Provides modern hash/HMAC helpers plus legacy compatibility mirrors.
 /// @details
-/// `Viper.Crypto.Hash` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Hash` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Sha256`,
 /// `Sha256Bytes`, `HmacSha256`, `HmacSha256Bytes`.
-RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Hash", Hash, "obj", none)
     RT_METHOD("Sha256", "str(str)", HashSHA256)
     RT_METHOD("Sha256Bytes", "str(obj)", HashSHA256Bytes)
     RT_METHOD("HmacSha256", "str(str,str)", HashHmacSHA256)
@@ -799,13 +799,13 @@ RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
     RT_METHOD("NonCryptoFastInt", "i64(i64)", HashFastInt)
 RT_CLASS_END()
 
-// Viper.Crypto.Legacy.Hash - compatibility hashes and checksums
+// Zanna.Crypto.Legacy.Hash - compatibility hashes and checksums
 /// @summary Provides compatibility hashes and checksums.
 /// @details
-/// `Viper.Crypto.Legacy.Hash` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Crypto.Legacy.Hash` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes operations including `Crc32`,
 /// `Crc32Bytes`, `Md5`, `Md5Bytes`.
-RT_CLASS_BEGIN("Viper.Crypto.Legacy.Hash", LegacyHash, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Legacy.Hash", LegacyHash, "obj", none)
     RT_METHOD("Crc32", "i64(str)", LegacyHashCRC32)
     RT_METHOD("Crc32Bytes", "i64(obj)", LegacyHashCRC32Bytes)
     RT_METHOD("Md5", "str(str)", LegacyHashMD5)
@@ -818,26 +818,26 @@ RT_CLASS_BEGIN("Viper.Crypto.Legacy.Hash", LegacyHash, "obj", none)
     RT_METHOD("HmacSha1Bytes", "str(obj,obj)", LegacyHashHmacSHA1Bytes)
 RT_CLASS_END()
 
-// Viper.Crypto.KeyDerive - key derivation functions
+// Zanna.Crypto.KeyDerive - key derivation functions
 /// @summary Provides key derivation functions.
 /// @details
-/// `Viper.Crypto.KeyDerive` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.KeyDerive` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Pbkdf2Sha256`,
 /// `Pbkdf2Sha256Encoded`, `Scrypt`, `ScryptEncoded`.
-RT_CLASS_BEGIN("Viper.Crypto.KeyDerive", KeyDerive, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.KeyDerive", KeyDerive, "obj", none)
     RT_METHOD("Pbkdf2Sha256", "obj(str,obj,i64,i64)", KeyDerivePbkdf2SHA256)
     RT_METHOD("Pbkdf2Sha256Encoded", "str(str,obj,i64,i64)", KeyDerivePbkdf2SHA256Str)
     RT_METHOD("Scrypt", "obj(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256)
     RT_METHOD("ScryptEncoded", "str(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256Str)
 RT_CLASS_END()
 
-// Viper.Crypto.Password - secure password hashing
+// Zanna.Crypto.Password - secure password hashing
 /// @summary Provides secure password hashing.
 /// @details
-/// `Viper.Crypto.Password` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Password` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Hash`,
 /// `HashIters`, `HashScrypt`, `HashScryptParams`.
-RT_CLASS_BEGIN("Viper.Crypto.Password", Password, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Password", Password, "obj", none)
     RT_METHOD("Hash", "str(str)", PasswordHash)
     RT_METHOD("HashIters", "str(str,i64)", PasswordHashIters)
     RT_METHOD("HashScrypt", "str(str)", PasswordHashScrypt)
@@ -846,75 +846,75 @@ RT_CLASS_BEGIN("Viper.Crypto.Password", Password, "obj", none)
     RT_METHOD("NeedsRehash", "i1(str)", PasswordNeedsRehash)
 RT_CLASS_END()
 
-// Viper.Crypto.Rand - secure random number generation
+// Zanna.Crypto.Rand - secure random number generation
 /// @summary Provides secure random number generation.
 /// @details
-/// `Viper.Crypto.Rand` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Rand` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Bytes`, `Int`.
-RT_CLASS_BEGIN("Viper.Crypto.SecureRandom", CryptoRand, "obj", none)
-    RT_METHOD("Bytes", "obj<Viper.Collections.Bytes>(i64)", CryptoRandBytes)
+RT_CLASS_BEGIN("Zanna.Crypto.SecureRandom", CryptoRand, "obj", none)
+    RT_METHOD("Bytes", "obj<Zanna.Collections.Bytes>(i64)", CryptoRandBytes)
     RT_METHOD("Int", "i64(i64,i64)", CryptoRandInt)
 RT_CLASS_END()
 
-// Viper.Crypto.Module - validation-readiness mode and self-test status
+// Zanna.Crypto.Module - validation-readiness mode and self-test status
 /// @summary Provides validation-readiness mode and self-test status.
 /// @details
-/// `Viper.Crypto.Module` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Module` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including
 /// `EnableApprovedModeForProcess`, `DisableApprovedModeForProcess`, `IsApprovedModeForProcess`,
 /// `Status`.
-RT_CLASS_BEGIN("Viper.Crypto.Compliance", CryptoModule, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Compliance", CryptoModule, "obj", none)
     RT_METHOD("EnableApprovedModeForProcess", "i1()", CryptoModuleEnableApprovedModeForProcess)
     RT_METHOD("DisableApprovedModeForProcess", "void()", CryptoModuleDisableApprovedModeForProcess)
     RT_METHOD("IsApprovedModeForProcess", "i1()", CryptoModuleIsApprovedModeForProcess)
     RT_METHOD("Status", "str()", CryptoModuleStatus)
 RT_CLASS_END()
 
-// Viper.Crypto.Cipher - high-level authenticated encryption
+// Zanna.Crypto.Cipher - high-level authenticated encryption
 /// @summary Provides high-level authenticated encryption.
 /// @details
-/// `Viper.Crypto.Cipher` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Cipher` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Encrypt`,
 /// `Decrypt`, `DecryptResult`, `TryDecrypt`.
-RT_CLASS_BEGIN("Viper.Crypto.Cipher", Cipher, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Cipher", Cipher, "obj", none)
     // Password-based encryption (key derived from password)
-    RT_METHOD("Encrypt", "obj<Viper.Collections.Bytes>(obj,str)", CipherEncrypt)
+    RT_METHOD("Encrypt", "obj<Zanna.Collections.Bytes>(obj,str)", CipherEncrypt)
     RT_METHOD("Decrypt", "obj(obj,str)", CipherDecrypt)
-    RT_METHOD("DecryptResult", "obj<Viper.Result>(obj,str)", CipherDecryptResult)
-    RT_METHOD("TryDecrypt", "obj<Viper.Option>(obj,str)", CipherTryDecrypt)
-    RT_METHOD("EncryptAad", "obj<Viper.Collections.Bytes>(obj,str,obj)", CipherEncryptAAD)
+    RT_METHOD("DecryptResult", "obj<Zanna.Result>(obj,str)", CipherDecryptResult)
+    RT_METHOD("TryDecrypt", "obj<Zanna.Option>(obj,str)", CipherTryDecrypt)
+    RT_METHOD("EncryptAad", "obj<Zanna.Collections.Bytes>(obj,str,obj)", CipherEncryptAAD)
     RT_METHOD("DecryptAad", "obj(obj,str,obj)", CipherDecryptAAD)
-    RT_METHOD("DecryptAadResult", "obj<Viper.Result>(obj,str,obj)", CipherDecryptAADResult)
-    RT_METHOD("TryDecryptAad", "obj<Viper.Option>(obj,str,obj)", CipherTryDecryptAAD)
+    RT_METHOD("DecryptAadResult", "obj<Zanna.Result>(obj,str,obj)", CipherDecryptAADResult)
+    RT_METHOD("TryDecryptAad", "obj<Zanna.Option>(obj,str,obj)", CipherTryDecryptAAD)
     // Key-based encryption (uses raw 32-byte key)
-    RT_METHOD("EncryptWithKey", "obj<Viper.Collections.Bytes>(obj,obj)", CipherEncryptWithKey)
+    RT_METHOD("EncryptWithKey", "obj<Zanna.Collections.Bytes>(obj,obj)", CipherEncryptWithKey)
     RT_METHOD("DecryptWithKey", "obj(obj,obj)", CipherDecryptWithKey)
-    RT_METHOD("DecryptWithKeyResult", "obj<Viper.Result>(obj,obj)", CipherDecryptWithKeyResult)
-    RT_METHOD("TryDecryptWithKey", "obj<Viper.Option>(obj,obj)", CipherTryDecryptWithKey)
-    RT_METHOD("EncryptWithKeyAad", "obj<Viper.Collections.Bytes>(obj,obj,obj)", CipherEncryptWithKeyAAD)
+    RT_METHOD("DecryptWithKeyResult", "obj<Zanna.Result>(obj,obj)", CipherDecryptWithKeyResult)
+    RT_METHOD("TryDecryptWithKey", "obj<Zanna.Option>(obj,obj)", CipherTryDecryptWithKey)
+    RT_METHOD("EncryptWithKeyAad", "obj<Zanna.Collections.Bytes>(obj,obj,obj)", CipherEncryptWithKeyAAD)
     RT_METHOD("DecryptWithKeyAad", "obj(obj,obj,obj)", CipherDecryptWithKeyAAD)
-    RT_METHOD("DecryptWithKeyAadResult", "obj<Viper.Result>(obj,obj,obj)", CipherDecryptWithKeyAADResult)
-    RT_METHOD("TryDecryptWithKeyAad", "obj<Viper.Option>(obj,obj,obj)", CipherTryDecryptWithKeyAAD)
+    RT_METHOD("DecryptWithKeyAadResult", "obj<Zanna.Result>(obj,obj,obj)", CipherDecryptWithKeyAADResult)
+    RT_METHOD("TryDecryptWithKeyAad", "obj<Zanna.Option>(obj,obj,obj)", CipherTryDecryptWithKeyAAD)
     // Key utilities
-    RT_METHOD("GenerateKey", "obj<Viper.Collections.Bytes>()", CipherGenerateKey)
+    RT_METHOD("GenerateKey", "obj<Zanna.Collections.Bytes>()", CipherGenerateKey)
     RT_METHOD("DeriveKey", "obj(str,obj)", CipherDeriveKey)
 RT_CLASS_END()
 
-// Viper.Crypto.Tls - TLS 1.3 secure connections
+// Zanna.Crypto.Tls - TLS 1.3 secure connections
 /// @summary Provides TLS 1.3 secure connections.
 /// @details
-/// `Viper.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
 /// `NegotiatedAlpn` and operations including `Connect`, `ConnectResult`, `ConnectFor`,
 /// `ConnectForResult`.
-RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
+RT_CLASS_BEGIN("Zanna.Crypto.Tls", Tls, "obj", none)
     // Static constructors
     RT_METHOD("Connect", "obj(str,i64)", TlsConnect)
-    RT_METHOD("ConnectResult", "obj<Viper.Result>(str,i64)", TlsConnectResult)
+    RT_METHOD("ConnectResult", "obj<Zanna.Result>(str,i64)", TlsConnectResult)
     RT_METHOD("ConnectFor", "obj(str,i64,i64)", TlsConnectFor)
-    RT_METHOD("ConnectForResult", "obj<Viper.Result>(str,i64,i64)", TlsConnectForResult)
+    RT_METHOD("ConnectForResult", "obj<Zanna.Result>(str,i64,i64)", TlsConnectForResult)
     RT_METHOD("ConnectOptions", "obj(str,i64,str,str,i1,i64)", TlsConnectOptions)
-    RT_METHOD("ConnectOptionsResult", "obj<Viper.Result>(str,i64,str,str,i1,i64)", TlsConnectOptionsResult)
+    RT_METHOD("ConnectOptionsResult", "obj<Zanna.Result>(str,i64,str,str,i1,i64)", TlsConnectOptionsResult)
     // Properties
     RT_PROP("Host", "str", TlsHost, none)
     RT_PROP("Port", "i64", TlsPort, none)
@@ -931,18 +931,18 @@ RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
     RT_METHOD("Close", "void()", TlsClose)
 RT_CLASS_END()
 
-// Viper.Time.DateTime - static utility class
+// Zanna.Time.DateTime - static utility class
 /// @summary Reads, converts, parses, and formats Unix timestamps.
 /// @details Timestamps use signed Unix seconds except `NowMs`. Component access and `Create` use
-/// the host local zone; `ToISO` uses UTC, and named-zone operations use Viper's embedded subset.
+/// the host local zone; `ToISO` uses UTC, and named-zone operations use Zanna's embedded subset.
 /// Parsing uses legacy numeric sentinels plus `TryParseOption`; construction likewise offers the
 /// sentinel `FromParts` and the unambiguous `TryFromParts` Option form. Checked arithmetic traps on
 /// signed overflow.
-RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
+RT_CLASS_BEGIN("Zanna.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("AddDays", "i64(i64,i64)", DateTimeAddDays)
     RT_METHOD("AddSeconds", "i64(i64,i64)", DateTimeAddSeconds)
     RT_METHOD("FromParts", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
-    RT_METHOD("TryFromParts", "obj<Viper.Option>(i64,i64,i64,i64,i64,i64)", DateTimeCreateOption)
+    RT_METHOD("TryFromParts", "obj<Zanna.Option>(i64,i64,i64,i64,i64,i64)", DateTimeCreateOption)
     RT_METHOD("Day", "i64(i64)", DateTimeDay)
     RT_METHOD("DayOfWeek", "i64(i64)", DateTimeDayOfWeek)
     RT_METHOD("Diff", "i64(i64,i64)", DateTimeDiff)
@@ -961,27 +961,27 @@ RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("ParseIso8601", "i64(str)", DateTimeParseISO)
     RT_METHOD("ParseDate", "i64(str)", DateTimeParseDate)
     RT_METHOD("ParseTime", "i64(str)", DateTimeParseTime)
-    RT_METHOD("TryParse", "obj<Viper.Option>(str)", DateTimeTryParseOption)
+    RT_METHOD("TryParse", "obj<Zanna.Option>(str)", DateTimeTryParseOption)
 RT_CLASS_END()
 
-// Viper.Time.TimeZone - deterministic IANA named-zone lookup
-/// @summary Resolves Viper's deterministic embedded IANA-zone subset.
+// Zanna.Time.TimeZone - deterministic IANA named-zone lookup
+/// @summary Resolves Zanna's deterministic embedded IANA-zone subset.
 /// @details `Find` is exact and traps for an empty or unknown name. Returned handles point at
 /// process-lifetime static data. Transition coverage is deliberately limited; `OffsetAt` and
 /// `IsDstAt` keep the first/last configured rules outside each zone's embedded window.
-RT_CLASS_BEGIN("Viper.Time.TimeZone", TimeZone, "obj", none)
-    RT_METHOD("Find", "obj<Viper.Time.TimeZone>(str)", TimeZoneFind)
+RT_CLASS_BEGIN("Zanna.Time.TimeZone", TimeZone, "obj", none)
+    RT_METHOD("Find", "obj<Zanna.Time.TimeZone>(str)", TimeZoneFind)
     RT_PROP("Name", "str", TimeZoneName, none)
     RT_METHOD("OffsetAt", "i64(i64)", TimeZoneOffsetAt)
     RT_METHOD("IsDstAt", "i1(i64)", TimeZoneIsDstAt)
 RT_CLASS_END()
 
-// Viper.Time.Duration - time interval/duration type
+// Zanna.Time.Duration - time interval/duration type
 /// @summary Manipulates signed 64-bit millisecond duration values.
 /// @details Duration is a scalar rather than a heap object. Factories and arithmetic use checked
 /// signed math; component accessors use the magnitude, while total accessors preserve the sign
 /// and truncate whole-unit conversions toward zero. Formatting returns owned strings.
-RT_CLASS_BEGIN("Viper.Time.Duration", Duration, "obj", none)
+RT_CLASS_BEGIN("Zanna.Time.Duration", Duration, "obj", none)
     // Creation
     RT_METHOD("FromMillis", "i64(i64)", DurationFromMillis)
     RT_METHOD("FromSeconds", "i64(i64)", DurationFromSeconds)
@@ -1016,24 +1016,24 @@ RT_CLASS_BEGIN("Viper.Time.Duration", Duration, "obj", none)
     RT_METHOD("ToIso8601", "str(i64)", DurationToISO)
 RT_CLASS_END()
 
-// Viper.Time.RelativeTime - human-readable relative time formatting
+// Zanna.Time.RelativeTime - human-readable relative time formatting
 /// @summary Formats timestamps and millisecond durations as compact English relative text.
 /// @details Timestamp forms use fixed second/minute/hour/day/30-day-month/365-day-year buckets.
 /// `FormatDuration` emits whole-second multi-unit text and discards sub-second precision. These
 /// helpers are hard-coded English and are separate from the localization formatters.
-RT_CLASS_BEGIN("Viper.Time.RelativeTime", RelativeTime, "obj", none)
+RT_CLASS_BEGIN("Zanna.Time.RelativeTime", RelativeTime, "obj", none)
     RT_METHOD("Format", "str(i64)", RelTimeFormat)
     RT_METHOD("FormatFrom", "str(i64,i64)", RelTimeFormatFrom)
     RT_METHOD("FormatDuration", "str(i64)", RelTimeFormatDuration)
     RT_METHOD("FormatShort", "str(i64)", RelTimeFormatShort)
 RT_CLASS_END()
 
-// Viper.Time.DateRange - date interval type
+// Zanna.Time.DateRange - date interval type
 /// @summary Represents a normalized closed range of integer Unix seconds.
 /// @details `New` swaps reversed endpoints. Containment includes both endpoints; duration queries
 /// use `End - Start`. `Intersection` returns null for disjoint ranges, while `Union` returns null
 /// unless the ranges overlap or are adjacent by one second.
-RT_CLASS_BEGIN("Viper.Time.DateRange", DateRange, "obj", DateRangeNew)
+RT_CLASS_BEGIN("Zanna.Time.DateRange", DateRange, "obj", DateRangeNew)
     RT_PROP("Start", "i64", DateRangeStart, none)
     RT_PROP("End", "i64", DateRangeEnd, none)
     RT_METHOD("Contains", "i1(i64)", DateRangeContains)
@@ -1046,13 +1046,13 @@ RT_CLASS_BEGIN("Viper.Time.DateRange", DateRange, "obj", DateRangeNew)
     RT_METHOD("Union", "obj(obj)", DateRangeUnion)
 RT_CLASS_END()
 
-// Viper.Text.InvariantNumberFormat - number formatting utilities
+// Zanna.Text.InvariantNumberFormat - number formatting utilities
 /// @summary Provides number formatting utilities.
 /// @details
-/// `Viper.Text.InvariantNumberFormat` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Text.InvariantNumberFormat` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes operations including
 /// `Bytes`, `Currency`, `Decimals`, `Ordinal`.
-RT_CLASS_BEGIN("Viper.Text.InvariantNumberFormat", InvariantNumberFormat, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.InvariantNumberFormat", InvariantNumberFormat, "obj", none)
     RT_METHOD("Bytes", "str(i64)", NumFmtBytes)
     RT_METHOD("Currency", "str(f64,str)", NumFmtCurrency)
     RT_METHOD("Decimals", "str(f64,i64)", NumFmtDecimals)
@@ -1065,10 +1065,10 @@ RT_CLASS_END()
 
 /// @summary Provides Char constants and static operations for text processing workflows.
 /// @details
-/// `Viper.Text.Char` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Text.Char` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`,
 /// `IsAlphanumeric`.
-RT_CLASS_BEGIN("Viper.Text.Char", TextChar, "none", none)
+RT_CLASS_BEGIN("Zanna.Text.Char", TextChar, "none", none)
     RT_METHOD("IsIdentifierStart", "i1(str)", TextCharIsIdentStart)
     RT_METHOD("IsIdentifierPart",  "i1(str)", TextCharIsIdentPart)
     RT_METHOD("IsAlphanumeric",           "i1(str)", TextCharIsAlnum)

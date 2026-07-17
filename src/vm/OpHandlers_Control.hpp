@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -139,7 +139,7 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in) {
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if out of range.
-inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx) {
+inline int32_t lookupDense(const zanna::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx) {
     const int64_t offset = static_cast<int64_t>(sel) - static_cast<int64_t>(table.base);
     if (offset < 0 || offset >= static_cast<int64_t>(table.targets.size()))
         return defIdx;
@@ -154,7 +154,7 @@ inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, 
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if no match.
-inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx) {
+inline int32_t lookupSorted(const zanna::vm::SortedCases &cases, int32_t sel, int32_t defIdx) {
     auto it = std::lower_bound(cases.keys.begin(), cases.keys.end(), sel);
     if (it == cases.keys.end() || *it != sel)
         return defIdx;
@@ -169,7 +169,7 @@ inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, in
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if no match.
-inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx) {
+inline int32_t lookupHashed(const zanna::vm::HashedCases &cases, int32_t sel, int32_t defIdx) {
     auto it = cases.map.find(sel);
     return (it == cases.map.end()) ? defIdx : it->second;
 }
@@ -181,9 +181,9 @@ inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, in
 ///          ranges and hashes for sparse large ranges.
 /// @param meta Switch metadata containing case values.
 /// @return Selected backend kind.
-inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
+inline zanna::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
     if (meta.values.empty())
-        return viper::vm::SwitchCacheEntry::Sorted;
+        return zanna::vm::SwitchCacheEntry::Sorted;
 
     struct Tunables {
         int64_t denseMaxRange = 4096;
@@ -194,25 +194,25 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
 
     static const Tunables t = [] {
         Tunables tv{};
-        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MAX_RANGE")) {
+        if (const char *s = std::getenv("ZANNA_SWITCH_DENSE_MAX_RANGE")) {
             char *end = nullptr;
             long long v = std::strtoll(s, &end, 10);
             if (end && *end == '\0' && v > 0)
                 tv.denseMaxRange = static_cast<int64_t>(v);
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MIN_DENSITY")) {
+        if (const char *s = std::getenv("ZANNA_SWITCH_DENSE_MIN_DENSITY")) {
             char *end = nullptr;
             double v = std::strtod(s, &end);
             if (end && *end == '\0' && v > 0.0 && v <= 1.0)
                 tv.denseMinDensity = v;
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MIN_CASES")) {
+        if (const char *s = std::getenv("ZANNA_SWITCH_HASH_MIN_CASES")) {
             char *end = nullptr;
             long v = std::strtol(s, &end, 10);
             if (end && *end == '\0' && v >= 0)
                 tv.hashMinCases = static_cast<std::size_t>(v);
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MAX_DENSITY")) {
+        if (const char *s = std::getenv("ZANNA_SWITCH_HASH_MAX_DENSITY")) {
             char *end = nullptr;
             double v = std::strtod(s, &end);
             if (end && *end == '\0' && v > 0.0 && v <= 1.0)
@@ -228,10 +228,10 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
     const double density = static_cast<double>(meta.values.size()) / static_cast<double>(range);
 
     if (range <= t.denseMaxRange && density >= t.denseMinDensity)
-        return viper::vm::SwitchCacheEntry::Dense;
+        return zanna::vm::SwitchCacheEntry::Dense;
     if (meta.values.size() >= t.hashMinCases && density < t.hashMaxDensity)
-        return viper::vm::SwitchCacheEntry::Hashed;
-    return viper::vm::SwitchCacheEntry::Sorted;
+        return zanna::vm::SwitchCacheEntry::Hashed;
+    return zanna::vm::SwitchCacheEntry::Sorted;
 }
 
 /// @brief Build a dense jump table from switch metadata.
@@ -239,8 +239,8 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
 ///          entries with successor indices or -1 for missing values.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Dense jump table representation.
-inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta) {
-    viper::vm::DenseJumpTable table;
+inline zanna::vm::DenseJumpTable buildDense(const SwitchMeta &meta) {
+    zanna::vm::DenseJumpTable table;
     if (meta.values.empty())
         return table;
 
@@ -258,8 +258,8 @@ inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta) {
 ///          lookup when the selector range is sparse.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Hashed case representation.
-inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta) {
-    viper::vm::HashedCases hashed;
+inline zanna::vm::HashedCases buildHashed(const SwitchMeta &meta) {
+    zanna::vm::HashedCases hashed;
     hashed.map.reserve(meta.values.size() * 2);
     for (size_t i = 0; i < meta.values.size(); ++i)
         hashed.map.emplace(meta.values[i], meta.succIdx[i]);
@@ -271,13 +271,13 @@ inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta) {
 ///          search can be used during dispatch.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Sorted case representation.
-inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta) {
+inline zanna::vm::SortedCases buildSorted(const SwitchMeta &meta) {
     std::vector<size_t> order(meta.values.size());
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
         return meta.values[a] < meta.values[b];
     });
-    viper::vm::SortedCases sorted;
+    zanna::vm::SortedCases sorted;
     sorted.keys.reserve(order.size());
     sorted.targetIdx.reserve(order.size());
     for (size_t idx : order) {
@@ -294,51 +294,51 @@ inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta) {
 /// @param cache Switch cache stored in the execution state.
 /// @param in switch.i32 instruction to cache.
 /// @return Reference to the cached entry for @p in.
-inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache &cache,
+inline zanna::vm::SwitchCacheEntry &getOrBuildSwitchCache(zanna::vm::SwitchCache &cache,
                                                           const il::core::Instr &in) {
     SwitchMeta meta = collectSwitchMeta(in);
     auto it = cache.entries.find(meta.key);
     if (it != cache.entries.end())
         return it->second;
 
-    viper::vm::SwitchCacheEntry entry{};
+    zanna::vm::SwitchCacheEntry entry{};
     entry.defaultIdx = meta.defaultIdx;
-    const viper::vm::SwitchMode mode = viper::vm::getSwitchMode();
-    if (mode != viper::vm::SwitchMode::Auto) {
+    const zanna::vm::SwitchMode mode = zanna::vm::getSwitchMode();
+    if (mode != zanna::vm::SwitchMode::Auto) {
         switch (mode) {
-            case viper::vm::SwitchMode::Dense:
-                entry.kind = viper::vm::SwitchCacheEntry::Dense;
+            case zanna::vm::SwitchMode::Dense:
+                entry.kind = zanna::vm::SwitchCacheEntry::Dense;
                 entry.backend = buildDense(meta);
                 break;
-            case viper::vm::SwitchMode::Sorted:
-                entry.kind = viper::vm::SwitchCacheEntry::Sorted;
+            case zanna::vm::SwitchMode::Sorted:
+                entry.kind = zanna::vm::SwitchCacheEntry::Sorted;
                 entry.backend = buildSorted(meta);
                 break;
-            case viper::vm::SwitchMode::Hashed:
-                entry.kind = viper::vm::SwitchCacheEntry::Hashed;
+            case zanna::vm::SwitchMode::Hashed:
+                entry.kind = zanna::vm::SwitchCacheEntry::Hashed;
                 entry.backend = buildHashed(meta);
                 break;
-            case viper::vm::SwitchMode::Linear:
-                entry.kind = viper::vm::SwitchCacheEntry::Linear;
+            case zanna::vm::SwitchMode::Linear:
+                entry.kind = zanna::vm::SwitchCacheEntry::Linear;
                 entry.backend = std::monostate{};
                 break;
-            case viper::vm::SwitchMode::Auto:
+            case zanna::vm::SwitchMode::Auto:
                 break;
         }
     } else {
         const auto kind = chooseBackend(meta);
         entry.kind = kind;
         switch (kind) {
-            case viper::vm::SwitchCacheEntry::Dense:
+            case zanna::vm::SwitchCacheEntry::Dense:
                 entry.backend = buildDense(meta);
                 break;
-            case viper::vm::SwitchCacheEntry::Sorted:
+            case zanna::vm::SwitchCacheEntry::Sorted:
                 entry.backend = buildSorted(meta);
                 break;
-            case viper::vm::SwitchCacheEntry::Hashed:
+            case zanna::vm::SwitchCacheEntry::Hashed:
                 entry.backend = buildHashed(meta);
                 break;
-            case viper::vm::SwitchCacheEntry::Linear:
+            case zanna::vm::SwitchCacheEntry::Linear:
                 entry.backend = std::monostate{};
                 break;
         }
@@ -441,15 +441,15 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 
-    viper::vm::SwitchCache &cache = VMAccess::switchCache(vm);
+    zanna::vm::SwitchCache &cache = VMAccess::switchCache(vm);
 
     auto &entry = inline_impl::getOrBuildSwitchCache(cache, in);
 
     int32_t idx = entry.defaultIdx;
 
-    const bool forceLinear = (entry.kind == viper::vm::SwitchCacheEntry::Linear);
+    const bool forceLinear = (entry.kind == zanna::vm::SwitchCacheEntry::Linear);
 
-#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
+#if defined(ZANNA_VM_DEBUG_SWITCH_LINEAR)
     (void)forceLinear;
     const size_t caseCount = switchCaseCount(in);
     for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {
@@ -475,11 +475,11 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
         std::visit(
             [&](auto &backend) {
                 using BackendT = std::decay_t<decltype(backend)>;
-                if constexpr (std::is_same_v<BackendT, viper::vm::DenseJumpTable>)
+                if constexpr (std::is_same_v<BackendT, zanna::vm::DenseJumpTable>)
                     idx = inline_impl::lookupDense(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, viper::vm::SortedCases>)
+                else if constexpr (std::is_same_v<BackendT, zanna::vm::SortedCases>)
                     idx = inline_impl::lookupSorted(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, viper::vm::HashedCases>)
+                else if constexpr (std::is_same_v<BackendT, zanna::vm::HashedCases>)
                     idx = inline_impl::lookupHashed(backend, sel, entry.defaultIdx);
             },
             entry.backend);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include "codegen/aarch64/MachineIR.hpp"
 #include "il/core/Opcode.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Return the primitive AArch64 condition used by an FCMP opcode.
 /// @details Ordered comparisons still need the boolean helpers below to mask
@@ -81,4 +81,4 @@ inline void emitFpCompareResult(MBasicBlock &out,
         MOpcode::Cset, {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(op))}});
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

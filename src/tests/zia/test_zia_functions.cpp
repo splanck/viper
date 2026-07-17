@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@ TEST(ZiaFunctions, VoidNoParams) {
     const std::string source = R"(
 module Test;
 
-func sayHello() {    Viper.Terminal.Say("Hello!");
+func sayHello() {    Zanna.Terminal.Say("Hello!");
 }
 
 func start() {    sayHello();
@@ -50,10 +50,10 @@ TEST(ZiaFunctions, WithParameters) {
     const std::string source = R"(
 module Test;
 
-func greet(name: String) {    Viper.Terminal.Say("Hello, " + name + "!");
+func greet(name: String) {    Zanna.Terminal.Say("Hello, " + name + "!");
 }
 
-func addNumbers(a: Integer, b: Integer) {    Viper.Terminal.SayInt(a + b);
+func addNumbers(a: Integer, b: Integer) {    Zanna.Terminal.SayInt(a + b);
 }
 
 func start() {    greet("World");
@@ -87,9 +87,9 @@ func start() {    var sum: Integer = add(10, 20);
     var product: Integer = multiply(5, 6);
     var even: Boolean = isEven(4);
 
-    Viper.Terminal.SayInt(sum);
-    Viper.Terminal.SayInt(product);
-    Viper.Terminal.SayBool(even);
+    Zanna.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(product);
+    Zanna.Terminal.SayBool(even);
 }
 )";
     CompilerInput input{.source = source, .path = "returnarrow.zia"};
@@ -115,8 +115,8 @@ func multiply(a: Integer, b: Integer) -> Integer {    return a * b;
 func start() {    var sum: Integer = add(10, 20);
     var product: Integer = multiply(5, 6);
 
-    Viper.Terminal.SayInt(sum);
-    Viper.Terminal.SayInt(product);
+    Zanna.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(product);
 }
 )";
     CompilerInput input{.source = source, .path = "returncolon.zia"};
@@ -141,7 +141,7 @@ func process(value: Integer, factor: Integer) -> Integer {    return value * fac
 }
 
 func start() {    var result: Integer = process(10, 2);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "swiftparams.zia"};
@@ -162,7 +162,7 @@ func formatPair(first: Integer, second: Integer) -> Integer {    return first * 
 }
 
 func start() {    var result: Integer = formatPair(second: 2, first: 4);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "namedargs.zia"};
@@ -185,7 +185,7 @@ func square(value: Integer) -> Integer = value * value;
 func start() {
     var a: Integer = double(5);
     var b: Integer = square(6);
-    Viper.Terminal.SayInt(a + b);
+    Zanna.Terminal.SayInt(a + b);
 }
 )";
     CompilerInput input{.source = source, .path = "singleexpr.zia"};
@@ -212,7 +212,7 @@ func factorial(n: Integer) -> Integer {    if n <= 1 {
     return n * factorial(n - 1);
 }
 
-func start() {    Viper.Terminal.SayInt(factorial(5));
+func start() {    Zanna.Terminal.SayInt(factorial(5));
 }
 )";
     CompilerInput input{.source = source, .path = "recursion.zia"};
@@ -241,8 +241,8 @@ func isOdd(n: Integer) -> Boolean {    if n == 0 {
     return isEven(n - 1);
 }
 
-func start() {    Viper.Terminal.SayBool(isEven(4));
-    Viper.Terminal.SayBool(isOdd(5));
+func start() {    Zanna.Terminal.SayBool(isEven(4));
+    Zanna.Terminal.SayBool(isOdd(5));
 }
 )";
     CompilerInput input{.source = source, .path = "mutual.zia"};
@@ -275,7 +275,7 @@ func findIndex(items: List[Integer], target: Integer) -> Integer {    var i = 0;
 
 func start() {    var list = [10, 20, 30, 40, 50];
     var idx: Integer = findIndex(list, 30);
-    Viper.Terminal.SayInt(idx);
+    Zanna.Terminal.SayInt(idx);
 }
 )";
     CompilerInput input{.source = source, .path = "earlyret.zia"};
@@ -303,9 +303,9 @@ func sign(n: Integer) -> Integer {    if n > 0 {
     }
 }
 
-func start() {    Viper.Terminal.SayInt(sign(42));
-    Viper.Terminal.SayInt(sign(-17));
-    Viper.Terminal.SayInt(sign(0));
+func start() {    Zanna.Terminal.SayInt(sign(42));
+    Zanna.Terminal.SayInt(sign(-17));
+    Zanna.Terminal.SayInt(sign(0));
 }
 )";
     CompilerInput input{.source = source, .path = "condret.zia"};
@@ -335,7 +335,7 @@ func sum(numbers: List[Integer]) -> Integer {    var total = 0;
 
 func start() {    var nums = [1, 2, 3, 4, 5];
     var result: Integer = sum(nums);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "listparam.zia"};
@@ -362,7 +362,7 @@ func range(start: Integer, end: Integer) -> List[Integer] {    var result: List[
 }
 
 func start() {    var nums = range(1, 6);
-    Viper.Terminal.SayInt(nums.count());
+    Zanna.Terminal.SayInt(nums.count());
 }
 )";
     CompilerInput input{.source = source, .path = "listret.zia"};
@@ -396,10 +396,10 @@ func start() {    var list = [1, 2, 3, 4, 5];
     var notFound: Integer? = findFirst(list, 10);
 
     if found != null {
-        Viper.Terminal.Say("found");
+        Zanna.Terminal.Say("found");
     }
     if notFound == null {
-        Viper.Terminal.Say("not found");
+        Zanna.Terminal.Say("not found");
     }
 }
 )";
@@ -418,9 +418,9 @@ TEST(ZiaFunctions, OptionalParameter) {
 module Test;
 
 func printValue(value: Integer?) {    if value != null {
-        Viper.Terminal.SayInt(value ?? 0);
+        Zanna.Terminal.SayInt(value ?? 0);
     } else {
-        Viper.Terminal.Say("no value");
+        Zanna.Terminal.Say("no value");
     }
 }
 
@@ -455,8 +455,8 @@ func square(value: Integer) -> Integer {    return value * value;
 func start() {    var doubled: Integer = double(5);
     var squared: Integer = square(4);
 
-    Viper.Terminal.SayInt(doubled);
-    Viper.Terminal.SayInt(squared);
+    Zanna.Terminal.SayInt(doubled);
+    Zanna.Terminal.SayInt(squared);
 }
 )";
     CompilerInput input{.source = source, .path = "callback.zia"};
@@ -479,7 +479,7 @@ func sameList[T](items: List[T]) -> List[T] {
 func start() {
     var numbers: List[Integer] = [1, 2, 3];
     var copy: List[Integer] = sameList(numbers);
-    Viper.Terminal.SayInt(copy.count());
+    Zanna.Terminal.SayInt(copy.count());
 }
 )";
     CompilerInput input{.source = source, .path = "generic_infer_list.zia"};
@@ -501,7 +501,7 @@ func second[A, B](a: A, b: B) -> B {
 
 func start() {
     var value: String = second[Integer, String](1, "ok");
-    Viper.Terminal.Say(value);
+    Zanna.Terminal.Say(value);
 }
 )";
     CompilerInput input{.source = source, .path = "generic_explicit_multi.zia"};
@@ -524,7 +524,7 @@ func identity[T](x: T) -> T {
 func start() {
     var numbers: List[Integer] = [1, 2, 3];
     var copy: List[Integer] = identity[List[Integer]](numbers);
-    Viper.Terminal.SayInt(copy.count());
+    Zanna.Terminal.SayInt(copy.count());
 }
 )";
     CompilerInput input{.source = source, .path = "generic_explicit_nested.zia"};
@@ -565,7 +565,7 @@ func start() {
     var box = new Box[User](user);
     var helper = new Helper();
     var ok = helper.accept[User](user);
-    Viper.Terminal.SayInt(ok);
+    Zanna.Terminal.SayInt(ok);
 }
 )";
     CompilerInput input{.source = source, .path = "generic_type_method_constraints.zia"};
@@ -614,5 +614,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

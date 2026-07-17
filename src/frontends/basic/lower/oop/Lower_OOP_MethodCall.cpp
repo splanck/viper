@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,13 +36,13 @@ namespace {
 
 /// @brief True if @p target is an HTTP(S) server route-registration method (Get/Post/Put/Delete).
 bool isHttpServerRouteTarget(const std::string &target) {
-    return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
-           target == "Viper.Network.HttpServer.Put" ||
-           target == "Viper.Network.HttpServer.Delete" ||
-           target == "Viper.Network.HttpsServer.Get" ||
-           target == "Viper.Network.HttpsServer.Post" ||
-           target == "Viper.Network.HttpsServer.Put" ||
-           target == "Viper.Network.HttpsServer.Delete";
+    return target == "Zanna.Network.HttpServer.Get" || target == "Zanna.Network.HttpServer.Post" ||
+           target == "Zanna.Network.HttpServer.Put" ||
+           target == "Zanna.Network.HttpServer.Delete" ||
+           target == "Zanna.Network.HttpsServer.Get" ||
+           target == "Zanna.Network.HttpsServer.Post" ||
+           target == "Zanna.Network.HttpsServer.Put" ||
+           target == "Zanna.Network.HttpsServer.Delete";
 }
 
 /// @brief True if a procedure signature matches the HTTP handler shape `void(ptr, ptr)`.
@@ -63,9 +63,9 @@ std::string resolveHttpHandlerTarget(const Lowerer &lowerer, const std::string &
 
 /// @brief Select the runtime BindHandler target (HTTP vs HTTPS) for a route-registration target.
 const char *httpServerBindHandlerTarget(const std::string &target) {
-    if (target.rfind("Viper.Network.HttpsServer.", 0) == 0)
-        return "Viper.Network.HttpsServer.BindHandler";
-    return "Viper.Network.HttpServer.BindHandler";
+    if (target.rfind("Zanna.Network.HttpsServer.", 0) == 0)
+        return "Zanna.Network.HttpsServer.BindHandler";
+    return "Zanna.Network.HttpServer.BindHandler";
 }
 
 /// @brief Map a Lowerer::ExprType to the corresponding runtime BasicType.
@@ -265,7 +265,7 @@ std::optional<Lowerer::RVal> Lowerer::tryLowerStaticMethodCall(const MethodCallE
 /// @param expr The method-call expression.
 /// @return The call result and its IL type.
 /// @details Resolution order: static call (tryLowerStaticMethodCall); runtime-catalog instance
-///          method (with HTTP route → BindHandler special-casing); `Viper.Core.Object` fallback
+///          method (with HTTP route → BindHandler special-casing); `Zanna.Core.Object` fallback
 ///          (ToString/Equals) when the user class does not override; interface dispatch for
 ///          `(x AS IFace).m()` via itable lookup; virtual dispatch via the object's method table
 ///          slot; and finally a direct mangled call. Applies private-access checks, overload
@@ -279,7 +279,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
     if (auto staticResult = tryLowerStaticMethodCall(expr))
         return *staticResult;
 
-    // Runtime class method calls via catalog (e.g., Viper.String)
+    // Runtime class method calls via catalog (e.g., Zanna.String)
     {
         // Determine runtime class qname
         std::string qClass;
@@ -346,7 +346,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 paramTypes.push_back(Type(type_conv::basicTypeToIlKind(bt)));
 
             Type retTy(type_conv::basicTypeToIlKind(info->ret));
-            // Record the catalog target spelling (e.g., Viper.String.Substring)
+            // Record the catalog target spelling (e.g., Zanna.String.Substring)
             // so extern declarations can include the accessor alongside
             // canonical function names selected at call sites.
             runtimeTracker.trackCalleeName(info->target);
@@ -373,11 +373,11 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
         }
 
-        // Fallback: Object methods on any instance (Viper.Core.Object.*, System alias supported)
+        // Fallback: Object methods on any instance (Zanna.Core.Object.*, System alias supported)
         // BUT only if the user-defined class doesn't override the method.
         {
             // First check if the user-defined class has this method - if so, skip the
-            // Viper.Core.Object fallback and let the user-defined method handling below take over.
+            // Zanna.Core.Object fallback and let the user-defined method handling below take over.
             bool userClassHasMethod = false;
             if (!qClass.empty()) {
                 if (oopIndex_.findMethodInHierarchy(qClass, expr.method))

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_message_bundle.c
-// Purpose: Implementation of Viper.Localization.MessageBundle. Stores the
+// Purpose: Implementation of Zanna.Localization.MessageBundle. Stores the
 //          translation table as an rt_map<rt_string, rt_string>, walks the
 //          fallback chain on lookup, and expands {name}-style placeholder
 //          templates via a small purpose-built interpolator (the template
@@ -165,7 +165,7 @@ static void *bundle_alloc(void *locale, void *map, int take_map) {
     rt_message_bundle_t *bundle =
         (rt_message_bundle_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_message_bundle_t));
     if (!bundle) {
-        rt_trap("Viper.Localization.MessageBundle: allocation failed");
+        rt_trap("Zanna.Localization.MessageBundle: allocation failed");
         return NULL;
     }
     bundle->locale = locale;
@@ -190,11 +190,11 @@ void *rt_message_bundle_new(void) {
 
 void *rt_message_bundle_from_map(void *locale, void *map) {
     if (map && !is_map_object(map)) {
-        rt_trap("Viper.Localization.MessageBundle: FromMap requires Map[String, String]");
+        rt_trap("Zanna.Localization.MessageBundle: FromMap requires Map[String, String]");
         return NULL;
     }
     if (map && !validate_message_map(map)) {
-        rt_trap("Viper.Localization.MessageBundle: map values must be strings");
+        rt_trap("Zanna.Localization.MessageBundle: map values must be strings");
         return NULL;
     }
     return bundle_alloc(locale, map, 0);
@@ -202,23 +202,23 @@ void *rt_message_bundle_from_map(void *locale, void *map) {
 
 void *rt_message_bundle_load_from_json(void *locale, rt_string path) {
     if (!path) {
-        rt_trap("Viper.Localization.MessageBundle: LoadFromJson requires a path");
+        rt_trap("Zanna.Localization.MessageBundle: LoadFromJson requires a path");
         return NULL;
     }
     rt_string text = rt_io_file_read_all_text(path);
     if (!text) {
-        rt_trap("Viper.Localization.MessageBundle: cannot read JSON file");
+        rt_trap("Zanna.Localization.MessageBundle: cannot read JSON file");
         return NULL;
     }
     void *map = rt_json_parse_object(text);
     rt_string_unref(text);
     if (!map) {
-        rt_trap("Viper.Localization.MessageBundle: malformed JSON");
+        rt_trap("Zanna.Localization.MessageBundle: malformed JSON");
         return NULL;
     }
     if (!validate_message_map(map)) {
         release_object(map);
-        rt_trap("Viper.Localization.MessageBundle: JSON values must be strings");
+        rt_trap("Zanna.Localization.MessageBundle: JSON values must be strings");
         return NULL;
     }
     return bundle_alloc(locale, map, 1);
@@ -226,29 +226,29 @@ void *rt_message_bundle_load_from_json(void *locale, rt_string path) {
 
 void *rt_message_bundle_load_from_asset(void *locale, rt_string name) {
     if (!name) {
-        rt_trap("Viper.Localization.MessageBundle: LoadFromAsset requires a name");
+        rt_trap("Zanna.Localization.MessageBundle: LoadFromAsset requires a name");
         return NULL;
     }
     void *bytes = rt_asset_load_bytes(name);
     if (!bytes) {
-        rt_trap("Viper.Localization.MessageBundle: asset not found");
+        rt_trap("Zanna.Localization.MessageBundle: asset not found");
         return NULL;
     }
     rt_string text = rt_bytes_to_str(bytes);
     release_object(bytes);
     if (!text) {
-        rt_trap("Viper.Localization.MessageBundle: asset is not valid text");
+        rt_trap("Zanna.Localization.MessageBundle: asset is not valid text");
         return NULL;
     }
     void *map = rt_json_parse_object(text);
     rt_string_unref(text);
     if (!map) {
-        rt_trap("Viper.Localization.MessageBundle: malformed JSON asset");
+        rt_trap("Zanna.Localization.MessageBundle: malformed JSON asset");
         return NULL;
     }
     if (!validate_message_map(map)) {
         release_object(map);
-        rt_trap("Viper.Localization.MessageBundle: JSON asset values must be strings");
+        rt_trap("Zanna.Localization.MessageBundle: JSON asset values must be strings");
         return NULL;
     }
     return bundle_alloc(locale, map, 1);
@@ -353,12 +353,12 @@ static rt_string bundle_lookup(rt_message_bundle_t *self, rt_string key, int dep
 
 rt_string rt_message_bundle_get(void *self, rt_string key) {
     if (!self || !key) {
-        rt_trap("Viper.Localization.MessageBundle: Get requires a non-null key");
+        rt_trap("Zanna.Localization.MessageBundle: Get requires a non-null key");
         return rt_string_from_bytes("", 0);
     }
     rt_string r = bundle_lookup(as_bundle(self), key, 0);
     if (!r) {
-        rt_trap("Viper.Localization.MessageBundle: missing key (no fallback found)");
+        rt_trap("Zanna.Localization.MessageBundle: missing key (no fallback found)");
         return rt_string_from_bytes("", 0);
     }
     return r;
@@ -401,7 +401,7 @@ rt_string rt_message_bundle_get_or(void *self, rt_string key, rt_string default_
 ///          retained its own copy for the Option payload.
 /// @param self MessageBundle handle.
 /// @param key Lookup key.
-/// @return Opaque Viper.Option containing a string, or None.
+/// @return Opaque Zanna.Option containing a string, or None.
 void *rt_message_bundle_try_get_option(void *self, rt_string key) {
     if (!self || !key)
         return rt_option_none();
@@ -442,8 +442,8 @@ static int bundle_append_bytes_checked(rt_string_builder *sb, const char *bytes,
     if (status == RT_SB_OK)
         return 1;
     rt_trap(status == RT_SB_ERROR_OVERFLOW
-                ? "Viper.Localization.MessageBundle: formatted message overflow"
-                : "Viper.Localization.MessageBundle: formatted message allocation failed");
+                ? "Zanna.Localization.MessageBundle: formatted message overflow"
+                : "Zanna.Localization.MessageBundle: formatted message allocation failed");
     return 0;
 }
 
@@ -604,11 +604,11 @@ interp_error:
 
 rt_string rt_message_bundle_format(void *self, rt_string key, void *vars) {
     if (vars && !is_map_object(vars)) {
-        rt_trap("Viper.Localization.MessageBundle: Format vars must be a Map[String, String]");
+        rt_trap("Zanna.Localization.MessageBundle: Format vars must be a Map[String, String]");
         return rt_string_from_bytes("", 0);
     }
     if (vars && !validate_message_map(vars)) {
-        rt_trap("Viper.Localization.MessageBundle: Format vars values must be strings");
+        rt_trap("Zanna.Localization.MessageBundle: Format vars values must be strings");
         return rt_string_from_bytes("", 0);
     }
     rt_string tmpl = rt_message_bundle_get(self, key);
@@ -619,11 +619,11 @@ rt_string rt_message_bundle_format(void *self, rt_string key, void *vars) {
 
 rt_string rt_message_bundle_format_with(void *self, rt_string key, void *values) {
     if (values && !is_list_like_object(values)) {
-        rt_trap("Viper.Localization.MessageBundle: FormatWith values must be a List[String]");
+        rt_trap("Zanna.Localization.MessageBundle: FormatWith values must be a List[String]");
         return rt_string_from_bytes("", 0);
     }
     if (values && !validate_string_list(values)) {
-        rt_trap("Viper.Localization.MessageBundle: FormatWith values must contain only strings");
+        rt_trap("Zanna.Localization.MessageBundle: FormatWith values must contain only strings");
         return rt_string_from_bytes("", 0);
     }
     rt_string tmpl = rt_message_bundle_get(self, key);
@@ -685,16 +685,16 @@ static rt_string bundle_localize_digits(const rt_locale_data_t *data, const char
 
 rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *vars) {
     if (!self || !key) {
-        rt_trap("Viper.Localization.MessageBundle: Plural requires a non-null key");
+        rt_trap("Zanna.Localization.MessageBundle: Plural requires a non-null key");
         return rt_string_from_bytes("", 0);
     }
     rt_message_bundle_t *bundle = as_bundle(self);
     if (vars && !is_map_object(vars)) {
-        rt_trap("Viper.Localization.MessageBundle: Plural vars must be a Map[String, String]");
+        rt_trap("Zanna.Localization.MessageBundle: Plural vars must be a Map[String, String]");
         return rt_string_from_bytes("", 0);
     }
     if (vars && !validate_message_map(vars)) {
-        rt_trap("Viper.Localization.MessageBundle: Plural vars values must be strings");
+        rt_trap("Zanna.Localization.MessageBundle: Plural vars values must be strings");
         return rt_string_from_bytes("", 0);
     }
     rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(bundle->data, n);
@@ -704,7 +704,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
     const char *key_cs = rt_string_cstr(key);
     int64_t key_len = rt_str_len(key);
     if (!key_cs || key_len <= 0) {
-        rt_trap("Viper.Localization.MessageBundle: Plural key is empty");
+        rt_trap("Zanna.Localization.MessageBundle: Plural key is empty");
         return rt_string_from_bytes("", 0);
     }
     size_t cat_len = strlen(cat_name);
@@ -712,7 +712,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
     size_t needed = (size_t)key_len + 1 + cat_len;
     char *buf = needed + 1 <= sizeof(stack_buf) ? stack_buf : (char *)malloc(needed + 1);
     if (!buf) {
-        rt_trap("Viper.Localization.MessageBundle: plural key allocation failed");
+        rt_trap("Zanna.Localization.MessageBundle: plural key allocation failed");
         return rt_string_from_bytes("", 0);
     }
     memcpy(buf, key_cs, (size_t)key_len);
@@ -734,7 +734,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
         if (!other_buf) {
             if (buf != stack_buf)
                 free(buf);
-            rt_trap("Viper.Localization.MessageBundle: plural fallback allocation failed");
+            rt_trap("Zanna.Localization.MessageBundle: plural fallback allocation failed");
             return rt_string_from_bytes("", 0);
         }
         memcpy(other_buf, key_cs, (size_t)key_len);
@@ -751,7 +751,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
         free(buf);
 
     if (!tmpl) {
-        rt_trap("Viper.Localization.MessageBundle: missing plural key (no 'other' form)");
+        rt_trap("Zanna.Localization.MessageBundle: missing plural key (no 'other' form)");
         return rt_string_from_bytes("", 0);
     }
 
@@ -790,19 +790,19 @@ void *rt_message_bundle_set_fallback(void *self, void *fallback) {
     void *fast = fallback;
     while (fast) {
         if (slow == self || fast == self) {
-            rt_trap("Viper.Localization.MessageBundle: Fallback would create a cycle");
+            rt_trap("Zanna.Localization.MessageBundle: Fallback would create a cycle");
             return NULL;
         }
         fast = as_bundle(fast)->fallback;
         if (fast == self) {
-            rt_trap("Viper.Localization.MessageBundle: Fallback would create a cycle");
+            rt_trap("Zanna.Localization.MessageBundle: Fallback would create a cycle");
             return NULL;
         }
         if (fast)
             fast = as_bundle(fast)->fallback;
         slow = as_bundle(slow)->fallback;
         if (fast && fast == slow) {
-            rt_trap("Viper.Localization.MessageBundle: Fallback chain already contains a cycle");
+            rt_trap("Zanna.Localization.MessageBundle: Fallback chain already contains a cycle");
             return NULL;
         }
     }

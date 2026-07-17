@@ -2,7 +2,7 @@
 
 Date: 2026-07-13  
 Scope: `src/runtime/graphics/3d`, its public C declarations, the canonical
-`Viper.Graphics3D.*` / `Viper.Game3D.*` registry surface, generated runtime
+`Zanna.Graphics3D.*` / `Zanna.Game3D.*` registry surface, generated runtime
 documentation, and the VM/native binding path.
 
 ## Executive summary
@@ -36,7 +36,7 @@ important behavioral changes are:
 - shared lazy state is synchronized and BC6H arithmetic is portable under the
   C abstract machine;
 - Canvas3D offers allocation-reusing screenshot APIs;
-- `viper --dump-runtime-api` schema 4 is a complete live registry-to-C binding
+- `zanna --dump-runtime-api` schema 4 is a complete live registry-to-C binding
   catalog for the 3D surface.
 
 The current live registry contains 7,355 public functions and 513 classes. The
@@ -47,13 +47,13 @@ reviewed 3D subset contains 2,067 functions, 125 classes, 735 properties, and
 ## Boundary decision
 
 The public programming surface is the canonical runtime registry rooted at
-`src/il/runtime/runtime.def`. The `rt_*` functions are Viper's internal
+`src/il/runtime/runtime.def`. The `rt_*` functions are Zanna's internal
 embedding ABI for generated code, VM adapters, tests, and owned platform
 backends; they are not a separately versioned C SDK. Runtime object payloads
 remain opaque. This decision and its compatibility consequences are recorded
 in `docs/adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md`.
 
-`viper --dump-runtime-api` schema 4 now reports:
+`zanna --dump-runtime-api` schema 4 now reports:
 
 - `public_boundary: "registry"`;
 - `c_abi_status: "internal-embedding"`;
@@ -88,7 +88,7 @@ is hardening or a lower-frequency optimization.
 | 12 | P0 | Enforce RenderTarget3D's budget against memory it can actually own, including lazy mirrors. | Reservations now use 16 bytes/texel for LDR and 36 bytes/texel for HDR, covering native color/depth and every lazy CPU mirror. | LDR/HDR reservation assertions in Canvas3D tests. |
 | 13 | P0 | Make screenshot/readback validation explicit and null-safe. | Centralized checked Canvas/Pixels validation and same-size/layout checks in `canvas3d_screenshot_into`; invalid/null inputs return status without dereference. | Null, wrong-size, GPU, software, RTT, and finalized-capture tests. |
 | 14 | P1 | Preserve more than the first touching leaf when a compound collider contacts another body. | A bounded leaf walk adds distinct points to the body-pair manifold up to `PH3D_MAX_MANIFOLD_POINTS`. | `test_compound_collider_collects_multiple_leaf_contacts`. |
-| 15 | P1 | Remove the C data race in the software backend's lazy `VIPER_3D_DEBUG` cache. | Replaced plain concurrent reads/writes with a portable atomic once-state machine. | Focused concurrency lane/TSan coverage. |
+| 15 | P1 | Remove the C data race in the software backend's lazy `ZANNA_3D_DEBUG` cache. | Replaced plain concurrent reads/writes with a portable atomic once-state machine. | Focused concurrency lane/TSan coverage. |
 | 16 | P1 | Make BRDF LUT first use exactly-once and safe under concurrent backend initialization. | Added an acquire/release atomic once gate; only a fully built immutable table is published. | Sixteen-thread concurrent first-use regression plus reference-value tests. |
 | 17 | P0 | Eliminate undefined/implementation-defined signed shifts and overflow in BC6H decode. | Added checked bit reads, unsigned masks, widened multiply/interpolation, portable sign extension and floor division, and fail-closed reserved modes. | All 14 BC6H modes, signed and unsigned, are deterministic and finite; UBSan coverage. |
 | 18 | P1 | Publish explicit return nullability for the whole 3D API rather than leaving object results ambiguous. | Schema 4 conservatively marks 3D object/raw-pointer results nullable and primitive/string/sequence/value results according to policy. | Live JSON audit and Agent CLI contract tests. |
@@ -198,7 +198,7 @@ contracts where the reviewed implementation provides them.
 
 The final validation results on macOS arm64 were:
 
-- A scratch `./scripts/build_viper_mac.sh` compile completed with warnings as
+- A scratch `./scripts/build_zanna_mac.sh` compile completed with warnings as
   errors. Its default non-slow CTest run passed 1,891/1,891 tests (one
   capability-inapplicable audio test was reported as skipped), including
   140/140 `graphics3d` tests. The script's platform lint, strict runtime-surface
@@ -206,7 +206,7 @@ The final validation results on macOS arm64 were:
   was stopped only when its post-validation `/usr/local` install requested an
   administrator password.
 - The documented non-install handoff,
-  `VIPER_SKIP_CLEAN=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_mac.sh`, exited
+  `ZANNA_SKIP_CLEAN=1 ZANNA_SKIP_INSTALL=1 ./scripts/build_zanna_mac.sh`, exited
   zero. It rebuilt the scratch tree, repeated all 1,891 tests successfully, and
   repeated the policy, surface-audit, and smoke gates.
 - A combined AddressSanitizer/UndefinedBehaviorSanitizer Graphics3D build
@@ -252,7 +252,7 @@ The final validation results on macOS arm64 were:
 ## Primary changed surfaces
 
 - API/registry/tooling: `src/il/runtime/RuntimeSignatures.*`,
-  `src/tools/rtgen/rtgen.cpp`, `src/tools/viper/main.cpp`, and
+  `src/tools/rtgen/rtgen.cpp`, `src/tools/zanna/main.cpp`, and
   `src/il/runtime/defs/graphics3d/rendering.def`.
 - Runtime correctness: Graphics3D assets, animation, physics, navigation,
   scene, render, backend, Game3D, and concurrent queue modules.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -372,11 +372,11 @@ static temp_tls_files_t create_temp_tls_files_with_contents(const char *cert_pem
 
     const unsigned id = ++tls_fixture_counter;
     files.cert_path =
-        (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_cert.pem")).string();
-    files.key_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_key.pem")).string();
+        (temp_dir / ("zanna_tls_fixture_" + std::to_string(id) + "_cert.pem")).string();
+    files.key_path = (temp_dir / ("zanna_tls_fixture_" + std::to_string(id) + "_key.pem")).string();
     if (ca_pem)
         files.ca_path =
-            (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_ca.pem")).string();
+            (temp_dir / ("zanna_tls_fixture_" + std::to_string(id) + "_ca.pem")).string();
     if (!write_text_file(files.cert_path, cert_pem) || !write_text_file(files.key_path, key_pem) ||
         (ca_pem && !write_text_file(files.ca_path, ca_pem))) {
         std::error_code cleanup_ec;
@@ -419,7 +419,7 @@ static int get_bindable_local_port() {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
+    addr.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0;
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         LOCAL_SOCK_CLOSE(fd);

@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Math.Easing - Easing Functions
+// API Audit: Zanna.Math.Easing - Easing Functions
 // =============================================================================
 // Tests all 28 easing functions at t=0.0, t=0.5, t=1.0
 // =============================================================================
 
 module EasingDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Easing ===");
+    Say("=== API Audit: Zanna.Math.Easing ===");
 
     // --- Linear ---
     Say("--- Linear ---");

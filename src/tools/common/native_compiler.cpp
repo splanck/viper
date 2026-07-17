@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@
 #include <utility>
 #include <vector>
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 #include <fcntl.h>
 #include <io.h>
 #include <process.h>
@@ -61,7 +61,7 @@
 #include <unistd.h>
 #endif
 
-namespace viper::tools {
+namespace zanna::tools {
 namespace {
 
 /// @brief Build a collision-resistant path in the system temp directory.
@@ -83,7 +83,7 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
     if (ec)
         throw std::runtime_error("failed to locate temporary directory: " + ec.message());
     const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     const auto pid = static_cast<uint64_t>(_getpid());
 #else
     const auto pid = static_cast<uint64_t>(getpid());
@@ -102,7 +102,7 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
 /// @throws std::runtime_error for non-collision failures such as permission or
 ///         filesystem errors.
 bool reserveTempPath(const std::string &path) {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     const int fd =
         _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     if (fd < 0) {
@@ -141,10 +141,10 @@ bool isNativeOutputPath(const std::string &path) {
 }
 
 /// @brief Generate a unique temporary path for serialized IL text.
-/// @return Path under the system temp directory using the "viper_build" prefix
+/// @return Path under the system temp directory using the "zanna_build" prefix
 ///         and a ".il" extension.
 std::string generateTempIlPath() {
-    return generateTempFilePath("viper_build", ".il");
+    return generateTempFilePath("zanna_build", ".il");
 }
 
 std::string generateTempFilePath(const char *prefix, const char *extension) {
@@ -177,7 +177,7 @@ int compileToNative(const std::string &ilPath,
                     std::optional<bool> windowsDebugRuntime,
                     std::size_t stackSize) {
     if (arch == TargetArch::ARM64) {
-        viper::codegen::aarch64::CodegenPipeline::Options opts;
+        zanna::codegen::aarch64::CodegenPipeline::Options opts;
         opts.input_il_path = ilPath;
         opts.output_obj_path = outputPath;
         opts.optimize = backendOptimizeLevel;
@@ -190,7 +190,7 @@ int compileToNative(const std::string &ilPath,
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
-        viper::codegen::aarch64::CodegenPipeline pipeline(opts);
+        zanna::codegen::aarch64::CodegenPipeline pipeline(opts);
         try {
             const auto result = pipeline.run();
             if (!result.stdout_text.empty())
@@ -205,7 +205,7 @@ int compileToNative(const std::string &ilPath,
     }
 
     // X64: use CodegenPipeline directly
-    viper::codegen::x64::CodegenPipeline::Options opts;
+    zanna::codegen::x64::CodegenPipeline::Options opts;
     opts.input_il_path = ilPath;
     opts.output_obj_path = outputPath;
     opts.optimize = backendOptimizeLevel;
@@ -215,20 +215,20 @@ int compileToNative(const std::string &ilPath,
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
     opts.stack_size = stackSize;
-#if VIPER_HOST_WINDOWS
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
-#elif VIPER_HOST_MACOS
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+#if ZANNA_HOST_WINDOWS
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::Win64;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+#elif ZANNA_HOST_MACOS
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
 #else
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Linux;
 #endif
     if (!assetObjPath.empty())
         opts.extra_objects.push_back(assetObjPath);
 
-    viper::codegen::x64::CodegenPipeline pipeline(opts);
+    zanna::codegen::x64::CodegenPipeline pipeline(opts);
     PipelineResult result;
     try {
         result = pipeline.run();
@@ -269,7 +269,7 @@ int compileModuleToNative(il::core::Module module,
         debugSourcePath.empty() ? std::string{"<in-memory>"} : debugSourcePath;
 
     if (arch == TargetArch::ARM64) {
-        viper::codegen::aarch64::CodegenPipeline::Options opts;
+        zanna::codegen::aarch64::CodegenPipeline::Options opts;
         opts.input_il_path = syntheticInputPath;
         opts.output_obj_path = outputPath;
         opts.optimize = backendOptimizeLevel;
@@ -282,7 +282,7 @@ int compileModuleToNative(il::core::Module module,
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
-        viper::codegen::aarch64::CodegenPipeline pipeline(opts);
+        zanna::codegen::aarch64::CodegenPipeline pipeline(opts);
         try {
             const auto result =
                 pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
@@ -297,7 +297,7 @@ int compileModuleToNative(il::core::Module module,
         }
     }
 
-    viper::codegen::x64::CodegenPipeline::Options opts;
+    zanna::codegen::x64::CodegenPipeline::Options opts;
     opts.input_il_path = syntheticInputPath;
     opts.output_obj_path = outputPath;
     opts.optimize = backendOptimizeLevel;
@@ -307,20 +307,20 @@ int compileModuleToNative(il::core::Module module,
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
     opts.stack_size = stackSize;
-#if VIPER_HOST_WINDOWS
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
-#elif VIPER_HOST_MACOS
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+#if ZANNA_HOST_WINDOWS
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::Win64;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+#elif ZANNA_HOST_MACOS
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
 #else
-    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
-    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+    opts.target_abi = zanna::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = zanna::codegen::x64::CodegenOptions::TargetPlatform::Linux;
 #endif
     if (!assetObjPath.empty())
         opts.extra_objects.push_back(assetObjPath);
 
-    viper::codegen::x64::CodegenPipeline pipeline(opts);
+    zanna::codegen::x64::CodegenPipeline pipeline(opts);
     PipelineResult result;
     try {
         result = pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
@@ -338,10 +338,10 @@ int compileModuleToNative(il::core::Module module,
 }
 
 /// @brief Generate a unique temporary path for an asset blob.
-/// @return Path under the system temp directory using the "viper_assets" prefix
-///         and a ".vpa" extension.
+/// @return Path under the system temp directory using the "zanna_assets" prefix
+///         and a ".zpak" extension.
 std::string generateTempAssetPath() {
-    return generateTempFilePath("viper_assets", ".vpa");
+    return generateTempFilePath("zanna_assets", ".zpak");
 }
 
-} // namespace viper::tools
+} // namespace zanna::tools

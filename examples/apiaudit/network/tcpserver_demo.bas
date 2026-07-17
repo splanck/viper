@@ -1,5 +1,5 @@
-' API Audit: Viper.Network.TcpServer (BASIC)
-PRINT "=== API Audit: Viper.Network.TcpServer ==="
+' API Audit: Zanna.Network.TcpServer (BASIC)
+PRINT "=== API Audit: Zanna.Network.TcpServer ==="
 PRINT "NOTE: TcpServer requires binding to ports. API surface test only."
 PRINT "Constructor: Listen(port), ListenAt(address,port)"
 PRINT "Properties: Port() -> i64, Address() -> str, IsListening() -> bool"

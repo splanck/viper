@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTFmtExtTests.cpp
-// Purpose: Tests for extended Viper.Text.Fmt functions (IntGrouped, Currency,
+// Purpose: Tests for extended Zanna.Text.Fmt functions (IntGrouped, Currency,
 //          ToWords, Ordinal).
 //
 //===----------------------------------------------------------------------===//

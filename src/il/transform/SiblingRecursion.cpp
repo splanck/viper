@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -235,7 +235,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn) {
             if (ei == bi)
                 continue;
             const auto &entryBB = fn.blocks[ei];
-            if (!viper::il::isTerminated(entryBB))
+            if (!zanna::il::isTerminated(entryBB))
                 continue;
 
             const auto &term = entryBB.instructions.back();

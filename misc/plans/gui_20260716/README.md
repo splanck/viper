@@ -1,11 +1,11 @@
-# Viper GUI Modernization Program
+# Zanna GUI Modernization Program
 
 Date: 2026-07-16
 
 ## 1. Summary and objective
 
 This program implements the forty accepted improvements from the 2026-07-16
-review of the `Viper.GUI.*` runtime surface, its C/C++ embedding layer, and the
+review of the `Zanna.GUI.*` runtime surface, its C/C++ embedding layer, and the
 lower C GUI toolkit. The objective is a safe, complete, accessible,
 cross-platform GUI runtime whose public contracts match its implementation and
 whose retained renderer remains deterministic and efficient.
@@ -25,13 +25,13 @@ required error, performance, and test contracts are recorded in
 
 ### In scope
 
-- All current classes under `Viper.GUI.*`, including `App`, `Widget`, controls,
+- All current classes under `Zanna.GUI.*`, including `App`, `Widget`, controls,
   layout containers, dialogs, models, editor/navigation helpers, images, and
   video.
 - The canonical runtime registry and its generated Zia/BASIC/API-dump/docs
   consumers.
 - The internal C embedding ABI in `src/runtime/graphics/gui`.
-- The lower C GUI toolkit in `src/lib/gui` and ViperGFX event/render adapters.
+- The lower C GUI toolkit in `src/lib/gui` and ZannaGFX event/render adapters.
 - Graphics-disabled behavior, software/mock rendering, and macOS, Windows, and
   Linux platform adapters.
 - Unit, runtime, language integration, visual framebuffer, contract-manifest,
@@ -47,7 +47,7 @@ required error, performance, and test contracts are recorded in
   or dialog libraries.
 - Removing an existing public API. Legacy surfaces may be documented as such
   only after a compatible replacement is implemented and tested.
-- Changing `Viper.GUI.App.GetWidth`, `GetHeight`, `Widget.GetWidth`, or related
+- Changing `Zanna.GUI.App.GetWidth`, `GetHeight`, `Widget.GetWidth`, or related
   legacy physical-unit getter semantics. New logical getters provide the
   normalized contract without silently breaking callers.
 
@@ -59,8 +59,8 @@ event delivery are correctness contracts and are enabled by default.
 
 Existing build capabilities remain authoritative:
 
-- `VIPER_ENABLE_GRAPHICS=0` selects deliberate graphics-disabled stubs.
-- Existing ViperGFX backend selection chooses software, mock, Metal, D3D11, or
+- `ZANNA_ENABLE_GRAPHICS=0` selects deliberate graphics-disabled stubs.
+- Existing ZannaGFX backend selection chooses software, mock, Metal, D3D11, or
   OpenGL behavior.
 - `App.SetPartialPaint` remains the diagnostic/performance switch for retained
   damage rendering.
@@ -95,7 +95,7 @@ The canonical public boundary is the registry rooted at
 graphics-disabled twin when applicable, contract metadata, and generated API
 documentation.
 
-The C functions are the Viper internal embedding ABI. Runtime objects remain
+The C functions are the Zanna internal embedding ABI. Runtime objects remain
 opaque. Public headers may expose POD descriptors and integer constants, but
 never private widget, model, subhandle, font, compositor, or platform-object
 layouts.
@@ -103,10 +103,10 @@ layouts.
 ### 5.2 Ownership and failure
 
 - Widget constructors are managed, fallible object results. Compatibility
-  constructors retain nullable behavior; `Try*` variants return `Viper.Result`.
+  constructors retain nullable behavior; `Try*` variants return `Zanna.Result`.
 - Child widgets owned by containers, roots, tabs, menu items, and tree nodes are
   borrowed managed handles. Destroying the owner invalidates the wrapper.
-- Lookup and selection absence uses `Viper.Option` in new APIs. Legacy nullable
+- Lookup and selection absence uses `Zanna.Option` in new APIs. Legacy nullable
   or sentinel operations remain as compatibility forms.
 - Removed subobjects remain valid inert handles until the last runtime wrapper
   is released. Explicit prune calls may request reclamation but cannot make a
@@ -220,7 +220,7 @@ Each phase is a coherent green increment and changes fewer than fifty files.
 
 ## 8. Documentation policy
 
-- All new C/C++ source and header files use the full Viper source header.
+- All new C/C++ source and header files use the full Zanna source header.
 - Every new public or internal function declared in a header has detailed
   Doxygen covering parameters, return value, ownership, units, failure, and
   invalid-handle behavior.
@@ -299,7 +299,7 @@ was removed.
   classes, and 8,684 matching header declarations; the GUI manifest contains
   1,108 functions, 79 classes, 110 properties, and 999 methods.
 - Documentation generation/checking, source-header checks, formatter checks,
-  platform-policy lint, Zia coverage, BASIC coverage, native ViperIDE linking,
+  platform-policy lint, Zia coverage, BASIC coverage, native ZannaIDE linking,
   and the graphics-disabled GUI availability contract all pass.
 - The whole-repository graphics-disabled link remains independently blocked by
   unrelated in-progress 3D symbols in the shared worktree; the disabled GUI

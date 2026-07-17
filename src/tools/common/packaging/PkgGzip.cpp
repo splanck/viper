@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@ extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -169,4 +169,4 @@ std::vector<uint8_t> gunzip(const uint8_t *data, size_t len) {
     return out;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

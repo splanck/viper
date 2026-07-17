@@ -1,3 +1,3 @@
 REM BASIC: Fully-qualified call to builtin extern
-Viper.Terminal.PrintI64(456)
+Zanna.Terminal.PrintI64(456)
 

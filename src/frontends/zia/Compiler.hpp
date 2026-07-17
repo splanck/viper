@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 /// @brief Zia compiler driver - orchestrates the complete compilation pipeline.
 ///
 /// @details This file provides the main entry point for compiling Zia source
-/// code to Viper Intermediate Language (IL). The compiler driver coordinates all
+/// code to Zanna Intermediate Language (IL). The compiler driver coordinates all
 /// phases of compilation:
 ///
 /// ## Compilation Pipeline

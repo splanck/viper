@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_input.c
-// Purpose: Unit tests covering input events (keyboard/mouse) in ViperGFX.
+// Purpose: Unit tests covering input events (keyboard/mouse) in ZannaGFX.
 // Key invariants: Avoid flakiness by simulating inputs when possible; assert
 //                 on event sequencing and data integrity.
 // Ownership/Lifetime: Test binary; creates/destroys windows as required.
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Input Tests (T16-T21)
+ * ZannaGFX - Input Tests (T16-T21)
  * Tests keyboard, mouse, and event queue with mock backend
  */
 
@@ -764,7 +764,7 @@ void test_relative_mouse_mode(void) {
 
 int main(void) {
     printf("========================================\n");
-    printf("ViperGFX Input Tests (T16-T21)\n");
+    printf("ZannaGFX Input Tests (T16-T21)\n");
     printf("========================================\n");
 
     test_keyboard_input();
@@ -797,13 +797,13 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_input.c
-// Purpose: Unit tests covering input events (keyboard/mouse) in ViperGFX.
+// Purpose: Unit tests covering input events (keyboard/mouse) in ZannaGFX.
 // Key invariants: Avoid flakiness by simulating inputs when possible; assert
 //                 on event sequencing and data integrity.
 // Ownership/Lifetime: Test binary; creates/destroys windows as required.

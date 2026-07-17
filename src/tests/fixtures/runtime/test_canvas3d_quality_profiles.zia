@@ -1,7 +1,7 @@
 module test_canvas3d_quality_profiles;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal as Terminal;
 
 func fail(message: String) {
     Terminal.Say("RESULT: fail " + message);

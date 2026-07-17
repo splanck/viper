@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d.c
-// Purpose: Implements the Viper.Game3D ergonomic layer declared in rt_game3d.h.
+// Purpose: Implements the Zanna.Game3D ergonomic layer declared in rt_game3d.h.
 //   Composes the lower-level Graphics3D canvas/camera/scene, Physics3D world,
 //   input, spatial audio, and post-FX subsystems into a single World3D plus
 //   batteries-included entities, prefabs, presets, and camera controllers.
@@ -463,7 +463,7 @@ static int64_t game3d_default_worker_count(void) {
 
 /// @brief Return non-zero when the world's Canvas3D is currently inside a frame.
 static int game3d_canvas_in_frame(void *canvas_obj) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
     return canvas && canvas->in_frame;
 #else
@@ -474,7 +474,7 @@ static int game3d_canvas_in_frame(void *canvas_obj) {
 
 /// @brief Drop Canvas3D temporal caches after world-space state changes.
 static void game3d_canvas_clear_temporal_state(void *canvas_obj) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
     if (canvas) {
         canvas3d_clear_motion_history(canvas);
@@ -488,7 +488,7 @@ static void game3d_canvas_clear_temporal_state(void *canvas_obj) {
 
 /// @brief Return the current number of shadow maps produced for debug overlay text.
 static int64_t game3d_canvas_shadow_count(void *canvas_obj) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
     return canvas ? canvas->shadow_count : 0;
 #else
@@ -499,7 +499,7 @@ static int64_t game3d_canvas_shadow_count(void *canvas_obj) {
 
 /// @brief Return the active shadow-map resolution for debug overlay text.
 static int64_t game3d_canvas_shadow_resolution(void *canvas_obj) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
     return canvas ? canvas->shadow_resolution : 0;
 #else
@@ -510,7 +510,7 @@ static int64_t game3d_canvas_shadow_resolution(void *canvas_obj) {
 
 /// @brief Enable camera-relative Canvas3D uploads when the graphics backend is present.
 static void game3d_canvas_set_camera_relative_upload(void *canvas_obj, int8_t enabled) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d_set_camera_relative_upload(canvas_obj, enabled);
 #else
     (void)canvas_obj;
@@ -520,7 +520,7 @@ static void game3d_canvas_set_camera_relative_upload(void *canvas_obj, int8_t en
 
 /// @brief Synchronize camera render aspect when the private camera runtime is available.
 static void game3d_camera_sync_render_aspect(void *camera_obj, double aspect) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_camera3d_sync_render_aspect(camera_obj, aspect);
 #else
     (void)camera_obj;
@@ -1300,35 +1300,35 @@ void *game3d_layermask_new_bits(int64_t bits) {
 
 /// @brief Is `key` held this frame? Snapshot-aware, else live keyboard state.
 int8_t game3d_input_key_down(const rt_game3d_input *input, int64_t key) {
-    if (input && input->has_snapshot && key > 0 && key < VIPER_KEY_MAX)
+    if (input && input->has_snapshot && key > 0 && key < ZANNA_KEY_MAX)
         return input->key_down[key] ? 1 : 0;
     return rt_keyboard_is_down(key);
 }
 
 /// @brief Did `key` transition to down this frame? Snapshot-aware, else live.
 int8_t game3d_input_key_pressed(const rt_game3d_input *input, int64_t key) {
-    if (input && input->has_snapshot && key > 0 && key < VIPER_KEY_MAX)
+    if (input && input->has_snapshot && key > 0 && key < ZANNA_KEY_MAX)
         return input->key_pressed[key] ? 1 : 0;
     return rt_keyboard_was_pressed(key);
 }
 
 /// @brief Did `key` transition to up this frame? Snapshot-aware, else live.
 int8_t game3d_input_key_released(const rt_game3d_input *input, int64_t key) {
-    if (input && input->has_snapshot && key > 0 && key < VIPER_KEY_MAX)
+    if (input && input->has_snapshot && key > 0 && key < ZANNA_KEY_MAX)
         return input->key_released[key] ? 1 : 0;
     return rt_keyboard_was_released(key);
 }
 
 /// @brief Is mouse `button` held this frame? Snapshot-aware, else live mouse state.
 int8_t game3d_input_mouse_down(const rt_game3d_input *input, int64_t button) {
-    if (input && input->has_snapshot && button >= 0 && button < VIPER_MOUSE_BUTTON_MAX)
+    if (input && input->has_snapshot && button >= 0 && button < ZANNA_MOUSE_BUTTON_MAX)
         return input->mouse_down[button] ? 1 : 0;
     return rt_mouse_is_down(button);
 }
 
 /// @brief Did mouse `button` transition to down this frame? Snapshot-aware, else live.
 int8_t game3d_input_mouse_pressed_snapshot(const rt_game3d_input *input, int64_t button) {
-    if (input && input->has_snapshot && button >= 0 && button < VIPER_MOUSE_BUTTON_MAX)
+    if (input && input->has_snapshot && button >= 0 && button < ZANNA_MOUSE_BUTTON_MAX)
         return input->mouse_pressed[button] ? 1 : 0;
     return rt_mouse_was_pressed(button);
 }
@@ -2527,7 +2527,7 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
     canvas_obj = world->canvas;
     if (canvas_obj) {
         rt_obj_retain_maybe(canvas_obj);
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
         rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
         if (!canvas) {
             game3d_release_ref(&canvas_obj);

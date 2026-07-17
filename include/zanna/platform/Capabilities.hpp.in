@@ -1,0 +1,39 @@
+#pragma once
+
+// Generated build/host capability header.
+
+#define ZANNA_HOST_WINDOWS @ZANNA_HOST_WINDOWS_VALUE@
+#define ZANNA_HOST_MACOS @ZANNA_HOST_MACOS_VALUE@
+#define ZANNA_HOST_LINUX @ZANNA_HOST_LINUX_VALUE@
+
+#define ZANNA_COMPILER_MSVC @ZANNA_COMPILER_MSVC_VALUE@
+#define ZANNA_COMPILER_CLANG @ZANNA_COMPILER_CLANG_VALUE@
+#define ZANNA_COMPILER_GCC @ZANNA_COMPILER_GCC_VALUE@
+
+#define ZANNA_BUILD_HAS_GRAPHICS @ZANNA_BUILD_HAS_GRAPHICS@
+#define ZANNA_BUILD_HAS_AUDIO @ZANNA_BUILD_HAS_AUDIO@
+#define ZANNA_BUILD_HAS_GUI @ZANNA_BUILD_HAS_GUI@
+
+#define ZANNA_BUILD_NATIVE_LINK_X86_64 @ZANNA_BUILD_NATIVE_LINK_X86_64@
+#define ZANNA_BUILD_NATIVE_LINK_AARCH64 @ZANNA_BUILD_NATIVE_LINK_AARCH64@
+
+namespace zanna::platform {
+inline constexpr bool kHostWindows = ZANNA_HOST_WINDOWS != 0;
+inline constexpr bool kHostMacOS = ZANNA_HOST_MACOS != 0;
+inline constexpr bool kHostLinux = ZANNA_HOST_LINUX != 0;
+
+inline constexpr bool kCompilerMSVC = ZANNA_COMPILER_MSVC != 0;
+inline constexpr bool kCompilerClang = ZANNA_COMPILER_CLANG != 0;
+inline constexpr bool kCompilerGCC = ZANNA_COMPILER_GCC != 0;
+
+inline constexpr bool kBuildHasGraphics = ZANNA_BUILD_HAS_GRAPHICS != 0;
+inline constexpr bool kBuildHasAudio = ZANNA_BUILD_HAS_AUDIO != 0;
+inline constexpr bool kBuildHasGUI = ZANNA_BUILD_HAS_GUI != 0;
+
+inline constexpr bool kNativeLinkX86_64 = ZANNA_BUILD_NATIVE_LINK_X86_64 != 0;
+inline constexpr bool kNativeLinkAArch64 = ZANNA_BUILD_NATIVE_LINK_AARCH64 != 0;
+
+inline constexpr bool kCanFork = !kHostWindows;
+inline constexpr bool kCanLocalBind = true;
+inline constexpr bool kCanIpv6Loopback = true;
+} // namespace zanna::platform

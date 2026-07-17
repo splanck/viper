@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_advanced.c
-// Purpose: Extended string operations for the Viper runtime. Contains replace,
+// Purpose: Extended string operations for the Zanna runtime. Contains replace,
 //   starts_with/ends_with/has/count, padding, split/join, repeat, UTF-8 string
 //   reversal, and lexicographic comparison functions.
 //
@@ -41,7 +41,7 @@
 #include <string.h>
 
 //===----------------------------------------------------------------------===//
-// Extended String Functions (Viper.String expansion)
+// Extended String Functions (Zanna.String expansion)
 //===----------------------------------------------------------------------===//
 
 /// @brief Replace all occurrences of needle with replacement.
@@ -451,7 +451,7 @@ void *rt_str_lines(rt_string str) {
 }
 
 //=============================================================================
-// Viper.Text.Char — ASCII character classification (identifier rules)
+// Zanna.Text.Char — ASCII character classification (identifier rules)
 //=============================================================================
 
 /// @brief True for an ASCII letter a-z or A-Z.

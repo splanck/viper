@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_exc.c
-// Purpose: Implements the runtime exception object type for the Viper exception
+// Purpose: Implements the runtime exception object type for the Zanna exception
 //          handling system. Provides rt_exception allocation, message access,
 //          and type-tag queries used by the VM and native EH instructions.
 //

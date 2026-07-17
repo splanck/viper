@@ -1,0 +1,93 @@
+module formatting_probe;
+
+// ============================================================================
+// MODULE: formatting_probe
+// PURPOSE: Pure string-in/string-out regression probe for document formatting.
+//
+// WHERE-THIS-FITS: Formatting commands orchestrate editor replacement, while
+//          zia/formatters.zia owns deterministic text transforms. This probe
+//          stays on the transform surface so failures are easy to isolate.
+//
+// TEACHING-NOTE: Formatter tests should cover trivia, strings, comments, and
+//          range boundaries because those are where simple indentation rules fail.
+// ============================================================================
+
+bind "../commands/edit_commands";
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Terminal = Zanna.Terminal;
+
+func lineAt(text: String, idx: Integer) -> String {
+    var lines = Str.Split(text, "\n");
+    if idx < 0 or idx >= Seq.get_Count(lines) { return "<oob>"; }
+    var l = Obj.ToString(Seq.Get(lines, idx));
+    if Str.EndsWith(l, "\r") { l = Str.Left(l, Str.get_Length(l) - 1); }
+    return l;
+}
+
+func expect(got: String, want: String, reason: String) -> Boolean {
+    if got == want { return true; }
+    Terminal.Say("RESULT: fail " + reason + " [got=\"" + got + "\" want=\"" + want + "\"]");
+    return false;
+}
+
+func main() {
+    // --- Zia: comment/string braces must not shift indentation -------------
+    var zia = "func main() {\n/* { */\nvar s = \"}\";\nfoo();\n}\n";
+    var zf = edit_commands.FormatZiaText(zia, 4, true);
+    // The unbalanced '{' lives inside a block comment, the '}' inside a string;
+    // neither may change the indent of the real code below them.
+    if expect(lineAt(zf, 0), "func main() {", "zia open line") == false { return; }
+    if expect(lineAt(zf, 1), "    /* { */", "zia comment line indent") == false { return; }
+    if expect(lineAt(zf, 2), "    var s = \"}\";", "zia string-brace line") == false { return; }
+    if expect(lineAt(zf, 3), "    foo();", "zia body after comment") == false { return; }
+    if expect(lineAt(zf, 4), "}", "zia close line") == false { return; }
+
+    // --- Zia: multi-line block comment interior preserved verbatim ---------
+    var ziaML = "func f() {\n/* start\n        weird   spacing\nend */\ndone();\n}\n";
+    var zml = edit_commands.FormatZiaText(ziaML, 4, true);
+    if expect(lineAt(zml, 2), "        weird   spacing", "zia comment interior verbatim") == false { return; }
+    if expect(lineAt(zml, 4), "    done();", "zia body after multiline comment") == false { return; }
+    if expect(lineAt(zml, 5), "}", "zia close after multiline comment") == false { return; }
+
+    // --- Zia: multi-line call arguments get a hanging continuation indent --
+    var ziaCont = "func f() {\nbar(\na,\nb\n);\n}\n";
+    var zc = edit_commands.FormatZiaText(ziaCont, 4, true);
+    if expect(lineAt(zc, 1), "    bar(", "zia call opener") == false { return; }
+    if expect(lineAt(zc, 2), "        a,", "zia call arg 1 hangs") == false { return; }
+    if expect(lineAt(zc, 3), "        b", "zia call arg 2 hangs") == false { return; }
+    if expect(lineAt(zc, 4), "    );", "zia call closer realigns") == false { return; }
+
+    // --- Zia: leading-dot method chain hangs one level ---------------------
+    var ziaChain = "func g() {\nresult\n.foo()\n.bar();\n}\n";
+    var zch = edit_commands.FormatZiaText(ziaChain, 4, true);
+    if expect(lineAt(zch, 1), "    result", "zia chain receiver") == false { return; }
+    if expect(lineAt(zch, 2), "        .foo()", "zia chain call 1 hangs") == false { return; }
+    if expect(lineAt(zch, 3), "        .bar();", "zia chain call 2 hangs") == false { return; }
+
+    // --- BASIC: nested FOR / IF…THEN / ENDIF / NEXT ------------------------
+    var bas = "FOR i = 1 TO 10\nIF i > 5 THEN\nPRINT i\nENDIF\nNEXT\n";
+    var bf = edit_commands.FormatBasicText(bas, 4, true);
+    if expect(lineAt(bf, 0), "FOR i = 1 TO 10", "basic FOR at col 0") == false { return; }
+    if expect(lineAt(bf, 1), "    IF i > 5 THEN", "basic IF indent") == false { return; }
+    if expect(lineAt(bf, 2), "        PRINT i", "basic IF body indent") == false { return; }
+    if expect(lineAt(bf, 3), "    ENDIF", "basic ENDIF dedent") == false { return; }
+    if expect(lineAt(bf, 4), "NEXT", "basic NEXT dedent") == false { return; }
+
+    // --- BASIC: single-line IF…THEN stmt does NOT open a block -------------
+    var basIf = "FOR i = 1 TO 3\nIF i = 2 THEN PRINT i\nNEXT\n";
+    var bif = edit_commands.FormatBasicText(basIf, 4, true);
+    if expect(lineAt(bif, 1), "    IF i = 2 THEN PRINT i", "basic single-line IF indent") == false { return; }
+    if expect(lineAt(bif, 2), "NEXT", "basic NEXT after single-line IF") == false { return; }
+
+    // --- BASIC: ELSE dedents itself, body stays indented -------------------
+    var basElse = "IF x THEN\na()\nELSE\nb()\nENDIF\n";
+    var bef = edit_commands.FormatBasicText(basElse, 4, true);
+    if expect(lineAt(bef, 1), "    a()", "basic IF body before ELSE") == false { return; }
+    if expect(lineAt(bef, 2), "ELSE", "basic ELSE at IF level") == false { return; }
+    if expect(lineAt(bef, 3), "    b()", "basic ELSE body") == false { return; }
+    if expect(lineAt(bef, 4), "ENDIF", "basic ENDIF after ELSE") == false { return; }
+
+    Terminal.Say("RESULT: ok");
+}

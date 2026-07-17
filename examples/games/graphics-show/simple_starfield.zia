@@ -1,16 +1,16 @@
 module simple_starfield;
 
 // ============================================================================
-// SIMPLE_STARFIELD.VIPER - Standalone Starfield Demo (Integer-Only Version)
+// SIMPLE_STARFIELD.ZANNA - Standalone Starfield Demo (Integer-Only Version)
 // ============================================================================
-// Uses integer math only to work around Viperlang type coercion bugs.
+// Uses integer math only to work around Zannalang type coercion bugs.
 // ============================================================================
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Canvas;
-bind Viper.Graphics.Color;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Canvas;
+bind Zanna.Graphics.Color;
+bind Zanna.Time;
 
 // Color constants
 var BLACK: Integer;
@@ -245,12 +245,12 @@ func run(canvas: Canvas, width: Integer, height: Integer) {
         }
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }
 
 // Main entry point
 func main() {
-    var canvas = Canvas.New("Viper Starfield Demo", 800, 600);
+    var canvas = Canvas.New("Zanna Starfield Demo", 800, 600);
     run(canvas, 800, 600);
 }

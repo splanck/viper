@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Gate (BASIC)
+' API Audit: Zanna.Threads.Gate (BASIC)
 ' =============================================================================
 ' Tests: New, Enter, TryEnter, Leave, LeaveMany, Permits
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Gate ==="
+PRINT "=== API Audit: Zanna.Threads.Gate ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM g AS OBJECT = Viper.Threads.Gate.New(3)
+DIM g AS OBJECT = Zanna.Threads.Gate.New(3)
 PRINT "Created gate with 3 permits"
 
 ' --- Permits (initial) ---
@@ -54,7 +54,7 @@ g.Leave()
 
 ' --- New with 1 permit (mutex-like) ---
 PRINT "--- New with 1 permit (mutex-like) ---"
-DIM mutex AS OBJECT = Viper.Threads.Gate.New(1)
+DIM mutex AS OBJECT = Zanna.Threads.Gate.New(1)
 PRINT "Permits: "; mutex.Permits
 mutex.Enter()
 PRINT "Permits after Enter: "; mutex.Permits
@@ -65,7 +65,7 @@ PRINT "Permits after Leave: "; mutex.Permits
 
 ' --- New with 0 permits ---
 PRINT "--- New with 0 permits ---"
-DIM empty AS OBJECT = Viper.Threads.Gate.New(0)
+DIM empty AS OBJECT = Zanna.Threads.Gate.New(0)
 PRINT "Permits: "; empty.Permits
 DIM ok5 AS INTEGER = empty.TryEnter()
 PRINT "TryEnter (0 permits): "; ok5

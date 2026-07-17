@@ -13,8 +13,8 @@
 // =============================================================================
 module hud;
 
-bind Viper.Graphics3D as G3D;
-bind Viper.Math as Math;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../core/strings" as S;

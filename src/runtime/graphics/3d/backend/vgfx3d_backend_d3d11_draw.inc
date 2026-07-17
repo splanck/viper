@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc  (#included from
 // vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 draw state,
 // constant-buffer packing, pipeline binding, and draw submission
@@ -162,7 +162,7 @@ static int d3d11_sampler_wrap_index(int32_t mode) {
     return 0;
 }
 
-/// @brief Map a Viper wrap-mode index (returned by d3d11_wrap_mode_index) to the
+/// @brief Map a Zanna wrap-mode index (returned by d3d11_wrap_mode_index) to the
 ///        corresponding D3D11_TEXTURE_ADDRESS_MODE enum value.
 /// @details index 1 → CLAMP, index 2 → MIRROR, any other value → WRAP (default repeat).
 static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # File: tests/golden/check_run_exit_code.cmake
-# Purpose: Run a Viper program and verify exit code/output for EndProgram tests.
+# Purpose: Run a Zanna program and verify exit code/output for EndProgram tests.
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

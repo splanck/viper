@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Resolve an optional runtime parent-container handle.
 /// @details A NULL parent deliberately creates a detached widget. A non-NULL invalid or stale
@@ -593,4 +593,4 @@ int64_t rt_colorpicker_get_revision(void *picker) {
     return 0;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

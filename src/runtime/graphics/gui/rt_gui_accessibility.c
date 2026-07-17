@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_accessibility.c
@@ -34,7 +34,7 @@
 #include "rt_map.h"
 #include "rt_seq.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Release one local reference to a managed runtime object.
 /// @param object Managed object pointer; NULL is ignored.
@@ -293,7 +293,7 @@ static bool rt_gui_accessibility_push_frame(rt_gui_accessibility_frame_t **frame
 void *rt_accessibility_snapshot(void *root) {
     RT_ASSERT_MAIN_THREAD();
     void *empty = NULL;
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *root_widget = rt_gui_widget_handle_checked(root);
     if (!root_widget) {
         empty = rt_map_new();
@@ -361,7 +361,7 @@ void *rt_accessibility_snapshot(void *root) {
 #endif
 }
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Convert a runtime UTF-8 string to a temporary NUL-terminated copy and invoke a setter.
 /// @param widget Runtime widget handle.
@@ -395,7 +395,7 @@ static rt_string rt_gui_accessibility_get_widget_string(
 /// @brief Set a widget's stable semantic role.
 void rt_widget_set_accessible_role(void *widget, int64_t role) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     if (resolved) {
         vg_widget_set_accessible_role(resolved, (vg_accessible_role_t)role);
@@ -410,7 +410,7 @@ void rt_widget_set_accessible_role(void *widget, int64_t role) {
 /// @brief Return a widget's stable semantic role or none for invalid handles.
 int64_t rt_widget_get_accessible_role(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     return resolved ? (int64_t)vg_widget_get_accessible_role(resolved) : 0;
 #else
@@ -422,7 +422,7 @@ int64_t rt_widget_get_accessible_role(void *widget) {
 /// @brief Set or clear a widget's explicit accessible name.
 void rt_widget_set_accessible_name(void *widget, rt_string name) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_accessibility_set_widget_string(widget, name, vg_widget_set_accessible_name);
     rt_gui_accessibility_notify_widget(rt_gui_widget_handle_checked(widget));
 #else
@@ -434,7 +434,7 @@ void rt_widget_set_accessible_name(void *widget, rt_string name) {
 /// @brief Return a widget's explicit accessible name as an owned runtime string.
 rt_string rt_widget_get_accessible_name(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     return rt_gui_accessibility_get_widget_string(widget, vg_widget_get_accessible_name);
 #else
     (void)widget;
@@ -445,7 +445,7 @@ rt_string rt_widget_get_accessible_name(void *widget) {
 /// @brief Set or clear a widget's accessible description.
 void rt_widget_set_accessible_description(void *widget, rt_string description) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_accessibility_set_widget_string(
         widget, description, vg_widget_set_accessible_description);
     rt_gui_accessibility_notify_widget(rt_gui_widget_handle_checked(widget));
@@ -458,7 +458,7 @@ void rt_widget_set_accessible_description(void *widget, rt_string description) {
 /// @brief Return a widget's accessible description as an owned runtime string.
 rt_string rt_widget_get_accessible_description(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     return rt_gui_accessibility_get_widget_string(widget, vg_widget_get_accessible_description);
 #else
     (void)widget;
@@ -469,7 +469,7 @@ rt_string rt_widget_get_accessible_description(void *widget) {
 /// @brief Set or clear a widget's explicit accessible value.
 void rt_widget_set_accessible_value(void *widget, rt_string value) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_accessibility_set_widget_string(widget, value, vg_widget_set_accessible_value);
     rt_gui_accessibility_notify_widget(rt_gui_widget_handle_checked(widget));
 #else
@@ -481,7 +481,7 @@ void rt_widget_set_accessible_value(void *widget, rt_string value) {
 /// @brief Return a widget's explicit accessible value as an owned runtime string.
 rt_string rt_widget_get_accessible_value(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     return rt_gui_accessibility_get_widget_string(widget, vg_widget_get_accessible_value);
 #else
     (void)widget;
@@ -492,7 +492,7 @@ rt_string rt_widget_get_accessible_value(void *widget) {
 /// @brief Install a same-tree, non-owning accessibility label relationship.
 void rt_widget_set_accessible_label_for(void *widget, void *target) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     vg_widget_t *resolved_target = rt_gui_widget_handle_checked(target);
     if (resolved && resolved_target) {
@@ -508,7 +508,7 @@ void rt_widget_set_accessible_label_for(void *widget, void *target) {
 /// @brief Clear a widget's non-owning accessibility label relationship.
 void rt_widget_clear_accessible_label_for(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     if (resolved) {
         (void)vg_widget_set_accessible_label_for(resolved, NULL);
@@ -522,7 +522,7 @@ void rt_widget_clear_accessible_label_for(void *widget) {
 /// @brief Set a widget's default live-region urgency.
 void rt_widget_set_live_region(void *widget, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     if (resolved) {
         vg_widget_set_live_region(resolved, (vg_live_region_mode_t)mode);
@@ -537,7 +537,7 @@ void rt_widget_set_live_region(void *widget, int64_t mode) {
 /// @brief Return a widget's default live-region urgency.
 int64_t rt_widget_get_live_region(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     return resolved ? (int64_t)vg_widget_get_live_region(resolved) : 0;
 #else
@@ -549,7 +549,7 @@ int64_t rt_widget_get_live_region(void *widget) {
 /// @brief Return a widget's non-consuming monotonic revision.
 int64_t rt_widget_get_revision(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     uint64_t revision = resolved ? vg_widget_get_revision(resolved) : 0;
     return revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)revision;
@@ -562,7 +562,7 @@ int64_t rt_widget_get_revision(void *widget) {
 /// @brief Enable or disable the active app's deterministic high-contrast palette.
 void rt_accessibility_set_high_contrast(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     int32_t normalized = enabled != 0;
     if (!app || app->accessibility_high_contrast == normalized)
@@ -580,7 +580,7 @@ void rt_accessibility_set_high_contrast(int64_t enabled) {
 /// @brief Return the active app's explicit high-contrast preference.
 int64_t rt_accessibility_is_high_contrast(void) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     return app && app->accessibility_high_contrast ? 1 : 0;
 #else
@@ -591,7 +591,7 @@ int64_t rt_accessibility_is_high_contrast(void) {
 /// @brief Enable or disable the active app's reduced-motion preference.
 void rt_accessibility_set_reduced_motion(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     int32_t normalized = enabled != 0;
     if (!app || app->accessibility_reduced_motion == normalized)
@@ -609,7 +609,7 @@ void rt_accessibility_set_reduced_motion(int64_t enabled) {
 /// @brief Return the active app's explicit reduced-motion preference.
 int64_t rt_accessibility_is_reduced_motion(void) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     return app && app->accessibility_reduced_motion ? 1 : 0;
 #else
@@ -619,9 +619,9 @@ int64_t rt_accessibility_is_reduced_motion(void) {
 
 /// @brief Return the native platform high-contrast preference when available.
 /// @details Native projection hooks are deliberately optional; zero is the deterministic fallback
-///          until the selected ViperGFX backend reports a preference.
+///          until the selected ZannaGFX backend reports a preference.
 int64_t rt_accessibility_get_system_high_contrast(void) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     return rt_gui_accessibility_platform_high_contrast(app ? app->window : NULL);
 #else
@@ -631,9 +631,9 @@ int64_t rt_accessibility_get_system_high_contrast(void) {
 
 /// @brief Return the native platform reduced-motion preference when available.
 /// @details Native projection hooks are deliberately optional; zero is the deterministic fallback
-///          until the selected ViperGFX backend reports a preference.
+///          until the selected ZannaGFX backend reports a preference.
 int64_t rt_accessibility_get_system_reduced_motion(void) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_gui_app_t *app = rt_gui_get_active_app();
     return rt_gui_accessibility_platform_reduced_motion(app ? app->window : NULL);
 #else
@@ -644,7 +644,7 @@ int64_t rt_accessibility_get_system_reduced_motion(void) {
 /// @brief Record a live-region announcement in the widget semantic tree.
 void rt_accessibility_announce(void *widget, rt_string text, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     vg_widget_t *resolved = rt_gui_widget_handle_checked(widget);
     if (!resolved || rt_string_contains_nul(text))
         return;

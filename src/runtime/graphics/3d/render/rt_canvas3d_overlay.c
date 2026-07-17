@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_canvas3d_overlay.c
 // Purpose: Canvas3D screen-space overlay, screenshot, and debug-draw helpers.
-//   Implements Viper.Graphics3D.Canvas3D's debug visualizers (lines, points,
+//   Implements Zanna.Graphics3D.Canvas3D's debug visualizers (lines, points,
 //   AABB / sphere wireframes, axis gizmos), HUD primitives (rect, crosshair,
 //   text), backend-capability queries, and the screenshot capture path.
 //
@@ -30,7 +30,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -966,7 +966,7 @@ static int canvas3d_backend_supports_clustered_lighting(const vgfx3d_backend_t *
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
+#if RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif
@@ -988,7 +988,7 @@ static int canvas3d_backend_supports_shadow_csm(const vgfx3d_backend_t *backend)
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
+#if RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif
@@ -1873,4 +1873,4 @@ void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
 
 #else
 typedef int rt_canvas3d_overlay_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

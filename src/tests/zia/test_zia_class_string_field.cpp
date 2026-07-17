@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -93,7 +93,7 @@ class Wrapper {
 func start() {    var w = new Wrapper();
     w.name = "hello";
     var s = w.name;
-    Viper.Terminal.Say(s);
+    Zanna.Terminal.Say(s);
 }
 )";
     auto result = compileSource(sm, source);
@@ -125,7 +125,7 @@ func makeResult() -> Result {    var r = new Result();
 func start() {    var r = makeResult();
     if r.success == false {
         var msg = "Error: " + r.message;
-        Viper.Terminal.Say(msg);
+        Zanna.Terminal.Say(msg);
     }
 }
 )";
@@ -150,8 +150,8 @@ struct Pair {
 func start() {    var p = new Pair();
     p.key = "name";
     p.val = "Alice";
-    Viper.Terminal.Say(p.key);
-    Viper.Terminal.Say(p.val);
+    Zanna.Terminal.Say(p.key);
+    Zanna.Terminal.Say(p.val);
 }
 )";
     auto result = compileSource(sm, source);
@@ -180,7 +180,7 @@ func start() {    var o = new Outer();
     o.inner = new Inner();
     o.inner.text = "nested";
     var s = o.inner.text;
-    Viper.Terminal.Say(s);
+    Zanna.Terminal.Say(s);
 }
 )";
     auto result = compileSource(sm, source);
@@ -205,7 +205,7 @@ class Counter {
 func start() {    var c = new Counter();
     c.count = 42;
     c.active = true;
-    Viper.Terminal.SayInt(c.count);
+    Zanna.Terminal.SayInt(c.count);
 }
 )";
     auto result = compileSource(sm, source);
@@ -219,5 +219,5 @@ func start() {    var c = new Counter();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

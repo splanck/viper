@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 namespace {
 
 using il::core::BasicBlock;
@@ -188,7 +188,7 @@ static void ensureExtern(Module &module, std::string name, Type retType, std::ve
         if (ext.name != name)
             continue;
         if (!externSignatureMatches(ext, retType, params)) {
-            VIPER_ICE("native EH runtime extern '" + name +
+            ZANNA_ICE("native EH runtime extern '" + name +
                       "' already exists with a different "
                       "signature");
         }
@@ -380,7 +380,7 @@ static void seedEntryStack(std::vector<std::optional<std::vector<int>>> &entrySt
                            const std::vector<int> &stack) {
     if (entryStacks[blockIndex].has_value()) {
         if (*entryStacks[blockIndex] != stack) {
-            VIPER_ICE("native EH stack mismatch at CFG join for block index " +
+            ZANNA_ICE("native EH stack mismatch at CFG join for block index " +
                       std::to_string(blockIndex));
         }
         return;
@@ -464,7 +464,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 continue;
             hasEh = true;
             if (instr.op == Opcode::EhPush && instr.labels.empty()) {
-                VIPER_ICE(
+                ZANNA_ICE(
                     "native EH lowering encountered eh.push without a handler label in block '" +
                     bb.label + "'");
             }
@@ -685,7 +685,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                  instr.op == Opcode::ResumeNext) &&
                 handlerSiteParam.find(orig.label) != handlerSiteParam.end()) {
                 if (ii + 1 != orig.instructions.size()) {
-                    VIPER_ICE("native EH lowering encountered resume before the end of block '" +
+                    ZANNA_ICE("native EH lowering encountered resume before the end of block '" +
                               orig.label + "'");
                 }
                 rewritten.changed = true;
@@ -795,7 +795,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 const std::string &siteLabel = site.sameLabel;
                 const bool isTerm = il::verify::isTerminator(instr.op);
                 if (isTerm && ii + 1 != orig.instructions.size()) {
-                    VIPER_ICE(
+                    ZANNA_ICE(
                         "native EH lowering encountered terminator before the end of block '" +
                         orig.label + "'");
                 }
@@ -879,4 +879,4 @@ std::optional<std::string> findResidualStructuredEh(const Module &module) {
     return std::nullopt;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

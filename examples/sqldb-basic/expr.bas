@@ -1,5 +1,5 @@
 ' expr.bas - Expression Types
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "schema.bas"
 

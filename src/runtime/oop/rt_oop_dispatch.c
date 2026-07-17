@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_oop_dispatch.c
-// Purpose: Implements virtual method dispatch (vtable lookup) for the Viper OOP
+// Purpose: Implements virtual method dispatch (vtable lookup) for the Zanna OOP
 //          runtime. Objects carry a vptr to their class vtable; dispatch reads
 //          the function pointer at the requested slot index and calls it.
 //

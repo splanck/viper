@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_json_parse.c
-// Purpose: JSON parsing for the Viper.Text.Json class per ECMA-404 / RFC 8259.
-//          Recursive-descent parser that maps JSON types to Viper runtime
+// Purpose: JSON parsing for the Zanna.Text.Json class per ECMA-404 / RFC 8259.
+//          Recursive-descent parser that maps JSON types to Zanna runtime
 //          types: null→NULL, bool→Box.I1, number→Box.F64, string→String,
 //          array→Seq, object→Map<String,*>.
 //
@@ -782,9 +782,9 @@ static void *parse_value(json_parser *p) {
 // Public API
 //=============================================================================
 
-/// @brief Parses a JSON string into a Viper value.
+/// @brief Parses a JSON string into a Zanna value.
 ///
-/// Parses any valid JSON text and returns the corresponding Viper value.
+/// Parses any valid JSON text and returns the corresponding Zanna value.
 /// The return type depends on the JSON content:
 /// - Objects become Map (string-keyed)
 /// - Arrays become Seq

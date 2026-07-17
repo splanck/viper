@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,14 +43,14 @@
 //
 // WIDGETS USED
 // ------------
-//   * `Viper.Game.UI.ButtonGroup` — a set of buttons with
+//   * `Zanna.Game.UI.ButtonGroup` — a set of buttons with
 //     cursor / keyboard / gamepad focus traversal built in.
-//   * `Viper.Game.UI.HudMenuList` — vertical menu with
+//   * `Zanna.Game.UI.HudMenuList` — vertical menu with
 //     highlight, wrap, and accept/cancel events.
-//   * `Viper.IO.SaveData` — persistent high-score table.
+//   * `Zanna.IO.SaveData` — persistent high-score table.
 //
 // Each menu screen is one `ButtonGroup` + one `HudMenuList`.
-// Input is piped in via `Viper.Input.Action.Pressed(...)`;
+// Input is piped in via `Zanna.Input.Action.Pressed(...)`;
 // the widget raises an "activated" event and this file
 // dispatches to the next state.
 //
@@ -60,8 +60,8 @@
 //                    delegates update + draw to this file.
 //     save.zia  ──►  supplies per-slot summaries for the
 //                    level-select screen.
-//     Viper.Game.UI.* ──► widget runtime.
-//     Viper.Input.Action ──► named-input bindings.
+//     Zanna.Game.UI.* ──► widget runtime.
+//     Zanna.Input.Action ──► named-input bindings.
 //
 // HOW TO READ THIS FILE
 // ---------------------
@@ -75,16 +75,16 @@
 
 module menu;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
-bind Viper.IO;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.IO;
+bind Zanna.Game;
 bind "./accessibility";
-bind Viper.Game.UI;
-bind Viper.Math.PerlinNoise as PerlinNoise;  // Parallax nebula noise (#1)
-bind Viper.Core;           // Convert.NumToInt for noise->int
+bind Zanna.Game.UI;
+bind Zanna.Math.PerlinNoise as PerlinNoise;  // Parallax nebula noise (#1)
+bind Zanna.Core;           // Convert.NumToInt for noise->int
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -599,7 +599,7 @@ class MenuSystem {
                         menuY + TITLE_MENU_ROW_STEP * 6, titleBG);
 
         // Version + attribution
-        canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
+        canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Zanna + Zia", pal.hudGray, 2);
     }
 
     /// @brief Draw the title-screen bottom diorama.
@@ -1479,10 +1479,10 @@ class MenuSystem {
         canvas.TextCenteredScaled(126, "The Descent", pal.titleOrange, 2);
 
         var y = 210;
-        canvas.TextCenteredScaled(y, "Built with Viper + Zia", pal.white, 2);
+        canvas.TextCenteredScaled(y, "Built with Zanna + Zia", pal.white, 2);
         canvas.TextCenteredScaled(y + 50, "Programming, procedural art, audio, and systems",
                                   pal.hudGray, 2);
-        canvas.TextCenteredScaled(y + 92, "Viper Project", pal.crystalBlue, 2);
+        canvas.TextCenteredScaled(y + 92, "Zanna Project", pal.crystalBlue, 2);
         canvas.TextCenteredScaled(y + 132,
                                   "Original key art and ARIA portrait commissioned for XENOSCAPE",
                                   pal.hudGray, 1);

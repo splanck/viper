@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Seed read-only entries for built-in namespaced runtime types.
 // Key invariants:
 //   - Entries are catalog-only (no methods/fields exposed yet).
-//   - Qualified names live under the reserved root 'Viper'.
+//   - Qualified names live under the reserved root 'Zanna'.
 //   - Seeding registers namespaces and class/interface names in NamespaceRegistry.
 // Ownership/Lifetime: Seeding writes into a caller-owned NamespaceRegistry.
 // Links: docs/internals/codemap.md
@@ -53,7 +53,7 @@ enum class TypeKind {
 
 /// @brief Registry of known type names discovered from the runtime class catalog.
 /// @details Provides case-insensitive lookup. BASIC alias "STRING" resolves to
-///          the same entry as "Viper.String".
+///          the same entry as "Zanna.String".
 class TypeRegistry {
   public:
     /// @brief Register all runtime classes as BuiltinExternalType entries.

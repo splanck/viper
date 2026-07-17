@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,21 +8,21 @@
 // File: src/runtime/io/rt_file_path.c
 // Purpose: Translates BASIC runtime file mode descriptors into platform-specific
 //          strings and open(2) flag combinations. Also exposes borrow helpers
-//          that provide C string views into runtime-managed ViperString handles
+//          that provide C string views into runtime-managed ZannaString handles
 //          without copying the underlying data.
 //
 // Key invariants:
 //   - Mode conversion routines return NULL or false on invalid input; no partial
 //     results are produced.
-//   - Borrowed string views are valid only for the lifetime of the ViperString
+//   - Borrowed string views are valid only for the lifetime of the ZannaString
 //     handle they were derived from; callers must not cache the raw pointer.
 //   - O_CLOEXEC is defined to 0 on platforms that lack it, ensuring safe use.
 //   - Every RT_F_* mode enumerator maps to exactly one fopen mode string.
 //
 // Ownership/Lifetime:
 //   - Borrowed string views do not transfer ownership; callers retain the
-//     reference count on the originating ViperString objects.
-//   - Callers must release ViperString handles through the standard ref-count
+//     reference count on the originating ZannaString objects.
+//   - Callers must release ZannaString handles through the standard ref-count
 //     API; the borrow helpers here do not affect reference counts.
 //
 // Links: src/runtime/io/rt_file_path.h (public API),
@@ -142,15 +142,15 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
     return 1;
 }
 
-/// @brief Obtain a borrowed C string view from a @ref ViperString path value.
+/// @brief Obtain a borrowed C string view from a @ref ZannaString path value.
 /// @details Validates the @p path handle and, when successful, updates
 ///          @p out_path to point at the underlying UTF-8 character buffer.
 ///          Ownership is not transferred; callers must ensure the
-///          @ref ViperString remains alive for the duration of the borrow.
+///          @ref ZannaString remains alive for the duration of the borrow.
 /// @param path Runtime string handle describing a filesystem path.
 /// @param out_path Optional output pointer updated to the borrowed C string.
 /// @return `true` when the path handle is valid, otherwise `false`.
-int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
+int8_t rt_file_path_from_vstr(const ZannaString *path, const char **out_path) {
     if (out_path)
         *out_path = NULL;
     if (!path || !rt_string_is_handle(path) || !path->data)
@@ -165,17 +165,17 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
     return 1;
 }
 
-/// @brief Provide a byte-oriented view over a @ref ViperString buffer.
+/// @brief Provide a byte-oriented view over a @ref ZannaString buffer.
 /// @details Extracts a pointer to the underlying string data and reports its
 ///          length without copying.  Heap-backed strings derive their length via
 ///          @ref rt_heap_len, while literal strings return the stored
-///          @ref ViperString::literal_len value.  Callers must not mutate the
+///          @ref ZannaString::literal_len value.  Callers must not mutate the
 ///          returned data.
 /// @param s Runtime string handle to view.
 /// @param data_out Optional output pointer updated to the raw byte buffer.
 /// @return The number of bytes referenced by the string, or zero when the
 ///         handle is invalid.
-size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
+size_t rt_file_string_view(const ZannaString *s, const uint8_t **data_out) {
     if (data_out)
         *data_out = NULL;
     if (!s || !rt_string_is_handle(s) || !s->data)
@@ -187,7 +187,7 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
     return s->literal_len;
 }
 
-size_t rt_file_string_require_view(const ViperString *s,
+size_t rt_file_string_require_view(const ZannaString *s,
                                    const uint8_t **data_out,
                                    const char *context) {
     if (data_out)
@@ -225,7 +225,7 @@ wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
     return wide;
 }
 
-/// @brief Convert a wide-char string to a Viper `rt_string` (UTF-8 encoded).
+/// @brief Convert a wide-char string to a Zanna `rt_string` (UTF-8 encoded).
 ///
 /// Two-pass conversion: first call with NULL output buffer to size
 /// the target, then allocate and fill. Returns `rt_str_empty()` on

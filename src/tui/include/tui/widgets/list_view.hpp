@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the ListView widget for Viper's TUI framework.
+// This file declares the ListView widget for Zanna's TUI framework.
 // ListView displays a vertical scrollable list of string items with
 // keyboard navigation and selection support.
 //
@@ -34,7 +34,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Vertical scrollable list widget with keyboard navigation and selection.
 /// @details Displays a list of string items with cursor-based navigation (Up/Down),
@@ -80,4 +80,4 @@ class ListView : public ui::Widget {
     void selectRange(int a, int b);
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

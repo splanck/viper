@@ -28,7 +28,7 @@ Add `Canvas3D.TrySetClusteredLighting(enabled: Boolean) -> Boolean`.
 
 The method applies the requested state and returns `true` when it succeeds. It
 returns `false` instead of trapping when the canvas is invalid, Graphics3D is not
-compiled in, clustered lighting is blocked by `VIPER_3D_CLUSTERS=0`, or the
+compiled in, clustered lighting is blocked by `ZANNA_3D_CLUSTERS=0`, or the
 active backend does not support clustered lighting. Disabling clustered lighting
 on a valid canvas succeeds.
 

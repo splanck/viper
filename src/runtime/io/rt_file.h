@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -107,7 +107,7 @@ enum RtFileMode {
 /// @param mode Mode enumerator matching BASIC OPEN semantics.
 /// @param channel Numeric channel identifier provided by the caller.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
-int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel);
+int32_t rt_open_err_vstr(ZannaString *path, int32_t mode, int32_t channel);
 
 /// @brief Close the runtime file associated with @p channel when present.
 /// @param channel Numeric channel identifier previously passed to OPEN.
@@ -118,19 +118,19 @@ int32_t rt_close_err(int32_t channel);
 /// @param channel Numeric channel identifier previously passed to OPEN.
 /// @param s Runtime string to write; NULL or invalid strings return Err_InvalidOperation.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
-int32_t rt_write_ch_err(int32_t channel, ViperString *s);
+int32_t rt_write_ch_err(int32_t channel, ZannaString *s);
 
 /// @brief Write @p s to the file bound to @p channel followed by a newline.
 /// @param channel Numeric channel identifier previously passed to OPEN.
 /// @param s Runtime string to write; NULL or invalid strings return Err_InvalidOperation.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
-int32_t rt_println_ch_err(int32_t channel, ViperString *s);
+int32_t rt_println_ch_err(int32_t channel, ZannaString *s);
 
 /// @brief Read a line of text from @p channel into a newly allocated runtime string.
 /// @param channel Numeric channel identifier previously passed to OPEN FOR INPUT.
 /// @param out Receives allocated string on success; set to NULL on failure.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
-int32_t rt_line_input_ch_err(int32_t channel, ViperString **out);
+int32_t rt_line_input_ch_err(int32_t channel, ZannaString **out);
 
 /// @brief Query the file descriptor associated with @p channel.
 /// @param channel Numeric channel identifier previously passed to OPEN.

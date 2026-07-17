@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "tui/render/box.hpp"
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 
 void drawBox(ScreenBuffer &sb,
              int x,
@@ -76,4 +76,4 @@ void drawBox(ScreenBuffer &sb,
     }
 }
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

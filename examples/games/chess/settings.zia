@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,13 +13,13 @@
 // Ownership/Lifetime:
 //   - ChessGame owns one ChessSettings instance for the app lifetime.
 //   - SaveData owns cross-platform persistence for the "chess-settings" key.
-// Links: examples/games/chess/ui/game.zia, docs/viperlib/game/persistence.md
+// Links: examples/games/chess/ui/game.zia, docs/zannalib/game/persistence.md
 //
 //===----------------------------------------------------------------------===//
 
 module settings;
 
-bind Viper.IO;
+bind Zanna.IO;
 
 final BOARD_TOURNAMENT = 0;
 final BOARD_SLATE = 1;

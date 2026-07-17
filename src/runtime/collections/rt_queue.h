@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_queue.h
-// Purpose: Runtime-backed FIFO queue for Viper.Collections.Queue, providing enqueue/dequeue/peek
+// Purpose: Runtime-backed FIFO queue for Zanna.Collections.Queue, providing enqueue/dequeue/peek
 // with automatic growth and O(1) operations.
 //
 // Key invariants:
@@ -95,7 +95,7 @@ void *rt_queue_try_pop(void *obj);
 ///          element is removed. A stored NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_queue_try_pop.
 /// @param obj Opaque Queue object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_queue_try_pop_option(void *obj);
 
 /// @brief Create a shallow copy of the queue.

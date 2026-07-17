@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,9 +45,9 @@
 #include <unordered_map>
 #include <vector>
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 #include <windows.h>
-#elif VIPER_HOST_MACOS
+#elif ZANNA_HOST_MACOS
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <stdlib.h>
@@ -57,34 +57,34 @@
 #include <unistd.h>
 #endif
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 namespace {
 
 /// @brief Build the platform-correct archive filename for a given library base.
 /// @details Produces `<base>.lib` on Windows and `lib<base>.a` elsewhere; the
 ///          base name should not include any prefix or extension.
 std::string archiveFileName(std::string_view libBaseName) {
-    if constexpr (viper::platform::kHostWindows)
+    if constexpr (zanna::platform::kHostWindows)
         return std::string(libBaseName) + ".lib";
     return "lib" + std::string(libBaseName) + ".a";
 }
 
-/// @brief Probe whether @p dir looks like an installed Viper lib directory.
-/// @details Tests for the presence of libviper_rt_base, the always-required
+/// @brief Probe whether @p dir looks like an installed Zanna lib directory.
+/// @details Tests for the presence of libzanna_rt_base, the always-required
 ///          base archive, as a low-cost fingerprint for an installed layout.
 bool dirHasArchiveProbe(const std::filesystem::path &dir) {
-    return fileExists(dir / archiveFileName("viper_rt_base"));
+    return fileExists(dir / archiveFileName("zanna_rt_base"));
 }
 
-/// @brief Resolve an installed library directory supplied through VIPER_LIB_PATH.
-/// @details VIPER_LIB_PATH may point either at an archive file or at the directory
+/// @brief Resolve an installed library directory supplied through ZANNA_LIB_PATH.
+/// @details ZANNA_LIB_PATH may point either at an archive file or at the directory
 ///          containing the installed runtime/support archives. The probe normalizes
 ///          file inputs to their parent directory and only accepts directories that
-///          contain the always-required viper_rt_base archive.
+///          contain the always-required zanna_rt_base archive.
 /// @return The normalized installed library directory, or std::nullopt when the
-///         environment variable is absent or does not identify a Viper install.
+///         environment variable is absent or does not identify a Zanna install.
 std::optional<std::filesystem::path> configuredInstalledLibDir() {
-    if (const char *env = std::getenv("VIPER_LIB_PATH")) {
+    if (const char *env = std::getenv("ZANNA_LIB_PATH")) {
         std::filesystem::path candidate(env);
         std::error_code dirEc;
         if (fileExists(candidate) && !std::filesystem::is_directory(candidate, dirEc))
@@ -117,25 +117,25 @@ std::optional<std::filesystem::path> installedLibraryPathInDir(
 ///          frontend/editor archives under src/frontends/zia, and the Zia
 ///          static-link closure (the IL build/verify/transform/runtime/core/
 ///          support archives pulled when IntelliSense is embedded in a
-///          codegen'd binary) directly under src/ (viper_support under
+///          codegen'd binary) directly under src/ (zanna_support under
 ///          src/support).
 std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
-    if (libBaseName == "vipergui")
+    if (libBaseName == "zannagui")
         return std::filesystem::path("src") / "lib" / "gui";
-    if (libBaseName == "viper_text_core")
+    if (libBaseName == "zanna_text_core")
         return std::filesystem::path("src") / "common" / "text";
     if (libBaseName == "fe_common")
         return std::filesystem::path("src") / "frontends" / "common";
     if (libBaseName == "fe_zia" || libBaseName == "zia_editor_services")
         return std::filesystem::path("src") / "frontends" / "zia";
-    if (libBaseName == "viper_support")
+    if (libBaseName == "zanna_support")
         return std::filesystem::path("src") / "support";
-    if (libBaseName == "viper_il_io")
+    if (libBaseName == "zanna_il_io")
         return std::filesystem::path("src") / "il" / "io";
     if (libBaseName == "il_build" || libBaseName == "il_transform" || libBaseName == "il_runtime" ||
         libBaseName == "il_analysis" || libBaseName == "il_utils" || libBaseName == "il_api" ||
-        libBaseName == "viper_il_core" || libBaseName == "viper_il_verify" ||
-        libBaseName == "viper_pass")
+        libBaseName == "zanna_il_core" || libBaseName == "zanna_il_verify" ||
+        libBaseName == "zanna_pass")
         return std::filesystem::path("src");
     return std::filesystem::path("lib");
 }
@@ -154,10 +154,10 @@ std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
             configs.push_back(std::move(config));
     };
 
-    if (const char *env = std::getenv("VIPER_BUILD_TYPE"))
+    if (const char *env = std::getenv("ZANNA_BUILD_TYPE"))
         append(env);
 
-    if constexpr (viper::platform::kCompilerMSVC) {
+    if constexpr (zanna::platform::kCompilerMSVC) {
 #if defined(NDEBUG)
         append("Release");
         append("RelWithDebInfo");
@@ -194,7 +194,7 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
                                                   std::string_view libBaseName) {
     const std::filesystem::path subdir = supportLibBuildSubdir(libBaseName);
     const std::string archive = archiveFileName(libBaseName);
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         std::vector<std::filesystem::path> candidates;
         for (const auto &config : preferredBuildConfigs())
             candidates.push_back(buildDir / subdir / config / archive);
@@ -291,14 +291,14 @@ static std::optional<std::filesystem::path> windowsMsvcToolsetFromCMakeCache(
     return std::nullopt;
 }
 
-/// @brief Return the platform's standard library search dirs for installed Viper.
-/// @details macOS uses /usr/local/viper/lib; Linux walks the usual /usr/{,local}
+/// @brief Return the platform's standard library search dirs for installed Zanna.
+/// @details macOS uses /usr/local/zanna/lib; Linux walks the usual /usr/{,local}
 ///          tree; Windows returns an empty list (everything is co-located).
 std::vector<std::filesystem::path> standardInstalledLibDirs() {
     std::vector<std::filesystem::path> dirs;
-    if constexpr (viper::platform::kHostMacOS) {
-        dirs.emplace_back("/usr/local/viper/lib");
-    } else if constexpr (!viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostMacOS) {
+        dirs.emplace_back("/usr/local/zanna/lib");
+    } else if constexpr (!zanna::platform::kHostWindows) {
         dirs.emplace_back("/usr/lib");
         dirs.emplace_back("/usr/local/lib");
         dirs.emplace_back("/usr/lib64");
@@ -326,16 +326,16 @@ void rebuildRequiredArchives(LinkContext &ctx) {
     }
 }
 
-/// @brief Check whether the build tree was configured with the viperaud backend.
+/// @brief Check whether the build tree was configured with the zannaaud backend.
 /// @details The audio support library only exists when configure found a
 ///          platform backend (ALSA/CoreAudio/WASAPI). `src/lib/audio` records
-///          the decision as VIPERAUD_AVAILABLE in CMakeCache.txt; when it is
-///          OFF, the `viperaud` target does not exist and must not be requested
+///          the decision as ZANNAAUD_AVAILABLE in CMakeCache.txt; when it is
+///          OFF, the `zannaaud` target does not exist and must not be requested
 ///          from `cmake --build`. Missing cache information defaults to
 ///          available so configured trees keep their historical behavior.
 /// @param buildDir CMake build directory backing the link context.
 /// @return False only when the cache explicitly records the backend as absent.
-static bool viperaudAvailable(const std::filesystem::path &buildDir) {
+static bool zannaaudAvailable(const std::filesystem::path &buildDir) {
     if (buildDir.empty())
         return true;
     std::ifstream cache(buildDir / "CMakeCache.txt");
@@ -343,7 +343,7 @@ static bool viperaudAvailable(const std::filesystem::path &buildDir) {
         return true;
     std::string line;
     while (std::getline(cache, line)) {
-        if (line.rfind("VIPERAUD_AVAILABLE:", 0) == 0)
+        if (line.rfind("ZANNAAUD_AVAILABLE:", 0) == 0)
             return line.find("=OFF") == std::string::npos;
     }
     return true;
@@ -363,24 +363,24 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
             missingTargets.push_back(tgt);
     }
     if (hasComponent(ctx, RtComponent::Graphics)) {
-        const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "vipergfx");
+        const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "zannagfx");
         if (!fileExists(gfxLib))
-            missingTargets.push_back("vipergfx");
-        const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
+            missingTargets.push_back("zannagfx");
+        const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "zannagui");
         if (!fileExists(guiLib))
-            missingTargets.push_back("vipergui");
+            missingTargets.push_back("zannagui");
         const std::filesystem::path textCoreLib =
-            supportLibraryPath(ctx.buildDir, "viper_text_core");
+            supportLibraryPath(ctx.buildDir, "zanna_text_core");
         if (!fileExists(textCoreLib))
-            missingTargets.push_back("viper_text_core");
+            missingTargets.push_back("zanna_text_core");
     }
     if (hasComponent(ctx, RtComponent::Audio)) {
-        const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
+        const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "zannaaud");
         // Only request the target when the configure step found an audio
         // backend; otherwise the target does not exist and the runtime's
         // audio stubs satisfy the link without it.
-        if (!fileExists(audLib) && viperaudAvailable(ctx.buildDir))
-            missingTargets.push_back("viperaud");
+        if (!fileExists(audLib) && zannaaudAvailable(ctx.buildDir))
+            missingTargets.push_back("zannaaud");
     }
     if (ctx.needsZiaFrontend) {
         if (!fileExists(supportLibraryPath(ctx.buildDir, "zia_editor_services")))
@@ -423,7 +423,7 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
 bool addArchiveClosureSymbols(const LinkContext &ctx,
                               std::unordered_set<std::string> &symbols,
                               std::ostream &err) {
-    using namespace viper::codegen::linker;
+    using namespace zanna::codegen::linker;
 
     std::vector<Archive> archives;
     archives.reserve(ctx.requiredArchives.size());
@@ -520,9 +520,9 @@ std::string linkEnvironmentCacheKey() {
             key += value;
         key.push_back('\n');
     };
-    appendEnv("VIPER_LIB_PATH");
-    appendEnv("VIPER_BUILD_TYPE");
-    appendEnv("VIPER_BUILD_DIR");
+    appendEnv("ZANNA_LIB_PATH");
+    appendEnv("ZANNA_BUILD_TYPE");
+    appendEnv("ZANNA_BUILD_DIR");
     return key;
 }
 
@@ -588,7 +588,7 @@ bool writeTextFile(const std::filesystem::path &path, std::string_view text, std
 std::vector<std::filesystem::path> windowsMsvcCxxRuntimeArchives(
     const std::filesystem::path &buildDir, std::string_view arch, bool debugRuntime) {
     std::vector<std::filesystem::path> archives;
-    if constexpr (!viper::platform::kHostWindows) {
+    if constexpr (!zanna::platform::kHostWindows) {
         (void)buildDir;
         (void)arch;
         (void)debugRuntime;
@@ -636,14 +636,14 @@ bool windowsArchivePathsUseDebugRuntime(const std::vector<std::string> &archiveP
 }
 
 std::optional<std::filesystem::path> findBuildDir() {
-    if (const char *env = std::getenv("VIPER_BUILD_DIR")) {
+    if (const char *env = std::getenv("ZANNA_BUILD_DIR")) {
         std::filesystem::path candidate(env);
         if (fileExists(candidate / "CMakeCache.txt"))
             return candidate;
     }
 
-    // A dev-tree viper executable lives inside its own CMake build directory
-    // (e.g. <root>/build/src/tools/viper/viper). Walking the executable's
+    // A dev-tree zanna executable lives inside its own CMake build directory
+    // (e.g. <root>/build/src/tools/zanna/zanna). Walking the executable's
     // ancestors finds that build tree regardless of the caller's working
     // directory — otherwise a stale installed toolchain layout can shadow the
     // freshly-built runtime archives. Installed binaries have no CMakeCache.txt
@@ -685,7 +685,7 @@ std::optional<std::filesystem::path> findBuildDir() {
 }
 
 std::optional<std::filesystem::path> currentExecutablePath() {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     std::wstring buf(MAX_PATH, L'\0');
     DWORD len = 0;
     while (true) {
@@ -698,7 +698,7 @@ std::optional<std::filesystem::path> currentExecutablePath() {
     }
     buf.resize(len);
     return std::filesystem::path(buf);
-#elif VIPER_HOST_MACOS
+#elif ZANNA_HOST_MACOS
     uint32_t size = 0;
     if (_NSGetExecutablePath(nullptr, &size) != -1 || size == 0)
         return std::nullopt;
@@ -786,18 +786,18 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text) {
         i = j == 0 ? i : j - 1;
     }
 
-    // Pass 2: Scan for Viper.* namespace-qualified symbols (OOP-style IL).
-    // These appear as _Viper.Terminal.PrintStr or Viper.Collections.List.Add
+    // Pass 2: Scan for Zanna.* namespace-qualified symbols (OOP-style IL).
+    // These appear as _Zanna.Terminal.PrintStr or Zanna.Collections.List.Add
     // in the emitted assembly.
-    static constexpr std::string_view kViperPrefix = "Viper.";
-    for (std::size_t i = 0; i + kViperPrefix.size() < text.size(); ++i) {
-        // Match "Viper." or "_Viper." at a word boundary.
+    static constexpr std::string_view kZannaPrefix = "Zanna.";
+    for (std::size_t i = 0; i + kZannaPrefix.size() < text.size(); ++i) {
+        // Match "Zanna." or "_Zanna." at a word boundary.
         std::size_t start = std::string_view::npos;
-        if (text.substr(i, kViperPrefix.size()) == kViperPrefix) {
+        if (text.substr(i, kZannaPrefix.size()) == kZannaPrefix) {
             if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
                 start = i;
-        } else if (text[i] == '_' && i + 1 + kViperPrefix.size() <= text.size() &&
-                   text.substr(i + 1, kViperPrefix.size()) == kViperPrefix) {
+        } else if (text[i] == '_' && i + 1 + kZannaPrefix.size() <= text.size() &&
+                   text.substr(i + 1, kZannaPrefix.size()) == kZannaPrefix) {
             if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
                 start = i + 1; // Skip the leading underscore
         }
@@ -828,7 +828,7 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
         return *configuredPath;
     if (adjacentPath && fileExists(*adjacentPath))
         return *adjacentPath;
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         const std::string objLibName = std::string(libBaseName) + "_obj.lib";
         auto pickFirstExisting =
             [](const std::vector<std::filesystem::path> &candidates) -> std::filesystem::path {
@@ -909,11 +909,11 @@ const std::vector<std::string> &ziaFrontendClosureLibs() {
         "il_analysis",
         "il_utils",
         "il_api",
-        "viper_pass",
-        "viper_il_core",
-        "viper_il_verify",
-        "viper_il_io",
-        "viper_support",
+        "zanna_pass",
+        "zanna_il_core",
+        "zanna_il_verify",
+        "zanna_il_io",
+        "zanna_support",
     };
     return kLibs;
 }
@@ -976,7 +976,7 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
     ctx.needsZiaFrontend =
         std::any_of(closureSymbols.begin(), closureSymbols.end(), [](const std::string &sym) {
             return sym.rfind("rt_zia_", 0) == 0 || sym.rfind("_rt_zia_", 0) == 0 ||
-                   sym.rfind("Viper.Zia.", 0) == 0 || sym.rfind("_Viper.Zia.", 0) == 0;
+                   sym.rfind("Zanna.Zia.", 0) == 0 || sym.rfind("_Zanna.Zia.", 0) == 0;
         });
 
     {
@@ -1041,7 +1041,7 @@ int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &e
     ///          current-directory component so freshly linked binaries run
     ///          consistently across host platforms.
     auto commandPath = [](const std::string &path) -> std::string {
-        if constexpr (viper::platform::kHostWindows)
+        if constexpr (zanna::platform::kHostWindows)
             return path;
         const std::filesystem::path fsPath(path);
         if (fsPath.is_absolute() || fsPath.has_parent_path())
@@ -1061,4 +1061,4 @@ int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &e
     return rr.exit_code;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

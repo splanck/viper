@@ -1,9 +1,9 @@
 module TestPhysics3DHullKinematic;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Convert;
 
 // Coverage for the doc-04 physics upgrades:
 //   - Collider3D.NewConvexHullReduced: quickhull over a dense mesh, vertex

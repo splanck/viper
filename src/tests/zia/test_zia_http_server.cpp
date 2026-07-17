@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,10 +48,10 @@ TEST(ZiaHttpServerBinding, EmitsBindHandlerForLiteralRouteTag) {
     const std::string source = R"(
 module Test;
 
-func handlePing(req: Viper.Network.ServerReq, res: Viper.Network.ServerRes) {    res.Send("pong");
+func handlePing(req: Zanna.Network.ServerReq, res: Zanna.Network.ServerRes) {    res.Send("pong");
 }
 
-func start() {    var server = new Viper.Network.HttpServer(8080);
+func start() {    var server = new Zanna.Network.HttpServer(8080);
     server.Get("/ping", "handlePing");
 }
 )";
@@ -60,10 +60,10 @@ func start() {    var server = new Viper.Network.HttpServer(8080);
     il::frontends::zia::CompilerOptions opts{};
     auto result = il::frontends::zia::compile(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpServer.Get"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpServer.BindHandler"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.ServerRes.Send"));
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpServer.BindHandler"), 1);
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpServer.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpServer.BindHandler"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.ServerRes.Send"));
+    EXPECT_EQ(countCallsTo(result.module, "Zanna.Network.HttpServer.BindHandler"), 1);
 }
 
 TEST(ZiaHttpServerBinding, EmitsHttpsBindHandlerForLiteralRouteTag) {
@@ -71,12 +71,12 @@ TEST(ZiaHttpServerBinding, EmitsHttpsBindHandlerForLiteralRouteTag) {
     const std::string source = R"(
 module Test;
 
-func handlePing(req: Viper.Network.ServerReq, res: Viper.Network.ServerRes) {
+func handlePing(req: Zanna.Network.ServerReq, res: Zanna.Network.ServerRes) {
     res.Send("pong");
 }
 
 func start() {
-    var server = new Viper.Network.HttpsServer(8443, "cert.pem", "key.pem");
+    var server = new Zanna.Network.HttpsServer(8443, "cert.pem", "key.pem");
     server.Get("/ping", "handlePing");
 }
 )";
@@ -85,11 +85,11 @@ func start() {
     il::frontends::zia::CompilerOptions opts{};
     auto result = il::frontends::zia::compile(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.Get"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.BindHandler"));
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpsServer.BindHandler"), 1);
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpsServer.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpsServer.BindHandler"));
+    EXPECT_EQ(countCallsTo(result.module, "Zanna.Network.HttpsServer.BindHandler"), 1);
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

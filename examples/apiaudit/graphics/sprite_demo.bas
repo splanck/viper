@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics.Sprite ==="
+PRINT "=== API Audit: Zanna.Graphics.Sprite ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New(sheet, regionIdx)"
 PRINT "Properties: get_X, get_Y, get_Frame, get_Width, get_Height"

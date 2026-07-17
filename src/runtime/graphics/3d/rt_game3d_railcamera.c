@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_railcamera.c
-// Purpose: Viper.Game3D.RailCamera3D — a gameplay-installable spline camera:
+// Purpose: Zanna.Game3D.RailCamera3D — a gameplay-installable spline camera:
 //   arclength-constant progress along a Path3D (manual or auto-advance), look
 //   targets (entity / point / second path / tangent), piecewise FOV and roll
 //   keys, and damped progress jumps. Rides the Path3D arclength evaluator

@@ -9,36 +9,36 @@ DIM source AS OBJECT
 DIM pos AS OBJECT
 DIM voice AS INTEGER
 
-cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
-Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.5, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
+cam = Zanna.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
+Zanna.Graphics3D.Camera3D.LookAt(cam, Zanna.Math.Vec3.New(0.0, 2.0, 6.0), Zanna.Math.Vec3.New(0.0, 1.5, 0.0), Zanna.Math.Vec3.New(0.0, 1.0, 0.0))
 
-scene = Viper.Graphics3D.SceneGraph.New()
-parent = Viper.Graphics3D.SceneNode.New()
-node = Viper.Graphics3D.SceneNode.New()
-Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
-Viper.Graphics3D.SceneNode.SetPosition(node, 3.0, 0.5, -1.0)
-Viper.Graphics3D.SceneNode.AddChild(parent, node)
-Viper.Graphics3D.SceneGraph.Add(scene, parent)
+scene = Zanna.Graphics3D.SceneGraph.New()
+parent = Zanna.Graphics3D.SceneNode.New()
+node = Zanna.Graphics3D.SceneNode.New()
+Zanna.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
+Zanna.Graphics3D.SceneNode.SetPosition(node, 3.0, 0.5, -1.0)
+Zanna.Graphics3D.SceneNode.AddChild(parent, node)
+Zanna.Graphics3D.SceneGraph.Add(scene, parent)
 
-listener = Viper.Graphics3D.SoundListener3D.New()
+listener = Zanna.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
 
-source = Viper.Graphics3D.SoundSource3D.New(Viper.Audio.Synth.Tone(523, 220, 0))
+source = Zanna.Graphics3D.SoundSource3D.New(Zanna.Audio.Synth.Tone(523, 220, 0))
 source.BindNode(node)
 source.MaxDistance = 20.0
 source.Volume = 75
 
-Viper.Graphics3D.SceneGraph.SyncBindings(scene, 0.25)
+Zanna.Graphics3D.SceneGraph.SyncBindings(scene, 0.25)
 
 pos = listener.Position
-PRINT "Listener Z = "; Viper.Math.Vec3.get_Z(pos)
+PRINT "Listener Z = "; Zanna.Math.Vec3.get_Z(pos)
 pos = source.Position
-PRINT "Source X = "; Viper.Math.Vec3.get_X(pos)
-PRINT "Source Z = "; Viper.Math.Vec3.get_Z(pos)
+PRINT "Source X = "; Zanna.Math.Vec3.get_X(pos)
+PRINT "Source Z = "; Zanna.Math.Vec3.get_Z(pos)
 
-IF Viper.Audio.Mixer.IsAvailable() THEN
-    IF Viper.Audio.Mixer.Init() <> 0 THEN
+IF Zanna.Audio.Mixer.IsAvailable() THEN
+    IF Zanna.Audio.Mixer.Init() <> 0 THEN
         voice = source.Play()
         PRINT "VoiceId = "; voice
         PRINT "IsPlaying = "; source.IsPlaying

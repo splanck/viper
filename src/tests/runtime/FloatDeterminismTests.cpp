@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tests/common/PlatformSkip.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <array>
 #include <cassert>
@@ -119,7 +119,7 @@ std::string build_parse_report() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: __FILE__ path handling differs, causing golden file lookup issues
-    VIPER_PLATFORM_SKIP("Golden file paths need Windows adaptation");
+    ZANNA_PLATFORM_SKIP("Golden file paths need Windows adaptation");
 #endif
     const auto golden = golden_dir();
 

@@ -11,13 +11,13 @@ Status: Accepted
 
 ## Context
 
-`Viper.System.Process.ProcessHandle.ReadStdout()`,
-`ReadStderr()`, and `Viper.System.Pty.PtySession.Read()` return strings
+`Zanna.System.Process.ProcessHandle.ReadStdout()`,
+`ReadStderr()`, and `Zanna.System.Pty.PtySession.Read()` return strings
 directly. The runtime stream buffers are finite, so these legacy methods trap
 when unread child output was truncated before the caller drained it.
 
 That behavior is acceptable for small scripts because it makes data loss loud,
-but it is too severe for IDE frame loops. ViperIDE build, debug, terminal, and
+but it is too severe for IDE frame loops. ZannaIDE build, debug, terminal, and
 Git jobs must keep the UI alive, retain bounded output, and show the user that
 some stream data was dropped.
 
@@ -25,9 +25,9 @@ some stream data was dropped.
 
 Add non-trapping read-result methods alongside the existing string methods:
 
-- `ProcessHandle.ReadStdoutResult() -> Viper.Collections.Map`
-- `ProcessHandle.ReadStderrResult() -> Viper.Collections.Map`
-- `PtySession.ReadResult() -> Viper.Collections.Map`
+- `ProcessHandle.ReadStdoutResult() -> Zanna.Collections.Map`
+- `ProcessHandle.ReadStderrResult() -> Zanna.Collections.Map`
+- `PtySession.ReadResult() -> Zanna.Collections.Map`
 
 Each map contains:
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Try to fold `mov r2, r1; mov r3, r2` into `mov r3, r1` at @p idx.
 /// @details The fold is safe only when the intermediate register `r2` is dead
@@ -52,4 +52,4 @@ namespace viper::codegen::x64::peephole {
 /// @return Number of folds applied.
 std::size_t foldConsecutiveMoves(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

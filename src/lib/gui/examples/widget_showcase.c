@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: widget_showcase.c
-// Purpose: Comprehensive widget showcase demo for ViperGUI.
+// Purpose: Comprehensive widget showcase demo for ZannaGUI.
 //
 //===----------------------------------------------------------------------===//
 
@@ -575,7 +575,7 @@ static void render_showcase(showcase_state_t *state) {
     // Title
     if (state->font) {
         vg_font_draw_text(
-            window, state->font, 28, 20, 40, "ViperGUI Widget Showcase", theme->colors.fg_primary);
+            window, state->font, 28, 20, 40, "ZannaGUI Widget Showcase", theme->colors.fg_primary);
     }
 
     // === Input Section ===
@@ -665,7 +665,7 @@ static void render_showcase(showcase_state_t *state) {
                           11,
                           20,
                           555,
-                          "ViperGUI - A lightweight GUI library for Viper",
+                          "ZannaGUI - A lightweight GUI library for Zanna",
                           0xFF666666);
     }
 }
@@ -987,7 +987,7 @@ static bool init_showcase(showcase_state_t *state) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 800;
     params.height = 580;
-    params.title = "ViperGUI Widget Showcase";
+    params.title = "ZannaGUI Widget Showcase";
     params.resizable = 0;
     params.fps = 60;
 
@@ -1203,7 +1203,7 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    printf("ViperGUI Widget Showcase\n");
+    printf("ZannaGUI Widget Showcase\n");
     printf("========================\n");
     printf("Press ESC to exit\n\n");
 

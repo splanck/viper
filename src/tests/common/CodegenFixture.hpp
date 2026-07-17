@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tests {
+namespace zanna::tests {
 struct CodegenExecutionResult {
     int exitCode = -1;
     std::string stdoutText;
@@ -99,4 +99,4 @@ class CodegenFixture {
 ///          behaviour of only escaping embedded double quotes.
 [[nodiscard]] std::string quoteForShell(const std::filesystem::path &path);
 
-} // namespace viper::tests
+} // namespace zanna::tests

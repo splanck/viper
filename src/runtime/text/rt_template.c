@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_template.c
 // Purpose: Implements a lightweight string template engine for the
-//          Viper.Text.Template class. Replaces {{key}} placeholders using a
+//          Zanna.Text.Template class. Replaces {{key}} placeholders using a
 //          map (key→string) or seq (index→string) of substitution values.
 //
 // Key invariants:

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,10 +37,10 @@ static il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fn) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fn);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fn);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",

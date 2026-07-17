@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@ using namespace il::frontends::basic;
 using namespace il::support;
 
 int main() {
-    const char *src = "10 DIM s AS Viper.String\n"
+    const char *src = "10 DIM s AS Zanna.String\n"
                       "20 LET s = \"abcd\"\n"
                       "30 s.Length = 5\n"
                       "40 END\n";

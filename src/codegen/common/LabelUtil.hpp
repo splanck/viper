@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 /// Assembly language has strict requirements for label names that differ from
 /// high-level language identifiers. This namespace provides functions to transform
 /// IL function names, block labels, and other identifiers into valid assembly labels.
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Append assembler-safe characters from @p fragment to @p out.
 /// @details Applies the same character policy used by @ref sanitizeLabel:
@@ -80,8 +80,8 @@ inline void appendSanitizedLabelFragment(std::string &out, std::string_view frag
 /// @return A valid assembler label string.
 ///
 /// @note The resulting label is always non-empty due to the 'L' prefix rule.
-/// @see IL function names use Viper.Namespace.Function format which becomes
-///      Viper_Namespace_Function after sanitization.
+/// @see IL function names use Zanna.Namespace.Function format which becomes
+///      Zanna_Namespace_Function after sanitization.
 inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = {}) {
     std::string out;
     out.reserve(in.size() + suffix.size() + 2);
@@ -95,4 +95,4 @@ inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = 
     return out;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

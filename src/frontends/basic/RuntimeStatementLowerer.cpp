@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -645,7 +645,7 @@ void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
             }
             assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
         } else {
-            // Runtime class property setter via catalog (e.g., Viper.String)
+            // Runtime class property setter via catalog (e.g., Zanna.String)
             {
                 auto &pidx = runtimePropertyIndex();
 

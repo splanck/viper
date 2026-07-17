@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Target architecture for the object file.
 enum class ObjArch : uint8_t {
@@ -160,4 +160,4 @@ inline std::unique_ptr<ObjectFileWriter> createHostObjectFileWriter() {
     return createObjectFileWriter(detectHostFormat(), detectHostArch());
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

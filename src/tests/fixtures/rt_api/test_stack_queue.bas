@@ -1,6 +1,6 @@
 ' test_stack_queue.bas — Stack, Queue, Ring, Heap
-DIM st AS Viper.Collections.Stack
-st = Viper.Collections.Stack.New()
+DIM st AS Zanna.Collections.Stack
+st = Zanna.Collections.Stack.New()
 PRINT "stack empty: "; st.IsEmpty
 st.Push("a")
 st.Push("b")
@@ -12,8 +12,8 @@ PRINT "stack len after 2 pops: "; st.Count
 st.Clear()
 PRINT "stack empty after clear: "; st.IsEmpty
 
-DIM q AS Viper.Collections.Queue
-q = Viper.Collections.Queue.New()
+DIM q AS Zanna.Collections.Queue
+q = Zanna.Collections.Queue.New()
 PRINT "queue empty: "; q.IsEmpty
 q.Push("x")
 q.Push("y")
@@ -25,8 +25,8 @@ PRINT "queue len after 2 pops: "; q.Count
 q.Clear()
 PRINT "queue empty after clear: "; q.IsEmpty
 
-DIM r AS Viper.Collections.Ring
-r = Viper.Collections.Ring.New()
+DIM r AS Zanna.Collections.Ring
+r = Zanna.Collections.Ring.New()
 PRINT "ring empty: "; r.IsEmpty
 r.Push("1")
 r.Push("2")
@@ -37,8 +37,8 @@ PRINT "ring len after pop: "; r.Count
 r.Clear()
 PRINT "ring empty after clear: "; r.IsEmpty
 
-DIM h AS Viper.Collections.Heap
-h = Viper.Collections.Heap.New()
+DIM h AS Zanna.Collections.Heap
+h = Zanna.Collections.Heap.New()
 PRINT "heap empty: "; h.IsEmpty
 h.Push(3, "three")
 h.Push(1, "one")

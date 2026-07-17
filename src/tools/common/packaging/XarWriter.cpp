@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Sanitize an entry path and require it to be non-empty.
@@ -376,4 +376,4 @@ void XarWriter::finishToFile(const std::string &path) const {
     writeFileAtomic(path, data);
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

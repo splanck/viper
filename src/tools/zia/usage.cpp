@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,19 +10,19 @@
 
 #include "usage.hpp"
 #include "tools/common/CommonUsage.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 #include <iostream>
 
 namespace zia {
 
 void printVersion() {
-    std::cout << "zia v" << VIPER_VERSION_STR << "\n";
+    std::cout << "zia v" << ZANNA_VERSION_STR << "\n";
     std::cout << "Zia Compiler\n";
-    std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "IL version: " << ZANNA_IL_VERSION_STR << "\n";
 }
 
 void printUsage() {
-    std::cerr << "zia v" << VIPER_VERSION_STR << " - Zia Compiler\n"
+    std::cerr << "zia v" << ZANNA_VERSION_STR << " - Zia Compiler\n"
               << "\n"
               << "Usage: zia [options] <file.zia>\n"
               << "\n"
@@ -32,7 +32,7 @@ void printUsage() {
               << "  zia script.zia -o file.il   Emit IL to file\n"
               << "\n"
               << "Options:\n";
-    viper::tools::printSharedOptions(std::cerr, viper::tools::FrontendHelpDetail::Advanced);
+    zanna::tools::printSharedOptions(std::cerr, zanna::tools::FrontendHelpDetail::Advanced);
     std::cerr << "\n"
               << "Examples:\n"
               << "  zia hello.zia                           Run program\n"

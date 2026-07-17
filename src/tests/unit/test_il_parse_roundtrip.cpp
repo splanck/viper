@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 
 #include <array>
 #include <cassert>

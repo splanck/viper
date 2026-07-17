@@ -5,8 +5,8 @@
 # Usage: scripts/test_strings.sh [build-dir]
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${1:-${VIPER_BUILD_DIR:-$ROOT/build}}"
-ILC="$BUILD_DIR/src/tools/viper/viper"
+BUILD_DIR="${1:-${ZANNA_BUILD_DIR:-$ROOT/build}}"
+ILC="$BUILD_DIR/src/tools/zanna/zanna"
 FAIL=0
 for BAS in "$ROOT"/src/tests/basic/strings/*.bas; do
   NAME="$(basename "$BAS" .bas)"

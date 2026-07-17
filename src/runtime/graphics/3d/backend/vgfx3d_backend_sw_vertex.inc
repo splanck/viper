@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vertex.inc  (#included from
 // vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend pipeline
 // vertex, frustum clipping, and Gouraud lighting
@@ -40,7 +40,7 @@ static pipe_vert_t *sw_acquire_pipe_vertices(sw_context_t *ctx, uint32_t count) 
     return ctx->vertex_scratch;
 }
 
-/// @brief Cached `VIPER_3D_DEBUG` env-var query for tracing.
+/// @brief Cached `ZANNA_3D_DEBUG` env-var query for tracing.
 ///
 /// Set the env var to anything non-zero to enable per-draw debug
 /// output (vertex counts, shader paths, etc.). Cached on first call
@@ -56,7 +56,7 @@ static int sw_debug_enabled(void) {
         return current == 3;
     int expected = 0;
     if (rt_atomic_compare_exchange_i32(&state, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
-        const char *env = getenv("VIPER_3D_DEBUG");
+        const char *env = getenv("ZANNA_3D_DEBUG");
         int enabled = (env && *env && strcmp(env, "0") != 0) ? 1 : 0;
         rt_atomic_store_i32(&state, enabled ? 3 : 2, __ATOMIC_RELEASE);
         return enabled;

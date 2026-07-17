@@ -1,31 +1,31 @@
 // Test: PNG grayscale and palette loading via round-trip encoding
 module TestPngFormats;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Test 1: 8-bit RGBA round-trip (existing functionality)
-    var px = Viper.Graphics.Pixels.New(2, 2);
-    Viper.Graphics.Pixels.Set(px, 0, 0, 0xFF0000FF);  // Red
-    Viper.Graphics.Pixels.Set(px, 1, 0, 0x00FF00FF);  // Green
-    Viper.Graphics.Pixels.Set(px, 0, 1, 0x0000FFFF);  // Blue
-    Viper.Graphics.Pixels.Set(px, 1, 1, 0x80808080);  // Gray with half alpha
+    var px = Zanna.Graphics.Pixels.New(2, 2);
+    Zanna.Graphics.Pixels.Set(px, 0, 0, 0xFF0000FF);  // Red
+    Zanna.Graphics.Pixels.Set(px, 1, 0, 0x00FF00FF);  // Green
+    Zanna.Graphics.Pixels.Set(px, 0, 1, 0x0000FFFF);  // Blue
+    Zanna.Graphics.Pixels.Set(px, 1, 1, 0x80808080);  // Gray with half alpha
 
-    var ok = Viper.Graphics.Pixels.SavePng(px, "test_fmt_rgba.png");
+    var ok = Zanna.Graphics.Pixels.SavePng(px, "test_fmt_rgba.png");
     if (ok != 1) {
         Say("FAIL: SavePng RGBA failed");
         return;
     }
 
-    var loaded = Viper.Graphics.Pixels.LoadPng("test_fmt_rgba.png");
+    var loaded = Zanna.Graphics.Pixels.LoadPng("test_fmt_rgba.png");
     if (loaded == null) {
         Say("FAIL: LoadPng RGBA returned null");
         return;
     }
 
     // Verify dimensions
-    var w = Viper.Graphics.Pixels.get_Width(loaded);
-    var h = Viper.Graphics.Pixels.get_Height(loaded);
+    var w = Zanna.Graphics.Pixels.get_Width(loaded);
+    var h = Zanna.Graphics.Pixels.get_Height(loaded);
     if (w != 2) {
         Say("FAIL: RGBA width mismatch");
         return;
@@ -36,13 +36,13 @@ func start() {
     }
 
     // Verify pixel values
-    var p00 = Viper.Graphics.Pixels.Get(loaded, 0, 0);
+    var p00 = Zanna.Graphics.Pixels.Get(loaded, 0, 0);
     if (p00 != 0xFF0000FF) {
         Say("FAIL: RGBA pixel (0,0) mismatch");
         return;
     }
 
-    var p11 = Viper.Graphics.Pixels.Get(loaded, 1, 1);
+    var p11 = Zanna.Graphics.Pixels.Get(loaded, 1, 1);
     if (p11 != 0x80808080) {
         Say("FAIL: RGBA pixel (1,1) with alpha mismatch");
         return;

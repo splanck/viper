@@ -1,0 +1,63 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: zannaide/src/app/build_info.zia
+// Purpose: Resolve ZannaIDE standalone build metadata for user-visible
+//          diagnostics and stale-binary detection.
+//
+//===----------------------------------------------------------------------===//
+
+module build_info;
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind Env = Zanna.System.Environment;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: build_info
+// PURPOSE: Resolve standalone ZannaIDE build metadata for About/status surfaces.
+//
+// WHERE-THIS-FITS: The IDE can run from source or as a generated native binary.
+//          This helper reads the optional sidecar/environment metadata that lets
+//          users identify which binary they are actually running.
+//
+// TEACHING-NOTE: Build metadata is diagnostic context, not feature behavior. Keep
+//          missing metadata explicit so source-run workflows do not look broken.
+// ============================================================================
+
+final BUILD_INFO_FILENAME = "zannaide.buildinfo";
+
+/// @brief Return the expected standalone-build metadata sidecar path.
+/// @details Standalone ZannaIDE builds write `zannaide.buildinfo` beside the
+///          generated executable. Source-run workflows may have no executable
+///          directory, in which case this returns an empty string.
+/// @return Absolute sidecar path, or an empty string when no executable
+///         directory is available.
+expose func SidecarPath() -> String {
+    var exeDir = Path.ExeDir();
+    if exeDir == "" { return ""; }
+    return Path.Join(exeDir, BUILD_INFO_FILENAME);
+}
+
+/// @brief Return the best available ZannaIDE build metadata string.
+/// @details The `ZANNA_IDE_BUILD_INFO` environment variable is accepted first
+///          for scripted smoke runs. Otherwise this reads the build-info
+///          sidecar emitted by `scripts/build_ide.sh`. If neither source is
+///          available, the message explicitly identifies a source-run or
+///          unstamped executable so users can spot stale binaries.
+/// @return Human-readable build metadata suitable for the About panel.
+expose func BuildSummary() -> String {
+    var envInfo = Str.Trim(Env.GetVariable("ZANNA_IDE_BUILD_INFO"));
+    if envInfo != "" { return envInfo; }
+
+    var sidecar = SidecarPath();
+    if sidecar != "" and File.Exists(sidecar) {
+        var text = Str.Trim(File.ReadAllText(sidecar));
+        if text != "" { return text; }
+    }
+
+    return "Build: source run or unstamped executable";
+}

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/render/rt_model3d_api.inc  (#included from rt_model3d.c; not a
 // standalone translation unit) Purpose: Model3D public load API, accessors, and instantiation
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 ///          the compatibility APIs, falling back to @p fallback when no message is available.
 /// @param value Loader return value, or NULL on recoverable failure.
 /// @param fallback Fallback error message for empty diagnostics.
-/// @return Owned `Viper.Result` carrying @p value or an error string.
+/// @return Owned `Zanna.Result` carrying @p value or an error string.
 static void *model3d_load_value_to_result(void *value, const char *fallback) {
     if (value) {
         void *result = rt_result_ok(value);
@@ -46,7 +46,7 @@ void *rt_model3d_load(rt_string path) {
 
 /// @brief Load a model from the filesystem as `Result.Ok(SceneAsset)` or `Result.Err(String)`.
 /// @param path Filesystem path to load.
-/// @return Owned Viper.Result value.
+/// @return Owned Zanna.Result value.
 void *rt_model3d_load_result(rt_string path) {
     return model3d_load_value_to_result(rt_model3d_load(path), "SceneAsset.Load failed");
 }
@@ -126,7 +126,7 @@ void *rt_model3d_load_asset(rt_string path) {
 
 /// @brief Load a model through the asset manager as `Result.Ok(SceneAsset)` or `Result.Err`.
 /// @param path Asset path or URI to load.
-/// @return Owned Viper.Result value.
+/// @return Owned Zanna.Result value.
 void *rt_model3d_load_asset_result(rt_string path) {
     return model3d_load_value_to_result(rt_model3d_load_asset(path), "SceneAsset.LoadAsset failed");
 }
@@ -640,7 +640,7 @@ void *rt_model3d_load_animation(rt_string path, int64_t index) {
 /// @brief Load a skeletal animation clip as a Result.
 /// @param path Filesystem model path.
 /// @param index Zero-based skeletal animation index.
-/// @return Owned Viper.Result carrying Animation3D or an error string.
+/// @return Owned Zanna.Result carrying Animation3D or an error string.
 void *rt_model3d_load_animation_result(rt_string path, int64_t index) {
     return model3d_load_value_to_result(rt_model3d_load_animation(path, index),
                                         "SceneAsset.LoadAnimation failed");
@@ -654,7 +654,7 @@ void *rt_model3d_load_animation_asset(rt_string path, int64_t index) {
 /// @brief Load a skeletal animation clip from a packed asset as a Result.
 /// @param path Asset path or URI.
 /// @param index Zero-based skeletal animation index.
-/// @return Owned Viper.Result carrying Animation3D or an error string.
+/// @return Owned Zanna.Result carrying Animation3D or an error string.
 void *rt_model3d_load_animation_asset_result(rt_string path, int64_t index) {
     return model3d_load_value_to_result(rt_model3d_load_animation_asset(path, index),
                                         "SceneAsset.LoadAnimationAsset failed");
@@ -668,7 +668,7 @@ void *rt_model3d_load_node_animation(rt_string path, int64_t index) {
 /// @brief Load a node/object animation clip as a Result.
 /// @param path Filesystem model path.
 /// @param index Zero-based node animation index.
-/// @return Owned Viper.Result carrying NodeAnimation3D or an error string.
+/// @return Owned Zanna.Result carrying NodeAnimation3D or an error string.
 void *rt_model3d_load_node_animation_result(rt_string path, int64_t index) {
     return model3d_load_value_to_result(rt_model3d_load_node_animation(path, index),
                                         "SceneAsset.LoadNodeAnimation failed");
@@ -682,7 +682,7 @@ void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index) {
 /// @brief Load a node/object animation clip from a packed asset as a Result.
 /// @param path Asset path or URI.
 /// @param index Zero-based node animation index.
-/// @return Owned Viper.Result carrying NodeAnimation3D or an error string.
+/// @return Owned Zanna.Result carrying NodeAnimation3D or an error string.
 void *rt_model3d_load_node_animation_asset_result(rt_string path, int64_t index) {
     return model3d_load_value_to_result(rt_model3d_load_node_animation_asset(path, index),
                                         "SceneAsset.LoadNodeAnimationAsset failed");

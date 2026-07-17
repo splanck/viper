@@ -3,24 +3,24 @@ module TestEnvironment;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.System.Environment.GetArgumentCount
-// COVER: Viper.System.Environment.GetArgument
-// COVER: Viper.System.Environment.GetCommandLine
-// COVER: Viper.System.Environment.GetVariable
-// COVER: Viper.System.Environment.HasVariable
-// COVER: Viper.System.Environment.SetVariable
-// COVER: Viper.System.Environment.IsNative
+// COVER: Zanna.System.Environment.GetArgumentCount
+// COVER: Zanna.System.Environment.GetArgument
+// COVER: Zanna.System.Environment.GetCommandLine
+// COVER: Zanna.System.Environment.GetVariable
+// COVER: Zanna.System.Environment.HasVariable
+// COVER: Zanna.System.Environment.SetVariable
+// COVER: Zanna.System.Environment.IsNative
 
 func testArguments() {
     setTest("Arguments");
 
     // Get argument count (at least 0)
-    var argc = Viper.System.Environment.GetArgumentCount();
+    var argc = Zanna.System.Environment.GetArgumentCount();
     assertGteInt(argc, 0, "argc >= 0");
 
     // If there are arguments, we can get them
     if (argc > 0) {
-        var arg0 = Viper.System.Environment.GetArgument(0);
+        var arg0 = Zanna.System.Environment.GetArgument(0);
         assertNotEmpty(arg0, "arg0 not empty");
     }
     pass();
@@ -29,7 +29,7 @@ func testArguments() {
 func testCommandLine() {
     setTest("CommandLine");
 
-    var cmdline = Viper.System.Environment.GetCommandLine();
+    var cmdline = Zanna.System.Environment.GetCommandLine();
     // Command line should exist (might be empty or contain program name)
     assertTrue(cmdline == "" || cmdline == cmdline, "cmdline is string");
     pass();
@@ -39,18 +39,18 @@ func testEnvironmentVariables() {
     setTest("EnvironmentVariables");
 
     // Set a variable
-    Viper.System.Environment.SetVariable("VIPER_TEST_VAR", "test_value_123");
+    Zanna.System.Environment.SetVariable("ZANNA_TEST_VAR", "test_value_123");
 
     // Check if it exists
-    assertTrue(Viper.System.Environment.HasVariable("VIPER_TEST_VAR"), "has test var");
+    assertTrue(Zanna.System.Environment.HasVariable("ZANNA_TEST_VAR"), "has test var");
 
     // Get the value
-    var value = Viper.System.Environment.GetVariable("VIPER_TEST_VAR");
+    var value = Zanna.System.Environment.GetVariable("ZANNA_TEST_VAR");
     assertEqStr(value, "test_value_123", "get test var value");
 
     // Update the value
-    Viper.System.Environment.SetVariable("VIPER_TEST_VAR", "updated_value");
-    var value2 = Viper.System.Environment.GetVariable("VIPER_TEST_VAR");
+    Zanna.System.Environment.SetVariable("ZANNA_TEST_VAR", "updated_value");
+    var value2 = Zanna.System.Environment.GetVariable("ZANNA_TEST_VAR");
     assertEqStr(value2, "updated_value", "updated value");
 }
 
@@ -58,15 +58,15 @@ func testCommonEnvVars() {
     setTest("CommonEnvVars");
 
     // PATH should usually exist
-    if (Viper.System.Environment.HasVariable("PATH")) {
-        var path = Viper.System.Environment.GetVariable("PATH");
+    if (Zanna.System.Environment.HasVariable("PATH")) {
+        var path = Zanna.System.Environment.GetVariable("PATH");
         assertNotEmpty(path, "PATH not empty");
     }
     pass();
 
     // HOME or USERPROFILE usually exist
-    if (Viper.System.Environment.HasVariable("HOME")) {
-        var home = Viper.System.Environment.GetVariable("HOME");
+    if (Zanna.System.Environment.HasVariable("HOME")) {
+        var home = Zanna.System.Environment.GetVariable("HOME");
         assertNotEmpty(home, "HOME not empty");
     }
     pass();
@@ -76,11 +76,11 @@ func testNonExistentVar() {
     setTest("NonExistentVar");
 
     // Check for a variable that definitely doesn't exist
-    var exists = Viper.System.Environment.HasVariable("__VIPER_DEFINITELY_NOT_EXISTS_XYZ123__");
+    var exists = Zanna.System.Environment.HasVariable("__ZANNA_DEFINITELY_NOT_EXISTS_XYZ123__");
     assertFalse(exists, "nonexistent var doesn't exist");
 
     // Getting nonexistent var should return empty string
-    var value = Viper.System.Environment.GetVariable("__VIPER_DEFINITELY_NOT_EXISTS_XYZ123__");
+    var value = Zanna.System.Environment.GetVariable("__ZANNA_DEFINITELY_NOT_EXISTS_XYZ123__");
     assertEqStr(value, "", "nonexistent var is empty");
 }
 
@@ -88,7 +88,7 @@ func testIsNative() {
     setTest("IsNative");
 
     // IsNative returns whether running natively compiled or in VM
-    var isNative = Viper.System.Environment.IsNative();
+    var isNative = Zanna.System.Environment.IsNative();
     // Either value is valid, just verify it's boolean
     assertTrue(isNative || !isNative, "isNative is boolean");
     pass();

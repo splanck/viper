@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 //===----------------------------------------------------------------------===//
 // Helper: Get condition code for comparison opcodes
@@ -174,11 +174,11 @@ namespace {
 ///        stack-slot rules apply when it is marshalled into the call sequence.
 struct MaterializedCallArg {
     uint16_t vreg{0}; ///< Virtual register holding the materialized argument value.
-    viper::codegen::common::CallArgClass cls{
-        viper::codegen::common::CallArgClass::GPR}; ///< ABI register class of the argument.
-    viper::codegen::common::CallArgKind kind{viper::codegen::common::CallArgKind::Scalar};
-    viper::codegen::common::AggregatePassKind aggregatePass{
-        viper::codegen::common::AggregatePassKind::Direct};
+    zanna::codegen::common::CallArgClass cls{
+        zanna::codegen::common::CallArgClass::GPR}; ///< ABI register class of the argument.
+    zanna::codegen::common::CallArgKind kind{zanna::codegen::common::CallArgKind::Scalar};
+    zanna::codegen::common::AggregatePassKind aggregatePass{
+        zanna::codegen::common::AggregatePassKind::Direct};
     std::size_t sizeBytes{8};
     std::size_t alignBytes{8};
 };
@@ -304,7 +304,7 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                      const TargetInfo &ti,
                      uint16_t &nextVRegId,
                      LoweredCall &seq) {
-    using namespace viper::codegen::common;
+    using namespace zanna::codegen::common;
 
     std::vector<CallArg> planArgs;
     planArgs.reserve(args.size());
@@ -419,7 +419,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
         MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(ti.intReturnReg)}});
     const bool retainElidable =
         ins.type.kind == il::core::Type::Kind::Str && ins.result &&
-        viper::codegen::shouldElideStringResultRetain(
+        zanna::codegen::shouldElideStringResultRetain(
             ins.op == il::core::Opcode::Call ? std::string_view(ins.callee) : std::string_view{}) &&
         countStringSpendingUses(fn, *ins.result) <= 1;
     if (ins.type.kind == il::core::Type::Kind::Str && !retainElidable) {
@@ -464,7 +464,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
                 if (ins.op == il::core::Opcode::Ret) {
                     ++spends;
                 } else if (ins.op == il::core::Opcode::Call) {
-                    if (viper::codegen::isStringReleaseCallee(ins.callee)) {
+                    if (zanna::codegen::isStringReleaseCallee(ins.callee)) {
                         ++spends;
                     } else if (il::runtime::findRuntimeSignature(ins.callee) != nullptr &&
                                il::runtime::classifyRuntimeOwnership(ins.callee)
@@ -509,7 +509,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
                                          const il::core::BasicBlock &loadBlock,
                                          std::size_t loadIdx,
                                          unsigned resultId) {
-    if (!viper::codegen::shouldElideLoadRetainForRelease())
+    if (!zanna::codegen::shouldElideLoadRetainForRelease())
         return false;
 
     unsigned uses = 0;
@@ -525,7 +525,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
                     continue;
                 ++uses;
                 if (!(ins.op == il::core::Opcode::Call &&
-                      viper::codegen::isStringReleaseCallee(ins.callee)))
+                      zanna::codegen::isStringReleaseCallee(ins.callee)))
                     releaseOnly = false;
                 if (&block != &loadBlock || ii <= loadIdx || !isBorrowedRuntimeArg(ins, oi))
                     borrowOnlyInBlock = false;
@@ -555,7 +555,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
         const auto &ins = loadBlock.instructions[ii];
         if (ins.op == il::core::Opcode::Store && ins.type.kind == il::core::Type::Kind::Str)
             return false;
-        if (ins.op == il::core::Opcode::Call && viper::codegen::isStringReleaseCallee(ins.callee))
+        if (ins.op == il::core::Opcode::Call && zanna::codegen::isStringReleaseCallee(ins.callee))
             return false;
     }
     return true;
@@ -651,7 +651,7 @@ static bool materializeImmediateValue(const il::core::Value &v,
     }
     if (v.kind == Kind::ConstFloat) {
         // Materialize FP constant by moving its bit-pattern via a GPR into an FPR.
-        const auto bits = static_cast<long long>(viper::codegen::common::f64Bits(v.f64));
+        const auto bits = static_cast<long long>(zanna::codegen::common::f64Bits(v.f64));
         const uint16_t tmpG = allocateNextVReg(nextVRegId);
         out.instrs.push_back(
             MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, tmpG), MOperand::immOp(bits)}});
@@ -1242,7 +1242,7 @@ bool lowerCallWithArgs(
         return false;
     }
 
-    // Map canonical runtime names (e.g., "Viper.Grid2D.New") to C symbols (e.g., "rt_grid2d_new")
+    // Map canonical runtime names (e.g., "Zanna.Grid2D.New") to C symbols (e.g., "rt_grid2d_new")
     std::string mappedCallee = callee;
     if (auto mapped = il::runtime::mapCanonicalRuntimeName(callee))
         mappedCallee = std::string(*mapped);
@@ -1276,7 +1276,7 @@ bool lowerCallWithArgs(
     // First pass: materialize all arguments and collect them
     struct ArgInfo {
         uint16_t vreg{0};
-        viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
+        zanna::codegen::common::CallArgClass cls{zanna::codegen::common::CallArgClass::GPR};
     };
 
     std::vector<ArgInfo> args;
@@ -1289,8 +1289,8 @@ bool lowerCallWithArgs(
                 arg, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vr, cls))
             return false;
         args.push_back({vr,
-                        cls == RegClass::FPR ? viper::codegen::common::CallArgClass::FPR
-                                             : viper::codegen::common::CallArgClass::GPR});
+                        cls == RegClass::FPR ? zanna::codegen::common::CallArgClass::FPR
+                                             : zanna::codegen::common::CallArgClass::GPR});
     }
 
     std::vector<MaterializedCallArg> materialized;
@@ -2043,12 +2043,12 @@ bool lowerFptosi(const il::core::Instr &ins,
     const uint16_t lowerBound = allocateNextVReg(ctx.nextVRegId);
     emitF64BitsToVReg(out,
                       lowerBound,
-                      viper::codegen::common::f64Bits(signedLowerBoundForBits(resultBits)),
+                      zanna::codegen::common::f64Bits(signedLowerBoundForBits(resultBits)),
                       ctx.nextVRegId);
     const uint16_t upperBound = allocateNextVReg(ctx.nextVRegId);
     emitF64BitsToVReg(out,
                       upperBound,
-                      viper::codegen::common::f64Bits(signedUpperExclusiveForBits(resultBits)),
+                      zanna::codegen::common::f64Bits(signedUpperExclusiveForBits(resultBits)),
                       ctx.nextVRegId);
 
     out.instrs.push_back(
@@ -2453,8 +2453,8 @@ bool lowerCallIndirect(const il::core::Instr &ins,
         if (!materializeValueToVReg(ins.operands[i], bb, ctx, out, vArg, cArg))
             return false;
         args.push_back({vArg,
-                        cArg == RegClass::FPR ? viper::codegen::common::CallArgClass::FPR
-                                              : viper::codegen::common::CallArgClass::GPR});
+                        cArg == RegClass::FPR ? zanna::codegen::common::CallArgClass::FPR
+                                              : zanna::codegen::common::CallArgClass::GPR});
     }
 
     LoweredCall seq{};
@@ -2548,4 +2548,4 @@ bool lowerRet(const il::core::Instr &ins,
     return true;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

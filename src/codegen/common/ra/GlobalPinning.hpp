@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::ra {
+namespace zanna::codegen::ra {
 
 /// @brief Live segment of a candidate within one block, in half-positions.
 /// @details Position 2*i is instruction i's reads, 2*i+1 its writes; a value
@@ -291,4 +291,4 @@ GlobalPinAssignment<PhysRegT> assignGlobalPins(std::vector<GlobalPinCandidate> c
     return result;
 }
 
-} // namespace viper::codegen::ra
+} // namespace zanna::codegen::ra

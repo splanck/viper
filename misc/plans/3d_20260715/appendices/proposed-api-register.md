@@ -18,11 +18,11 @@ Status labels:
 
 ## Naming and representation rules
 
-- Low-level `Viper.Graphics3D` uses its existing PascalCase conventions.
-- Stateful `Viper.Game3D` follows the actual class registry's member style;
+- Low-level `Zanna.Graphics3D` uses its existing PascalCase conventions.
+- Stateful `Zanna.Game3D` follows the actual class registry's member style;
   match the neighboring class rather than normalizing unrelated APIs.
-- Vector-valued parameters and properties use the existing `Viper.Math.Vec2`
-  and `Viper.Math.Vec3` classes, exactly as `Entity3D.Position` and
+- Vector-valued parameters and properties use the existing `Zanna.Math.Vec2`
+  and `Zanna.Math.Vec3` classes, exactly as `Entity3D.Position` and
   `PhysicsHit3D.Point/Normal` do today; `Vec2`/`Vec3` below abbreviate those
   qualified types.
 - New public runtime objects end in `3D` unless they extend an established
@@ -45,9 +45,9 @@ Status labels:
 | `CharacterController3D` and built-in camera controllers | Retain; compose rather than replace |
 | `Environment3D` and `EnvHandle` | Retain presets; make their renderable ownership participate in the new environment registry |
 | `EffectRegistry3D` and `Sound3D` | Extend with named bounded pools/cues; no parallel feedback engine |
-| `Viper.Assets.Resolver` and `Viper.IO.Assets` | Extend/reuse for resolution; do not add a second filesystem policy |
+| `Zanna.Assets.Resolver` and `Zanna.IO.Assets` | Extend/reuse for resolution; do not add a second filesystem policy |
 | `Entity3D.SetPersistent` and `World3D.SaveState/LoadState` | Compose into slots; do not create another world snapshot format |
-| `Viper.Game.UI.Hud*` and Canvas3D widget draw adapter | Reuse; GameBase3D only orchestrates UI state and overlay timing |
+| `Zanna.Game.UI.Hud*` and Canvas3D widget draw adapter | Reuse; GameBase3D only orchestrates UI state and overlay timing |
 | `Hitbox3D`, `Health3D`, hit/damage events | Extend for ray hurt regions; do not fork melee/ranged health models |
 
 ## Plan 01 — Overlay alpha
@@ -70,7 +70,7 @@ match.
 
 Status: **Proposed**, owner: plan 03.
 
-Proposed class: `Viper.Game3D.FrameDriver3D`.
+Proposed class: `Zanna.Game3D.FrameDriver3D`.
 
 Draft construction and configuration:
 
@@ -129,7 +129,7 @@ ordering. They do not prevent custom Canvas3D draws between phases.
 
 Status: **Proposed**, owner: plan 04.
 
-Proposed class: `Viper.Game3D.SceneScope3D`.
+Proposed class: `Zanna.Game3D.SceneScope3D`.
 
 ```text
 New(world: World3D, name: String) -> SceneScope3D
@@ -163,7 +163,7 @@ CreateScope(name: String) -> SceneScope3D
 
 Status: **Proposed/Extend**, owner: plan 05.
 
-Proposed class: `Viper.Game3D.EnvironmentStack3D`, exposed read-only as
+Proposed class: `Zanna.Game3D.EnvironmentStack3D`, exposed read-only as
 `World3D.Environment`.
 
 ```text
@@ -181,7 +181,7 @@ Update(dt: Float) -> Void
 Draw(phase: EnvironmentPhase3D value, canvas: Canvas3D, camera: Camera3D) -> Void
 ```
 
-Proposed static constants surface `Viper.Game3D.EnvironmentPhase3D` identifies
+Proposed static constants surface `Zanna.Game3D.EnvironmentPhase3D` identifies
 environment orchestration points such as `OpaqueBeforeScene`,
 `OpaqueAfterScene`, and `TransparentAfterScene`. It is deliberately separate
 from the existing profiling-oriented `RenderPass` constants unless the ADR
@@ -194,7 +194,7 @@ terrain remains owned by `WorldStream3D` and is not double-registered.
 
 Status: **Proposed**, owner: plan 06.
 
-Proposed class: `Viper.Game3D.CharacterMotor3D` wrapping an existing
+Proposed class: `Zanna.Game3D.CharacterMotor3D` wrapping an existing
 `CharacterController3D`.
 
 ```text
@@ -225,7 +225,7 @@ remain supported.
 
 Status: **Proposed**, owner: plan 07.
 
-Proposed classes: `Viper.Game3D.CameraRig3D` and static mode/constants class
+Proposed classes: `Zanna.Game3D.CameraRig3D` and static mode/constants class
 `CameraRigMode`.
 
 ```text
@@ -252,7 +252,7 @@ target entity. Randomized modifiers require an explicit seed.
 
 Status: **Proposed convenience over existing resolver**, owner: plan 08.
 
-Proposed class: `Viper.Game3D.AssetCatalog3D`; proposed result class:
+Proposed class: `Zanna.Game3D.AssetCatalog3D`; proposed result class:
 `AssetResolution3D`.
 
 ```text
@@ -269,8 +269,8 @@ AssetResolution3D.Found/Required/Packaged: Boolean
 AssetResolution3D.LogicalName/ResolvedPath/Source/Diagnostic: String
 ```
 
-Resolution policy delegates to `Viper.IO.Assets` and
-`Viper.Assets.Resolver`. `ResolvedPath` preserves a package logical path when
+Resolution policy delegates to `Zanna.IO.Assets` and
+`Zanna.Assets.Resolver`. `ResolvedPath` preserves a package logical path when
 the package resolver wins, allowing typed `Load*Asset` APIs. Typed loading stays
 in `Assets3D`, SceneAsset, Sound3D, or IO APIs.
 
@@ -278,8 +278,8 @@ in `Assets3D`, SceneAsset, Sound3D, or IO APIs.
 
 Status: **Proposed/Extend**, owner: plan 09.
 
-Proposed class: `Viper.Game3D.QualityProfile3D`; static helper:
-`Viper.Game3D.Quality.Resolve`.
+Proposed class: `Zanna.Game3D.QualityProfile3D`; static helper:
+`Zanna.Game3D.Quality.Resolve`.
 
 ```text
 Quality.Resolve(world: World3D, requestedLevel: Integer) -> QualityProfile3D
@@ -389,7 +389,7 @@ onResize(world, width, height)
 ```
 
 Draft `GameBase3D` responsibilities: own World3D, FrameDriver3D, root scope,
-current/pending scene scopes, pause policy, transitions, `Viper.Game.UI` root
+current/pending scene scopes, pause policy, transitions, `Zanna.Game.UI` root
 widgets, and deterministic frame limits. `afterFixedStep` is the documented
 place to consume collision/damage/events and refresh intent-driven motor state
 after `CommitFixedStep`. Scenes may omit work through default base methods if
@@ -400,7 +400,7 @@ adapter consistent with current language capability.
 
 Status: **Proposed/Extend**, owner: plan 13.
 
-Proposed static helper: `Viper.Game3D.Ballistics3D`; result classes:
+Proposed static helper: `Zanna.Game3D.Ballistics3D`; result classes:
 `ShotResult3D`, `ShotImpact3D`; proposed `DamageSpec3D` value object.
 
 ```text
@@ -431,7 +431,7 @@ fallback. Existing melee collision behavior is unchanged.
 
 Status: **Proposed**, owner: plan 14.
 
-Proposed class: `Viper.Game3D.SaveGame3D`; result metadata class:
+Proposed class: `Zanna.Game3D.SaveGame3D`; result metadata class:
 `SaveSlotInfo3D`.
 
 ```text

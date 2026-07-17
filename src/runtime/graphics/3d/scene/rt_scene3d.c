@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/scene/rt_scene3d.c
-// Purpose: Viper.Graphics3D.Scene3D / SceneNode3D — 3D scene graph with
+// Purpose: Zanna.Graphics3D.Scene3D / SceneNode3D — 3D scene graph with
 //   parent-child transform propagation. Each node holds local TRS, and the
 //   world matrix is lazily recomputed on access or draw.
 //
@@ -31,7 +31,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_scene3d.h"
 #include "rt_animcontroller3d.h"
@@ -344,4 +344,4 @@ extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

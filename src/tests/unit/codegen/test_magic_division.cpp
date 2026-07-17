@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -73,7 +73,7 @@ uint64_t mulhiU64(uint64_t a, uint64_t b) {
 
 /// @brief Emulate the emitted signed magic-divide sequence for divisor d >= 2.
 int64_t emulateSignedMagic(int64_t x, int64_t d) {
-    const viper::codegen::MagicNumber magic = viper::codegen::computeSignedMagic(d);
+    const zanna::codegen::MagicNumber magic = zanna::codegen::computeSignedMagic(d);
     int64_t hi = mulhiS64(x, magic.multiplier);
     if (magic.needsAdd)
         hi += x;
@@ -85,7 +85,7 @@ int64_t emulateSignedMagic(int64_t x, int64_t d) {
 
 /// @brief Emulate the emitted unsigned magic-divide sequence.
 uint64_t emulateUnsignedMagic(uint64_t x, uint64_t d) {
-    const auto magic = viper::codegen::computeUnsignedMagic(d);
+    const auto magic = zanna::codegen::computeUnsignedMagic(d);
     if (!magic.has_value())
         return ~uint64_t{0}; // caller only passes suitable divisors
     uint64_t hi = mulhiU64(x, magic->multiplier);
@@ -171,15 +171,15 @@ TEST(MagicDivision, UnsignedQuotientsMatchReference) {
 }
 
 TEST(MagicDivision, RejectsUnsuitableDivisors) {
-    EXPECT_EQ(viper::codegen::computeSignedMagic(0).multiplier, 0);
-    EXPECT_EQ(viper::codegen::computeSignedMagic(1).multiplier, 0);
-    EXPECT_EQ(viper::codegen::computeSignedMagic(-5).multiplier, 0);
-    EXPECT_FALSE(viper::codegen::computeUnsignedMagic(0).has_value());
-    EXPECT_FALSE(viper::codegen::computeUnsignedMagic(1).has_value());
-    EXPECT_FALSE(viper::codegen::computeUnsignedMagic(8).has_value()); // pow2
+    EXPECT_EQ(zanna::codegen::computeSignedMagic(0).multiplier, 0);
+    EXPECT_EQ(zanna::codegen::computeSignedMagic(1).multiplier, 0);
+    EXPECT_EQ(zanna::codegen::computeSignedMagic(-5).multiplier, 0);
+    EXPECT_FALSE(zanna::codegen::computeUnsignedMagic(0).has_value());
+    EXPECT_FALSE(zanna::codegen::computeUnsignedMagic(1).has_value());
+    EXPECT_FALSE(zanna::codegen::computeUnsignedMagic(8).has_value()); // pow2
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

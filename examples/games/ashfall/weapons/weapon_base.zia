@@ -10,7 +10,7 @@
 // =============================================================================
 module weapon_base;
 
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../core/events" as events;

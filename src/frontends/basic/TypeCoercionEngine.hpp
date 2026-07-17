@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,8 +36,8 @@
 #include "frontends/basic/LowererTypes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "support/source_location.hpp"
-#include "viper/il/IRBuilder.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/IRBuilder.hpp"
+#include "zanna/il/Module.hpp"
 #include <functional>
 #include <optional>
 #include <string_view>

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include "Lowering.EmitCommon.hpp"
 #include "MachineIR.hpp"
 
-namespace viper::codegen::x64::lowering {
+namespace zanna::codegen::x64::lowering {
 
 namespace {
 
@@ -109,4 +109,4 @@ void emitTrap(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::UD2));
 }
 
-} // namespace viper::codegen::x64::lowering
+} // namespace zanna::codegen::x64::lowering

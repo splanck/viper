@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #ifdef _WIN32
 // This test requires overriding realloc which doesn't work with Windows DLL CRT
 int main() {
-    VIPER_PLATFORM_SKIP("Cannot override CRT functions on Windows DLL");
+    ZANNA_PLATFORM_SKIP("Cannot override CRT functions on Windows DLL");
 }
 #else
 
@@ -45,7 +45,7 @@ extern "C" void vm_trap(const char *msg) {
 int main() {
     // Create a temporary file with test input instead of using a pipe
     // This avoids stdin redirection issues across platforms
-    char tmpname[] = "/tmp/viper_input_test_XXXXXX";
+    char tmpname[] = "/tmp/zanna_input_test_XXXXXX";
     int tmpfd = mkstemp(tmpname);
     assert(tmpfd >= 0);
 

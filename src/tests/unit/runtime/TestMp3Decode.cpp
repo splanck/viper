@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -145,12 +145,12 @@ TEST(Mp3DecodeTest, SyntheticFrameHeader) {
 }
 
 TEST(Mp3DecodeTest, StreamRejectsMissingFile) {
-    mp3_stream_t *stream = mp3_stream_open("/tmp/viper_missing_test_stream.mp3");
+    mp3_stream_t *stream = mp3_stream_open("/tmp/zanna_missing_test_stream.mp3");
     EXPECT_EQ(stream, nullptr);
 }
 
 TEST(Mp3DecodeTest, StreamRejectsGarbageFile) {
-    const char *path = "/tmp/viper_test_garbage_stream.mp3";
+    const char *path = "/tmp/zanna_test_garbage_stream.mp3";
     const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0xFA, 0xCE, 0xBE, 0xEF};
     ASSERT_TRUE(write_temp_file(path, garbage, sizeof(garbage)));
 
@@ -161,7 +161,7 @@ TEST(Mp3DecodeTest, StreamRejectsGarbageFile) {
 }
 
 TEST(Mp3DecodeTest, StreamRejectsId3OnlyFile) {
-    const char *path = "/tmp/viper_test_id3_only_stream.mp3";
+    const char *path = "/tmp/zanna_test_id3_only_stream.mp3";
     uint8_t id3[120];
     memset(id3, 0, sizeof(id3));
     id3[0] = 'I';
@@ -178,5 +178,5 @@ TEST(Mp3DecodeTest, StreamRejectsId3OnlyFile) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_error.h
@@ -128,40 +128,40 @@ void rt_trap_set_ip(uint64_t ip);
 ///          read-only copy of the kind, code, instruction pointer, source line,
 ///          message, kind name, and formatted location currently stored by the
 ///          trap machinery.
-/// @return Opaque `Viper.Option` object containing `Viper.Diagnostics.TrapInfo`.
+/// @return Opaque `Zanna.Option` object containing `Zanna.Diagnostics.TrapInfo`.
 void *rt_diagnostics_current_trap(void);
 
-/// @brief Read the trap kind from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the trap kind from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Canonical trap kind integer.
 int64_t rt_trap_info_get_kind(void *obj);
 
-/// @brief Read the runtime error code from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the runtime error code from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Runtime `Err_*` code or zero when none was recorded.
 int64_t rt_trap_info_get_code(void *obj);
 
-/// @brief Read the instruction pointer from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the instruction pointer from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Native instruction pointer value or zero when unavailable.
 int64_t rt_trap_info_get_ip(void *obj);
 
-/// @brief Read the source line from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the source line from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Source line number, or -1 when unavailable.
 int64_t rt_trap_info_get_line(void *obj);
 
-/// @brief Read the trap kind name from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the trap kind name from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Owned runtime string containing the stable kind name.
 rt_string rt_trap_info_get_kind_name(void *obj);
 
-/// @brief Read the message from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the message from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Owned runtime string containing the trap message.
 rt_string rt_trap_info_get_message(void *obj);
 
-/// @brief Read the formatted location from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the formatted location from a `Zanna.Diagnostics.TrapInfo` snapshot.
 /// @param obj Opaque `TrapInfo` object.
 /// @return Owned runtime string containing the location, or an empty string.
 rt_string rt_trap_info_get_location(void *obj);

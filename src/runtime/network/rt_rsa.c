@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -752,7 +752,7 @@ static int rsa_modexp_bytes(const uint8_t *base,
 ///            `EM < N` (the RSA modulus) so the modular exponentiation
 ///            won't reject it.
 ///          Salt length = hash length here (the conventional choice).
-///          Used only by signing operations, which Viper doesn't do
+///          Used only by signing operations, which Zanna doesn't do
 ///          today — kept for symmetry with `rsa_pss_verify_encoded`.
 static int rsa_pss_encode(const rt_rsa_key_t *key,
                           rt_rsa_hash_t hash_id,

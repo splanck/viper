@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/math/rt_vec2.c
-// Purpose: 2D vector mathematics (x, y doubles) for Viper games and graphics.
+// Purpose: 2D vector mathematics (x, y doubles) for Zanna games and graphics.
 //   Provides immutable Vec2 objects with arithmetic (+,-,×,÷), dot product,
 //   cross product magnitude, length/normalize, distance, linear interpolation,
 //   angle and rotation operations. Used pervasively in physics, camera math,
@@ -91,14 +91,14 @@ static void vec2_pool_return(void *p) {
 /// @brief Internal Vec2 implementation structure.
 ///
 /// Stores the X and Y components of a 2D vector as double-precision
-/// floating-point values. The structure is allocated as a Viper object
+/// floating-point values. The structure is allocated as a Zanna object
 /// with reference counting support.
 ///
 /// @note Vec2 is immutable - all operations create new instances.
 typedef struct {
     double x; ///< X component (horizontal axis, positive = right)
     double y; ///< Y component (vertical axis, positive = up in math, down in screen coords)
-} ViperVec2;
+} ZannaVec2;
 
 /// @brief Return whether @p v is a Vec2-compatible heap payload.
 /// @details Accepts both the explicit Vec2 class id used by current constructors and the
@@ -115,8 +115,8 @@ static int vec2_is_compatible_object(void *v) {
     if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
         return 0;
     if (hdr->class_id == RT_VEC2_CLASS_ID)
-        return hdr->cap >= sizeof(ViperVec2);
-    return hdr->class_id == 0 && hdr->len == sizeof(ViperVec2) && hdr->cap == sizeof(ViperVec2);
+        return hdr->cap >= sizeof(ZannaVec2);
+    return hdr->class_id == 0 && hdr->len == sizeof(ZannaVec2) && hdr->cap == sizeof(ZannaVec2);
 }
 
 /// @brief Validate and cast an opaque handle to a Vec2 payload.
@@ -125,12 +125,12 @@ static int vec2_is_compatible_object(void *v) {
 /// @param v Candidate Vec2 runtime handle.
 /// @param op Diagnostic prefix used if validation fails.
 /// @return Typed Vec2 payload, or NULL after trapping.
-static ViperVec2 *vec2_checked(void *v, const char *op) {
+static ZannaVec2 *vec2_checked(void *v, const char *op) {
     if (!vec2_is_compatible_object(v)) {
         rt_trap(op ? op : "Vec2: invalid vector");
         return NULL;
     }
-    return (ViperVec2 *)v;
+    return (ZannaVec2 *)v;
 }
 
 /// @brief Compute a finite, overflow-resistant Vec2 length from raw components.
@@ -145,7 +145,7 @@ static double vec2_safe_len(double x, double y) {
 
 /// @brief Allocate and initialize a new Vec2 with the given components.
 ///
-/// This internal helper allocates a Vec2 object through the Viper object
+/// This internal helper allocates a Vec2 object through the Zanna object
 /// system and initializes it with the provided X and Y values.
 ///
 /// @param x The X component value.
@@ -154,14 +154,14 @@ static double vec2_safe_len(double x, double y) {
 /// @return Pointer to the newly allocated Vec2. Traps on allocation failure.
 ///
 /// @note This is an internal function - use rt_vec2_new() for public API.
-static ViperVec2 *vec2_alloc(double x, double y) {
-    ViperVec2 *v;
+static ZannaVec2 *vec2_alloc(double x, double y) {
+    ZannaVec2 *v;
     if (vec2_pool_top_ > 0) {
         // Fast path: reuse a pooled object (no heap allocation).
-        v = (ViperVec2 *)vec2_pool_buf_[--vec2_pool_top_];
+        v = (ZannaVec2 *)vec2_pool_buf_[--vec2_pool_top_];
     } else {
         // Slow path: heap-allocate a fresh object and arm the pool finalizer.
-        v = (ViperVec2 *)rt_obj_new_i64(RT_VEC2_CLASS_ID, (int64_t)sizeof(ViperVec2));
+        v = (ZannaVec2 *)rt_obj_new_i64(RT_VEC2_CLASS_ID, (int64_t)sizeof(ZannaVec2));
         if (!v) {
             rt_trap("Vec2: memory allocation failed");
             return NULL; // Unreachable after trap
@@ -296,7 +296,7 @@ void *rt_vec2_one(void) {
 /// @see rt_vec2_y For the Y component
 /// @see rt_vec2_new For creating vectors with specific components
 double rt_vec2_x(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.X: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.X: invalid vector");
     if (!vec)
         return 0.0;
     return vec->x;
@@ -329,7 +329,7 @@ double rt_vec2_x(void *v) {
 /// @see rt_vec2_x For the X component
 /// @see rt_vec2_new For creating vectors with specific components
 double rt_vec2_y(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Y: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Y: invalid vector");
     if (!vec)
         return 0.0;
     return vec->y;
@@ -378,8 +378,8 @@ double rt_vec2_y(void *v) {
 /// @see rt_vec2_sub For vector subtraction
 /// @see rt_vec2_mul For scalar multiplication
 void *rt_vec2_add(void *a, void *b) {
-    ViperVec2 *va = vec2_checked(a, "Vec2.Add: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Add: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Add: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Add: invalid vector");
     if (!va || !vb)
         return NULL;
     return vec2_alloc(va->x + vb->x, va->y + vb->y);
@@ -414,8 +414,8 @@ void *rt_vec2_add(void *a, void *b) {
 /// @see rt_vec2_add For vector addition
 /// @see rt_vec2_neg For vector negation
 void *rt_vec2_sub(void *a, void *b) {
-    ViperVec2 *va = vec2_checked(a, "Vec2.Sub: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Sub: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Sub: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Sub: invalid vector");
     if (!va || !vb)
         return NULL;
     return vec2_alloc(va->x - vb->x, va->y - vb->y);
@@ -457,7 +457,7 @@ void *rt_vec2_sub(void *a, void *b) {
 /// @see rt_vec2_div For scalar division
 /// @see rt_vec2_norm For getting a unit vector
 void *rt_vec2_mul(void *v, double s) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Mul: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Mul: invalid vector");
     if (!vec)
         return NULL;
     return vec2_alloc(vec->x * s, vec->y * s);
@@ -493,7 +493,7 @@ void *rt_vec2_mul(void *v, double s) {
 /// @see rt_vec2_mul For scalar multiplication
 /// @see rt_vec2_norm For normalizing to unit length
 void *rt_vec2_div(void *v, double s) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Div: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Div: invalid vector");
     if (!vec)
         return NULL;
     if (!isfinite(s) || s == 0.0) {
@@ -542,7 +542,7 @@ void *rt_vec2_div(void *v, double s) {
 /// @see rt_vec2_mul For scalar multiplication
 /// @see rt_vec2_sub For vector subtraction
 void *rt_vec2_neg(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Neg: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Neg: invalid vector");
     if (!vec)
         return NULL;
     return vec2_alloc(-vec->x, -vec->y);
@@ -605,8 +605,8 @@ void *rt_vec2_neg(void *v) {
 /// @see rt_vec2_cross For the 2D cross product
 /// @see rt_vec2_angle For getting the angle of a vector
 double rt_vec2_dot(void *a, void *b) {
-    ViperVec2 *va = vec2_checked(a, "Vec2.Dot: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Dot: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Dot: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Dot: invalid vector");
     if (!va || !vb)
         return 0.0;
     return va->x * vb->x + va->y * vb->y;
@@ -669,8 +669,8 @@ double rt_vec2_dot(void *a, void *b) {
 double rt_vec2_cross(void *a, void *b) {
     // 2D cross product returns the scalar z-component of the 3D cross product
     // (treating vectors as 3D with z=0): a.x * b.y - a.y * b.x
-    ViperVec2 *va = vec2_checked(a, "Vec2.Cross: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Cross: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Cross: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Cross: invalid vector");
     if (!va || !vb)
         return 0.0;
     return va->x * vb->y - va->y * vb->x;
@@ -721,7 +721,7 @@ double rt_vec2_cross(void *a, void *b) {
 /// @see rt_vec2_len For the actual length
 /// @see rt_vec2_dist For distance between two points
 double rt_vec2_len_sq(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.LenSq: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.LenSq: invalid vector");
     if (!vec)
         return 0.0;
     return vec->x * vec->x + vec->y * vec->y;
@@ -773,7 +773,7 @@ double rt_vec2_len_sq(void *v) {
 /// @see rt_vec2_len_sq For squared length (faster for comparisons)
 /// @see rt_vec2_norm For getting a unit-length vector
 double rt_vec2_len(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Len: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Len: invalid vector");
     if (!vec)
         return 0.0;
     return vec2_safe_len(vec->x, vec->y);
@@ -828,8 +828,8 @@ double rt_vec2_len(void *v) {
 /// @see rt_vec2_len For the length of a single vector
 /// @see rt_vec2_sub For the difference vector between two points
 double rt_vec2_dist(void *a, void *b) {
-    ViperVec2 *va = vec2_checked(a, "Vec2.Dist: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Dist: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Dist: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Dist: invalid vector");
     if (!va || !vb)
         return 0.0;
     double dx = vb->x - va->x;
@@ -888,7 +888,7 @@ double rt_vec2_dist(void *a, void *b) {
 /// @see rt_vec2_len For getting the length
 /// @see rt_vec2_div For manual normalization
 void *rt_vec2_norm(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Norm: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Norm: invalid vector");
     if (!vec)
         return NULL;
     double len = vec2_safe_len(vec->x, vec->y);
@@ -946,8 +946,8 @@ void *rt_vec2_norm(void *v) {
 /// @see rt_vec2_add For vector addition
 /// @see rt_vec2_sub For vector subtraction
 void *rt_vec2_lerp(void *a, void *b, double t) {
-    ViperVec2 *va = vec2_checked(a, "Vec2.Lerp: invalid vector");
-    ViperVec2 *vb = vec2_checked(b, "Vec2.Lerp: invalid vector");
+    ZannaVec2 *va = vec2_checked(a, "Vec2.Lerp: invalid vector");
+    ZannaVec2 *vb = vec2_checked(b, "Vec2.Lerp: invalid vector");
     if (!va || !vb)
         return NULL;
     // lerp(a, b, t) = a + (b - a) * t = a * (1 - t) + b * t
@@ -1008,7 +1008,7 @@ void *rt_vec2_lerp(void *a, void *b, double t) {
 /// @see rt_vec2_rotate For rotating a vector by an angle
 /// @see rt_vec2_norm For getting the direction as a unit vector
 double rt_vec2_angle(void *v) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Angle: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Angle: invalid vector");
     if (!vec)
         return 0.0;
     return atan2(vec->y, vec->x);
@@ -1067,7 +1067,7 @@ double rt_vec2_angle(void *v) {
 /// @see rt_vec2_angle For getting the current angle of a vector
 /// @see rt_vec2_norm For unit vectors (often used with rotation)
 void *rt_vec2_rotate(void *v, double angle) {
-    ViperVec2 *vec = vec2_checked(v, "Vec2.Rotate: invalid vector");
+    ZannaVec2 *vec = vec2_checked(v, "Vec2.Rotate: invalid vector");
     if (!vec)
         return NULL;
     double c = cos(angle);

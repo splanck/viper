@@ -1,10 +1,10 @@
 module openworld_slice;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time.Clock as Clock;
 
 class OpenWorldSlice {
     hide World3D world;
@@ -463,7 +463,7 @@ class OpenWorldSlice {
 
 func start() {
     var game = new OpenWorldSlice();
-    game.setup("Viper Open World Slice", 960, 540);
+    game.setup("Zanna Open World Slice", 960, 540);
     game.run();
     game.destroy();
     Terminal.Say("RESULT: ok");

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_bigint.c
-// Purpose: Implements arbitrary-precision integer arithmetic for the Viper
+// Purpose: Implements arbitrary-precision integer arithmetic for the Zanna
 //          runtime. Uses a base-2^32 little-endian digit array with a separate
 //          sign flag. Covers grade-school add/sub/mul, Knuth Algorithm D for
 //          division, Euclidean GCD, and conversion to/from int64 and strings.

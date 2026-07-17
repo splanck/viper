@@ -3,32 +3,32 @@ module TestFile;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.IO.File.Exists
-// COVER: Viper.IO.File.WriteAllText
-// COVER: Viper.IO.File.ReadAllText
-// COVER: Viper.IO.File.Append
-// COVER: Viper.IO.File.Size
-// COVER: Viper.IO.File.Delete
-// COVER: Viper.IO.TempFile.PathWithPrefix
+// COVER: Zanna.IO.File.Exists
+// COVER: Zanna.IO.File.WriteAllText
+// COVER: Zanna.IO.File.ReadAllText
+// COVER: Zanna.IO.File.Append
+// COVER: Zanna.IO.File.Size
+// COVER: Zanna.IO.File.Delete
+// COVER: Zanna.IO.TempFile.PathWithPrefix
 
 func testTextFileRoundtrip() {
     setTest("TextFileRoundtrip");
 
-    var path = Viper.IO.TempFile.PathWithPrefix("zia_file_");
-    if (Viper.IO.File.Exists(path)) {
-        Viper.IO.File.Delete(path);
+    var path = Zanna.IO.TempFile.PathWithPrefix("zia_file_");
+    if (Zanna.IO.File.Exists(path)) {
+        Zanna.IO.File.Delete(path);
     }
 
-    Viper.IO.File.WriteAllText(path, "alpha");
-    assertTrue(Viper.IO.File.Exists(path), "created file exists");
-    assertEqStr(Viper.IO.File.ReadAllText(path), "alpha", "read all text");
-    assertGtInt(Viper.IO.File.SizeBytes(path), 0, "file size after write");
+    Zanna.IO.File.WriteAllText(path, "alpha");
+    assertTrue(Zanna.IO.File.Exists(path), "created file exists");
+    assertEqStr(Zanna.IO.File.ReadAllText(path), "alpha", "read all text");
+    assertGtInt(Zanna.IO.File.SizeBytes(path), 0, "file size after write");
 
-    Viper.IO.File.Append(path, " beta");
-    assertEqStr(Viper.IO.File.ReadAllText(path), "alpha beta", "append text");
+    Zanna.IO.File.Append(path, " beta");
+    assertEqStr(Zanna.IO.File.ReadAllText(path), "alpha beta", "append text");
 
-    Viper.IO.File.Delete(path);
-    assertFalse(Viper.IO.File.Exists(path), "deleted file missing");
+    Zanna.IO.File.Delete(path);
+    assertFalse(Zanna.IO.File.Exists(path), "deleted file missing");
 }
 
 func start() {

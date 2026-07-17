@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,9 +18,9 @@
 ///
 /// ### Phase 1: Runtime Class Types
 ///
-/// Registers each runtime class (e.g., "Viper.String", "Viper.File") as a
+/// Registers each runtime class (e.g., "Zanna.String", "Zanna.File") as a
 /// type in the Zia type registry. This enables the semantic analyzer to
-/// recognize expressions like `new Viper.Graphics.Canvas(...)` and property
+/// recognize expressions like `new Zanna.Graphics.Canvas(...)` and property
 /// accesses like `canvas.Width`.
 ///
 /// ### Phase 2: Runtime Function Fallbacks (ZiaRuntimeExterns.inc)
@@ -28,7 +28,7 @@
 /// Reads the generated ZiaRuntimeExterns.inc metadata table and registers
 /// ABI-shaped fallback extern signatures for every RT_FUNC entry.
 /// These cover runtime calls that are not described by the runtime-class
-/// catalog, such as `Viper.Time.Clock.Sleep` or `Viper.Game.LevelData.ObjectType`.
+/// catalog, such as `Zanna.Time.Clock.Sleep` or `Zanna.Game.LevelData.ObjectType`.
 ///
 /// ### Phase 3: Methods and Properties from RuntimeRegistry
 ///
@@ -56,12 +56,12 @@
 ///
 /// ## Example Registration
 ///
-/// For `Viper.String.Substring` with signature "str(i64,i64)":
+/// For `Zanna.String.Substring` with signature "str(i64,i64)":
 ///
 /// ```cpp
 /// // Parsed signature: returnType=String, params=[I64, I64]
 /// defineExternFunction(
-///     "Viper.String.Substring",  // extern target name
+///     "Zanna.String.Substring",  // extern target name
 ///     types::string(),           // return type
 ///     {types::integer(), types::integer()}  // parameter types
 /// );
@@ -163,40 +163,40 @@ static bool isKnownRuntimeClass(const std::vector<il::runtime::RuntimeClass> &ca
 
 static std::string_view generatedReturnOverride(std::string_view canonical) {
     static constexpr RuntimeReturnOverride kReturnOverrides[] = {
-        // Crypto functions returning Viper.Collections.Bytes
-        {"Viper.Crypto.SecureRandom.Bytes", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.Encrypt", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.Decrypt", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.EncryptAAD", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.DecryptAAD", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.EncryptWithKey", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.DecryptWithKey", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.EncryptWithKeyAAD", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.DecryptWithKeyAAD", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.GenerateKey", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Cipher.DeriveKey", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Aes.Encrypt", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Aes.Decrypt", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Aes.EncryptAuth", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Aes.DecryptAuth", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.Aes.EncryptStr", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.KeyDerive.Pbkdf2SHA256", "Viper.Collections.Bytes"},
-        {"Viper.Crypto.KeyDerive.ScryptSHA256", "Viper.Collections.Bytes"},
-        // IO functions returning Viper.Collections.Bytes
-        {"Viper.IO.Stream.ToBytes", "Viper.Collections.Bytes"},
-        // Text functions returning Viper.Collections.Seq
-        {"Viper.Data.Csv.ParseLine", "Viper.Collections.Seq"},
-        {"Viper.Data.Csv.ParseLineWith", "Viper.Collections.Seq"},
-        {"Viper.Data.Csv.Parse", "Viper.Collections.Seq"},
-        {"Viper.Data.Csv.ParseWith", "Viper.Collections.Seq"},
-        {"Viper.Text.Markdown.ExtractLinks", "Viper.Collections.Seq"},
-        {"Viper.Text.Markdown.ExtractHeadings", "Viper.Collections.Seq"},
-        {"Viper.Text.Html.ExtractLinks", "Viper.Collections.Seq"},
-        {"Viper.Text.Html.ExtractText", "Viper.Collections.Seq"},
+        // Crypto functions returning Zanna.Collections.Bytes
+        {"Zanna.Crypto.SecureRandom.Bytes", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.Encrypt", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.Decrypt", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.EncryptAAD", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.DecryptAAD", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.EncryptWithKey", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.DecryptWithKey", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.EncryptWithKeyAAD", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.DecryptWithKeyAAD", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.GenerateKey", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Cipher.DeriveKey", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Aes.Encrypt", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Aes.Decrypt", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Aes.EncryptAuth", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Aes.DecryptAuth", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.Aes.EncryptStr", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.KeyDerive.Pbkdf2SHA256", "Zanna.Collections.Bytes"},
+        {"Zanna.Crypto.KeyDerive.ScryptSHA256", "Zanna.Collections.Bytes"},
+        // IO functions returning Zanna.Collections.Bytes
+        {"Zanna.IO.Stream.ToBytes", "Zanna.Collections.Bytes"},
+        // Text functions returning Zanna.Collections.Seq
+        {"Zanna.Data.Csv.ParseLine", "Zanna.Collections.Seq"},
+        {"Zanna.Data.Csv.ParseLineWith", "Zanna.Collections.Seq"},
+        {"Zanna.Data.Csv.Parse", "Zanna.Collections.Seq"},
+        {"Zanna.Data.Csv.ParseWith", "Zanna.Collections.Seq"},
+        {"Zanna.Text.Markdown.ExtractLinks", "Zanna.Collections.Seq"},
+        {"Zanna.Text.Markdown.ExtractHeadings", "Zanna.Collections.Seq"},
+        {"Zanna.Text.Html.ExtractLinks", "Zanna.Collections.Seq"},
+        {"Zanna.Text.Html.ExtractText", "Zanna.Collections.Seq"},
         // Collection methods returning Seq from non-Seq classes
-        {"Viper.Collections.StringSet.Items", "Viper.Collections.Seq"},
-        {"Viper.Collections.SortedSet.Items", "Viper.Collections.Seq"},
-        {"Viper.Collections.Set.Items", "Viper.Collections.Seq"},
+        {"Zanna.Collections.StringSet.Items", "Zanna.Collections.Seq"},
+        {"Zanna.Collections.SortedSet.Items", "Zanna.Collections.Seq"},
+        {"Zanna.Collections.Set.Items", "Zanna.Collections.Seq"},
     };
 
     for (const auto &override : kReturnOverrides) {
@@ -456,8 +456,8 @@ void Sema::initRuntimeFunctions() {
     //==========================================================================
     // Each runtime class becomes a named type in the Zia type registry.
     // This enables type checking for:
-    // - Variable declarations: `var f: Viper.File`
-    // - Constructor calls: `new Viper.File("path.txt")`
+    // - Variable declarations: `var f: Zanna.File`
+    // - Constructor calls: `new Zanna.File("path.txt")`
     // - Type comparisons and casts
     for (const auto &cls : catalog) {
         typeRegistry_[cls.qname] = types::runtimeClass(cls.qname);
@@ -534,7 +534,7 @@ void Sema::initRuntimeFunctions() {
         for (const auto &p : cls.properties) {
             // Convert the property's IL type to a Zia type. Property type strings
             // may use the same typed object annotation as function signatures
-            // (for example obj<Viper.GUI.Widget>).
+            // (for example obj<Zanna.GUI.Widget>).
             TypeRef propType = nullptr;
             std::string propSigText = std::string(p.type ? p.type : "") + "()";
             auto propSig = il::runtime::parseRuntimeSignature(propSigText);
@@ -547,13 +547,13 @@ void Sema::initRuntimeFunctions() {
             }
 
             // Register getter: no parameters, returns property type
-            // Example: Viper.String.get_Length() -> Integer
+            // Example: Zanna.String.get_Length() -> Integer
             if (p.getter) {
                 registerOrRefineExtern(p.getter, propType, {});
             }
 
             // Register setter: takes property type, returns void
-            // Example: Viper.GUI.Widget.set_Visible(Boolean) -> void
+            // Example: Zanna.GUI.Widget.set_Visible(Boolean) -> void
             if (p.setter) {
                 registerOrRefineExtern(p.setter, types::voidType(), {propType});
             }

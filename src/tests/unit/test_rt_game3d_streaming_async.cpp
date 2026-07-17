@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_g3d_commit_queue.h"
@@ -138,9 +138,9 @@ void quiesce(void *stream, int max_iters = 400) {
 bool test_async_parity_with_blocking() {
     TEST("async streaming reaches the same resident set as blocking mode");
 
-    const char *near_path = "/tmp/viper_g3d_async_near.vscn";
-    const char *far_path = "/tmp/viper_g3d_async_far.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_cells.json";
+    const char *near_path = "/tmp/zanna_g3d_async_near.vscn";
+    const char *far_path = "/tmp/zanna_g3d_async_far.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_cells.json";
     EXPECT_TRUE(write_cell_scene(near_path, "async_near_marker"), "near fixture saves");
     EXPECT_TRUE(write_cell_scene(far_path, "async_far_marker"), "far fixture saves");
 
@@ -198,8 +198,8 @@ bool test_async_parity_with_blocking() {
 bool test_enqueue_allocation_failure_uses_emergency_handoff() {
     TEST("async streaming survives a commit-wrapper allocation failure");
 
-    const char *cell_path = "/tmp/viper_g3d_async_oom.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_oom_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_async_oom.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_oom_cells.json";
     EXPECT_TRUE(write_cell_scene(cell_path, "async_oom_marker"), "fixture saves");
 
     char manifest[512];
@@ -244,9 +244,9 @@ bool test_enqueue_allocation_failure_uses_emergency_handoff() {
 bool test_corrupt_cell_is_skipped() {
     TEST("corrupt staged cell is skipped with a diagnostic and no trap");
 
-    const char *good_path = "/tmp/viper_g3d_async_good.vscn";
-    const char *bad_path = "/tmp/viper_g3d_async_bad.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_bad_cells.json";
+    const char *good_path = "/tmp/zanna_g3d_async_good.vscn";
+    const char *bad_path = "/tmp/zanna_g3d_async_bad.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_bad_cells.json";
     EXPECT_TRUE(write_cell_scene(good_path, "async_good_marker"), "good fixture saves");
     EXPECT_TRUE(write_text_file(bad_path, "this is not a vscn payload"), "bad fixture writes");
 
@@ -300,8 +300,8 @@ bool test_corrupt_cell_is_skipped() {
 bool test_cancelled_stage_is_dropped() {
     TEST("staged payload for a no-longer-desired cell is dropped without leaking");
 
-    const char *cell_path = "/tmp/viper_g3d_async_cancel.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_cancel_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_async_cancel.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_cancel_cells.json";
     EXPECT_TRUE(write_cell_scene(cell_path, "async_cancel_marker"), "fixture saves");
 
     char manifest[512];
@@ -362,8 +362,8 @@ bool test_cancelled_stage_is_dropped() {
 bool test_zero_commit_budget_holds_then_releases() {
     TEST("zero commit budget holds staged commits and releases on restore");
 
-    const char *cell_path = "/tmp/viper_g3d_async_budget.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_budget_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_async_budget.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_budget_cells.json";
     EXPECT_TRUE(write_cell_scene(cell_path, "async_budget_marker"), "fixture saves");
 
     char manifest[512];
@@ -410,8 +410,8 @@ bool test_zero_commit_budget_holds_then_releases() {
 bool test_prefetch_stages_ahead_and_teleport_resets() {
     TEST("constant velocity prefetches the next cell; teleports do not");
 
-    const char *ahead_path = "/tmp/viper_g3d_async_ahead.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_prefetch_cells.json";
+    const char *ahead_path = "/tmp/zanna_g3d_async_ahead.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_prefetch_cells.json";
     EXPECT_TRUE(write_cell_scene(ahead_path, "async_ahead_marker"), "fixture saves");
 
     /* Cell sits at x=200; load radius 64 means it becomes desired at x>=128. */
@@ -479,8 +479,8 @@ bool test_prefetch_stages_ahead_and_teleport_resets() {
 bool test_blocking_fallback_is_synchronous() {
     TEST("setAsyncStreaming(false) restores single-update inline loads");
 
-    const char *cell_path = "/tmp/viper_g3d_async_block.vscn";
-    const char *manifest_path = "/tmp/viper_g3d_async_block_cells.json";
+    const char *cell_path = "/tmp/zanna_g3d_async_block.vscn";
+    const char *manifest_path = "/tmp/zanna_g3d_async_block_cells.json";
     EXPECT_TRUE(write_cell_scene(cell_path, "async_block_marker"), "fixture saves");
 
     char manifest[512];

@@ -3,167 +3,167 @@ module TestBinBuf;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.IO.BinaryBuffer.New
-// COVER: Viper.IO.BinaryBuffer.NewCap
-// COVER: Viper.IO.BinaryBuffer.FromBytes
-// COVER: Viper.IO.BinaryBuffer.WriteByte
-// COVER: Viper.IO.BinaryBuffer.ReadByte
-// COVER: Viper.IO.BinaryBuffer.WriteI16LE
-// COVER: Viper.IO.BinaryBuffer.ReadI16LE
-// COVER: Viper.IO.BinaryBuffer.WriteI16BE
-// COVER: Viper.IO.BinaryBuffer.ReadI16BE
-// COVER: Viper.IO.BinaryBuffer.WriteI32LE
-// COVER: Viper.IO.BinaryBuffer.ReadI32LE
-// COVER: Viper.IO.BinaryBuffer.WriteI32BE
-// COVER: Viper.IO.BinaryBuffer.ReadI32BE
-// COVER: Viper.IO.BinaryBuffer.WriteI64LE
-// COVER: Viper.IO.BinaryBuffer.ReadI64LE
-// COVER: Viper.IO.BinaryBuffer.WriteI64BE
-// COVER: Viper.IO.BinaryBuffer.ReadI64BE
-// COVER: Viper.IO.BinaryBuffer.WriteStr
-// COVER: Viper.IO.BinaryBuffer.ReadStr
-// COVER: Viper.IO.BinaryBuffer.get_Pos
-// COVER: Viper.IO.BinaryBuffer.set_Pos
-// COVER: Viper.IO.BinaryBuffer.get_Length
-// COVER: Viper.IO.BinaryBuffer.ToBytes
-// COVER: Viper.IO.BinaryBuffer.Reset
+// COVER: Zanna.IO.BinaryBuffer.New
+// COVER: Zanna.IO.BinaryBuffer.NewCap
+// COVER: Zanna.IO.BinaryBuffer.FromBytes
+// COVER: Zanna.IO.BinaryBuffer.WriteByte
+// COVER: Zanna.IO.BinaryBuffer.ReadByte
+// COVER: Zanna.IO.BinaryBuffer.WriteI16LE
+// COVER: Zanna.IO.BinaryBuffer.ReadI16LE
+// COVER: Zanna.IO.BinaryBuffer.WriteI16BE
+// COVER: Zanna.IO.BinaryBuffer.ReadI16BE
+// COVER: Zanna.IO.BinaryBuffer.WriteI32LE
+// COVER: Zanna.IO.BinaryBuffer.ReadI32LE
+// COVER: Zanna.IO.BinaryBuffer.WriteI32BE
+// COVER: Zanna.IO.BinaryBuffer.ReadI32BE
+// COVER: Zanna.IO.BinaryBuffer.WriteI64LE
+// COVER: Zanna.IO.BinaryBuffer.ReadI64LE
+// COVER: Zanna.IO.BinaryBuffer.WriteI64BE
+// COVER: Zanna.IO.BinaryBuffer.ReadI64BE
+// COVER: Zanna.IO.BinaryBuffer.WriteStr
+// COVER: Zanna.IO.BinaryBuffer.ReadStr
+// COVER: Zanna.IO.BinaryBuffer.get_Pos
+// COVER: Zanna.IO.BinaryBuffer.set_Pos
+// COVER: Zanna.IO.BinaryBuffer.get_Length
+// COVER: Zanna.IO.BinaryBuffer.ToBytes
+// COVER: Zanna.IO.BinaryBuffer.Reset
 
 func testNewBuffer() {
     setTest("NewBuffer");
 
-    var buf = Viper.IO.BinaryBuffer.New();
-    var pos = Viper.IO.BinaryBuffer.get_Position(buf);
+    var buf = Zanna.IO.BinaryBuffer.New();
+    var pos = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos, 0, "new buffer pos is 0");
 
-    var len = Viper.IO.BinaryBuffer.get_Length(buf);
+    var len = Zanna.IO.BinaryBuffer.get_Length(buf);
     assertEqInt(len, 0, "new buffer len is 0");
 }
 
 func testWriteReadByte() {
     setTest("WriteReadByte");
 
-    var buf = Viper.IO.BinaryBuffer.New();
-    Viper.IO.BinaryBuffer.WriteByte(buf, 0x41);   // 'A'
-    Viper.IO.BinaryBuffer.WriteByte(buf, 0xFF);
+    var buf = Zanna.IO.BinaryBuffer.New();
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 0x41);   // 'A'
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 0xFF);
 
-    var pos = Viper.IO.BinaryBuffer.get_Position(buf);
+    var pos = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos, 2, "pos after writing 2 bytes");
 
     // Reset position to read back
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    var b1 = Zanna.IO.BinaryBuffer.ReadByte(buf);
     assertEqInt(b1, 0x41, "read byte 1");
 
-    var b2 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    var b2 = Zanna.IO.BinaryBuffer.ReadByte(buf);
     assertEqInt(b2, 0xFF, "read byte 2");
 }
 
 func testWriteReadI16() {
     setTest("WriteReadI16");
 
-    var buf = Viper.IO.BinaryBuffer.New();
+    var buf = Zanna.IO.BinaryBuffer.New();
 
     // Write i16 little-endian
-    Viper.IO.BinaryBuffer.WriteI16LittleEndian(buf, 0x1234);
-    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteI16LittleEndian(buf, 0x1234);
+    var pos1 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 2, "pos after WriteI16LE");
 
     // Write i16 big-endian
-    Viper.IO.BinaryBuffer.WriteI16BigEndian(buf, 0x5678);
-    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteI16BigEndian(buf, 0x5678);
+    var pos2 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 4, "pos after WriteI16BE");
 
     // Read back
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI16LittleEndian(buf);
+    var v1 = Zanna.IO.BinaryBuffer.ReadI16LittleEndian(buf);
     assertEqInt(v1, 0x1234, "read i16le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadI16BigEndian(buf);
+    var v2 = Zanna.IO.BinaryBuffer.ReadI16BigEndian(buf);
     assertEqInt(v2, 0x5678, "read i16be");
 }
 
 func testWriteReadI32() {
     setTest("WriteReadI32");
 
-    var buf = Viper.IO.BinaryBuffer.New();
+    var buf = Zanna.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 0x12345678);
-    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteI32LittleEndian(buf, 0x12345678);
+    var pos1 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 4, "pos after WriteI32LE");
 
-    Viper.IO.BinaryBuffer.WriteU32BigEndian(buf, 0xDEADBEEF);
-    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteU32BigEndian(buf, 0xDEADBEEF);
+    var pos2 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 8, "pos after WriteI32BE");
 
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
+    var v1 = Zanna.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v1, 0x12345678, "read i32le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadU32BigEndian(buf);
+    var v2 = Zanna.IO.BinaryBuffer.ReadU32BigEndian(buf);
     assertEqInt(v2, 0xDEADBEEF, "read u32be");
 }
 
 func testWriteReadI64() {
     setTest("WriteReadI64");
 
-    var buf = Viper.IO.BinaryBuffer.New();
+    var buf = Zanna.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI64LittleEndian(buf, 1234567890123);
-    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteI64LittleEndian(buf, 1234567890123);
+    var pos1 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 8, "pos after WriteI64LE");
 
-    Viper.IO.BinaryBuffer.WriteI64BigEndian(buf, 9876543210987);
-    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
+    Zanna.IO.BinaryBuffer.WriteI64BigEndian(buf, 9876543210987);
+    var pos2 = Zanna.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 16, "pos after WriteI64BE");
 
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI64LittleEndian(buf);
+    var v1 = Zanna.IO.BinaryBuffer.ReadI64LittleEndian(buf);
     assertEqInt(v1, 1234567890123, "read i64le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadI64BigEndian(buf);
+    var v2 = Zanna.IO.BinaryBuffer.ReadI64BigEndian(buf);
     assertEqInt(v2, 9876543210987, "read i64be");
 }
 
 func testSignedIntegerRoundTrips() {
     setTest("SignedIntegerRoundTrips");
 
-    var buf = Viper.IO.BinaryBuffer.New();
+    var buf = Zanna.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI16LittleEndian(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI16BigEndian(buf, -2);
-    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI32BigEndian(buf, -2);
-    Viper.IO.BinaryBuffer.WriteI64LittleEndian(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI64BigEndian(buf, -2);
+    Zanna.IO.BinaryBuffer.WriteI16LittleEndian(buf, -1);
+    Zanna.IO.BinaryBuffer.WriteI16BigEndian(buf, -2);
+    Zanna.IO.BinaryBuffer.WriteI32LittleEndian(buf, -1);
+    Zanna.IO.BinaryBuffer.WriteI32BigEndian(buf, -2);
+    Zanna.IO.BinaryBuffer.WriteI64LittleEndian(buf, -1);
+    Zanna.IO.BinaryBuffer.WriteI64BigEndian(buf, -2);
 
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI16LittleEndian(buf), -1, "read signed i16le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI16BigEndian(buf), -2, "read signed i16be");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf), -1, "read signed i32le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI32BigEndian(buf), -2, "read signed i32be");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI64LittleEndian(buf), -1, "read signed i64le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI64BigEndian(buf), -2, "read signed i64be");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI16LittleEndian(buf), -1, "read signed i16le");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI16BigEndian(buf), -2, "read signed i16be");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI32LittleEndian(buf), -1, "read signed i32le");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI32BigEndian(buf), -2, "read signed i32be");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI64LittleEndian(buf), -1, "read signed i64le");
+    assertEqInt(Zanna.IO.BinaryBuffer.ReadI64BigEndian(buf), -2, "read signed i64be");
 }
 
 func testWriteReadStr() {
     setTest("WriteReadStr");
 
-    var buf = Viper.IO.BinaryBuffer.New();
+    var buf = Zanna.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteStr(buf, "Hello");
-    Viper.IO.BinaryBuffer.WriteStr(buf, "World");
+    Zanna.IO.BinaryBuffer.WriteStr(buf, "Hello");
+    Zanna.IO.BinaryBuffer.WriteStr(buf, "World");
 
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var s1 = Viper.IO.BinaryBuffer.ReadStr(buf);
+    var s1 = Zanna.IO.BinaryBuffer.ReadStr(buf);
     assertEqStr(s1, "Hello", "read str 1");
 
-    var s2 = Viper.IO.BinaryBuffer.ReadStr(buf);
+    var s2 = Zanna.IO.BinaryBuffer.ReadStr(buf);
     assertEqStr(s2, "World", "read str 2");
 }
 
@@ -171,74 +171,74 @@ func testFromBytes() {
     setTest("FromBytes");
 
     // Create bytes with known content
-    var bytes = Viper.Collections.Bytes.New(4);
-    Viper.Collections.Bytes.Set(bytes, 0, 0x10);
-    Viper.Collections.Bytes.Set(bytes, 1, 0x20);
-    Viper.Collections.Bytes.Set(bytes, 2, 0x30);
-    Viper.Collections.Bytes.Set(bytes, 3, 0x40);
+    var bytes = Zanna.Collections.Bytes.New(4);
+    Zanna.Collections.Bytes.Set(bytes, 0, 0x10);
+    Zanna.Collections.Bytes.Set(bytes, 1, 0x20);
+    Zanna.Collections.Bytes.Set(bytes, 2, 0x30);
+    Zanna.Collections.Bytes.Set(bytes, 3, 0x40);
 
-    var buf = Viper.IO.BinaryBuffer.FromBytes(bytes);
-    var len = Viper.IO.BinaryBuffer.get_Length(buf);
+    var buf = Zanna.IO.BinaryBuffer.FromBytes(bytes);
+    var len = Zanna.IO.BinaryBuffer.get_Length(buf);
     assertEqInt(len, 4, "from bytes len");
 
-    var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    var b1 = Zanna.IO.BinaryBuffer.ReadByte(buf);
     assertEqInt(b1, 0x10, "from bytes byte 0");
 
-    var b2 = Viper.IO.BinaryBuffer.ReadByte(buf);
+    var b2 = Zanna.IO.BinaryBuffer.ReadByte(buf);
     assertEqInt(b2, 0x20, "from bytes byte 1");
 }
 
 func testToBytes() {
     setTest("ToBytes");
 
-    var buf = Viper.IO.BinaryBuffer.New();
-    Viper.IO.BinaryBuffer.WriteByte(buf, 72);  // H
-    Viper.IO.BinaryBuffer.WriteByte(buf, 105); // i
+    var buf = Zanna.IO.BinaryBuffer.New();
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 72);  // H
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 105); // i
 
-    var bytes = Viper.IO.BinaryBuffer.ToBytes(buf);
-    var len = Viper.Collections.Bytes.get_Length(bytes);
+    var bytes = Zanna.IO.BinaryBuffer.ToBytes(buf);
+    var len = Zanna.Collections.Bytes.get_Length(bytes);
     assertEqInt(len, 2, "toBytes len");
 
-    assertEqInt(Viper.Collections.Bytes.Get(bytes, 0), 72, "toBytes byte 0");
-    assertEqInt(Viper.Collections.Bytes.Get(bytes, 1), 105, "toBytes byte 1");
+    assertEqInt(Zanna.Collections.Bytes.Get(bytes, 0), 72, "toBytes byte 0");
+    assertEqInt(Zanna.Collections.Bytes.Get(bytes, 1), 105, "toBytes byte 1");
 }
 
 func testReset() {
     setTest("Reset");
 
-    var buf = Viper.IO.BinaryBuffer.New();
-    Viper.IO.BinaryBuffer.WriteByte(buf, 1);
-    Viper.IO.BinaryBuffer.WriteByte(buf, 2);
-    Viper.IO.BinaryBuffer.WriteByte(buf, 3);
+    var buf = Zanna.IO.BinaryBuffer.New();
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 1);
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 2);
+    Zanna.IO.BinaryBuffer.WriteByte(buf, 3);
 
-    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 3, "pos before reset");
+    assertEqInt(Zanna.IO.BinaryBuffer.get_Position(buf), 3, "pos before reset");
 
-    Viper.IO.BinaryBuffer.Reset(buf);
+    Zanna.IO.BinaryBuffer.Reset(buf);
 
-    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 0, "pos after reset");
-    assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 0, "len after reset");
+    assertEqInt(Zanna.IO.BinaryBuffer.get_Position(buf), 0, "pos after reset");
+    assertEqInt(Zanna.IO.BinaryBuffer.get_Length(buf), 0, "len after reset");
 }
 
 func testPositionManagement() {
     setTest("PositionManagement");
 
-    var buf = Viper.IO.BinaryBuffer.New();
-    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 100);
-    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 200);
-    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 300);
+    var buf = Zanna.IO.BinaryBuffer.New();
+    Zanna.IO.BinaryBuffer.WriteI32LittleEndian(buf, 100);
+    Zanna.IO.BinaryBuffer.WriteI32LittleEndian(buf, 200);
+    Zanna.IO.BinaryBuffer.WriteI32LittleEndian(buf, 300);
 
     // Position should be at 12
-    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 12, "pos after 3 i32 writes");
-    assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 12, "len is 12");
+    assertEqInt(Zanna.IO.BinaryBuffer.get_Position(buf), 12, "pos after 3 i32 writes");
+    assertEqInt(Zanna.IO.BinaryBuffer.get_Length(buf), 12, "len is 12");
 
     // Seek to second i32
-    Viper.IO.BinaryBuffer.set_Position(buf, 4);
-    var v = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 4);
+    var v = Zanna.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v, 200, "seek and read second i32");
 
     // Seek back to start
-    Viper.IO.BinaryBuffer.set_Position(buf, 0);
-    var v0 = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
+    Zanna.IO.BinaryBuffer.set_Position(buf, 0);
+    var v0 = Zanna.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v0, 100, "seek to start and read first i32");
 }
 

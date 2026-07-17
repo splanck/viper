@@ -25,7 +25,7 @@ reject_pattern() {
     local pattern="$1"
     shift
     local hits
-    hits="$(mktemp "${TMPDIR:-/tmp}/viper_semantics_duplication_hits.XXXXXX")"
+    hits="$(mktemp "${TMPDIR:-/tmp}/zanna_semantics_duplication_hits.XXXXXX")"
     if command -v rg >/dev/null 2>&1; then
         rg -n --fixed-strings "$pattern" "$@" >"${hits}" || true
     else

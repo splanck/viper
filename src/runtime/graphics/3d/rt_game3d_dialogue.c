@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_dialogue.c
-// Purpose: Viper.Game3D.Dialogue3D — 3D conversation surface: a typewriter
+// Purpose: Zanna.Game3D.Dialogue3D — 3D conversation surface: a typewriter
 //   line queue drawn over the world overlay (bottom panel or speaker-anchored
 //   bubble via Camera3D.WorldToScreen), localization-keyed text through a
 //   bound MessageBundle, optional per-line voice clips, and blocking choice

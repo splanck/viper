@@ -1,13 +1,13 @@
-// heap_demo.zia - Comprehensive API audit for Viper.Collections.Heap
+// heap_demo.zia - Comprehensive API audit for Zanna.Collections.Heap
 // Tests: New, NewMax, Push(priority, value), Pop, Peek, Len, IsEmpty,
 //        Clear, IsMax, TryPeekOption, TryPopOption, ToSeq
 
 module HeapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Heap API Audit ===");

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Core Implementation
+// ZannaGFX Core Implementation
 //
-// Platform-agnostic implementation of the ViperGFX API.  Provides window
+// Platform-agnostic implementation of the ZannaGFX API.  Provides window
 // lifecycle management, event queue operations, framebuffer operations,
 // and input polling.  Platform-specific functionality is delegated to the
 // platform backend via function pointers defined in vgfx_internal.h.
@@ -26,7 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Core implementation of the ViperGFX API (platform-agnostic).
+/// @brief Core implementation of the ZannaGFX API (platform-agnostic).
 /// @details Implements window management, event handling, drawing operations,
 ///          and input polling.  Delegates OS-specific tasks to the platform
 ///          backend (vgfx_platform_*.c).
@@ -118,13 +118,13 @@ static vgfx_log_fn vgfx_read_log_callback(void) {
 }
 
 /// @brief Return whether internal errors should also be mirrored to stderr.
-/// @details ViperGFX is often embedded in tools that manage their own diagnostic
+/// @details ZannaGFX is often embedded in tools that manage their own diagnostic
 ///          output.  Stderr mirroring is therefore opt-in via the
-///          `VIPER_GFX_STDERR` environment variable; the user log callback still
+///          `ZANNA_GFX_STDERR` environment variable; the user log callback still
 ///          receives errors regardless of this setting.
 /// @return 1 when stderr mirroring is enabled, 0 otherwise.
 static int vgfx_should_log_to_stderr(void) {
-    const char *value = getenv("VIPER_GFX_STDERR");
+    const char *value = getenv("ZANNA_GFX_STDERR");
     return value && value[0] != '\0' && strcmp(value, "0") != 0;
 }
 
@@ -139,7 +139,7 @@ static int vgfx_should_log_to_stderr(void) {
 ///
 /// @post g_last_error_code == code
 /// @post g_last_error_str == msg
-/// @post Message printed to stderr only when VIPER_GFX_STDERR is enabled.
+/// @post Message printed to stderr only when ZANNA_GFX_STDERR is enabled.
 /// @post Log callback invoked (if set and msg != NULL)
 void vgfx_internal_set_error(vgfx_error_t code, const char *msg) {
     g_last_error_code = code;
@@ -813,7 +813,7 @@ vgfx_error_t vgfx_last_error_code(void) {
 
 /// @brief Set a user-provided logging callback for error messages.
 /// @details The callback is invoked whenever an error occurs (in addition to
-///          stderr printing).  Useful for integrating ViperGFX errors with
+///          stderr printing).  Useful for integrating ZannaGFX errors with
 ///          application logging systems.
 ///
 /// @param fn Logging callback function (or NULL to disable)
@@ -1035,7 +1035,7 @@ void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h) {
 /// @details Fills in defaults from VGFX_DEFAULT_* macros:
 ///            - width:     VGFX_DEFAULT_WIDTH (640)
 ///            - height:    VGFX_DEFAULT_HEIGHT (480)
-///            - title:     VGFX_DEFAULT_TITLE ("ViperGFX")
+///            - title:     VGFX_DEFAULT_TITLE ("ZannaGFX")
 ///            - fps:       VGFX_DEFAULT_FPS (60)
 ///            - resizable: 0 (false)
 ///
@@ -1690,7 +1690,7 @@ void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
 
 /// @brief Get the color of a single pixel.
 /// @details Reads the RGB color from the framebuffer at (x, y).  Alpha channel
-///          is ignored (always fully opaque in ViperGFX v1).
+///          is ignored (always fully opaque in ZannaGFX v1).
 ///
 /// @param window    Window handle
 /// @param x         X coordinate in pixels

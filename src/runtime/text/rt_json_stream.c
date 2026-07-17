@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_json_stream.c
 // Purpose: Implements a SAX-style pull-based streaming JSON parser for the
-//          Viper.Text.JsonStream class. Emits tokens one at a time: ObjectStart,
+//          Zanna.Text.JsonStream class. Emits tokens one at a time: ObjectStart,
 //          ObjectEnd, ArrayStart, ArrayEnd, Key, String, Number, Bool, Null.
 //
 // Key invariants:
@@ -702,7 +702,7 @@ int64_t rt_json_stream_next(void *parser) {
 /// input returns `Err(message)` using the stream's current diagnostic text.
 ///
 /// @param parser Parser handle.
-/// @return Owned `Viper.Result` carrying the token type or an error string.
+/// @return Owned `Zanna.Result` carrying the token type or an error string.
 void *rt_json_stream_next_result(void *parser) {
     int64_t token = rt_json_stream_next(parser);
     if (token != RT_JSON_TOK_ERROR)

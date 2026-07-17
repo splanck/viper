@@ -1,10 +1,10 @@
-// API Audit: Viper.Functional.Lazy (Zia)
+// API Audit: Zanna.Functional.Lazy (Zia)
 module LazyDemo;
-bind Viper.Terminal;
-bind Viper.Functional.Lazy as Lazy;
-bind Viper.Core.Box as Box;
+bind Zanna.Terminal;
+bind Zanna.Functional.Lazy as Lazy;
+bind Zanna.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.Functional.Lazy ===");
+    Say("=== API Audit: Zanna.Functional.Lazy ===");
 
     // --- OfI64 / GetI64 ---
     Say("--- OfI64 / GetI64 ---");

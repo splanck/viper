@@ -5,15 +5,15 @@
 
 # Run pure x86-64 backend tests on every host.  Gate only tests that assemble,
 # link, or execute x86-64 machine code through the native host path.
-string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" VIPER_HOST_ARCH)
-set(VIPER_X86_64_NATIVE_TESTS OFF)
-if (VIPER_HOST_ARCH MATCHES "x86_64|amd64")
-    set(VIPER_X86_64_NATIVE_TESTS ON)
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" ZANNA_HOST_ARCH)
+set(ZANNA_X86_64_NATIVE_TESTS OFF)
+if (ZANNA_HOST_ARCH MATCHES "x86_64|amd64")
+    set(ZANNA_X86_64_NATIVE_TESTS ON)
 else ()
     message(STATUS "Building pure x86_64 codegen tests only on host arch: ${CMAKE_SYSTEM_PROCESSOR}")
 endif ()
 
-set(_viper_codegen_x86_64_pure_tests
+set(_zanna_codegen_x86_64_pure_tests
         abi_probe
         add_ret
         addr_stress
@@ -41,45 +41,45 @@ set(_viper_codegen_x86_64_pure_tests
         i32_checked_ovf
         object_only_cli)
 
-set(_viper_codegen_x86_64_native_tests
+set(_zanna_codegen_x86_64_native_tests
         diff_vm_native
         div_trap
         e2e_bitwise_cli
         e2e_fdiv_cli
         native_asm)
 
-set(_viper_codegen_x86_64_tests ${_viper_codegen_x86_64_pure_tests})
-if (VIPER_X86_64_NATIVE_TESTS)
-    list(APPEND _viper_codegen_x86_64_tests ${_viper_codegen_x86_64_native_tests})
+set(_zanna_codegen_x86_64_tests ${_zanna_codegen_x86_64_pure_tests})
+if (ZANNA_X86_64_NATIVE_TESTS)
+    list(APPEND _zanna_codegen_x86_64_tests ${_zanna_codegen_x86_64_native_tests})
 endif ()
 
 if (WIN32)
-    list(REMOVE_ITEM _viper_codegen_x86_64_tests varargs_al)
+    list(REMOVE_ITEM _zanna_codegen_x86_64_tests varargs_al)
 endif ()
 
-foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
-    set(_viper_codegen_target test_codegen_x86_64_${_viper_codegen_case})
-    set(_viper_codegen_source
-            ${VIPER_TESTS_DIR}/codegen/x86_64/test_${_viper_codegen_case}.cpp)
+foreach (_zanna_codegen_case IN LISTS _zanna_codegen_x86_64_tests)
+    set(_zanna_codegen_target test_codegen_x86_64_${_zanna_codegen_case})
+    set(_zanna_codegen_source
+            ${ZANNA_TESTS_DIR}/codegen/x86_64/test_${_zanna_codegen_case}.cpp)
 
-    add_executable(${_viper_codegen_target} ${_viper_codegen_source})
+    add_executable(${_zanna_codegen_target} ${_zanna_codegen_source})
     if (WIN32)
-        target_sources(${_viper_codegen_target} PRIVATE
-                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+        target_sources(${_zanna_codegen_target} PRIVATE
+                ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_viper_codegen_target} PRIVATE viper_testing)
+    target_link_libraries(${_zanna_codegen_target} PRIVATE zanna_testing)
     add_test(
-            NAME codegen_x86_64_${_viper_codegen_case}
-            COMMAND ${_viper_codegen_target})
+            NAME codegen_x86_64_${_zanna_codegen_case}
+            COMMAND ${_zanna_codegen_target})
 
-    target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64 viper_test_common il_tools_common)
+    target_link_libraries(${_zanna_codegen_target} PRIVATE zanna_codegen_x86_64 zanna_test_common il_tools_common)
 
-    if (_viper_codegen_case STREQUAL "object_only_cli")
-        target_compile_definitions(${_viper_codegen_target}
-                PRIVATE VIPER_ILC_PATH="$<TARGET_FILE:viper>")
+    if (_zanna_codegen_case STREQUAL "object_only_cli")
+        target_compile_definitions(${_zanna_codegen_target}
+                PRIVATE ZANNA_ILC_PATH="$<TARGET_FILE:zanna>")
     endif ()
-    if (_viper_codegen_case STREQUAL "div_trap")
-        target_compile_definitions(${_viper_codegen_target}
-                PRIVATE VIPER_ILC_PATH="$<TARGET_FILE:viper>")
+    if (_zanna_codegen_case STREQUAL "div_trap")
+        target_compile_definitions(${_zanna_codegen_target}
+                PRIVATE ZANNA_ILC_PATH="$<TARGET_FILE:zanna>")
     endif ()
 endforeach ()

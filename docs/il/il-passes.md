@@ -18,7 +18,7 @@ last-verified: 2026-05-04
 - Statistics track IR size (basic blocks and instructions), analysis recomputations, and wall-clock duration per pass to
   highlight redundant work. When per-pass verification is enabled, statistics report verifier time separately from the
   transform time.
-- The `viper il-opt` CLI exposes the same instrumentation with `--pass-stats`. Use `--bisect-pipeline` with a named
+- The `zanna il-opt` CLI exposes the same instrumentation with `--pass-stats`. Use `--bisect-pipeline` with a named
   pipeline to run each prefix on a fresh copy of the input and print the resulting block/instruction count; this is the
   fastest way to isolate verifier failures introduced by a specific optimization pass.
 
@@ -177,7 +177,7 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
 | Parameter | Current Default | History |
 |-----------|-----------------|---------|
 | `instrThreshold` | 80 | raised from 32 on 2026-02-17 to capture medium-sized helpers |
-| `blockBudget` | 1 | raised to 8 on 2026-02-17, reverted to 1 after viperide/chess regressions at O1 |
+| `blockBudget` | 1 | raised to 8 on 2026-02-17, reverted to 1 after zannaide/chess regressions at O1 |
 | `maxInlineDepth` | 3 | raised from 2 on 2026-02-17 to enable deeper utility-function chains |
 
 ## LateCleanup
@@ -209,7 +209,7 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
   `il::transform::PassManager`. Return values and trap outcomes must match.
 - Execution runs in a forked child so unexpected traps or aborts do not bring down the test harness; discrepancies print
   the seed plus the IL text for repro.
-- Seeds default to a fixed constant for stability; override with `VIPER_OPT_EQ_SEED=<u64>` to fuzz locally.
+- Seeds default to a fixed constant for stability; override with `ZANNA_OPT_EQ_SEED=<u64>` to fuzz locally.
 
 ## Peephole
 
@@ -231,7 +231,7 @@ The peephole pass applies 61 pattern-based algebraic simplifications plus a smal
 - **Unsigned power-of-two division/remainder**: `udiv`/`urem` by constant powers of two become `lshr`/`and`.
 - **Signed power-of-two division/remainder**: `sdiv`/`srem` by positive powers of two expand to sign-bias shift/mask
   sequences so optimized IL can avoid native signed division while preserving truncate-toward-zero semantics.
-- **Owned literal concat folding**: when `rt_str_concat` or `Viper.String.Concat` consumes two `const_str` results that
+- **Owned literal concat folding**: when `rt_str_concat` or `Zanna.String.Concat` consumes two `const_str` results that
   have no other uses in the block, the pass replaces the whole sequence with one owned `const_str` for the combined
   literal and removes the consumed literal materializations.
 
@@ -496,7 +496,7 @@ The pass manager verifies IR after each pass by default, including release
 builds. Callers may disable this for specialised measurement, but rehab and CI
 pipelines should keep per-pass verification enabled.
 
-The BASIC frontend (`src/tools/viper/cmd_run.cpp`) only ran `SimplifyCFG` on verification failure; it now
+The BASIC frontend (`src/tools/zanna/cmd_run.cpp`) only ran `SimplifyCFG` on verification failure; it now
 applies the canonical O0/O1/O2 pipeline unconditionally.
 
 **Fix**: Frontends and native codegen entry points call `pm.runPipeline(module, "O1")` / `pm.runPipeline(module, "O2")`
@@ -518,7 +518,7 @@ The pass manager also registers targeted rehab pipelines for focused pass valida
 | `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites in isolation from the broader O1/O2 pipelines |
 | `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate full loop-invariant code motion independently from the broader optimizer |
 
-`viper il-opt --pipeline` accepts these registered names directly; lowercase rehab names are not uppercased to O-level
+`zanna il-opt --pipeline` accepts these registered names directly; lowercase rehab names are not uppercased to O-level
 aliases.
 
 Further pipeline changes should include verifier-clean IR, native-vs-VM equivalence,

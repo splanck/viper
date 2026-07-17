@@ -1,8 +1,8 @@
 module ResultDemo;
-bind Viper.Terminal;
-bind Viper.Result as Result;
+bind Zanna.Terminal;
+bind Zanna.Result as Result;
 func start() {
-    Say("=== API Audit: Viper.Result ===");
+    Say("=== API Audit: Zanna.Result ===");
 
     // --- OkI64 ---
     Say("--- OkI64 ---");

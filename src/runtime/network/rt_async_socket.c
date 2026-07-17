@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -334,7 +334,7 @@ static void async_send_worker(void *arg) {
         int64_t sent = rt_tcp_send(a->tcp, a->data);
         // Box the count: the Future payload must be a real runtime object,
         // not a raw pointer-cast integer (VDOC-158). Consumers unbox with
-        // Viper.Core.Box, matching Async.Run's boxed-result convention.
+        // Zanna.Core.Box, matching Async.Run's boxed-result convention.
         rt_promise_set_transferred(a->promise, rt_box_i64(sent));
     } else {
         async_promise_error_from_trap(a->promise, "AsyncSocket: send failed");

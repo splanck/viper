@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -115,14 +115,14 @@ static std::vector<uint8_t> readFile(const std::string &path) {
 }
 
 static std::string tmpPath(const std::string &name) {
-    auto dir = std::filesystem::temp_directory_path() / "viper_linker_integ";
+    auto dir = std::filesystem::temp_directory_path() / "zanna_linker_integ";
     std::filesystem::create_directories(dir);
     return (dir / name).string();
 }
 
 static void cleanupTmp() {
     std::error_code ec;
-    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "viper_linker_integ", ec);
+    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "zanna_linker_integ", ec);
 }
 
 static uint32_t readLE32(const uint8_t *p) {

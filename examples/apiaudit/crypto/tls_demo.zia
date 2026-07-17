@@ -1,8 +1,8 @@
 module TlsDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Crypto.Tls ===");
+    Say("=== API Audit: Zanna.Crypto.Tls ===");
     Say("NOTE: TLS requires actual network connections.");
     Say("Testing API surface only - connect calls may fail gracefully.");
 

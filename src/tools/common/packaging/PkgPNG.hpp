@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Error thrown on PNG read/write failure.
 class PNGError : public std::runtime_error {
@@ -94,4 +94,4 @@ std::vector<uint8_t> pngEncode(const PkgImage &img);
 /// @return Resized image.
 PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

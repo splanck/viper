@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -113,7 +113,7 @@ TEST(ZiaFinalEnforcement, FinalReadOk) {
     auto result = compileSource(R"(
 module Test;
 func start() {    final x = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )");
     EXPECT_TRUE(result.succeeded());
@@ -124,7 +124,7 @@ TEST(ZiaFinalEnforcement, FinalInExpressionOk) {
 module Test;
 func start() {    final x = 10;
     var y = x + 5;
-    Viper.Terminal.SayInt(y);
+    Zanna.Terminal.SayInt(y);
 }
 )");
     EXPECT_TRUE(result.succeeded());
@@ -133,6 +133,6 @@ func start() {    final x = 10;
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

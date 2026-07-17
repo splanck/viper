@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_stack.c
-// Purpose: Implements Viper.Collections.Stack, a LIFO (last-in-first-out)
+// Purpose: Implements Zanna.Collections.Stack, a LIFO (last-in-first-out)
 //   dynamic collection backed by a contiguous dynamic array. Push and pop
 //   operate on the top (highest index), providing O(1) amortized push and O(1)
 //   pop with cache-friendly sequential memory layout.
@@ -95,7 +95,7 @@ static void stack_release_value(void *value) {
 
 /// @brief Finalizer callback invoked when a Stack is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// Stack object becomes unreachable. It frees the internal items array to
 /// prevent memory leaks.
 ///
@@ -184,7 +184,7 @@ static int stack_ensure_capacity(rt_stack_impl *stack, int64_t needed) {
 /// operations. The Stack starts with a default capacity of 16 slots and grows
 /// automatically as elements are pushed.
 ///
-/// The Stack is allocated through Viper's garbage-collected object system,
+/// The Stack is allocated through Zanna's garbage-collected object system,
 /// meaning it will be automatically freed when no longer referenced. A finalizer
 /// is registered to clean up the internal items array.
 ///

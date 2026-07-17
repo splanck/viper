@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Compatibility shims for viper CLI functions used by cmd_run_il.cpp
+// Compatibility shims for zanna CLI functions used by cmd_run_il.cpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -161,7 +161,7 @@ static void codeeditor_select_primary_range(
 /// @details Double-clicking identifiers selects the full word. Double-clicking
 ///          whitespace selects the contiguous whitespace run; punctuation and
 ///          other bytes select one UTF-8 glyph. This mirrors common editor
-///          behavior while keeping Viper's identifier definition ASCII-based.
+///          behavior while keeping Zanna's identifier definition ASCII-based.
 /// @param editor Editor to modify.
 /// @param line_idx Zero-based line index from hit testing.
 /// @param col Byte column from hit testing.

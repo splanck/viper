@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_entity.c
-// Purpose: Entity3D for the Viper.Game3D layer — node/mesh/material/body/animator
+// Purpose: Entity3D for the Zanna.Game3D layer — node/mesh/material/body/animator
 //   composition, parent/child hierarchy, transform, and collision layer/mask.
 //   Split out of rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Key invariants:

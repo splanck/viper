@@ -1,6 +1,6 @@
 module smoke_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "./core/board";
 bind "./core/moves";
 

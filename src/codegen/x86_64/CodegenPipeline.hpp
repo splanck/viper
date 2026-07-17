@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@ struct PipelineResult {
     std::string stderr_text; ///< Aggregated diagnostics and error messages.
 };
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief High-level orchestrator for the x86-64 code-generation flow.
 class CodegenPipeline {
@@ -48,7 +48,7 @@ class CodegenPipeline {
     /// \brief Linker mode selection.
     enum class LinkMode {
         System, ///< Use the host toolchain linker.
-        Native, ///< Use the built-in Viper native linker.
+        Native, ///< Use the built-in Zanna native linker.
     };
 
     /// \brief User-configurable options controlling pipeline behaviour.
@@ -66,7 +66,7 @@ class CodegenPipeline {
         bool fast_link = false;   ///< Skip non-essential native-link size reductions.
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
-        std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
+        std::string asset_blob_path; ///< Path to ZPAK asset blob for .rodata embedding (optional).
         std::vector<std::string> extra_objects; ///< Extra object files linked into the final image.
         std::optional<bool> windows_debug_runtime; ///< Override Windows CRT import flavor.
         CodegenOptions::TargetABI target_abi = CodegenOptions::TargetABI::Host;
@@ -92,4 +92,4 @@ class CodegenPipeline {
     Options opts_;
 };
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

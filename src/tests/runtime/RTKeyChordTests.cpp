@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTKeyChordTests.cpp
-// Purpose: Tests for Viper.Input.KeyChord chord and combo detection.
+// Purpose: Tests for Zanna.Input.KeyChord chord and combo detection.
 //
 //===----------------------------------------------------------------------===//
 
@@ -59,18 +59,18 @@ static void test_chord_basic() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_LCTRL, VIPER_KEY_C};
+    int64_t keys[] = {ZANNA_KEY_LCTRL, ZANNA_KEY_C};
     rt_keychord_define(kc, make_str("copy"), make_key_seq(keys, 2));
 
     /* Frame 1: press Ctrl only */
-    int64_t press1[] = {VIPER_KEY_LCTRL, -1};
+    int64_t press1[] = {ZANNA_KEY_LCTRL, -1};
     sim_frame(press1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("copy")) == 0);
     assert(rt_keychord_triggered(kc, make_str("copy")) == 0);
 
     /* Frame 2: press C while Ctrl still held */
-    int64_t press2[] = {VIPER_KEY_C, -1};
+    int64_t press2[] = {ZANNA_KEY_C, -1};
     sim_frame(press2, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("copy")) == 1);
@@ -83,14 +83,14 @@ static void test_chord_basic() {
     assert(rt_keychord_triggered(kc, make_str("copy")) == 0);
 
     /* Frame 4: release C */
-    int64_t release4[] = {VIPER_KEY_C, -1};
+    int64_t release4[] = {ZANNA_KEY_C, -1};
     sim_frame(NULL, release4);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("copy")) == 0);
     assert(rt_keychord_triggered(kc, make_str("copy")) == 0);
 
     /* Clean up keyboard state */
-    int64_t release_all[] = {VIPER_KEY_LCTRL, -1};
+    int64_t release_all[] = {ZANNA_KEY_LCTRL, -1};
     sim_frame(NULL, release_all);
 
     printf("test_chord_basic: PASSED\n");
@@ -100,30 +100,30 @@ static void test_chord_three_keys() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_LCTRL, VIPER_KEY_LSHIFT, VIPER_KEY_S};
+    int64_t keys[] = {ZANNA_KEY_LCTRL, ZANNA_KEY_LSHIFT, ZANNA_KEY_S};
     rt_keychord_define(kc, make_str("save_as"), make_key_seq(keys, 3));
 
     /* Press Ctrl */
-    int64_t p1[] = {VIPER_KEY_LCTRL, -1};
+    int64_t p1[] = {ZANNA_KEY_LCTRL, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("save_as")) == 0);
 
     /* Press Shift */
-    int64_t p2[] = {VIPER_KEY_LSHIFT, -1};
+    int64_t p2[] = {ZANNA_KEY_LSHIFT, -1};
     sim_frame(p2, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("save_as")) == 0);
 
     /* Press S — all three held */
-    int64_t p3[] = {VIPER_KEY_S, -1};
+    int64_t p3[] = {ZANNA_KEY_S, -1};
     sim_frame(p3, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("save_as")) == 1);
     assert(rt_keychord_triggered(kc, make_str("save_as")) == 1);
 
     /* Clean up */
-    int64_t r[] = {VIPER_KEY_LCTRL, VIPER_KEY_LSHIFT, VIPER_KEY_S, -1};
+    int64_t r[] = {ZANNA_KEY_LCTRL, ZANNA_KEY_LSHIFT, ZANNA_KEY_S, -1};
     sim_frame(NULL, r);
 
     printf("test_chord_three_keys: PASSED\n");
@@ -133,24 +133,24 @@ static void test_chord_not_triggered_without_all_keys() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    int64_t keys[] = {ZANNA_KEY_A, ZANNA_KEY_B};
     rt_keychord_define(kc, make_str("ab"), make_key_seq(keys, 2));
 
     /* Press A only */
-    int64_t p1[] = {VIPER_KEY_A, -1};
+    int64_t p1[] = {ZANNA_KEY_A, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("ab")) == 0);
 
     /* Release A, press B only */
-    int64_t r1[] = {VIPER_KEY_A, -1};
-    int64_t p2[] = {VIPER_KEY_B, -1};
+    int64_t r1[] = {ZANNA_KEY_A, -1};
+    int64_t p2[] = {ZANNA_KEY_B, -1};
     sim_frame(p2, r1);
     rt_keychord_update(kc);
     assert(rt_keychord_active(kc, make_str("ab")) == 0);
 
     /* Clean up */
-    int64_t r[] = {VIPER_KEY_B, -1};
+    int64_t r[] = {ZANNA_KEY_B, -1};
     sim_frame(NULL, r);
 
     printf("test_chord_not_triggered_without_all_keys: PASSED\n");
@@ -164,34 +164,34 @@ static void test_combo_basic() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_DOWN, VIPER_KEY_RIGHT, VIPER_KEY_P};
+    int64_t keys[] = {ZANNA_KEY_DOWN, ZANNA_KEY_RIGHT, ZANNA_KEY_P};
     rt_keychord_define_combo(kc, make_str("hadouken"), make_key_seq(keys, 3), 30);
 
     /* Frame 1: press DOWN */
-    int64_t p1[] = {VIPER_KEY_DOWN, -1};
-    int64_t r1[] = {VIPER_KEY_DOWN, -1};
+    int64_t p1[] = {ZANNA_KEY_DOWN, -1};
+    int64_t r1[] = {ZANNA_KEY_DOWN, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("hadouken")) == 0);
     assert(rt_keychord_progress(kc, make_str("hadouken")) == 1);
 
     /* Frame 2: release DOWN, press RIGHT */
-    int64_t p2[] = {VIPER_KEY_RIGHT, -1};
+    int64_t p2[] = {ZANNA_KEY_RIGHT, -1};
     sim_frame(p2, r1);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("hadouken")) == 0);
     assert(rt_keychord_progress(kc, make_str("hadouken")) == 2);
 
     /* Frame 3: release RIGHT, press P */
-    int64_t r2[] = {VIPER_KEY_RIGHT, -1};
-    int64_t p3[] = {VIPER_KEY_P, -1};
+    int64_t r2[] = {ZANNA_KEY_RIGHT, -1};
+    int64_t p3[] = {ZANNA_KEY_P, -1};
     sim_frame(p3, r2);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("hadouken")) == 1);
     assert(rt_keychord_progress(kc, make_str("hadouken")) == 0); /* reset */
 
     /* Frame 4: nothing — triggered clears */
-    int64_t r3[] = {VIPER_KEY_P, -1};
+    int64_t r3[] = {ZANNA_KEY_P, -1};
     sim_frame(NULL, r3);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("hadouken")) == 0);
@@ -203,12 +203,12 @@ static void test_combo_timeout() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    int64_t keys[] = {ZANNA_KEY_A, ZANNA_KEY_B};
     rt_keychord_define_combo(kc, make_str("ab"), make_key_seq(keys, 2), 3);
 
     /* Frame 1: press A */
-    int64_t p1[] = {VIPER_KEY_A, -1};
-    int64_t r1[] = {VIPER_KEY_A, -1};
+    int64_t p1[] = {ZANNA_KEY_A, -1};
+    int64_t r1[] = {ZANNA_KEY_A, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 1);
@@ -227,13 +227,13 @@ static void test_combo_timeout() {
     assert(rt_keychord_progress(kc, make_str("ab")) == 0);
 
     /* Press B — should not trigger because combo timed out */
-    int64_t p2[] = {VIPER_KEY_B, -1};
+    int64_t p2[] = {ZANNA_KEY_B, -1};
     sim_frame(p2, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
 
     /* Clean up */
-    int64_t r[] = {VIPER_KEY_B, -1};
+    int64_t r[] = {ZANNA_KEY_B, -1};
     sim_frame(NULL, r);
 
     printf("test_combo_timeout: PASSED\n");
@@ -243,32 +243,32 @@ static void test_combo_wrong_key_does_not_advance() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    int64_t keys[] = {ZANNA_KEY_A, ZANNA_KEY_B};
     rt_keychord_define_combo(kc, make_str("ab"), make_key_seq(keys, 2), 30);
 
     /* Press A */
-    int64_t p1[] = {VIPER_KEY_A, -1};
+    int64_t p1[] = {ZANNA_KEY_A, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 1);
 
     /* Press C (wrong key) — should NOT advance */
-    int64_t r1[] = {VIPER_KEY_A, -1};
-    int64_t p2[] = {VIPER_KEY_C, -1};
+    int64_t r1[] = {ZANNA_KEY_A, -1};
+    int64_t p2[] = {ZANNA_KEY_C, -1};
     sim_frame(p2, r1);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 1);
     assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
 
     /* Now press B — should complete */
-    int64_t r2[] = {VIPER_KEY_C, -1};
-    int64_t p3[] = {VIPER_KEY_B, -1};
+    int64_t r2[] = {ZANNA_KEY_C, -1};
+    int64_t p3[] = {ZANNA_KEY_B, -1};
     sim_frame(p3, r2);
     rt_keychord_update(kc);
     assert(rt_keychord_triggered(kc, make_str("ab")) == 1);
 
     /* Clean up */
-    int64_t r[] = {VIPER_KEY_B, -1};
+    int64_t r[] = {ZANNA_KEY_B, -1};
     sim_frame(NULL, r);
 
     printf("test_combo_wrong_key_does_not_advance: PASSED\n");
@@ -278,15 +278,15 @@ static void test_combo_wrong_order_resets_progress() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    int64_t keys[] = {ZANNA_KEY_A, ZANNA_KEY_B};
     rt_keychord_define_combo(kc, make_str("ab"), make_key_seq(keys, 2), 30);
 
-    int64_t p1[] = {VIPER_KEY_A, -1};
+    int64_t p1[] = {ZANNA_KEY_A, -1};
     sim_frame(p1, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 1);
 
-    int64_t r1[] = {VIPER_KEY_A, -1};
+    int64_t r1[] = {ZANNA_KEY_A, -1};
     sim_frame(NULL, r1);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 1);
@@ -296,13 +296,13 @@ static void test_combo_wrong_order_resets_progress() {
     assert(rt_keychord_progress(kc, make_str("ab")) == 0);
     assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
 
-    int64_t p2[] = {VIPER_KEY_B, -1};
+    int64_t p2[] = {ZANNA_KEY_B, -1};
     sim_frame(p2, NULL);
     rt_keychord_update(kc);
     assert(rt_keychord_progress(kc, make_str("ab")) == 0);
     assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
 
-    int64_t r2[] = {VIPER_KEY_B, -1};
+    int64_t r2[] = {ZANNA_KEY_B, -1};
     sim_frame(NULL, r2);
 
     printf("test_combo_wrong_order_resets_progress: PASSED\n");
@@ -316,8 +316,8 @@ static void test_count_and_clear() {
     void *kc = rt_keychord_new();
     assert(rt_keychord_count(kc) == 0);
 
-    int64_t keys1[] = {VIPER_KEY_A, VIPER_KEY_B};
-    int64_t keys2[] = {VIPER_KEY_C, VIPER_KEY_D};
+    int64_t keys1[] = {ZANNA_KEY_A, ZANNA_KEY_B};
+    int64_t keys2[] = {ZANNA_KEY_C, ZANNA_KEY_D};
     rt_keychord_define(kc, make_str("ab"), make_key_seq(keys1, 2));
     rt_keychord_define_combo(kc, make_str("cd"), make_key_seq(keys2, 2), 10);
     assert(rt_keychord_count(kc) == 2);
@@ -331,7 +331,7 @@ static void test_count_and_clear() {
 static void test_remove() {
     void *kc = rt_keychord_new();
 
-    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    int64_t keys[] = {ZANNA_KEY_A, ZANNA_KEY_B};
     rt_keychord_define(kc, make_str("ab"), make_key_seq(keys, 2));
     assert(rt_keychord_count(kc) == 1);
 
@@ -348,8 +348,8 @@ static void test_remove() {
 static void test_redefine_overwrites() {
     void *kc = rt_keychord_new();
 
-    int64_t keys1[] = {VIPER_KEY_A, VIPER_KEY_B};
-    int64_t keys2[] = {VIPER_KEY_C, VIPER_KEY_D};
+    int64_t keys1[] = {ZANNA_KEY_A, ZANNA_KEY_B};
+    int64_t keys2[] = {ZANNA_KEY_C, ZANNA_KEY_D};
     rt_keychord_define(kc, make_str("test"), make_key_seq(keys1, 2));
     assert(rt_keychord_count(kc) == 1);
 

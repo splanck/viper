@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the PieceTable class, which implements the piece table
-// data structure for efficient text editing in Viper's TUI. The piece table
+// data structure for efficient text editing in Zanna's TUI. The piece table
 // maintains two buffers — an original buffer (immutable after load) and an
 // append-only add buffer — plus a list of "pieces" that describe the document
 // as a sequence of spans referencing one of the two buffers.
@@ -42,7 +42,7 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Piece table implementation providing efficient insert/erase operations
 ///        for text editing in the TUI editor.
 /// @details Uses an original buffer (set at load time, never modified) and an
@@ -165,10 +165,10 @@ class PieceTable {
     std::string add_{};
     std::size_t size_{};
 };
-} // namespace viper::tui::text
+} // namespace zanna::tui::text
 
 template <typename Fn>
-void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const {
+void zanna::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const {
     std::size_t idx = 0;
     for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it) {
         if (pos >= idx + it->length) {

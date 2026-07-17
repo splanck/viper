@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //   - Normal startup delegates ownership and lifetime to one Game instance.
 // Ownership/Lifetime:
 //   - Entry point owns its Game or short-lived RuntimeTuning object until exit.
-// Links: game.zia, tuning.zia, viper.project, xenoscape.runtime.json
+// Links: game.zia, tuning.zia, zanna.project, xenoscape.runtime.json
 //
 //===----------------------------------------------------------------------===//
 // =============================================================================
@@ -23,7 +23,7 @@
 // TUTORIAL — A GAME'S ENTRY POINT IS TRIVIAL BY DESIGN
 // ----------------------------------------------------
 // Every Zia program launched as a binary runs the `start()` function
-// in its entry module.  Xenoscape's `viper.project` points at this
+// in its entry module.  Xenoscape's `zanna.project` points at this
 // file, so `start()` is the first thing that runs.
 //
 // A good game entry point does almost nothing: it constructs the
@@ -52,10 +52,10 @@
 
 module main;
 
-bind Viper.System.Environment as Env;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.Terminal as Terminal;
+bind Zanna.System.Environment as Env;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.Terminal as Terminal;
 bind "./game";
 bind "./tuning";
 
@@ -108,8 +108,8 @@ func runPackageSmoke() {
 /// `run()` does not return until the player quits — it's the main
 /// loop plus teardown.  Nothing after it would ever execute.
 func start() {
-    if hasArg("--viper-package-smoke") or
-       Env.GetVariable("VIPER_XENOSCAPE_PACKAGE_SMOKE") == "1" {
+    if hasArg("--zanna-package-smoke") or
+       Env.GetVariable("ZANNA_XENOSCAPE_PACKAGE_SMOKE") == "1" {
         runPackageSmoke();
         return;
     }

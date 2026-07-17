@@ -4,28 +4,28 @@ audience: contributors
 last-verified: 2026-06-30
 ---
 
-# ADR 0019: GUI Text/Cell Metrics (Viper.GUI.OutputPane measurement)
+# ADR 0019: GUI Text/Cell Metrics (Zanna.GUI.OutputPane measurement)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE's terminal and tool panels are the
+Accepted (runtime implemented; ZannaIDE's terminal and tool panels are the
 intended first consumers). Driven by the GUI runtime-additions review,
-recommendation **R2** (`misc/plans/viperide/gui-runtime-additions.md`).
+recommendation **R2** (`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
 A GUI app that lays out text in a pane needs to know the pane's font metrics:
 how wide a character cell is, how tall a line is, how many columns/rows fit, and
-how wide a given string renders. `Viper.GUI.CodeEditor` already exposes pixel
+how wide a given string renders. `Zanna.GUI.CodeEditor` already exposes pixel
 geometry (`GetCursorPixelX/Y`, `GetLineAtPixel`, `GetColAtPixel`) and
-`Viper.Graphics.Canvas` has `TextWidth/TextHeight`, but the *other* text widgets —
+`Zanna.Graphics.Canvas` has `TextWidth/TextHeight`, but the *other* text widgets —
 `OutputPane` (which also backs the integrated terminal) and the tool panels —
 expose nothing. So applications guess a fixed monospace cell:
 
-- `viperide/src/terminal/terminal_controller.zia:127` — `var cols = width / 8;`
-- `viperide/src/terminal/terminal_controller.zia:143` — `var rows = height / 18;`
-- `viperide/src/ui/app_shell.zia:1602` — `col = app.GetWidth() / 8;` (output wrap)
-- `viperide/src/ui/tool_panel_text.zia:41-59` — hardcoded column widths.
+- `zannaide/src/terminal/terminal_controller.zia:127` — `var cols = width / 8;`
+- `zannaide/src/terminal/terminal_controller.zia:143` — `var rows = height / 18;`
+- `zannaide/src/ui/app_shell.zia:1602` — `col = app.GetWidth() / 8;` (output wrap)
+- `zannaide/src/ui/tool_panel_text.zia:41-59` — hardcoded column widths.
 
 These `/ 8` and `/ 18` constants are wrong for any non-default font size or DPI
 scale, and they duplicate a measurement the renderer already performs internally
@@ -36,7 +36,7 @@ Adding runtime methods is a runtime C-ABI surface change, which requires an ADR.
 
 ## Decision
 
-Add five measurement methods to `Viper.GUI.OutputPane`:
+Add five measurement methods to `Zanna.GUI.OutputPane`:
 
 - `GetCellWidth() -> i64` — pixel advance of one monospace character cell
   (the width of `"M"` in the pane's font), `0` when no font is set.
@@ -58,7 +58,7 @@ The measurement lives in the GUI toolkit (`src/lib/gui`), where the font and the
 pane's arranged size already are, as five `vg_outputpane_*` functions in
 `vg_outputpane.c` (declared in `vg_ide_widgets_panels.h`). They reuse the
 toolkit's `vg_font_measure_text` / the pane's `line_height` — the same source the
-renderer uses — so a metric can never disagree with what is drawn. The Viper
+renderer uses — so a metric can never disagree with what is drawn. The Zanna
 runtime binding (`rt_outputpane_*` in `rt_gui_widgets_complex.c`) is a thin
 self-guarding wrapper, with graphics-disabled twins returning `0` in the same
 file's `#else` block. No new class, no new class id, no new `rt_*.c/.h` file (so
@@ -80,10 +80,10 @@ no `source_health` runtime-contract surface change).
   pass: most widgets have no single text font, and the concrete consumers
   (terminal, output, tool panels) are all `OutputPane`. The method can be lifted
   to a shared text-widget base later if a second consumer type appears.
-- **`Viper.GUI.Font.Measure(font, text)`.** Rejected as the primary surface: the
+- **`Zanna.GUI.Font.Measure(font, text)`.** Rejected as the primary surface: the
   caller would have to fetch the pane's font and size and re-derive the cell grid,
   re-introducing the coupling the pane already owns. (The pane methods delegate to
   exactly this internally.)
 - **Keep the `/ 8` constants.** Rejected: wrong for every non-default font size
-  and DPI scale, and every Viper GUI app that renders monospaced text re-derives
+  and DPI scale, and every Zanna GUI app that renders monospaced text re-derives
   the same guess.

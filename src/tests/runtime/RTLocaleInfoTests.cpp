@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTLocaleInfoTests.cpp
-// Purpose: Validate Viper.Localization.LocaleInfo queries against the baked
+// Purpose: Validate Zanna.Localization.LocaleInfo queries against the baked
 //          en-US record. Each field is round-tripped through both a parsed
 //          Locale handle and an unregistered Locale (which should fall back
 //          to the invariant defaults matching en-US).

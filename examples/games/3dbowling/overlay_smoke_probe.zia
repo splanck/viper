@@ -1,9 +1,9 @@
 module overlay_smoke_probe;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 bind "./config";
 bind "./engine/renderer";
 bind "./engine/camera";

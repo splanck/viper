@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -38,7 +38,7 @@ struct CorpusCase {
 };
 
 [[nodiscard]] fs::path corpusRoot() {
-    return fs::path(VIPER_SHARED_IL_CORPUS_DIR) / "success";
+    return fs::path(ZANNA_SHARED_IL_CORPUS_DIR) / "success";
 }
 
 [[nodiscard]] fs::path outputRoot() {
@@ -62,7 +62,7 @@ void compileAssembly(const fs::path &input, const fs::path &output) {
     const std::string in = input.string();
     const std::string out = output.string();
     const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0", "--target-darwin"};
-    const int rc = viper::tools::ilc::cmd_codegen_arm64(5, const_cast<char **>(argv));
+    const int rc = zanna::tools::ilc::cmd_codegen_arm64(5, const_cast<char **>(argv));
     if (rc != 0) {
         std::cerr << "AArch64 corpus compile failed for " << input << " rc=" << rc << '\n';
         assert(false && "AArch64 shared corpus compile failed");

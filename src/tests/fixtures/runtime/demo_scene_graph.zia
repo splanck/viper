@@ -2,10 +2,10 @@
 // A solar system: sun at center, planet orbits sun, moon orbits planet.
 module DemoSceneGraph;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Scene Graph Demo", 800, 600);

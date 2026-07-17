@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 using il::core::Opcode;
 
@@ -633,7 +633,7 @@ static void lowerSwitchI32(
     constexpr int64_t kMaxJumpTableSpan = 4095; // SubRI/CmpRI immediate ceiling
     constexpr double kMinJumpTableDensity = 0.5;
     if (cases.size() > 3 && cases.size() >= kMinJumpTableCases &&
-        std::getenv("VIPER_NO_JUMP_TABLES") == nullptr) {
+        std::getenv("ZANNA_NO_JUMP_TABLES") == nullptr) {
         const int64_t lo = cases.front().value;
         const int64_t hi = cases.back().value;
         const int64_t span = hi - lo + 1;
@@ -874,4 +874,4 @@ void lowerTerminators(const il::core::Function &fn,
     }
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

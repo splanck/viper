@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the syntax highlighting system for Viper's TUI
+// This file declares the syntax highlighting system for Zanna's TUI
 // editor. SyntaxRuleSet manages a collection of regex-based highlighting
 // rules and provides per-line span computation with caching.
 //
@@ -35,7 +35,7 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::syntax {
+namespace zanna::tui::syntax {
 
 /// @brief Associates a regular expression pattern with a visual style for highlighting.
 /// @details When the pattern matches a region of text, the corresponding style is
@@ -90,4 +90,4 @@ class SyntaxRuleSet {
     std::unordered_map<std::size_t, std::pair<std::string, std::vector<Span>>> cache_{};
 };
 
-} // namespace viper::tui::syntax
+} // namespace zanna::tui::syntax

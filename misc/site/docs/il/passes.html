@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Optimizer Passes — Viper</title>
-  <meta name="description" content="Viper documentation: Optimizer Passes">
+  <title>Optimizer Passes — Zanna</title>
+  <meta name="description" content="Zanna documentation: Optimizer Passes">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -254,7 +254,7 @@
 </ul>
 <p>the seed plus the IL text for repro.</p>
 <ul>
-<li>Seeds default to a fixed constant for stability; override with <code>VIPER_OPT_EQ_SEED=&lt;u64&gt;</code> to fuzz locally.</li>
+<li>Seeds default to a fixed constant for stability; override with <code>ZANNA_OPT_EQ_SEED=&lt;u64&gt;</code> to fuzz locally.</li>
 </ul>
 <h2 id="peephole">Peephole</h2>
 <p>The peephole pass applies 57 pattern-based algebraic simplifications:</p>
@@ -466,7 +466,7 @@
 <td>20+ passes — full registered pipeline</td>
 </tr>
 </tbody></table>
-<p>The BASIC frontend (<code>src/tools/viper/cmd_run.cpp</code>) only ran <code>SimplifyCFG</code> on verification failure; it now</p>
+<p>The BASIC frontend (<code>src/tools/zanna/cmd_run.cpp</code>) only ran <code>SimplifyCFG</code> on verification failure; it now</p>
 <p>applies the canonical O0/O1/O2 pipeline unconditionally.</p>
 <p><strong>Fix</strong>: Both frontends now call <code>pm.runPipeline(module, &quot;O1&quot;)</code> / <code>pm.runPipeline(module, &quot;O2&quot;)</code> to use</p>
 <p>the canonically registered pipelines, ensuring VM-interpreted programs receive the same optimization as</p>
@@ -616,13 +616,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 
 #include <string_view>
 
-namespace viper::tools {
+namespace zanna::tools {
 
 /// @brief Lightweight non-owning view over argv-style argument arrays.
 /// @details Encapsulates the argument count and pointer pair supplied by the C
@@ -63,4 +63,4 @@ struct ArgvView {
     }
 };
 
-} // namespace viper::tools
+} // namespace zanna::tools

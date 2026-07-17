@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Threads.ConcurrentQueue
+// API Audit: Zanna.Threads.ConcurrentQueue
 // =============================================================================
 // Tests: New, Enqueue, TryDequeueOption, Dequeue, Peek, Len, IsEmpty, Clear
 // =============================================================================
 
 module ConcQueueDemo;
-bind Viper.Threads.ConcurrentQueue as CQ;
-bind Viper.Core.Box as Box;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.ConcurrentQueue as CQ;
+bind Zanna.Core.Box as Box;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.ConcurrentQueue ===");
+    Say("=== API Audit: Zanna.Threads.ConcurrentQueue ===");
 
     // --- New ---
     Say("--- New ---");

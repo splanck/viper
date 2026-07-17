@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include <optional>
 #include <string>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Rewrite structured EH into ordinary IL calls/branches for native codegen.
 /// @return True when the module was changed.
@@ -30,4 +30,4 @@ bool lowerNativeEh(il::core::Module &module);
 ///          and MIR lowering. A non-empty result is a backend-lowering bug.
 [[nodiscard]] std::optional<std::string> findResidualStructuredEh(const il::core::Module &module);
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

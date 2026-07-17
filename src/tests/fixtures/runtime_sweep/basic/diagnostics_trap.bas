@@ -1,5 +1,5 @@
 ' EXPECT_EXIT: 1
-' COVER: Viper.Core.Diagnostics.Trap
+' COVER: Zanna.Core.Diagnostics.Trap
 
-Viper.Core.Diagnostics.Trap("expected trap")
+Zanna.Core.Diagnostics.Trap("expected trap")
 END

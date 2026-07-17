@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -125,7 +125,7 @@ void *rt_config_from_string(void *json_str) {
 int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = checked_config(cfg, "Config.GetInt: expected Viper.Game.Config");
+    config_impl *c = checked_config(cfg, "Config.GetInt: expected Zanna.Game.Config");
     if (!c)
         return default_val;
     if (!c->json_root)
@@ -142,7 +142,7 @@ int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
 void *rt_config_get_str(void *cfg, void *path, void *default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = checked_config(cfg, "Config.GetStr: expected Viper.Game.Config");
+    config_impl *c = checked_config(cfg, "Config.GetStr: expected Zanna.Game.Config");
     if (!c)
         return default_val;
     if (!c->json_root)
@@ -161,7 +161,7 @@ void *rt_config_get_str(void *cfg, void *path, void *default_val) {
 int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = checked_config(cfg, "Config.GetBool: expected Viper.Game.Config");
+    config_impl *c = checked_config(cfg, "Config.GetBool: expected Zanna.Game.Config");
     if (!c)
         return default_val;
     if (!c->json_root)
@@ -179,7 +179,7 @@ int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
 int8_t rt_config_has(void *cfg, void *path) {
     if (!cfg || !path)
         return 0;
-    config_impl *c = checked_config(cfg, "Config.Has: expected Viper.Game.Config");
+    config_impl *c = checked_config(cfg, "Config.Has: expected Zanna.Game.Config");
     if (!c)
         return 0;
     if (!c->json_root)

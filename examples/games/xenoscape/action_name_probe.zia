@@ -32,10 +32,10 @@
 
 module action_name_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.String as String;
-bind Viper.Input.Action as Action;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.String as String;
+bind Zanna.Input.Action as Action;
 bind "./config";
 
 func sayBool(name: String, value: Boolean) {
@@ -56,8 +56,8 @@ func main() {
     Terminal.Say("VALUES");
     Terminal.Say("ACT_LEFT=" + ACT_LEFT);
     Terminal.Say("ACT_RIGHT=" + ACT_RIGHT);
-    sayInt("ACT_LEFT_LEN", Viper.String.get_Length(ACT_LEFT));
-    sayInt("ACT_RIGHT_LEN", Viper.String.get_Length(ACT_RIGHT));
+    sayInt("ACT_LEFT_LEN", Zanna.String.get_Length(ACT_LEFT));
+    sayInt("ACT_RIGHT_LEN", Zanna.String.get_Length(ACT_RIGHT));
 
     Terminal.Say("EXISTS");
     sayBool("exists_ACT_LEFT", Action.Exists(ACT_LEFT));

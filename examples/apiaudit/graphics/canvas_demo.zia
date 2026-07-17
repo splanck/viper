@@ -1,7 +1,7 @@
 module CanvasDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Graphics.Canvas ===");
+    Say("=== API Audit: Zanna.Graphics.Canvas ===");
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New(width, height)");
     Say("Properties: get_Width, get_Height");

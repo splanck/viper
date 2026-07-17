@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 StringTable::StringTable() {
     // ELF convention: offset 0 = empty string (single NUL byte).
@@ -56,4 +56,4 @@ uint32_t StringTable::find(std::string_view str) const {
     return UINT32_MAX;
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

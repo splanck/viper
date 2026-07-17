@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Verify structural correctness of a ZIP archive.
 ///
@@ -213,4 +213,4 @@ bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
 ///          identity and payload parity.
 bool verifyWindowsNativeInstaller(const std::vector<uint8_t> &data, std::ostream &err);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

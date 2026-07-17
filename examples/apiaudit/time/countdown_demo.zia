@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Time.Countdown - Countdown Timer
+// API Audit: Zanna.Time.Countdown - Countdown Timer
 // =============================================================================
 // Tests: New, Start, Stop, Reset, Elapsed, Remaining, Expired, Interval,
 //        SetInterval, IsRunning
 // =============================================================================
 
 module CountdownDemo;
-bind Viper.Terminal;
-bind Viper.Time.Countdown as CD;
+bind Zanna.Terminal;
+bind Zanna.Time.Countdown as CD;
 func start() {
-    Say("=== API Audit: Viper.Time.Countdown ===");
+    Say("=== API Audit: Zanna.Time.Countdown ===");
 
     // --- New ---
     Say("--- New ---");

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 namespace il::frontends::basic {
 
@@ -568,10 +568,10 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt) {
                     }
                 }
             }
-            // Fallback: try common Viper.* namespaces even without explicit USING
+            // Fallback: try common Zanna.* namespaces even without explicit USING
             if (!rtSig) {
                 static const char *defaultNamespaces[] = {
-                    "Viper.Console", "Viper.Terminal", "Viper.Time"};
+                    "Zanna.Console", "Zanna.Terminal", "Zanna.Time"};
                 for (const char *ns : defaultNamespaces) {
                     std::string candidate = std::string(ns) + "." + ce->callee;
                     if (const auto *sig = il::runtime::findRuntimeSignature(candidate)) {

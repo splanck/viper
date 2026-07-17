@@ -1,4 +1,4 @@
-' sortedset_demo.bas - Comprehensive API audit for Viper.Collections.SortedSet
+' sortedset_demo.bas - Comprehensive API audit for Zanna.Collections.SortedSet
 ' Tests: New, Put, Drop, Has, First, Last, Floor, Ceil, Lower, Higher,
 '        At, IndexOf, Items, Range, Take, Skip, Merge, Common, Diff,
 '        IsSubset, Len, IsEmpty, Clear
@@ -8,7 +8,7 @@ PRINT "=== SortedSet API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM ss AS OBJECT
-ss = Viper.Collections.SortedSet.New()
+ss = Zanna.Collections.SortedSet.New()
 PRINT ss.Count       ' 0
 PRINT ss.IsEmpty   ' 1
 
@@ -100,7 +100,7 @@ PRINT ss.Drop("banana")   ' 0
 ' --- Merge ---
 PRINT "--- Merge ---"
 DIM ss2 AS OBJECT
-ss2 = Viper.Collections.SortedSet.New()
+ss2 = Zanna.Collections.SortedSet.New()
 ss2.Put("apple")
 ss2.Put("fig")
 ss2.Put("grape")
@@ -123,7 +123,7 @@ PRINT diff.Count  ' 3
 ' --- IsSubset ---
 PRINT "--- IsSubset ---"
 DIM sub1 AS OBJECT
-sub1 = Viper.Collections.SortedSet.New()
+sub1 = Zanna.Collections.SortedSet.New()
 sub1.Put("apple")
 sub1.Put("cherry")
 PRINT sub1.IsSubset(ss)  ' 1

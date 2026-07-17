@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@ static void release_obj(void *obj) {
 }
 
 /// @brief Assert that a Result is Err and carries a non-empty string message.
-/// @param result Opaque Viper.Result object returned by a runtime API under test.
+/// @param result Opaque Zanna.Result object returned by a runtime API under test.
 static void expect_err_with_message(void *result) {
     ASSERT_TRUE(result != nullptr);
     EXPECT_EQ(rt_result_is_err(result), 1);
@@ -46,12 +46,12 @@ static void expect_err_with_message(void *result) {
 }
 
 TEST(RuntimeOpenLoadResultApis, TlsConnectResultWrapsInvalidArguments) {
-    void *bad_port = rt_viper_tls_connect_result(rt_const_cstr("localhost"), 0);
+    void *bad_port = rt_zanna_tls_connect_result(rt_const_cstr("localhost"), 0);
     expect_err_with_message(bad_port);
     release_obj(bad_port);
 
     void *bad_timeout =
-        rt_viper_tls_connect_for_result(rt_const_cstr("localhost"), 443, 2147483648LL);
+        rt_zanna_tls_connect_for_result(rt_const_cstr("localhost"), 443, 2147483648LL);
     expect_err_with_message(bad_timeout);
     release_obj(bad_timeout);
 }
@@ -69,7 +69,7 @@ TEST(RuntimeOpenLoadResultApis, PtyOpenSurfacesExecFailure) {
     if (!rt_pty_is_supported())
         return; // no PTY backend in this environment
     void *result = rt_pty_open_result(
-        rt_const_cstr("/nonexistent/viper/pty/program/xyz"), nullptr, nullptr, nullptr, 80, 24);
+        rt_const_cstr("/nonexistent/zanna/pty/program/xyz"), nullptr, nullptr, nullptr, 80, 24);
     expect_err_with_message(result);
     release_obj(result);
 
@@ -158,5 +158,5 @@ TEST(RuntimeOpenLoadResultApis, SceneDocumentLoadResultWrapsMissingFile) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

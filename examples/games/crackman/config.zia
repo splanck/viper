@@ -24,7 +24,7 @@
 // =============================================================================
 // CRACKMAN - Configuration and Constants
 // =============================================================================
-// Rewritten to use new Viper runtime features:
+// Rewritten to use new Zanna runtime features:
 // - Action mapping constants for device-agnostic input
 // - Cleaned up organization
 // =============================================================================
@@ -112,7 +112,7 @@ final PAD_DPAD_LEFT = 12;
 final PAD_DPAD_RIGHT = 13;
 
 // =============================================================================
-// ACTION NAMES (for Viper.Input.Action mapping system)
+// ACTION NAMES (for Zanna.Input.Action mapping system)
 // =============================================================================
 
 final ACTION_UP = "move_up";
@@ -128,7 +128,7 @@ final ACTION_LIGHTS = "toggle_lights";
 // =============================================================================
 // GAME STATES (for state machine)
 // =============================================================================
-// Aliases coerce to Integer for Viper.Game.StateMachine's i64 state ids.
+// Aliases coerce to Integer for Zanna.Game.StateMachine's i64 state ids.
 
 enum GameState {
     Menu, Playing, Paused, GameOver, Win, Ready, Dying,

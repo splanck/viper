@@ -64,7 +64,7 @@ Why start at 0? It comes from how computers calculate memory addresses. If the s
 You can access individual characters:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var word = "Hello";
 Say(word[0]);  // H
@@ -85,7 +85,7 @@ Before diving into string operations, let's master working with individual chara
 Every character in a string has a position (index), starting from 0:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = "Alice";
 Say(name[0]);  // A (first character)
@@ -96,7 +96,7 @@ Say(name[4]);  // e (fifth/last character)
 You can use any expression as an index:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Programming";
 var middle = text.Length / 2;
@@ -111,9 +111,9 @@ Say(text[lastIndex]);  // g (last character)
 To process every character, loop through the indices:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var text = "Viper";
+var text = "Zanna";
 for i in 0..text.Length {
     Say("Character " + i + ": " + text[i]);
 }
@@ -131,7 +131,7 @@ Character 4: r
 This pattern is fundamental. Want to count uppercase letters? Loop through each character and check. Want to find all positions of a letter? Loop and record indices where it matches.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Count uppercase letters
 func countUppercase(text: String) -> Integer {
@@ -155,7 +155,7 @@ func start() {
 You can construct strings by starting empty and adding characters:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Reverse a string
 func reverse(text: String) -> String {
@@ -175,7 +175,7 @@ func start() {
 Or filter characters based on criteria:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Keep only letters
 func lettersOnly(text: String) -> String {
@@ -204,7 +204,7 @@ func start() {
 The `.Length` property tells you how many characters a string contains:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("Hello".Length);     // 5
 Say("".Length);          // 0 (empty string)
@@ -214,7 +214,7 @@ Say("Hi there!".Length); // 9 (space counts)
 **Every character counts** — letters, numbers, spaces, punctuation, even invisible characters like tabs and newlines:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("A B".Length);    // 3 (A, space, B)
 Say("A\tB".Length);   // 3 (A, tab, B)
@@ -226,9 +226,9 @@ Say("A\nB".Length);   // 3 (A, newline, B)
 Length is essential for loops:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var text = "Viper";
+var text = "Zanna";
 for i in 0..text.Length {
     Say("Character " + i + ": " + text[i]);
 }
@@ -237,7 +237,7 @@ for i in 0..text.Length {
 And for validation:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func validatePassword(password: String) -> Boolean {
     if password.Length < 8 {
@@ -255,7 +255,7 @@ func validatePassword(password: String) -> Boolean {
 And for safe indexing:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Hello";
 var index = 10;
@@ -286,7 +286,7 @@ This isn't a limitation — it's a deliberate design choice with important benef
 **Safety**: When you pass a string to a function, you know it won't be modified unexpectedly.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func showUsername(name: String) {
     Say("Hello, " + name);
@@ -349,7 +349,7 @@ This creates 1000 intermediate strings that are immediately discarded. For build
 The `+` operator joins strings together:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var first = "Hello";
 var second = "World";
@@ -360,7 +360,7 @@ Say(greeting);  // Hello, World!
 When you "add" a string and a number, the number is converted to a string:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 42;
 Say("Your score: " + score);  // Your score: 42
@@ -371,7 +371,7 @@ Say("Your score: " + score);  // Your score: 42
 Because conversion happens automatically, order can be surprising:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // String first: concatenation
 Say("Score: " + 5 + 3);   // Score: 53 (string concat)
@@ -390,7 +390,7 @@ The rule: operations are evaluated left to right. Once you hit a string, everyth
 Concatenation is intuitive for simple cases:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func formatName(first: String, middle: String, last: String) -> String {
     return first + " " + middle + " " + last;
@@ -460,7 +460,7 @@ var rest = text.Substring(7, text.Length - 7);     // "World!"
 
 **Extract file extension:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func getExtension(filename: String) -> String {
     var dotPos = filename.LastIndexOf(".");
@@ -479,7 +479,7 @@ func start() {
 
 **Extract domain from email:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func getEmailDomain(email: String) -> String {
     var atPos = email.IndexOf("@");
@@ -496,7 +496,7 @@ func start() {
 
 **Truncate with ellipsis:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func truncate(text: String, maxLength: Integer) -> String {
     if text.Length <= maxLength {
@@ -532,7 +532,7 @@ Why -1 for "not found"? Because 0 is a valid position (the start of the string),
 Always check if the search succeeded:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var email = "user@example.com";
 var atPos = email.IndexOf("@");
@@ -562,7 +562,7 @@ var filename = path.Substring(lastSlash + 1, path.Length - lastSlash - 1);  // f
 When you only care whether something exists, not where:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "The quick brown fox";
 
@@ -578,7 +578,7 @@ This is cleaner than checking `IndexOf(...) != 0`.
 Check the beginning or end of a string:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var filename = "report.pdf";
 
@@ -619,7 +619,7 @@ func isSecureUrl(url: String) -> Boolean {
 `IndexOf` only finds the first occurrence. To find all:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func findAll(text: String, search: String) -> List[Integer] {
     var positions = [];
@@ -653,7 +653,7 @@ Comparing strings is essential for sorting, searching, and validation — but it
 ### Basic Equality
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = "hello";
 var b = "hello";
@@ -668,7 +668,7 @@ Say(a == c);  // false - case differs!
 String comparison is **case-sensitive** by default. "Hello" and "hello" are different strings:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = "YES";
 if input == "yes" {  // false!
@@ -679,7 +679,7 @@ if input == "yes" {  // false!
 For case-insensitive comparison, convert to the same case first:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = "YES";
 if input.ToLower() == "yes" {  // true!
@@ -689,7 +689,7 @@ if input.ToLower() == "yes" {  // true!
 
 **Common pattern for user input:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func normalizeInput(text: String) -> String {
     return text.Trim().ToLower();
@@ -708,7 +708,7 @@ func start() {
 Strings can be compared alphabetically using `<`, `>`, `<=`, `>=`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("apple" < "banana");  // true (a before b)
 Say("cat" < "car");       // false (t after r)
@@ -722,7 +722,7 @@ This is called **lexicographic ordering** — comparing character by character u
 Alphabetical comparison uses character codes, which leads to surprises:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // All uppercase letters come BEFORE all lowercase
 Say("Z" < "a");     // true! Z (90) < a (97)
@@ -733,7 +733,7 @@ Say("apple" < "Banana"); // false (a > B)
 For true alphabetical sorting, convert to the same case:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func alphabeticallyBefore(a: String, b: String) -> Boolean {
     return a.ToLower() < b.ToLower();
@@ -749,7 +749,7 @@ func start() {
 Another common trap:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("9" < "10");   // false! '9' (57) > '1' (49)
 Say("9" < "100");  // false! Same reason
@@ -758,8 +758,8 @@ Say("9" < "100");  // false! Same reason
 For numeric comparison, convert to numbers:
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var a = "9";
 var b = "10";
@@ -771,7 +771,7 @@ if Convert.ToInt64(a) < Convert.ToInt64(b) {
 ### Comparing Empty Strings
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var empty = "";
 var space = " ";
@@ -789,7 +789,7 @@ Say(space.Length == 0); // false
 Strings can be converted to all uppercase or all lowercase:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Hello, World!";
 Say(text.ToUpper());  // HELLO, WORLD!
@@ -799,7 +799,7 @@ Say(text.ToLower());  // hello, world!
 Remember: the original string is unchanged (immutability):
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = "Alice";
 Say(name.ToUpper());  // ALICE
@@ -811,7 +811,7 @@ Say(name);          // Alice (still)
 The most common use of case conversion:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = "YES";
 
@@ -827,7 +827,7 @@ Without `.ToLower()`, "YES", "Yes", "yes", and "yEs" would all be different. Con
 Combine case conversion with substrings:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func capitalize(text: String) -> String {
     if text.Length == 0 {
@@ -844,7 +844,7 @@ func start() {
 
 **Title case (capitalize each word):**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func capitalize(text: String) -> String {
     if text.Length == 0 {
@@ -880,7 +880,7 @@ func start() {
 User input often has extra spaces. The `trim` method removes whitespace from both ends:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = "   hello   ";
 Say("[" + input.Trim() + "]");  // [hello]
@@ -903,7 +903,7 @@ text.Trim();       // "hello" (both sides)
 - Carriage returns ('\r')
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var messy = "\t  Hello World  \n";
 Say("[" + messy.Trim() + "]");  // [Hello World]
@@ -914,7 +914,7 @@ Say("[" + messy.Trim() + "]");  // [Hello World]
 Always trim user input before processing:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("Enter your name:");
 var name = InputLine().Trim();
@@ -933,11 +933,11 @@ Without trimming, a user who types "   " (just spaces) would pass a length check
 To replace occurrences of one string with another:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Hello, World!";
-var result = text.Replace("World", "Viper");
-Say(result);  // Hello, Viper!
+var result = text.Replace("World", "Zanna");
+Say(result);  // Hello, Zanna!
 ```
 
 By default, this replaces all occurrences:
@@ -963,7 +963,7 @@ func sanitize(text: String) -> String {
 
 **Normalizing data:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Remove common variations in phone numbers
 func normalizePhone(phone: String) -> String {
@@ -983,7 +983,7 @@ func start() {
 
 **Template substitution:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(template: String, name: String, time: String) -> String {
     var result = template;
@@ -1002,7 +1002,7 @@ func start() {
 ### Replace Is Case-Sensitive
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Hello hello HELLO";
 Say(text.Replace("hello", "hi"));
@@ -1042,7 +1042,7 @@ func replaceIgnoreCase(text: String, search: String, replacement: String) -> Str
 Splitting breaks a string into an array of pieces at each occurrence of a delimiter:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var csv = "apple,banana,cherry";
 var fruits = csv.Split(",");
@@ -1111,8 +1111,8 @@ var pairs = data.Split("&");  // ["name=Alice", "age=30", "city=Boston"]
 CSV (Comma-Separated Values) is extremely common:
 
 ```rust
-bind Viper.Terminal;
-bind Seq = Viper.Collections.Seq;
+bind Zanna.Terminal;
+bind Seq = Zanna.Collections.Seq;
 
 func parseCSVLine(line: String) -> Seq {
     return line.Split(",");
@@ -1130,7 +1130,7 @@ func start() {
 
 **Processing multiple lines:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var csvData = "Alice,30,Boston\nBob,25,Seattle\nCarol,35,Denver";
@@ -1160,8 +1160,8 @@ Carol is 35 years old, lives in Denver
 The reverse of splitting — combining a sequence into a single string:
 
 ```rust
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var words = "Hello World".Split(" ");
 var sentence = Str.Join(" ", words);
@@ -1171,8 +1171,8 @@ Say(sentence);  // Hello World
 The first argument is what to put between elements, and the second is the sequence:
 
 ```rust
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var numbers = "1,2,3".Split(",");
 Say(Str.Join(", ", numbers));  // 1, 2, 3
@@ -1185,7 +1185,7 @@ Say(Str.Join("", numbers));    // 123
 Split and join are complementary operations:
 
 ```rust
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 var text = "Hello, World!";
 var parts = text.Split(", ");  // ["Hello", "World!"]
@@ -1194,7 +1194,7 @@ var rejoined = Str.Join(", ", parts); // "Hello, World!"
 
 **Transform and rejoin:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Capitalize each word
 func titleCase(text: String) -> String {
@@ -1222,8 +1222,8 @@ func start() {
 
 **Change delimiter:**
 ```rust
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 // Convert paths between systems
 func windowsToUnix(path: String) -> String {
@@ -1265,7 +1265,7 @@ You end up copying characters repeatedly.
 For building large strings, use `StringBuilder`:
 
 ```rust
-bind Viper.Text.StringBuilder as SB;
+bind Zanna.Text.StringBuilder as SB;
 
 var builder = new SB();
 
@@ -1293,11 +1293,11 @@ var result = builder.ToString();
 ### Building Complex Output
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.StringBuilder as SB;
-bind Viper.Time.DateTime as DateTime;
-bind Viper.Text.Fmt as Fmt;
-bind Seq = Viper.Collections.Seq;
+bind Zanna.Terminal;
+bind Zanna.Text.StringBuilder as SB;
+bind Zanna.Time.DateTime as DateTime;
+bind Zanna.Text.Fmt as Fmt;
+bind Seq = Zanna.Collections.Seq;
 
 func generateReport(rows: Seq) -> String {
     var sb = new SB();
@@ -1332,8 +1332,8 @@ func start() {
 For small lists, simple concatenation is often clear enough:
 
 ```rust
-bind Viper.Terminal;
-bind Seq = Viper.Collections.Seq;
+bind Zanna.Terminal;
+bind Seq = Zanna.Collections.Seq;
 
 func buildList(items: Seq) -> String {
     var result = "";
@@ -1365,7 +1365,7 @@ For larger outputs, prefer `StringBuilder`.
 
 **String to number:**
 ```rust
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 var text = "42";
 var num = Convert.ToInt64(text);     // 42 (integer)
@@ -1374,7 +1374,7 @@ var pi = Convert.ToDouble("3.14");   // 3.14 (float)
 
 **Number to string:**
 ```rust
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 
 var num = 42;
 var text = Fmt.Int(num);  // "42"
@@ -1391,8 +1391,8 @@ var result = "Answer: " + 42;  // "Answer: 42"
 Be careful — `"5" + 3` is `"53"`, not `8`:
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var input = "5";
 Say(input + 3);  // "53" (string concatenation!)
@@ -1406,7 +1406,7 @@ If you want arithmetic, convert to numbers first.
 What if the string isn't a valid number?
 
 ```rust
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 var result = Convert.ToInt64("abc");  // Error or NaN
 
@@ -1430,7 +1430,7 @@ func safeParseInt(text: String) -> Integer {
 Every character has a numeric code. The common encoding is ASCII/UTF-8, where 'A' is 65, 'a' is 97, '0' is 48, and so on.
 
 ```rust
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 var code = "A".Asc();        // 65
 var ch = Str.Chr(65);        // "A"
@@ -1478,7 +1478,7 @@ func isAlphanumeric(c: String) -> Boolean {
 ### Character Conversion
 
 ```rust
-bind Str = Viper.String;
+bind Str = Zanna.String;
 
 func toUpper(c: String) -> String {
     if c.Asc() >= "a".Asc() && c.Asc() <= "z".Asc() {
@@ -1498,7 +1498,7 @@ func toLower(c: String) -> String {
 ### Digit Values
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Get numeric value of a digit character
 func digitValue(c: String) -> Integer {
@@ -1521,22 +1521,22 @@ func start() {
 For complex output, string concatenation is the primary approach:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 var name = "Alice";
 var score = 95;
 var message = "Player " + name + " scored " + score + " points!";
 // "Player Alice scored 95 points!"
 ```
 
-When mixing strings and numbers, the `+` operator automatically converts numbers. For explicit numeric formatting, use `Viper.Text.Fmt`.
+When mixing strings and numbers, the `+` operator automatically converts numbers. For explicit numeric formatting, use `Zanna.Text.Fmt`.
 
 ### Padding and Alignment
 
-For formatted number output, use `Viper.Text.Fmt`:
+For formatted number output, use `Zanna.Text.Fmt`:
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 // Pad with zeros
 Say(Fmt.IntPad(42, 5, "0"));     // "00042"
@@ -1558,7 +1558,7 @@ Let's apply everything to real-world problems.
 A basic email validator:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func isValidEmail(email: String) -> Boolean {
     var trimmed = email.Trim();
@@ -1598,7 +1598,7 @@ func start() {
 ### Formatting Names
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func formatName(fullName: String) -> String {
     var trimmed = fullName.Trim();
@@ -1638,7 +1638,7 @@ func start() {
 Since Zia doesn't have a built-in Map type, we can parse key-value pairs using parallel lists:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func findValue(data: String, key: String) -> String {
     var pairs = data.Split("&");
@@ -1667,7 +1667,7 @@ func start() {
 ### Cleaning User Input
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func cleanInput(text: String) -> String {
     var result = text.Trim();
@@ -1688,7 +1688,7 @@ func start() {
 ### Password Strength Checker
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func addNeed(existing: String, need: String) -> String {
     if existing.Length == 0 {
@@ -1787,7 +1787,7 @@ Strings often cause subtle bugs. Here are common issues and how to find them.
 Sometimes strings look identical but aren't:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = "hello";
 var b = "hello ";  // Trailing space!
@@ -1802,7 +1802,7 @@ if a == b {
 **Debugging technique:** Print with visible boundaries:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func debugString(text: String) {
     Say("[" + text + "]");
@@ -1840,7 +1840,7 @@ func start() {
 The most common string bug:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var text = "Hello";
 // text[5] does NOT exist - indices are 0-4
@@ -1927,7 +1927,7 @@ Let's build a program that analyzes text:
 ```rust
 module WordCounter;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func countWords(text: String) -> Integer {
     var words = text.Split(" ");
@@ -1974,15 +1974,15 @@ func start() {
 Sample run:
 ```text
 Enter some text:
-Hello World from Viper
+Hello World from Zanna
 
 === Analysis ===
 Characters: 22
 Words: 4
 Vowels: 6
 
-Uppercase: HELLO WORLD FROM VIPER
-Lowercase: hello world from viper
+Uppercase: HELLO WORLD FROM ZANNA
+Lowercase: hello world from zanna
 ```
 
 ---
@@ -1991,8 +1991,8 @@ Lowercase: hello world from viper
 
 **Zia**
 ```rust
-bind Viper.Terminal;
-bind Str = Viper.String;
+bind Zanna.Terminal;
+bind Str = Zanna.String;
 
 var text = "Hello, World!";
 
@@ -2006,7 +2006,7 @@ var sub = text.Substring(0, 5);
 var pos = text.IndexOf("World");
 
 // Replace
-var replaced = text.Replace("World", "Viper");
+var replaced = text.Replace("World", "Zanna");
 
 // Split and join
 var parts = text.Split(", ");
@@ -2087,8 +2087,8 @@ if text.Length == 0 {    // Check if empty
 
 **Confusing string concatenation with arithmetic:**
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 var a = "5";
 var b = "3";
@@ -2100,7 +2100,7 @@ Say(Convert.ToInt64(a) + Convert.ToInt64(b));  // 8
 
 **Not trimming user input:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var input = InputLine();
 // User might type "  yes  " with spaces
@@ -2129,8 +2129,8 @@ if input.Trim() == "yes" {  // Works
 - `Replace` substitutes text
 - `Split` breaks into sequences; `Join` combines compatible string sequences
 - String comparison is case-sensitive and uses character codes
-- `Viper.Core.Convert.ToInt64/ToDouble` convert strings to numbers
-- `Viper.Text.Fmt.Int/IntPad` format numbers as strings
+- `Zanna.Core.Convert.ToInt64/ToDouble` convert strings to numbers
+- `Zanna.Text.Fmt.Int/IntPad` format numbers as strings
 - Always check for empty strings and off-by-one errors
 - Use `Trim()` on user input before processing
 

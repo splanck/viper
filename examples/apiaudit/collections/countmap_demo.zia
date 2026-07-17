@@ -1,13 +1,13 @@
-// countmap_demo.zia - Comprehensive API audit for Viper.Collections.CountMap
+// countmap_demo.zia - Comprehensive API audit for Zanna.Collections.CountMap
 // Tests: New, Inc, IncBy, Dec, Get, Set, Has, Total, Keys,
 //        MostCommon, Remove, Clear, Len, IsEmpty
 
 module CountMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== CountMap API Audit ===");

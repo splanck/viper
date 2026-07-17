@@ -1,0 +1,52 @@
+// Test: Math Functions
+// Tests: Zanna.Math.* functions
+module Test;
+
+func main() {
+    Zanna.Terminal.Say("=== Math Functions Test ===");
+
+    // Abs
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Abs ---");
+    Zanna.Terminal.Print("Abs(-5): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Abs(-5.0));
+
+    // Sqrt
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Sqrt ---");
+    Zanna.Terminal.Print("Sqrt(16): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Sqrt(16.0));
+
+    // Pow
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Pow ---");
+    Zanna.Terminal.Print("Pow(2, 8): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Pow(2.0, 8.0));
+
+    // Trig
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Trigonometry ---");
+    Zanna.Terminal.Print("Sin(0): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Sin(0.0));
+    Zanna.Terminal.Print("Cos(0): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Cos(0.0));
+
+    // Floor/Ceil
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Floor/Ceil ---");
+    Zanna.Terminal.Print("Floor(3.7): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Floor(3.7));
+    Zanna.Terminal.Print("Ceil(3.2): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Ceil(3.2));
+
+    // Min/Max
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Min/Max ---");
+    Zanna.Terminal.Print("Min(5, 3): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Min(5.0, 3.0));
+    Zanna.Terminal.Print("Max(5, 3): ");
+    Zanna.Terminal.SayNum(Zanna.Math.Max(5.0, 3.0));
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== Math Functions test complete ===");
+}

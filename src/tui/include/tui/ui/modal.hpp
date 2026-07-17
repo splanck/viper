@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the ModalHost and Popup classes for Viper's TUI modal
+// This file declares the ModalHost and Popup classes for Zanna's TUI modal
 // dialog system.
 //
 // ModalHost is a special widget that wraps a root widget and manages a stack
@@ -36,7 +36,7 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 class Popup;
 
 /// @brief Widget host managing a root widget and a stack of modal overlays.
@@ -122,4 +122,4 @@ class Popup : public Widget {
     std::function<void()> onClose_{};
 };
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

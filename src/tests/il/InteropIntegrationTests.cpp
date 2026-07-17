@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -252,12 +252,12 @@ TEST(InteropIntegration, ExternsMergedCorrectly) {
     modA.functions.push_back(makeMainCalling("helper", Type(Type::Kind::I64)));
     modA.functions.push_back(makeFunc("helper", Type(Type::Kind::I64), {}, Linkage::Import));
     modA.externs.push_back(
-        Extern{"Viper.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
+        Extern{"Zanna.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
 
     Module modB;
     modB.functions.push_back(makeFunc("helper", Type(Type::Kind::I64), {}, Linkage::Export));
     modB.externs.push_back(
-        Extern{"Viper.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
+        Extern{"Zanna.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
 
     std::vector<Module> modules;
     modules.push_back(std::move(modA));
@@ -269,12 +269,12 @@ TEST(InteropIntegration, ExternsMergedCorrectly) {
     // The shared extern should appear exactly once (deduplicated).
     int sayCount = 0;
     for (const auto &ext : result.module.externs) {
-        if (ext.name == "Viper.Terminal.Say")
+        if (ext.name == "Zanna.Terminal.Say")
             sayCount++;
     }
     EXPECT_EQ(sayCount, 1);
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

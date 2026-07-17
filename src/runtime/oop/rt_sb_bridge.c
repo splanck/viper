@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_sb_bridge.c
-// Purpose: Provides minimal bridge helpers that wrap Viper.* namespaced types
+// Purpose: Provides minimal bridge helpers that wrap Zanna.* namespaced types
 //          (such as StringBuilder) as heap-allocated runtime objects compatible
-//          with the OOP object model. Enables Viper code to use these types
+//          with the OOP object model. Enables Zanna code to use these types
 //          through the standard retain/release interface.
 //
 // Key invariants:
@@ -54,7 +54,7 @@ static void rt_sb_finalize(void *obj) {
 
 /// @brief Allocate a new instance of the namespaced StringBuilder class.
 ///
-/// @details This bridges the high-level Viper.Strings.Builder class to a
+/// @details This bridges the high-level Zanna.Strings.Builder class to a
 ///          runtime-managed object by allocating a header (vptr) followed by an
 ///          embedded @c rt_string_builder payload. The embedded builder is
 ///          initialized in-place so callers receive a ready-to-use object.

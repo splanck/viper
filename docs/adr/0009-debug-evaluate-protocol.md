@@ -12,10 +12,10 @@ Status: Accepted; implemented and verified against source/tests on 2026-06-27
 
 ## Context
 
-ViperIDE watch/evaluate uses the out-of-process VM debug adapter
-(`viper run --debug-adapter`) over a newline-JSON control protocol. The IDE
-client is `viperide/src/build/debug_session.zia`; the adapter is
-`src/tools/viper/DebugAdapter.cpp`. Adding evaluate extends that control
+ZannaIDE watch/evaluate uses the out-of-process VM debug adapter
+(`zanna run --debug-adapter`) over a newline-JSON control protocol. The IDE
+client is `zannaide/src/build/debug_session.zia`; the adapter is
+`src/tools/zanna/DebugAdapter.cpp`. Adding evaluate extends that control
 protocol, which is a cross-layer contract between the IDE and the VM adapter and
 is covered by ADR 0006.
 
@@ -31,7 +31,7 @@ snapshot** (`DebugStopInfo::locals`, already collected for the `stopped` event)
 and stays stopped. Evaluate is a side-effect-free query, not a resume.
 
 Current implementation uses the adapter-local evaluator in
-`src/tools/viper/DebugExpr.hpp`. Supported expressions are locals and literals,
+`src/tools/zanna/DebugExpr.hpp`. Supported expressions are locals and literals,
 unary `-`/`not`/`!`, arithmetic `+ - * / %`, comparisons `== != < > <= >=`,
 logical `and`/`or` (`&&`/`||`), and parentheses. Numeric int-to-float promotion
 applies. Unknown identifiers, parse errors, and type errors return `ok:false`.
@@ -46,16 +46,16 @@ so no `runtime.def` or VM change accompanies it.
 
 Verified on 2026-06-27:
 
-- `src/tools/viper/DebugAdapter.cpp` builds a `localResolver` from
+- `src/tools/zanna/DebugAdapter.cpp` builds a `localResolver` from
   `DebugStopInfo::locals`, emits `evaluated` events from `evaluatedEvent`, and
   handles `evaluate` while stopped without resuming the VM.
-- `src/tools/viper/DebugExpr.hpp` implements the pure expression evaluator used
+- `src/tools/zanna/DebugExpr.hpp` implements the pure expression evaluator used
   by evaluate, conditional breakpoints, and logpoint interpolation.
-- `viperide/src/probes/debug_probe.zia` checks `Evaluate("a")`,
+- `zannaide/src/probes/debug_probe.zia` checks `Evaluate("a")`,
   `Evaluate("a + b")`, and an unknown local against the real out-of-process
   adapter.
 - Focused checks passed:
-  `ctest --test-dir build -R 'zia_viperide_debug|test_vm_debug_src_breakpoint|test_vm_debug_watches|test_vm_debug_script' --output-on-failure`.
+  `ctest --test-dir build -R 'zia_zannaide_debug|test_vm_debug_src_breakpoint|test_vm_debug_watches|test_vm_debug_script' --output-on-failure`.
 
 ## Consequences
 

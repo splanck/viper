@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -557,7 +557,7 @@ struct InterfaceDecl : Decl {
 };
 
 /// @brief Bind declaration: brings external modules or namespaces into scope.
-/// @details Binds make code from other modules or the Viper runtime namespace
+/// @details Binds make code from other modules or the Zanna runtime namespace
 /// available in the current module. Supports both file binds and namespace binds.
 ///
 /// ## File Binds (import Zia source files)
@@ -565,25 +565,25 @@ struct InterfaceDecl : Decl {
 /// - `bind "../lib/helpers";` - Parent directory path
 /// - `bind "./colors" as C;` - With alias for qualified access
 ///
-/// ## Namespace Binds (import Viper runtime namespaces)
-/// - `bind Viper.Terminal;` - Import all symbols from namespace
-/// - `bind Viper.Graphics as G;` - With alias: G.Canvas, G.Sprite
-/// - `bind Viper.Terminal { Say, ReadLine };` - Import specific symbols only
+/// ## Namespace Binds (import Zanna runtime namespaces)
+/// - `bind Zanna.Terminal;` - Import all symbols from namespace
+/// - `bind Zanna.Graphics as G;` - With alias: G.Canvas, G.Sprite
+/// - `bind Zanna.Terminal { Say, ReadLine };` - Import specific symbols only
 struct BindDecl : Decl {
-    /// @brief The bind path (file path OR namespace like "Viper.Terminal").
+    /// @brief The bind path (file path OR namespace like "Zanna.Terminal").
     std::string path;
 
     /// @brief Bind alias (empty if no alias).
     std::string alias;
 
     /// @brief True if this is a runtime namespace bind, false for file bind.
-    /// @details Namespace binds start with "Viper." and don't use string literals.
+    /// @details Namespace binds start with "Zanna." and don't use string literals.
     /// File binds use string literals like "./module" or "../lib/utils".
     bool isNamespaceBind = false;
 
     /// @brief Specific items to import (empty = import all).
     /// @details Supports selective imports for both file binds and namespace binds:
-    /// `bind Viper.Terminal { Say, ReadLine };`
+    /// `bind Zanna.Terminal { Say, ReadLine };`
     /// `bind "./math" { square, PI };`
     std::vector<std::string> specificItems;
 
@@ -608,7 +608,7 @@ struct BindDecl : Decl {
 /// Declarations inside a namespace are accessed via qualified names (e.g., `MyLib.Foo`).
 /// Namespaces can be nested and can span multiple files via imports.
 ///
-/// The built-in `Viper.*` namespaces (Viper.Terminal, Viper.Math, etc.) use the
+/// The built-in `Zanna.*` namespaces (Zanna.Terminal, Zanna.Math, etc.) use the
 /// same mechanism as user-defined namespaces - there is no special casing.
 ///
 /// ## Example
@@ -723,7 +723,7 @@ struct TypeAliasDecl : Decl {
 /// ```
 /// module MyGame;
 ///
-/// bind Viper.Terminal as Term;
+/// bind Zanna.Terminal as Term;
 ///
 /// class Player { ... }
 ///

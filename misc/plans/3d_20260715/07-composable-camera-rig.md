@@ -10,7 +10,7 @@ entities.
 
 ## Problem statement
 
-Viper has strong individual controllers: free-fly, orbit, follow, first-person,
+Zanna has strong individual controllers: free-fly, orbit, follow, first-person,
 third-person with collision/aim/target lock, rail camera, and timeline camera.
 Games still build composition around them:
 

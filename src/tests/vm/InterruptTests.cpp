@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -114,7 +114,7 @@ static void runInterruptChild() {
 }
 
 static int testInterruptFires() {
-    auto result = viper::tests::runIsolated(runInterruptChild);
+    auto result = zanna::tests::runIsolated(runInterruptChild);
 
     // The child must have terminated with a non-zero exit code (rt_abort).
     if (!result.trapped()) {
@@ -201,8 +201,8 @@ static int testGracefulShutdownPollConsumesInterrupt() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(runInterruptChild);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(runInterruptChild);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     int failures = 0;

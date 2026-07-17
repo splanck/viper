@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build curated Zia showcase binaries on Linux using Viper's native backend and
+# Build curated Zia showcase binaries on Linux using Zanna's native backend and
 # selected linker. Optional smoke-run validation can be enabled with --run.
 # Usage: ./scripts/build_demos_linux.sh [options]
 
@@ -11,21 +11,21 @@ BUILD_DIR="$ROOT_DIR/build"
 BIN_DIR="$ROOT_DIR/examples/bin"
 DEMO_MANIFEST="$SCRIPT_DIR/demo_projects.list"
 
-VIPER="$BUILD_DIR/src/tools/viper/viper"
+ZANNA="$BUILD_DIR/src/tools/zanna/zanna"
 LINK_CMD="${CXX:-c++}"
-RUN_TIMEOUT_DEFAULT="${VIPER_DEMO_TIMEOUT:-5}"
+RUN_TIMEOUT_DEFAULT="${ZANNA_DEMO_TIMEOUT:-5}"
 RUN_DEMO_RC=0
 STAMP_DIR="$BIN_DIR/.demo-stamps"
-DEMO_OPT="${VIPER_DEMO_OPT:-O1}"
-DEMO_JOBS="${VIPER_DEMO_JOBS:-}"
-LINK_MODE="${VIPER_DEMO_LINKER:-native}"
+DEMO_OPT="${ZANNA_DEMO_OPT:-O1}"
+DEMO_JOBS="${ZANNA_DEMO_JOBS:-}"
+LINK_MODE="${ZANNA_DEMO_LINKER:-native}"
 TIMINGS=0
 FORCE_REBUILD=0
 
-RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libviper_runtime.a"
-GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
-GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
-AUDIO_LIB="$BUILD_DIR/lib/libviperaud.a"
+RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libzanna_runtime.a"
+GUI_LIB="$BUILD_DIR/src/lib/gui/libzannagui.a"
+GFX_LIB="$BUILD_DIR/lib/libzannagfx.a"
+AUDIO_LIB="$BUILD_DIR/lib/libzannaaud.a"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -138,9 +138,9 @@ case "$(uname -m)" in
         ;;
 esac
 
-if [[ ! -x "$VIPER" ]]; then
-    echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper_linux.sh' first"
+if [[ ! -x "$ZANNA" ]]; then
+    echo -e "${RED}Error: zanna tool not found at $ZANNA${NC}"
+    echo "Run './scripts/build_zanna_linux.sh' first"
     exit 1
 fi
 
@@ -165,7 +165,7 @@ fi
 for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
     if [[ ! -f "$required" ]]; then
         echo -e "${RED}Error: required library not found: $required${NC}"
-        echo "Run './scripts/build_viper_linux.sh' first"
+        echo "Run './scripts/build_zanna_linux.sh' first"
         exit 1
     fi
 done
@@ -249,7 +249,7 @@ is_demo_up_to_date() {
 
     [[ $FORCE_REBUILD -eq 0 && -x "$exe_file" && -f "$stamp_file" ]] || return 1
     [[ "$(<"$stamp_file")" == "$(demo_stamp_value "$name")" ]] || return 1
-    [[ "$VIPER" -ot "$exe_file" ]] || return 1
+    [[ "$ZANNA" -ot "$exe_file" ]] || return 1
     if find "$project_dir" -type f -newer "$exe_file" -print -quit | grep -q .; then
         return 1
     fi
@@ -296,7 +296,7 @@ run_demo() {
     fi
 
     case "$name" in
-        3dbowling|ridgebound|vipersql|xenoscape)
+        3dbowling|ridgebound|zannasql|xenoscape)
             timeout_secs=10
             ;;
     esac
@@ -328,7 +328,7 @@ build_demo() {
     local name="$1"
     local project_dir="$2"
     local exe_file="$BIN_DIR/${name}"
-    local tmp_base="/tmp/viper_demo_${name}_$$"
+    local tmp_base="/tmp/zanna_demo_${name}_$$"
     local il_file="${tmp_base}.il"
     local obj_file="${tmp_base}.o"
     local frontend_err="${tmp_base}.front.err"
@@ -338,8 +338,8 @@ build_demo() {
     local run_out="${tmp_base}.run.out"
     local run_err="${tmp_base}.run.err"
 
-    if [[ ! -f "$project_dir/viper.project" ]]; then
-        echo -e "${RED}  Error: No viper.project found in $project_dir${NC}"
+    if [[ ! -f "$project_dir/zanna.project" ]]; then
+        echo -e "${RED}  Error: No zanna.project found in $project_dir${NC}"
         return 1
     fi
 
@@ -363,9 +363,9 @@ build_demo() {
     fi
 
     if [[ "$LINK_MODE" == "native" ]] || \
-        grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+        grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/zanna.project"; then
         echo -n "  Build -> native (in-memory IL)... "
-        if ! VIPER_LINKER_STATS="$TIMINGS" "$VIPER" build "$project_dir" --arch "$TARGET_ARCH" \
+        if ! ZANNA_LINKER_STATS="$TIMINGS" "$ZANNA" build "$project_dir" --arch "$TARGET_ARCH" \
             "$demo_opt" "${timing_args[@]}" "${link_args[@]}" -o "$exe_file" \
             >"$codegen_out" 2>"$codegen_err"; then
             echo -e "${RED}FAILED${NC}"
@@ -380,7 +380,7 @@ build_demo() {
         echo -e "${GREEN}OK${NC}"
     else
         echo -n "  Frontend -> IL... "
-        if ! "$VIPER" build "$project_dir" "$demo_opt" "${timing_args[@]}" -o "$il_file" \
+        if ! "$ZANNA" build "$project_dir" "$demo_opt" "${timing_args[@]}" -o "$il_file" \
             2>"$frontend_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$frontend_err"
@@ -392,7 +392,7 @@ build_demo() {
 
         if [[ $NATIVE_LINK -eq 1 ]]; then
             echo -n "  Codegen (native asm+link)... "
-            if ! "$VIPER" codegen "$TARGET_ARCH" "$il_file" --native-asm --native-link \
+            if ! "$ZANNA" codegen "$TARGET_ARCH" "$il_file" --native-asm --native-link \
                 --skip-il-optimization "$demo_opt" -o "$exe_file" \
                 >"$codegen_out" 2>"$codegen_err"; then
                 echo -e "${RED}FAILED${NC}"
@@ -403,7 +403,7 @@ build_demo() {
             fi
         else
             echo -n "  Codegen (native obj)... "
-            if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm \
+            if ! "$ZANNA" codegen "$TARGET_ARCH" compile "$il_file" --native-asm \
                 --skip-il-optimization "$demo_opt" -o "$obj_file" \
                 >"$codegen_out" 2>"$codegen_err"; then
                 echo -e "${RED}FAILED${NC}"
@@ -457,12 +457,12 @@ build_demo() {
     return 0
 }
 
-echo -e "${CYAN}Building Viper demos on Linux (${TARGET_ARCH})${NC}"
+echo -e "${CYAN}Building Zanna demos on Linux (${TARGET_ARCH})${NC}"
 if [[ "$LINK_MODE" == "native" ]]; then
-    echo -e "${CYAN}Object generation: Viper native backend${NC}"
-    echo -e "${CYAN}Final link: Viper native linker${NC}"
+    echo -e "${CYAN}Object generation: Zanna native backend${NC}"
+    echo -e "${CYAN}Final link: Zanna native linker${NC}"
 else
-    echo -e "${CYAN}Object generation: Viper native backend${NC}"
+    echo -e "${CYAN}Object generation: Zanna native backend${NC}"
     echo -e "${CYAN}Final link: system c++${NC}"
 fi
 echo -e "${CYAN}Optimization: ${DEMO_OPT}; concurrent demos: ${DEMO_JOBS}${NC}"
@@ -494,12 +494,12 @@ build_demo_group() {
             local demo="${demos_ref[$index]}"
             local name project_dir
             IFS=':' read -r name project_dir <<< "$demo"
-            local job_base="/tmp/viper_demo_job_${name}_$$"
+            local job_base="/tmp/zanna_demo_job_${name}_$$"
             local log_file="${job_base}.log"
             local status_file="${job_base}.status"
             (
-                export VIPER_CODEGEN_THREADS="${VIPER_CODEGEN_THREADS:-$THREADS_PER_DEMO}"
-                export VIPER_OPT_THREADS="${VIPER_OPT_THREADS:-$THREADS_PER_DEMO}"
+                export ZANNA_CODEGEN_THREADS="${ZANNA_CODEGEN_THREADS:-$THREADS_PER_DEMO}"
+                export ZANNA_OPT_THREADS="${ZANNA_OPT_THREADS:-$THREADS_PER_DEMO}"
                 if [[ ! -d "$project_dir" ]]; then
                     echo -e "Skipping $name (${YELLOW}directory not found${NC})"
                     echo 3 >"$status_file"

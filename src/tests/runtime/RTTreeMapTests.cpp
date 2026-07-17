@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTTreeMapTests.cpp
-// Purpose: Tests for Viper.Collections.SortedMap sorted key-value storage.
+// Purpose: Tests for Zanna.Collections.SortedMap sorted key-value storage.
 //
 //===----------------------------------------------------------------------===//
 
@@ -399,7 +399,7 @@ static void test_null_value() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Collections.SortedMap Tests ===\n\n");
+    printf("=== Zanna.Collections.SortedMap Tests ===\n\n");
 
     // Basic creation
     test_new_treemap();

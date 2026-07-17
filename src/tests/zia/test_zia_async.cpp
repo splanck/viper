@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -87,7 +87,7 @@ async func fetchData(name: String, retries: Integer) -> String {    return name;
 }
 
 /// @brief Start.
-func start() {    var future = fetchData("viper", 2);
+func start() {    var future = fetchData("zanna", 2);
 }
 )";
 
@@ -95,7 +95,7 @@ func start() {    var future = fetchData("viper", 2);
     ASSERT_TRUE(result.succeeded());
     EXPECT_TRUE(hasFunction(result.module, "fetchData"));
     EXPECT_TRUE(hasFunction(result.module, "fetchData__async_worker"));
-    EXPECT_TRUE(hasDirectCall(result.module, "fetchData", "Viper.Threads.Async.Run"));
+    EXPECT_TRUE(hasDirectCall(result.module, "fetchData", "Zanna.Threads.Async.Run"));
 }
 
 TEST(ZiaAsync, AwaitUsesFutureGetAndUnboxesKnownPayload) {
@@ -112,7 +112,7 @@ func start() {    var value: String = await fetchData();
 
     auto result = compileSource(src, "async_await_string.zia");
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasDirectCall(result.module, "main", "Viper.Threads.Future.Get"));
+    EXPECT_TRUE(hasDirectCall(result.module, "main", "Zanna.Threads.Future.Get"));
 }
 
 TEST(ZiaAsync, AwaitRejectsNonFutureOperands) {
@@ -125,7 +125,7 @@ func start() {    var value = await "not a future";
 
     auto result = compileSource(src);
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "`await` expects Viper.Threads.Future"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "`await` expects Zanna.Threads.Future"));
 }
 
 TEST(ZiaAsync, AsyncWorkerInvokesBodyThroughGeneratedFunction) {
@@ -155,7 +155,7 @@ async func addOne(value: Integer) -> Integer {    return value + 1;
 /// @brief Start.
 func start() {    var future = addOne(41);
     var value: Integer = await future;
-    Viper.Terminal.SayInt(value);
+    Zanna.Terminal.SayInt(value);
 }
 )";
 
@@ -169,12 +169,12 @@ func start() {    var future = addOne(41);
     }
 
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasDirectCall(result.module, "main", "Viper.Threads.Future.Get"));
+    EXPECT_TRUE(hasDirectCall(result.module, "main", "Zanna.Threads.Future.Get"));
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

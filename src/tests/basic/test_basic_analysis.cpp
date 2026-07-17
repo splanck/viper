@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -205,8 +205,8 @@ END
 TEST(BasicAnalysis, RuntimeObjectParametersAcceptStringArguments) {
     il::support::SourceManager sm;
     const std::string source = R"(
-DIM M AS Viper.Collections.Map
-M = NEW Viper.Collections.Map()
+DIM M AS Zanna.Collections.Map
+M = NEW Zanna.Collections.Map()
 M.Set("key", "value")
 END
 )";
@@ -433,6 +433,6 @@ END
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

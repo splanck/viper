@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include "tui/widgets/label.hpp"
 #include "tui/render/text.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Construct a label with static text and a borrowed theme.
 /// @details Stores the provided string by value and keeps a reference to the
@@ -38,4 +38,4 @@ void Label::paint(render::ScreenBuffer &sb) {
     render::renderText(sb, rect_.y, rect_.x, rect_.w, text_, st);
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

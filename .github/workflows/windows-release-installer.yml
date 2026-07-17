@@ -24,10 +24,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 120
     env:
-      VIPER_BUILD_DIR: build
-      VIPER_BUILD_TYPE: Release
-      VIPER_SKIP_INSTALL: "1"
-      VIPER_EXTRA_CMAKE_ARGS: -DVIPER_INSTALL_VIPERIDE=ON
+      ZANNA_BUILD_DIR: build
+      ZANNA_BUILD_TYPE: Release
+      ZANNA_SKIP_INSTALL: "1"
+      ZANNA_EXTRA_CMAKE_ARGS: -DZANNA_INSTALL_ZANNAIDE=ON
 
     steps:
       - name: Check out source
@@ -40,7 +40,7 @@ jobs:
 
       - name: Build and test with the canonical Windows script
         shell: cmd
-        run: scripts\build_viper_win.cmd
+        run: scripts\build_zanna_win.cmd
 
       - name: Stage the release payload
         shell: pwsh
@@ -54,16 +54,16 @@ jobs:
         if: ${{ inputs.lifecycle }}
         shell: pwsh
         run: |
-          $viper = Join-Path $PWD "build\src\tools\viper\Release\viper.exe"
-          if (-not (Test-Path -LiteralPath $viper)) {
-            $viper = Join-Path $PWD "build\src\tools\viper\viper.exe"
+          $zanna = Join-Path $PWD "build\src\tools\zanna\Release\zanna.exe"
+          if (-not (Test-Path -LiteralPath $zanna)) {
+            $zanna = Join-Path $PWD "build\src\tools\zanna\zanna.exe"
           }
           $stage = Join-Path $PWD "build\release-stage"
-          $stale = Join-Path $stage "share\viper\installer-upgrade-stale.txt"
+          $stale = Join-Path $stage "share\zanna\installer-upgrade-stale.txt"
           New-Item -ItemType Directory -Path (Split-Path -Parent $stale) -Force | Out-Null
           Set-Content -LiteralPath $stale -Value "owned only by upgrade baseline" -Encoding ASCII
-          & $viper install-package --stage-dir $stage --target windows `
-              --output-file "build\viper-upgrade-baseline.exe"
+          & $zanna install-package --stage-dir $stage --target windows `
+              --output-file "build\zanna-upgrade-baseline.exe"
           if ($LASTEXITCODE -ne 0) { throw "baseline package generation failed" }
           Remove-Item -LiteralPath $stale -Force
 
@@ -71,56 +71,56 @@ jobs:
         if: ${{ inputs.release }}
         shell: pwsh
         env:
-          WINDOWS_PFX_BASE64: ${{ secrets.VIPER_WINDOWS_SIGN_PFX_BASE64 }}
-          WINDOWS_PFX_PASSWORD: ${{ secrets.VIPER_WINDOWS_SIGN_PASSWORD }}
+          WINDOWS_PFX_BASE64: ${{ secrets.ZANNA_WINDOWS_SIGN_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.ZANNA_WINDOWS_SIGN_PASSWORD }}
         run: |
           if (-not $env:WINDOWS_PFX_BASE64 -or -not $env:WINDOWS_PFX_PASSWORD) {
-            throw "release=true requires VIPER_WINDOWS_SIGN_PFX_BASE64 and VIPER_WINDOWS_SIGN_PASSWORD"
+            throw "release=true requires ZANNA_WINDOWS_SIGN_PFX_BASE64 and ZANNA_WINDOWS_SIGN_PASSWORD"
           }
-          $pfx = Join-Path $env:RUNNER_TEMP "viper-release.pfx"
+          $pfx = Join-Path $env:RUNNER_TEMP "zanna-release.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
           $password = ConvertTo-SecureString $env:WINDOWS_PFX_PASSWORD -AsPlainText -Force
           $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password -Exportable:$false
           if (-not $cert) { throw "PFX import did not return a certificate" }
-          "VIPER_WINDOWS_SIGN_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ZANNA_WINDOWS_SIGN_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Remove-Item -LiteralPath $pfx -Force
 
       - name: Generate verified developer artifact
         if: ${{ !inputs.release }}
         shell: pwsh
         run: |
-          $viper = Join-Path $PWD "build\src\tools\viper\Release\viper.exe"
-          if (-not (Test-Path -LiteralPath $viper)) { $viper = Join-Path $PWD "build\src\tools\viper\viper.exe" }
+          $zanna = Join-Path $PWD "build\src\tools\zanna\Release\zanna.exe"
+          if (-not (Test-Path -LiteralPath $zanna)) { $zanna = Join-Path $PWD "build\src\tools\zanna\zanna.exe" }
           New-Item -ItemType Directory -Path artifacts | Out-Null
-          & $viper install-package --stage-dir "build\release-stage" --target windows `
-              --output-file "artifacts\viper-toolchain-windows-x64.exe" `
-              --artifact-manifest "artifacts\viper-artifacts.json"
+          & $zanna install-package --stage-dir "build\release-stage" --target windows `
+              --output-file "artifacts\zanna-toolchain-windows-x64.exe" `
+              --artifact-manifest "artifacts\zanna-artifacts.json"
           if ($LASTEXITCODE -ne 0) { throw "Windows package generation failed" }
 
       - name: Generate trusted release artifact
         if: ${{ inputs.release }}
         shell: pwsh
         env:
-          VIPER_WINDOWS_TIMESTAMP_URL: ${{ vars.VIPER_WINDOWS_TIMESTAMP_URL }}
+          ZANNA_WINDOWS_TIMESTAMP_URL: ${{ vars.ZANNA_WINDOWS_TIMESTAMP_URL }}
         run: |
-          $viper = Join-Path $PWD "build\src\tools\viper\Release\viper.exe"
-          if (-not (Test-Path -LiteralPath $viper)) { $viper = Join-Path $PWD "build\src\tools\viper\viper.exe" }
+          $zanna = Join-Path $PWD "build\src\tools\zanna\Release\zanna.exe"
+          if (-not (Test-Path -LiteralPath $zanna)) { $zanna = Join-Path $PWD "build\src\tools\zanna\zanna.exe" }
           New-Item -ItemType Directory -Path artifacts | Out-Null
-          & $viper install-package --stage-dir "build\release-stage" --target windows `
-              --output-file "artifacts\viper-toolchain-windows-x64.exe" `
-              --artifact-manifest "artifacts\viper-artifacts.json" `
+          & $zanna install-package --stage-dir "build\release-stage" --target windows `
+              --output-file "artifacts\zanna-toolchain-windows-x64.exe" `
+              --artifact-manifest "artifacts\zanna-artifacts.json" `
               --windows-sign --release
           if ($LASTEXITCODE -ne 0) { throw "trusted Windows package generation failed" }
 
       - name: Reverify artifact and checksum
         shell: pwsh
         run: |
-          $viper = Join-Path $PWD "build\src\tools\viper\Release\viper.exe"
-          if (-not (Test-Path -LiteralPath $viper)) { $viper = Join-Path $PWD "build\src\tools\viper\viper.exe" }
-          & $viper install-package --verify-only "artifacts\viper-toolchain-windows-x64.exe" --require-checksum
+          $zanna = Join-Path $PWD "build\src\tools\zanna\Release\zanna.exe"
+          if (-not (Test-Path -LiteralPath $zanna)) { $zanna = Join-Path $PWD "build\src\tools\zanna\zanna.exe" }
+          & $zanna install-package --verify-only "artifacts\zanna-toolchain-windows-x64.exe" --require-checksum
           if ($LASTEXITCODE -ne 0) { throw "post-generation verification failed" }
           if ('${{ inputs.release }}' -eq 'true') {
-            $signature = Get-AuthenticodeSignature "artifacts\viper-toolchain-windows-x64.exe"
+            $signature = Get-AuthenticodeSignature "artifacts\zanna-toolchain-windows-x64.exe"
             if ($signature.Status -ne 'Valid') { throw "Authenticode status is $($signature.Status)" }
           }
 
@@ -129,8 +129,8 @@ jobs:
         shell: pwsh
         run: |
           $args = @(
-            "-Installer", "artifacts\viper-toolchain-windows-x64.exe",
-            "-BaselineInstaller", "build\viper-upgrade-baseline.exe"
+            "-Installer", "artifacts\zanna-toolchain-windows-x64.exe",
+            "-BaselineInstaller", "build\zanna-upgrade-baseline.exe"
           )
           if ('${{ inputs.release }}' -eq 'true') { $args += "-RequireSignature" }
           & "scripts\validate-windows-toolchain-installer.ps1" @args
@@ -138,7 +138,7 @@ jobs:
       - name: Upload verified artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: viper-toolchain-windows-x64
+          name: zanna-toolchain-windows-x64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14

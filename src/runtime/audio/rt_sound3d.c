@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/audio/rt_sound3d.c
-// Purpose: Spatial audio backing `Viper.Audio.SpatialAudio3D` — computes distance
+// Purpose: Spatial audio backing `Zanna.Audio.SpatialAudio3D` — computes distance
 //   attenuation and stereo pan from 3D positions, then delegates to the
 //   existing 2D audio API for actual sample playback.
 //
@@ -737,7 +737,7 @@ void rt_sound3d_update_voice_ex(int64_t voice,
     rt_voice_set_pitch(voice, doppler);
 }
 
-#ifndef VIPER_ENABLE_GRAPHICS
+#ifndef ZANNA_ENABLE_GRAPHICS
 void rt_sound3d_sync_bindings(double dt) {
     (void)dt;
 }

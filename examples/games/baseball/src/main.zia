@@ -18,9 +18,9 @@
 // ============================================================================
 module Main;
 
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.System.Environment as Env;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.System.Environment as Env;
 bind "./season/demo/default_franchise";
 bind "./season/season_engine";
 bind "./season/output/season_writer";

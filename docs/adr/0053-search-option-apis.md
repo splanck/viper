@@ -29,22 +29,22 @@ absence.
 
 Keep every existing search API and add sentinel-free Option companions:
 
-- `Viper.Collections.Bytes.FindOption`
-- `Viper.Collections.List.FindOption`
-- `Viper.Collections.Seq.FindOption`
-- `Viper.Collections.Seq.FindWhereOption`
-- `Viper.Functional.LazySeq.FindOption`
-- `Viper.Data.Xml.FindOption`
-- `Viper.Text.Pattern.FindOption`
-- `Viper.Text.Pattern.FindFromOption`
-- `Viper.Text.Pattern.FindPosOption`
-- `Viper.Text.CompiledPattern.FindOption`
-- `Viper.Text.CompiledPattern.FindFromOption`
-- `Viper.Text.CompiledPattern.FindPosOption`
-- `Viper.Game2D.SceneDocument.FindObjectOption`
-- `Viper.Graphics2D.SceneNode.FindOption`
-- `Viper.Graphics2D.SceneGraph.FindOption`
-- `Viper.Audio.Mixer.FindGroupOption`
+- `Zanna.Collections.Bytes.FindOption`
+- `Zanna.Collections.List.FindOption`
+- `Zanna.Collections.Seq.FindOption`
+- `Zanna.Collections.Seq.FindWhereOption`
+- `Zanna.Functional.LazySeq.FindOption`
+- `Zanna.Data.Xml.FindOption`
+- `Zanna.Text.Pattern.FindOption`
+- `Zanna.Text.Pattern.FindFromOption`
+- `Zanna.Text.Pattern.FindPosOption`
+- `Zanna.Text.CompiledPattern.FindOption`
+- `Zanna.Text.CompiledPattern.FindFromOption`
+- `Zanna.Text.CompiledPattern.FindPosOption`
+- `Zanna.Game2D.SceneDocument.FindObjectOption`
+- `Zanna.Graphics2D.SceneNode.FindOption`
+- `Zanna.Graphics2D.SceneGraph.FindOption`
+- `Zanna.Audio.Mixer.FindGroupOption`
 
 Index-returning APIs return `SomeI64(index)` or `None`. Object/string-returning
 APIs return `Some(value)` / `SomeStr(value)` or `None`.

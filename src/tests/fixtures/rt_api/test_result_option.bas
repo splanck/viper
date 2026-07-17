@@ -4,14 +4,14 @@ DIM err AS OBJECT
 DIM some AS OBJECT
 DIM none AS OBJECT
 
-ok = Viper.Result.OkI64(42)
-err = Viper.Result.ErrStr("boom")
-some = Viper.Option.SomeStr("hi")
-none = Viper.Option.None()
+ok = Zanna.Result.OkI64(42)
+err = Zanna.Result.ErrStr("boom")
+some = Zanna.Option.SomeStr("hi")
+none = Zanna.Option.None()
 
-PRINT Viper.Result.UnwrapI64(ok)
-PRINT Viper.Result.UnwrapErrStr(err)
-PRINT Viper.Option.UnwrapStr(some)
+PRINT Zanna.Result.UnwrapI64(ok)
+PRINT Zanna.Result.UnwrapErrStr(err)
+PRINT Zanna.Option.UnwrapStr(some)
 PRINT ok.IsOk
 PRINT none.IsNone
 PRINT "done"

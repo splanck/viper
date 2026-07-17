@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTThreadsPrimitivesTests.cpp
-// Purpose: Validate Viper.Threads.Gate/Barrier/RwLock runtime primitives.
+// Purpose: Validate Zanna.Threads.Gate/Barrier/RwLock runtime primitives.
 //
 //===----------------------------------------------------------------------===//
 

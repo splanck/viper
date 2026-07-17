@@ -1,10 +1,10 @@
 // hello-localized.zia
-// Minimal Viper.Localization demo: load fr-FR from a JSON file and format
+// Minimal Zanna.Localization demo: load fr-FR from a JSON file and format
 // a currency value in both en-US (baked) and fr-FR (loaded).
 
-bind Locale        : Viper.Localization.Locale
-bind LocaleManager : Viper.Localization.LocaleManager
-bind NumberFormat  : Viper.Localization.NumberFormat
+bind Locale        : Zanna.Localization.Locale
+bind LocaleManager : Zanna.Localization.LocaleManager
+bind NumberFormat  : Zanna.Localization.NumberFormat
 
 func main()
     // Baked en-US is always available.

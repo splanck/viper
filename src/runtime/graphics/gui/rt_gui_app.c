@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_app.c
-// Purpose: GUI application lifecycle management for Viper's GUI runtime layer.
-//   Creates and owns the ViperGFX window, the root vg_widget container, and the
+// Purpose: GUI application lifecycle management for Zanna's GUI runtime layer.
+//   Creates and owns the ZannaGFX window, the root vg_widget container, and the
 //   default font. Provides the main loop entry points: rt_gui_app_poll (event
 //   dispatch), rt_gui_app_render (layout + paint + present), and
 //   rt_gui_app_destroy. Also manages the active modal dialog and a resize
@@ -34,7 +34,7 @@
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
 //        src/runtime/graphics/rt_gui_widgets.c (basic widget implementations),
-//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/gui/include/vg.h (ZannaGUI C API),
 //        src/lib/graphics/include/vgfx.h (window/event layer)
 //
 //===----------------------------------------------------------------------===//
@@ -51,7 +51,7 @@
 #include "rt_time.h"
 #include "rt_videowidget.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 // Global pointer to the app currently bound to the runtime-facing constructors.
 rt_gui_app_t *s_current_app = NULL;
@@ -1442,7 +1442,7 @@ static void *rt_gui_app_create(rt_string title,
     params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
     params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
     char *ctitle = rt_string_to_gui_cstr(title);
-    const char *window_title = ctitle ? ctitle : "Viper GUI";
+    const char *window_title = ctitle ? ctitle : "Zanna GUI";
     params.title = window_title;
     params.resizable = 1;
 
@@ -1498,10 +1498,10 @@ static void *rt_gui_app_create(rt_string title,
     app->shortcuts_global_enabled = 1;
     app->manual_tooltip_delay_ms = 500;
 
-    // Damage-region rendering is on by default; VIPER_GUI_FULL_REPAINT=1 is the
+    // Damage-region rendering is on by default; ZANNA_GUI_FULL_REPAINT=1 is the
     // one-line kill switch that restores unconditional full-window repaints.
     {
-        const char *full = getenv("VIPER_GUI_FULL_REPAINT");
+        const char *full = getenv("ZANNA_GUI_FULL_REPAINT");
         app->partial_paint_enabled = (full && full[0] == '1' && full[1] == '\0') ? 0 : 1;
     }
 
@@ -1548,7 +1548,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return rt_gui_app_create(title, width, height, NULL);
 }
 
-/// @brief Create a GUI app and encode expected construction failure in `Viper.Result`.
+/// @brief Create a GUI app and encode expected construction failure in `Zanna.Result`.
 /// @details The Result retains a successful app handle. The constructor's temporary reference is
 ///          released after wrapping so ownership is transferred exactly once to the Result.
 /// @param title Window title.
@@ -3102,7 +3102,7 @@ static void render_widget_overlay_tree(vgfx_window_t window,
     free(frames);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics-disabled applications have no scheduler generation.
 uint64_t rt_gui_app_frame_generation_for_owner(void *app_ptr) {
@@ -3234,4 +3234,4 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     (void)size;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

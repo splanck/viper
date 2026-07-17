@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTBinFileTests.cpp
-// Purpose: Comprehensive tests for Viper.IO.BinFile binary file streams.
+// Purpose: Comprehensive tests for Zanna.IO.BinFile binary file streams.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,7 +48,7 @@ extern "C" void vm_trap(const char *msg) {
         assert(g_last_trap != nullptr);                                                            \
     } while (0)
 
-static const char *test_file = "/tmp/viper_binfile_test.bin";
+static const char *test_file = "/tmp/zanna_binfile_test.bin";
 
 static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
@@ -709,7 +709,7 @@ static void test_open_rejects_embedded_nul_mode() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
+    ZANNA_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     test_open_write_close();
     test_write_and_read_bytes();

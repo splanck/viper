@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/examples/basic_draw.c
-// Purpose: ViperGFX example showing window creation, primitive drawing, and
+// Purpose: ZannaGFX example showing window creation, primitive drawing, and
 //          basic event handling.
 // Key invariants: Keeps example code minimal and side-effect free beyond the
 //                 graphics system; exits cleanly on close/ESC.
@@ -17,7 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX Example: Basic Drawing
+ * ZannaGFX Example: Basic Drawing
  * Demonstrates window creation, drawing primitives, and event handling
  */
 
@@ -25,10 +25,10 @@
 #include <vgfx.h>
 
 /// What: Entry point for the Basic Drawing example.
-/// Why:  Demonstrates ViperGFX window lifecycle and primitive rendering.
+/// Why:  Demonstrates ZannaGFX window lifecycle and primitive rendering.
 /// How:  Creates a window, draws shapes, and processes events until exit.
 int main(void) {
-    printf("ViperGFX v%d.%d.%d - Basic Drawing Example\n",
+    printf("ZannaGFX v%d.%d.%d - Basic Drawing Example\n",
            VGFX_VERSION_MAJOR,
            VGFX_VERSION_MINOR,
            VGFX_VERSION_PATCH);
@@ -37,7 +37,7 @@ int main(void) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 640;
     params.height = 480;
-    params.title = "ViperGFX - Basic Drawing";
+    params.title = "ZannaGFX - Basic Drawing";
     params.resizable = 1;
 
     vgfx_window_t win = vgfx_create_window(&params);

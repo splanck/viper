@@ -11,7 +11,7 @@ last-verified: 2026-07-16
 Accepted — with the naming superseded by the public-surface standardization. The
 result-object decision stands, but the public method names were shortened: the
 `*Result` suffix was dropped (`Pathfinder.FindPathResult` → `Pathfinder.FindPath`,
-`FindNearestResult` → `FindNearest`, since the `obj<Viper.Game.PathResult>` return
+`FindNearestResult` → `FindNearest`, since the `obj<Zanna.Game.PathResult>` return
 type already conveys the shape), and the `PathResult.Length` compatibility alias
 was retired in favour of `PathResult.StepCount` (see ADR 0062, now Superseded). The
 underlying C symbols are retained internally, so this is a scripting-surface rename
@@ -35,13 +35,13 @@ system consumes it.
 
 Add composable snapshot objects while preserving every existing API:
 
-- `Pathfinder.FindPathResult(...) -> Viper.Game.PathResult`
-- `Pathfinder.FindNearestResult(...) -> Viper.Game.PathResult`
-- `Quadtree.QueryRectResult(...) -> Viper.Game.QueryResult`
-- `Quadtree.QueryPointResult(...) -> Viper.Game.QueryResult`
-- `Quadtree.QueryPairs() -> Viper.Game.QuadtreePairResult`
-- `AnimStateMachine.PollEvents() -> Viper.Game.AnimationEventBatch`
-- `AnimTimeline.PollEvents() -> Viper.Game.AnimationEventBatch`
+- `Pathfinder.FindPathResult(...) -> Zanna.Game.PathResult`
+- `Pathfinder.FindNearestResult(...) -> Zanna.Game.PathResult`
+- `Quadtree.QueryRectResult(...) -> Zanna.Game.QueryResult`
+- `Quadtree.QueryPointResult(...) -> Zanna.Game.QueryResult`
+- `Quadtree.QueryPairs() -> Zanna.Game.QuadtreePairResult`
+- `AnimStateMachine.PollEvents() -> Zanna.Game.AnimationEventBatch`
+- `AnimTimeline.PollEvents() -> Zanna.Game.AnimationEventBatch`
 
 The result objects copy producer state at the time they are created. Existing
 last-state and indexed APIs remain available for compatibility and diagnostics,

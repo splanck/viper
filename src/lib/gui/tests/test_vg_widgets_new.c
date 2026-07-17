@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/lib/gui/tests/test_vg_widgets_new.c
 // Purpose: Unit and software-framebuffer tests for newer GUI widget families.
 // Key invariants:
 //   - Tests use the public lower-toolkit APIs and retained widget vtables.
-//   - Framebuffer assertions exercise the deterministic ViperGFX software/mock
+//   - Framebuffer assertions exercise the deterministic ZannaGFX software/mock
 //     semantic reference rather than platform-native drawing.
 // Ownership/Lifetime:
-//   - Every test destroys its widgets and any ViperGFX window it creates.
+//   - Every test destroys its widgets and any ZannaGFX window it creates.
 // Links: src/lib/gui/include/vg_widgets.h,
 //        src/lib/gui/include/vg_theme.h,
 //        src/lib/graphics/include/vgfx.h

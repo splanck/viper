@@ -3,7 +3,7 @@ module main;
 // ============================================================================
 // GRAPHICS SHOW - Main Menu and Entry Point
 // ============================================================================
-// A collection of graphical demos showcasing Viperlang and the Viper.Graphics
+// A collection of graphical demos showcasing Zannalang and the Zanna.Graphics
 // framework. Select demos from the menu or run them individually.
 // ============================================================================
 
@@ -17,15 +17,15 @@ bind "./snake" as snake;
 bind "./fireworks" as fireworks;
 bind "./sierpinski" as sierpinski;
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Canvas;
-bind Viper.Graphics.Color;
-bind Viper.Input;
-bind Viper.Math;
-bind Viper.Core.Convert as Convert;
-bind Viper.String;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Canvas;
+bind Zanna.Graphics.Color;
+bind Zanna.Input;
+bind Zanna.Math;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.String;
+bind Zanna.Time;
 
 // Key codes
 final KEY_UP = 265;
@@ -217,7 +217,7 @@ class Menu {
         }
 
         // Draw subtitle
-        var subtitle = "A Viperlang Graphics Framework Demo";
+        var subtitle = "A Zannalang Graphics Framework Demo";
         var subX = (width - Length(subtitle) * 8) / 2;
         canvas.Text(subX, titleY + 30, subtitle, RGB(150, 150, 150));
 
@@ -262,7 +262,7 @@ class Menu {
         canvas.Text(instX, height - 40, instructions, RGB(80, 80, 80));
 
         // Draw version/credits
-        canvas.Text(10, height - 20, "Viper Graphics Framework v1.0", RGB(60, 60, 60));
+        canvas.Text(10, height - 20, "Zanna Graphics Framework v1.0", RGB(60, 60, 60));
     }
 }
 
@@ -369,6 +369,6 @@ func start() {
         menu.draw(canvas, width, height);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

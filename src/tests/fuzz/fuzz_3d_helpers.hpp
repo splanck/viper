@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@ int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
 }
 
-namespace viper_fuzz3d {
+namespace zanna_fuzz3d {
 
 constexpr size_t kMaxInputBytes = 256u * 1024u;
 
@@ -65,7 +65,7 @@ inline std::string write_temp_asset(const char *stem,
     try {
         std::filesystem::path path =
             std::filesystem::temp_directory_path() /
-            (std::string(stem ? stem : "viper_fuzz3d_") +
+            (std::string(stem ? stem : "zanna_fuzz3d_") +
              std::to_string(next_id.fetch_add(1, std::memory_order_relaxed)) +
              (extension ? extension : ".bin"));
         std::ofstream out(path, std::ios::binary);
@@ -89,4 +89,4 @@ inline void remove_temp_asset(const std::string &path) {
     std::filesystem::remove(path, ignored);
 }
 
-} // namespace viper_fuzz3d
+} // namespace zanna_fuzz3d

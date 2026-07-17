@@ -5,13 +5,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-MANIFEST="${VIPER_EXAMPLE_SMOKE_MANIFEST:-${ROOT_DIR}/examples/smoke_manifest.tsv}"
-VIPER_BIN="${VIPER_BIN:-${ROOT_DIR}/build/src/tools/viper/viper}"
+MANIFEST="${ZANNA_EXAMPLE_SMOKE_MANIFEST:-${ROOT_DIR}/examples/smoke_manifest.tsv}"
+ZANNA_BIN="${ZANNA_BIN:-${ROOT_DIR}/build/src/tools/zanna/zanna}"
 MODE="audit"
 
 usage() {
     cat <<'EOF'
-Usage: scripts/example_smoke.sh [--audit|--fast|--all] [--viper PATH]
+Usage: scripts/example_smoke.sh [--audit|--fast|--all] [--zanna PATH]
 
 Modes:
   --audit  Verify every examples/*.zia, *.bas, and *.il source is classified.
@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
         --audit) MODE="audit"; shift ;;
         --fast) MODE="fast"; shift ;;
         --all) MODE="all"; shift ;;
-        --viper) VIPER_BIN="$2"; shift 2 ;;
+        --zanna) ZANNA_BIN="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -65,17 +65,17 @@ windows_path() {
     printf '%s\n' "$path"
 }
 
-VIPER_BIN_USES_WINDOWS_ARGS=0
-case "$VIPER_BIN" in
-    [A-Za-z]:/*) VIPER_BIN_USES_WINDOWS_ARGS=1 ;;
+ZANNA_BIN_USES_WINDOWS_ARGS=0
+case "$ZANNA_BIN" in
+    [A-Za-z]:/*) ZANNA_BIN_USES_WINDOWS_ARGS=1 ;;
 esac
-VIPER_BIN="$(shell_path "$VIPER_BIN")"
-case "$VIPER_BIN" in
-    /mnt/[A-Za-z]/*.exe) VIPER_BIN_USES_WINDOWS_ARGS=1 ;;
+ZANNA_BIN="$(shell_path "$ZANNA_BIN")"
+case "$ZANNA_BIN" in
+    /mnt/[A-Za-z]/*.exe) ZANNA_BIN_USES_WINDOWS_ARGS=1 ;;
 esac
 
-viper_arg_path() {
-    if [[ "$VIPER_BIN_USES_WINDOWS_ARGS" -eq 1 ]]; then
+zanna_arg_path() {
+    if [[ "$ZANNA_BIN_USES_WINDOWS_ARGS" -eq 1 ]]; then
         windows_path "$1"
     else
         printf '%s\n' "$1"
@@ -174,22 +174,22 @@ if [[ "$MODE" == "audit" ]]; then
     exit 0
 fi
 
-if [[ ! -x "$VIPER_BIN" ]]; then
-    echo "error: viper binary not executable: $VIPER_BIN" >&2
+if [[ ! -x "$ZANNA_BIN" ]]; then
+    echo "error: zanna binary not executable: $ZANNA_BIN" >&2
     exit 1
 fi
 
 while IFS=$'\t' read -r action target; do
     [[ -z "${action:-}" ]] && continue
-    full_target="$(viper_arg_path "$ROOT_DIR/examples/$target")"
+    full_target="$(zanna_arg_path "$ROOT_DIR/examples/$target")"
     case "$action" in
         check)
             echo "[examples] check examples/$target"
-            "$VIPER_BIN" check "$full_target" --diagnostic-format=json >/dev/null
+            "$ZANNA_BIN" check "$full_target" --diagnostic-format=json >/dev/null
             ;;
         il-run)
             echo "[examples] run examples/$target"
-            "$VIPER_BIN" -run "$full_target" >/dev/null
+            "$ZANNA_BIN" -run "$full_target" >/dev/null
             ;;
         *)
             echo "error: unknown action: $action" >&2

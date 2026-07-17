@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTThreadsTypeNameTests.cpp
 // Purpose: Regression coverage for Object.TypeName/ToString on built-in
-//          Viper.Threads runtime objects.
+//          Zanna.Threads runtime objects.
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,32 +44,32 @@ static void expect_name(void *obj, const char *expected) {
 
 int main() {
     void *thread = rt_thread_start((void *)&quick_type_name_entry, nullptr);
-    expect_name(thread, "Viper.Threads.Thread");
+    expect_name(thread, "Zanna.Threads.Thread");
     rt_thread_join(thread);
 
     void *safe_thread = rt_thread_start_safe((void *)&quick_type_name_entry, nullptr);
-    expect_name(safe_thread, "Viper.Threads.Thread");
+    expect_name(safe_thread, "Zanna.Threads.Thread");
     rt_thread_safe_join(safe_thread);
 
-    expect_name(rt_safe_i64_new(0), "Viper.Threads.SafeI64");
-    expect_name(rt_gate_new(0), "Viper.Threads.Gate");
-    expect_name(rt_barrier_new(1), "Viper.Threads.Barrier");
-    expect_name(rt_rwlock_new(), "Viper.Threads.RwLock");
-    expect_name(rt_channel_new(1), "Viper.Threads.Channel");
-    expect_name(rt_cancellation_new(), "Viper.Threads.CancelToken");
+    expect_name(rt_safe_i64_new(0), "Zanna.Threads.SafeI64");
+    expect_name(rt_gate_new(0), "Zanna.Threads.Gate");
+    expect_name(rt_barrier_new(1), "Zanna.Threads.Barrier");
+    expect_name(rt_rwlock_new(), "Zanna.Threads.RwLock");
+    expect_name(rt_channel_new(1), "Zanna.Threads.Channel");
+    expect_name(rt_cancellation_new(), "Zanna.Threads.CancelToken");
 
     void *promise = rt_promise_new();
-    expect_name(promise, "Viper.Threads.Promise");
-    expect_name(rt_promise_get_future(promise), "Viper.Threads.Future");
+    expect_name(promise, "Zanna.Threads.Promise");
+    expect_name(rt_promise_get_future(promise), "Zanna.Threads.Future");
 
     void *pool = rt_threadpool_new(1);
-    expect_name(pool, "Viper.Threads.Pool");
+    expect_name(pool, "Zanna.Threads.Pool");
     rt_threadpool_shutdown(pool);
 
-    expect_name(rt_concqueue_new(), "Viper.Threads.ConcurrentQueue");
-    expect_name(rt_concmap_new(), "Viper.Threads.ConcurrentMap");
-    expect_name(rt_scheduler_new(), "Viper.Threads.Scheduler");
-    expect_name(rt_debounce_new(1), "Viper.Threads.Debouncer");
-    expect_name(rt_throttle_new(1), "Viper.Threads.Throttler");
+    expect_name(rt_concqueue_new(), "Zanna.Threads.ConcurrentQueue");
+    expect_name(rt_concmap_new(), "Zanna.Threads.ConcurrentMap");
+    expect_name(rt_scheduler_new(), "Zanna.Threads.Scheduler");
+    expect_name(rt_debounce_new(1), "Zanna.Threads.Debouncer");
+    expect_name(rt_throttle_new(1), "Zanna.Threads.Throttler");
     return 0;
 }

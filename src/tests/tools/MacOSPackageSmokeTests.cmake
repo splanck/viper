@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required VIPER_BIN VIPER_REPO_ROOT TEST_WORK_DIR)
+foreach (_required ZANNA_BIN ZANNA_REPO_ROOT TEST_WORK_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to MacOSPackageSmokeTests.cmake")
     endif ()
@@ -10,7 +10,7 @@ file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}")
 
 set(_zip "${TEST_WORK_DIR}/crackman-signed.zip")
-set(_project "${VIPER_REPO_ROOT}/examples/games/crackman")
+set(_project "${ZANNA_REPO_ROOT}/examples/games/crackman")
 set(_package_icon "${_project}/packaging/icon.png")
 
 if (NOT EXISTS "${_package_icon}")
@@ -18,7 +18,7 @@ if (NOT EXISTS "${_package_icon}")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_project}" --target macos --macos-sign-mode adhoc -o "${_zip}" --verbose
+        COMMAND "${ZANNA_BIN}" package "${_project}" --target macos --macos-sign-mode adhoc -o "${_zip}" --verbose
         RESULT_VARIABLE _pkg_rv
         OUTPUT_VARIABLE _pkg_out
         ERROR_VARIABLE _pkg_err
@@ -54,7 +54,7 @@ foreach (_path
         "${_exe}"
         "${_app}/Contents/_CodeSignature/CodeResources"
         "${_resources}/crackman.icns"
-        "${_resources}/assets/fonts/viper_8x8.bdf")
+        "${_resources}/assets/fonts/zanna_8x8.bdf")
     if (NOT EXISTS "${_path}")
         message(FATAL_ERROR "expected packaged Crackman path missing: ${_path}")
     endif ()

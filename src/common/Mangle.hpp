@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::common {
+namespace zanna::common {
 
 /// @brief Mangle a qualified name into a safe ASCII linker symbol.
 /// @details Plain identifiers that already fit the stable linker subset
@@ -42,4 +42,4 @@ std::string MangleLink(std::string_view qualified);
 /// @return Dotted form like "a.b" or "main".
 std::string DemangleLink(std::string_view symbol);
 
-} // namespace viper::common
+} // namespace zanna::common

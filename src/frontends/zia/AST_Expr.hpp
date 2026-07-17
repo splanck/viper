@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -251,7 +251,7 @@ enum class ExprKind {
 /// Each expression has a source location and a kind for identification.
 ///
 /// ## Type Resolution
-/// During semantic analysis, each expression is assigned a ViperType
+/// During semantic analysis, each expression is assigned a ZannaType
 /// indicating the type of value it produces. This is stored in the
 /// Sema's expression type map, not in the AST node itself.
 ///

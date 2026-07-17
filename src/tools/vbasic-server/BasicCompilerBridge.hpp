@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@ namespace il::frontends::basic {
 class BasicCompletionEngine;
 }
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Protocol-agnostic facade wrapping BASIC compiler APIs.
 ///
@@ -69,4 +69,4 @@ class BasicCompilerBridge : public ICompilerBridge {
     std::unique_ptr<il::frontends::basic::BasicCompletionEngine> completionEngine_;
 };
 
-} // namespace viper::server
+} // namespace zanna::server

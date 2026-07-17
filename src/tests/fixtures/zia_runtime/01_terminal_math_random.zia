@@ -3,98 +3,98 @@ module RuntimeTest01;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Terminal.BeginBatch
-// COVER: Viper.Terminal.EndBatch
-// COVER: Viper.Terminal.Clear
-// COVER: Viper.Terminal.SetColor
-// COVER: Viper.Terminal.SetPosition
-// COVER: Viper.Terminal.Print
-// COVER: Viper.Terminal.PrintInt
-// COVER: Viper.Terminal.PrintNum
-// COVER: Viper.Terminal.Say
-// COVER: Viper.Terminal.SayInt
-// COVER: Viper.Terminal.SayNum
-// COVER: Viper.Terminal.SayBool
-// COVER: Viper.Terminal.Bell
-// COVER: Viper.Terminal.Flush
-// COVER: Viper.Terminal.SetCursorVisible
-// COVER: Viper.Terminal.SetAltScreen
-// COVER: Viper.Terminal.GetKeyTimeout
-// COVER: Viper.Terminal.InKey
-// COVER: Viper.Math.Abs
-// COVER: Viper.Math.AbsInt
-// COVER: Viper.Math.Sin
-// COVER: Viper.Math.Cos
-// COVER: Viper.Math.Tan
-// COVER: Viper.Math.Sqrt
-// COVER: Viper.Math.Log
-// COVER: Viper.Math.Exp
-// COVER: Viper.Math.Floor
-// COVER: Viper.Math.Ceil
-// COVER: Viper.Math.Round
-// COVER: Viper.Math.Min
-// COVER: Viper.Math.Max
-// COVER: Viper.Math.MinInt
-// COVER: Viper.Math.MaxInt
-// COVER: Viper.Math.Random.Seed
-// COVER: Viper.Math.Random.NextInt
-// COVER: Viper.Math.Random.Next
-// COVER: Viper.Time.Clock.Sleep
-// COVER: Viper.Time.Clock.Sleep
+// COVER: Zanna.Terminal.BeginBatch
+// COVER: Zanna.Terminal.EndBatch
+// COVER: Zanna.Terminal.Clear
+// COVER: Zanna.Terminal.SetColor
+// COVER: Zanna.Terminal.SetPosition
+// COVER: Zanna.Terminal.Print
+// COVER: Zanna.Terminal.PrintInt
+// COVER: Zanna.Terminal.PrintNum
+// COVER: Zanna.Terminal.Say
+// COVER: Zanna.Terminal.SayInt
+// COVER: Zanna.Terminal.SayNum
+// COVER: Zanna.Terminal.SayBool
+// COVER: Zanna.Terminal.Bell
+// COVER: Zanna.Terminal.Flush
+// COVER: Zanna.Terminal.SetCursorVisible
+// COVER: Zanna.Terminal.SetAltScreen
+// COVER: Zanna.Terminal.GetKeyTimeout
+// COVER: Zanna.Terminal.InKey
+// COVER: Zanna.Math.Abs
+// COVER: Zanna.Math.AbsInt
+// COVER: Zanna.Math.Sin
+// COVER: Zanna.Math.Cos
+// COVER: Zanna.Math.Tan
+// COVER: Zanna.Math.Sqrt
+// COVER: Zanna.Math.Log
+// COVER: Zanna.Math.Exp
+// COVER: Zanna.Math.Floor
+// COVER: Zanna.Math.Ceil
+// COVER: Zanna.Math.Round
+// COVER: Zanna.Math.Min
+// COVER: Zanna.Math.Max
+// COVER: Zanna.Math.MinInt
+// COVER: Zanna.Math.MaxInt
+// COVER: Zanna.Math.Random.Seed
+// COVER: Zanna.Math.Random.NextInt
+// COVER: Zanna.Math.Random.Next
+// COVER: Zanna.Time.Clock.Sleep
+// COVER: Zanna.Time.Clock.Sleep
 
-func start() {    Viper.Terminal.BeginBatch();
-    Viper.Terminal.Clear();
-    Viper.Terminal.SetColor(7, 0);
-    Viper.Terminal.SetPosition(1, 1);
-    Viper.Terminal.Print("sum=");
-    Viper.Terminal.PrintInt(6);
-    Viper.Terminal.Print(" pi=");
-    Viper.Terminal.PrintNum(3.14);
-    Viper.Terminal.Say("");
-    Viper.Terminal.SayInt(42);
-    Viper.Terminal.SayNum(2.5);
-    Viper.Terminal.SayBool(true);
-    Viper.Terminal.Bell();
-    Viper.Terminal.Flush();
-    Viper.Terminal.SetCursorVisible(false);
-    Viper.Terminal.SetCursorVisible(true);
-    Viper.Terminal.SetAltScreen(false);
-    Viper.Terminal.EndBatch();
+func start() {    Zanna.Terminal.BeginBatch();
+    Zanna.Terminal.Clear();
+    Zanna.Terminal.SetColor(7, 0);
+    Zanna.Terminal.SetPosition(1, 1);
+    Zanna.Terminal.Print("sum=");
+    Zanna.Terminal.PrintInt(6);
+    Zanna.Terminal.Print(" pi=");
+    Zanna.Terminal.PrintNum(3.14);
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.SayInt(42);
+    Zanna.Terminal.SayNum(2.5);
+    Zanna.Terminal.SayBool(true);
+    Zanna.Terminal.Bell();
+    Zanna.Terminal.Flush();
+    Zanna.Terminal.SetCursorVisible(false);
+    Zanna.Terminal.SetCursorVisible(true);
+    Zanna.Terminal.SetAltScreen(false);
+    Zanna.Terminal.EndBatch();
 
-    assertApprox(Viper.Math.Sin(0.0), 0.0, 0.000001, "sin(0)");
-    assertApprox(Viper.Math.Cos(0.0), 1.0, 0.000001, "cos(0)");
-    assertApprox(Viper.Math.Tan(0.0), 0.0, 0.000001, "tan(0)");
-    assertApprox(Viper.Math.Sqrt(9.0), 3.0, 0.000001, "sqrt(9)");
-    assertApprox(Viper.Math.Log(Viper.Math.Exp(1.0)), 1.0, 0.000001, "log(exp(1))");
-    assertApprox(Viper.Math.Abs(-1.5), 1.5, 0.000001, "abs");
-    assertEqInt(Viper.Math.AbsInt(-7), 7, "absint");
-    assertApprox(Viper.Math.Round(1.6), 2.0, 0.000001, "round");
-    assertApprox(Viper.Math.Floor(1.9), 1.0, 0.000001, "floor");
-    assertApprox(Viper.Math.Ceil(1.1), 2.0, 0.000001, "ceil");
-    assertApprox(Viper.Math.Min(1.0, 2.0), 1.0, 0.000001, "min");
-    assertApprox(Viper.Math.Max(1.0, 2.0), 2.0, 0.000001, "max");
-    assertEqInt(Viper.Math.MinInt(1, 2), 1, "minint");
-    assertEqInt(Viper.Math.MaxInt(1, 2), 2, "maxint");
+    assertApprox(Zanna.Math.Sin(0.0), 0.0, 0.000001, "sin(0)");
+    assertApprox(Zanna.Math.Cos(0.0), 1.0, 0.000001, "cos(0)");
+    assertApprox(Zanna.Math.Tan(0.0), 0.0, 0.000001, "tan(0)");
+    assertApprox(Zanna.Math.Sqrt(9.0), 3.0, 0.000001, "sqrt(9)");
+    assertApprox(Zanna.Math.Log(Zanna.Math.Exp(1.0)), 1.0, 0.000001, "log(exp(1))");
+    assertApprox(Zanna.Math.Abs(-1.5), 1.5, 0.000001, "abs");
+    assertEqInt(Zanna.Math.AbsInt(-7), 7, "absint");
+    assertApprox(Zanna.Math.Round(1.6), 2.0, 0.000001, "round");
+    assertApprox(Zanna.Math.Floor(1.9), 1.0, 0.000001, "floor");
+    assertApprox(Zanna.Math.Ceil(1.1), 2.0, 0.000001, "ceil");
+    assertApprox(Zanna.Math.Min(1.0, 2.0), 1.0, 0.000001, "min");
+    assertApprox(Zanna.Math.Max(1.0, 2.0), 2.0, 0.000001, "max");
+    assertEqInt(Zanna.Math.MinInt(1, 2), 1, "minint");
+    assertEqInt(Zanna.Math.MaxInt(1, 2), 2, "maxint");
 
-    Viper.Math.Random.Seed(123);
-    var a = Viper.Math.Random.NextInt(100);
-    var b = Viper.Math.Random.NextInt(100);
-    var n = Viper.Math.Random.NextDouble();
-    Viper.Math.Random.Seed(123);
-    var c = Viper.Math.Random.NextInt(100);
-    var d = Viper.Math.Random.NextInt(100);
-    var n2 = Viper.Math.Random.NextDouble();
+    Zanna.Math.Random.Seed(123);
+    var a = Zanna.Math.Random.NextInt(100);
+    var b = Zanna.Math.Random.NextInt(100);
+    var n = Zanna.Math.Random.NextDouble();
+    Zanna.Math.Random.Seed(123);
+    var c = Zanna.Math.Random.NextInt(100);
+    var d = Zanna.Math.Random.NextInt(100);
+    var n2 = Zanna.Math.Random.NextDouble();
     assertEqInt(a, c, "rand1");
     assertEqInt(b, d, "rand2");
     assertApprox(n, n2, 0.0000001, "randf");
 
-    var key = Viper.Terminal.ReadKeyFor(0);
-    var ink = Viper.Terminal.PollKey();
+    var key = Zanna.Terminal.ReadKeyFor(0);
+    var ink = Zanna.Terminal.PollKey();
     assertTrue(key == "" || key == key, "keytimeout");
     assertTrue(ink == "" || ink == ink, "inkey");
 
-    Viper.Time.Clock.Sleep(1);
-    Viper.Time.Clock.Sleep(1);
+    Zanna.Time.Clock.Sleep(1);
+    Zanna.Time.Clock.Sleep(1);
 
     report();
 }

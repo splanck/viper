@@ -22,7 +22,7 @@
 // document.zia - Paint document metadata independent of pixel storage
 module document;
 
-bind Path = Viper.IO.Path;
+bind Path = Zanna.IO.Path;
 
 /// @brief Document metadata (path, name, dirty/new flags, revision).
 class PaintDocument {

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/physics/rt_ragdoll3d.h
-// Purpose: Viper.Graphics3D.Ragdoll3D — auto-built capsule-body + 6-DoF-joint
+// Purpose: Zanna.Graphics3D.Ragdoll3D — auto-built capsule-body + 6-DoF-joint
 //   ragdoll rigs from a Skeleton3D, with animation handoff (velocity seeding),
 //   per-step palette write-back, blend-out to animation, and powered PD drive
 //   toward the animated pose.

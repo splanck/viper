@@ -1,464 +1,464 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Input.Key.Unknown
-' COVER: Viper.Input.Key.A
-' COVER: Viper.Input.Key.B
-' COVER: Viper.Input.Key.C
-' COVER: Viper.Input.Key.D
-' COVER: Viper.Input.Key.E
-' COVER: Viper.Input.Key.F
-' COVER: Viper.Input.Key.G
-' COVER: Viper.Input.Key.H
-' COVER: Viper.Input.Key.I
-' COVER: Viper.Input.Key.J
-' COVER: Viper.Input.Key.K
-' COVER: Viper.Input.Key.L
-' COVER: Viper.Input.Key.M
-' COVER: Viper.Input.Key.N
-' COVER: Viper.Input.Key.O
-' COVER: Viper.Input.Key.P
-' COVER: Viper.Input.Key.Q
-' COVER: Viper.Input.Key.R
-' COVER: Viper.Input.Key.S
-' COVER: Viper.Input.Key.T
-' COVER: Viper.Input.Key.U
-' COVER: Viper.Input.Key.V
-' COVER: Viper.Input.Key.W
-' COVER: Viper.Input.Key.X
-' COVER: Viper.Input.Key.Y
-' COVER: Viper.Input.Key.Z
-' COVER: Viper.Input.Key.Digit0
-' COVER: Viper.Input.Key.Digit1
-' COVER: Viper.Input.Key.Digit2
-' COVER: Viper.Input.Key.Digit3
-' COVER: Viper.Input.Key.Digit4
-' COVER: Viper.Input.Key.Digit5
-' COVER: Viper.Input.Key.Digit6
-' COVER: Viper.Input.Key.Digit7
-' COVER: Viper.Input.Key.Digit8
-' COVER: Viper.Input.Key.Digit9
-' COVER: Viper.Input.Key.F1
-' COVER: Viper.Input.Key.F2
-' COVER: Viper.Input.Key.F3
-' COVER: Viper.Input.Key.F4
-' COVER: Viper.Input.Key.F5
-' COVER: Viper.Input.Key.F6
-' COVER: Viper.Input.Key.F7
-' COVER: Viper.Input.Key.F8
-' COVER: Viper.Input.Key.F9
-' COVER: Viper.Input.Key.F10
-' COVER: Viper.Input.Key.F11
-' COVER: Viper.Input.Key.F12
-' COVER: Viper.Input.Key.Up
-' COVER: Viper.Input.Key.Down
-' COVER: Viper.Input.Key.Left
-' COVER: Viper.Input.Key.Right
-' COVER: Viper.Input.Key.Home
-' COVER: Viper.Input.Key.End
-' COVER: Viper.Input.Key.PageUp
-' COVER: Viper.Input.Key.PageDown
-' COVER: Viper.Input.Key.Insert
-' COVER: Viper.Input.Key.Delete
+' COVER: Zanna.Input.Key.Unknown
+' COVER: Zanna.Input.Key.A
+' COVER: Zanna.Input.Key.B
+' COVER: Zanna.Input.Key.C
+' COVER: Zanna.Input.Key.D
+' COVER: Zanna.Input.Key.E
+' COVER: Zanna.Input.Key.F
+' COVER: Zanna.Input.Key.G
+' COVER: Zanna.Input.Key.H
+' COVER: Zanna.Input.Key.I
+' COVER: Zanna.Input.Key.J
+' COVER: Zanna.Input.Key.K
+' COVER: Zanna.Input.Key.L
+' COVER: Zanna.Input.Key.M
+' COVER: Zanna.Input.Key.N
+' COVER: Zanna.Input.Key.O
+' COVER: Zanna.Input.Key.P
+' COVER: Zanna.Input.Key.Q
+' COVER: Zanna.Input.Key.R
+' COVER: Zanna.Input.Key.S
+' COVER: Zanna.Input.Key.T
+' COVER: Zanna.Input.Key.U
+' COVER: Zanna.Input.Key.V
+' COVER: Zanna.Input.Key.W
+' COVER: Zanna.Input.Key.X
+' COVER: Zanna.Input.Key.Y
+' COVER: Zanna.Input.Key.Z
+' COVER: Zanna.Input.Key.Digit0
+' COVER: Zanna.Input.Key.Digit1
+' COVER: Zanna.Input.Key.Digit2
+' COVER: Zanna.Input.Key.Digit3
+' COVER: Zanna.Input.Key.Digit4
+' COVER: Zanna.Input.Key.Digit5
+' COVER: Zanna.Input.Key.Digit6
+' COVER: Zanna.Input.Key.Digit7
+' COVER: Zanna.Input.Key.Digit8
+' COVER: Zanna.Input.Key.Digit9
+' COVER: Zanna.Input.Key.F1
+' COVER: Zanna.Input.Key.F2
+' COVER: Zanna.Input.Key.F3
+' COVER: Zanna.Input.Key.F4
+' COVER: Zanna.Input.Key.F5
+' COVER: Zanna.Input.Key.F6
+' COVER: Zanna.Input.Key.F7
+' COVER: Zanna.Input.Key.F8
+' COVER: Zanna.Input.Key.F9
+' COVER: Zanna.Input.Key.F10
+' COVER: Zanna.Input.Key.F11
+' COVER: Zanna.Input.Key.F12
+' COVER: Zanna.Input.Key.Up
+' COVER: Zanna.Input.Key.Down
+' COVER: Zanna.Input.Key.Left
+' COVER: Zanna.Input.Key.Right
+' COVER: Zanna.Input.Key.Home
+' COVER: Zanna.Input.Key.End
+' COVER: Zanna.Input.Key.PageUp
+' COVER: Zanna.Input.Key.PageDown
+' COVER: Zanna.Input.Key.Insert
+' COVER: Zanna.Input.Key.Delete
 
 FUNCTION IsBool(v AS INTEGER) AS BOOLEAN
     IsBool = (v = 0) OR (v = 1) OR (v = -1)
 END FUNCTION
-' COVER: Viper.Input.Key.Backspace
-' COVER: Viper.Input.Key.Tab
-' COVER: Viper.Input.Key.Enter
-' COVER: Viper.Input.Key.Space
-' COVER: Viper.Input.Key.Escape
-' COVER: Viper.Input.Key.LeftShift
-' COVER: Viper.Input.Key.RightShift
-' COVER: Viper.Input.Key.LeftControl
-' COVER: Viper.Input.Key.RightControl
-' COVER: Viper.Input.Key.LeftAlt
-' COVER: Viper.Input.Key.RightAlt
-' COVER: Viper.Input.Key.Minus
-' COVER: Viper.Input.Key.Equals
-' COVER: Viper.Input.Key.LeftBracket
-' COVER: Viper.Input.Key.RightBracket
-' COVER: Viper.Input.Key.Backslash
-' COVER: Viper.Input.Key.Semicolon
-' COVER: Viper.Input.Key.Quote
-' COVER: Viper.Input.Key.Grave
-' COVER: Viper.Input.Key.Comma
-' COVER: Viper.Input.Key.Period
-' COVER: Viper.Input.Key.Slash
-' COVER: Viper.Input.Key.Numpad0
-' COVER: Viper.Input.Key.Numpad1
-' COVER: Viper.Input.Key.Numpad2
-' COVER: Viper.Input.Key.Numpad3
-' COVER: Viper.Input.Key.Numpad4
-' COVER: Viper.Input.Key.Numpad5
-' COVER: Viper.Input.Key.Numpad6
-' COVER: Viper.Input.Key.Numpad7
-' COVER: Viper.Input.Key.Numpad8
-' COVER: Viper.Input.Key.Numpad9
-' COVER: Viper.Input.Key.NumpadAdd
-' COVER: Viper.Input.Key.NumpadSubtract
-' COVER: Viper.Input.Key.NumpadMultiply
-' COVER: Viper.Input.Key.NumpadDivide
-' COVER: Viper.Input.Key.NumpadEnter
-' COVER: Viper.Input.Key.NumpadDecimal
-' COVER: Viper.Input.Keyboard.IsDown
-' COVER: Viper.Input.Keyboard.IsUp
-' COVER: Viper.Input.Keyboard.AnyDown
-' COVER: Viper.Input.Keyboard.GetDown
-' COVER: Viper.Input.Keyboard.WasPressed
-' COVER: Viper.Input.Keyboard.WasReleased
-' COVER: Viper.Input.Keyboard.GetPressed
-' COVER: Viper.Input.Keyboard.GetReleased
-' COVER: Viper.Input.Keyboard.GetText
-' COVER: Viper.Input.Keyboard.EnableTextInput
-' COVER: Viper.Input.Keyboard.DisableTextInput
-' COVER: Viper.Input.Keyboard.KeyName
-' COVER: Viper.Input.Mouse.ButtonLeft
-' COVER: Viper.Input.Mouse.ButtonRight
-' COVER: Viper.Input.Mouse.ButtonMiddle
-' COVER: Viper.Input.Mouse.ButtonX1
-' COVER: Viper.Input.Mouse.ButtonX2
-' COVER: Viper.Input.Mouse.X
-' COVER: Viper.Input.Mouse.Y
-' COVER: Viper.Input.Mouse.DeltaX
-' COVER: Viper.Input.Mouse.DeltaY
-' COVER: Viper.Input.Mouse.IsDown
-' COVER: Viper.Input.Mouse.IsUp
-' COVER: Viper.Input.Mouse.ButtonLeft
-' COVER: Viper.Input.Mouse.ButtonRight
-' COVER: Viper.Input.Mouse.ButtonMiddle
-' COVER: Viper.Input.Mouse.WasPressed
-' COVER: Viper.Input.Mouse.WasReleased
-' COVER: Viper.Input.Mouse.WasClicked
-' COVER: Viper.Input.Mouse.WasDoubleClicked
-' COVER: Viper.Input.Mouse.WheelX
-' COVER: Viper.Input.Mouse.WheelY
-' COVER: Viper.Input.Mouse.Show
-' COVER: Viper.Input.Mouse.Hide
-' COVER: Viper.Input.Mouse.IsHidden
-' COVER: Viper.Input.Mouse.Capture
-' COVER: Viper.Input.Mouse.Release
-' COVER: Viper.Input.Mouse.IsCaptured
-' COVER: Viper.Input.Mouse.SetPosition
-' COVER: Viper.Input.Pad.ButtonA
-' COVER: Viper.Input.Pad.ButtonB
-' COVER: Viper.Input.Pad.ButtonX
-' COVER: Viper.Input.Pad.ButtonY
-' COVER: Viper.Input.Pad.ButtonLeftBumper
-' COVER: Viper.Input.Pad.ButtonRightBumper
-' COVER: Viper.Input.Pad.ButtonBack
-' COVER: Viper.Input.Pad.ButtonStart
-' COVER: Viper.Input.Pad.ButtonLeftStick
-' COVER: Viper.Input.Pad.ButtonRightStick
-' COVER: Viper.Input.Pad.ButtonUp
-' COVER: Viper.Input.Pad.ButtonDown
-' COVER: Viper.Input.Pad.ButtonLeft
-' COVER: Viper.Input.Pad.ButtonRight
-' COVER: Viper.Input.Pad.ButtonGuide
-' COVER: Viper.Input.Pad.Count
-' COVER: Viper.Input.Pad.IsConnected
-' COVER: Viper.Input.Pad.Name
-' COVER: Viper.Input.Pad.IsDown
-' COVER: Viper.Input.Pad.IsUp
-' COVER: Viper.Input.Pad.WasPressed
-' COVER: Viper.Input.Pad.WasReleased
-' COVER: Viper.Input.Pad.LeftX
-' COVER: Viper.Input.Pad.LeftY
-' COVER: Viper.Input.Pad.RightX
-' COVER: Viper.Input.Pad.RightY
-' COVER: Viper.Input.Pad.LeftTrigger
-' COVER: Viper.Input.Pad.RightTrigger
-' COVER: Viper.Input.Pad.SetDeadzone
-' COVER: Viper.Input.Pad.GetDeadzone
-' COVER: Viper.Input.Pad.Vibrate
-' COVER: Viper.Input.Pad.StopVibration
+' COVER: Zanna.Input.Key.Backspace
+' COVER: Zanna.Input.Key.Tab
+' COVER: Zanna.Input.Key.Enter
+' COVER: Zanna.Input.Key.Space
+' COVER: Zanna.Input.Key.Escape
+' COVER: Zanna.Input.Key.LeftShift
+' COVER: Zanna.Input.Key.RightShift
+' COVER: Zanna.Input.Key.LeftControl
+' COVER: Zanna.Input.Key.RightControl
+' COVER: Zanna.Input.Key.LeftAlt
+' COVER: Zanna.Input.Key.RightAlt
+' COVER: Zanna.Input.Key.Minus
+' COVER: Zanna.Input.Key.Equals
+' COVER: Zanna.Input.Key.LeftBracket
+' COVER: Zanna.Input.Key.RightBracket
+' COVER: Zanna.Input.Key.Backslash
+' COVER: Zanna.Input.Key.Semicolon
+' COVER: Zanna.Input.Key.Quote
+' COVER: Zanna.Input.Key.Grave
+' COVER: Zanna.Input.Key.Comma
+' COVER: Zanna.Input.Key.Period
+' COVER: Zanna.Input.Key.Slash
+' COVER: Zanna.Input.Key.Numpad0
+' COVER: Zanna.Input.Key.Numpad1
+' COVER: Zanna.Input.Key.Numpad2
+' COVER: Zanna.Input.Key.Numpad3
+' COVER: Zanna.Input.Key.Numpad4
+' COVER: Zanna.Input.Key.Numpad5
+' COVER: Zanna.Input.Key.Numpad6
+' COVER: Zanna.Input.Key.Numpad7
+' COVER: Zanna.Input.Key.Numpad8
+' COVER: Zanna.Input.Key.Numpad9
+' COVER: Zanna.Input.Key.NumpadAdd
+' COVER: Zanna.Input.Key.NumpadSubtract
+' COVER: Zanna.Input.Key.NumpadMultiply
+' COVER: Zanna.Input.Key.NumpadDivide
+' COVER: Zanna.Input.Key.NumpadEnter
+' COVER: Zanna.Input.Key.NumpadDecimal
+' COVER: Zanna.Input.Keyboard.IsDown
+' COVER: Zanna.Input.Keyboard.IsUp
+' COVER: Zanna.Input.Keyboard.AnyDown
+' COVER: Zanna.Input.Keyboard.GetDown
+' COVER: Zanna.Input.Keyboard.WasPressed
+' COVER: Zanna.Input.Keyboard.WasReleased
+' COVER: Zanna.Input.Keyboard.GetPressed
+' COVER: Zanna.Input.Keyboard.GetReleased
+' COVER: Zanna.Input.Keyboard.GetText
+' COVER: Zanna.Input.Keyboard.EnableTextInput
+' COVER: Zanna.Input.Keyboard.DisableTextInput
+' COVER: Zanna.Input.Keyboard.KeyName
+' COVER: Zanna.Input.Mouse.ButtonLeft
+' COVER: Zanna.Input.Mouse.ButtonRight
+' COVER: Zanna.Input.Mouse.ButtonMiddle
+' COVER: Zanna.Input.Mouse.ButtonX1
+' COVER: Zanna.Input.Mouse.ButtonX2
+' COVER: Zanna.Input.Mouse.X
+' COVER: Zanna.Input.Mouse.Y
+' COVER: Zanna.Input.Mouse.DeltaX
+' COVER: Zanna.Input.Mouse.DeltaY
+' COVER: Zanna.Input.Mouse.IsDown
+' COVER: Zanna.Input.Mouse.IsUp
+' COVER: Zanna.Input.Mouse.ButtonLeft
+' COVER: Zanna.Input.Mouse.ButtonRight
+' COVER: Zanna.Input.Mouse.ButtonMiddle
+' COVER: Zanna.Input.Mouse.WasPressed
+' COVER: Zanna.Input.Mouse.WasReleased
+' COVER: Zanna.Input.Mouse.WasClicked
+' COVER: Zanna.Input.Mouse.WasDoubleClicked
+' COVER: Zanna.Input.Mouse.WheelX
+' COVER: Zanna.Input.Mouse.WheelY
+' COVER: Zanna.Input.Mouse.Show
+' COVER: Zanna.Input.Mouse.Hide
+' COVER: Zanna.Input.Mouse.IsHidden
+' COVER: Zanna.Input.Mouse.Capture
+' COVER: Zanna.Input.Mouse.Release
+' COVER: Zanna.Input.Mouse.IsCaptured
+' COVER: Zanna.Input.Mouse.SetPosition
+' COVER: Zanna.Input.Pad.ButtonA
+' COVER: Zanna.Input.Pad.ButtonB
+' COVER: Zanna.Input.Pad.ButtonX
+' COVER: Zanna.Input.Pad.ButtonY
+' COVER: Zanna.Input.Pad.ButtonLeftBumper
+' COVER: Zanna.Input.Pad.ButtonRightBumper
+' COVER: Zanna.Input.Pad.ButtonBack
+' COVER: Zanna.Input.Pad.ButtonStart
+' COVER: Zanna.Input.Pad.ButtonLeftStick
+' COVER: Zanna.Input.Pad.ButtonRightStick
+' COVER: Zanna.Input.Pad.ButtonUp
+' COVER: Zanna.Input.Pad.ButtonDown
+' COVER: Zanna.Input.Pad.ButtonLeft
+' COVER: Zanna.Input.Pad.ButtonRight
+' COVER: Zanna.Input.Pad.ButtonGuide
+' COVER: Zanna.Input.Pad.Count
+' COVER: Zanna.Input.Pad.IsConnected
+' COVER: Zanna.Input.Pad.Name
+' COVER: Zanna.Input.Pad.IsDown
+' COVER: Zanna.Input.Pad.IsUp
+' COVER: Zanna.Input.Pad.WasPressed
+' COVER: Zanna.Input.Pad.WasReleased
+' COVER: Zanna.Input.Pad.LeftX
+' COVER: Zanna.Input.Pad.LeftY
+' COVER: Zanna.Input.Pad.RightX
+' COVER: Zanna.Input.Pad.RightY
+' COVER: Zanna.Input.Pad.LeftTrigger
+' COVER: Zanna.Input.Pad.RightTrigger
+' COVER: Zanna.Input.Pad.SetDeadzone
+' COVER: Zanna.Input.Pad.GetDeadzone
+' COVER: Zanna.Input.Pad.Vibrate
+' COVER: Zanna.Input.Pad.StopVibration
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
-    IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Core.Diagnostics.Assert(FALSE, msg)
+    IF Zanna.Math.Abs(actual - expected) > eps THEN
+        Zanna.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("Input Test", 16, 16)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("Input Test", 16, 16)
 canvas.Poll()
 
 DIM keySum AS INTEGER
 keySum = 0
-keySum = keySum + Viper.Input.Key.Unknown
-keySum = keySum + Viper.Input.Key.A
-keySum = keySum + Viper.Input.Key.B
-keySum = keySum + Viper.Input.Key.C
-keySum = keySum + Viper.Input.Key.D
-keySum = keySum + Viper.Input.Key.E
-keySum = keySum + Viper.Input.Key.F
-keySum = keySum + Viper.Input.Key.G
-keySum = keySum + Viper.Input.Key.H
-keySum = keySum + Viper.Input.Key.I
-keySum = keySum + Viper.Input.Key.J
-keySum = keySum + Viper.Input.Key.K
-keySum = keySum + Viper.Input.Key.L
-keySum = keySum + Viper.Input.Key.M
-keySum = keySum + Viper.Input.Key.N
-keySum = keySum + Viper.Input.Key.O
-keySum = keySum + Viper.Input.Key.P
-keySum = keySum + Viper.Input.Key.Q
-keySum = keySum + Viper.Input.Key.R
-keySum = keySum + Viper.Input.Key.S
-keySum = keySum + Viper.Input.Key.T
-keySum = keySum + Viper.Input.Key.U
-keySum = keySum + Viper.Input.Key.V
-keySum = keySum + Viper.Input.Key.W
-keySum = keySum + Viper.Input.Key.X
-keySum = keySum + Viper.Input.Key.Y
-keySum = keySum + Viper.Input.Key.Z
-keySum = keySum + Viper.Input.Key.Digit0
-keySum = keySum + Viper.Input.Key.Digit1
-keySum = keySum + Viper.Input.Key.Digit2
-keySum = keySum + Viper.Input.Key.Digit3
-keySum = keySum + Viper.Input.Key.Digit4
-keySum = keySum + Viper.Input.Key.Digit5
-keySum = keySum + Viper.Input.Key.Digit6
-keySum = keySum + Viper.Input.Key.Digit7
-keySum = keySum + Viper.Input.Key.Digit8
-keySum = keySum + Viper.Input.Key.Digit9
-keySum = keySum + Viper.Input.Key.F1
-keySum = keySum + Viper.Input.Key.F2
-keySum = keySum + Viper.Input.Key.F3
-keySum = keySum + Viper.Input.Key.F4
-keySum = keySum + Viper.Input.Key.F5
-keySum = keySum + Viper.Input.Key.F6
-keySum = keySum + Viper.Input.Key.F7
-keySum = keySum + Viper.Input.Key.F8
-keySum = keySum + Viper.Input.Key.F9
-keySum = keySum + Viper.Input.Key.F10
-keySum = keySum + Viper.Input.Key.F11
-keySum = keySum + Viper.Input.Key.F12
-keySum = keySum + Viper.Input.Key.Up
-keySum = keySum + Viper.Input.Key.Down
-keySum = keySum + Viper.Input.Key.Left
-keySum = keySum + Viper.Input.Key.Right
-keySum = keySum + Viper.Input.Key.Home
-keySum = keySum + Viper.Input.Key.End
-keySum = keySum + Viper.Input.Key.PageUp
-keySum = keySum + Viper.Input.Key.PageDown
-keySum = keySum + Viper.Input.Key.Insert
-keySum = keySum + Viper.Input.Key.Delete
-keySum = keySum + Viper.Input.Key.Backspace
-keySum = keySum + Viper.Input.Key.Tab
-keySum = keySum + Viper.Input.Key.Enter
-keySum = keySum + Viper.Input.Key.Space
-keySum = keySum + Viper.Input.Key.Escape
-keySum = keySum + Viper.Input.Key.LeftShift
-keySum = keySum + Viper.Input.Key.RightShift
-keySum = keySum + Viper.Input.Key.LeftControl
-keySum = keySum + Viper.Input.Key.RightControl
-keySum = keySum + Viper.Input.Key.LeftAlt
-keySum = keySum + Viper.Input.Key.RightAlt
-keySum = keySum + Viper.Input.Key.Minus
-keySum = keySum + Viper.Input.Key.Equals
-keySum = keySum + Viper.Input.Key.LeftBracket
-keySum = keySum + Viper.Input.Key.RightBracket
-keySum = keySum + Viper.Input.Key.Backslash
-keySum = keySum + Viper.Input.Key.Semicolon
-keySum = keySum + Viper.Input.Key.Quote
-keySum = keySum + Viper.Input.Key.Grave
-keySum = keySum + Viper.Input.Key.Comma
-keySum = keySum + Viper.Input.Key.Period
-keySum = keySum + Viper.Input.Key.Slash
-keySum = keySum + Viper.Input.Key.Numpad0
-keySum = keySum + Viper.Input.Key.Numpad1
-keySum = keySum + Viper.Input.Key.Numpad2
-keySum = keySum + Viper.Input.Key.Numpad3
-keySum = keySum + Viper.Input.Key.Numpad4
-keySum = keySum + Viper.Input.Key.Numpad5
-keySum = keySum + Viper.Input.Key.Numpad6
-keySum = keySum + Viper.Input.Key.Numpad7
-keySum = keySum + Viper.Input.Key.Numpad8
-keySum = keySum + Viper.Input.Key.Numpad9
-keySum = keySum + Viper.Input.Key.NumpadAdd
-keySum = keySum + Viper.Input.Key.NumpadSubtract
-keySum = keySum + Viper.Input.Key.NumpadMultiply
-keySum = keySum + Viper.Input.Key.NumpadDivide
-keySum = keySum + Viper.Input.Key.NumpadEnter
-keySum = keySum + Viper.Input.Key.NumpadDecimal
-Viper.Core.Diagnostics.Assert(keySum > 0, "key.sum")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Key.A, 65, "key.a")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Key.Digit0, 48, "key.0")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Key.Space, 32, "key.space")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Key.F1, 290, "key.f1")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Key.Unknown, 0, "key.unknown")
+keySum = keySum + Zanna.Input.Key.Unknown
+keySum = keySum + Zanna.Input.Key.A
+keySum = keySum + Zanna.Input.Key.B
+keySum = keySum + Zanna.Input.Key.C
+keySum = keySum + Zanna.Input.Key.D
+keySum = keySum + Zanna.Input.Key.E
+keySum = keySum + Zanna.Input.Key.F
+keySum = keySum + Zanna.Input.Key.G
+keySum = keySum + Zanna.Input.Key.H
+keySum = keySum + Zanna.Input.Key.I
+keySum = keySum + Zanna.Input.Key.J
+keySum = keySum + Zanna.Input.Key.K
+keySum = keySum + Zanna.Input.Key.L
+keySum = keySum + Zanna.Input.Key.M
+keySum = keySum + Zanna.Input.Key.N
+keySum = keySum + Zanna.Input.Key.O
+keySum = keySum + Zanna.Input.Key.P
+keySum = keySum + Zanna.Input.Key.Q
+keySum = keySum + Zanna.Input.Key.R
+keySum = keySum + Zanna.Input.Key.S
+keySum = keySum + Zanna.Input.Key.T
+keySum = keySum + Zanna.Input.Key.U
+keySum = keySum + Zanna.Input.Key.V
+keySum = keySum + Zanna.Input.Key.W
+keySum = keySum + Zanna.Input.Key.X
+keySum = keySum + Zanna.Input.Key.Y
+keySum = keySum + Zanna.Input.Key.Z
+keySum = keySum + Zanna.Input.Key.Digit0
+keySum = keySum + Zanna.Input.Key.Digit1
+keySum = keySum + Zanna.Input.Key.Digit2
+keySum = keySum + Zanna.Input.Key.Digit3
+keySum = keySum + Zanna.Input.Key.Digit4
+keySum = keySum + Zanna.Input.Key.Digit5
+keySum = keySum + Zanna.Input.Key.Digit6
+keySum = keySum + Zanna.Input.Key.Digit7
+keySum = keySum + Zanna.Input.Key.Digit8
+keySum = keySum + Zanna.Input.Key.Digit9
+keySum = keySum + Zanna.Input.Key.F1
+keySum = keySum + Zanna.Input.Key.F2
+keySum = keySum + Zanna.Input.Key.F3
+keySum = keySum + Zanna.Input.Key.F4
+keySum = keySum + Zanna.Input.Key.F5
+keySum = keySum + Zanna.Input.Key.F6
+keySum = keySum + Zanna.Input.Key.F7
+keySum = keySum + Zanna.Input.Key.F8
+keySum = keySum + Zanna.Input.Key.F9
+keySum = keySum + Zanna.Input.Key.F10
+keySum = keySum + Zanna.Input.Key.F11
+keySum = keySum + Zanna.Input.Key.F12
+keySum = keySum + Zanna.Input.Key.Up
+keySum = keySum + Zanna.Input.Key.Down
+keySum = keySum + Zanna.Input.Key.Left
+keySum = keySum + Zanna.Input.Key.Right
+keySum = keySum + Zanna.Input.Key.Home
+keySum = keySum + Zanna.Input.Key.End
+keySum = keySum + Zanna.Input.Key.PageUp
+keySum = keySum + Zanna.Input.Key.PageDown
+keySum = keySum + Zanna.Input.Key.Insert
+keySum = keySum + Zanna.Input.Key.Delete
+keySum = keySum + Zanna.Input.Key.Backspace
+keySum = keySum + Zanna.Input.Key.Tab
+keySum = keySum + Zanna.Input.Key.Enter
+keySum = keySum + Zanna.Input.Key.Space
+keySum = keySum + Zanna.Input.Key.Escape
+keySum = keySum + Zanna.Input.Key.LeftShift
+keySum = keySum + Zanna.Input.Key.RightShift
+keySum = keySum + Zanna.Input.Key.LeftControl
+keySum = keySum + Zanna.Input.Key.RightControl
+keySum = keySum + Zanna.Input.Key.LeftAlt
+keySum = keySum + Zanna.Input.Key.RightAlt
+keySum = keySum + Zanna.Input.Key.Minus
+keySum = keySum + Zanna.Input.Key.Equals
+keySum = keySum + Zanna.Input.Key.LeftBracket
+keySum = keySum + Zanna.Input.Key.RightBracket
+keySum = keySum + Zanna.Input.Key.Backslash
+keySum = keySum + Zanna.Input.Key.Semicolon
+keySum = keySum + Zanna.Input.Key.Quote
+keySum = keySum + Zanna.Input.Key.Grave
+keySum = keySum + Zanna.Input.Key.Comma
+keySum = keySum + Zanna.Input.Key.Period
+keySum = keySum + Zanna.Input.Key.Slash
+keySum = keySum + Zanna.Input.Key.Numpad0
+keySum = keySum + Zanna.Input.Key.Numpad1
+keySum = keySum + Zanna.Input.Key.Numpad2
+keySum = keySum + Zanna.Input.Key.Numpad3
+keySum = keySum + Zanna.Input.Key.Numpad4
+keySum = keySum + Zanna.Input.Key.Numpad5
+keySum = keySum + Zanna.Input.Key.Numpad6
+keySum = keySum + Zanna.Input.Key.Numpad7
+keySum = keySum + Zanna.Input.Key.Numpad8
+keySum = keySum + Zanna.Input.Key.Numpad9
+keySum = keySum + Zanna.Input.Key.NumpadAdd
+keySum = keySum + Zanna.Input.Key.NumpadSubtract
+keySum = keySum + Zanna.Input.Key.NumpadMultiply
+keySum = keySum + Zanna.Input.Key.NumpadDivide
+keySum = keySum + Zanna.Input.Key.NumpadEnter
+keySum = keySum + Zanna.Input.Key.NumpadDecimal
+Zanna.Core.Diagnostics.Assert(keySum > 0, "key.sum")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Input.Key.A, 65, "key.a")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Input.Key.Digit0, 48, "key.0")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Input.Key.Space, 32, "key.space")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Input.Key.F1, 290, "key.f1")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Input.Key.Unknown, 0, "key.unknown")
 
 DIM down AS INTEGER
-down = Viper.Input.Keyboard.IsDown(Viper.Input.Key.A)
-Viper.Core.Diagnostics.Assert(IsBool(down), "key.isdown")
+down = Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.Assert(IsBool(down), "key.isdown")
 DIM up AS INTEGER
-up = Viper.Input.Keyboard.IsUp(Viper.Input.Key.A)
-Viper.Core.Diagnostics.Assert(IsBool(up), "key.isup")
+up = Zanna.Input.Keyboard.IsUp(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.Assert(IsBool(up), "key.isup")
 DIM anyDown AS INTEGER
-anyDown = Viper.Input.Keyboard.AnyDown()
-Viper.Core.Diagnostics.Assert(IsBool(anyDown), "key.anydown")
+anyDown = Zanna.Input.Keyboard.AnyDown()
+Zanna.Core.Diagnostics.Assert(IsBool(anyDown), "key.anydown")
 DIM downKey AS INTEGER
-downKey = Viper.Input.Keyboard.GetDown()
-Viper.Core.Diagnostics.Assert(downKey >= 0, "key.getdown")
+downKey = Zanna.Input.Keyboard.GetDown()
+Zanna.Core.Diagnostics.Assert(downKey >= 0, "key.getdown")
 DIM wasPressed AS INTEGER
-wasPressed = Viper.Input.Keyboard.WasPressed(Viper.Input.Key.A)
-Viper.Core.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
+wasPressed = Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
 DIM wasReleased AS INTEGER
-wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Key.A)
-Viper.Core.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
-DIM pressed AS Viper.Collections.Seq
-pressed = Viper.Input.Keyboard.GetPressed()
-Viper.Core.Diagnostics.Assert(pressed.Count >= 0, "key.getpressed")
-DIM released AS Viper.Collections.Seq
-released = Viper.Input.Keyboard.GetReleased()
-Viper.Core.Diagnostics.Assert(released.Count >= 0, "key.getreleased")
-Viper.Input.Keyboard.EnableTextInput()
+wasReleased = Zanna.Input.Keyboard.WasReleased(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
+DIM pressed AS Zanna.Collections.Seq
+pressed = Zanna.Input.Keyboard.GetPressed()
+Zanna.Core.Diagnostics.Assert(pressed.Count >= 0, "key.getpressed")
+DIM released AS Zanna.Collections.Seq
+released = Zanna.Input.Keyboard.GetReleased()
+Zanna.Core.Diagnostics.Assert(released.Count >= 0, "key.getreleased")
+Zanna.Input.Keyboard.EnableTextInput()
 canvas.Poll()
 DIM text AS STRING
-text = Viper.Input.Keyboard.GetText()
-Viper.Core.Diagnostics.Assert(text.Length >= 0, "key.gettext")
-Viper.Input.Keyboard.DisableTextInput()
+text = Zanna.Input.Keyboard.GetText()
+Zanna.Core.Diagnostics.Assert(text.Length >= 0, "key.gettext")
+Zanna.Input.Keyboard.DisableTextInput()
 DIM shiftDown AS INTEGER
-shiftDown = Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftShift)
-Viper.Core.Diagnostics.Assert(IsBool(shiftDown), "key.shift")
+shiftDown = Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftShift)
+Zanna.Core.Diagnostics.Assert(IsBool(shiftDown), "key.shift")
 DIM ctrlDown AS INTEGER
-ctrlDown = Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftControl)
-Viper.Core.Diagnostics.Assert(IsBool(ctrlDown), "key.ctrl")
+ctrlDown = Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftControl)
+Zanna.Core.Diagnostics.Assert(IsBool(ctrlDown), "key.ctrl")
 DIM altDown AS INTEGER
-altDown = Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftAlt)
-Viper.Core.Diagnostics.Assert(IsBool(altDown), "key.alt")
+altDown = Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftAlt)
+Zanna.Core.Diagnostics.Assert(IsBool(altDown), "key.alt")
 DIM keyName AS STRING
-keyName = Viper.Input.Keyboard.KeyName(Viper.Input.Key.A)
-Viper.Core.Diagnostics.AssertEqStr(keyName, "A", "key.name")
+keyName = Zanna.Input.Keyboard.KeyName(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.AssertEqStr(keyName, "A", "key.name")
 
 DIM btnSum AS INTEGER
 btnSum = 0
-btnSum = btnSum + Viper.Input.Mouse.ButtonLeft
-btnSum = btnSum + Viper.Input.Mouse.ButtonRight
-btnSum = btnSum + Viper.Input.Mouse.ButtonMiddle
-btnSum = btnSum + Viper.Input.Mouse.ButtonX1
-btnSum = btnSum + Viper.Input.Mouse.ButtonX2
-Viper.Core.Diagnostics.Assert(btnSum > 0, "mouse.btnsum")
-Viper.Input.Mouse.Hide()
-Viper.Input.Mouse.Show()
+btnSum = btnSum + Zanna.Input.Mouse.ButtonLeft
+btnSum = btnSum + Zanna.Input.Mouse.ButtonRight
+btnSum = btnSum + Zanna.Input.Mouse.ButtonMiddle
+btnSum = btnSum + Zanna.Input.Mouse.ButtonX1
+btnSum = btnSum + Zanna.Input.Mouse.ButtonX2
+Zanna.Core.Diagnostics.Assert(btnSum > 0, "mouse.btnsum")
+Zanna.Input.Mouse.Hide()
+Zanna.Input.Mouse.Show()
 DIM hidden AS INTEGER
-hidden = Viper.Input.Mouse.IsHidden()
-Viper.Core.Diagnostics.Assert(IsBool(hidden), "mouse.hidden")
-Viper.Input.Mouse.Capture()
+hidden = Zanna.Input.Mouse.IsHidden()
+Zanna.Core.Diagnostics.Assert(IsBool(hidden), "mouse.hidden")
+Zanna.Input.Mouse.Capture()
 DIM captured AS INTEGER
-captured = Viper.Input.Mouse.IsCaptured()
-Viper.Core.Diagnostics.Assert(IsBool(captured), "mouse.captured")
-Viper.Input.Mouse.Release()
-Viper.Input.Mouse.SetPosition(1, 1)
+captured = Zanna.Input.Mouse.IsCaptured()
+Zanna.Core.Diagnostics.Assert(IsBool(captured), "mouse.captured")
+Zanna.Input.Mouse.Release()
+Zanna.Input.Mouse.SetPosition(1, 1)
 DIM mx AS INTEGER
-mx = Viper.Input.Mouse.X()
+mx = Zanna.Input.Mouse.X()
 DIM my AS INTEGER
-my = Viper.Input.Mouse.Y()
+my = Zanna.Input.Mouse.Y()
 DIM dx AS INTEGER
-dx = Viper.Input.Mouse.DeltaX()
+dx = Zanna.Input.Mouse.DeltaX()
 DIM dy AS INTEGER
-dy = Viper.Input.Mouse.DeltaY()
+dy = Zanna.Input.Mouse.DeltaY()
 DIM mdown AS INTEGER
-mdown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft)
-Viper.Core.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
+mdown = Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft)
+Zanna.Core.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
 DIM mup AS INTEGER
-mup = Viper.Input.Mouse.IsUp(Viper.Input.Mouse.ButtonLeft)
-Viper.Core.Diagnostics.Assert(IsBool(mup), "mouse.isup")
+mup = Zanna.Input.Mouse.IsUp(Zanna.Input.Mouse.ButtonLeft)
+Zanna.Core.Diagnostics.Assert(IsBool(mup), "mouse.isup")
 DIM leftDown AS INTEGER
-leftDown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft)
+leftDown = Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft)
 DIM rightDown AS INTEGER
-rightDown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonRight)
+rightDown = Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonRight)
 DIM middleDown AS INTEGER
-middleDown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonMiddle)
+middleDown = Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonMiddle)
 DIM wasPressM AS INTEGER
-wasPressM = Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.ButtonLeft)
+wasPressM = Zanna.Input.Mouse.WasPressed(Zanna.Input.Mouse.ButtonLeft)
 DIM wasRelM AS INTEGER
-wasRelM = Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.ButtonLeft)
+wasRelM = Zanna.Input.Mouse.WasReleased(Zanna.Input.Mouse.ButtonLeft)
 DIM wasClick AS INTEGER
-wasClick = Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.ButtonLeft)
+wasClick = Zanna.Input.Mouse.WasClicked(Zanna.Input.Mouse.ButtonLeft)
 DIM wasDbl AS INTEGER
-wasDbl = Viper.Input.Mouse.WasDoubleClicked(Viper.Input.Mouse.ButtonLeft)
+wasDbl = Zanna.Input.Mouse.WasDoubleClicked(Zanna.Input.Mouse.ButtonLeft)
 DIM wheelX AS INTEGER
-wheelX = Viper.Input.Mouse.WheelX()
+wheelX = Zanna.Input.Mouse.WheelX()
 DIM wheelY AS INTEGER
-wheelY = Viper.Input.Mouse.WheelY()
-Viper.Core.Diagnostics.Assert(leftDown = leftDown, "mouse.left")
-Viper.Core.Diagnostics.Assert(rightDown = rightDown, "mouse.right")
-Viper.Core.Diagnostics.Assert(middleDown = middleDown, "mouse.middle")
-Viper.Core.Diagnostics.Assert(wasPressM = wasPressM, "mouse.waspressed")
-Viper.Core.Diagnostics.Assert(wasRelM = wasRelM, "mouse.wasreleased")
-Viper.Core.Diagnostics.Assert(wasClick = wasClick, "mouse.wasclicked")
-Viper.Core.Diagnostics.Assert(wasDbl = wasDbl, "mouse.wasdouble")
-Viper.Core.Diagnostics.Assert(wheelX = wheelX, "mouse.wheelx")
-Viper.Core.Diagnostics.Assert(wheelY = wheelY, "mouse.wheely")
-Viper.Core.Diagnostics.Assert(mx = mx, "mouse.x")
-Viper.Core.Diagnostics.Assert(my = my, "mouse.y")
-Viper.Core.Diagnostics.Assert(dx = dx, "mouse.dx")
-Viper.Core.Diagnostics.Assert(dy = dy, "mouse.dy")
+wheelY = Zanna.Input.Mouse.WheelY()
+Zanna.Core.Diagnostics.Assert(leftDown = leftDown, "mouse.left")
+Zanna.Core.Diagnostics.Assert(rightDown = rightDown, "mouse.right")
+Zanna.Core.Diagnostics.Assert(middleDown = middleDown, "mouse.middle")
+Zanna.Core.Diagnostics.Assert(wasPressM = wasPressM, "mouse.waspressed")
+Zanna.Core.Diagnostics.Assert(wasRelM = wasRelM, "mouse.wasreleased")
+Zanna.Core.Diagnostics.Assert(wasClick = wasClick, "mouse.wasclicked")
+Zanna.Core.Diagnostics.Assert(wasDbl = wasDbl, "mouse.wasdouble")
+Zanna.Core.Diagnostics.Assert(wheelX = wheelX, "mouse.wheelx")
+Zanna.Core.Diagnostics.Assert(wheelY = wheelY, "mouse.wheely")
+Zanna.Core.Diagnostics.Assert(mx = mx, "mouse.x")
+Zanna.Core.Diagnostics.Assert(my = my, "mouse.y")
+Zanna.Core.Diagnostics.Assert(dx = dx, "mouse.dx")
+Zanna.Core.Diagnostics.Assert(dy = dy, "mouse.dy")
 
 DIM padSum AS INTEGER
 padSum = 0
-padSum = padSum + Viper.Input.Pad.ButtonA
-padSum = padSum + Viper.Input.Pad.ButtonB
-padSum = padSum + Viper.Input.Pad.ButtonX
-padSum = padSum + Viper.Input.Pad.ButtonY
-padSum = padSum + Viper.Input.Pad.ButtonLeftBumper
-padSum = padSum + Viper.Input.Pad.ButtonRightBumper
-padSum = padSum + Viper.Input.Pad.ButtonBack
-padSum = padSum + Viper.Input.Pad.ButtonStart
-padSum = padSum + Viper.Input.Pad.ButtonLeftStick
-padSum = padSum + Viper.Input.Pad.ButtonRightStick
-padSum = padSum + Viper.Input.Pad.ButtonUp
-padSum = padSum + Viper.Input.Pad.ButtonDown
-padSum = padSum + Viper.Input.Pad.ButtonLeft
-padSum = padSum + Viper.Input.Pad.ButtonRight
-padSum = padSum + Viper.Input.Pad.ButtonGuide
-Viper.Core.Diagnostics.Assert(padSum > 0, "pad.sum")
+padSum = padSum + Zanna.Input.Pad.ButtonA
+padSum = padSum + Zanna.Input.Pad.ButtonB
+padSum = padSum + Zanna.Input.Pad.ButtonX
+padSum = padSum + Zanna.Input.Pad.ButtonY
+padSum = padSum + Zanna.Input.Pad.ButtonLeftBumper
+padSum = padSum + Zanna.Input.Pad.ButtonRightBumper
+padSum = padSum + Zanna.Input.Pad.ButtonBack
+padSum = padSum + Zanna.Input.Pad.ButtonStart
+padSum = padSum + Zanna.Input.Pad.ButtonLeftStick
+padSum = padSum + Zanna.Input.Pad.ButtonRightStick
+padSum = padSum + Zanna.Input.Pad.ButtonUp
+padSum = padSum + Zanna.Input.Pad.ButtonDown
+padSum = padSum + Zanna.Input.Pad.ButtonLeft
+padSum = padSum + Zanna.Input.Pad.ButtonRight
+padSum = padSum + Zanna.Input.Pad.ButtonGuide
+Zanna.Core.Diagnostics.Assert(padSum > 0, "pad.sum")
 DIM padCount AS INTEGER
-padCount = Viper.Input.Pad.Count()
-Viper.Core.Diagnostics.Assert(padCount >= 0, "pad.count")
+padCount = Zanna.Input.Pad.Count()
+Zanna.Core.Diagnostics.Assert(padCount >= 0, "pad.count")
 DIM padConnected AS INTEGER
-padConnected = Viper.Input.Pad.IsConnected(0)
-Viper.Core.Diagnostics.Assert(padConnected = 0 OR padConnected = 1, "pad.connected")
+padConnected = Zanna.Input.Pad.IsConnected(0)
+Zanna.Core.Diagnostics.Assert(padConnected = 0 OR padConnected = 1, "pad.connected")
 DIM padName AS STRING
-padName = Viper.Input.Pad.Name(0)
-Viper.Core.Diagnostics.Assert(padName.Length >= 0, "pad.name")
+padName = Zanna.Input.Pad.Name(0)
+Zanna.Core.Diagnostics.Assert(padName.Length >= 0, "pad.name")
 DIM padDown AS INTEGER
-padDown = Viper.Input.Pad.IsDown(0, Viper.Input.Pad.ButtonA)
+padDown = Zanna.Input.Pad.IsDown(0, Zanna.Input.Pad.ButtonA)
 DIM padUp AS INTEGER
-padUp = Viper.Input.Pad.IsUp(0, Viper.Input.Pad.ButtonA)
+padUp = Zanna.Input.Pad.IsUp(0, Zanna.Input.Pad.ButtonA)
 DIM padPressed AS INTEGER
-padPressed = Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonA)
+padPressed = Zanna.Input.Pad.WasPressed(0, Zanna.Input.Pad.ButtonA)
 DIM padReleased AS INTEGER
-padReleased = Viper.Input.Pad.WasReleased(0, Viper.Input.Pad.ButtonA)
-Viper.Core.Diagnostics.Assert(padDown = padDown, "pad.isdown")
-Viper.Core.Diagnostics.Assert(padUp = padUp, "pad.isup")
-Viper.Core.Diagnostics.Assert(padPressed = padPressed, "pad.waspressed")
-Viper.Core.Diagnostics.Assert(padReleased = padReleased, "pad.wasreleased")
+padReleased = Zanna.Input.Pad.WasReleased(0, Zanna.Input.Pad.ButtonA)
+Zanna.Core.Diagnostics.Assert(padDown = padDown, "pad.isdown")
+Zanna.Core.Diagnostics.Assert(padUp = padUp, "pad.isup")
+Zanna.Core.Diagnostics.Assert(padPressed = padPressed, "pad.waspressed")
+Zanna.Core.Diagnostics.Assert(padReleased = padReleased, "pad.wasreleased")
 DIM lx AS DOUBLE
-lx = Viper.Input.Pad.LeftX(0)
+lx = Zanna.Input.Pad.LeftX(0)
 DIM ly AS DOUBLE
-ly = Viper.Input.Pad.LeftY(0)
+ly = Zanna.Input.Pad.LeftY(0)
 DIM rx AS DOUBLE
-rx = Viper.Input.Pad.RightX(0)
+rx = Zanna.Input.Pad.RightX(0)
 DIM ry AS DOUBLE
-ry = Viper.Input.Pad.RightY(0)
+ry = Zanna.Input.Pad.RightY(0)
 DIM lt AS DOUBLE
-lt = Viper.Input.Pad.LeftTrigger(0)
+lt = Zanna.Input.Pad.LeftTrigger(0)
 DIM rt AS DOUBLE
-rt = Viper.Input.Pad.RightTrigger(0)
-Viper.Core.Diagnostics.Assert(lx >= -1 AND lx <= 1, "pad.leftx")
-Viper.Core.Diagnostics.Assert(ly >= -1 AND ly <= 1, "pad.lefty")
-Viper.Core.Diagnostics.Assert(rx >= -1 AND rx <= 1, "pad.rightx")
-Viper.Core.Diagnostics.Assert(ry >= -1 AND ry <= 1, "pad.righty")
-Viper.Core.Diagnostics.Assert(lt >= 0 AND lt <= 1, "pad.lefttrigger")
-Viper.Core.Diagnostics.Assert(rt >= 0 AND rt <= 1, "pad.righttrigger")
-Viper.Input.Pad.SetDeadzone(0.2)
+rt = Zanna.Input.Pad.RightTrigger(0)
+Zanna.Core.Diagnostics.Assert(lx >= -1 AND lx <= 1, "pad.leftx")
+Zanna.Core.Diagnostics.Assert(ly >= -1 AND ly <= 1, "pad.lefty")
+Zanna.Core.Diagnostics.Assert(rx >= -1 AND rx <= 1, "pad.rightx")
+Zanna.Core.Diagnostics.Assert(ry >= -1 AND ry <= 1, "pad.righty")
+Zanna.Core.Diagnostics.Assert(lt >= 0 AND lt <= 1, "pad.lefttrigger")
+Zanna.Core.Diagnostics.Assert(rt >= 0 AND rt <= 1, "pad.righttrigger")
+Zanna.Input.Pad.SetDeadzone(0.2)
 DIM dz AS DOUBLE
-dz = Viper.Input.Pad.GetDeadzone()
+dz = Zanna.Input.Pad.GetDeadzone()
 AssertApprox(dz, 0.2, 0.0001, "pad.deadzone")
-Viper.Input.Pad.Vibrate(0, 0.1, 0.1)
-Viper.Input.Pad.StopVibration(0)
+Zanna.Input.Pad.Vibrate(0, 0.1, 0.1)
+Zanna.Input.Pad.StopVibration(0)
 
 PRINT "RESULT: ok"
 END

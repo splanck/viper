@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <functional>
 #include <set>
 
-namespace viper::installer {
+namespace zanna::installer {
 
 /// @brief Collect full-UI install or maintenance choices.
 /// @return false when the user cancels before mutation.
@@ -55,4 +55,4 @@ void showInstallerFinish(HINSTANCE instance,
                          const std::set<std::string> &selectedComponents,
                          HostOptions &options);
 
-} // namespace viper::installer
+} // namespace zanna::installer

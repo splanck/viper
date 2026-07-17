@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_graphics2d.h
-// Purpose: Runtime bridge declarations for the Viper.Graphics 2D support layer —
+// Purpose: Runtime bridge declarations for the Zanna.Graphics 2D support layer —
 // render targets, textures, batched/sprite renderers, materials, shaders and
 // post-process effects, viewports, tile maps, paths, shape/text renderers,
 // transforms, sampler/blend state, animation, render graphs, collision masks,
@@ -746,7 +746,7 @@ void *rt_palette2d_new(void);
 void rt_palette2d_set_color(void *palette, int64_t index, int64_t rgba);
 /// @brief Get the color at a palette index.
 int64_t rt_palette2d_get_color(void *palette, int64_t index);
-/// @brief Get the color at a palette index as a Viper.Graphics.Color-compatible value.
+/// @brief Get the color at a palette index as a Zanna.Graphics.Color-compatible value.
 int64_t rt_palette2d_get_color_value(void *palette, int64_t index);
 /// @brief Number of entries in the palette.
 int64_t rt_palette2d_get_count(void *palette);
@@ -763,11 +763,11 @@ void rt_gradient2d_set_colors(void *gradient, int64_t start_rgba, int64_t end_rg
 void rt_gradient2d_set_steps(void *gradient, int64_t steps);
 /// @brief Sample the gradient at @p t_pct (0..100), returning an RGBA color.
 int64_t rt_gradient2d_sample(void *gradient, int64_t t_pct);
-/// @brief Sample the gradient as a Viper.Graphics.Color-compatible value.
+/// @brief Sample the gradient as a Zanna.Graphics.Color-compatible value.
 int64_t rt_gradient2d_sample_color(void *gradient, int64_t t_pct);
 /// @brief Sample the gradient at normalized @p t (0.0..1.0), returning an RGBA color.
 int64_t rt_gradient2d_sample_normalized(void *gradient, double t);
-/// @brief Sample the gradient at normalized @p t as a Viper.Graphics.Color-compatible value.
+/// @brief Sample the gradient at normalized @p t as a Zanna.Graphics.Color-compatible value.
 int64_t rt_gradient2d_sample_color_normalized(void *gradient, double t);
 /// @brief Fill a Pixels image with a left-to-right gradient.
 void rt_gradient2d_fill_horizontal(void *gradient, void *pixels);

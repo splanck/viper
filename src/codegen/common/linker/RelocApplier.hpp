@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Apply all relocations across merged sections.
 /// @param objects      All object files.
@@ -47,4 +47,4 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                       LinkArch arch,
                       std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

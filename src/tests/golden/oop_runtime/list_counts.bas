@@ -1,5 +1,5 @@
-DIM l AS Viper.Collections.List
-l = NEW Viper.Collections.List()
+DIM l AS Zanna.Collections.List
+l = NEW Zanna.Collections.List()
 
 ' Add an object; we use the list itself as a placeholder object reference.
 l.Push(l)

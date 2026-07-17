@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <optional>
 #include <string>
 
-namespace viper::tests {
+namespace zanna::tests {
 
 /// @brief Helper that constructs small IL fragments and executes them via the VM.
 /// @invariant Maintains a current insertion block within the synthetic function.
@@ -127,14 +127,14 @@ class TestIRBuilder {
     VmFixture fixture_{};
 };
 
-} // namespace viper::tests
+} // namespace zanna::tests
 
 /// @brief Macro wrapper that instantiates a TestIRBuilder and executes @p BODY.
 /// Includes dispatchChild() for Windows process-isolation compatibility.
 #define TEST_WITH_IL(NAME, BODY)                                                                   \
     int main(int argc, char *argv[]) {                                                             \
-        if (viper::tests::dispatchChild(argc, argv))                                               \
+        if (zanna::tests::dispatchChild(argc, argv))                                               \
             return 0;                                                                              \
-        viper::tests::TestIRBuilder NAME;                                                          \
+        zanna::tests::TestIRBuilder NAME;                                                          \
         BODY return 0;                                                                             \
     }

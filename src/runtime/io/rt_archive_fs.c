@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -427,7 +427,7 @@ char *archive_make_temp_path(const char *path, unsigned attempt) {
     unsigned long pid = (unsigned long)getpid();
 #endif
     int written = snprintf(
-        tmp + parent_len, cap - parent_len, ".viper-archive-tmp.%lu.%s.%u", pid, nonce, attempt);
+        tmp + parent_len, cap - parent_len, ".zanna-archive-tmp.%lu.%s.%u", pid, nonce, attempt);
     if (written < 0 || (size_t)written >= cap - parent_len) {
         free(tmp);
         return NULL;
@@ -830,7 +830,7 @@ void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *d
         }
         snprintf(tmp_name,
                  sizeof(tmp_name),
-                 ".viper-archive-extract-tmp.%lu.%016llx.%u",
+                 ".zanna-archive-extract-tmp.%lu.%016llx.%u",
                  (unsigned long)getpid(),
                  (unsigned long long)random_value,
                  attempt);

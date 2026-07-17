@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Purpose: Tests for Viper.Threads.Future/Promise — async value delivery,
+// Purpose: Tests for Zanna.Threads.Future/Promise — async value delivery,
 //   blocking get, timeout, cancellation, and multi-producer scenarios.
 //
 //===----------------------------------------------------------------------===//

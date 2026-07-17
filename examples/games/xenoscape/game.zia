@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -64,7 +64,7 @@
 // everything is visible in one place, yet tests can still
 // spin up a fresh `Game` whenever they want.
 //
-// INPUT: VIPER.INPUT.ACTION
+// INPUT: ZANNA.INPUT.ACTION
 // -------------------------
 // `Game.init` registers every gameplay action by name
 // (`ACT_LEFT`, `ACT_JUMP`, `ACT_SHOOT`, ...) and binds it
@@ -98,9 +98,9 @@
 // ---------------
 //     main.zia  ──►  constructs and runs the Game.
 //     All subsystems are children of this class.
-//     Viper.Input.Action      ──►  named input bindings.
-//     Viper.Graphics          ──►  canvas / window / pixels.
-//     Viper.Game.DebugOverlay ──►  FPS + diagnostics.
+//     Zanna.Input.Action      ──►  named input bindings.
+//     Zanna.Graphics          ──►  canvas / window / pixels.
+//     Zanna.Game.DebugOverlay ──►  FPS + diagnostics.
 //
 // HOW TO READ THIS FILE
 // ---------------------
@@ -119,15 +119,15 @@
 
 module game;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Input.Keyboard as Keyboard;
-bind Viper.Input.Pad as Pad;
-bind Viper.Text.Fmt;
-bind Viper.Game;
-bind Viper.Game.DebugOverlay as Debug;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Input.Keyboard as Keyboard;
+bind Zanna.Input.Pad as Pad;
+bind Zanna.Text.Fmt;
+bind Zanna.Game;
+bind Zanna.Game.DebugOverlay as Debug;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -605,7 +605,7 @@ class Game {
 
     /// @brief Toggle the game window between fullscreen and windowed modes.
     ///
-    /// Uses the Viper `Canvas.Fullscreen()` and `Canvas.Windowed()` APIs so the
+    /// Uses the Zanna `Canvas.Fullscreen()` and `Canvas.Windowed()` APIs so the
     /// same path is available from F11 and the Options menu.
     hide func toggleFullscreen() {
         if fullscreenOn {
@@ -689,7 +689,7 @@ class Game {
     }
 
     /// @brief Push current game stats (FPS, position, state)
-    ///        into `Viper.Game.DebugOverlay`.  Toggleable in
+    ///        into `Zanna.Game.DebugOverlay`.  Toggleable in
     ///        options.
     hide func updateDebugOverlay() {
         if debugEnabled == false { return; }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
 
 /// @brief Get opcode mnemonic name.
 static const char *opcodeName(il::core::Opcode op) {
@@ -221,7 +221,7 @@ int main() {
 #else
 
 int main() {
-    // When VIPER_VM_OPCOUNTS is disabled, just return success
+    // When ZANNA_VM_OPCOUNTS is disabled, just return success
     return 0;
 }
 

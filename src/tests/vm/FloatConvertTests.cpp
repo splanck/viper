@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -98,14 +98,14 @@ void buildFptosiFunction(Module &module, double val) {
 double runSitofp(int64_t val) {
     Module module;
     buildSitofpFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
 int64_t runFptosi(double val) {
     Module module;
     buildFptosiFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

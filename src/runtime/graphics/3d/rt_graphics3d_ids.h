@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_graphics3d_ids.h
-// Purpose: Stable runtime class identifiers for Viper.Graphics3D and Viper.Game3D
+// Purpose: Stable runtime class identifiers for Zanna.Graphics3D and Zanna.Game3D
 //   objects, plus small inline helpers that validate/cast opaque object handles
 //   against those ids before the 3D runtime modules dereference them.
 //

@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/system/rt_process.h
-// Purpose: Streaming child-process handles for Viper.System.Process.
+// Purpose: Streaming child-process handles for Zanna.System.Process.
 //
 //===----------------------------------------------------------------------===//
 #pragma once

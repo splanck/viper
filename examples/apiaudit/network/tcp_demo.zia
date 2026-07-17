@@ -1,8 +1,8 @@
 module TcpDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Network.Tcp ===");
+    Say("=== API Audit: Zanna.Network.Tcp ===");
     Say("NOTE: TCP requires active connections. API surface test only.");
     Say("Constructor: Connect(host,port), ConnectFor(host,port,timeoutMs)");
     Say("Properties: Host() -> str, Port() -> i64, LocalPort() -> i64, IsOpen() -> bool, Available() -> i64");

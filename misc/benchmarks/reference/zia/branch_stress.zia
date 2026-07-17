@@ -16,5 +16,5 @@ func start() {
             count = count + 5;
         }
     }
-    Viper.System.Environment.Exit(count);
+    Zanna.System.Environment.Exit(count);
 }

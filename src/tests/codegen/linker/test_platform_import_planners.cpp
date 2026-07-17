@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 namespace {
 
@@ -88,9 +88,9 @@ TEST(PlatformImportPlanners, LinuxPlannerRejectsUnknownImportsWithoutPartialPlan
     LinuxImportPlan plan;
     plan.neededLibs = {"stale.so"};
     std::ostringstream err;
-    EXPECT_FALSE(planLinuxImports({"malloc", "viper_missing_linux_symbol"}, plan, err));
+    EXPECT_FALSE(planLinuxImports({"malloc", "zanna_missing_linux_symbol"}, plan, err));
     EXPECT_TRUE(plan.neededLibs.empty());
-    EXPECT_NE(err.str().find("unrecognized Linux dynamic import 'viper_missing_linux_symbol'"),
+    EXPECT_NE(err.str().find("unrecognized Linux dynamic import 'zanna_missing_linux_symbol'"),
               std::string::npos);
 }
 
@@ -119,7 +119,7 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
 /// @brief Verify AppKit accessibility constants and posting functions resolve to AppKit.
 /// @details The GUI semantic bridge references exported NSAccessibility string constants in
 ///          addition to the posting functions. The native linker must assign all of them the
-///          AppKit dylib ordinal instead of rejecting the final ViperIDE link as unmapped.
+///          AppKit dylib ordinal instead of rejecting the final ZannaIDE link as unmapped.
 TEST(PlatformImportPlanners, MacPlannerMapsAccessibilitySymbolsToAppKit) {
     MacImportPlan plan;
     std::ostringstream err;
@@ -482,6 +482,6 @@ TEST(PlatformImportPlanners, WindowsComAudioSymbolsResolveToOle32) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -12,7 +12,7 @@
 // ============================================================================
 module line_score_writer;
 
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 bind "../model/game_state";
 
 // Build the line score as a List[String]. Includes the header row + one

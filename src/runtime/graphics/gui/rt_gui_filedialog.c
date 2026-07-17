@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -123,7 +123,7 @@ rt_string rt_filedialog_path_list_get(rt_string escaped, int64_t index) {
 ///          `Some(path)`. The Option retains the runtime string and this helper releases its local
 ///          reference before returning.
 /// @param path Owned runtime string returned by a synchronous compatibility dialog.
-/// @return Managed `Viper.Option[str]`; `None` for cancellation, failure, or an empty path.
+/// @return Managed `Zanna.Option[str]`; `None` for cancellation, failure, or an empty path.
 static void *rt_filedialog_path_option(rt_string path) {
     if (!path || rt_str_len(path) <= 0) {
         rt_string_unref(path);
@@ -195,7 +195,7 @@ void *rt_filedialog_open_multiple_seq(rt_string title, rt_string default_path, r
     return paths;
 }
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 //=============================================================================
 // Phase 5: FileDialog
@@ -1183,7 +1183,7 @@ void rt_filedialog_destroy(void *dialog) {
     rt_filedialog_dispose(data);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: returns empty string — file open dialog requires graphics.
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
@@ -1374,4 +1374,4 @@ void rt_filedialog_destroy(void *dialog) {
     (void)dialog;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

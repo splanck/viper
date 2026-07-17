@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Test whether @p instr is a `MOV Xd, Xs` whose destination equals its source.
 /// @details Identity moves are unconditional no-ops and are deleted by the peephole.
@@ -152,4 +152,4 @@ bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeSt
     return true;
 }
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

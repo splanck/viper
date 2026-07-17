@@ -9,7 +9,7 @@
 #
 # Usage: ./scripts/update_generated_docs.sh [BUILD_DIR]
 #   BUILD_DIR defaults to ./build (must already be configured; run
-#   ./scripts/build_viper_unix.sh first if it is not).
+#   ./scripts/build_zanna_unix.sh first if it is not).
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ fi
 
 if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
     echo "ERROR: $BUILD_DIR is not a configured build directory." >&2
-    echo "Run ./scripts/build_viper_unix.sh (or the platform build script) first." >&2
+    echo "Run ./scripts/build_zanna_unix.sh (or the platform build script) first." >&2
     exit 2
 fi
 

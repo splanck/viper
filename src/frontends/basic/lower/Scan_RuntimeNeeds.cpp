@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -424,7 +424,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner> {
     ///
     /// @param stmt INPUT statement referencing destination variables.
     void before(const InputStmt &stmt) {
-        // Note: Viper.Terminal.ReadLine is declared via trackCalleeName when called.
+        // Note: Zanna.Terminal.ReadLine is declared via trackCalleeName when called.
         // No need to request RuntimeFeature::InputLine since that was for the legacy
         // rt_input_line helper which is no longer used by BASIC frontend.
         if (stmt.vars.size() > 1) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,7 +42,7 @@ il::core::Module buildRuntimeTrapModule(bool attachLoc) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Format: "Trap @function:block#ip line N: Kind (code=C)"
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     // structured Trap prefix). Verify the trap fires and the message is present.
     {
         auto m = buildRuntimeTrapModule(true);
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         const bool hasMsg =
             result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
 
     {
         auto m = buildRuntimeTrapModule(false);
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         const bool hasMsg =
             result.stderrText.find("INPUT: expected numeric value") != std::string::npos;

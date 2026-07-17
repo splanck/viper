@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -103,7 +103,7 @@ static void test_bind_key() {
     assert(rt_action_define(jump) == 1);
 
     rt_string jump2 = make_str("jump");
-    assert(rt_action_bind_key(jump2, VIPER_KEY_SPACE) == 1);
+    assert(rt_action_bind_key(jump2, ZANNA_KEY_SPACE) == 1);
 
     rt_string jump3 = make_str("jump");
     assert(rt_action_binding_count(jump3) == 1);
@@ -113,7 +113,7 @@ static void test_bind_key() {
     assert(rt_action_define_axis(move_x) == 1);
 
     rt_string move_x2 = make_str("move_x");
-    assert(rt_action_bind_key(move_x2, VIPER_KEY_LEFT) == 0); // Wrong - should use bind_key_axis
+    assert(rt_action_bind_key(move_x2, ZANNA_KEY_LEFT) == 0); // Wrong - should use bind_key_axis
 
     rt_action_clear();
 }
@@ -127,10 +127,10 @@ static void test_bind_key_axis() {
     assert(rt_action_define_axis(move_x) == 1);
 
     rt_string move_x2 = make_str("move_x");
-    assert(rt_action_bind_key_axis(move_x2, VIPER_KEY_LEFT, -1.0) == 1);
+    assert(rt_action_bind_key_axis(move_x2, ZANNA_KEY_LEFT, -1.0) == 1);
 
     rt_string move_x3 = make_str("move_x");
-    assert(rt_action_bind_key_axis(move_x3, VIPER_KEY_RIGHT, 1.0) == 1);
+    assert(rt_action_bind_key_axis(move_x3, ZANNA_KEY_RIGHT, 1.0) == 1);
 
     rt_string move_x4 = make_str("move_x");
     assert(rt_action_binding_count(move_x4) == 2);
@@ -147,20 +147,20 @@ static void test_unbind_key() {
     assert(rt_action_define(jump) == 1);
 
     rt_string jump2 = make_str("jump");
-    assert(rt_action_bind_key(jump2, VIPER_KEY_SPACE) == 1);
+    assert(rt_action_bind_key(jump2, ZANNA_KEY_SPACE) == 1);
 
     rt_string jump3 = make_str("jump");
     assert(rt_action_binding_count(jump3) == 1);
 
     rt_string jump4 = make_str("jump");
-    assert(rt_action_unbind_key(jump4, VIPER_KEY_SPACE) == 1);
+    assert(rt_action_unbind_key(jump4, ZANNA_KEY_SPACE) == 1);
 
     rt_string jump5 = make_str("jump");
     assert(rt_action_binding_count(jump5) == 0);
 
     // Unbinding non-existent binding should fail
     rt_string jump6 = make_str("jump");
-    assert(rt_action_unbind_key(jump6, VIPER_KEY_SPACE) == 0);
+    assert(rt_action_unbind_key(jump6, ZANNA_KEY_SPACE) == 0);
 
     rt_action_clear();
 }
@@ -174,7 +174,7 @@ static void test_bind_mouse() {
     assert(rt_action_define(fire) == 1);
 
     rt_string fire2 = make_str("fire");
-    assert(rt_action_bind_mouse(fire2, VIPER_MOUSE_BUTTON_LEFT) == 1);
+    assert(rt_action_bind_mouse(fire2, ZANNA_MOUSE_BUTTON_LEFT) == 1);
 
     rt_string fire3 = make_str("fire");
     assert(rt_action_binding_count(fire3) == 1);
@@ -192,7 +192,7 @@ static void test_bind_pad_button() {
 
     // Bind to any controller (-1)
     rt_string jump2 = make_str("jump");
-    assert(rt_action_bind_pad_button(jump2, -1, VIPER_PAD_A) == 1);
+    assert(rt_action_bind_pad_button(jump2, -1, ZANNA_PAD_A) == 1);
 
     rt_string jump3 = make_str("jump");
     assert(rt_action_binding_count(jump3) == 1);
@@ -209,7 +209,7 @@ static void test_bind_pad_axis() {
     assert(rt_action_define_axis(move_x) == 1);
 
     rt_string move_x2 = make_str("move_x");
-    assert(rt_action_bind_pad_axis(move_x2, -1, VIPER_AXIS_LEFT_X, 1.0) == 1);
+    assert(rt_action_bind_pad_axis(move_x2, -1, ZANNA_AXIS_LEFT_X, 1.0) == 1);
 
     rt_string move_x3 = make_str("move_x");
     assert(rt_action_binding_count(move_x3) == 1);
@@ -226,13 +226,13 @@ static void test_multiple_bindings() {
     assert(rt_action_define(jump) == 1);
 
     rt_string jump2 = make_str("jump");
-    rt_action_bind_key(jump2, VIPER_KEY_SPACE);
+    rt_action_bind_key(jump2, ZANNA_KEY_SPACE);
 
     rt_string jump3 = make_str("jump");
-    rt_action_bind_key(jump3, VIPER_KEY_W);
+    rt_action_bind_key(jump3, ZANNA_KEY_W);
 
     rt_string jump4 = make_str("jump");
-    rt_action_bind_pad_button(jump4, -1, VIPER_PAD_A);
+    rt_action_bind_pad_button(jump4, -1, ZANNA_PAD_A);
 
     rt_string jump5 = make_str("jump");
     assert(rt_action_binding_count(jump5) == 3);
@@ -249,10 +249,10 @@ static void test_bindings_str() {
     assert(rt_action_define(jump) == 1);
 
     rt_string jump2 = make_str("jump");
-    rt_action_bind_key(jump2, VIPER_KEY_SPACE);
+    rt_action_bind_key(jump2, ZANNA_KEY_SPACE);
 
     rt_string jump3 = make_str("jump");
-    rt_action_bind_pad_button(jump3, -1, VIPER_PAD_A);
+    rt_action_bind_pad_button(jump3, -1, ZANNA_PAD_A);
 
     rt_string jump4 = make_str("jump");
     rt_string bindings = rt_action_bindings_str(jump4);
@@ -268,7 +268,7 @@ static void test_bindings_str_not_truncated() {
     rt_string action = make_str("long_prompt");
     assert(rt_action_define(action) == 1);
     for (int i = 0; i < 220; i++)
-        assert(rt_action_bind_key(make_str("long_prompt"), VIPER_KEY_SPACE) == 1);
+        assert(rt_action_bind_key(make_str("long_prompt"), ZANNA_KEY_SPACE) == 1);
 
     rt_string bindings = rt_action_bindings_str(make_str("long_prompt"));
     assert(rt_str_len(bindings) > 1024);
@@ -286,13 +286,13 @@ static void test_key_bound_to() {
     assert(rt_action_define(jump) == 1);
 
     rt_string jump2 = make_str("jump");
-    rt_action_bind_key(jump2, VIPER_KEY_SPACE);
+    rt_action_bind_key(jump2, ZANNA_KEY_SPACE);
 
-    rt_string bound = rt_action_key_bound_to(VIPER_KEY_SPACE);
+    rt_string bound = rt_action_key_bound_to(ZANNA_KEY_SPACE);
     assert(rt_str_len(bound) > 0);
 
     // Unbound key should return empty
-    rt_string unbound = rt_action_key_bound_to(VIPER_KEY_A);
+    rt_string unbound = rt_action_key_bound_to(ZANNA_KEY_A);
     assert(rt_str_len(unbound) == 0);
 
     rt_action_clear();
@@ -304,9 +304,9 @@ static void test_action_edge_state_requires_update() {
 
     rt_string confirm = make_str("confirm");
     assert(rt_action_define(confirm) == 1);
-    assert(rt_action_bind_key(make_str("confirm"), VIPER_KEY_ENTER) == 1);
+    assert(rt_action_bind_key(make_str("confirm"), ZANNA_KEY_ENTER) == 1);
 
-    int64_t press_enter[] = {VIPER_KEY_ENTER, -1};
+    int64_t press_enter[] = {ZANNA_KEY_ENTER, -1};
     sim_key_frame(press_enter, NULL);
     rt_action_update();
     assert(rt_action_pressed(make_str("confirm")) == 1);
@@ -318,7 +318,7 @@ static void test_action_edge_state_requires_update() {
     assert(rt_action_pressed(make_str("confirm")) == 0);
     assert(rt_action_held(make_str("confirm")) == 1);
 
-    int64_t release_enter[] = {VIPER_KEY_ENTER, -1};
+    int64_t release_enter[] = {ZANNA_KEY_ENTER, -1};
     sim_key_frame(NULL, release_enter);
     rt_action_update();
     assert(rt_action_pressed(make_str("confirm")) == 0);
@@ -336,18 +336,18 @@ static void test_chord_release_edge_state() {
     rt_string save = make_str("save");
     assert(rt_action_define(save) == 1);
 
-    int64_t chord_keys[] = {VIPER_KEY_LCTRL, VIPER_KEY_S};
+    int64_t chord_keys[] = {ZANNA_KEY_LCTRL, ZANNA_KEY_S};
     assert(rt_action_bind_chord(make_str("save"), make_key_seq(chord_keys, 2)) == 1);
     assert(rt_action_chord_count(make_str("save")) == 1);
 
-    int64_t press_ctrl[] = {VIPER_KEY_LCTRL, -1};
+    int64_t press_ctrl[] = {ZANNA_KEY_LCTRL, -1};
     sim_key_frame(press_ctrl, NULL);
     rt_action_update();
     assert(rt_action_pressed(make_str("save")) == 0);
     assert(rt_action_held(make_str("save")) == 0);
     assert(rt_action_released(make_str("save")) == 0);
 
-    int64_t press_s[] = {VIPER_KEY_S, -1};
+    int64_t press_s[] = {ZANNA_KEY_S, -1};
     sim_key_frame(press_s, NULL);
     rt_action_update();
     assert(rt_action_pressed(make_str("save")) == 1);
@@ -360,14 +360,14 @@ static void test_chord_release_edge_state() {
     assert(rt_action_held(make_str("save")) == 1);
     assert(rt_action_released(make_str("save")) == 0);
 
-    int64_t release_s[] = {VIPER_KEY_S, -1};
+    int64_t release_s[] = {ZANNA_KEY_S, -1};
     sim_key_frame(NULL, release_s);
     rt_action_update();
     assert(rt_action_pressed(make_str("save")) == 0);
     assert(rt_action_held(make_str("save")) == 0);
     assert(rt_action_released(make_str("save")) == 1);
 
-    int64_t release_ctrl[] = {VIPER_KEY_LCTRL, -1};
+    int64_t release_ctrl[] = {ZANNA_KEY_LCTRL, -1};
     sim_key_frame(NULL, release_ctrl);
     rt_action_update();
     assert(rt_action_released(make_str("save")) == 0);
@@ -377,12 +377,12 @@ static void test_chord_release_edge_state() {
 
 // Test: Axis constant getters
 static void test_axis_constants() {
-    assert(rt_action_axis_left_x() == VIPER_AXIS_LEFT_X);
-    assert(rt_action_axis_left_y() == VIPER_AXIS_LEFT_Y);
-    assert(rt_action_axis_right_x() == VIPER_AXIS_RIGHT_X);
-    assert(rt_action_axis_right_y() == VIPER_AXIS_RIGHT_Y);
-    assert(rt_action_axis_left_trigger() == VIPER_AXIS_LEFT_TRIGGER);
-    assert(rt_action_axis_right_trigger() == VIPER_AXIS_RIGHT_TRIGGER);
+    assert(rt_action_axis_left_x() == ZANNA_AXIS_LEFT_X);
+    assert(rt_action_axis_left_y() == ZANNA_AXIS_LEFT_Y);
+    assert(rt_action_axis_right_x() == ZANNA_AXIS_RIGHT_X);
+    assert(rt_action_axis_right_y() == ZANNA_AXIS_RIGHT_Y);
+    assert(rt_action_axis_left_trigger() == ZANNA_AXIS_LEFT_TRIGGER);
+    assert(rt_action_axis_right_trigger() == ZANNA_AXIS_RIGHT_TRIGGER);
 }
 
 // Test: Action system lifecycle

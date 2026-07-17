@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 ///          support for numeric suffixes and escaped string payloads, producing
 ///          il::core::Value instances identical to the historical parser.
 
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
@@ -33,7 +33,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 namespace {
 
 /// @brief Compare ASCII strings without considering letter case.
@@ -63,7 +63,7 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal) {
 ///          diagnostic when the operand list unexpectedly ends.
 /// @param cur Cursor positioned at the beginning of the token.
 /// @return View representing the consumed token or `std::nullopt` when no bytes remain.
-std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur) {
+std::optional<std::string_view> consumeToken(zanna::parse::Cursor &cur) {
     cur.skipWs();
     const std::size_t begin = cur.offset();
     const std::string_view token =
@@ -83,7 +83,7 @@ std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur) {
 /// @param cur Cursor positioned at the opening quote.
 /// @param ctx Parser context used for diagnostic emission.
 /// @return Parse result whose value contains the decoded string on success.
-ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx) {
+ParseResult parseStringLiteral(zanna::parse::Cursor &cur, Context &ctx) {
     const std::size_t begin = cur.offset();
     cur.consume('"');
     std::string literal;
@@ -179,7 +179,7 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx) {
 /// @param cur Cursor describing the remaining operand text.
 /// @param ctx Parser context capturing diagnostics and results.
 /// @return Parse result containing the decoded literal or an error.
-ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx) {
+ParseResult parseConstOperand(zanna::parse::Cursor &cur, Context &ctx) {
     cur.skipWs();
     if (cur.atEnd())
         return syntaxError(ctx, "missing operand");
@@ -223,4 +223,4 @@ ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx) {
     return parseNumericLiteral(token, ctx);
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

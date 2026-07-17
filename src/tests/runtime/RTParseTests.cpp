@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTParseTests.cpp
-// Purpose: Tests for Viper.Core.Parse safe parsing functions.
+// Purpose: Tests for Zanna.Core.Parse safe parsing functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -551,7 +551,7 @@ static void test_embedded_nul_inputs() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Core.Parse Tests ===\n\n");
+    printf("=== Zanna.Core.Parse Tests ===\n\n");
 
     // TryInt
     test_try_int_valid();

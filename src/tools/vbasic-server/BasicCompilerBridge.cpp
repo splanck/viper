@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::server {
+namespace zanna::server {
 
 using namespace il::frontends::basic;
 
@@ -568,4 +568,4 @@ std::string BasicCompilerBridge::dumpTokens(const std::string &source, const std
     return out;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

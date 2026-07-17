@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //          long per-tool if/else ladder.
 // Key invariants:
 //   - Always non-empty; get(id) never returns null (interface types cannot be
-//     null-compared in Zia — see misc/plans/demos/viper_bugs.md ISSUE-003), so
+//     null-compared in Zia — see misc/plans/demos/zanna_bugs.md ISSUE-003), so
 //     an unknown id falls back to the first registered tool.
 // Ownership/Lifetime:
 //   - Owns one instance of each tool for the lifetime of the app.
@@ -20,10 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// registry.zia - Tool registry for Viper Paint
+// registry.zia - Tool registry for Zanna Paint
 module registry;
 
-bind Viper.Collections;
+bind Zanna.Collections;
 
 bind "./tool";
 bind "./pencil";

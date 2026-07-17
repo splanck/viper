@@ -12,7 +12,7 @@
 // effects completely change how a scene *feels* without changing a
 // single pixel of the underlying artwork.
 //
-// This file is a thin wrapper over `Viper.Game.Lighting2D`, a
+// This file is a thin wrapper over `Zanna.Game.Lighting2D`, a
 // runtime class that implements the overlay + lights for us.  We
 // add three pieces of game-specific polish on top:
 //
@@ -81,8 +81,8 @@
 
 module lighting;
 
-bind Viper.Graphics;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Game;
 bind "./config";
 bind "./palette";
 
@@ -132,7 +132,7 @@ final DARK_UNDERWATER = 140;  // Underground lake — murky.
 // LIGHTING SYSTEM
 //=============================================================================
 
-/// @brief The game's wrapper around `Viper.Game.Lighting2D`.
+/// @brief The game's wrapper around `Zanna.Game.Lighting2D`.
 ///
 /// One instance lives on `Game` and is handed to subsystems that
 /// add lights (level tiles, enemies spawning explosions, pickups).

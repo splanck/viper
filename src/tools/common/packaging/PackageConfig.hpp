@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/PackageConfig.hpp
 // Purpose: Data structures for package manifest configuration, parsed from
-//          package-* directives in viper.project files.
+//          package-* directives in zanna.project files.
 //
 // Key invariants:
 //   - All paths in AssetEntry are relative to the project root directory.
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief A single asset entry: source file/dir -> target relative dir.
 struct AssetEntry {
@@ -41,7 +41,7 @@ struct FileAssoc {
     std::string openCommandArguments; ///< Optional Windows Open verb args before "%1".
 };
 
-/// @brief All package-related configuration from viper.project.
+/// @brief All package-related configuration from zanna.project.
 struct PackageConfig {
     std::string displayName;     ///< package-name (defaults to project name)
     std::string author;          ///< package-author
@@ -128,4 +128,4 @@ struct PackageConfig {
     }
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

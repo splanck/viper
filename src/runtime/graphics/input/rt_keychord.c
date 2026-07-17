@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/input/rt_keychord.c
-// Purpose: Key chord and sequential combo detection for the Viper input system.
+// Purpose: Key chord and sequential combo detection for the Zanna input system.
 //   Chords require all specified keys held simultaneously; they trigger on the
 //   frame the last key is pressed (edge detection). Combos require keys pressed
 //   in order within a configurable frame window; they trigger when the final key

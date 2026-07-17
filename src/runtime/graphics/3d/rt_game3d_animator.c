@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_animator.c
-// Purpose: Animator3D wrapper for the Viper.Game3D layer — drives an animation
+// Purpose: Animator3D wrapper for the Zanna.Game3D layer — drives an animation
 //   controller and surfaces per-update animation events. Split out of rt_game3d.c;
 //   shares private types/helpers via rt_game3d_internal.h.
 // Key invariants:
@@ -469,7 +469,7 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
                 rt_game3d_animator *game_animator = game3d_animator_checked(
                     animator, "Game3D.Entity3D.attachAnimator: invalid animator");
                 rt_scene_node3d_bind_animator(node, game3d_animator_controller_ref(game_animator));
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
                 rt_scene_node3d_set_animator_scene_update(node, 0);
 #endif
                 rt_scene_node3d_bind_node_animator(

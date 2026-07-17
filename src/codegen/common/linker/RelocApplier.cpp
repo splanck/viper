@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,12 +29,12 @@
 #include <limits>
 #include <optional>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
-using viper::codegen::objfile::readLE32;
-using viper::codegen::objfile::writeLE16;
-using viper::codegen::objfile::writeLE32;
-using viper::codegen::objfile::writeLE64;
+using zanna::codegen::objfile::readLE32;
+using zanna::codegen::objfile::writeLE16;
+using zanna::codegen::objfile::writeLE32;
+using zanna::codegen::objfile::writeLE64;
 
 static bool writeCheckedRel32(uint8_t *patch,
                               int64_t value,
@@ -82,7 +82,7 @@ static bool checkPageOffsetAlignment(uint32_t pageOff,
 }
 
 static bool aarch64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
-    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
+    return zanna::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
 [[maybe_unused]] static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
@@ -91,7 +91,7 @@ static bool aarch64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
 }
 
 static bool isAArch64AddImmediate(uint32_t insn) {
-    return viper::codegen::isA64AddImmediate(insn);
+    return zanna::codegen::isA64AddImmediate(insn);
 }
 
 static bool writeAArch64AddImmediate12(uint8_t *patch,
@@ -1778,4 +1778,4 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

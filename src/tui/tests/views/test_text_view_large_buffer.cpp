@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 #include "tests/TestHarness.hpp"
 #include <string>
 
-using viper::tui::style::Theme;
-using viper::tui::text::TextBuffer;
-using viper::tui::views::TextView;
+using zanna::tui::style::Theme;
+using zanna::tui::text::TextBuffer;
+using zanna::tui::views::TextView;
 
 namespace {
 std::string makeLargeBuffer(std::size_t lines, std::size_t width) {
@@ -82,6 +82,6 @@ TEST(TUI, TextViewLargeBuffer) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

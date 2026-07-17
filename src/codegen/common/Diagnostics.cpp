@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include <ostream>
 #include <utility>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 void Diagnostics::error(std::string message) {
     error("V-CG-ERROR", std::move(message));
@@ -77,4 +77,4 @@ void Diagnostics::flush(std::ostream &err, std::ostream *warn) const {
     }
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,13 +15,13 @@
 // Ownership/Lifetime: CsiParser borrows event buffers and a paste accumulator
 //                     from the embedder; it stores references without assuming
 //                     ownership.
-// Links: docs/internals/architecture.md#vipertui-architecture, ECMA-48 §5.4
+// Links: docs/internals/architecture.md#zannatui-architecture, ECMA-48 §5.4
 //
 //===----------------------------------------------------------------------===//
 
 #include "tui/term/CsiParser.hpp"
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 
 /// @brief Bind the parser to the event buffers that receive decoded sequences.
 /// @details The constructor stores references to the caller-provided key, mouse,
@@ -258,4 +258,4 @@ CsiResult CsiParser::handle(char final, std::string_view params) {
     return result;
 }
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

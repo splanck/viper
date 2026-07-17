@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 // Screen flash, message sequences, timed state machine
 module celebrations;
 
-bind Viper.Graphics3D;
+bind Zanna.Graphics3D;
 bind "../config";
 
 // Celebration types

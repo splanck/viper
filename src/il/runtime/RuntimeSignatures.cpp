@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -329,7 +329,7 @@
 #include "rt_wss_server.h"
 #include "rt_xml.h"
 #include "rt_yaml.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <algorithm>
 #include <array>
@@ -436,7 +436,7 @@ constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered =
 }
 
 /// @brief VM-only handler that reports non-native execution.
-/// @details Used for Viper.System.Environment.IsNative so VM runs return false while
+/// @details Used for Zanna.System.Environment.IsNative so VM runs return false while
 ///          native binaries link against the real rt_env_is_native helper.
 void vm_env_is_native(void ** /*args*/, void *result) {
     detail::storeRequiredResult<int64_t>(result, 0);
@@ -472,7 +472,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
 // Legacy C-symbol aliases for BASIC frontends (DUAL mode only).
 // These provide lookup-by-C-name for functions whose canonical names are in
 // the generated RuntimeSignatures.inc above.
-#if VIPER_RUNTIME_NS_DUAL
+#if ZANNA_RUNTIME_NS_DUAL
     DescriptorRow{"rt_print_str",
                   RtSig::PrintS,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::PrintS)],
@@ -709,7 +709,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Provide dotted name for INKEY$ access through the Viper.Terminal namespace
+    // Provide dotted name for INKEY$ access through the Zanna.Terminal namespace
     // Blocking key input - waits for a key press
     // Blocking key input with timeout (milliseconds)
     // Output buffering for improved terminal rendering performance
@@ -737,7 +737,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // --- Viper.Terminal I/O functions (Say = newline, Print = no newline) ---
+    // --- Zanna.Terminal I/O functions (Say = newline, Print = no newline) ---
     DescriptorRow{"rt_term_say",
                   std::nullopt,
                   "void(string)",
@@ -1634,7 +1634,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     // Canonical name for RANDOMIZE
-    DescriptorRow{"Viper.Math.Randomize",
+    DescriptorRow{"Zanna.Math.Randomize",
                   std::nullopt,
                   "void(i64)",
                   &DirectHandler<&rt_randomize_i64, void, long long>::invoke,
@@ -1651,7 +1651,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     // Canonical name for RND
-    DescriptorRow{"Viper.Math.Rnd",
+    DescriptorRow{"Zanna.Math.Rnd",
                   std::nullopt,
                   "f64()",
                   &DirectHandler<&rt_rnd, double>::invoke,
@@ -1663,7 +1663,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
         "rt_open_err_vstr",
         std::nullopt,
         "i32(string,i32,i32)",
-        &DirectHandler<&rt_open_err_vstr, int32_t, ViperString *, int32_t, int32_t>::invoke,
+        &DirectHandler<&rt_open_err_vstr, int32_t, ZannaString *, int32_t, int32_t>::invoke,
         kManualLowering,
         nullptr,
         0,
@@ -1679,7 +1679,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
     DescriptorRow{"rt_write_ch_err",
                   std::nullopt,
                   "i32(i32,string)",
-                  &DirectHandler<&rt_write_ch_err, int32_t, int32_t, ViperString *>::invoke,
+                  &DirectHandler<&rt_write_ch_err, int32_t, int32_t, ZannaString *>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1687,7 +1687,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
     DescriptorRow{"rt_println_ch_err",
                   std::nullopt,
                   "i32(i32,string)",
-                  &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke,
+                  &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ZannaString *>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1695,7 +1695,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
     DescriptorRow{"rt_line_input_ch_err",
                   std::nullopt,
                   "i32(i32,ptr)",
-                  &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ViperString **>::invoke,
+                  &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ZannaString **>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1806,9 +1806,9 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
 // Canonical dotted names for string retain/release, with legacy aliases gated by
-// VIPER_RUNTIME_NS_DUAL
-#if VIPER_RUNTIME_NS_DUAL
-    DescriptorRow{"Viper.String.RetainMaybe",
+// ZANNA_RUNTIME_NS_DUAL
+#if ZANNA_RUNTIME_NS_DUAL
+    DescriptorRow{"Zanna.String.RetainMaybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
@@ -1824,7 +1824,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.String.ReleaseMaybe",
+    DescriptorRow{"Zanna.String.ReleaseMaybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
@@ -1841,7 +1841,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
 #else
-    DescriptorRow{"Viper.String.RetainMaybe",
+    DescriptorRow{"Zanna.String.RetainMaybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
@@ -1849,7 +1849,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.String.ReleaseMaybe",
+    DescriptorRow{"Zanna.String.ReleaseMaybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
@@ -2632,22 +2632,22 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry() {
         // entries need hand-written adapters instead because the C ABI type
         // doesn't match the IL calling convention used by the VM:
         //
-        //  - Viper.System.Environment.IsNative: C function always returns 1
+        //  - Zanna.System.Environment.IsNative: C function always returns 1
         //    (native).  The VM must return 0.
         //
-        //  - Viper.Math.Pow: C function takes a hidden bool* parameter the VM
+        //  - Zanna.Math.Pow: C function takes a hidden bool* parameter the VM
         //    doesn't pass.  The adapter manages it internally.
         //
-        //  - Viper.Core.Diagnostics.Trap: C function takes const char* but the
+        //  - Zanna.Core.Diagnostics.Trap: C function takes const char* but the
         //    IL type is str (rt_string).  trapFromRuntimeString correctly
         //    extracts the C string from the rt_string struct.
         for (auto &entry : entries) {
-            if (entry.name == "Viper.System.Environment.IsNative") {
+            if (entry.name == "Zanna.System.Environment.IsNative") {
                 entry.handler = &vm_env_is_native;
-            } else if (entry.name == "Viper.Math.Pow") {
+            } else if (entry.name == "Zanna.Math.Pow") {
                 entry.handler = &vmInvokeRtPow;
                 entry.trapClass = RuntimeTrapClass::PowDomainOverflow;
-            } else if (entry.name == "Viper.Core.Diagnostics.Trap") {
+            } else if (entry.name == "Zanna.Core.Diagnostics.Trap") {
                 entry.handler = &trapFromRuntimeString;
             }
         }

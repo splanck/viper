@@ -52,7 +52,7 @@ simulation content merely to use a new runtime type.
 
 ### Slice 0 — Freeze baseline
 
-1. Run `viper check`, `run_probes.sh`, smoke, state, topology, traversal, tree
+1. Run `zanna check`, `run_probes.sh`, smoke, state, topology, traversal, tree
    material/fallback, and documented performance/visual gates on software and
    Metal.
 2. Capture deterministic traces for player pose/state, terrain height samples,
@@ -194,7 +194,7 @@ fixed and tested.
 ## Per-slice validation
 
 ```sh
-build/src/tools/viper/viper check examples/games/ridgebound --diagnostic-format=json
+build/src/tools/zanna/zanna check examples/games/ridgebound --diagnostic-format=json
 examples/games/ridgebound/run_probes.sh
 ctest --test-dir build -L graphics3d --output-on-failure
 ```

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 namespace {
 
 /// @brief Represents a half-open live interval [start, end) for a virtual register.
@@ -303,4 +303,4 @@ void coalesce(MFunction &fn) {
     removeIdentityMoves(fn);
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

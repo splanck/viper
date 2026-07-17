@@ -1,16 +1,16 @@
 // test_math_extra.zia — Quat, Scanner, CompiledPattern
 module TestMathExtra;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var q = Viper.Math.Quat.Identity();
+    var q = Zanna.Math.Quat.Identity();
     SayNum(q.W);
 
-    var sc = new Viper.Text.Scanner("hello world");
+    var sc = new Zanna.Text.Scanner("hello world");
     Say(sc.ReadIdent());
 
-    var pat = new Viper.Text.CompiledPattern("[0-9]+");
+    var pat = new Zanna.Text.CompiledPattern("[0-9]+");
     var matches = pat.FindAll("a1b22c333");
     SayInt(matches.Count);
 

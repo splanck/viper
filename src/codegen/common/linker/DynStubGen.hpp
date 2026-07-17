@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// @brief Generate ObjC selector stub trampolines for AArch64 macOS.
 ///
@@ -60,4 +60,4 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
 /// @return Synthetic ObjFile with stub text, GOT data, and relocations.
 ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

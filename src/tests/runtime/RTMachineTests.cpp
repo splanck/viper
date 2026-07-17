@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTMachineTests.cpp
-// Purpose: Tests for Viper.System.Machine system information queries.
+// Purpose: Tests for Zanna.System.Machine system information queries.
 //
 //===----------------------------------------------------------------------===//
 
@@ -170,7 +170,7 @@ static void test_mem_relationship() {
 
 #if RT_PLATFORM_LINUX
 static void test_linux_os_release_parser() {
-    char path[] = "/tmp/viper-os-release-XXXXXX";
+    char path[] = "/tmp/zanna-os-release-XXXXXX";
     int fd = mkstemp(path);
     assert(fd >= 0);
     FILE *file = fdopen(fd, "w");
@@ -188,7 +188,7 @@ static void test_linux_os_release_parser() {
 #endif
 
 int main() {
-    printf("=== Viper.System.Machine Tests ===\n\n");
+    printf("=== Zanna.System.Machine Tests ===\n\n");
 
     test_os();
     test_os_ver();

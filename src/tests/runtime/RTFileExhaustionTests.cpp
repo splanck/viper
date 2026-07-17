@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -72,12 +72,12 @@ static void test_binfile_open_fd_exhaustion() {
     // Now try to open via BinFile -- should fail with EMFILE
     g_trap_count = 0;
     g_last_trap.clear();
-    void *bf = rt_binfile_open(make_string("/tmp/viper_fdtest.txt"), make_string("w"));
+    void *bf = rt_binfile_open(make_string("/tmp/zanna_fdtest.txt"), make_string("w"));
     assert(bf == NULL);
     assert(g_trap_count == 1);
     // Verify the trap message includes the path and a useful OS error
     assert(g_last_trap.find("BinFile.Open") != std::string::npos);
-    assert(g_last_trap.find("viper_fdtest") != std::string::npos);
+    assert(g_last_trap.find("zanna_fdtest") != std::string::npos);
 
     // Clean up
     for (FILE *f : files)

@@ -1,6 +1,6 @@
-' API Audit: Viper.Game.ParticleEmitter (BASIC)
-PRINT "=== API Audit: Viper.Game.ParticleEmitter ==="
-DIM pe AS OBJECT = Viper.Game.ParticleEmitter.New(100)
+' API Audit: Zanna.Game.ParticleEmitter (BASIC)
+PRINT "=== API Audit: Zanna.Game.ParticleEmitter ==="
+DIM pe AS OBJECT = Zanna.Game.ParticleEmitter.New(100)
 PRINT pe.Count
 PRINT pe.IsEmitting
 pe.SetPosition(100, 200)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include <cctype>
 
-namespace viper::server {
+namespace zanna::server {
 
 bool isIdentChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
@@ -94,4 +94,4 @@ HoverContext extractIdentifierAtCursor(const std::string &source, int line, int 
     return ctx;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

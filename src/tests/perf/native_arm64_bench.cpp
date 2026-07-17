@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 
 #include "il/io/Parser.hpp"
 #include "il/transform/PassManager.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -117,7 +117,7 @@ TEST(NativeArm64Perf, FibCompileAndLink) {
     // Step 1: Compile IL to ARM64 assembly
     const char *codegenArgs[] = {ilFile.c_str(), "-S", asmFile.c_str()};
     const int codegenResult =
-        viper::tools::ilc::cmd_codegen_arm64(3, const_cast<char **>(codegenArgs));
+        zanna::tools::ilc::cmd_codegen_arm64(3, const_cast<char **>(codegenArgs));
     ASSERT_EQ(codegenResult, 0);
 
     // Step 2: Assemble
@@ -129,7 +129,7 @@ TEST(NativeArm64Perf, FibCompileAndLink) {
     const std::string buildDir = findBuildDir();
     std::string linkCmd = "clang++ " + objFile;
     if (!buildDir.empty()) {
-        const std::string runtimeLib = buildDir + "/src/runtime/libviper_runtime.a";
+        const std::string runtimeLib = buildDir + "/src/runtime/libzanna_runtime.a";
         if (std::filesystem::exists(runtimeLib)) {
             linkCmd += " " + runtimeLib;
         }
@@ -172,6 +172,6 @@ TEST(NativeArm64Perf, FibCompileAndLink) {
 #endif // NATIVE_ARM64
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

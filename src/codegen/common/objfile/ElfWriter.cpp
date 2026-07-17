@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 // =============================================================================
 // ELF Constants
@@ -153,7 +153,7 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
     return 0;
 }
 
-/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// Adapter to the shared @ref zanna::codegen::objfile::physicalSymbolValue helper
 /// that pins the writerName to "ElfWriter:" so existing call sites compile
 /// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
@@ -161,7 +161,7 @@ static bool physicalSymbolValue(const CodeSection &section,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    return viper::codegen::objfile::physicalSymbolValue(
+    return zanna::codegen::objfile::physicalSymbolValue(
         section, sym, sectionName, "ElfWriter", err, out);
 }
 
@@ -1524,4 +1524,4 @@ bool ElfWriter::write(const std::string &path,
     }
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

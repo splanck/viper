@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //   - Summary allocates and returns a runtime string owned by the caller.
 //
 // Links: src/runtime/graphics/3d/rt_game3d_diagnostics.h,
-//   src/il/runtime/runtime.def, docs/viperlib/graphics/game3d.md
+//   src/il/runtime/runtime.def, docs/zannalib/graphics/game3d.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Invert AArch64 condition code string.
 [[nodiscard]] const char *invertCondition(const char *cond) noexcept;
@@ -64,4 +64,4 @@ namespace viper::codegen::aarch64::peephole {
 /// @brief Reorder blocks for better code layout (move cold blocks to end).
 std::size_t reorderBlocks(MFunction &fn);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

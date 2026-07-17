@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # File: tests/fuzz/CMakeLists.txt
 # Purpose: Build libFuzzer harnesses for Zia lexer and parser.
-#          Gated on VIPER_ENABLE_FUZZ=ON; not registered as ctest targets.
+#          Gated on ZANNA_ENABLE_FUZZ=ON; not registered as ctest targets.
 
-if (NOT VIPER_ENABLE_FUZZ)
+if (NOT ZANNA_ENABLE_FUZZ)
     return()
 endif ()
 
-function(viper_add_fuzzer target source)
+function(zanna_add_fuzzer target source)
     set(options)
     set(oneValueArgs CORPUS)
     set(multiValueArgs LIBS INCLUDES)
@@ -43,28 +43,28 @@ function(viper_add_fuzzer target source)
 endfunction()
 
 # ── Localization parser fuzzers ─────────────────────────────────────────────
-viper_add_fuzzer(fuzz_plural_rule_parser fuzz_plural_rule_parser.cpp LIBS viper_runtime)
-viper_add_fuzzer(fuzz_date_pattern_parser fuzz_date_pattern_parser.cpp LIBS viper_runtime)
-viper_add_fuzzer(fuzz_locale_json_loader fuzz_locale_json_loader.cpp LIBS viper_runtime)
+zanna_add_fuzzer(fuzz_plural_rule_parser fuzz_plural_rule_parser.cpp LIBS zanna_runtime)
+zanna_add_fuzzer(fuzz_date_pattern_parser fuzz_date_pattern_parser.cpp LIBS zanna_runtime)
+zanna_add_fuzzer(fuzz_locale_json_loader fuzz_locale_json_loader.cpp LIBS zanna_runtime)
 
 # ── Frontend / IL parser fuzzers ────────────────────────────────────────────
-viper_add_fuzzer(fuzz_zia_lexer fuzz_zia_lexer.cpp LIBS fe_zia)
-viper_add_fuzzer(fuzz_zia_parser fuzz_zia_parser.cpp LIBS fe_zia)
-viper_add_fuzzer(fuzz_basic_lexer fuzz_basic_lexer.cpp LIBS fe_basic)
-viper_add_fuzzer(fuzz_basic_parser fuzz_basic_parser.cpp LIBS fe_basic)
-viper_add_fuzzer(fuzz_il_parser fuzz_il_parser.cpp LIBS viper::il_full)
-viper_add_fuzzer(fuzz_il_verifier fuzz_il_verifier.cpp LIBS viper::il_full)
+zanna_add_fuzzer(fuzz_zia_lexer fuzz_zia_lexer.cpp LIBS fe_zia)
+zanna_add_fuzzer(fuzz_zia_parser fuzz_zia_parser.cpp LIBS fe_zia)
+zanna_add_fuzzer(fuzz_basic_lexer fuzz_basic_lexer.cpp LIBS fe_basic)
+zanna_add_fuzzer(fuzz_basic_parser fuzz_basic_parser.cpp LIBS fe_basic)
+zanna_add_fuzzer(fuzz_il_parser fuzz_il_parser.cpp LIBS zanna::il_full)
+zanna_add_fuzzer(fuzz_il_verifier fuzz_il_verifier.cpp LIBS zanna::il_full)
 
 # ── Runtime/protocol parser fuzzers ─────────────────────────────────────────
-viper_add_fuzzer(fuzz_json fuzz_json.cpp LIBS viper_runtime)
-viper_add_fuzzer(fuzz_http_request fuzz_http_request.cpp LIBS viper_runtime)
-viper_add_fuzzer(fuzz_lsp_jsonrpc fuzz_lsp_jsonrpc.cpp LIBS lsp_common_lib)
-viper_add_fuzzer(fuzz_mcp_jsonrpc fuzz_mcp_jsonrpc.cpp LIBS lsp_common_lib)
+zanna_add_fuzzer(fuzz_json fuzz_json.cpp LIBS zanna_runtime)
+zanna_add_fuzzer(fuzz_http_request fuzz_http_request.cpp LIBS zanna_runtime)
+zanna_add_fuzzer(fuzz_lsp_jsonrpc fuzz_lsp_jsonrpc.cpp LIBS lsp_common_lib)
+zanna_add_fuzzer(fuzz_mcp_jsonrpc fuzz_mcp_jsonrpc.cpp LIBS lsp_common_lib)
 
 # ── 3D Content Loader Fuzzers ───────────────────────────────────────────────
-function(viper_add_3d_loader_fuzzer target source)
-    viper_add_fuzzer(${target} ${source}
-            LIBS viper_runtime
+function(zanna_add_3d_loader_fuzzer target source)
+    zanna_add_fuzzer(${target} ${source}
+            LIBS zanna_runtime
             INCLUDES
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d
@@ -73,14 +73,14 @@ function(viper_add_3d_loader_fuzzer target source)
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/scene)
 endfunction()
 
-viper_add_3d_loader_fuzzer(fuzz_gltf_loader fuzz_gltf_loader.cpp)
-viper_add_3d_loader_fuzzer(fuzz_gltf_draco fuzz_gltf_draco.cpp)
-viper_add_3d_loader_fuzzer(fuzz_vw3dsav_reader fuzz_vw3dsav_reader.cpp)
-viper_add_3d_loader_fuzzer(fuzz_fbx_loader fuzz_fbx_loader.cpp)
-viper_add_3d_loader_fuzzer(fuzz_vscn_loader fuzz_vscn_loader.cpp)
-viper_add_3d_loader_fuzzer(fuzz_obj_stl fuzz_obj_stl.cpp)
-viper_add_3d_loader_fuzzer(fuzz_stream_manifest fuzz_stream_manifest.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_gltf_loader fuzz_gltf_loader.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_gltf_draco fuzz_gltf_draco.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_vw3dsav_reader fuzz_vw3dsav_reader.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_fbx_loader fuzz_fbx_loader.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_vscn_loader fuzz_vscn_loader.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_obj_stl fuzz_obj_stl.cpp)
+zanna_add_3d_loader_fuzzer(fuzz_stream_manifest fuzz_stream_manifest.cpp)
 
-viper_add_3d_loader_fuzzer(fuzz_ktx2_loader fuzz_ktx2_loader.cpp)
-viper_add_fuzzer(fuzz_zstd fuzz_zstd.cpp LIBS viper_runtime INCLUDES ${CMAKE_SOURCE_DIR}/src/runtime/io)
-viper_add_fuzzer(fuzz_image_decoders fuzz_image_decoders.cpp LIBS viper_runtime)
+zanna_add_3d_loader_fuzzer(fuzz_ktx2_loader fuzz_ktx2_loader.cpp)
+zanna_add_fuzzer(fuzz_zstd fuzz_zstd.cpp LIBS zanna_runtime INCLUDES ${CMAKE_SOURCE_DIR}/src/runtime/io)
+zanna_add_fuzzer(fuzz_image_decoders fuzz_image_decoders.cpp LIBS zanna_runtime)

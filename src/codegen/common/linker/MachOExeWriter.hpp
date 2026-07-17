@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Dynamic library import for Mach-O linking.
 struct DylibImport {
@@ -67,4 +67,4 @@ inline bool writeMachOExe(const std::string &path,
     return writeMachOExe(path, layout, arch, dylibs, dynSyms, symOrdinals, 0, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

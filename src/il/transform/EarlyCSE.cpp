@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -80,7 +80,7 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 /// @return True if any instruction was removed from @p B.
 bool processBlock(BasicBlock &B,
                   Function &F,
-                  const viper::analysis::DomTree &domTree,
+                  const zanna::analysis::DomTree &domTree,
                   std::vector<CSETable> &scopes,
                   const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder) {
     bool changed = false;
@@ -100,7 +100,7 @@ bool processBlock(BasicBlock &B,
                 continue;
             if (!isTextuallyAvailable(blockOrder, hit->second.block, &B))
                 continue;
-            viper::il::replaceUsesDominatedBy(F, *I.result, hit->second.value, B, idx, domTree);
+            zanna::il::replaceUsesDominatedBy(F, *I.result, hit->second.value, B, idx, domTree);
             B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
             changed = true;
             found = true;
@@ -134,9 +134,9 @@ bool runEarlyCSE(Module &M, Function &F) {
 
     // Iterate to fixed point (bounded to avoid pathological cases).
     for (int iter = 0; iter < 4; ++iter) {
-        viper::analysis::CFGContext cfg =
-            viper::analysis::CFGContext::forInternedFunction(M, F);
-        viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
+        zanna::analysis::CFGContext cfg =
+            zanna::analysis::CFGContext::forInternedFunction(M, F);
+        zanna::analysis::DomTree domTree = zanna::analysis::computeDominatorTree(cfg, F);
 
         // Iterative pre-order DFS over the dominator tree.
         // Each worklist entry is either "enter B" (push scope, process B, then

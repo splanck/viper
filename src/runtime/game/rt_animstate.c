@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -251,7 +251,7 @@ void rt_animstate_add_state(void *asm_,
                             int64_t frame_duration,
                             int8_t loop) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.AddState: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.AddState: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return;
     if (state_id < 0)
@@ -296,7 +296,7 @@ void rt_animstate_add_state(void *asm_,
 /// @brief Set the starting state and reset all transition flags to initial values.
 int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.SetInitial: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.SetInitial: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (state_id < 0)
@@ -323,7 +323,7 @@ int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
 /// @brief Transition to a new state, setting entered/exited flags and resetting the frame counter.
 int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.Transition: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.Transition: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (state_id < 0)
@@ -349,7 +349,7 @@ int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
 /// @brief Update the animstate state (called per frame/tick).
 void rt_animstate_update(void *asm_) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.Update: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.Update: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return;
     if (a->current_state < 0)
@@ -401,7 +401,7 @@ void rt_animstate_update(void *asm_) {
 /// checking).
 void rt_animstate_clear_flags(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.ClearFlags: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.ClearFlags: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return;
     a->just_entered = 0;
@@ -415,56 +415,56 @@ void rt_animstate_clear_flags(void *asm_) {
 /// @brief Return the ID of the currently active state.
 int64_t rt_animstate_current_state(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.CurrentState: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.CurrentState: expected Zanna.Game.AnimStateMachine");
     return a ? a->current_state : -1;
 }
 
 /// @brief Return the ID of the state that was active before the last transition.
 int64_t rt_animstate_previous_state(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.PreviousState: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.PreviousState: expected Zanna.Game.AnimStateMachine");
     return a ? a->previous_state : -1;
 }
 
 /// @brief Check whether the current state was entered this frame (one-shot flag).
 int8_t rt_animstate_just_entered(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.JustEntered: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.JustEntered: expected Zanna.Game.AnimStateMachine");
     return a ? a->just_entered : 0;
 }
 
 /// @brief Check whether the previous state was exited this frame (one-shot flag).
 int8_t rt_animstate_just_exited(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.JustExited: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.JustExited: expected Zanna.Game.AnimStateMachine");
     return a ? a->just_exited : 0;
 }
 
 /// @brief Return how many frames have elapsed since entering the current state.
 int64_t rt_animstate_frames_in_state(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.FramesInState: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.FramesInState: expected Zanna.Game.AnimStateMachine");
     return a ? a->frames_in_state : 0;
 }
 
 /// @brief Return the current animation frame index within the active clip.
 int64_t rt_animstate_current_frame(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.CurrentFrame: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.CurrentFrame: expected Zanna.Game.AnimStateMachine");
     return a ? a->current_frame : 0;
 }
 
 /// @brief Check whether the current clip has reached its last frame (non-looping only).
 int8_t rt_animstate_is_anim_finished(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.IsAnimFinished: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.IsAnimFinished: expected Zanna.Game.AnimStateMachine");
     return a ? a->anim_finished : 0;
 }
 
 /// @brief Progress the animstate.
 int64_t rt_animstate_progress(void *asm_) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.Progress: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.Progress: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (a->active_clip_idx < 0)
@@ -489,7 +489,7 @@ int64_t rt_animstate_progress(void *asm_) {
 void rt_animstate_add_named(
     void *asm_, void *name_str, int64_t start, int64_t end, int64_t dur, int8_t loop) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.AddNamed: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.AddNamed: expected Zanna.Game.AnimStateMachine");
     if (!a || !name_str)
         return;
     // Allocate a genuinely unused state ID. The old code reused clip_count as the
@@ -519,7 +519,7 @@ void rt_animstate_add_named(
 
 void rt_animstate_play(void *asm_, void *name_str) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.Play: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.Play: expected Zanna.Game.AnimStateMachine");
     if (!a || !name_str)
         return;
     const char *cname = rt_string_cstr((rt_string)name_str);
@@ -535,7 +535,7 @@ void rt_animstate_play(void *asm_, void *name_str) {
 
 void *rt_animstate_current_name(void *asm_) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.StateName: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.StateName: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return (void *)rt_const_cstr("");
     if (a->active_clip_idx >= 0 && a->active_clip_idx < a->clip_count)
@@ -545,7 +545,7 @@ void *rt_animstate_current_name(void *asm_) {
 
 void rt_animstate_set_event_frame(void *asm_, int64_t frame) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.SetEventFrame: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.SetEventFrame: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return;
     a->event_frame = frame;
@@ -555,7 +555,7 @@ void rt_animstate_set_event_frame(void *asm_, int64_t frame) {
 
 int8_t rt_animstate_event_fired(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.EventFired: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.EventFired: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (a->event_triggered) {
@@ -567,7 +567,7 @@ int8_t rt_animstate_event_fired(void *asm_) {
 
 int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id) {
     animstate_impl *a =
-        checked_animstate(asm_, "AnimStateMachine.AddEvent: expected Viper.Game.AnimStateMachine");
+        checked_animstate(asm_, "AnimStateMachine.AddEvent: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return 0;
     if (state_id < 0)
@@ -589,7 +589,7 @@ int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64
 
 void rt_animstate_clear_events(void *asm_, int64_t state_id) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.ClearEvents: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.ClearEvents: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return;
     if (state_id < 0)
@@ -610,13 +610,13 @@ void rt_animstate_clear_events(void *asm_, int64_t state_id) {
 
 int64_t rt_animstate_events_fired_count(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.EventsFiredCount: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.EventsFiredCount: expected Zanna.Game.AnimStateMachine");
     return a ? a->events_fired_count : 0;
 }
 
 int64_t rt_animstate_event_fired_id(void *asm_, int64_t index) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.EventFiredId: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.EventFiredId: expected Zanna.Game.AnimStateMachine");
     if (!a || index < 0 || index >= a->events_fired_count)
         return 0;
     return a->events_fired_ids[index];
@@ -624,7 +624,7 @@ int64_t rt_animstate_event_fired_id(void *asm_, int64_t index) {
 
 void *rt_animstate_poll_events(void *asm_) {
     animstate_impl *a = checked_animstate(
-        asm_, "AnimStateMachine.PollEvents: expected Viper.Game.AnimStateMachine");
+        asm_, "AnimStateMachine.PollEvents: expected Zanna.Game.AnimStateMachine");
     if (!a)
         return rt_animation_event_batch_from_ids(NULL, 0);
     return rt_animation_event_batch_from_ids(a->events_fired_ids, a->events_fired_count);

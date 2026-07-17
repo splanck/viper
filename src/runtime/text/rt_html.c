@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_html.c
 // Purpose: Implements a tolerant HTML parser and utility functions for the
-//          Viper.Text.Html class. Builds a tree of rt_map nodes (tag, text,
+//          Zanna.Text.Html class. Builds a tree of rt_map nodes (tag, text,
 //          attrs, children). Also provides Escape, Unescape, StripTags, ToText,
 //          ExtractLinks, and ExtractText utilities.
 //

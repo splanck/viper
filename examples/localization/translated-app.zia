@@ -2,9 +2,9 @@
 // Small interactive program driven by a MessageBundle. Loads messages
 // from locales/messages-<tag>.json and uses Plural() for item-count text.
 
-bind Locale        : Viper.Localization.Locale
-bind LocaleManager : Viper.Localization.LocaleManager
-bind MessageBundle : Viper.Localization.MessageBundle
+bind Locale        : Zanna.Localization.Locale
+bind LocaleManager : Zanna.Localization.LocaleManager
+bind MessageBundle : Zanna.Localization.MessageBundle
 
 func main()
     LocaleManager.AddSearchPath("./locales")

@@ -178,7 +178,7 @@ func getFruitColor(fruitType: config.FruitType) -> Integer {
 // ScreenFX flash/overlay colors pack as 0xRRGGBBAA — the RGB triple in the high
 // 24 bits and the alpha in the low byte. This byte order is specific to the
 // ScreenFX path: it differs from a Canvas draw color (0x00RRGGBB) and from
-// Viper.Graphics.Color.RGBA (0xAARRGGBB). Keep the arithmetic in one place so a
+// Zanna.Graphics.Color.RGBA (0xAARRGGBB). Keep the arithmetic in one place so a
 // call site never has to remember which layout it is talking to.
 
 func fxColor(rgb: Integer, alpha: Integer) -> Integer {

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: misc/video/demo.zia
-// Purpose: Minimal on-camera demo program for the Viper introduction video.
+// Purpose: Minimal on-camera demo program for the Zanna introduction video.
 //          Small enough that its source and emitted IL both fit on screen,
 //          while still exercising a function call, a loop, and arithmetic so
 //          the optimizer has something visible to do (inlining + SSA cleanup).
@@ -21,15 +21,15 @@
 
 module Demo;
 
-bind Viper.Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func square(n: Integer) -> Integer {
     return n * n;
 }
 
 func start() {
-    Say("Viper, compiled from scratch.");
+    Say("Zanna, compiled from scratch.");
     var total = 0;
     for i in 1..6 {
         total = total + square(i);

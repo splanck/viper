@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTLocaleManagerTests.cpp
-// Purpose: Validate Viper.Localization.LocaleManager bootstrap, current/system
+// Purpose: Validate Zanna.Localization.LocaleManager bootstrap, current/system
 //          queries, registry surface, JSON loading, search-path resolution,
 //          and unload/reset behavior.
 //
@@ -90,7 +90,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_locale_mgr_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_locale_mgr_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -526,25 +526,25 @@ static void test_search_path_roundtrip() {
     }
     // Add one path.
     {
-        rt_string p = S("/opt/viper/locales");
+        rt_string p = S("/opt/zanna/locales");
         rt_locale_manager_add_search_path(p);
         rt_string_unref(p);
         rt_string sp = rt_locale_manager_search_path();
         test_result("SearchPath contains added path",
-                    strcmp(rt_string_cstr(sp), "/opt/viper/locales") == 0);
+                    strcmp(rt_string_cstr(sp), "/opt/zanna/locales") == 0);
         rt_string_unref(sp);
     }
     // Add a second; separator should appear.
     {
-        rt_string p = S("/home/user/.viper/locales");
+        rt_string p = S("/home/user/.zanna/locales");
         rt_locale_manager_add_search_path(p);
         rt_string_unref(p);
         rt_string sp = rt_locale_manager_search_path();
         const char *cs = rt_string_cstr(sp);
         // Don't hard-code the separator; just check both sub-paths appear.
-        test_result("SearchPath contains first path", strstr(cs, "/opt/viper/locales") != nullptr);
+        test_result("SearchPath contains first path", strstr(cs, "/opt/zanna/locales") != nullptr);
         test_result("SearchPath contains second path",
-                    strstr(cs, "/home/user/.viper/locales") != nullptr);
+                    strstr(cs, "/home/user/.zanna/locales") != nullptr);
         rt_string_unref(sp);
     }
     // Reset clears.

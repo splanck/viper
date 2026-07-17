@@ -1,9 +1,9 @@
-# CLAUDE.md — AI Agent Operating Guide for Viper
+# CLAUDE.md — AI Agent Operating Guide for Zanna
 
 **Project:** IL-based Compiler Toolchain (Frontends → IL → VM → Codegen)
 **Spec Authority:** `/docs/il/il-guide.md#reference` (IL v0.3.0), `/docs/internals/architecture.md`, `/docs/internals/codemap.md`
 
-**Permissions:** File/network access within Viper project scope. May download/install tools needed for Viper development work.
+**Permissions:** File/network access within Zanna project scope. May download/install tools needed for Zanna development work.
 
 -IMPORTANT: CLAUDE SHOULD HAVE ALL ALLOW PERMISSIONS. IT SHOULDNT ASK ME FOR PERMISSION TO DO ANYTHING EXCEPT COMMIT OR PUSH!
 
@@ -27,7 +27,7 @@ REPEAT! DO NOT USE AGENTS FOR WRITING CODE!! Agents can be used for investigatio
 3. **Discovery Before Questions** — Search codebase for 3-5 similar implementations before asking users.
 4. **Small Increments** — Each change = one coherent, verifiable unit (<50 files).
 5. **Determinism** — VM and native outputs must match for all defined programs.
-6. **Zero Dependencies** - Viper is 100% a from scratch project. We dont introduce external dependencies for any reason.
+6. **Zero Dependencies** - Zanna is 100% a from scratch project. We dont introduce external dependencies for any reason.
 7. **Cross platform** - Every feature must be completely implemented for Macos, Windows, and Linux. 100% cross platform always!
 8. **Shared Platform Policy** - In normal code use `src/common/PlatformCapabilities.hpp` or `src/runtime/rt_platform.h`; raw `_WIN32` / `__APPLE__` / `__linux__` checks belong only in approved adapter layers.
 
@@ -68,7 +68,7 @@ Use template from §20.4 (paste into deliverable). Must include:
 - Format with `.clang-format`, zero warnings
 - Follow Conventional Commits: `<type>(<scope>): <summary>`
 - Keep headers minimal, avoid cross-layer dependencies
-- **All new/modified source files must have the full Viper header** (see Source File Header Template below)
+- **All new/modified source files must have the full Zanna header** (see Source File Header Template below)
 
 ---
 
@@ -111,7 +111,7 @@ IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI sur
 ## File Ownership ("Do Not Touch" Without ADR)
 
 - `/docs/il/il-guide.md#reference` — IL spec
-- `.github/workflows/*` — No CI workflow creation/modification during viper phase
+- `.github/workflows/*` — No CI workflow creation/modification during zanna phase
 
 ---
 
@@ -126,7 +126,7 @@ IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI sur
 - **Assertions:** Use `EXPECT_EQ`/`ASSERT_EQ` (prints actual values on failure), `EXPECT_GT/LT/GE/LE`, `EXPECT_NEAR` (floats), `EXPECT_CONTAINS` (strings), `EXPECT_THROWS`/`EXPECT_NO_THROW`.
 - **Test filtering:** Run single test from multi-test binary: `./build/test_foo --filter=Suite.Name`
 - **Labels:** Use `ctest -L codegen` to run by category. See `src/tests/CMakeLists.txt` for full taxonomy.
-- **Fuzz harnesses:** In `src/tests/fuzz/` (opt-in via `VIPER_ENABLE_FUZZ=ON`). Add harnesses for new parser/input surfaces.
+- **Fuzz harnesses:** In `src/tests/fuzz/` (opt-in via `ZANNA_ENABLE_FUZZ=ON`). Add harnesses for new parser/input surfaces.
 
 ---
 
@@ -152,15 +152,15 @@ When responding to a task:
 **IMPORTANT:** Always use the provided build scripts. Never use raw `cmake` commands directly.
 
 ```sh
-# Build and test Viper (canonical POSIX script; build_viper_linux.sh /
-# build_viper_mac.sh are thin wrappers around it)
-./scripts/build_viper_unix.sh
+# Build and test Zanna (canonical POSIX script; build_zanna_linux.sh /
+# build_zanna_mac.sh are thin wrappers around it)
+./scripts/build_zanna_unix.sh
 
 # Build all demos
 ./scripts/build_demos.sh
 
-# Build and test Viper on Windows
-.\scripts\build_viper_win.cmd
+# Build and test Zanna on Windows
+.\scripts\build_zanna_win.cmd
 
 # Build all demos on Windows
 .\scripts\build_demos_win.cmd
@@ -172,16 +172,16 @@ clang-format -i <files>
 ### Fast Iteration Loop (Agent-Optimized)
 
 The build scripts accept environment variables to shorten the edit-build-test
-cycle. ccache is auto-detected (opt out with `VIPER_NO_CCACHE=1`).
+cycle. ccache is auto-detected (opt out with `ZANNA_NO_CCACHE=1`).
 
 ```sh
 # Incremental build only (no clean, no tests) — seconds, not minutes
-VIPER_SKIP_CLEAN=1 VIPER_SKIP_TESTS=1 VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
-VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_unix.sh
+ZANNA_SKIP_CLEAN=1 ZANNA_SKIP_TESTS=1 ZANNA_SKIP_LINT=1 ZANNA_SKIP_AUDIT=1 \
+ZANNA_SKIP_SMOKE=1 ZANNA_SKIP_INSTALL=1 ./scripts/build_zanna_unix.sh
 
 # Incremental build + one test label
-VIPER_SKIP_CLEAN=1 VIPER_TEST_LABEL=tools VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
-VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_unix.sh
+ZANNA_SKIP_CLEAN=1 ZANNA_TEST_LABEL=tools ZANNA_SKIP_LINT=1 ZANNA_SKIP_AUDIT=1 \
+ZANNA_SKIP_SMOKE=1 ZANNA_SKIP_INSTALL=1 ./scripts/build_zanna_unix.sh
 
 # Then run targeted tests directly
 ctest --test-dir build -R test_zia_lexer --output-on-failure
@@ -192,14 +192,14 @@ Always finish with a full build + test run (no skip flags) before reporting done
 
 ### Agent-Facing CLI
 
-- `viper check <target> --diagnostic-format=json` — fast type-check/verify gate
+- `zanna check <target> --diagnostic-format=json` — fast type-check/verify gate
   (exit 0 clean / 1 usage / 2 compile errors; JSON carries code, stage, range,
   notes, and applicable fixits)
-- `viper eval 'expr' [--json --type --il]` — one-shot snippet evaluation
+- `zanna eval 'expr' [--json --type --il]` — one-shot snippet evaluation
   (exit 3 = runtime trap)
-- `viper explain <CODE> [--json]` / `viper --print-error-codes --json` —
+- `zanna explain <CODE> [--json]` / `zanna --print-error-codes --json` —
   diagnostic-code catalog
-- `viper --dump-runtime-api` / `viper --dump-opcodes` — machine-readable
+- `zanna --dump-runtime-api` / `zanna --dump-opcodes` — machine-readable
   registry inventories (never drift; generated from the live binary)
 
 ### Conventional Commits
@@ -217,7 +217,7 @@ Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `build`
 ```cpp
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -271,4 +271,4 @@ class Name {
 - Strict architectural layering enforcement
 - VM/native determinism requirement
 - Mandatory build scripts (never raw cmake)
-- Full Viper source file headers on all code files
+- Full Zanna source file headers on all code files

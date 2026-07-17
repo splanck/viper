@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTListFormatTests.cpp
-// Purpose: Validate Viper.Localization.ListFormat against baked en-US
+// Purpose: Validate Zanna.Localization.ListFormat against baked en-US
 //          templates. Covers 0/1/2/3/many-item cases across And / Or /
 //          Unit styles.
 //

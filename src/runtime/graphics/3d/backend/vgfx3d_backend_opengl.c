@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl.c
-// Purpose: OpenGL 3.3 Core GPU backend for Viper.Graphics3D (Linux).
+// Purpose: OpenGL 3.3 Core GPU backend for Zanna.Graphics3D (Linux).
 //   Implements the vgfx3d_backend_t vtable on a GLX-bound OpenGL context,
 //   with GLSL shaders compiled at runtime, FBO-based scene targets for
 //   GPU postfx, and per-mesh VAO / VBO / IBO caching keyed by mesh
@@ -15,7 +15,7 @@
 // Key invariants:
 //   - GL functions resolved at runtime via dlsym; no static GL linkage.
 //   - GLSL 330 core shaders; shader compile failures fall back to software.
-//   - Row-major matrices match Viper convention; HLSL/MSL transposes are
+//   - Row-major matrices match Zanna convention; HLSL/MSL transposes are
 //     handled by sister backends, not this one.
 //   - Per-mesh GPU cache aged out via vgfx3d_opengl_should_prune_cache_entry.
 //
@@ -27,7 +27,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(__linux__) && defined(VIPER_ENABLE_GRAPHICS)
+#if defined(__linux__) && defined(ZANNA_ENABLE_GRAPHICS)
 
 #include "rt_platform.h"
 #include "rt_textureasset3d.h"
@@ -478,20 +478,20 @@ static int gl_upload_ok(void) {
 static int gl_debug_enabled(void) {
     static int cached = -1;
     if (cached < 0) {
-        const char *value = getenv("VIPER_OPENGL_DEBUG");
+        const char *value = getenv("ZANNA_OPENGL_DEBUG");
         cached = (value && value[0] && strcmp(value, "0") != 0) ? 1 : 0;
     }
     return cached;
 }
 
 /// @brief Parse the Linux OpenGL presentation override.
-/// @details The default path remains the conservative offscreen/ViperGFX resolve used by the
-///          existing backend. `VIPER_OPENGL_PRESENT=auto` trusts the framebuffer writability probe,
+/// @details The default path remains the conservative offscreen/ZannaGFX resolve used by the
+///          existing backend. `ZANNA_OPENGL_PRESENT=auto` trusts the framebuffer writability probe,
 ///          `direct` forces native GLX/default-framebuffer presentation, and `offscreen` forces the
 ///          compatibility resolve path. Unknown values fall back to offscreen.
 /// @return 0 for offscreen, 1 for auto/probe, 2 for direct.
 static int gl_present_override_mode(void) {
-    const char *value = getenv("VIPER_OPENGL_PRESENT");
+    const char *value = getenv("ZANNA_OPENGL_PRESENT");
     if (!value || value[0] == '\0')
         return 0;
     if (strcmp(value, "auto") == 0 || strcmp(value, "probe") == 0)
@@ -1221,7 +1221,7 @@ static int load_gl(void) {
         gl.lib = dlopen("libGL.so", RTLD_LAZY);
     if (!gl.lib) {
         const char *err = dlerror();
-        const char *debug = getenv("VIPER_OPENGL_DEBUG");
+        const char *debug = getenv("ZANNA_OPENGL_DEBUG");
         if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
             fprintf(stderr, "[OpenGL] failed to load libGL: %s\n", err ? err : "unknown error");
         gl_dispatch_unlock();
@@ -1375,7 +1375,7 @@ static int load_gl(void) {
     return 0;
 
 fail: {
-    const char *debug = getenv("VIPER_OPENGL_DEBUG");
+    const char *debug = getenv("ZANNA_OPENGL_DEBUG");
     if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0) {
         const char *err = dlerror();
         fprintf(stderr,
@@ -1395,7 +1395,7 @@ fail: {
 /* Set once at context init, before any shader compiles: non-zero when
  * glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE) is active for this context.
  * Injects the depth-convention macros into every GLSL compile so shader
- * bodies stay convention-agnostic (VIPER_DEPTH_TO_NDC + the VS z remap). */
+ * bodies stay convention-agnostic (ZANNA_DEPTH_TO_NDC + the VS z remap). */
 static int gl_zero_to_one_clip = 0;
 
 /// @brief Compile a GLSL shader from one-or-more source strings.
@@ -1409,9 +1409,9 @@ static int gl_zero_to_one_clip = 0;
 static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
     const char *spliced[20];
     const char *prologue = gl_zero_to_one_clip
-                               ? "#define VIPER_DEPTH_ZERO_TO_ONE 1\n"
-                                 "#define VIPER_DEPTH_TO_NDC(d) (d)\n"
-                               : "#define VIPER_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
+                               ? "#define ZANNA_DEPTH_ZERO_TO_ONE 1\n"
+                                 "#define ZANNA_DEPTH_TO_NDC(d) (d)\n"
+                               : "#define ZANNA_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
@@ -1436,7 +1436,7 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
         char log[1024];
         gl.GetShaderInfoLog(shader, (GLsizei)sizeof(log), NULL, log);
         {
-            const char *debug = getenv("VIPER_OPENGL_DEBUG");
+            const char *debug = getenv("ZANNA_OPENGL_DEBUG");
             if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
                 fprintf(stderr, "[OpenGL] shader compile failed: %s\n", log);
         }
@@ -1470,7 +1470,7 @@ static GLuint link_program(GLuint vs, GLuint fs) {
         char log[1024];
         gl.GetProgramInfoLog(program, (GLsizei)sizeof(log), NULL, log);
         {
-            const char *debug = getenv("VIPER_OPENGL_DEBUG");
+            const char *debug = getenv("ZANNA_OPENGL_DEBUG");
             if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
                 fprintf(stderr, "[OpenGL] program link failed: %s\n", log);
         }
@@ -1805,4 +1805,4 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .read_depth_probe = gl_read_depth_probe,
 };
 
-#endif /* __linux__ && VIPER_ENABLE_GRAPHICS */
+#endif /* __linux__ && ZANNA_ENABLE_GRAPHICS */

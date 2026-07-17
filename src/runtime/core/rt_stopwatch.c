@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_stopwatch.c
-// Purpose: Implements the Stopwatch class for the Viper runtime. Measures
+// Purpose: Implements the Stopwatch class for the Zanna runtime. Measures
 //          elapsed time using a monotonic clock (immune to wall-clock
 //          adjustments). Supports Start/Stop/Restart/Reset and elapsed queries
 //          in milliseconds, microseconds, and nanoseconds.
@@ -26,7 +26,7 @@
 // Ownership/Lifetime:
 //   - Stopwatch instances are heap-allocated via rt_obj_new_i64 and managed
 //     by the runtime GC; callers do not free them explicitly.
-//   - The internal ViperStopwatch struct contains no pointers to external
+//   - The internal ZannaStopwatch struct contains no pointers to external
 //     resources; the finalizer is a no-op.
 //
 // Links: src/runtime/core/rt_stopwatch.h (public API),
@@ -80,7 +80,7 @@ typedef struct {
     int64_t accumulated_ns; ///< Total accumulated nanoseconds from completed intervals.
     int64_t start_time_ns;  ///< Timestamp when current interval started (if running).
     bool running;           ///< True if stopwatch is currently timing.
-} ViperStopwatch;
+} ZannaStopwatch;
 
 // Overflow-checked signed 64-bit arithmetic for the nanosecond accumulator. Same
 // triplet seen in rt_countdown / rt_duration / rt_dateonly — pre-checks operands
@@ -167,17 +167,17 @@ static int64_t stopwatch_timespec_to_ns(struct timespec ts) {
 
 /// @brief Validate that @p obj is a live Stopwatch receiver, trapping otherwise.
 /// @details Centralises the receiver guard so every public method reads
-///          `ViperStopwatch *sw = require_stopwatch(obj); if (!sw) return ...;`.
+///          `ZannaStopwatch *sw = require_stopwatch(obj); if (!sw) return ...;`.
 ///          Verifies the heap kind, class ID, and payload size via
 ///          rt_obj_is_instance so a null receiver *or* an unrelated object (e.g. a
 ///          Seq passed to the static compatibility form) traps instead of being
 ///          reinterpreted as a Stopwatch payload (VDOC-229).
-static ViperStopwatch *require_stopwatch(void *obj) {
-    if (!rt_obj_is_instance(obj, RT_STOPWATCH_CLASS_ID, sizeof(ViperStopwatch))) {
+static ZannaStopwatch *require_stopwatch(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_STOPWATCH_CLASS_ID, sizeof(ZannaStopwatch))) {
         rt_trap("Stopwatch: invalid receiver");
         return NULL;
     }
-    return (ViperStopwatch *)obj;
+    return (ZannaStopwatch *)obj;
 }
 
 /// @brief Get current timestamp in nanoseconds from monotonic clock.
@@ -231,7 +231,7 @@ static int64_t get_timestamp_ns(void) {
 /// @brief Internal helper to get total elapsed nanoseconds.
 /// @param sw Stopwatch pointer.
 /// @return Total elapsed nanoseconds including current interval if running.
-static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw) {
+static int64_t stopwatch_get_elapsed_ns(ZannaStopwatch *sw) {
     int64_t total = sw->accumulated_ns;
 
     if (sw->running) {
@@ -268,13 +268,13 @@ static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw) {
 /// @return A new Stopwatch object in stopped state. Traps on allocation failure.
 ///
 /// @note O(1) time complexity.
-/// @note The stopwatch is managed by Viper's garbage collector.
+/// @note The stopwatch is managed by Zanna's garbage collector.
 ///
 /// @see rt_stopwatch_start_new For creating and immediately starting
 /// @see rt_stopwatch_start For starting the stopwatch
 void *rt_stopwatch_new(void) {
-    ViperStopwatch *sw =
-        (ViperStopwatch *)rt_obj_new_i64(RT_STOPWATCH_CLASS_ID, (int64_t)sizeof(ViperStopwatch));
+    ZannaStopwatch *sw =
+        (ZannaStopwatch *)rt_obj_new_i64(RT_STOPWATCH_CLASS_ID, (int64_t)sizeof(ZannaStopwatch));
     if (!sw) {
         rt_trap("Stopwatch: memory allocation failed");
         return NULL; // Unreachable after trap
@@ -314,7 +314,7 @@ void *rt_stopwatch_new(void) {
 ///
 /// @see rt_stopwatch_new For creating without starting
 void *rt_stopwatch_start_new(void) {
-    ViperStopwatch *sw = (ViperStopwatch *)rt_stopwatch_new();
+    ZannaStopwatch *sw = (ZannaStopwatch *)rt_stopwatch_new();
     rt_stopwatch_start(sw);
     return sw;
 }
@@ -351,7 +351,7 @@ void *rt_stopwatch_start_new(void) {
 /// @see rt_stopwatch_stop For pausing the stopwatch
 /// @see rt_stopwatch_restart For resetting and starting
 void rt_stopwatch_start(void *obj) {
-    ViperStopwatch *sw = require_stopwatch(obj);
+    ZannaStopwatch *sw = require_stopwatch(obj);
 
     if (!sw->running) {
         sw->start_time_ns = get_timestamp_ns();
@@ -388,7 +388,7 @@ void rt_stopwatch_start(void *obj) {
 /// @see rt_stopwatch_start For resuming the stopwatch
 /// @see rt_stopwatch_reset For clearing elapsed time
 void rt_stopwatch_stop(void *obj) {
-    ViperStopwatch *sw = require_stopwatch(obj);
+    ZannaStopwatch *sw = require_stopwatch(obj);
 
     if (sw->running) {
         int64_t now = get_timestamp_ns();
@@ -426,7 +426,7 @@ void rt_stopwatch_stop(void *obj) {
 /// @see rt_stopwatch_restart For resetting and immediately starting
 /// @see rt_stopwatch_start For starting after reset
 void rt_stopwatch_reset(void *obj) {
-    ViperStopwatch *sw = require_stopwatch(obj);
+    ZannaStopwatch *sw = require_stopwatch(obj);
 
     sw->accumulated_ns = 0;
     sw->start_time_ns = 0;
@@ -465,7 +465,7 @@ void rt_stopwatch_reset(void *obj) {
 /// @see rt_stopwatch_reset For resetting without starting
 /// @see rt_stopwatch_start For starting without resetting
 void rt_stopwatch_restart(void *obj) {
-    ViperStopwatch *sw = require_stopwatch(obj);
+    ZannaStopwatch *sw = require_stopwatch(obj);
 
     sw->accumulated_ns = 0;
     sw->start_time_ns = get_timestamp_ns();

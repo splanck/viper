@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@ static constexpr std::array kDiagCatalogEntries = {
 /// @brief Build the exact-code lookup map for the diagnostic catalog.
 /// @return Map from stable diagnostic code to its static catalog entry.
 /// @details The map is initialized once and then treated as immutable, making
-///          repeated `viper explain CODE` lookups constant-time while preserving
+///          repeated `zanna explain CODE` lookups constant-time while preserving
 ///          the definition-order span used for listing.
 const std::unordered_map<std::string_view, const DiagCatalogEntry *> &diagCatalogMap() {
     static const std::unordered_map<std::string_view, const DiagCatalogEntry *> map = [] {
@@ -83,7 +83,7 @@ std::optional<std::string_view> diagCodeFamily(std::string_view code) {
         {"V-IL-", "IL verification diagnostics"},
         {"V-BC-", "Bytecode compiler diagnostics"},
         {"V-CG-", "Native codegen diagnostics"},
-        {"V-CLI-", "Viper command-line diagnostics"},
+        {"V-CLI-", "Zanna command-line diagnostics"},
         {"V-IL-IO", "IL parser/serializer diagnostics"},
         {"V-OPT-", "IL optimizer pipeline diagnostics"},
         {"V-SRC-", "Source loading and registration diagnostics"},

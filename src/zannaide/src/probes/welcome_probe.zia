@@ -1,0 +1,67 @@
+module welcome_probe;
+
+// ============================================================================
+// MODULE: welcome_probe
+// PURPOSE: Verify the welcome/start surface (plan 18): SetShown toggles the
+//          welcome host and editor row inversely, Refresh populates recents
+//          without trapping, and the action buttons exist.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../ui/welcome_view";
+bind "../core/session";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ZannaIDE Welcome Probe", 900, 640);
+
+    var wv = new welcome_view.WelcomeView();
+    wv.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+
+    if wv.newFileButton == null or wv.openFolderButton == null or wv.recentList == null {
+        fail(shell, "welcome widgets not built");
+        return;
+    }
+
+    // Shown: welcome host visible, editor row hidden.
+    wv.SetShown(true);
+    shell.Poll();
+    shell.Render();
+    if shell.workbench.welcomeHost.IsVisible() == false {
+        fail(shell, "welcome host not visible when shown");
+        return;
+    }
+    if shell.workbench.editorRow.IsVisible() {
+        fail(shell, "editor row should be hidden when welcome shown");
+        return;
+    }
+
+    // Hidden: inverse.
+    wv.SetShown(false);
+    shell.Poll();
+    shell.Render();
+    if shell.workbench.welcomeHost.IsVisible() {
+        fail(shell, "welcome host should hide when not shown");
+        return;
+    }
+    if shell.workbench.editorRow.IsVisible() == false {
+        fail(shell, "editor row should be visible when welcome hidden");
+        return;
+    }
+
+    // Refresh against an empty session must not trap.
+    var sessionMgr = new session.SessionManager();
+    wv.Refresh(sessionMgr);
+    shell.Render();
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

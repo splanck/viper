@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Post-RA instruction scheduler using list scheduling with AArch64 latencies.
 ///
@@ -40,4 +40,4 @@ class SchedulerPass final : public Pass {
     bool run(AArch64Module &module, Diagnostics &diags) override;
 };
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

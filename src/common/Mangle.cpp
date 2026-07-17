@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <string>
 
-namespace viper::common {
+namespace zanna::common {
 namespace {
 
 constexpr std::string_view kReservedPrefix = "vpr_";
@@ -204,4 +204,4 @@ std::string DemangleLink(std::string_view symbol) {
     return out;
 }
 
-} // namespace viper::common
+} // namespace zanna::common

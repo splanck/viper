@@ -1,5 +1,5 @@
 ' table.bas - SQL Table Class
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 ' Requires: schema.bas (AddFile before this)
 
 '=============================================================================

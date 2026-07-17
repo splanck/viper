@@ -1,18 +1,18 @@
 module snake;
 
 // ============================================================================
-// SNAKE.VIPER - Classic Snake Game
+// SNAKE.ZANNA - Classic Snake Game
 // ============================================================================
 // Classic arcade snake game.
 // ============================================================================
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Text.Fmt;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Text.Fmt;
+bind Zanna.Time;
 
 var DIR_UP: Integer;
 var DIR_DOWN: Integer;
@@ -347,7 +347,7 @@ func snakeRun(canvas: Canvas) {
 
         if canvas.KeyHeld(82) != 0 {
             game.restart();
-            Viper.Time.Clock.Sleep(200);
+            Zanna.Time.Clock.Sleep(200);
         }
 
         game.update();
@@ -356,6 +356,6 @@ func snakeRun(canvas: Canvas) {
         game.draw(canvas, width, height);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

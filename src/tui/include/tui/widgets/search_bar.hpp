@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the SearchBar widget for Viper's TUI framework.
+// This file declares the SearchBar widget for Zanna's TUI framework.
 // The search bar provides an interactive text search interface bound to
 // a TextBuffer and TextView, displaying a query input prefixed with '/'
 // and navigating through matches as the user types.
@@ -36,7 +36,7 @@
 #include "tui/ui/widget.hpp"
 #include "tui/views/text_view.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 /// @brief Interactive text search widget with incremental match highlighting.
 /// @details Provides a '/' prefixed query input that searches through a TextBuffer
 ///          and highlights matches in the associated TextView. Supports both literal
@@ -70,4 +70,4 @@ class SearchBar : public ui::Widget {
     void updateMatches();
     void gotoMatch(std::size_t idx);
 };
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,15 +9,15 @@
 // Purpose: Internal hooks into rt_numfmt's digit-grouping pipeline, exposed so
 //          the localization module's NumberFormat can emit locale-specific
 //          grouping without duplicating the group-every-N-digits logic. The
-//          same helper is used by Viper.Text.InvariantNumberFormat.Thousands and by
-//          Viper.Localization.NumberFormat.{Decimal, Integer, Currency, ...}.
+//          same helper is used by Zanna.Text.InvariantNumberFormat.Thousands and by
+//          Zanna.Localization.NumberFormat.{Decimal, Integer, Currency, ...}.
 //
 // Key invariants:
 //   - Implementation-only: must not be included from public-facing headers.
 //   - Helper operates on a pre-built decimal digit buffer; sign handling is
 //     the caller's responsibility.
 //   - Traps via rt_trap on string-builder allocation failure (same contract
-//     as the parent Viper.Text.InvariantNumberFormat functions).
+//     as the parent Zanna.Text.InvariantNumberFormat functions).
 //
 // Ownership/Lifetime:
 //   - Caller owns the string builder and the digit buffer; the helper only

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -88,7 +88,7 @@ static rt_string rt_obj_make_cstr(const char *text) {
     return rt_string_from_bytes(text, len);
 }
 
-/// @brief Map a built-in runtime class id to its qualified Viper class name.
+/// @brief Map a built-in runtime class id to its qualified Zanna class name.
 /// @details Used by `rt_obj_type_name` for objects whose class id is one of the runtime's
 ///          fixed-known constants (Box / ValueType / Option / MessageBus / Callback / Threads
 ///          runtime handles) rather
@@ -97,48 +97,48 @@ static rt_string rt_obj_make_cstr(const char *text) {
 static const char *rt_obj_builtin_class_name(int64_t class_id) {
     switch (class_id) {
         case RT_BOX_CLASS_ID:
-            return "Viper.Core.Box";
+            return "Zanna.Core.Box";
         case RT_VALUE_TYPE_CLASS_ID:
-            return "Viper.Core.ValueType";
+            return "Zanna.Core.ValueType";
         case RT_OPTION_CLASS_ID:
-            return "Viper.Option";
+            return "Zanna.Option";
         case RT_MSGBUS_CLASS_ID:
-            return "Viper.Core.MessageBus";
+            return "Zanna.Core.MessageBus";
         case RT_MSGBUS_CALLBACK_CLASS_ID:
-            return "Viper.Core.MessageBus.Callback";
+            return "Zanna.Core.MessageBus.Callback";
         case RT_WEAKREF_CLASS_ID:
-            return "Viper.Memory.WeakRef";
+            return "Zanna.Memory.WeakRef";
         case RT_THREAD_CLASS_ID:
         case RT_SAFE_THREAD_CLASS_ID:
-            return "Viper.Threads.Thread";
+            return "Zanna.Threads.Thread";
         case RT_SAFE_I64_CLASS_ID:
-            return "Viper.Threads.SafeI64";
+            return "Zanna.Threads.SafeI64";
         case RT_GATE_CLASS_ID:
-            return "Viper.Threads.Gate";
+            return "Zanna.Threads.Gate";
         case RT_BARRIER_CLASS_ID:
-            return "Viper.Threads.Barrier";
+            return "Zanna.Threads.Barrier";
         case RT_RWLOCK_CLASS_ID:
-            return "Viper.Threads.RwLock";
+            return "Zanna.Threads.RwLock";
         case RT_CHANNEL_CLASS_ID:
-            return "Viper.Threads.Channel";
+            return "Zanna.Threads.Channel";
         case RT_CANCELLATION_CLASS_ID:
-            return "Viper.Threads.CancelToken";
+            return "Zanna.Threads.CancelToken";
         case RT_PROMISE_CLASS_ID:
-            return "Viper.Threads.Promise";
+            return "Zanna.Threads.Promise";
         case RT_FUTURE_CLASS_ID:
-            return "Viper.Threads.Future";
+            return "Zanna.Threads.Future";
         case RT_THREADPOOL_CLASS_ID:
-            return "Viper.Threads.Pool";
+            return "Zanna.Threads.Pool";
         case RT_CONCQUEUE_CLASS_ID:
-            return "Viper.Threads.ConcurrentQueue";
+            return "Zanna.Threads.ConcurrentQueue";
         case RT_CONCMAP_CLASS_ID:
-            return "Viper.Threads.ConcurrentMap";
+            return "Zanna.Threads.ConcurrentMap";
         case RT_SCHEDULER_CLASS_ID:
-            return "Viper.Threads.Scheduler";
+            return "Zanna.Threads.Scheduler";
         case RT_DEBOUNCER_CLASS_ID:
-            return "Viper.Threads.Debouncer";
+            return "Zanna.Threads.Debouncer";
         case RT_THROTTLER_CLASS_ID:
-            return "Viper.Threads.Throttler";
+            return "Zanna.Threads.Throttler";
         default:
             return NULL;
     }
@@ -313,7 +313,7 @@ void rt_obj_retain_known(void *p) {
     rt_heap_retain(p);
 }
 
-/// @brief Public Viper.Memory retain entry point with runtime handle validation.
+/// @brief Public Zanna.Memory retain entry point with runtime handle validation.
 void rt_memory_retain(void *p) {
     if (!p)
         return;
@@ -323,21 +323,21 @@ void rt_memory_retain(void *p) {
     }
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
-        rt_trap("Viper.Memory.Retain: invalid or freed heap object");
+        rt_trap("Zanna.Memory.Retain: invalid or freed heap object");
         return;
     }
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_STRING) {
-        rt_trap("Viper.Memory.Retain: invalid string payload; pass the string handle");
+        rt_trap("Zanna.Memory.Retain: invalid string payload; pass the string handle");
         return;
     }
     if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT && (rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY) {
-        rt_trap("Viper.Memory.Retain: unsupported heap payload kind");
+        rt_trap("Zanna.Memory.Retain: unsupported heap payload kind");
         return;
     }
     rt_heap_retain(p);
 }
 
-/// @brief Public string-typed wrapper for `Viper.Memory.RetainStr`.
+/// @brief Public string-typed wrapper for `Zanna.Memory.RetainStr`.
 /// @details Validates that @p s is a runtime string handle before retaining it.
 ///          The typed wrapper exists so Zia and BASIC code can call it without a `void *`
 ///          cast at the IL boundary.
@@ -345,7 +345,7 @@ void rt_memory_retain_str(rt_string s) {
     if (!s)
         return;
     if (!rt_string_is_handle(s)) {
-        rt_trap("Viper.Memory.RetainStr: invalid string handle");
+        rt_trap("Zanna.Memory.RetainStr: invalid string handle");
         return;
     }
     rt_str_retain_maybe(s);
@@ -385,7 +385,7 @@ static int64_t rt_memory_refcount_to_i64_named(size_t refcount, const char *api_
         snprintf(buf,
                  sizeof(buf),
                  "%s: refcount exceeds Integer range",
-                 api_name ? api_name : "Viper.Memory.Release");
+                 api_name ? api_name : "Zanna.Memory.Release");
         rt_trap(buf);
         return INT64_MAX;
     }
@@ -393,7 +393,7 @@ static int64_t rt_memory_refcount_to_i64_named(size_t refcount, const char *api_
 }
 
 static int64_t rt_memory_refcount_to_i64(size_t refcount) {
-    return rt_memory_refcount_to_i64_named(refcount, "Viper.Memory.Release");
+    return rt_memory_refcount_to_i64_named(refcount, "Zanna.Memory.Release");
 }
 
 /// @brief Validate and release a runtime string, returning the post-release refcount.
@@ -410,7 +410,7 @@ static int64_t rt_memory_release_string(rt_string s, const char *api_name) {
         snprintf(buf,
                  sizeof(buf),
                  "%s: invalid string handle",
-                 api_name ? api_name : "Viper.Memory.Release");
+                 api_name ? api_name : "Zanna.Memory.Release");
         rt_trap(buf);
         return 0;
     }
@@ -425,7 +425,7 @@ static int rt_memory_array_payload_is_releasable(rt_heap_hdr_t *hdr) {
     if (!hdr)
         return 0;
     if (hdr->len > hdr->cap) {
-        rt_trap("Viper.Memory.Release: array length exceeds capacity");
+        rt_trap("Zanna.Memory.Release: array length exceeds capacity");
         return 0;
     }
     switch ((rt_elem_kind_t)hdr->elem_kind) {
@@ -439,7 +439,7 @@ static int rt_memory_array_payload_is_releasable(rt_heap_hdr_t *hdr) {
         case RT_ELEM_OBJ:
             return 1;
         default:
-            rt_trap("Viper.Memory.Release: unsupported array element kind");
+            rt_trap("Zanna.Memory.Release: unsupported array element kind");
             return 0;
     }
 }
@@ -458,7 +458,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     if (!p || !hdr)
         return;
     if (hdr->len > hdr->cap) {
-        rt_trap("Viper.Memory.Release: array length exceeds capacity");
+        rt_trap("Zanna.Memory.Release: array length exceeds capacity");
         return;
     }
 
@@ -475,7 +475,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
                 snprintf(saved_error,
                          sizeof(saved_error),
                          "%s",
-                         err && err[0] ? err : "Viper.Memory.Release: array element cleanup trap");
+                         err && err[0] ? err : "Zanna.Memory.Release: array element cleanup trap");
             }
             trapped = 1;
         }
@@ -516,7 +516,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             }
             default:
                 next_index = hdr->len;
-                rt_trap("Viper.Memory.Release: unsupported array element kind");
+                rt_trap("Zanna.Memory.Release: unsupported array element kind");
                 break;
         }
         break;
@@ -536,7 +536,7 @@ static void rt_memory_free_zero_ref_array(void *p, rt_heap_hdr_t *hdr) {
         snprintf(saved_error,
                  sizeof(saved_error),
                  "%s",
-                 err && err[0] ? err : "Viper.Memory.Release: array cleanup trap");
+                 err && err[0] ? err : "Zanna.Memory.Release: array cleanup trap");
         rt_trap_clear_recovery();
         rt_gc_clear_weak_refs(p);
         rt_heap_free_zero_ref(p);
@@ -621,16 +621,16 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     return 1;
 }
 
-/// @brief Public Viper.Memory release entry point with managed object finalization.
+/// @brief Public Zanna.Memory release entry point with managed object finalization.
 int64_t rt_memory_release(void *p) {
     if (!p)
         return 0;
     if (rt_string_is_handle(p)) {
-        return rt_memory_release_string((rt_string)p, "Viper.Memory.Release");
+        return rt_memory_release_string((rt_string)p, "Zanna.Memory.Release");
     }
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
-        rt_trap("Viper.Memory.Release: invalid or freed heap object");
+        rt_trap("Zanna.Memory.Release: invalid or freed heap object");
         return 0;
     }
 
@@ -654,11 +654,11 @@ int64_t rt_memory_release(void *p) {
         return rt_memory_refcount_to_i64(next);
     }
 
-    rt_trap("Viper.Memory.Release: unsupported heap payload kind");
+    rt_trap("Zanna.Memory.Release: unsupported heap payload kind");
     return 0;
 }
 
-/// @brief Public string-typed wrapper for `Viper.Memory.ReleaseStr`.
+/// @brief Public string-typed wrapper for `Zanna.Memory.ReleaseStr`.
 /// @details Forwards to `rt_memory_release_string` so Zia and BASIC code can release a
 ///          runtime string without an `rt_string` ↔ `void *` cast at the IL boundary.
 ///          Returns the post-release refcount (saturated at `INT64_MAX` for immortal
@@ -666,7 +666,7 @@ int64_t rt_memory_release(void *p) {
 int64_t rt_memory_release_str(rt_string s) {
     if (!s)
         return 0;
-    return rt_memory_release_string(s, "Viper.Memory.ReleaseStr");
+    return rt_memory_release_string(s, "Zanna.Memory.ReleaseStr");
 }
 
 /// @brief Compatibility shim matching the string free entry point.
@@ -855,7 +855,7 @@ rt_string rt_obj_to_string(void *self) {
         return rt_obj_make_cstr("Object");
     const char *builtin_name = rt_obj_builtin_class_name(validated->class_id);
     if (validated->elem_kind == RT_ELEM_BOX && !builtin_name)
-        builtin_name = "Viper.Core.Box";
+        builtin_name = "Zanna.Core.Box";
     if (builtin_name)
         return rt_obj_make_cstr(builtin_name);
     if (validated->cap < sizeof(rt_object))
@@ -876,7 +876,7 @@ rt_string rt_obj_type_name(void *self) {
     if (!self)
         return rt_string_from_bytes("<null>", 6);
     if (rt_string_is_handle(self))
-        return rt_obj_make_cstr("Viper.String");
+        return rt_obj_make_cstr("Zanna.String");
 
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(self, &hdr) || !hdr)
@@ -885,7 +885,7 @@ rt_string rt_obj_type_name(void *self) {
         return rt_obj_make_cstr("Object");
     const char *builtin_name = rt_obj_builtin_class_name(hdr->class_id);
     if (hdr->elem_kind == RT_ELEM_BOX && !builtin_name)
-        builtin_name = "Viper.Core.Box";
+        builtin_name = "Zanna.Core.Box";
     if (builtin_name)
         return rt_obj_make_cstr(builtin_name);
     if (hdr->cap < sizeof(rt_object))

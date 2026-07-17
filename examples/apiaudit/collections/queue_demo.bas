@@ -1,12 +1,12 @@
-' queue_demo.bas - Comprehensive API audit for Viper.Collections.Queue
+' queue_demo.bas - Comprehensive API audit for Zanna.Collections.Queue
 ' Tests: New, Push, Pop, Peek, Len, IsEmpty, Clear
 
 PRINT "=== Queue API Audit ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM q AS Viper.Collections.Queue
-q = Viper.Collections.Queue.New()
+DIM q AS Zanna.Collections.Queue
+q = Zanna.Collections.Queue.New()
 PRINT q.Count       ' 0
 PRINT q.IsEmpty   ' 1
 
@@ -32,12 +32,12 @@ PRINT q.Peek()    ' third
 
 ' --- Push more and verify FIFO ---
 PRINT "--- Push more ---"
-q.Push(Viper.Core.Box.I64(42))
-q.Push(Viper.Core.Box.I64(99))
+q.Push(Zanna.Core.Box.I64(42))
+q.Push(Zanna.Core.Box.I64(99))
 PRINT q.Count                          ' 3
 PRINT q.Pop()                        ' third
-PRINT Viper.Core.Box.ToI64(q.Pop()) ' 42
-PRINT Viper.Core.Box.ToI64(q.Pop()) ' 99
+PRINT Zanna.Core.Box.ToI64(q.Pop()) ' 42
+PRINT Zanna.Core.Box.ToI64(q.Pop()) ' 99
 PRINT q.Count                          ' 0
 PRINT q.IsEmpty                      ' 1
 

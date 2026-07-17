@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,29 +76,29 @@ namespace {
     return module;
 }
 
-[[nodiscard]] viper::codegen::x64::CodegenResult baselineAssembly() {
-    viper::codegen::x64::passes::Module module{};
+[[nodiscard]] zanna::codegen::x64::CodegenResult baselineAssembly() {
+    zanna::codegen::x64::passes::Module module{};
     module.il = makeSimpleModule();
-    viper::codegen::x64::passes::Diagnostics diags{};
-    viper::codegen::x64::passes::LoweringPass lowering{};
+    zanna::codegen::x64::passes::Diagnostics diags{};
+    zanna::codegen::x64::passes::LoweringPass lowering{};
     if (!lowering.run(module, diags)) {
         return {};
     }
-    return viper::codegen::x64::emitModuleToAssembly(*module.lowered, {});
+    return zanna::codegen::x64::emitModuleToAssembly(*module.lowered, {});
 }
 
-[[nodiscard]] viper::codegen::x64::CodegenResult managedAssembly() {
-    viper::codegen::x64::passes::Module module{};
+[[nodiscard]] zanna::codegen::x64::CodegenResult managedAssembly() {
+    zanna::codegen::x64::passes::Module module{};
     module.il = makeSimpleModule();
-    viper::codegen::x64::passes::Diagnostics diags{};
-    viper::codegen::x64::passes::PassManager manager{};
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::SchedulerPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::PeepholePass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::EmitPass>(
-        viper::codegen::x64::CodegenOptions{}));
+    zanna::codegen::x64::passes::Diagnostics diags{};
+    zanna::codegen::x64::passes::PassManager manager{};
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::LoweringPass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::LegalizePass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::RegAllocPass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::SchedulerPass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::PeepholePass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::EmitPass>(
+        zanna::codegen::x64::CodegenOptions{}));
 
     if (!manager.run(module, diags) || !module.codegenResult) {
         return {};
@@ -107,18 +107,18 @@ namespace {
 }
 
 [[nodiscard]] std::size_t managedBinarySize(int optimizeLevel) {
-    viper::codegen::x64::passes::Module module{};
+    zanna::codegen::x64::passes::Module module{};
     module.il = makeZeroModule();
-    viper::codegen::x64::passes::Diagnostics diags{};
-    viper::codegen::x64::passes::PassManager manager{};
-    viper::codegen::x64::CodegenOptions opts{};
+    zanna::codegen::x64::passes::Diagnostics diags{};
+    zanna::codegen::x64::passes::PassManager manager{};
+    zanna::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = optimizeLevel;
     module.options = opts;
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::PeepholePass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(opts));
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::LoweringPass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::LegalizePass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::RegAllocPass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::PeepholePass>());
+    manager.addPass(std::make_unique<zanna::codegen::x64::passes::BinaryEmitPass>(opts));
 
     if (!manager.run(module, diags)) {
         return 0;

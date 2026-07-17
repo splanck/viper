@@ -21,7 +21,7 @@ authored class documentation directly to the monolith would make the registry
 harder to navigate and review.
 
 The generated runtime class catalog already feeds the Zia and BASIC frontends,
-language services, and `viper --dump-runtime-api`, but it does not carry class
+language services, and `zanna --dump-runtime-api`, but it does not carry class
 documentation. Zia therefore contains a small hard-coded documentation table,
 BASIC emits empty documentation, and the public API dump can expose only
 inferred documentation anchors.
@@ -44,8 +44,8 @@ usable by its existing X-macro consumer.
   `RT_CLASS_BEGIN` as authored registry data. Summaries are one-line plain
   text; details are Markdown and may span paragraphs.
 - Carry class documentation through the generated runtime class catalog and
-  expose it to frontends, language services, ViperIDE, and
-  `viper --dump-runtime-api`.
+  expose it to frontends, language services, ZannaIDE, and
+  `zanna --dump-runtime-api`.
 - Add a schema-versioned `documentation` object to each class in the public API
   dump. It contains `summary`, `details`, and `format: "markdown"`.
 - Generate exhaustive runtime API reference pages from the parsed canonical
@@ -77,7 +77,7 @@ Example:
 /// @details
 /// Provides whole-file text and byte operations, metadata queries, copying,
 /// moving, and deletion.
-RT_CLASS_BEGIN("Viper.IO.File", File, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.File", File, "obj", none)
 ```
 
 The documentation block applies only to the next class declaration. Orphaned,
@@ -88,7 +88,7 @@ object layouts visible to runtime programs.
 ## Consequences
 
 - Runtime API changes and their canonical documentation are reviewed together.
-- Zia, BASIC, ViperIDE, generated reference docs, and API tooling consume the
+- Zia, BASIC, ZannaIDE, generated reference docs, and API tooling consume the
   same descriptions.
 - Adding a fragment requires no external package or preprocessing tool.
 - `rtgen`, CMake dependency tracking, tests, and source-health tooling must all

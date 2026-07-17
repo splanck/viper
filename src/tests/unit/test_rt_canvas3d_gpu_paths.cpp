@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,8 +22,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_canvas3d.h"
@@ -3727,32 +3727,32 @@ static void test_synthetic_input_and_clock_advance_through_public_canvas_api(voi
     rt_canvas3d_set_input_source(&canvas, 1);
     rt_canvas3d_set_clock_source(&canvas, 1);
     rt_canvas3d_set_synthetic_delta_time_sec(&canvas, 1.0 / 30.0);
-    rt_canvas3d_push_synthetic_key(&canvas, VIPER_KEY_W, 1);
-    rt_canvas3d_push_synthetic_mouse(&canvas, 7.0, -3.0, 1LL << VIPER_MOUSE_BUTTON_LEFT, 1.5);
+    rt_canvas3d_push_synthetic_key(&canvas, ZANNA_KEY_W, 1);
+    rt_canvas3d_push_synthetic_mouse(&canvas, 7.0, -3.0, 1LL << ZANNA_MOUSE_BUTTON_LEFT, 1.5);
 
     int64_t poll_open = rt_canvas3d_poll(&canvas);
 
     EXPECT_TRUE(poll_open == 1, "Synthetic-only Canvas3D.Poll stays open without platform events");
-    EXPECT_TRUE(rt_keyboard_was_pressed(VIPER_KEY_W) == 1,
+    EXPECT_TRUE(rt_keyboard_was_pressed(ZANNA_KEY_W) == 1,
                 "Canvas3D synthetic key down records a pressed edge");
-    EXPECT_TRUE(rt_keyboard_is_down(VIPER_KEY_W) == 1,
+    EXPECT_TRUE(rt_keyboard_is_down(ZANNA_KEY_W) == 1,
                 "Canvas3D synthetic key down holds through normal keyboard state");
     EXPECT_TRUE(rt_mouse_delta_x() == 7 && rt_mouse_delta_y() == -3,
                 "Canvas3D synthetic mouse movement flows through Mouse.Delta");
-    EXPECT_TRUE(rt_mouse_was_pressed(VIPER_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 1,
+    EXPECT_TRUE(rt_mouse_was_pressed(ZANNA_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 1,
                 "Canvas3D synthetic mouse buttons use normal button state");
     EXPECT_TRUE(std::fabs(rt_mouse_wheel_yf() - 1.5) < 0.0001,
                 "Canvas3D synthetic mouse wheel keeps fractional precision");
     EXPECT_TRUE(std::fabs(rt_canvas3d_get_delta_time_sec(&canvas) - (1.0 / 30.0)) < 0.000001,
                 "Canvas3D synthetic clock reports the fixed frame delta");
 
-    rt_canvas3d_push_synthetic_key(&canvas, VIPER_KEY_W, 0);
+    rt_canvas3d_push_synthetic_key(&canvas, ZANNA_KEY_W, 0);
     rt_canvas3d_push_synthetic_mouse(&canvas, 0.0, 0.0, 0, 0.0);
     rt_canvas3d_advance_synthetic_frame(&canvas);
 
-    EXPECT_TRUE(rt_keyboard_was_released(VIPER_KEY_W) == 1 && rt_keyboard_is_up(VIPER_KEY_W) == 1,
+    EXPECT_TRUE(rt_keyboard_was_released(ZANNA_KEY_W) == 1 && rt_keyboard_is_up(ZANNA_KEY_W) == 1,
                 "Canvas3D synthetic key up records a released edge");
-    EXPECT_TRUE(rt_mouse_was_released(VIPER_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 0,
+    EXPECT_TRUE(rt_mouse_was_released(ZANNA_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 0,
                 "Canvas3D synthetic mouse button release uses normal button state");
     EXPECT_TRUE(rt_mouse_delta_x() == 0 && rt_mouse_delta_y() == 0 &&
                     std::fabs(rt_mouse_wheel_yf()) < 0.0001,

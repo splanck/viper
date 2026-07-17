@@ -1,20 +1,20 @@
 module TestBitsDebug;
 
 func start() {
-    Viper.Terminal.Say("Testing Bits.Not and Bits.Flip:");
+    Zanna.Terminal.Say("Testing Bits.Not and Bits.Flip:");
 
-    var not0: Integer = Viper.Math.Bits.Not(0);
-    Viper.Terminal.Say("Bits.Not(0) = " + Viper.String.FromInt(not0));
+    var not0: Integer = Zanna.Math.Bits.Not(0);
+    Zanna.Terminal.Say("Bits.Not(0) = " + Zanna.String.FromInt(not0));
 
-    var flip0: Integer = Viper.Math.Bits.Flip(0);
-    Viper.Terminal.Say("Bits.Flip(0) = " + Viper.String.FromInt(flip0));
+    var flip0: Integer = Zanna.Math.Bits.Flip(0);
+    Zanna.Terminal.Say("Bits.Flip(0) = " + Zanna.String.FromInt(flip0));
 
     var langNot0: Integer = ~0;
-    Viper.Terminal.Say("~0 = " + Viper.String.FromInt(langNot0));
+    Zanna.Terminal.Say("~0 = " + Zanna.String.FromInt(langNot0));
 
-    var not1: Integer = Viper.Math.Bits.Not(1);
-    Viper.Terminal.Say("Bits.Not(1) = " + Viper.String.FromInt(not1));
+    var not1: Integer = Zanna.Math.Bits.Not(1);
+    Zanna.Terminal.Say("Bits.Not(1) = " + Zanna.String.FromInt(not1));
 
-    var flip1: Integer = Viper.Math.Bits.Flip(1);
-    Viper.Terminal.Say("Bits.Flip(1) = " + Viper.String.FromInt(flip1));
+    var flip1: Integer = Zanna.Math.Bits.Flip(1);
+    Zanna.Terminal.Say("Bits.Flip(1) = " + Zanna.String.FromInt(flip1));
 }

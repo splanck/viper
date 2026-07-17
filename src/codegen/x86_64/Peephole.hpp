@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include "MachineIR.hpp"
 #include "TargetX64.hpp"
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Run conservative Machine IR peepholes for the x86-64 backend.
 /// \details Applies pattern-based local rewrites to the Machine IR, including
@@ -38,4 +38,4 @@ namespace viper::codegen::x64 {
 /// \return Total number of transformations applied across all passes.
 std::size_t runPeepholes(MFunction &fn, const TargetInfo &target = sysvTarget());
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

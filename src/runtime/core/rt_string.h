@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_string.h
 // Purpose: Reference-counted UTF-8 string API providing creation, manipulation, comparison, search,
-// and conversion operations for the primary Viper runtime string type.
+// and conversion operations for the primary Zanna runtime string type.
 //
 // Key invariants:
 //   - Strings are null-terminated UTF-8; the null terminator is not counted in length.
@@ -45,7 +45,7 @@ extern "C" {
 struct rt_string_impl;
 
 /// @brief Exposes the runtime string object layout for host interop wrappers.
-typedef struct rt_string_impl ViperString;
+typedef struct rt_string_impl ZannaString;
 
 typedef struct rt_string_impl *rt_string;
 
@@ -114,7 +114,7 @@ rt_string rt_str_concat(rt_string a, rt_string b);
 /// @return Substring or shared empty string when @p len == 0.
 rt_string rt_str_substr(rt_string s, int64_t start, int64_t len);
 
-/// @brief Retaining constructor for strings; used by Viper.String.FromStr.
+/// @brief Retaining constructor for strings; used by Zanna.String.FromStr.
 rt_string rt_str_clone(rt_string s);
 
 /// @brief Return leftmost @p n bytes of @p s.
@@ -149,7 +149,7 @@ rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len);
 /// @return 1-based match index or 0 when not found.
 int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle);
 
-/// @brief Viper.String.IndexOfFrom wrapper with receiver-first argument order.
+/// @brief Zanna.String.IndexOfFrom wrapper with receiver-first argument order.
 /// @param hay Haystack string.
 /// @param start 1-based starting position.
 /// @param needle Needle string.
@@ -289,7 +289,7 @@ const char *rt_string_cstr(rt_string s);
 rt_string rt_const_cstr(const char *str);
 
 //===----------------------------------------------------------------------===//
-// Extended String Functions (Viper.String expansion)
+// Extended String Functions (Zanna.String expansion)
 //===----------------------------------------------------------------------===//
 
 /// @brief Replace all occurrences of needle with replacement.

@@ -1,0 +1,52 @@
+module activity_bar_probe;
+
+// ============================================================================
+// MODULE: activity_bar_probe
+// PURPOSE: Display-backed probe for left-rail activity bar view switching.
+//
+// WHERE-THIS-FITS: AppShell builds the activity bar widgets and ActivityBar owns
+//          the active Explorer/Source Control view state. This probe mirrors the
+//          main.zia wiring without launching the full app loop.
+//
+// TEACHING-NOTE: View-switch probes should assert both controller state and
+//          widget visibility so the UI and model stay synchronized.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../ui/activity_bar";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ZannaIDE Activity Bar Probe", 960, 640);
+
+    // Wire the activity-bar controller exactly as main.zia does.
+    var ab = new activity_bar.ActivityBar();
+    ab.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
+
+    // Default view is Explorer.
+    if ab.activeView != activity_bar.VIEW_EXPLORER { fail(shell, "default view not explorer"); return; }
+    if !shell.workbench.explorerView.IsVisible() { fail(shell, "explorer hidden by default"); return; }
+    if shell.workbench.scmViewHost.IsVisible() { fail(shell, "scm visible by default"); return; }
+
+    // Switch to Source Control.
+    ab.ShowView(activity_bar.VIEW_SCM);
+    if ab.activeView != activity_bar.VIEW_SCM { fail(shell, "activeView not scm after switch"); return; }
+    if !shell.workbench.scmViewHost.IsVisible() { fail(shell, "scm hidden after switch"); return; }
+    if shell.workbench.explorerView.IsVisible() { fail(shell, "explorer still visible after scm switch"); return; }
+
+    // Switch back to Explorer.
+    ab.ShowView(activity_bar.VIEW_EXPLORER);
+    if !shell.workbench.explorerView.IsVisible() { fail(shell, "explorer hidden after switch back"); return; }
+    if shell.workbench.scmViewHost.IsVisible() { fail(shell, "scm still visible after switch back"); return; }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

@@ -1,4 +1,4 @@
-// scanner_demo.zia - Comprehensive API audit for Viper.Text.Scanner
+// scanner_demo.zia - Comprehensive API audit for Zanna.Text.Scanner
 // Tests: New, Pos, IsEnd, Remaining, Len, Reset, Peek, PeekAt, PeekStr,
 //        Read, ReadStr, ReadUntil, ReadUntilAny, Match, MatchStr,
 //        Accept, AcceptStr, AcceptAny, Skip, SkipWhitespace,
@@ -6,8 +6,8 @@
 
 module ScannerDemo;
 
-bind Viper.Text;
-bind Viper.Terminal;
+bind Zanna.Text;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Scanner API Audit ===");

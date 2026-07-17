@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_light3d.c
-// Purpose: Viper.Graphics3D.Light3D — directional, point, and ambient lights.
+// Purpose: Zanna.Graphics3D.Light3D — directional, point, and ambient lights.
 //
 // Key invariants:
 //   - Light types: 0=directional (uses direction), 1=point (uses position
@@ -26,7 +26,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -536,4 +536,4 @@ void rt_light3d_set_direction(void *obj, void *direction) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

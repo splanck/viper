@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_xml.c
-// Purpose: Implements XML parsing and formatting for the Viper.Data.Xml class
+// Purpose: Implements XML parsing and formatting for the Zanna.Data.Xml class
 //          per XML 1.0. Builds a node tree supporting elements, text content,
 //          comments, and CDATA sections. Provides Parse, Format, FormatPretty,
 //          and node navigation (Tag, Attr, SetAttr, Children, TextContent).
@@ -1345,7 +1345,7 @@ void *rt_xml_parse(rt_string text) {
 /// `Err(message)` with the same diagnostic text exposed by `Xml.Error()`.
 ///
 /// @param text UTF-8 XML source.
-/// @return Owned `Viper.Result` carrying either the document node or an error string.
+/// @return Owned `Zanna.Result` carrying either the document node or an error string.
 void *rt_xml_parse_result(rt_string text) {
     void *doc = rt_xml_parse(text);
     if (!doc) {
@@ -1374,7 +1374,7 @@ rt_string rt_xml_error(void) {
     return rt_string_from_bytes(xml_last_error, strlen(xml_last_error));
 }
 
-/// @brief Return 1 if `node` is a live Viper.Data.Xml node handle; 0 otherwise.
+/// @brief Return 1 if `node` is a live Zanna.Data.Xml node handle; 0 otherwise.
 int8_t rt_xml_is_node(void *node) {
     return rt_obj_is_instance(node, RT_XML_NODE_CLASS_ID, sizeof(xml_node)) ? 1 : 0;
 }
@@ -2299,7 +2299,7 @@ void *rt_xml_find(void *node, rt_string tag) {
 ///          retains it. Absence, invalid receivers, and NULL tags return None.
 /// @param node Starting XML node.
 /// @param tag Tag name or simple slash-separated path.
-/// @return Opaque Viper.Option containing the first matching node, or None.
+/// @return Opaque Zanna.Option containing the first matching node, or None.
 void *rt_xml_find_option(void *node, rt_string tag) {
     void *found = rt_xml_find(node, tag);
     if (!found)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@ class DiagnosticEngine;
 class SourceManager;
 } // namespace il::support
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Extract structured diagnostics from a DiagnosticEngine.
 /// @details Converts each engine diagnostic into a server-agnostic DiagnosticInfo
@@ -41,4 +41,4 @@ namespace viper::server {
 std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag,
                                                const il::support::SourceManager *sm = nullptr);
 
-} // namespace viper::server
+} // namespace zanna::server

@@ -4,11 +4,11 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Zia list and map literals
-// COVER: Viper.Collections.Map
-// COVER: Viper.Collections.Stack
-// COVER: Viper.Collections.Queue
-// COVER: Viper.Collections.Ring
-// COVER: Viper.Collections.StringSet
+// COVER: Zanna.Collections.Map
+// COVER: Zanna.Collections.Stack
+// COVER: Zanna.Collections.Queue
+// COVER: Zanna.Collections.Ring
+// COVER: Zanna.Collections.StringSet
 
 func testListWithValues() {
     setTest("ListWithValues");
@@ -96,7 +96,7 @@ func testNestedMapList() {
 func testRuntimeCollections() {
     setTest("RuntimeCollections");
 
-    var stack = new Viper.Collections.Stack();
+    var stack = new Zanna.Collections.Stack();
     assertTrue(stack.IsEmpty, "stack starts empty");
     stack.Push("a");
     stack.Push("b");
@@ -104,27 +104,27 @@ func testRuntimeCollections() {
     stack.Pop();
     assertEqInt(stack.Count, 1, "stack pop length");
 
-    var queue = new Viper.Collections.Queue();
+    var queue = new Zanna.Collections.Queue();
     queue.Push("a");
     queue.Push("b");
     assertEqInt(queue.Count, 2, "queue length");
     queue.Pop();
     assertEqInt(queue.Count, 1, "queue pop length");
 
-    var ring = new Viper.Collections.Ring();
+    var ring = new Zanna.Collections.Ring();
     assertGtInt(ring.Capacity, 0, "ring default cap");
     ring.Push("a");
     ring.Push("b");
     assertEqInt(ring.Count, 2, "ring length");
 
-    var bag = new Viper.Collections.StringSet();
+    var bag = new Zanna.Collections.StringSet();
     bag.Add("apple");
     bag.Add("banana");
     assertEqInt(bag.Count, 2, "bag length");
     assertTrue(bag.Has("apple"), "bag has item");
     assertEqInt(bag.ToSeq().Count, 2, "bag items length");
 
-    var map = new Viper.Collections.Map();
+    var map = new Zanna.Collections.Map();
     map.SetStr("name", "zia");
     map.SetInt("version", 1);
     map.SetBool("ready", true);

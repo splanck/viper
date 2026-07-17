@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,8 +25,8 @@
 
 module progression_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.IO;
+bind Zanna.Terminal as Terminal;
+bind Zanna.IO;
 bind "./config";
 bind "./palette";
 bind "./save";

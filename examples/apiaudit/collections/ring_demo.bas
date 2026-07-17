@@ -1,4 +1,4 @@
-' ring_demo.bas - Comprehensive API audit for Viper.Collections.Ring
+' ring_demo.bas - Comprehensive API audit for Zanna.Collections.Ring
 ' Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Capacity, IsEmpty, IsFull, Clear
 
 PRINT "=== Ring API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== Ring API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM r AS OBJECT
-r = Viper.Collections.Ring.New(3)
+r = Zanna.Collections.Ring.New(3)
 PRINT r.Count       ' 0
 PRINT r.Capacity  ' 3
 PRINT r.IsEmpty   ' 1
@@ -68,9 +68,9 @@ PRINT r.Capacity  ' 3 (capacity unchanged)
 ' --- NewDefault (default capacity) ---
 PRINT "--- NewDefault ---"
 DIM rd AS OBJECT
-rd = Viper.Collections.Ring.New()
+rd = Zanna.Collections.Ring.New()
 PRINT rd.IsEmpty   ' 1
-rd.Push(Viper.Core.Box.I64(1))
+rd.Push(Zanna.Core.Box.I64(1))
 PRINT rd.Count       ' 1
 
 PRINT "=== Ring audit complete ==="

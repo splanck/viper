@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,19 +10,19 @@
 
 #include "usage.hpp"
 #include "tools/common/CommonUsage.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 #include <iostream>
 
 namespace vbasic {
 
 void printVersion() {
-    std::cout << "vbasic v" << VIPER_VERSION_STR << "\n";
-    std::cout << "Viper BASIC Interpreter/Compiler\n";
-    std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "vbasic v" << ZANNA_VERSION_STR << "\n";
+    std::cout << "Zanna BASIC Interpreter/Compiler\n";
+    std::cout << "IL version: " << ZANNA_IL_VERSION_STR << "\n";
 }
 
 void printUsage() {
-    std::cerr << "vbasic v" << VIPER_VERSION_STR << " - Viper BASIC Interpreter\n"
+    std::cerr << "vbasic v" << ZANNA_VERSION_STR << " - Zanna BASIC Interpreter\n"
               << "\n"
               << "Usage: vbasic [options] <file.bas>\n"
               << "\n"
@@ -32,7 +32,7 @@ void printUsage() {
               << "  vbasic script.bas -o file.il   Emit IL to file\n"
               << "\n"
               << "Options:\n";
-    viper::tools::printSharedOptions(std::cerr);
+    zanna::tools::printSharedOptions(std::cerr);
     std::cerr << "\n"
               << "Examples:\n"
               << "  vbasic game.bas                           Run program\n"

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,11 +50,11 @@
 // renderer.zia — Canvas3D setup, lighting, post-processing, shadows
 module renderer;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Convert;
 bind "../config";
 
 /// @brief Canvas + camera + lighting + post-FX wrapper for 3D Bowling.

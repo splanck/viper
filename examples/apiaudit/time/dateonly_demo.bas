@@ -1,5 +1,5 @@
 ' =============================================================================
-' API Audit: Viper.Time.DateOnly (BASIC)
+' API Audit: Zanna.Time.DateOnly (BASIC)
 ' =============================================================================
 ' Tests: Create, Today, Parse, FromDays, Year, Month, Day, DayOfWeek,
 '        DayOfYear, ToDays, AddDays, AddMonths, AddYears, DiffDays,
@@ -7,11 +7,11 @@
 '        EndOfYear, Cmp, Equals, ToString, Format
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Time.DateOnly ==="
+PRINT "=== API Audit: Zanna.Time.DateOnly ==="
 
 ' --- Create ---
 PRINT "--- Create ---"
-DIM d AS OBJECT = Viper.Time.DateOnly.Create(2024, 6, 15)
+DIM d AS OBJECT = Zanna.Time.DateOnly.Create(2024, 6, 15)
 PRINT "Created 2024-06-15"
 
 ' --- Year / Month / Day ---
@@ -43,12 +43,12 @@ PRINT days
 
 ' --- FromDays (roundtrip) ---
 PRINT "--- FromDays ---"
-DIM d2 AS OBJECT = Viper.Time.DateOnly.FromDays(days)
+DIM d2 AS OBJECT = Zanna.Time.DateOnly.FromDays(days)
 PRINT d2.ToString()
 
 ' --- Parse ---
 PRINT "--- Parse ---"
-DIM d3 AS OBJECT = Viper.Time.DateOnly.Parse("2024-01-01")
+DIM d3 AS OBJECT = Zanna.Time.DateOnly.Parse("2024-01-01")
 PRINT d3.ToString()
 PRINT d3.Year
 PRINT d3.Month
@@ -76,19 +76,19 @@ PRINT d7.ToString()
 
 ' --- DiffDays ---
 PRINT "--- DiffDays ---"
-DIM jan1 AS OBJECT = Viper.Time.DateOnly.Create(2024, 1, 1)
+DIM jan1 AS OBJECT = Zanna.Time.DateOnly.Create(2024, 1, 1)
 PRINT d.DiffDays(jan1)
 
 ' --- IsLeapYear ---
 PRINT "--- IsLeapYear ---"
 PRINT d.IsLeapYear
-DIM d2023 AS OBJECT = Viper.Time.DateOnly.Create(2023, 3, 1)
+DIM d2023 AS OBJECT = Zanna.Time.DateOnly.Create(2023, 3, 1)
 PRINT d2023.IsLeapYear
 
 ' --- DaysInMonth ---
 PRINT "--- DaysInMonth ---"
 PRINT d.DaysInMonth
-DIM feb AS OBJECT = Viper.Time.DateOnly.Create(2024, 2, 1)
+DIM feb AS OBJECT = Zanna.Time.DateOnly.Create(2024, 2, 1)
 PRINT feb.DaysInMonth
 
 ' --- StartOfMonth ---
@@ -109,20 +109,20 @@ PRINT d.EndOfYear().ToString()
 
 ' --- Cmp ---
 PRINT "--- Cmp ---"
-DIM later AS OBJECT = Viper.Time.DateOnly.Create(2024, 12, 25)
+DIM later AS OBJECT = Zanna.Time.DateOnly.Create(2024, 12, 25)
 PRINT d.Cmp(later)
 PRINT later.Cmp(d)
 PRINT d.Cmp(d)
 
 ' --- Equals ---
 PRINT "--- Equals ---"
-DIM same AS OBJECT = Viper.Time.DateOnly.Create(2024, 6, 15)
+DIM same AS OBJECT = Zanna.Time.DateOnly.Create(2024, 6, 15)
 PRINT d.Equals(same)
 PRINT d.Equals(later)
 
 ' --- Today ---
 PRINT "--- Today ---"
-DIM today AS OBJECT = Viper.Time.DateOnly.Today()
+DIM today AS OBJECT = Zanna.Time.DateOnly.Today()
 PRINT "Today: "; today.ToString()
 PRINT "Year > 2020: "; today.Year > 2020
 

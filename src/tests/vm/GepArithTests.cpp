@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -155,14 +155,14 @@ void buildNegativeGepModule(Module &module) {
 int64_t runGep(int64_t index) {
     Module module;
     buildGepModule(module, index);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 int64_t runNegativeGep() {
     Module module;
     buildNegativeGepModule(module);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

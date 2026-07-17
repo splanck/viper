@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,8 +26,8 @@
 
 module level_validation;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt;
 bind "./abilities";
 bind "./campaign_content";
 bind "./config";

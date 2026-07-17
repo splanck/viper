@@ -1,11 +1,11 @@
-// API Audit: Viper.Network.SmtpClient (Zia)
+// API Audit: Zanna.Network.SmtpClient (Zia)
 module SmtpClientDemo;
 
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Network.SmtpClient ===");
+    Say("=== API Audit: Zanna.Network.SmtpClient ===");
     Say("NOTE: SMTP sends require a real mail server. This demo checks the API surface only.");
 
     var smtp = SmtpClient.New("mail.example.test", 587);

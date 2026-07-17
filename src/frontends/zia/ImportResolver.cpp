@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -329,7 +329,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
     for (size_t i = 0; i < module.binds.size(); ++i) {
         auto &bind = module.binds[i];
 
-        // Skip namespace binds (e.g., "bind Viper.Terminal;") - they are handled
+        // Skip namespace binds (e.g., "bind Zanna.Terminal;") - they are handled
         // by semantic analysis, not file resolution.
         if (bind.isNamespaceBind)
             continue;

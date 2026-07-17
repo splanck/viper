@@ -82,7 +82,7 @@ loop, platform adapters, media ownership, and testing contract.
   event path, run deterministic injected-time frames, capture actual framebuffer
   pixels/hashes, compare regions with tolerance, and snapshot accessibility.
   Existing synthetic registration remains available as a compatibility mode.
-- ViperGFX exposes `vgfx_post_event`, a validated value-copy enqueue operation
+- ZannaGFX exposes `vgfx_post_event`, a validated value-copy enqueue operation
   for automation and embedders. It uses the synchronized native event queue and
   its overflow/release-state policy; NONE and out-of-range event discriminators
   are rejected. TestHarness therefore does not maintain a second GUI dispatcher.

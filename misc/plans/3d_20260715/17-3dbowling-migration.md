@@ -94,7 +94,7 @@ same node/body in both hosts.
 
 ### Slice 0 — Freeze release baseline
 
-1. Run `viper check` and all 27 release gates through `run_probes.sh`/Windows
+1. Run `zanna check` and all 27 release gates through `run_probes.sh`/Windows
    companion. Record backend, dimensions, runtime, and the two Metal-only
    high-resolution gates.
 2. Run all known-issue repros and record expected status after plans 01–02.
@@ -238,7 +238,7 @@ because the runtime supports it.
 At minimum after every slice:
 
 ```sh
-build/src/tools/viper/viper check examples/games/3dbowling --diagnostic-format=json
+build/src/tools/zanna/zanna check examples/games/3dbowling --diagnostic-format=json
 examples/games/3dbowling/run_probes.sh
 ctest --test-dir build -R 'g3d_game3d_bowling_setup|test_rt_game3d|test_rt_canvas3d' --output-on-failure
 ```

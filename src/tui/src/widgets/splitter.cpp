@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements horizontal and vertical splitter widgets for the Viper TUI. The
+// Implements horizontal and vertical splitter widgets for the Zanna TUI. The
 // widgets divide their assigned rectangle between two child widgets based on a
 // persisted ratio that can be tweaked interactively with Ctrl+arrow key input.
 // Each splitter honours the `ui::Widget` lifecycle by recomputing child layouts
@@ -36,7 +36,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 //=============================================================================
 // HSplitter Implementation
@@ -80,8 +80,8 @@ void HSplitter::layout(const ui::Rect &r) {
 ///          child handling continue to work as normal.
 /// @param ev Key event describing the user input.
 /// @return True when the ratio changed and a relayout occurred.
-bool HSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev) {
-    using viper::tui::term::KeyEvent;
+bool HSplitter::onKeyEvent(const zanna::tui::term::KeyEvent &ev) {
+    using zanna::tui::term::KeyEvent;
     if ((ev.mods & KeyEvent::Ctrl) == 0)
         return false;
 
@@ -139,8 +139,8 @@ void VSplitter::layout(const ui::Rect &r) {
 ///          painting reflects the new heights immediately.
 /// @param ev Key event describing the user input.
 /// @return True when the ratio changed and children were relaid out.
-bool VSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev) {
-    using viper::tui::term::KeyEvent;
+bool VSplitter::onKeyEvent(const zanna::tui::term::KeyEvent &ev) {
+    using zanna::tui::term::KeyEvent;
     if ((ev.mods & KeyEvent::Ctrl) == 0)
         return false;
 
@@ -160,4 +160,4 @@ bool VSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev) {
     return true;
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

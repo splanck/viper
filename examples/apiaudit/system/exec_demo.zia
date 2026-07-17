@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.System.Exec - Process Execution
+// API Audit: Zanna.System.Exec - Process Execution
 // =============================================================================
 // Tests: Run, Capture, Shell, ShellCapture, ShellResult
 // NOTE: Use safe commands only
 // =============================================================================
 
 module ExecDemo;
-bind Viper.Terminal;
-bind Viper.System.Exec as Exec;
+bind Zanna.Terminal;
+bind Zanna.System.Exec as Exec;
 func start() {
-    Say("=== API Audit: Viper.System.Exec ===");
+    Say("=== API Audit: Zanna.System.Exec ===");
 
     // --- Run ---
     Say("--- Run ---");

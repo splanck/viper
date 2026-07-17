@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_guid.c
 // Purpose: Implements UUID version 4 (random) generation per RFC 9562 (which
-//          obsoletes RFC 4122) for the Viper.Text.Guid class. Generates 128-bit
+//          obsoletes RFC 4122) for the Zanna.Text.Guid class. Generates 128-bit
 //          random identifiers formatted as xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
 //          (lowercase hex with dashes).
 //

@@ -5,8 +5,8 @@ NAMESPACE App
   END CLASS
 END NAMESPACE
 
-DIM list AS Viper.Collections.List
-list = NEW Viper.Collections.List()
+DIM list AS Zanna.Collections.List
+list = NEW Zanna.Collections.List()
 
 DIM p1 AS App.Person
 DIM p2 AS App.Person

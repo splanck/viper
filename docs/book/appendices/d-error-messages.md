@@ -6,13 +6,13 @@ last-verified: 2026-07-16
 
 # Appendix D: Error Messages
 
-A comprehensive guide to Viper error messages, their causes, and solutions. When you encounter an error, find it here for a clear explanation and fix.
+A comprehensive guide to Zanna error messages, their causes, and solutions. When you encounter an error, find it here for a clear explanation and fix.
 
 ---
 
 ## How to Use This Reference
 
-Error messages in Viper follow a consistent format:
+Error messages in Zanna follow a consistent format:
 
 ```text
 Error: ErrorType at filename.zia:LINE:COLUMN
@@ -98,7 +98,7 @@ if x > 0 { doSomething(); } else { doOther(); }
 
 ```rust
 // Problem: Missing parentheses
-if x > 0 && y < 10 {  // OK in Viper, but...
+if x > 0 && y < 10 {  // OK in Zanna, but...
 
 // Problem: Missing closing paren
 if (x > 0 && y < 10 {  // Error: unexpected '{'
@@ -360,13 +360,13 @@ var count: Integer = 42;
 var count: String = "hello";
 
 // Solution 3: Convert the value (if appropriate)
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 var count: Integer = Convert.ToInt64("42");
 ```
 
 ```rust
 // Problem: Wrong parameter type
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say("Hello, " + name);
@@ -376,7 +376,7 @@ greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");
-// Convert if needed: bind Viper.Text.Fmt as Fmt; greet(Fmt.Int(42));
+// Convert if needed: bind Zanna.Text.Fmt as Fmt; greet(Fmt.Int(42));
 ```
 
 ```rust
@@ -461,7 +461,7 @@ Error: TypeError at main.zia:8:20
 var result = "Value: " + 42;  // May error depending on context
 
 // Solution 1: Convert number to String explicitly
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 var result = "Value: " + Fmt.Int(42);
 
 // Solution 2: Use String interpolation
@@ -489,7 +489,7 @@ var b = "3";
 var sum = a + b;  // Results in "53", not 8!
 
 // Solution: Convert to numbers first
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 var a = Convert.ToInt64("5");
 var b = Convert.ToInt64("3");
 var sum = a + b;  // 8
@@ -517,8 +517,8 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 // Problem: Parsing non-number
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 var num = Convert.ToInt64("hello");  // Error: "hello" is not a number
 
@@ -533,7 +533,7 @@ try {
 
 ```rust
 // Problem: Trailing characters
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 var num = Convert.ToInt64("42abc");  // Error or unexpected result
 
@@ -568,7 +568,7 @@ Error: NullPointerError at main.zia:15:18
 
 ```rust
 // Problem: Using null value
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var user = findUser(id);
 Say(user.name);  // Error if user is null!
@@ -633,7 +633,7 @@ Error: NameError at main.zia:15:20
 
 ```rust
 // Problem: Typo
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counter = 0;
 Say(counte);  // Error: typo in name
@@ -644,7 +644,7 @@ Say(counter);
 
 ```rust
 // Problem: Used before declaration
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(score);  // Error: score doesn't exist yet
 var score = 100;
@@ -656,7 +656,7 @@ Say(score);
 
 ```rust
 // Problem: Out of scope
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if someCondition {
     var temp = 42;
@@ -708,7 +708,7 @@ var result = calculate(5, 3);
 var data = Json.Parse(text);  // Error: Json not defined
 
 // Solution: Import the module
-bind Json = Viper.Text.Json;
+bind Json = Zanna.Text.Json;
 var data = Json.Parse(text);
 ```
 
@@ -826,7 +826,7 @@ Error: NameError at main.zia:5:12
 
 ```rust
 // Problem: Usage before declaration
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(total);  // Error
 var total = 100;
@@ -987,7 +987,7 @@ Error: TypeError at main.zia:8:5
 
 ```rust
 // Problem: Returning from void function
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func printMessage(msg: String) {
     Say(msg);
@@ -1021,7 +1021,7 @@ Error: TypeError at main.zia:15:12
 **Fix examples:**
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say("Hello, " + name);
@@ -1032,14 +1032,14 @@ greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");  // OK
-// bind Viper.Text.Fmt as Fmt; greet(Fmt.Int(42));  // convert Integer to String if needed
+// bind Zanna.Text.Fmt as Fmt; greet(Fmt.Int(42));  // convert Integer to String if needed
 ```
 
 ---
 
 ## Entity/Interface Errors
 
-Errors related to entities (Viper's term for classes), interfaces, and object-oriented programming.
+Errors related to entities (Zanna's term for classes), interfaces, and object-oriented programming.
 
 > **Cross-reference:** See [Chapter 14: Objects and Entities](../part3-objects/14-objects.md) and [Chapter 16: Interfaces](../part3-objects/16-interfaces.md).
 
@@ -1063,7 +1063,7 @@ interface Drawable {
 }
 
 // Problem: Missing method
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Circle implements Drawable {
     radius: Number;
@@ -1114,7 +1114,7 @@ class BankAccount {
 }
 
 // Problem: Accessing hidden field
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var account = BankAccount();
 Say(account.balance);  // Error: balance is hidden
@@ -1214,7 +1214,7 @@ Error: ContextError at main.zia:12:16
 **Fix examples:**
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Counter {
     count: Integer;
@@ -1282,7 +1282,7 @@ var x = items[4];  // OK: last valid index
 
 ```rust
 // Problem: Off-by-one in loop
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var items = ["a", "b", "c"];
 for i in 0..items.Length + 1 {  // Goes to 3, but max index is 2
@@ -1340,7 +1340,7 @@ var count = 0;
 var average = total / count;  // Error: dividing by 0
 
 // Solution: Check before dividing
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if count != 0 {
     var average = total / count;
@@ -1426,7 +1426,7 @@ if animal is Cat {
 
 ```rust
 // Solution: Use pattern matching
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 match animal {
     case cat: Cat {
@@ -1463,7 +1463,7 @@ Error: StackOverflowError at main.zia:15:5
 
 ```rust
 // Problem: Infinite recursion (no base case)
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func countdown(n: Integer) {
     Say(n);
@@ -1540,8 +1540,8 @@ Error: FileError at main.zia:5:20
 
 ```rust
 // Problem: File doesn't exist
-bind Viper.IO;
-bind Viper.Terminal;
+bind Zanna.IO;
+bind Zanna.Terminal;
 
 var content = IO.File.ReadAllText("data.txt");  // Error if missing
 
@@ -1589,8 +1589,8 @@ Error: FileError at main.zia:10:5
 
 ```rust
 // Problem: Writing to protected location
-bind File = Viper.IO.File;
-bind Viper.System.Machine as Machine;
+bind File = Zanna.IO.File;
+bind Zanna.System.Machine as Machine;
 
 File.WriteAllText("/etc/config.txt", data);  // Permission denied
 
@@ -1619,10 +1619,10 @@ Error: FileError at main.zia:15:5
 
 ```rust
 // Problem: You want to create a file only when it does not already exist
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Viper.Time;
-bind Convert = Viper.Core.Convert;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
+bind Zanna.Time;
+bind Convert = Zanna.Core.Convert;
 
 // Solution 1: Check and decide
 if File.Exists("output.txt") {
@@ -1655,8 +1655,8 @@ Error: ParseError at main.zia:8:25
 
 ```rust
 // Problem: Invalid JSON
-bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal;
 
 var data = Json.Parse("{invalid json}");  // Parse error
 
@@ -1716,7 +1716,7 @@ func processLargeData(source: DataSource) {
 
 ```rust
 // Problem: Loading huge file into memory
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 var content = File.ReadAllText("huge_file.txt");  // Out of memory
 
@@ -1808,8 +1808,8 @@ Warning: DataRaceWarning at main.zia:45:12
 **Fix examples:**
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind SafeI64 = Viper.Threads.SafeI64;
+bind Thread = Zanna.Threads.Thread;
+bind SafeI64 = Zanna.Threads.SafeI64;
 
 // Problem: Unsynchronized access
 var counter = 0;
@@ -1963,7 +1963,7 @@ When you encounter an error:
 
 3. **Trace back through the call stack.** The error might occur in a function, but the bug might be in the code that called it with wrong arguments.
 
-4. **Print intermediate values.** Add `Say()` calls (after `bind Viper.Terminal;`) to see what values variables have at different points.
+4. **Print intermediate values.** Add `Say()` calls (after `bind Zanna.Terminal;`) to see what values variables have at different points.
 
 5. **Simplify the problem.** Create a minimal example that reproduces the error. Often, the bug becomes obvious.
 
@@ -2012,7 +2012,7 @@ throw ("Invalid age: " + age + ". Age must be between 0 and 150.");
 ### Handle Specific Errors
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     var config = loadConfig();

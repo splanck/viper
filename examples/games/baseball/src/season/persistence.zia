@@ -26,12 +26,12 @@
 // ============================================================================
 module persistence;
 
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.String as String;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.String as String;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Text.Fmt as Fmt;
 bind "./season_model";
 bind "./date_utils";
 bind "../model/player";
@@ -953,10 +953,10 @@ func toInt(text: String) -> Integer {
     var negative = false;
     if String.StartsWith(trimmed, "-") {
         negative = true;
-        trimmed = String.Substring(trimmed, 1, Viper.String.get_Length(trimmed) - 1);
+        trimmed = String.Substring(trimmed, 1, Zanna.String.get_Length(trimmed) - 1);
     }
     var value = 0;
-    for i in 0..Viper.String.get_Length(trimmed) {
+    for i in 0..Zanna.String.get_Length(trimmed) {
         var ch = String.Substring(trimmed, i, 1);
         value = value * 10 + (String.Asc(ch) - 48);
     }

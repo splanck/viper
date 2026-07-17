@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -571,7 +571,7 @@ rt_string rt_unbox_str(void *box) {
 }
 
 /// @brief Try to extract an `i64` value from @p box, never trapping. Returns 1 on success.
-/// @details Option-style accessor backing `Viper.Core.Box.ToI64Option`. On success writes the
+/// @details Option-style accessor backing `Zanna.Core.Box.ToI64Option`. On success writes the
 ///          unboxed `int64_t` to @p out and returns 1. Returns 0 (with @p out zeroed) when
 ///          @p box is NULL, isn't a Box, has the wrong tag, or @p out itself is NULL.
 int8_t rt_box_try_to_i64(void *box, int64_t *out) {
@@ -619,7 +619,7 @@ int8_t rt_box_try_to_i1(void *box, int8_t *out) {
 /// @brief Try to extract a runtime string from @p box, never trapping. Returns 1 on success.
 /// @details On success writes a *retained* string handle to @p out — caller owns the new
 ///          reference and must release it. This raw C helper is runtime-internal; the public
-///          `Viper.Core.Box.ToStrOption` surface returns an owned `Option<String>`.
+///          `Zanna.Core.Box.ToStrOption` surface returns an owned `Option<String>`.
 ///          Failure paths NULL out @p out.
 int8_t rt_box_try_to_str(void *box, rt_string *out) {
     if (out)
@@ -740,7 +740,7 @@ void *rt_box_value_type(int64_t size) {
 }
 
 /// @brief Register a managed-field offset on a value-type instance for GC traversal and finalize.
-/// @details Backs `Viper.Core.Box.ValueType.AddField`. Validates that:
+/// @details Backs `Zanna.Core.Box.ValueType.AddField`. Validates that:
 ///            - @p obj is a live value-type heap object (class id `RT_VALUE_TYPE_CLASS_ID`),
 ///            - @p offset is non-negative, pointer-aligned, and within `hdr->cap` with room
 ///              for a `void *` slot,

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_raster.inc  (#included from
 // vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend edge-function
 // triangle rasterizer and fragment shading

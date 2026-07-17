@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "codegen/aarch64/PreRegAllocOpt.hpp"
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 bool PreRegAllocOptPass::run(AArch64Module &module, Diagnostics &diags) {
     if (!module.ti) {
@@ -33,4 +33,4 @@ bool PreRegAllocOptPass::run(AArch64Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

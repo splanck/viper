@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_textureasset3d_uastc.inc  (#included from
 // rt_textureasset3d.c; not a standalone translation unit)
 // Purpose: UASTC LDR 4x4 block decoding to RGBA8 — clean-room implementation from the

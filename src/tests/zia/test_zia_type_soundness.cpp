@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -171,7 +171,7 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity) {
 module Test;
 class Dog { expose Integer age; }
 /// @brief Pet dog.
-func petDog(d: Dog) {    Viper.Terminal.SayInt(d.age);
+func petDog(d: Dog) {    Zanna.Terminal.SayInt(d.age);
 }
 /// @brief Start.
 func start() {    petDog(42);
@@ -187,7 +187,7 @@ TEST(ZiaTypeSoundness, GAP_TooManyArguments) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Greet.
-func greet(name: String) {    Viper.Terminal.Say(name);
+func greet(name: String) {    Zanna.Terminal.Say(name);
 }
 /// @brief Start.
 func start() {    greet("Alice", "Bob");
@@ -312,7 +312,7 @@ module Test;
 /// @brief Start.
 func start() {    var x: Integer;
     var y: Integer = x + 1;
-    Viper.Terminal.SayInt(y);
+    Zanna.Terminal.SayInt(y);
 }
 )",
                                 sm);
@@ -333,7 +333,7 @@ func start() {    var x: Integer;
         x = 10;
     }
     var y: Integer = x + 1;
-    Viper.Terminal.SayInt(y);
+    Zanna.Terminal.SayInt(y);
 }
 )",
                                 sm);
@@ -484,7 +484,7 @@ module Test;
 /// @brief Start.
 func start() {    var x: Integer = 42;
     if x {
-        Viper.Terminal.Say("truthy");
+        Zanna.Terminal.Say("truthy");
     }
 }
 )",
@@ -595,7 +595,7 @@ TEST(ZiaTypeSoundness, OptionalAcceptsInnerType) {
 module Test;
 /// @brief Start.
 func start() {    var x: Integer? = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                                 sm);
@@ -810,5 +810,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

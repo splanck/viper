@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tools {
+namespace zanna::tools {
 
 /// @brief Return a lowercased ASCII copy of @p value.
 /// @details Frontend tool file-extension parsing should behave predictably across
@@ -106,7 +106,7 @@ struct FrontendToolParseStop {
 
 /// @brief Return true when a wrapper-forwarded option consumes the next token.
 /// @details The standalone `zia` and `vbasic` wrappers forward only options
-///          understood by the underlying `viper front` commands. This prevents
+///          understood by the underlying `zanna front` commands. This prevents
 ///          spelling mistakes from being accepted as opaque passthrough flags.
 inline bool frontendForwardedFlagTakesValue(std::string_view arg) {
     return arg == "--stdin-from" || arg == "--max-steps" || arg == "--diagnostic-format" ||
@@ -411,4 +411,4 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     return result;
 }
 
-} // namespace viper::tools
+} // namespace zanna::tools

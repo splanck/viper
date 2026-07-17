@@ -1,46 +1,46 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Graphics.Canvas.New
-' COVER: Viper.Graphics.Canvas.Height
-' COVER: Viper.Graphics.Canvas.ShouldClose
-' COVER: Viper.Graphics.Canvas.Width
-' COVER: Viper.Graphics.Canvas.Box
-' COVER: Viper.Graphics.Canvas.Clear
-' COVER: Viper.Graphics.Canvas.Disc
-' COVER: Viper.Graphics.Canvas.Flip
-' COVER: Viper.Graphics.Canvas.Frame
-' COVER: Viper.Graphics.Canvas.KeyHeld
-' COVER: Viper.Graphics.Canvas.Line
-' COVER: Viper.Graphics.Canvas.Plot
-' COVER: Viper.Graphics.Canvas.Poll
-' COVER: Viper.Graphics.Canvas.Ring
-' COVER: Viper.Graphics.Color.Rgb
-' COVER: Viper.Graphics.Color.Rgba
-' COVER: Viper.Graphics.Pixels.New
-' COVER: Viper.Graphics.Pixels.Height
-' COVER: Viper.Graphics.Pixels.Width
-' COVER: Viper.Graphics.Pixels.Clear
-' COVER: Viper.Graphics.Pixels.Clone
-' COVER: Viper.Graphics.Pixels.Copy
-' COVER: Viper.Graphics.Pixels.Fill
-' COVER: Viper.Graphics.Pixels.Get
-' COVER: Viper.Graphics.Pixels.Set
-' COVER: Viper.Graphics.Pixels.ToBytes
+' COVER: Zanna.Graphics.Canvas.New
+' COVER: Zanna.Graphics.Canvas.Height
+' COVER: Zanna.Graphics.Canvas.ShouldClose
+' COVER: Zanna.Graphics.Canvas.Width
+' COVER: Zanna.Graphics.Canvas.Box
+' COVER: Zanna.Graphics.Canvas.Clear
+' COVER: Zanna.Graphics.Canvas.Disc
+' COVER: Zanna.Graphics.Canvas.Flip
+' COVER: Zanna.Graphics.Canvas.Frame
+' COVER: Zanna.Graphics.Canvas.KeyHeld
+' COVER: Zanna.Graphics.Canvas.Line
+' COVER: Zanna.Graphics.Canvas.Plot
+' COVER: Zanna.Graphics.Canvas.Poll
+' COVER: Zanna.Graphics.Canvas.Ring
+' COVER: Zanna.Graphics.Color.Rgb
+' COVER: Zanna.Graphics.Color.Rgba
+' COVER: Zanna.Graphics.Pixels.New
+' COVER: Zanna.Graphics.Pixels.Height
+' COVER: Zanna.Graphics.Pixels.Width
+' COVER: Zanna.Graphics.Pixels.Clear
+' COVER: Zanna.Graphics.Pixels.Clone
+' COVER: Zanna.Graphics.Pixels.Copy
+' COVER: Zanna.Graphics.Pixels.Fill
+' COVER: Zanna.Graphics.Pixels.Get
+' COVER: Zanna.Graphics.Pixels.Set
+' COVER: Zanna.Graphics.Pixels.ToBytes
 
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("Runtime Canvas", 64, 48)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("Runtime Canvas", 64, 48)
 
-Viper.Core.Diagnostics.AssertEq(canvas.Width, 64, "canvas.width")
-Viper.Core.Diagnostics.AssertEq(canvas.Height, 48, "canvas.height")
-Viper.Core.Diagnostics.Assert(canvas.ShouldClose = FALSE OR canvas.ShouldClose = TRUE, "canvas.shouldclose")
+Zanna.Core.Diagnostics.AssertEq(canvas.Width, 64, "canvas.width")
+Zanna.Core.Diagnostics.AssertEq(canvas.Height, 48, "canvas.height")
+Zanna.Core.Diagnostics.Assert(canvas.ShouldClose = FALSE OR canvas.ShouldClose = TRUE, "canvas.shouldclose")
 
 DIM red AS INTEGER
 DIM green AS INTEGER
 DIM blue AS INTEGER
 DIM white AS INTEGER
-red = Viper.Graphics.Color.Rgb(255, 0, 0)
-green = Viper.Graphics.Color.Rgb(0, 255, 0)
-blue = Viper.Graphics.Color.Rgba(0, 0, 255, 255)
-white = Viper.Graphics.Color.Rgb(255, 255, 255)
+red = Zanna.Graphics.Color.Rgb(255, 0, 0)
+green = Zanna.Graphics.Color.Rgb(0, 255, 0)
+blue = Zanna.Graphics.Color.Rgba(0, 0, 255, 255)
+white = Zanna.Graphics.Color.Rgb(255, 255, 255)
 
 canvas.Clear(white)
 canvas.Box(2, 2, 10, 8, red)
@@ -52,42 +52,42 @@ canvas.Plot(5, 5, green)
 
 DIM evt AS INTEGER
 evt = canvas.Poll()
-Viper.Core.Diagnostics.Assert(evt >= 0, "canvas.poll")
+Zanna.Core.Diagnostics.Assert(evt >= 0, "canvas.poll")
 
 DIM held AS INTEGER
-held = canvas.KeyHeld(Viper.Input.Key.A)
-Viper.Core.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
+held = canvas.KeyHeld(Zanna.Input.Key.A)
+Zanna.Core.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
 
 canvas.Flip()
 
-DIM pixels AS Viper.Graphics.Pixels
-pixels = NEW Viper.Graphics.Pixels(4, 3)
-Viper.Core.Diagnostics.AssertEq(pixels.Width, 4, "pixels.width")
-Viper.Core.Diagnostics.AssertEq(pixels.Height, 3, "pixels.height")
+DIM pixels AS Zanna.Graphics.Pixels
+pixels = NEW Zanna.Graphics.Pixels(4, 3)
+Zanna.Core.Diagnostics.AssertEq(pixels.Width, 4, "pixels.width")
+Zanna.Core.Diagnostics.AssertEq(pixels.Height, 3, "pixels.height")
 
 pixels.Fill(red)
-Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), red, "pixels.fill")
+Zanna.Core.Diagnostics.AssertEq(pixels.Get(0, 0), red, "pixels.fill")
 
 pixels.Set(1, 1, blue)
-Viper.Core.Diagnostics.AssertEq(pixels.Get(1, 1), blue, "pixels.set")
+Zanna.Core.Diagnostics.AssertEq(pixels.Get(1, 1), blue, "pixels.set")
 
-DIM src AS Viper.Graphics.Pixels
-src = NEW Viper.Graphics.Pixels(2, 2)
+DIM src AS Zanna.Graphics.Pixels
+src = NEW Zanna.Graphics.Pixels(2, 2)
 src.Fill(green)
 
 pixels.Copy(2, 0, src, 0, 0, 2, 2)
-Viper.Core.Diagnostics.AssertEq(pixels.Get(2, 0), green, "pixels.copy")
+Zanna.Core.Diagnostics.AssertEq(pixels.Get(2, 0), green, "pixels.copy")
 
-DIM clone AS Viper.Graphics.Pixels
+DIM clone AS Zanna.Graphics.Pixels
 clone = pixels.Clone()
-Viper.Core.Diagnostics.AssertEq(clone.Get(1, 1), blue, "pixels.clone")
+Zanna.Core.Diagnostics.AssertEq(clone.Get(1, 1), blue, "pixels.clone")
 
 pixels.Clear()
-Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
+Zanna.Core.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
 
-DIM buf AS Viper.IO.BinaryBuffer
+DIM buf AS Zanna.IO.BinaryBuffer
 buf = clone.ToBytes()
-Viper.Core.Diagnostics.AssertEq(buf.Length, 4 * 3 * 4, "pixels.tobytes")
+Zanna.Core.Diagnostics.AssertEq(buf.Length, 4 * 3 * 4, "pixels.tobytes")
 
 PRINT "RESULT: ok"
 END

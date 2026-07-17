@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_game3d.cpp
-// Purpose: Unit tests for the runtime-backed Viper.Game3D helper layer.
+// Purpose: Unit tests for the runtime-backed Zanna.Game3D helper layer.
 // Key invariants:
 //   - Game3D public runtime helpers preserve deterministic state across VM and
 //     native-style C entry point usage.
@@ -22,8 +22,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt.hpp"
@@ -70,12 +70,12 @@ extern "C" {
 typedef struct {
     double look_sensitivity;
     int8_t has_snapshot;
-    uint8_t key_down[VIPER_KEY_MAX];
-    uint8_t key_pressed[VIPER_KEY_MAX];
-    uint8_t key_released[VIPER_KEY_MAX];
-    uint8_t mouse_down[VIPER_MOUSE_BUTTON_MAX];
-    uint8_t mouse_pressed[VIPER_MOUSE_BUTTON_MAX];
-    uint8_t mouse_released[VIPER_MOUSE_BUTTON_MAX];
+    uint8_t key_down[ZANNA_KEY_MAX];
+    uint8_t key_pressed[ZANNA_KEY_MAX];
+    uint8_t key_released[ZANNA_KEY_MAX];
+    uint8_t mouse_down[ZANNA_MOUSE_BUTTON_MAX];
+    uint8_t mouse_pressed[ZANNA_MOUSE_BUTTON_MAX];
+    uint8_t mouse_released[ZANNA_MOUSE_BUTTON_MAX];
     int64_t mouse_dx;
     int64_t mouse_dy;
     double wheel_y;
@@ -452,9 +452,9 @@ extern "C" void vm_trap(const char *msg) {
     } while (0)
 
 static rt_string test_fixture_path(const char *relative) {
-#ifdef VIPER_SOURCE_DIR
+#ifdef ZANNA_SOURCE_DIR
     char path[4096];
-    std::snprintf(path, sizeof(path), "%s/%s", VIPER_SOURCE_DIR, relative);
+    std::snprintf(path, sizeof(path), "%s/%s", ZANNA_SOURCE_DIR, relative);
     return rt_const_cstr(path);
 #else
     return rt_const_cstr(relative);
@@ -482,7 +482,7 @@ static bool write_text_file(const char *path, const char *text) {
 static std::string terrain_heightmap_fixture(
     int width, int depth, double west_edge, double east_edge, double interior) {
     std::string text =
-        "viper-heightmap-v1 " + std::to_string(width) + " " + std::to_string(depth) + "\n";
+        "zanna-heightmap-v1 " + std::to_string(width) + " " + std::to_string(depth) + "\n";
     char sample[32];
     for (int z = 0; z < depth; ++z) {
         for (int x = 0; x < width; ++x) {
@@ -641,9 +641,9 @@ static int game3d_pixels_match_with_tolerance(const Game3DRenderCapture &a,
 
 static void set_software_backend_env() {
 #if RT_PLATFORM_WINDOWS
-    _putenv_s("VIPER_3D_BACKEND", "software");
+    _putenv_s("ZANNA_3D_BACKEND", "software");
 #else
-    setenv("VIPER_3D_BACKEND", "software", 1);
+    setenv("ZANNA_3D_BACKEND", "software", 1);
 #endif
 }
 
@@ -817,19 +817,19 @@ extern "C" void game3d_test_clear_cache_during_async_publish(void *user_data) {
     state->rewrite_ok = write_game3d_embedded_triangle_gltf(state->path, 5.0f) ? 1 : 0;
 }
 
-struct Game3DTestVpaEntry {
+struct Game3DTestZpakEntry {
     const char *name;
     const uint8_t *data;
     size_t size;
 };
 
-static bool write_game3d_test_vpa(const char *path,
-                                  const Game3DTestVpaEntry *entries,
+static bool write_game3d_test_zpak(const char *path,
+                                  const Game3DTestZpakEntry *entries,
                                   size_t entry_count) {
     std::vector<uint8_t> out;
     std::vector<uint64_t> offsets;
     out.reserve(512);
-    out.insert(out.end(), {'V', 'P', 'A', '1'});
+    out.insert(out.end(), {'Z', 'P', 'A', 'K'});
     game3d_test_write16(out, 1);
     game3d_test_write16(out, 0);
     game3d_test_write32(out, (uint32_t)entry_count);
@@ -2994,7 +2994,7 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(rt_game3d_model_template_instantiate_scene_at(tpl1, 1) == nullptr,
                 "SceneTemplate.instantiateSceneAt rejects invalid scene indices");
 
-    const char *camera_template_path = "/tmp/viper_game3d_template_camera_scene.gltf";
+    const char *camera_template_path = "/tmp/zanna_game3d_template_camera_scene.gltf";
     const char *camera_gltf = "{"
                               "\"asset\":{\"version\":\"2.0\"},"
                               "\"cameras\":[{\"type\":\"perspective\",\"perspective\":{"
@@ -3107,7 +3107,7 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(cancelled_handle) == nullptr,
                 "cancelled AssetHandle3D has no entity result");
 
-    const char *missing_path = "/tmp/viper_game3d_missing_async_model.gltf";
+    const char *missing_path = "/tmp/zanna_game3d_missing_async_model.gltf";
     std::remove(missing_path);
     rt_string missing_path_s = rt_string_from_bytes(missing_path, std::strlen(missing_path));
     void *missing_entity_handle = rt_game3d_assets_load_model_async(missing_path_s);
@@ -3127,7 +3127,7 @@ static bool test_phase4_assets3d_model_templates() {
                 "missing-path AssetHandle3D has no entity result");
     rt_string_unref(missing_path_s);
 
-    rt_string missing_asset_s = rt_string_from_bytes("viper/missing/async_model_template.gltf", 39);
+    rt_string missing_asset_s = rt_string_from_bytes("zanna/missing/async_model_template.gltf", 39);
     void *missing_asset_handle = rt_game3d_assets_load_model_template_asset_async(missing_asset_s);
     EXPECT_TRUE(missing_asset_handle != nullptr,
                 "LoadTemplateAssetAsync returns a handle for a missing asset path");
@@ -3142,7 +3142,7 @@ static bool test_phase4_assets3d_model_templates() {
                 "missing-asset AssetHandle3D has no template result");
     rt_string_unref(missing_asset_s);
 
-    const char *corrupt_path = "/tmp/viper_game3d_corrupt_async_model.gltf";
+    const char *corrupt_path = "/tmp/zanna_game3d_corrupt_async_model.gltf";
     EXPECT_TRUE(write_text_file(corrupt_path, "not valid json"),
                 "test can write corrupt async model fixture");
     rt_string corrupt_path_s = rt_string_from_bytes(corrupt_path, std::strlen(corrupt_path));
@@ -3161,7 +3161,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string_unref(corrupt_path_s);
     std::remove(corrupt_path);
 
-    const char *corrupt_texture_path = "/tmp/viper_game3d_corrupt_async_texture_model.gltf";
+    const char *corrupt_texture_path = "/tmp/zanna_game3d_corrupt_async_texture_model.gltf";
     std::string corrupt_texture_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -3189,7 +3189,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string_unref(corrupt_texture_s);
     std::remove(corrupt_texture_path);
 
-    const char *unsupported_path = "/tmp/viper_game3d_unsupported_async_model.txt";
+    const char *unsupported_path = "/tmp/zanna_game3d_unsupported_async_model.txt";
     EXPECT_TRUE(write_text_file(unsupported_path, "not a model"),
                 "test can write unsupported async model fixture");
     rt_string unsupported_path_s =
@@ -3207,7 +3207,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string_unref(unsupported_path_s);
     std::remove(unsupported_path);
 
-    const char *sync_only_path = "/tmp/viper_game3d_async_sync_only_model.obj";
+    const char *sync_only_path = "/tmp/zanna_game3d_async_sync_only_model.obj";
     EXPECT_TRUE(write_text_file(sync_only_path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
                 "test can write sync-only OBJ model fixture");
     rt_string sync_only_path_s = rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
@@ -3238,7 +3238,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string_unref(sync_only_path_s);
     std::remove(sync_only_path);
 
-    const char *stl_path = "/tmp/viper_game3d_async_stl_model.stl";
+    const char *stl_path = "/tmp/zanna_game3d_async_stl_model.stl";
     const char *stl = "solid tri\n"
                       "facet normal 0 0 1\n"
                       "  outer loop\n"
@@ -3323,7 +3323,7 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(preloaded_handle) != nullptr,
                 "Assets3D.Preload publishes a cached SceneTemplate");
 
-    const char *corrupt_preload_path = "/tmp/viper_game3d_corrupt_preload_model.gltf";
+    const char *corrupt_preload_path = "/tmp/zanna_game3d_corrupt_preload_model.gltf";
     EXPECT_TRUE(write_text_file(corrupt_preload_path, "not valid json"),
                 "test can write corrupt preload fixture");
     rt_string corrupt_preload_s =
@@ -3358,7 +3358,7 @@ static bool test_phase4_assets3d_model_templates() {
 
 static bool test_phase4_assets3d_stale_async_publish_revalidates_generation() {
     TEST("Assets3D async template publish revalidates cache generation");
-    const char *path = "/tmp/viper_game3d_stale_async_publish.gltf";
+    const char *path = "/tmp/zanna_game3d_stale_async_publish.gltf";
     EXPECT_TRUE(write_game3d_embedded_triangle_gltf(path, 0.0f),
                 "test can write pre-clear async model fixture");
 
@@ -3442,9 +3442,9 @@ static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
 
 static bool test_phase4_assets3d_residency_hint_eviction() {
     TEST("Assets3D residency hints guide template cache eviction");
-    const char *near_path = "/tmp/viper_game3d_residency_near.gltf";
-    const char *priority_path = "/tmp/viper_game3d_residency_priority.gltf";
-    const char *far_path = "/tmp/viper_game3d_residency_far.gltf";
+    const char *near_path = "/tmp/zanna_game3d_residency_near.gltf";
+    const char *priority_path = "/tmp/zanna_game3d_residency_priority.gltf";
+    const char *far_path = "/tmp/zanna_game3d_residency_far.gltf";
 
     EXPECT_TRUE(write_game3d_embedded_triangle_gltf(near_path, 0.0f),
                 "near residency fixture can be written");
@@ -3488,8 +3488,8 @@ static bool test_phase4_assets3d_residency_hint_eviction() {
 
 static bool test_phase4_assets3d_texture_residency_budget() {
     TEST("Assets3D residency budget accounts for texture payloads");
-    const char *png_path = "/tmp/viper_game3d_budget_texture.png";
-    const char *gltf_path = "/tmp/viper_game3d_budget_texture.gltf";
+    const char *png_path = "/tmp/zanna_game3d_budget_texture.png";
+    const char *gltf_path = "/tmp/zanna_game3d_budget_texture.gltf";
     void *pixels = rt_pixels_new(256, 256);
     EXPECT_TRUE(pixels != nullptr, "budget texture Pixels can be allocated");
     for (int64_t y = 0; y < 256; ++y) {
@@ -3594,7 +3594,7 @@ static bool test_phase4_assets3d_texture_residency_budget() {
 
 static bool test_assets3d_loads_packaged_gltf_hierarchy() {
     TEST("Assets3D.LoadEntityAsset preserves packaged glTF hierarchy");
-    const char *pack_path = "/tmp/viper_game3d_packaged_hierarchy.vpa";
+    const char *pack_path = "/tmp/zanna_game3d_packaged_hierarchy.zpak";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
@@ -3617,13 +3617,13 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
         "\"scene\":0"
         "}";
 
-    Game3DTestVpaEntry entries[] = {
+    Game3DTestZpakEntry entries[] = {
         {"assets/models/hierarchy.gltf",
          reinterpret_cast<const uint8_t *>(gltf_json.data()),
          gltf_json.size()},
         {"assets/models/buffers/tri.bin", gltf_buffer.data(), gltf_buffer.size()},
     };
-    EXPECT_TRUE(write_game3d_test_vpa(pack_path, entries, 2),
+    EXPECT_TRUE(write_game3d_test_zpak(pack_path, entries, 2),
                 "Game3D hierarchy asset pack can be written");
     EXPECT_TRUE(rt_asset_mount(rt_const_cstr(pack_path)) == 1,
                 "Game3D hierarchy asset pack can mount");
@@ -3750,24 +3750,24 @@ static bool test_phase5_world_stream3d_baseline() {
 
 static bool test_phase5_world_stream3d_terrain_manifest() {
     TEST("WorldStream3D parses tiled terrain manifests for deterministic residency");
-    const char *manifest_path = "/tmp/viper_game3d_terrain_tiles_manifest.json";
-    const char *near_height_path = "/tmp/viper_game3d_terrain_near.height";
-    const char *far_height_path = "/tmp/viper_game3d_terrain_far.height";
-    const char *near_heights = "viper-heightmap-v1 3 3\n"
+    const char *manifest_path = "/tmp/zanna_game3d_terrain_tiles_manifest.json";
+    const char *near_height_path = "/tmp/zanna_game3d_terrain_near.height";
+    const char *far_height_path = "/tmp/zanna_game3d_terrain_far.height";
+    const char *near_heights = "zanna-heightmap-v1 3 3\n"
                                "0.25 0.35 0.45\n"
                                "0.30 0.40 0.50\n"
                                "0.35 0.45 0.55\n";
-    const char *far_heights = "viper-heightmap-v1 3 3\n"
+    const char *far_heights = "zanna-heightmap-v1 3 3\n"
                               "0.45 0.55 0.65\n"
                               "0.50 0.60 0.70\n"
                               "0.55 0.65 0.75\n";
     const char *manifest = "{\"tiles\":["
                            "{\"name\":\"near\",\"path\":\"terrain/"
-                           "near.tile\",\"heightmap\":\"viper_game3d_terrain_near.height\","
+                           "near.tile\",\"heightmap\":\"zanna_game3d_terrain_near.height\","
                            "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
                            "\"width\":4,\"depth\":4,\"scale\":[2,3,4]},"
                            "{\"name\":\"far\",\"path\":\"terrain/"
-                           "far.tile\",\"heightmap\":\"viper_game3d_terrain_far.height\","
+                           "far.tile\",\"heightmap\":\"zanna_game3d_terrain_far.height\","
                            "\"center\":[512,0,0],\"radius\":32,\"bytes\":1000,"
                            "\"width\":8,\"depth\":8,\"scale\":[4,3,8]}"
                            "]}";
@@ -3796,7 +3796,7 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
                 "out-of-range resident terrain tile query returns null");
     EXPECT_TRUE(
         std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_heightmap(stream, 0)),
-                    "viper_game3d_terrain_near.height") != nullptr,
+                    "zanna_game3d_terrain_near.height") != nullptr,
         "terrain tile heightmap inspection returns the resolved sidecar path");
     EXPECT_NEAR(rt_terrain3d_get_height_at(near_terrain, 1.0, 1.0),
                 0.9375,
@@ -3875,7 +3875,7 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
 static bool test_phase5_world_stream3d_terrain_slots_reject_wrong_class_refs() {
     TEST("WorldStream3D terrain tiles reject wrong-class private terrain and source slots");
 
-    const char *manifest_path = "/tmp/viper_game3d_terrain_wrong_slots_manifest.json";
+    const char *manifest_path = "/tmp/zanna_game3d_terrain_wrong_slots_manifest.json";
     const char *manifest = "{\"tiles\":["
                            "{\"name\":\"wrong_slots\",\"path\":\"terrain/wrong_slots.tile\","
                            "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
@@ -3946,15 +3946,15 @@ static bool test_phase5_world_stream3d_terrain_slots_reject_wrong_class_refs() {
 
 static bool test_phase5_world_stream3d_heightmap_resample_preserves_edges() {
     TEST("WorldStream3D terrain heightmap resampling preserves source edges");
-    const char *manifest_path = "/tmp/viper_game3d_terrain_resample_manifest.json";
-    const char *height_path = "/tmp/viper_game3d_terrain_resample.height";
-    const char *heights = "viper-heightmap-v1 3 3\n"
+    const char *manifest_path = "/tmp/zanna_game3d_terrain_resample_manifest.json";
+    const char *height_path = "/tmp/zanna_game3d_terrain_resample.height";
+    const char *heights = "zanna-heightmap-v1 3 3\n"
                           "0.00 0.10 0.20\n"
                           "0.30 0.25 0.40\n"
                           "0.50 0.70 1.00\n";
     const char *manifest = "{\"tiles\":["
                            "{\"name\":\"resample\",\"path\":\"terrain/resample.tile\","
-                           "\"heightmap\":\"viper_game3d_terrain_resample.height\","
+                           "\"heightmap\":\"zanna_game3d_terrain_resample.height\","
                            "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
                            "\"width\":2,\"depth\":2,\"scale\":[1,10,1]}"
                            "]}";
@@ -3989,15 +3989,15 @@ static bool test_phase5_world_stream3d_heightmap_resample_preserves_edges() {
 
 static bool test_phase5_world_stream3d_rejects_trailing_heightmap_tokens() {
     TEST("WorldStream3D rejects terrain heightmap sidecars with trailing tokens");
-    const char *manifest_path = "/tmp/viper_game3d_terrain_trailing_manifest.json";
-    const char *height_path = "/tmp/viper_game3d_terrain_trailing.height";
-    const char *heights = "viper-heightmap-v1 2 2\n"
+    const char *manifest_path = "/tmp/zanna_game3d_terrain_trailing_manifest.json";
+    const char *height_path = "/tmp/zanna_game3d_terrain_trailing.height";
+    const char *heights = "zanna-heightmap-v1 2 2\n"
                           "0.00 0.00\n"
                           "0.00 1.00\n"
                           "unexpected-token\n";
     const char *manifest = "{\"tiles\":["
                            "{\"name\":\"trailing\",\"path\":\"terrain/trailing.tile\","
-                           "\"heightmap\":\"viper_game3d_terrain_trailing.height\","
+                           "\"heightmap\":\"zanna_game3d_terrain_trailing.height\","
                            "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
                            "\"width\":2,\"depth\":2,\"scale\":[1,10,1]}"
                            "]}";
@@ -4027,9 +4027,9 @@ static bool test_phase5_world_stream3d_rejects_trailing_heightmap_tokens() {
 
 static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
     TEST("WorldStream3D stitches adjacent terrain LOD seams beyond one heightmap cap");
-    const char *manifest_path = "/tmp/viper_game3d_terrain_lod_seams_manifest.json";
-    const char *west_height_path = "/tmp/viper_game3d_terrain_lod_seams_west.height";
-    const char *east_height_path = "/tmp/viper_game3d_terrain_lod_seams_east.height";
+    const char *manifest_path = "/tmp/zanna_game3d_terrain_lod_seams_manifest.json";
+    const char *west_height_path = "/tmp/zanna_game3d_terrain_lod_seams_west.height";
+    const char *east_height_path = "/tmp/zanna_game3d_terrain_lod_seams_east.height";
     const double tile_scale = 600.0;
     const int64_t tile_samples = 9;
     const double tile_extent = (double)(tile_samples - 1) * tile_scale;
@@ -4050,11 +4050,11 @@ static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
                   sizeof(manifest),
                   "{\"tiles\":["
                   "{\"name\":\"west_lod_tile\",\"path\":\"terrain/west.tile\","
-                  "\"heightmap\":\"viper_game3d_terrain_lod_seams_west.height\","
+                  "\"heightmap\":\"zanna_game3d_terrain_lod_seams_west.height\","
                   "\"center\":[0,0,0],\"radius\":6000,\"bytes\":4096,"
                   "\"width\":%lld,\"depth\":%lld,\"scale\":[%.1f,10,%.1f]},"
                   "{\"name\":\"east_lod_tile\",\"path\":\"terrain/east.tile\","
-                  "\"heightmap\":\"viper_game3d_terrain_lod_seams_east.height\","
+                  "\"heightmap\":\"zanna_game3d_terrain_lod_seams_east.height\","
                   "\"center\":[%.1f,0,0],\"radius\":6000,\"bytes\":4096,"
                   "\"width\":%lld,\"depth\":%lld,\"scale\":[%.1f,10,%.1f]}"
                   "]}",
@@ -4138,9 +4138,9 @@ static bool write_stream_cell_scene(const char *path, const char *marker_name) {
 static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
     TEST("WorldStream3D budgeted residency prefers nearest manifest entries");
 
-    const char *near_path = "/tmp/viper_game3d_nearest_budget_near.vscn";
-    const char *far_path = "/tmp/viper_game3d_nearest_budget_far.vscn";
-    const char *cells_manifest_path = "/tmp/viper_game3d_nearest_budget_cells.vscn";
+    const char *near_path = "/tmp/zanna_game3d_nearest_budget_near.vscn";
+    const char *far_path = "/tmp/zanna_game3d_nearest_budget_far.vscn";
+    const char *cells_manifest_path = "/tmp/zanna_game3d_nearest_budget_cells.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "nearest_budget_near_marker"),
                 "nearest-budget near cell fixture saves");
     EXPECT_TRUE(write_stream_cell_scene(far_path, "nearest_budget_far_marker"),
@@ -4192,7 +4192,7 @@ static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
                 "nearest budget leaves the farther first cell unloaded");
     rt_game3d_world_destroy(cell_world);
 
-    const char *terrain_manifest_path = "/tmp/viper_game3d_nearest_budget_terrain.vscn";
+    const char *terrain_manifest_path = "/tmp/zanna_game3d_nearest_budget_terrain.vscn";
     const char *terrain_manifest =
         "{\"tiles\":["
         "{\"name\":\"far_terrain_first\",\"path\":\"terrain/far.tile\","
@@ -4269,9 +4269,9 @@ static bool write_stream_lod_cell_scene(const char *path) {
 static bool test_phase5_world_stream3d_manifest_cells() {
     TEST("WorldStream3D mounts and unloads VSCN scene cells from a manifest");
 
-    const char *near_path = "/tmp/viper_game3d_stream_near.vscn";
-    const char *far_path = "/tmp/viper_game3d_stream_far.vscn";
-    const char *manifest_path = "/tmp/viper_game3d_stream_cells_manifest.vscn";
+    const char *near_path = "/tmp/zanna_game3d_stream_near.vscn";
+    const char *far_path = "/tmp/zanna_game3d_stream_far.vscn";
+    const char *manifest_path = "/tmp/zanna_game3d_stream_cells_manifest.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "stream_near_marker"),
                 "near stream cell fixture saves");
     EXPECT_TRUE(write_stream_cell_scene(far_path, "stream_far_marker"),
@@ -4341,9 +4341,9 @@ static bool test_phase5_world_stream3d_manifest_cells() {
 static bool test_phase5_world_stream3d_cell_binary_sidecar() {
     TEST("WorldStream3D loads, accounts, and frees cell binary sidecar payloads");
 
-    const char *cell_path = "/tmp/viper_game3d_stream_sidecar_cell.vscn";
-    const char *sidecar_path = "/tmp/viper_game3d_stream_sidecar_payload.bin";
-    const char *manifest_path = "/tmp/viper_game3d_stream_sidecar_manifest.vscn";
+    const char *cell_path = "/tmp/zanna_game3d_stream_sidecar_cell.vscn";
+    const char *sidecar_path = "/tmp/zanna_game3d_stream_sidecar_payload.bin";
+    const char *manifest_path = "/tmp/zanna_game3d_stream_sidecar_manifest.vscn";
     EXPECT_TRUE(write_stream_cell_scene(cell_path, "stream_sidecar_marker"),
                 "sidecar stream cell fixture saves");
 
@@ -4393,13 +4393,13 @@ static bool test_phase5_world_stream3d_cell_binary_sidecar() {
     rt_game3d_world_destroy(world);
 
     // A missing/unreadable sidecar is recoverable: the cell still loads with zero sidecar bytes.
-    const char *missing_manifest_path = "/tmp/viper_game3d_stream_sidecar_missing_manifest.vscn";
+    const char *missing_manifest_path = "/tmp/zanna_game3d_stream_sidecar_missing_manifest.vscn";
     char missing_manifest[2048];
     std::snprintf(missing_manifest,
                   sizeof(missing_manifest),
                   "{\"cells\":[{\"name\":\"sidecar_cell\",\"path\":\"%s\",\"center\":[0,0,0],"
                   "\"radius\":8,\"bytes\":65536,"
-                  "\"sidecar\":\"/tmp/viper_game3d_no_such_sidecar.bin\"}]}",
+                  "\"sidecar\":\"/tmp/zanna_game3d_no_such_sidecar.bin\"}]}",
                   cell_path);
     EXPECT_TRUE(write_text_file(missing_manifest_path, missing_manifest),
                 "missing-sidecar manifest fixture writes");
@@ -4425,8 +4425,8 @@ static bool test_phase5_world_stream3d_cell_binary_sidecar() {
 static bool test_phase5_world_stream3d_measures_lod_residency() {
     TEST("WorldStream3D measures loaded VSCN mesh and LOD residency");
 
-    const char *cell_path = "/tmp/viper_game3d_stream_lod_residency.vscn";
-    const char *manifest_path = "/tmp/viper_game3d_stream_lod_residency_manifest.vscn";
+    const char *cell_path = "/tmp/zanna_game3d_stream_lod_residency.vscn";
+    const char *manifest_path = "/tmp/zanna_game3d_stream_lod_residency_manifest.vscn";
     EXPECT_TRUE(write_stream_lod_cell_scene(cell_path), "LOD stream cell fixture saves");
 
     char manifest[2048];
@@ -4561,10 +4561,10 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
 static bool test_phase5_world_stream3d_hitch_budgeted_update() {
     TEST("WorldStream3D update budgets stream loads and reports pending requests");
 
-    const char *near_path = "/tmp/viper_game3d_stream_budget_near.vscn";
-    const char *far_path = "/tmp/viper_game3d_stream_budget_far.vscn";
-    const char *cells_manifest_path = "/tmp/viper_game3d_stream_budget_cells.vscn";
-    const char *terrain_manifest_path = "/tmp/viper_game3d_stream_budget_terrain.vscn";
+    const char *near_path = "/tmp/zanna_game3d_stream_budget_near.vscn";
+    const char *far_path = "/tmp/zanna_game3d_stream_budget_far.vscn";
+    const char *cells_manifest_path = "/tmp/zanna_game3d_stream_budget_cells.vscn";
+    const char *terrain_manifest_path = "/tmp/zanna_game3d_stream_budget_terrain.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "budget_near_marker"),
                 "near budget cell fixture saves");
     EXPECT_TRUE(write_stream_cell_scene(far_path, "budget_far_marker"),
@@ -4656,10 +4656,10 @@ static bool test_phase5_world_stream3d_hitch_budgeted_update() {
 static bool test_phase5_world_stream3d_budget_hysteresis_and_cooldown() {
     TEST("WorldStream3D budget eviction has hysteresis and a reload cooldown");
 
-    const char *near_path = "/tmp/viper_game3d_stream_hyst_near.vscn";
-    const char *far_path = "/tmp/viper_game3d_stream_hyst_far.vscn";
-    const char *sidecar_path = "/tmp/viper_game3d_stream_hyst_far.bin";
-    const char *cells_manifest_path = "/tmp/viper_game3d_stream_hyst_cells.vscn";
+    const char *near_path = "/tmp/zanna_game3d_stream_hyst_near.vscn";
+    const char *far_path = "/tmp/zanna_game3d_stream_hyst_far.vscn";
+    const char *sidecar_path = "/tmp/zanna_game3d_stream_hyst_far.bin";
+    const char *cells_manifest_path = "/tmp/zanna_game3d_stream_hyst_cells.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "hyst_near_marker"),
                 "near hysteresis cell fixture saves");
     EXPECT_TRUE(write_stream_cell_scene(far_path, "hyst_far_marker"),
@@ -4685,7 +4685,7 @@ static bool test_phase5_world_stream3d_budget_hysteresis_and_cooldown() {
                   "\"radius\":16,\"bytes\":4096},"
                   "{\"name\":\"hyst_far\",\"path\":\"%s\",\"center\":[40,0,0],"
                   "\"radius\":16,\"bytes\":4096,"
-                  "\"sidecar\":\"viper_game3d_stream_hyst_far.bin\"}"
+                  "\"sidecar\":\"zanna_game3d_stream_hyst_far.bin\"}"
                   "]"
                   "}",
                   near_path,
@@ -4749,8 +4749,8 @@ static bool test_phase5_world_stream3d_budget_hysteresis_and_cooldown() {
 static bool test_phase5_world_stream3d_zero_radius_update_traps() {
     TEST("WorldStream3D.Update traps when a manifest is mounted but the load radius is 0");
 
-    const char *cell_path = "/tmp/viper_game3d_stream_zero_radius_cell.vscn";
-    const char *cells_manifest_path = "/tmp/viper_game3d_stream_zero_radius_cells.vscn";
+    const char *cell_path = "/tmp/zanna_game3d_stream_zero_radius_cell.vscn";
+    const char *cells_manifest_path = "/tmp/zanna_game3d_stream_zero_radius_cells.vscn";
     EXPECT_TRUE(write_stream_cell_scene(cell_path, "zero_radius_marker"),
                 "zero-radius cell fixture saves");
     char cells_manifest[1024];
@@ -4787,10 +4787,10 @@ static bool test_phase5_world_stream3d_zero_radius_update_traps() {
 static bool test_phase12_world_stream3d_inspection_hooks() {
     TEST("WorldStream3D exposes editor inspection hooks for parsed entries");
 
-    const char *near_path = "/tmp/viper_game3d_stream_inspect_near.vscn";
-    const char *far_path = "/tmp/viper_game3d_stream_inspect_far.vscn";
-    const char *cells_manifest_path = "/tmp/viper_game3d_stream_inspect_cells.vscn";
-    const char *terrain_manifest_path = "/tmp/viper_game3d_stream_inspect_terrain.vscn";
+    const char *near_path = "/tmp/zanna_game3d_stream_inspect_near.vscn";
+    const char *far_path = "/tmp/zanna_game3d_stream_inspect_far.vscn";
+    const char *cells_manifest_path = "/tmp/zanna_game3d_stream_inspect_cells.vscn";
+    const char *terrain_manifest_path = "/tmp/zanna_game3d_stream_inspect_terrain.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "inspect_near_marker"),
                 "near inspection cell fixture saves");
     EXPECT_TRUE(write_stream_cell_scene(far_path, "inspect_far_marker"),

@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Crypto.KeyDerive
+// API Audit: Zanna.Crypto.KeyDerive
 // =============================================================================
 // Tests: Pbkdf2SHA256, Pbkdf2SHA256Str
 // =============================================================================
 
 module KeyDeriveDemo;
-bind Viper.Crypto;
-bind Viper.Collections;
-bind Viper.Terminal;
+bind Zanna.Crypto;
+bind Zanna.Collections;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Crypto.KeyDerive ===");
+    Say("=== API Audit: Zanna.Crypto.KeyDerive ===");
 
     // Create a salt
     var salt = Rand.Bytes(16);

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/render/rt_model3d_loaders.inc  (#included from rt_model3d.c; not a
 // standalone translation unit) Purpose: Model3D OBJ/glTF/FBX import bridges
 //===----------------------------------------------------------------------===//
@@ -571,7 +571,7 @@ static void *model3d_fbx_from_asset_bytes(rt_string original_path,
                                           size_t size) {
     if (!bytes || size == 0)
         return NULL;
-    rt_string prefix = rt_const_cstr("viper_fbx_");
+    rt_string prefix = rt_const_cstr("zanna_fbx_");
     rt_string suffix = rt_const_cstr(".fbx");
     rt_string tmp = rt_tempfile_path_with_ext(prefix, suffix);
     rt_string_unref(prefix);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 void lowerOverflowOps(MFunction &fn);
 
@@ -67,10 +67,10 @@ namespace {
 }
 
 } // namespace
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
 int main() {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     const ILModule module = makeOverflowModule();
     CodegenOptions options{};

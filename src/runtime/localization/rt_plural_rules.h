@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_plural_rules.h
-// Purpose: Public C API for Viper.Localization.PluralRules — CLDR-style
+// Purpose: Public C API for Zanna.Localization.PluralRules — CLDR-style
 //          plural-category selection for cardinal and ordinal numeric forms.
 //          Each instance is keyed on a Locale whose rt_locale_data_t carries
 //          the rule AST chains populated at locale-load time (baked into
@@ -28,7 +28,7 @@
 //
 // Links: src/runtime/localization/rt_plural_rules.c (implementation),
 //        src/runtime/localization/rt_locale_data.h (rule AST storage),
-//        docs/viperlib/localization/messages.md (end-user doc).
+//        docs/zannalib/localization/messages.md (end-user doc).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

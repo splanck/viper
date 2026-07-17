@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: examples/games/chess/ui/game.zia
-// Purpose: Main controller, input dispatcher, and game loop for Viper Chess.
+// Purpose: Main controller, input dispatcher, and game loop for Zanna Chess.
 // Key invariants:
 //   - StateMachine state owns the active screen flow.
 //   - UI save/export actions never mutate board state while AI is applying a move.
@@ -19,23 +19,23 @@
 
 module game;
 
-bind Viper.Graphics;
-bind Viper.Terminal;
-bind Action = Viper.Input.Action;
-bind Key = Viper.Input.Key;
-bind Keyboard = Viper.Input.Keyboard;
-bind Mouse = Viper.Input.Mouse;
-bind Pad = Viper.Input.Pad;
-bind StateMachine = Viper.Game.StateMachine;
-bind ButtonGroup = Viper.Game.ButtonGroup;
-bind Timer = Viper.Game.Timer;
-bind Tween = Viper.Game.Tween;
-bind Clock = Viper.Time.Clock;
-bind Fmt = Viper.Text.Fmt;
-bind Seq = Viper.Collections.Seq;
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
-bind Clipboard = Viper.System.Clipboard;
+bind Zanna.Graphics;
+bind Zanna.Terminal;
+bind Action = Zanna.Input.Action;
+bind Key = Zanna.Input.Key;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Mouse = Zanna.Input.Mouse;
+bind Pad = Zanna.Input.Pad;
+bind StateMachine = Zanna.Game.StateMachine;
+bind ButtonGroup = Zanna.Game.ButtonGroup;
+bind Timer = Zanna.Game.Timer;
+bind Tween = Zanna.Game.Tween;
+bind Clock = Zanna.Time.Clock;
+bind Fmt = Zanna.Text.Fmt;
+bind Seq = Zanna.Collections.Seq;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
+bind Clipboard = Zanna.System.Clipboard;
 bind "../core/config";
 bind "../core/board";
 bind "../core/moves";
@@ -62,7 +62,7 @@ bind "../engine/ai";
 //          its `run()` method is the program's main loop.
 //
 // KEY-DESIGN-CHOICES:
-//   * STATE MACHINE. `flow` is the Viper.Game.StateMachine source of
+//   * STATE MACHINE. `flow` is the Zanna.Game.StateMachine source of
 //     truth for STATE_MENU / PLAYING / PROMO / AI_THINK / CHECKMATE /
 //     STALEMATE / DRAW. Input handling and rendering branch through
 //     isState / isGameOverState helpers.
@@ -86,7 +86,7 @@ bind "../engine/ai";
 //   * LEGAL MOVES CACHE. `cachedLegalMoves_` + `legalMovesValid_`
 //     avoid recomputing on every input event. Invalidated whenever
 //     the board changes (applyMove / unmake).
-//   * MOVE ANIMATION + LIFT. Viper.Game.Tween drives a 0..1000 progress
+//   * MOVE ANIMATION + LIFT. Zanna.Game.Tween drives a 0..1000 progress
 //     value over ~180 ms. The renderer's drawAnimatedPiece adds a
 //     triangular vertical lift so the piece appears to be carried.
 //   * THREEFOLD-REPETITION DETECTION. positionHashes records the
@@ -265,7 +265,7 @@ class ChessGame {
     /// @brief Build the canvas, board, move generator, renderer; pre-render
     ///        sprites; reset all state to MENU defaults.
     expose func init() {
-        canvas   = Canvas.New("Viper Chess", WIN_W, WIN_H);
+        canvas   = Canvas.New("Zanna Chess", WIN_W, WIN_H);
         board    = new Board();
         moveGen  = new MoveGen();
         renderer = new BoardRenderer();
@@ -389,7 +389,7 @@ class ChessGame {
         Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonStart());
     }
 
-    /// @brief Bind Ctrl+Z variants through Viper.Input.Action chord support.
+    /// @brief Bind Ctrl+Z variants through Zanna.Input.Action chord support.
     hide func bindUndoChord(ctrlKey: Integer) {
         var undoChord = Seq.New();
         Seq.Push(undoChord, ctrlKey);
@@ -411,7 +411,7 @@ class ChessGame {
         Action.BindChord(ACT_SAVE, saveChord);
     }
 
-    /// @brief Register all chess UI states with Viper.Game.StateMachine.
+    /// @brief Register all chess UI states with Zanna.Game.StateMachine.
     hide func setupStateMachine() {
         flow = StateMachine.New();
         flow.AddState(STATE_MENU);
@@ -426,7 +426,7 @@ class ChessGame {
         flow.SetInitial(STATE_MENU);
     }
 
-    /// @brief Transition through Viper.Game.StateMachine.
+    /// @brief Transition through Zanna.Game.StateMachine.
     hide func setGameState(nextState: Integer) {
         if !flow.IsState(nextState) {
             flow.Transition(nextState);
@@ -443,7 +443,7 @@ class ChessGame {
                isState(STATE_DRAW);
     }
 
-    /// @brief Back menu radio-button state with Viper.Game.ButtonGroup.
+    /// @brief Back menu radio-button state with Zanna.Game.ButtonGroup.
     hide func setupMenuGroups() {
         modeButtons = ButtonGroup.New();
         modeButtons.Add(MODE_PVP);
@@ -568,7 +568,7 @@ class ChessGame {
             return;
         }
 
-        // Ctrl+Z through Viper.Input.Action chord binding. Works from any
+        // Ctrl+Z through Zanna.Input.Action chord binding. Works from any
         // non-menu state including game-over screens.
         if Action.Pressed(ACT_UNDO) {
             handleUndo();
@@ -610,7 +610,7 @@ class ChessGame {
         }
 
         // Mouse hold — update drag position
-        if Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) {
+        if Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft) {
             if dragFrom >= 0 {
                 dragX = mx;
                 dragY = my;
@@ -1608,7 +1608,7 @@ class ChessGame {
         return frames;
     }
 
-    /// @brief Advance the Viper.Game.Tween and return 0..1000 progress,
+    /// @brief Advance the Zanna.Game.Tween and return 0..1000 progress,
     ///        or -1 if no animation. Auto-stops when complete.
     hide func animationProgressPermille() -> Integer {
         if !animActive { return -1; }
@@ -1794,7 +1794,7 @@ class ChessGame {
     hide func render() {
         var mx = Mouse.X();
         var my = Mouse.Y();
-        var mouseDown = Mouse.IsDown(Viper.Input.Mouse.ButtonLeft);
+        var mouseDown = Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft);
         var animProgress = animationProgressPermille();
         var hoverSq = renderer.squareAt(mx, my);
         theme.setLargeText(userSettings.largeText);

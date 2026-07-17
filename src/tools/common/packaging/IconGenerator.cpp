@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <cstdlib>
 #include <limits>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 //=============================================================================
 // ICNS Generation
@@ -238,13 +238,13 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
     return result;
 }
 
-/// @brief Build the dependency-free fallback Viper toolchain icon.
+/// @brief Build the dependency-free fallback Zanna toolchain icon.
 /// @details Draws a high-contrast square icon with a light "V" mark, subtle
 ///          diagonal accent, and transparent-free pixels so every platform can
 ///          resize it predictably for setup programs, launchers, and file
 ///          association metadata.
 /// @return A 256x256 RGBA image.
-PkgImage defaultViperToolchainIconImage() {
+PkgImage defaultZannaToolchainIconImage() {
     constexpr uint32_t kSize = 256;
     PkgImage img;
     img.width = kSize;
@@ -324,4 +324,4 @@ std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &s
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

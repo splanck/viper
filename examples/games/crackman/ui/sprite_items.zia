@@ -7,7 +7,7 @@
 
 module sprite_items;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "./theme";

@@ -1,9 +1,9 @@
-// Viper Web Server - Configuration Module
+// Zanna Web Server - Configuration Module
 // Parses configuration from file or uses defaults
 module config;
 
-bind Viper.IO as IO;
-bind Viper.String as String;
+bind Zanna.IO as IO;
+bind Zanna.String as String;
 
 // ============================================================================
 // CONFIGURATION VALUES (set by config_load or defaults)
@@ -51,7 +51,7 @@ func config_load(configPath: String) -> Boolean {
 
     // Read the file
     var content = IO.File.ReadAllText(configPath);
-    var len = Viper.String.get_Length(content);
+    var len = Zanna.String.get_Length(content);
     if len == 0 {
         return false;
     }
@@ -94,7 +94,7 @@ func config_load(configPath: String) -> Boolean {
 
 // Parse a single configuration line
 func config_parseLine(line: String) {
-    var len = Viper.String.get_Length(line);
+    var len = Zanna.String.get_Length(line);
     if len == 0 {
         return;
     }
@@ -146,7 +146,7 @@ func config_parseLine(line: String) {
 
 // Trim whitespace from string
 func config_trim(s: String) -> String {
-    var len = Viper.String.get_Length(s);
+    var len = Zanna.String.get_Length(s);
     if len == 0 {
         return s;
     }
@@ -180,7 +180,7 @@ func config_trim(s: String) -> String {
 
 // Parse integer from string with default
 func config_parseInt(s: String, defaultVal: Integer) -> Integer {
-    var len = Viper.String.get_Length(s);
+    var len = Zanna.String.get_Length(s);
     if len == 0 {
         return defaultVal;
     }

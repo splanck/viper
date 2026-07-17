@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 /// @file Lowerer.hpp
 /// @brief IL code generation for the Zia programming language.
 ///
-/// @details The Lowerer transforms a type-checked Zia AST into Viper
+/// @details The Lowerer transforms a type-checked Zia AST into Zanna
 /// Intermediate Language (IL). This is the final stage of the frontend
 /// pipeline before the IL is passed to the VM or code generator.
 ///
@@ -52,14 +52,14 @@
 ///
 /// ## Runtime Integration
 ///
-/// The lowerer generates calls to the Viper runtime for:
+/// The lowerer generates calls to the Zanna runtime for:
 /// - Object allocation and deallocation
 /// - String operations
 /// - Collection operations (List, Map, Set)
 /// - I/O (Terminal functions)
 /// - Type checking and casting
 ///
-/// Runtime function names follow the pattern `Viper.Category.Function`,
+/// Runtime function names follow the pattern `Zanna.Category.Function`,
 /// which are resolved to runtime symbols during linking.
 ///
 /// ## Usage Example
@@ -142,7 +142,7 @@ using LowerResult = ::il::frontends::common::ExprResult;
 /// @{
 //===----------------------------------------------------------------------===//
 
-/// @brief Lowers Zia AST to Viper IL.
+/// @brief Lowers Zia AST to Zanna IL.
 /// @details Transforms a semantically analyzed AST into IL instructions.
 /// The lowerer produces a complete IL Module that can be executed by the
 /// VM or compiled to native code.
@@ -425,7 +425,7 @@ class Lowerer {
     void emitManagedRelease(Value value, bool isString);
 
     /// @brief Emit the Zia-managed release sequence and return the new retain count.
-    /// @details Used for explicit `Viper.Memory.Release(...)` calls.
+    /// @details Used for explicit `Zanna.Memory.Release(...)` calls.
     Value emitManagedReleaseRet(Value value, bool isString);
 
     /// @brief Remove a value from the deferred list (it was consumed by a

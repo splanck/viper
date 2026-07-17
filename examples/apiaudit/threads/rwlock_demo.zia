@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Threads.RwLock
+// API Audit: Zanna.Threads.RwLock
 // =============================================================================
 // Tests: New, ReadEnter, ReadExit, WriteEnter, WriteExit, TryReadEnter,
 //        TryWriteEnter, Readers, IsWriteLocked
 // =============================================================================
 
 module RwLockDemo;
-bind Viper.Threads.RwLock as RwLock;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.RwLock as RwLock;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.RwLock ===");
+    Say("=== API Audit: Zanna.Threads.RwLock ===");
 
     // --- New ---
     Say("--- New ---");

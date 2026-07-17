@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ namespace il::transform {
 inline constexpr const char *kAnalysisCFG = "cfg";
 
 /// @brief Identifier for the dominator-tree analysis.
-/// @see viper::analysis::DomTree
+/// @see zanna::analysis::DomTree
 inline constexpr const char *kAnalysisDominators = "dominators";
 
 /// @brief Identifier for the loop-information analysis.
@@ -56,11 +56,11 @@ inline constexpr const char *kAnalysisLoopInfo = "loop-info";
 inline constexpr const char *kAnalysisLiveness = "liveness";
 
 /// @brief Identifier for the basic alias analysis.
-/// @see viper::analysis::BasicAA
+/// @see zanna::analysis::BasicAA
 inline constexpr const char *kAnalysisBasicAA = "basic-aa";
 
 /// @brief Identifier for the Memory SSA analysis.
-/// @see viper::analysis::MemorySSA
+/// @see zanna::analysis::MemorySSA
 inline constexpr const char *kAnalysisMemorySSA = "memory-ssa";
 
 /// @brief Identifier for the integer value-range analysis.

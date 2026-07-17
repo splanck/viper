@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/math/rt_mat4.c
-// Purpose: 4x4 matrix mathematics for the Viper.Mat4 class. Implements 3D
+// Purpose: 4x4 matrix mathematics for the Zanna.Mat4 class. Implements 3D
 //   affine and projective transforms: translation, rotation (from quaternion or
 //   axis-angle), scale, matrix multiplication, transpose, determinant, inverse,
 //   perspective and orthographic projection, and Vec3 point/direction transformation.

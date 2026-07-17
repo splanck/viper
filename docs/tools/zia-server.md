@@ -29,7 +29,7 @@ Both protocols share a single compiler bridge and run over stdin/stdout JSON-RPC
     ┌───────────┼───────────┐
     │           │           │
 ┌───▼───┐  ┌───▼───┐  ┌───▼───────────┐
-│fe_zia │  │il_io  │  │RuntimeRegistry│  ← Existing Viper libraries
+│fe_zia │  │il_io  │  │RuntimeRegistry│  ← Existing Zanna libraries
 └───────┘  └───────┘  └───────────────┘
 ```
 
@@ -116,7 +116,7 @@ For detailed JSON schemas and examples, see [MCP Tool Specification](zia-server-
 
 → {"jsonrpc":"2.0","method":"initialized"}
 
-→ {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"zia/check","arguments":{"source":"module Test;\nfunc start() {\n    Viper.Terminal.Say(\"hello\");\n}\n"}}}
+→ {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"zia/check","arguments":{"source":"module Test;\nfunc start() {\n    Zanna.Terminal.Say(\"hello\");\n}\n"}}}
 ← {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"[]"}]}}
 ```
 
@@ -170,12 +170,12 @@ supports the full table above. `vbasic-server` currently advertises diagnostics,
 completion, hover, and document symbols only; BASIC semantic navigation is tracked
 separately from the Zia LSP parity work.
 
-ViperIDE mirrors that split with separate server-capability and wired-command
+ZannaIDE mirrors that split with separate server-capability and wired-command
 flags: BASIC disabled-command messages can name `vbasic-server` support without
 enabling a UI command before the IDE has a non-blocking BASIC adapter.
 
-Definition, references, and rename use the same native `Viper.Zia.ProjectIndex`
-implementation as ViperIDE. The LSP handler keeps open documents indexed on
+Definition, references, and rename use the same native `Zanna.Zia.ProjectIndex`
+implementation as ZannaIDE. The LSP handler keeps open documents indexed on
 `didOpen`/`didChange` and removes them on `didClose`.
 
 Semantic tokens are returned from `textDocument/semanticTokens/full` with this legend:

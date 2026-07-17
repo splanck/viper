@@ -45,10 +45,10 @@ func start() {    //============================================================
     // Test 3: Number in Integer context (explicit)
     //=========================================================================
     var num = 3.7;
-    var truncated = Viper.Math.Floor(num);
+    var truncated = Zanna.Math.Floor(num);
     assertApprox(truncated, 3.0, 0.001, "num_floor");
 
-    var rounded = Viper.Math.Round(3.5);
+    var rounded = Zanna.Math.Round(3.5);
     assertApprox(rounded, 4.0, 0.001, "num_round");
 
     //=========================================================================

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Result of loading a REPL history file.
 /// @details @c entries contains the decoded history entries, oldest first.
@@ -63,4 +63,4 @@ class ReplHistoryCodec {
     static bool save(const std::filesystem::path &path, const std::vector<std::string> &entries);
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

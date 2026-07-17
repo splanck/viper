@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math.Quat - Quaternion Operations
+// API Audit: Zanna.Math.Quat - Quaternion Operations
 // =============================================================================
 // Tests: New, Identity, FromAxisAngle, FromEuler, X, Y, Z, W, Mul,
 //        Conjugate, Inverse, Norm, Len, LenSq, Dot, Slerp, Lerp,
@@ -7,11 +7,11 @@
 // =============================================================================
 
 module QuatDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Quat ===");
+    Say("=== API Audit: Zanna.Math.Quat ===");
 
     // --- New ---
     Say("--- New ---");

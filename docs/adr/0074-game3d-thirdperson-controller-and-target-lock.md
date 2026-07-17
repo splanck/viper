@@ -23,7 +23,7 @@ glue a commercially viable third-person adventure game needs from the runtime.
 
 ## Decision
 
-Two new public classes join `Viper.Game3D`:
+Two new public classes join `Zanna.Game3D`:
 
 - `ThirdPersonController` (`rt_game3d_thirdperson.c`, class id `-0x60304B`) —
   an over-the-shoulder camera on a collision-aware spring arm. `Update`

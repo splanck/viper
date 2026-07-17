@@ -9,11 +9,11 @@ if (NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
 endif ()
 
 # Find required tool. The old standalone `ilc` binary was folded into the
-# `viper codegen` subcommand, so this test must use the checked-in CLI.
-find_program(VIPER_TOOL viper PATHS ${CMAKE_BINARY_DIR}/src/tools/viper NO_DEFAULT_PATH)
+# `zanna codegen` subcommand, so this test must use the checked-in CLI.
+find_program(ZANNA_TOOL zanna PATHS ${CMAKE_BINARY_DIR}/src/tools/zanna NO_DEFAULT_PATH)
 
-if (NOT VIPER_TOOL)
-    message(WARNING "Skipping Frogger ARM64 test: viper tool not found")
+if (NOT ZANNA_TOOL)
+    message(WARNING "Skipping Frogger ARM64 test: zanna tool not found")
     return()
 endif ()
 
@@ -25,24 +25,24 @@ set(FROGGER_EXE "${CMAKE_BINARY_DIR}/test_frogger_arm64")
 
 # Test: Compile BASIC to IL
 add_test(NAME arm64_frogger_compile_il
-        COMMAND ${VIPER_TOOL} front basic -emit-il ${FROGGER_BAS}
+        COMMAND ${ZANNA_TOOL} front basic -emit-il ${FROGGER_BAS}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(arm64_frogger_compile_il PROPERTIES
         PASS_REGULAR_EXPRESSION "func @main")
 
 add_test(NAME arm64_frogger_write_il
-        COMMAND ${VIPER_TOOL} build ${FROGGER_BAS} -o ${FROGGER_IL}
+        COMMAND ${ZANNA_TOOL} build ${FROGGER_BAS} -o ${FROGGER_IL}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(arm64_frogger_write_il PROPERTIES DEPENDS arm64_frogger_compile_il)
 
 # Test: Compile IL to ARM64 assembly
 add_test(NAME arm64_frogger_compile_asm
-        COMMAND ${VIPER_TOOL} codegen arm64 ${FROGGER_IL} -S ${FROGGER_ASM}
+        COMMAND ${ZANNA_TOOL} codegen arm64 ${FROGGER_IL} -S ${FROGGER_ASM}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(arm64_frogger_compile_asm PROPERTIES DEPENDS arm64_frogger_write_il)
 
 # Test: Link to executable through the ARM64 codegen driver.
 add_test(NAME arm64_frogger_link_exe
-        COMMAND ${VIPER_TOOL} codegen arm64 ${FROGGER_IL} -o ${FROGGER_EXE}
+        COMMAND ${ZANNA_TOOL} codegen arm64 ${FROGGER_IL} -o ${FROGGER_EXE}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(arm64_frogger_link_exe PROPERTIES DEPENDS arm64_frogger_compile_asm)

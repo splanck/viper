@@ -1,16 +1,16 @@
 # Neon Lanes release-upgrade audit
 
 This document maps the commercial-quality upgrade plan to the implementation
-and records defects corrected while completing it. Viper/runtime defects are
+and records defects corrected while completing it. Zanna/runtime defects are
 tracked separately in
-[`known_viper_issues/README.md`](known_viper_issues/README.md); no Viper source
+[`known_zanna_issues/README.md`](known_zanna_issues/README.md); no Zanna source
 is changed by this demo work.
 
 ## Plan implementation
 
 | # | Upgrade | Implemented release evidence |
 |---:|---|---|
-| 1 | Distinct release identity | **Neon Lanes Championship** title treatment, version 2.0.0, original key art, and consistent in-game/window branding in `menu.zia`, `config.zia`, and `viper.project`. |
+| 1 | Distinct release identity | **Neon Lanes Championship** title treatment, version 2.0.0, original key art, and consistent in-game/window branding in `menu.zia`, `config.zia`, and `zanna.project`. |
 | 2 | Commercial front end | Home hub for Quick Game, Local Match, Championship, Challenges, Practice, Cosmic Party, Ball Locker, Settings, Statistics, Help, Credits, and Quit in `menu.zia`. |
 | 3 | Responsive menu/HUD layouts | Full 1280x720 and compact layouts, responsive pause/options/results panels, compact scorecard, and release-resolution captures in `release_visual_probe.zia` and `release_menu_probe.zia`. |
 | 4 | Settings and accessibility | Oil pattern, graphics tier, local seats, three volume buses, release assist, difficulty, bumpers, left-handed controls/avatar placement, camera-shake strength, replay, high contrast, large HUD, reduced motion, and reduced flash. |
@@ -59,7 +59,7 @@ shipping evidence rather than restating recommendations as future work.
 | 14 | Live pin orientation | Rendering uses each physics body's quaternion, including replay samples. |
 | 15 | Angular settling | Both linear and angular quiet must remain below thresholds for the configured dwell. |
 | 16 | Power-dependent carry | Smooth launch momentum and bounded response keep minimum-power center shots below seven pins. |
-| 17 | Safe maple asset use | Material and HUD decodes are isolated; Metal uses procedural boards while NL-VIPER-003 remains. |
+| 17 | Safe maple asset use | Material and HUD decodes are isolated; Metal uses procedural boards while NL-ZANNA-003 remains. |
 | 18 | Readable venue hierarchy | Warm lane/deck key, cool audience fill, darker side lanes, readable pins, and restrained bloom. |
 | 19 | Bounded bowler presence | The time-based avatar sits beside the line and leaves ball, target, pocket, and meters uncovered. |
 | 20 | Readable ball rotation | Every catalog ball keeps finger holes and gains a contrasting rolling stripe. |
@@ -76,7 +76,7 @@ shipping evidence rather than restating recommendations as future work.
 | 31 | Defensive schema-four saves | Every stored enum, count, mask, statistic, volume, ball, and career field is validated. |
 | 32 | Central asset resolution | Repository, project, executable/package, and direct-relative candidates share one fallback/logger. |
 | 33 | Resize and timestep independence | Camera-only aspect rebinds preserve worlds; zero height is safe; 30/60/144 Hz probes agree. |
-| 34 | Runtime-defect isolation | NL-VIPER-001 through -003 stay documented and shipping presentation uses stable geometry/opaque fallbacks. |
+| 34 | Runtime-defect isolation | NL-ZANNA-001 through -003 stay documented and shipping presentation uses stable geometry/opaque fallbacks. |
 
 ## Game defects found and corrected
 
@@ -112,7 +112,7 @@ shipping evidence rather than restating recommendations as future work.
   cues can replace immediately while achievements queue in order.
 - The oil surface originally set opacity without selecting material blend
   mode. Correcting it to `AlphaMode = 2` exposed the intermittent Metal
-  corruption recorded as NL-VIPER-003, so the shipping path keeps the same
+  corruption recorded as NL-ZANNA-003, so the shipping path keeps the same
   glossy response on the boards and visualizes oil through the stable HUD map.
 - Championship tiers existed but were invisible before launch; a dedicated
   tour page now shows the current rival, points, and next threshold.
@@ -123,15 +123,15 @@ shipping evidence rather than restating recommendations as future work.
 
 ## Verification constraints
 
-All validation for this upgrade uses the existing Viper binaries. Per the
-explicit repository-work constraint, this work does not rebuild Viper and does
-not run the Viper CTest suite.
+All validation for this upgrade uses the existing Zanna binaries. Per the
+explicit repository-work constraint, this work does not rebuild Zanna and does
+not run the Zanna CTest suite.
 
 ## Prior release baseline
 
-Validated on 2026-07-10 with the existing macOS arm64/Metal Viper binary:
+Validated on 2026-07-10 with the existing macOS arm64/Metal Zanna binary:
 
-- `viper check examples/games/3dbowling --diagnostic-format=json` completed
+- `zanna check examples/games/3dbowling --diagnostic-format=json` completed
   with no diagnostics.
 - Fourteen deterministic demo probes passed: release upgrade, menu flow,
   match modes, assets, asset rendering, trajectory, base smoke, aiming,
@@ -148,24 +148,24 @@ Validated on 2026-07-10 with the existing macOS arm64/Metal Viper binary:
 - Repository-wide platform-policy lint completed in advisory mode; its listed
   findings are outside this demo and were left untouched.
 
-The issue reproductions under `known_viper_issues/` are evidence probes rather
+The issue reproductions under `known_zanna_issues/` are evidence probes rather
 than release gates: the two confirmed defects reproduce as documented, the
 control case passes, and the intermittent material/overlay harness currently
 renders all four expected regions.
 
 The long-term challenge pass is validated separately through `run_probes.sh`
-or `run_probes.cmd`; both use an existing Viper executable and cannot build
-Viper or invoke CTest.
+or `run_probes.cmd`; both use an existing Zanna executable and cannot build
+Zanna or invoke CTest.
 
 ## Long-term pass verification
 
-Validated on 2026-07-13 with `/usr/local/bin/viper` on macOS arm64/Metal,
-without rebuilding Viper and without running CTest:
+Validated on 2026-07-13 with `/usr/local/bin/zanna` on macOS arm64/Metal,
+without rebuilding Zanna and without running CTest:
 
 - All 27 gates selected by `run_probes.sh` passed. The Windows runner selects
   the same list and applies the same exit-status plus exact `RESULT: ok` rule.
 - All 70 Zia files under the demo passed individual existing-binary
-  `viper check` validation with no diagnostics.
+  `zanna check` validation with no diagnostics.
 - Twelve useful-power pocket seeds produced eight strikes and twelve seven-plus
   leaves; five straight center seeds produced one strike; four poor releases
   produced zero strikes; minimum power knocked six pins.
@@ -176,7 +176,7 @@ without rebuilding Viper and without running CTest:
   watchdog, full-scene replay, 50-transition lifecycle stress, asset resolver,
   corrupt save migration, 30/60/144 Hz cadence, resize layout, accessibility,
   menu/mode flows, and release visual captures all reported `RESULT: ok`.
-- Metal visual capture confirmed the NL-VIPER-003 procedural-board fallback;
+- Metal visual capture confirmed the NL-ZANNA-003 procedural-board fallback;
   the final frame retained the lane, prediction ribbon, HUD, monitor state,
   pins, and bounded bowler without the material/overlay corruption.
 - POSIX runner syntax, full source headers, scoped whitespace/diff checks, and

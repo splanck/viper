@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -1060,7 +1060,7 @@ bool testSwitchStress() {
 // ============================================================================
 
 int main() {
-    std::cout << "===== Viper IL Scalability Stress Tests =====\n";
+    std::cout << "===== Zanna IL Scalability Stress Tests =====\n";
 
     int failures = 0;
 

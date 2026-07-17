@@ -1,13 +1,13 @@
 // BUG-022 regression: Html.ToText should insert separators between block elements
 module TestBugfixHtml;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var text = Viper.Text.Html.ToText("<p>hello</p><p>world</p>");
+    var text = Zanna.Text.Html.ToText("<p>hello</p><p>world</p>");
     // After fix, should have space between "hello" and "world"
-    SayBool(Viper.String.Contains(text, "hello"));
-    SayBool(Viper.String.Contains(text, "world"));
+    SayBool(Zanna.String.Contains(text, "hello"));
+    SayBool(Zanna.String.Contains(text, "world"));
     // Must NOT be "helloworld" (merged without separator)
     var merged = (text == "helloworld");
     if (merged) {

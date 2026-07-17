@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zia Tutorial — Viper</title>
-  <meta name="description" content="Viper documentation: Zia Tutorial">
+  <title>Zia Tutorial — Zanna</title>
+  <meta name="description" content="Zanna documentation: Zia Tutorial">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -56,7 +56,7 @@
 <p>Learn Zia by example. For a complete reference, see <strong>[Zia Reference](zia-reference.md)</strong>.</p>
 <blockquote><p>**What is Zia?**</p></blockquote>
 <blockquote><p>A modern, statically-typed language with C-like syntax, first-class classes (reference types), structs (value types),</p></blockquote>
-<blockquote><p>generics, and module bindings. It runs on Viper&#x27;s VM and can be compiled to native code.</p></blockquote>
+<blockquote><p>generics, and module bindings. It runs on Zanna&#x27;s VM and can be compiled to native code.</p></blockquote>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ol>
@@ -75,10 +75,10 @@
 <p>---</p>
 <h2 id="1-your-first-program">1. Your First Program</h2>
 <p>Create a file named <code>hello.zia</code>:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;Hello, World!&quot;);
@@ -92,7 +92,7 @@ func start() {
 <ul>
 <li>Every file starts with a <code>module</code> declaration</li>
 <li><code>start()</code> is the entry point (like <code>main()</code> in C)</li>
-<li>Use <code>bind Viper.Terminal;</code> to import terminal functions, then <code>Say()</code> for console output with newline</li>
+<li>Use <code>bind Zanna.Terminal;</code> to import terminal functions, then <code>Say()</code> for console output with newline</li>
 <li>Statements end with semicolons; blocks use <code>{ }</code></li>
 <li>Comments use <code>//</code> for single-line and <code>/* */</code> for multi-line</li>
 </ul>
@@ -100,7 +100,7 @@ func start() {
 <h2 id="try-zia-interactively">Try Zia Interactively</h2>
 <p>Before writing files, you can experiment with Zia in the interactive REPL:</p>
 <pre><code data-lang="bash">
-viper repl
+zanna repl
 </code></pre>
 <p>The REPL lets you type Zia code and see results immediately:</p>
 <pre><code data-lang="text">
@@ -121,7 +121,7 @@ zia&gt; square(7)
 <h2 id="2-variables-and-types">2. Variables and Types</h2>
 <h3 id="variable-declaration">Variable Declaration</h3>
 <p>Use <code>var</code> for mutable variables and <code>final</code> for constants:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 var x = 42;              // Type inferred as Integer
 var name: String = &quot;Alice&quot;;  // Explicit type
 final PI = 3.14159;      // Immutable constant
@@ -160,8 +160,8 @@ final PI = 3.14159;      // Immutable constant
 </tbody></table>
 <h3 id="string-interpolation">String Interpolation</h3>
 <p>Embed expressions in strings with <code>${...}</code>:</p>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 var age = 30;
@@ -170,8 +170,8 @@ Say(&quot;${name} is ${age} years old&quot;);
 <p>---</p>
 <h2 id="3-control-flow">3. Control Flow</h2>
 <h3 id="if-statements">If Statements</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 if score &gt; 100 {
     Say(&quot;High score!&quot;);
@@ -183,8 +183,8 @@ if score &gt; 100 {
 </code></pre>
 <p>Note: Parentheses around conditions are optional.</p>
 <h3 id="while-loops">While Loops</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 var i = 0;
 while i &lt; 10 {
@@ -194,16 +194,16 @@ while i &lt; 10 {
 </code></pre>
 <h3 id="for-loops">For Loops</h3>
 <p>C-style for loops:</p>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 for (var i = 0; i &lt; 10; i = i + 1) {
     PrintInt(i);
 }
 </code></pre>
 <h3 id="for-in-loops-ranges">For-In Loops (Ranges)</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 // Exclusive range: 0 to 9
 for i in 0..10 {
@@ -218,8 +218,8 @@ for i in 0..=10 {
 <p>---</p>
 <h2 id="4-functions">4. Functions</h2>
 <h3 id="basic-functions">Basic Functions</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say(&quot;Hello, ${name}!&quot;);
@@ -244,7 +244,7 @@ func start() {
 <h3 id="exporting-functions">Exporting Functions</h3>
 <p>Use <code>expose</code> before <code>func</code> to make a function visible to other modules in a</p>
 <p>mixed-language project:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 expose func calculateScore(x: Integer, y: Integer) -&gt; Integer {
     return x * y + 10
 }
@@ -252,7 +252,7 @@ expose func calculateScore(x: Integer, y: Integer) -&gt; Integer {
 <h3 id="importing-foreign-functions">Importing Foreign Functions</h3>
 <p>Use <code>foreign func</code> to declare a function defined in another module (e.g., a</p>
 <p>BASIC library). Foreign declarations have no body:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 foreign func Factorial(n: Integer) -&gt; Integer
 
 func start() {
@@ -266,7 +266,7 @@ func start() {
 <h2 id="5-class-types-classes">5. Entity Types (Classes)</h2>
 <p>Entities are reference types with idclass, inheritance, and methods.</p>
 <h3 id="defining-an-class">Defining an Entity</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 class Player {
     String name;
     Integer health;
@@ -302,8 +302,8 @@ class Player {
 }
 </code></pre>
 <h3 id="using-classes">Using Classes</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 func start() {
     // Create a new class instance
@@ -328,8 +328,8 @@ func start() {
 <p>---</p>
 <h2 id="6-value-types-structs">6. Value Types (Structs)</h2>
 <p>Value types have copy semantics — assignments create copies.</p>
-<pre><code data-lang="viper">
-bind Viper.Math;
+<pre><code data-lang="zanna">
+bind Zanna.Math;
 
 struct Point {
     Integer x;
@@ -349,8 +349,8 @@ struct Point {
 <h2 id="7-generic-collections">7. Generic Collections</h2>
 <p>Zia supports generic collections from the runtime library.</p>
 <h3 id="lists">Lists</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 // Create a list of integers
 var numbers: List[Integer] = new List[Integer]();
@@ -369,7 +369,7 @@ while i &lt; numbers.size() {
 }
 </code></pre>
 <h3 id="class-lists">Class Lists</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 // List of class instances
 var players: List[Player] = new List[Player]();
 
@@ -385,12 +385,12 @@ players.add(p2);
 <h2 id="8-modules-and-bindings">8. Modules and Bindings</h2>
 <h3 id="module-declaration">Module Declaration</h3>
 <p>Every file starts with a module declaration:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module MyGame;
 </code></pre>
 <h3 id="binding-other-modules">Binding Other Modules</h3>
 <p>Bind other <code>.zia</code> files to use their types and functions:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module Game;
 
 bind &quot;./entities&quot;;    // binds entities.zia from same directory
@@ -409,32 +409,32 @@ func start() {
 <li><code>&quot;foo&quot;</code> — Same directory, adds <code>.zia</code> extension</li>
 </ul>
 <h3 id="binding-runtime-namespaces">Binding Runtime Namespaces</h3>
-<p>Bind Viper runtime namespaces to use their functions without qualification:</p>
-<pre><code data-lang="viper">
+<p>Bind Zanna runtime namespaces to use their functions without qualification:</p>
+<pre><code data-lang="zanna">
 module Game;
 
-bind Viper.Terminal;     // Import terminal functions
-bind Viper.Graphics;     // Import graphics classes
+bind Zanna.Terminal;     // Import terminal functions
+bind Zanna.Graphics;     // Import graphics classes
 
 func start() {
-    Say(&quot;Hello from Zia!&quot;);           // No need for Viper.Terminal.Say()
+    Say(&quot;Hello from Zia!&quot;);           // No need for Zanna.Terminal.Say()
     var canvas = new Canvas(&quot;Game&quot;, 800, 600);
-    Viper.Time.Clock.Sleep(16);           // SleepMs is under Viper.Time
+    Zanna.Time.Clock.Sleep(16);           // SleepMs is under Zanna.Time
 }
 </code></pre>
 <p><strong>Namespace bind options:</strong></p>
 <ul>
-<li><code>bind Viper.Terminal;</code> — Import all symbols</li>
-<li><code>bind Viper.Terminal as T;</code> — Import with alias (use <code>T.Say()</code>)</li>
-<li><code>bind Viper.Terminal { Say };</code> — Import specific symbols only</li>
+<li><code>bind Zanna.Terminal;</code> — Import all symbols</li>
+<li><code>bind Zanna.Terminal as T;</code> — Import with alias (use <code>T.Say()</code>)</li>
+<li><code>bind Zanna.Terminal { Say };</code> — Import specific symbols only</li>
 </ul>
 <p>---</p>
 <h2 id="9-working-with-the-runtime">9. Working with the Runtime</h2>
-<p>Zia programs have access to the full Viper Runtime Library. Import namespaces</p>
+<p>Zia programs have access to the full Zanna Runtime Library. Import namespaces</p>
 <p>with <code>bind</code> or use fully qualified names.</p>
 <h3 id="terminal-i-o">Terminal I/O</h3>
-<pre><code data-lang="viper">
-bind Viper.Terminal;
+<pre><code data-lang="zanna">
+bind Zanna.Terminal;
 
 // Output
 Say(&quot;Hello&quot;);           // Print with newline
@@ -454,7 +454,7 @@ SetPosition(row, col);  // Move cursor
 SetColor(fg, bg);       // Set foreground/background (0-15)
 SetCursorVisible(false);    // Hide cursor
 </code></pre>
-<blockquote><p>**Note:** You can also use fully qualified names like <code>Viper.Terminal.Say()</code> without binding.</p></blockquote>
+<blockquote><p>**Note:** You can also use fully qualified names like <code>Zanna.Terminal.Say()</code> without binding.</p></blockquote>
 <h3 id="color-codes">Color Codes</h3>
 <table><thead><tr>
 <th>Code</th>
@@ -498,25 +498,25 @@ SetCursorVisible(false);    // Hide cursor
 </tr>
 </tbody></table>
 <h3 id="time-functions">Time Functions</h3>
-<pre><code data-lang="viper">
-// SleepMs is available as Viper.Time.Clock.Sleep (use fully qualified name or bind)
-Viper.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
+<pre><code data-lang="zanna">
+// SleepMs is available as Zanna.Time.Clock.Sleep (use fully qualified name or bind)
+Zanna.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
 </code></pre>
 <h3 id="math-functions">Math Functions</h3>
-<pre><code data-lang="viper">
-bind Viper.Math;
+<pre><code data-lang="zanna">
+bind Zanna.Math;
 
 var abs = AbsInt(-42);                       // 42
 var sqrt = Sqrt(16.0);                       // 4.0
-var rand = Viper.Math.Random.NextInt(100);   // Random 0-99
+var rand = Zanna.Math.Random.NextInt(100);   // Random 0-99
 </code></pre>
 <p>---</p>
 <h2 id="10-example-project">10. Example Project</h2>
 <p>Here&#x27;s a complete mini-game demonstrating Zia features:</p>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module GuessGame;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var secretNumber = 0;
 var guessCount = 0;
@@ -527,7 +527,7 @@ func start() {
     Say(&quot;I&#x27;m thinking of a number between 1 and 100.&quot;);
 
     // Generate random number 1-100
-    secretNumber = Viper.Math.Random.NextInt(100) + 1;
+    secretNumber = Zanna.Math.Random.NextInt(100) + 1;
     guessCount = 0;
     gameOver = 0;
 
@@ -569,7 +569,7 @@ func getNextGuess() -&gt; Integer {
 <p><strong>Language Documentation:</strong></p>
 <ul>
 <li>[Zia Reference](zia-reference.md) — Complete language specification</li>
-<li>[Runtime Library](viperlib/README.md) — All available classes and methods</li>
+<li>[Runtime Library](zannalib/README.md) — All available classes and methods</li>
 </ul>
 <p><strong>Examples:</strong></p>
 <ul>
@@ -578,7 +578,7 @@ func getNextGuess() -&gt; Integer {
 <li><code>examples/games/frogger/</code> — Complete Frogger game example</li>
 <li><code>examples/games/centipede/</code> — Centipede arcade game</li>
 <li><code>examples/games/pacman/</code> — Pac-Man game</li>
-<li><code>examples/apps/vipersql/</code> — 78K-line PostgreSQL-compatible database</li>
+<li><code>examples/apps/zannasql/</code> — 78K-line PostgreSQL-compatible database</li>
 </ul>
 <p><strong>Interactive:</strong></p>
 <ul>
@@ -593,7 +593,7 @@ func getNextGuess() -&gt; Integer {
 <p>---</p>
 <h2 id="quick-reference">Quick Reference</h2>
 <h3 id="program-structure">Program Structure</h3>
-<pre><code data-lang="viper">
+<pre><code data-lang="zanna">
 module ModuleName;
 
 bind &quot;./other&quot;;
@@ -674,13 +674,13 @@ func start() {
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

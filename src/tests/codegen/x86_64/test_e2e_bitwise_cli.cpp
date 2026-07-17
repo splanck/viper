@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,10 +22,10 @@
 #include <string>
 
 namespace {
-using viper::tests::CodegenComparisonOptions;
-using viper::tests::CodegenComparisonResult;
-using viper::tests::CodegenFixture;
-using viper::tests::CodegenRunConfig;
+using zanna::tests::CodegenComparisonOptions;
+using zanna::tests::CodegenComparisonResult;
+using zanna::tests::CodegenFixture;
+using zanna::tests::CodegenRunConfig;
 
 struct CliScenario {
     const char *name;

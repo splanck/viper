@@ -1,6 +1,6 @@
-# Viper Crackman
+# Zanna Crackman
 
-A maze-chase arcade demo written in Zia, using Viper's game and graphics runtime.
+A maze-chase arcade demo written in Zia, using Zanna's game and graphics runtime.
 
 ## Current Direction
 
@@ -12,7 +12,7 @@ The demo now has a stronger presentation foundation on top of the original gamep
 - ghosts, frightened mode, fruit, score progression, and particles
 - combo/reward feedback and stronger HUD progression telemetry
 - persistent profile data with saved leaderboard, run summaries, achievement unlocks, rank, XP, and rotating contracts
-- procedural audio via `Viper.Audio`, split into music-track and SFX builders
+- procedural audio via `Zanna.Audio`, split into music-track and SFX builders
 - saved options for fullscreen, master volume, music volume, SFX volume, and mute
 - custom canvas UI/theme/layout modules for the ongoing visual overhaul
 
@@ -64,5 +64,5 @@ crackman/
 
 ```bash
 cd examples/games/crackman
-viper run .
+zanna run .
 ```

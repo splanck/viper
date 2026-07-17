@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@
 ///
 /// @see MachineIR.hpp for the MOpcode definitions
 /// @see il/core/Opcode.hpp for IL opcode definitions
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Mapping entry for binary arithmetic IL operations to AArch64 instructions.
 ///
@@ -384,4 +384,4 @@ inline bool isFloatingPointOp(il::core::Opcode op) {
     }
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

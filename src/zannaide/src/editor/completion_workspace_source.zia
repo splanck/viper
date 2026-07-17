@@ -1,0 +1,90 @@
+module completion_workspace_source;
+
+bind "../core/document_manager";
+bind "../core/project_manager";
+
+bind IO = Zanna.IO;
+
+// ============================================================================
+// MODULE: completion_workspace_source
+// PURPOSE: Workspace-source helpers used by completion's symbol cache.
+//
+// WHERE-THIS-FITS: completion.zia owns popup behavior and the legacy exposed
+//          cache fields used by probes. This module owns leaf operations for
+//          checking project availability, loading source text, and formatting
+//          workspace completion details.
+//
+// TEACHING-NOTE: Extract leaf helpers first when a controller exposes legacy
+//          state. That improves readability without forcing a risky state-shape
+//          migration in the same step.
+// ============================================================================
+
+/// @brief Return true when a project manager points at an open workspace.
+/// @param project Project manager provided by main.zia.
+/// @return True when workspace-file caches can be queried.
+expose func IsProjectOpen(project: project_manager.ProjectManager) -> Boolean {
+    return project != null
+       and project.project != null
+       and project.project.isOpen;
+}
+
+/// @brief Return true when cached workspace identity has changed.
+/// @param root Current project root path.
+/// @param fileCount Current project file-cache size.
+/// @param cachedRoot Previously indexed root path.
+/// @param cachedFileCount Previously indexed file-cache size.
+/// @return True when completion should restart workspace-symbol indexing.
+/// @details Growth in fileCount does not reset the symbol cache: completion
+///          indexes newly discovered files incrementally. A count shrink means
+///          the project cache was rebuilt, so cached source identities may have
+///          disappeared and the symbol cache must restart.
+expose func NeedsReset(root: String,
+                       fileCount: Integer,
+                       cachedRoot: String,
+                       cachedFileCount: Integer) -> Boolean {
+    return root != cachedRoot or fileCount < cachedFileCount;
+}
+
+/// @brief Load source text from an open document or small file on disk.
+/// @param docs Open document manager, used before reading disk.
+/// @param filePath Absolute source file path.
+/// @param maxBytes Maximum on-disk file size to read.
+/// @return Source text, or empty when unavailable or too large.
+/// @details Open documents win over disk so unsaved symbols can participate in
+///          completion. Large disk files are skipped to keep background
+///          completion work bounded.
+expose func ContentFor(docs: document_manager.DocumentManager,
+                       filePath: String,
+                       maxBytes: Integer) -> String {
+    if docs != null {
+        var idx = docs.FindByPath(filePath);
+        if idx >= 0 {
+            return docs.documents.get(idx).content;
+        }
+    }
+    if IO.File.Exists(filePath) {
+        if maxBytes > 0 and IO.File.SizeBytes(filePath) > maxBytes {
+            return "";
+        }
+        return IO.File.ReadAllText(filePath);
+    }
+    return "";
+}
+
+/// @brief Format the detail suffix for a workspace completion row.
+/// @param project Project manager used to compute relative paths.
+/// @param typeText Optional type/detail text from the symbol query.
+/// @param filePath Absolute path that owns the symbol.
+/// @return Human-readable detail string for the completion popup.
+expose func DetailText(project: project_manager.ProjectManager,
+                       typeText: String,
+                       filePath: String) -> String {
+    var detail = "workspace";
+    if typeText != "" {
+        detail = typeText + "  -  workspace";
+    }
+    if IsProjectOpen(project) {
+        detail = detail + "  " + project.RelativePath(filePath);
+    }
+    return detail;
+}

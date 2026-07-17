@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,9 +53,9 @@
 #include <unistd.h>
 #endif
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 void lowerOverflowOps(MFunction &fn);
 }
 
@@ -151,7 +151,7 @@ BinaryEmitResult compileBinary(const ILFunction &fn, const CodegenOptions &optio
     return emitModuleToBinary(module, options);
 }
 
-const viper::codegen::objfile::CodeSection &primaryTextSection(const BinaryEmitResult &result) {
+const zanna::codegen::objfile::CodeSection &primaryTextSection(const BinaryEmitResult &result) {
     if (!result.textSections.empty())
         return result.textSections.front();
     return result.text;
@@ -1600,10 +1600,10 @@ TEST(X86BackendRegressions, CoalescerPreservesSpilledMemorySourceCycles) {
     // which only engages when cross-block values hold spill homes. Global
     // pinning would keep both values in callee-saved registers and bypass the
     // path under test, so disable it for this allocation.
-    setenv("VIPER_NO_GLOBAL_RA", "1", 1);
+    setenv("ZANNA_NO_GLOBAL_RA", "1", 1);
     struct EnvReset {
         ~EnvReset() {
-            unsetenv("VIPER_NO_GLOBAL_RA");
+            unsetenv("ZANNA_NO_GLOBAL_RA");
         }
     } envReset;
 
@@ -4166,6 +4166,6 @@ TEST(X86BackendRegressions, ThreeOperandMulOverflowPseudoLowersToTwoOperandMul) 
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

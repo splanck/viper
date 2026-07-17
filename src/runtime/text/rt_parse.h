@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_parse.h
-// Purpose: Safe parsing functions for Viper.Core.Parse providing TryXxx, XxxOr, and IsXxx
+// Purpose: Safe parsing functions for Zanna.Core.Parse providing TryXxx, XxxOr, and IsXxx
 // variants that never trap on invalid input and handle all edge cases gracefully.
 //
 // Key invariants:
@@ -92,17 +92,17 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value);
 
 /// @brief Parse a number into Option<f64>; returns None on failure.
 /// @param s Input string to parse.
-/// @return Viper.Option.SomeF64(parsed) or Viper.Option.None().
+/// @return Zanna.Option.SomeF64(parsed) or Zanna.Option.None().
 void *rt_parse_double_option(rt_string s);
 
 /// @brief Parse an integer into Option<i64>; returns None on failure.
 /// @param s Input string to parse.
-/// @return Viper.Option.SomeI64(parsed) or Viper.Option.None().
+/// @return Zanna.Option.SomeI64(parsed) or Zanna.Option.None().
 void *rt_parse_int64_option(rt_string s);
 
 /// @brief Parse a boolean into Option<i1>; returns None on failure.
 /// @param s Input string to parse.
-/// @return Viper.Option.SomeI1(parsed) or Viper.Option.None().
+/// @return Zanna.Option.SomeI1(parsed) or Zanna.Option.None().
 void *rt_parse_bool_option(rt_string s);
 
 #ifdef __cplusplus

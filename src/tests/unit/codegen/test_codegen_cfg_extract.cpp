@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -52,7 +52,7 @@ bool contains(const std::vector<std::size_t> &haystack, std::size_t needle) {
 // x86-64: switch-style compare cascade — every JCC contributes an edge.
 // ---------------------------------------------------------------------------
 TEST(CfgExtract, X64SwitchCascadeKeepsAllCaseSuccessors) {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MFunction fn{};
     fn.name = "cascade";
@@ -119,7 +119,7 @@ TEST(CfgExtract, X64SwitchCascadeKeepsAllCaseSuccessors) {
 // x86-64: JCC as final instruction falls through; RET/UD2 end the block.
 // ---------------------------------------------------------------------------
 TEST(CfgExtract, X64FallthroughAndNoSuccessorTerminators) {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MFunction fn{};
     fn.name = "fallthrough";
@@ -158,7 +158,7 @@ TEST(CfgExtract, X64FallthroughAndNoSuccessorTerminators) {
 // AArch64: cascade of conditional branches keeps every successor.
 // ---------------------------------------------------------------------------
 TEST(CfgExtract, A64ConditionalCascadeKeepsAllSuccessors) {
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     MFunction fn{};
     fn.name = "a64_cascade";
@@ -201,7 +201,7 @@ TEST(CfgExtract, A64ConditionalCascadeKeepsAllSuccessors) {
 // AArch64: Cbz/Cbnz fallthrough plus dead code after Br is ignored.
 // ---------------------------------------------------------------------------
 TEST(CfgExtract, A64CbzFallthroughAndBrEndsScan) {
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     MFunction fn{};
     fn.name = "a64_cbz";
@@ -238,7 +238,7 @@ TEST(CfgExtract, A64CbzFallthroughAndBrEndsScan) {
 // Shared extractor: unresolvable labels are skipped; sorting/dedup applied.
 // ---------------------------------------------------------------------------
 TEST(CfgExtract, SharedExtractorSkipsUnknownLabelsAndDedups) {
-    using viper::codegen::ra::BranchDesc;
+    using zanna::codegen::ra::BranchDesc;
 
     struct FakeInstr {
         BranchDesc::Kind kind{BranchDesc::Kind::None};
@@ -258,7 +258,7 @@ TEST(CfgExtract, SharedExtractorSkipsUnknownLabelsAndDedups) {
 
     std::unordered_map<std::string, std::size_t> index{{"a", 0}, {"b", 1}};
 
-    auto succs = viper::codegen::ra::extractSuccessors(
+    auto succs = zanna::codegen::ra::extractSuccessors(
         blocks,
         index,
         [](const FakeBlock &blk) -> const std::vector<FakeInstr> & { return blk.instrs; },
@@ -272,6 +272,6 @@ TEST(CfgExtract, SharedExtractorSkipsUnknownLabelsAndDedups) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

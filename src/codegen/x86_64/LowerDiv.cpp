@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 /// @brief Produce a shallow copy of a Machine IR operand.
@@ -376,8 +376,8 @@ struct DivOpcodeKind {
             emitShift(MOpcode::SARri, r11, log);
             quotient = r11;
         } else {
-            const viper::codegen::MagicNumber magic =
-                viper::codegen::computeSignedMagic(absDivisor);
+            const zanna::codegen::MagicNumber magic =
+                zanna::codegen::computeSignedMagic(absDivisor);
             if (magic.multiplier == 0)
                 return false;
             emit2(MOpcode::MOVrr, rax, dividend);
@@ -406,7 +406,7 @@ struct DivOpcodeKind {
         const uint64_t unsignedDivisor = static_cast<uint64_t>(divisor);
         if (unsignedDivisor <= 1)
             return false;
-        const auto magic = viper::codegen::computeUnsignedMagic(unsignedDivisor);
+        const auto magic = zanna::codegen::computeUnsignedMagic(unsignedDivisor);
         if (!magic.has_value())
             return false; // powers of two take the shift path
         emit2(MOpcode::MOVrr, rax, dividend);
@@ -665,4 +665,4 @@ void lowerSignedDivRem(MFunction &fn) {
     }
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

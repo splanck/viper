@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -207,25 +207,25 @@ bool isSafeFunctionBridgePayload(TypeRef type) {
 ///        diagnostic when such a call is rejected. Empty if none is known.
 std::string saferRuntimePointerAlternative(std::string_view calleeName) {
     static const std::unordered_map<std::string_view, std::string_view> alternatives = {
-        {"Viper.Core.Parse.TryInt", "Viper.Core.Parse.IntOr"},
-        {"Viper.Core.Parse.TryDouble", "Viper.Core.Parse.DoubleOr"},
-        {"Viper.Core.Parse.TryBool", "Viper.Core.Parse.BoolOr"},
-        {"Viper.Threads.Pool.Submit",
-         "Viper.Threads.Thread.Start or Viper.Threads.Async.Run for managed Zia callbacks"},
-        {"Viper.Core.MessageBus.Callback",
-         "a managed callback returned by Viper.Core.MessageBus.Callback(&handler)"},
-        {"Viper.Option.Map", "ordinary Zia optional control flow or a managed function reference"},
-        {"Viper.Option.AndThen",
+        {"Zanna.Core.Parse.TryInt", "Zanna.Core.Parse.IntOr"},
+        {"Zanna.Core.Parse.TryDouble", "Zanna.Core.Parse.DoubleOr"},
+        {"Zanna.Core.Parse.TryBool", "Zanna.Core.Parse.BoolOr"},
+        {"Zanna.Threads.Pool.Submit",
+         "Zanna.Threads.Thread.Start or Zanna.Threads.Async.Run for managed Zia callbacks"},
+        {"Zanna.Core.MessageBus.Callback",
+         "a managed callback returned by Zanna.Core.MessageBus.Callback(&handler)"},
+        {"Zanna.Option.Map", "ordinary Zia optional control flow or a managed function reference"},
+        {"Zanna.Option.AndThen",
          "ordinary Zia optional control flow or a managed function reference"},
-        {"Viper.Option.OrElse",
+        {"Zanna.Option.OrElse",
          "ordinary Zia optional control flow or a managed function reference"},
-        {"Viper.Option.Filter",
+        {"Zanna.Option.Filter",
          "ordinary Zia optional control flow or a managed function reference"},
-        {"Viper.Result.Map", "ordinary Zia result control flow or a managed function reference"},
-        {"Viper.Result.MapErr", "ordinary Zia result control flow or a managed function reference"},
-        {"Viper.Result.AndThen",
+        {"Zanna.Result.Map", "ordinary Zia result control flow or a managed function reference"},
+        {"Zanna.Result.MapErr", "ordinary Zia result control flow or a managed function reference"},
+        {"Zanna.Result.AndThen",
          "ordinary Zia result control flow or a managed function reference"},
-        {"Viper.Result.OrElse", "ordinary Zia result control flow or a managed function reference"},
+        {"Zanna.Result.OrElse", "ordinary Zia result control flow or a managed function reference"},
     };
 
     auto it = alternatives.find(calleeName);
@@ -428,7 +428,7 @@ bool Sema::registerFunctionOverload(const std::string &name,
 
     auto overloadLoweredName = [&](FunctionDecl *fn) {
         auto typeIt = functionDeclTypes_.find(fn);
-        VIPER_ZIA_ASSERT(typeIt != functionDeclTypes_.end(),
+        ZANNA_ZIA_ASSERT(typeIt != functionDeclTypes_.end(),
                          "function type must be registered before building its lowered name");
         TypeRef type = typeIt->second;
         return name + "__ov__" + std::to_string(type->paramTypes().size()) + "__" +
@@ -495,7 +495,7 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     auto overloadLoweredMethodName = [&](MethodDecl *method) {
         MethodInstanceKey key{ownerType, method};
         auto typeIt = ownerMethodTypes_.find(key);
-        VIPER_ZIA_ASSERT(typeIt != ownerMethodTypes_.end(),
+        ZANNA_ZIA_ASSERT(typeIt != ownerMethodTypes_.end(),
                          "method type must be registered before building its lowered name");
         TypeRef type = typeIt->second;
         return ownerType + "." + method->name + "__ov__" +
@@ -1402,7 +1402,7 @@ bool Sema::registerTypeDeclarationSymbol(Decl &decl, const std::string &semantic
             auto &value = static_cast<StructDecl &>(decl);
             if (!value.genericParams.empty()) {
                 registerGenericType(semanticName, &value);
-                type = std::make_shared<ViperType>(
+                type = std::make_shared<ZannaType>(
                     TypeKindSem::Struct, semanticName, makeGenericArgs(value.genericParams));
             } else {
                 type = types::structType(semanticName);
@@ -1414,7 +1414,7 @@ bool Sema::registerTypeDeclarationSymbol(Decl &decl, const std::string &semantic
             auto &cls = static_cast<ClassDecl &>(decl);
             if (!cls.genericParams.empty()) {
                 registerGenericType(semanticName, &cls);
-                type = std::make_shared<ViperType>(
+                type = std::make_shared<ZannaType>(
                     TypeKindSem::Class, semanticName, makeGenericArgs(cls.genericParams));
             } else {
                 type = types::classType(semanticName);
@@ -1426,7 +1426,7 @@ bool Sema::registerTypeDeclarationSymbol(Decl &decl, const std::string &semantic
             auto &iface = static_cast<InterfaceDecl &>(decl);
             if (!iface.genericParams.empty()) {
                 registerGenericType(semanticName, &iface);
-                type = std::make_shared<ViperType>(
+                type = std::make_shared<ZannaType>(
                     TypeKindSem::Interface, semanticName, makeGenericArgs(iface.genericParams));
             } else {
                 type = types::interface(semanticName);

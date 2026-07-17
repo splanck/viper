@@ -30,8 +30,8 @@ module gamebase3d;
 
 bind "./iscene3d";
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
 
 // Null Object sentinel — avoids optional interface chaining issues.
 class NullScene3D implements IScene3D {

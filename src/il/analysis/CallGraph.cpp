@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <stack>
 #include <unordered_set>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 namespace {
 
@@ -199,4 +199,4 @@ CallGraph buildCallGraph(il::core::Module &module) {
     return cg;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

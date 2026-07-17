@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/widgets/vg_datagrid.c
-// Purpose: Interactive viewport-aware data grid exposed as Viper.GUI.Grid,
+// Purpose: Interactive viewport-aware data grid exposed as Zanna.GUI.Grid,
 //          retaining the original display-table compatibility surface.
 // Key invariants:
 //   - cells is a flat [row_capacity * col_count] array; entry (r,c) at index
@@ -581,7 +581,7 @@ static void datagrid_arrange(vg_widget_t *widget, float x, float y, float w, flo
 }
 
 /// @brief Draw a sort-direction chevron in a header cell without allocating.
-/// @param win Target ViperGFX window.
+/// @param win Target ZannaGFX window.
 /// @param x Center X coordinate.
 /// @param y Center Y coordinate.
 /// @param direction -1 descending or 1 ascending.
@@ -595,7 +595,7 @@ static void datagrid_paint_sort_indicator(
 
 /// @brief VTable paint visits only visible rows and uses cached effective column widths.
 /// @param widget Grid base widget.
-/// @param canvas ViperGFX window/canvas.
+/// @param canvas ZannaGFX window/canvas.
 static void datagrid_paint(vg_widget_t *widget, void *canvas) {
     vg_datagrid_t *grid = (vg_datagrid_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;

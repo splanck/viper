@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime/TestQuests.cpp
-// Purpose: Verify Viper.Game.Quests rejects embedded-NUL ids at registration and
+// Purpose: Verify Zanna.Game.Quests rejects embedded-NUL ids at registration and
 //          does not alias them by pre-NUL prefix during lookup (VDOC-247).
 // Key invariants:
 //   - Registration of a NUL-bearing id traps (invalid id).
@@ -190,22 +190,22 @@ int main() {
         // Valid prefix fields followed by an unrecognized field: the whole blob is
         // rejected, and the earlier (well-formed) s=1/o= fields are NOT applied.
         rt_savedata_set_string(
-            sd, rt_const_cstr("viper.quests.v1"), rt_const_cstr("q=q1;s=1;g=0;o=s1.c1:5;junk"));
+            sd, rt_const_cstr("zanna.quests.v1"), rt_const_cstr("q=q1;s=1;g=0;o=s1.c1:5;junk"));
         assert(rt_quests_load(tr, sd) == 0);
         assert(rt_quests_activate(tr, S("q1")) == 1); // still hidden: nothing committed
 
         // Non-strict integers are rejected: trailing garbage and overflow.
         rt_savedata_set_string(
-            sd, rt_const_cstr("viper.quests.v1"), rt_const_cstr("q=q1;s=notanumber"));
+            sd, rt_const_cstr("zanna.quests.v1"), rt_const_cstr("q=q1;s=notanumber"));
         assert(rt_quests_load(tr, sd) == 0);
         rt_savedata_set_string(sd,
-                               rt_const_cstr("viper.quests.v1"),
+                               rt_const_cstr("zanna.quests.v1"),
                                rt_const_cstr("q=q1;o=s1.c1:99999999999999999999999"));
         assert(rt_quests_load(tr, sd) == 0);
 
         // A well-formed blob still loads.
         rt_savedata_set_string(
-            sd, rt_const_cstr("viper.quests.v1"), rt_const_cstr("q=q1;s=1;g=0;o=s1.c1:3"));
+            sd, rt_const_cstr("zanna.quests.v1"), rt_const_cstr("q=q1;s=1;g=0;o=s1.c1:3"));
         assert(rt_quests_load(tr, sd) == 1);
     }
 

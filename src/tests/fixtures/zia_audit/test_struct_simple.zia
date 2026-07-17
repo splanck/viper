@@ -13,15 +13,15 @@ struct Point2D {
 }
 
 func start() {
-    Viper.Terminal.Say("=== Value Type Simple Test ===");
+    Zanna.Terminal.Say("=== Value Type Simple Test ===");
 
     var p1: Point2D = new Point2D(3.0, 4.0);
-    Viper.Terminal.Say("Created point");
+    Zanna.Terminal.Say("Created point");
 
     // Test field access
     if (p1.x > 2.0 && p1.y > 3.0) {
-        Viper.Terminal.Say("Fields look correct");
+        Zanna.Terminal.Say("Fields look correct");
     }
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

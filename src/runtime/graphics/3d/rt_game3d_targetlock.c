@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_targetlock.c
-// Purpose: Viper.Game3D.TargetLock3D — lock-on target acquisition, cycling, and
+// Purpose: Zanna.Game3D.TargetLock3D — lock-on target acquisition, cycling, and
 //   maintenance for third-person combat. Scores overlap-sphere candidates by
 //   camera-forward angle (2:1) and distance, gates on line of sight, auto-releases
 //   on death/distance/LoS-grace, and exposes one-shot acquired/lost poll flags

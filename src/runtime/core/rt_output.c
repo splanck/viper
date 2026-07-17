@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_output.c
-// Purpose: Implements centralized stdout buffering for the Viper runtime to
+// Purpose: Implements centralized stdout buffering for the Zanna runtime to
 //          dramatically reduce syscall overhead during terminal rendering.
 //          Enables full buffering (setvbuf _IOFBF) and provides batch mode to
 //          defer flushes until natural frame boundaries.
@@ -202,7 +202,7 @@ void rt_output_init(void) {
     if (__atomic_compare_exchange_n(
             &g_output_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
 #if RT_PLATFORM_WINDOWS
-        // Native-linked Windows executables enter directly through Viper's
+        // Native-linked Windows executables enter directly through Zanna's
         // startup shim, bypassing CRT startup. Avoid configuring CRT stdio in
         // that mode; writes below go straight to the OS handle.
 #else

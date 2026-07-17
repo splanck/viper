@@ -1,9 +1,9 @@
 module TestCanvas3DRendererUpgrades;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-05 session B coverage:
 //   - Material3D.SetAlbedoRenderTarget: live RT binding refreshes when a new

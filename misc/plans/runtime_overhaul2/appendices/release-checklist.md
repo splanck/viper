@@ -4,7 +4,7 @@ Use this checklist before declaring the runtime API stable.
 
 ## Inventory
 
-- [ ] Fresh `viper --dump-runtime-api` snapshot is checked in or archived.
+- [ ] Fresh `zanna --dump-runtime-api` snapshot is checked in or archived.
 - [ ] `rtgen --audit --summary-only src/il/runtime/runtime.def` passes.
 - [ ] API diff from the previous snapshot is reviewed.
 - [ ] ADR coverage exists for required ABI/runtime/catalog changes.

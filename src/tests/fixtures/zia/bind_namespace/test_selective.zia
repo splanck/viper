@@ -2,8 +2,8 @@
 // EXPECT_OUT: RESULT: ok
 module TestSelectiveNamespaceBind;
 
-// Bind only specific items from Viper.Terminal
-bind Viper.Terminal { Say };
+// Bind only specific items from Zanna.Terminal
+bind Zanna.Terminal { Say };
 
 func start() {
     // Say should work

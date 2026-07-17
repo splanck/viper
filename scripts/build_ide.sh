@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Build ViperIDE as a standalone native binary.
+# Build ZannaIDE as a standalone native binary.
 # Usage: ./scripts/build_ide.sh [--clean] [--output PATH]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="${VIPER_BUILD_DIR:-$ROOT_DIR/build}"
-IDE_DIR="$ROOT_DIR/src/viperide"
-OUT_DIR="${VIPER_IDE_OUT_DIR:-$IDE_DIR/bin}"
-OUTPUT_FILE="${VIPER_IDE_OUTPUT:-$OUT_DIR/viperide}"
-COMPAT_OUTPUT_FILE="${VIPER_IDE_COMPAT_OUTPUT:-$BUILD_DIR/viperide/viperide}"
-SKIP_COMPAT_COPY="${VIPER_IDE_SKIP_COMPAT_COPY:-0}"
-VIPER_BUILD_TYPE="${VIPER_BUILD_TYPE:-Debug}"
-VIPER=""
-VIPER_IS_WINDOWS=0
+BUILD_DIR="${ZANNA_BUILD_DIR:-$ROOT_DIR/build}"
+IDE_DIR="$ROOT_DIR/src/zannaide"
+OUT_DIR="${ZANNA_IDE_OUT_DIR:-$IDE_DIR/bin}"
+OUTPUT_FILE="${ZANNA_IDE_OUTPUT:-$OUT_DIR/zannaide}"
+COMPAT_OUTPUT_FILE="${ZANNA_IDE_COMPAT_OUTPUT:-$BUILD_DIR/zannaide/zannaide}"
+SKIP_COMPAT_COPY="${ZANNA_IDE_SKIP_COMPAT_COPY:-0}"
+ZANNA_BUILD_TYPE="${ZANNA_BUILD_TYPE:-Debug}"
+ZANNA=""
+ZANNA_IS_WINDOWS=0
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -23,9 +23,9 @@ NC='\033[0m'
 
 usage() {
     echo "Usage: $0 [--clean] [--output PATH]"
-    echo "  --clean        Remove the existing ViperIDE binary before building"
-    echo "  --output PATH  Write the binary to PATH (default: src/viperide/bin/viperide)"
-    echo "  Compatibility copy: build/viperide/viperide unless VIPER_IDE_SKIP_COMPAT_COPY=1"
+    echo "  --clean        Remove the existing ZannaIDE binary before building"
+    echo "  --output PATH  Write the binary to PATH (default: src/zannaide/bin/zannaide)"
+    echo "  Compatibility copy: build/zannaide/zannaide unless ZANNA_IDE_SKIP_COMPAT_COPY=1"
     exit 1
 }
 
@@ -55,25 +55,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -d "$IDE_DIR" ]]; then
-    echo -e "${RED}Error: ViperIDE source not found at $IDE_DIR${NC}"
+    echo -e "${RED}Error: ZannaIDE source not found at $IDE_DIR${NC}"
     exit 1
 fi
 
-resolve_viper_tool() {
+resolve_zanna_tool() {
     local candidate
     local candidates=(
-        "$BUILD_DIR/src/tools/viper/viper"
-        "$BUILD_DIR/src/tools/viper/viper.exe"
-        "$BUILD_DIR/src/tools/viper/$VIPER_BUILD_TYPE/viper.exe"
-        "$BUILD_DIR/src/tools/viper/Debug/viper.exe"
-        "$BUILD_DIR/src/tools/viper/Release/viper.exe"
+        "$BUILD_DIR/src/tools/zanna/zanna"
+        "$BUILD_DIR/src/tools/zanna/zanna.exe"
+        "$BUILD_DIR/src/tools/zanna/$ZANNA_BUILD_TYPE/zanna.exe"
+        "$BUILD_DIR/src/tools/zanna/Debug/zanna.exe"
+        "$BUILD_DIR/src/tools/zanna/Release/zanna.exe"
     )
 
     for candidate in "${candidates[@]}"; do
         if [[ -x "$candidate" ]]; then
-            VIPER="$candidate"
+            ZANNA="$candidate"
             if [[ "$candidate" == *.exe ]]; then
-                VIPER_IS_WINDOWS=1
+                ZANNA_IS_WINDOWS=1
             fi
             return 0
         fi
@@ -94,32 +94,32 @@ windows_path() {
     printf '%s\n' "$path"
 }
 
-path_for_viper() {
-    if [[ $VIPER_IS_WINDOWS -eq 1 ]]; then
+path_for_zanna() {
+    if [[ $ZANNA_IS_WINDOWS -eq 1 ]]; then
         windows_path "$1"
     else
         printf '%s\n' "$1"
     fi
 }
 
-if ! resolve_viper_tool; then
-    echo -e "${RED}Error: viper tool not found under $BUILD_DIR/src/tools/viper${NC}"
-    echo "Run './scripts/build_viper_mac.sh', './scripts/build_viper_linux.sh', or './scripts/build_viper_win.cmd' first"
+if ! resolve_zanna_tool; then
+    echo -e "${RED}Error: zanna tool not found under $BUILD_DIR/src/tools/zanna${NC}"
+    echo "Run './scripts/build_zanna_mac.sh', './scripts/build_zanna_linux.sh', or './scripts/build_zanna_win.cmd' first"
     exit 1
 fi
 
-if [[ $VIPER_IS_WINDOWS -eq 1 ]]; then
-    if [[ -z "${VIPER_IDE_OUTPUT:-}" && "$OUTPUT_FILE" == "$OUT_DIR/viperide" ]]; then
-        OUTPUT_FILE="$OUT_DIR/viperide.exe"
+if [[ $ZANNA_IS_WINDOWS -eq 1 ]]; then
+    if [[ -z "${ZANNA_IDE_OUTPUT:-}" && "$OUTPUT_FILE" == "$OUT_DIR/zannaide" ]]; then
+        OUTPUT_FILE="$OUT_DIR/zannaide.exe"
     fi
-    if [[ -z "${VIPER_IDE_COMPAT_OUTPUT:-}" && "$COMPAT_OUTPUT_FILE" == "$BUILD_DIR/viperide/viperide" ]]; then
-        COMPAT_OUTPUT_FILE="$BUILD_DIR/viperide/viperide.exe"
+    if [[ -z "${ZANNA_IDE_COMPAT_OUTPUT:-}" && "$COMPAT_OUTPUT_FILE" == "$BUILD_DIR/zannaide/zannaide" ]]; then
+        COMPAT_OUTPUT_FILE="$BUILD_DIR/zannaide/zannaide.exe"
     fi
 fi
 
-if [[ ! -x "$VIPER" ]]; then
-    echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper_mac.sh' or './scripts/build_viper_linux.sh' first"
+if [[ ! -x "$ZANNA" ]]; then
+    echo -e "${RED}Error: zanna tool not found at $ZANNA${NC}"
+    echo "Run './scripts/build_zanna_mac.sh' or './scripts/build_zanna_linux.sh' first"
     exit 1
 fi
 
@@ -127,14 +127,14 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 if [[ $CLEAN -eq 1 ]]; then
     rm -f "$OUTPUT_FILE"
-    rm -f "$(dirname "$OUTPUT_FILE")/viperide.buildinfo"
+    rm -f "$(dirname "$OUTPUT_FILE")/zannaide.buildinfo"
     if [[ "$OUTPUT_FILE" != "$COMPAT_OUTPUT_FILE" ]]; then
         rm -f "$COMPAT_OUTPUT_FILE"
-        rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/viperide.buildinfo"
+        rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/zannaide.buildinfo"
     fi
 fi
 
-TMP_BASE="/tmp/viperide_build_$$"
+TMP_BASE="/tmp/zannaide_build_$$"
 FRONTEND_ERR="${TMP_BASE}.front.err"
 
 cleanup() {
@@ -179,11 +179,11 @@ build_linux() {
 build_native() {
     local target_arch="$1"
     local ide_arg output_arg build_dir_arg
-    ide_arg="$(path_for_viper "$IDE_DIR")"
-    output_arg="$(path_for_viper "$OUTPUT_FILE")"
-    build_dir_arg="$(path_for_viper "$BUILD_DIR")"
-    echo -n "  Viper build (--arch $target_arch)... "
-    if ! VIPER_BUILD_DIR="$build_dir_arg" "$VIPER" build "$ide_arg" --arch "$target_arch" -o "$output_arg" 2>"$FRONTEND_ERR"; then
+    ide_arg="$(path_for_zanna "$IDE_DIR")"
+    output_arg="$(path_for_zanna "$OUTPUT_FILE")"
+    build_dir_arg="$(path_for_zanna "$BUILD_DIR")"
+    echo -n "  Zanna build (--arch $target_arch)... "
+    if ! ZANNA_BUILD_DIR="$build_dir_arg" "$ZANNA" build "$ide_arg" --arch "$target_arch" -o "$output_arg" 2>"$FRONTEND_ERR"; then
         echo -e "${RED}FAILED${NC}"
         head -40 "$FRONTEND_ERR"
         return 1
@@ -207,14 +207,14 @@ build_info_text() {
     else
         dirty=" dirty"
     fi
-    printf 'Build: %s\nSource: %s%s\nOutput: %s\nViper: %s\n' \
-        "$timestamp" "$revision" "$dirty" "$binary_path" "$VIPER"
+    printf 'Build: %s\nSource: %s%s\nOutput: %s\nZanna: %s\n' \
+        "$timestamp" "$revision" "$dirty" "$binary_path" "$ZANNA"
 }
 
 write_build_info() {
     local binary_path="$1"
     local info_path
-    info_path="$(dirname "$binary_path")/viperide.buildinfo"
+    info_path="$(dirname "$binary_path")/zannaide.buildinfo"
     mkdir -p "$(dirname "$info_path")"
     build_info_text "$binary_path" >"$info_path"
 }
@@ -234,7 +234,7 @@ mirror_compat_output() {
     echo -e "${GREEN}Compatibility copy: $COMPAT_OUTPUT_FILE ($compat_size)${NC}"
 }
 
-echo -e "${CYAN}Building ViperIDE${NC}"
+echo -e "${CYAN}Building ZannaIDE${NC}"
 echo "Source: $IDE_DIR"
 echo "Output: $OUTPUT_FILE"
 echo "=============================================="
@@ -256,4 +256,4 @@ size=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
 write_build_info "$OUTPUT_FILE"
 mirror_compat_output
 echo -e "${GREEN}Built: $OUTPUT_FILE ($size)${NC}"
-echo "Build info: $(dirname "$OUTPUT_FILE")/viperide.buildinfo"
+echo "Build info: $(dirname "$OUTPUT_FILE")/zannaide.buildinfo"

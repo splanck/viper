@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@ std::string trim_trailing_newlines(std::string text) {
 }
 } // namespace
 
-namespace viper::test_support {
+namespace zanna::test_support {
 struct ScopedEnvironmentAssignmentMoveResult {
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
@@ -42,7 +42,7 @@ struct ScopedEnvironmentAssignmentMoveResult {
 
 ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
     const std::string &name, const std::string &source_value, const std::string &receiver_value);
-} // namespace viper::test_support
+} // namespace zanna::test_support
 
 TEST(RunProcess, PreservesQuotesAndBackslashes) {
     const std::string trickyArg = "value \"with quotes\" and backslash \\\\ tail";
@@ -65,8 +65,8 @@ TEST(RunProcess, EscapesPosixShellExpansions) {
 #endif
 
 TEST(RunProcess, ForwardsEnvironmentVariables) {
-    const std::string varName = "VIPER_RUN_PROCESS_TEST_VAR";
-    const std::string varValue = "viper-test-value";
+    const std::string varName = "ZANNA_RUN_PROCESS_TEST_VAR";
+    const std::string varValue = "zanna-test-value";
     const RunResult result =
         run_process({"cmake", "-E", "environment"}, std::nullopt, {{varName, varValue}});
 
@@ -76,16 +76,16 @@ TEST(RunProcess, ForwardsEnvironmentVariables) {
 }
 
 TEST(RunProcess, ExplicitShellModeIsSeparate) {
-    const RunResult result = run_shell_command("cmake -E echo viper-shell-mode");
+    const RunResult result = run_shell_command("cmake -E echo zanna-shell-mode");
 
     EXPECT_NE(-1, result.exit_code);
     EXPECT_TRUE(result.launched);
     EXPECT_FALSE(result.launch_failed);
-    EXPECT_EQ("viper-shell-mode", trim_trailing_newlines(result.out));
+    EXPECT_EQ("zanna-shell-mode", trim_trailing_newlines(result.out));
 }
 
 TEST(RunProcess, MissingExecutableIsLaunchFailure) {
-    const RunResult result = run_process({"viper-definitely-missing-executable-for-run-process"});
+    const RunResult result = run_process({"zanna-definitely-missing-executable-for-run-process"});
 
     EXPECT_EQ(-1, result.exit_code);
     EXPECT_FALSE(result.launched);
@@ -104,10 +104,10 @@ TEST(RunProcess, RejectsInvalidEnvironmentName) {
 }
 
 TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove) {
-    const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
+    const std::string varName = "ZANNA_SCOPED_ENV_MOVE_TEST";
     const std::string varValue = "scoped-env-move-value";
 
-    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(
+    const auto result = zanna::test_support::scoped_environment_assignment_move_preserves(
         varName, varValue, varValue);
 
     EXPECT_TRUE(result.value_visible_after_move_ctor);
@@ -116,11 +116,11 @@ TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove) {
 }
 
 TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue) {
-    const std::string varName = "VIPER_SCOPED_ENV_MOVE_ASSIGN_TEST";
+    const std::string varName = "ZANNA_SCOPED_ENV_MOVE_ASSIGN_TEST";
     const std::string sourceValue = "scoped-env-source-value";
     const std::string receiverValue = "scoped-env-receiver-value";
 
-    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(
+    const auto result = zanna::test_support::scoped_environment_assignment_move_preserves(
         varName, sourceValue, receiverValue);
 
     EXPECT_TRUE(result.value_visible_after_move_ctor);
@@ -134,7 +134,7 @@ TEST(RunProcess, AppliesWorkingDirectory) {
     const std::filesystem::path tempRoot = std::filesystem::temp_directory_path();
     const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path tempDir =
-        tempRoot / std::filesystem::path("viper-run-process-" + std::to_string(uniqueSuffix));
+        tempRoot / std::filesystem::path("zanna-run-process-" + std::to_string(uniqueSuffix));
 
     std::filesystem::create_directories(tempDir);
 
@@ -178,16 +178,16 @@ TEST(RunProcess, SeparatesStdoutAndStderr) {
 }
 #else
 TEST(RunProcess, CapturesWindowsStderr) {
-    const RunResult result = run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
+    const RunResult result = run_process({"cmd", "/C", "echo zanna-stderr-sample 1>&2"});
 
     EXPECT_NE(-1, result.exit_code);
     const std::string trimmed = trim_trailing_newlines(result.err);
-    EXPECT_NE(std::string::npos, trimmed.find("viper-stderr-sample"));
+    EXPECT_NE(std::string::npos, trimmed.find("zanna-stderr-sample"));
     EXPECT_EQ("", trim_trailing_newlines(result.out));
 }
 #endif
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

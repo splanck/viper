@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "rt_texatlas.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_heap.h"
 #include "rt_object.h"
@@ -433,10 +433,10 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
         batch, impl->pixels, x, y, r->x, r->y, r->w, r->h, scale, scale, rotation, depth);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 // Stubs when graphics is disabled — every public entry-point returns a benign zero/no-op so
-// callers compile and link, but no pixels are produced. See the `VIPER_ENABLE_GRAPHICS` block
+// callers compile and link, but no pixels are produced. See the `ZANNA_ENABLE_GRAPHICS` block
 // above for behavioral docs.
 
 /// @brief Stub — graphics disabled at build time. Returns 0.
@@ -542,4 +542,4 @@ void rt_spritebatch_draw_atlas_ex(
     (void)d;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

@@ -31,8 +31,8 @@
 
 module player;
 
-bind Viper.Game;
-bind Viper.Graphics;
+bind Zanna.Game;
+bind Zanna.Graphics;
 
 bind "./config";
 bind "./utils";

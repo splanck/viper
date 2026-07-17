@@ -6,11 +6,11 @@ last-verified: 2026-07-11
 
 # Generated Files Guide
 
-This document describes auto-generated C++ files in the Viper project, their sources of truth, and how to maintain them.
+This document describes auto-generated C++ files in the Zanna project, their sources of truth, and how to maintain them.
 
 ## Overview
 
-Viper uses two generation models:
+Zanna uses two generation models:
 
 1. **Manually Maintained Tables** — Committed files synchronized with source enums/APIs
 2. **CMake-Generated Tables** — Built at configure time from JSON specifications
@@ -70,8 +70,8 @@ These files are **manually maintained** but must stay synchronized with `Opcode.
 
 | File                                             | Purpose                                      |
 |--------------------------------------------------|----------------------------------------------|
-| `include/viper/runtime/rt.h`                     | Public C runtime umbrella header             |
-| `include/viper/runtime/rt_oop.h`                 | Public OOP dispatch header                   |
+| `include/zanna/runtime/rt.h`                     | Public C runtime umbrella header             |
+| `include/zanna/runtime/rt_oop.h`                 | Public OOP dispatch header                   |
 | `src/il/runtime/runtime.def`                     | Canonical runtime registry manifest          |
 | `src/il/runtime/defs/**/*.def`                   | Domain runtime rows and authored class docs  |
 | `src/il/runtime/RuntimeSigs.def`                 | Runtime signature enum + spec declarations   |
@@ -112,7 +112,7 @@ ctest --test-dir build -R 'runtime|runtime_reference_docs'
 - Handler function pointers must match declared signatures
 - Every runtime class must provide authored `@summary` and `@details` text
 - Generated runtime reference pages must match the definition set byte-for-byte
-- `VIPER_RUNTIME_NS_DUAL` controls legacy `rt_*` naming compatibility
+- `ZANNA_RUNTIME_NS_DUAL` controls legacy `rt_*` naming compatibility
 
 ---
 
@@ -125,7 +125,7 @@ ctest --test-dir build -R 'runtime|runtime_reference_docs'
 | `scripts/generate_tzdata_subset.py` | Curated deterministic IANA-zone subset generator |
 | `src/runtime/localization/rt_tzdata_generated.inc` | Generated transition/offset table included by `rt_timezone.c` |
 
-The runtime ships the generated table only; it does not read host OS zoneinfo or download timezone data. The initial subset is versioned as `viper-tz-subset-2026a` and covers UTC, Tokyo, New York, and Sydney transitions needed by deterministic runtime tests.
+The runtime ships the generated table only; it does not read host OS zoneinfo or download timezone data. The initial subset is versioned as `zanna-tz-subset-2026a` and covers UTC, Tokyo, New York, and Sydney transitions needed by deterministic runtime tests.
 
 ### Regeneration
 

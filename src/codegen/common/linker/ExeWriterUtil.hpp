@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// @brief Little-endian and big-endian encoding utilities for binary writers.
 namespace encoding {
@@ -222,7 +222,7 @@ inline bool writeBinaryFileAtomically(const std::string &path,
             return false;
         }
 
-        if constexpr (!viper::platform::kHostWindows) {
+        if constexpr (!zanna::platform::kHostWindows) {
             if (!makeExecutable)
                 return true;
             std::error_code permEc;
@@ -315,7 +315,7 @@ inline bool writeBinaryFileAtomically(const std::string &path,
             fs::remove_all(tempDir, cleanupEc);
         };
 
-        if constexpr (!viper::platform::kHostWindows) {
+        if constexpr (!zanna::platform::kHostWindows) {
             std::error_code permEc;
             fs::permissions(tempDir,
                             fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec,
@@ -353,4 +353,4 @@ inline bool writeBinaryFileAtomically(const std::string &path,
     return false;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

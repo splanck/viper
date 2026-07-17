@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTBagTests.cpp
-// Purpose: Validate Viper.Collections.StringSet runtime functions for string sets.
+// Purpose: Validate Zanna.Collections.StringSet runtime functions for string sets.
 // Key invariants: Bags store unique strings; set operations work correctly.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_bag.h"
 #include "rt_box.h"

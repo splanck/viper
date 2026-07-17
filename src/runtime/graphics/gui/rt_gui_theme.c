@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_theme.c
 // Purpose: Managed GUI theme palettes, custom palette validation, and dark/light/system/custom
-//          mode control for the public Viper.GUI.Theme runtime surface.
+//          mode control for the public Zanna.GUI.Theme runtime surface.
 //
 // Key invariants:
 //   - ThemePalette values own one unscaled vg_theme_t clone and never expose its address.
@@ -36,11 +36,11 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #define RT_GUI_THEME_PALETTE_MAGIC UINT64_C(0x5254475554484D31)
 
-/// @brief Managed logical theme palette stored behind the Viper-facing opaque object.
+/// @brief Managed logical theme palette stored behind the Zanna-facing opaque object.
 /// @details Invalid-value masks preserve the distinction between unknown token names (setter
 ///          returns false) and recognized names supplied with a value that cannot be represented
 ///          safely (setter returns true and Validate reports the token).
@@ -565,7 +565,7 @@ static double rt_gui_theme_contrast_ratio(uint32_t foreground, uint32_t backgrou
 
 /// @brief Construct a Result.Err using the stable invalid-token diagnostic format.
 /// @param token Borrowed token name included in the copied message.
-/// @return Caller-owned Viper.Result error object.
+/// @return Caller-owned Zanna.Result error object.
 static void *rt_gui_theme_invalid_result(const char *token) {
     char message[192];
     snprintf(message,

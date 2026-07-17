@@ -12,12 +12,12 @@ Accepted
 
 ## Context
 
-`Viper.Game3D.Assets3D.LoadTemplate*` loads reusable cached model instances
+`Zanna.Game3D.Assets3D.LoadTemplate*` loads reusable cached model instances
 that callers later instantiate into `Entity3D` objects. The behavior is useful,
 but the word "template" is too generic in the public Game3D lifecycle. Runtime
 users need the object flow to read as asset -> prefab -> entity -> world.
 
-`Viper.Game3D.Prefab` already owns primitive prefab factories such as `Box` and
+`Zanna.Game3D.Prefab` already owns primitive prefab factories such as `Box` and
 `Sphere`, so it is the natural namespace for loading reusable prefab sources as
 well.
 
@@ -25,11 +25,11 @@ well.
 
 Expose canonical prefab-loading names:
 
-- `Viper.Game3D.Prefab.Load(path)`
-- `Viper.Game3D.Prefab.LoadAsset(assetPath)`
-- `Viper.Game3D.Prefab.LoadAsync(path)`
-- `Viper.Game3D.Prefab.LoadAssetAsync(assetPath)`
-- `Viper.Game3D.AssetHandle3D.GetPrefab()`
+- `Zanna.Game3D.Prefab.Load(path)`
+- `Zanna.Game3D.Prefab.LoadAsset(assetPath)`
+- `Zanna.Game3D.Prefab.LoadAsync(path)`
+- `Zanna.Game3D.Prefab.LoadAssetAsync(assetPath)`
+- `Zanna.Game3D.AssetHandle3D.GetPrefab()`
 
 For users who prefer staying inside the asset loader namespace, also expose
 readable `Assets3D.LoadPrefab*` aliases over the same C ABI functions.

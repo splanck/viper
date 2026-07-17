@@ -1,4 +1,4 @@
-' statemachine_demo.bas - Comprehensive API audit for Viper.Game.StateMachine
+' statemachine_demo.bas - Comprehensive API audit for Zanna.Game.StateMachine
 ' Tests: New, AddState, SetInitial, Current, Previous, IsState, Transition,
 '        JustEntered, JustExited, ClearFlags, FramesInState, Update,
 '        HasState, StateCount
@@ -10,7 +10,7 @@ PRINT "=== StateMachine API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM sm AS OBJECT
-sm = Viper.Game.StateMachine.New()
+sm = Zanna.Game.StateMachine.New()
 PRINT sm.StateCount      ' 0
 
 ' --- AddState ---

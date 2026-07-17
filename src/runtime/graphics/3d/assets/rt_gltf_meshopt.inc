@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_gltf_meshopt.inc  (#included from rt_gltf.c; not a
 // standalone translation unit)
 // Purpose: EXT_meshopt_compression bufferView decoding — clean-room implementation of the

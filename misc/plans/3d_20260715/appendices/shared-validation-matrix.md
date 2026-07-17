@@ -13,7 +13,7 @@ Before implementation, record:
 
 ```sh
 git status --short
-build/src/tools/viper/viper --dump-runtime-api > /tmp/viper-runtime-api-before.json
+build/src/tools/zanna/zanna --dump-runtime-api > /tmp/zanna-runtime-api-before.json
 ctest --test-dir build -L graphics3d --output-on-failure
 ```
 
@@ -21,7 +21,7 @@ Do not commit `/tmp` output. If the build is absent or stale, use the platform
 script first. On macOS:
 
 ```sh
-VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 ```
 
 Use the corresponding Linux or Windows script on those systems. Never use raw
@@ -38,7 +38,7 @@ CMake as a substitute for the full platform build gate.
 | Resource ownership | double-release, partial construction, world-destroy-first, scope-destroy-first, stale object tests | ASan/LSan lane where available; runtime robustness |
 | Asset/save parser | missing/corrupt/oversized/truncated inputs; atomic failure test | fuzz or corpus smoke where applicable; platform path tests |
 | Performance hot path | warm-up then allocation count and timing at representative load | existing perf label; no regression beyond plan budget |
-| Docs/examples only | `viper check` every changed Zia file; `./scripts/check_docs.sh` link/path check | docs snippet probes and example/package smoke |
+| Docs/examples only | `zanna check` every changed Zia file; `./scripts/check_docs.sh` link/path check | docs snippet probes and example/package smoke |
 | Demo migration | all existing demo probes before and after; deterministic state comparison | graphics3d label and platform build |
 
 ## Core focused commands
@@ -183,7 +183,7 @@ manifest, render, performance, meta, and stress-combat coverage.
 For changed public APIs:
 
 - update modular `.def` documentation comments;
-- update `docs/viperlib/graphics/game3d.md` and the low-level page when relevant;
+- update `docs/zannalib/graphics/game3d.md` and the low-level page when relevant;
 - update architecture/frame-order docs for phase/lifetime contracts;
 - add or update docs snippet fixtures;
 - update starter/example code and check it;
@@ -196,11 +196,11 @@ For changed public APIs:
 Before a plan is marked complete:
 
 ```sh
-./scripts/build_viper_mac.sh
+./scripts/build_zanna_mac.sh
 ```
 
 or the target platform equivalent must pass without skip flags. Every plan in
-this program adds CMake source/test entries, and `VIPER_SKIP_CLEAN=1` can mask
+this program adds CMake source/test entries, and `ZANNA_SKIP_CLEAN=1` can mask
 configure-stage errors after CMakeLists changes, so the completion gate is a
 clean configure+build+test run; skip flags are for intermediate iteration
 only. Before the program release, clean full scripts must pass on macOS,

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_gui_runtime_manifest.cpp
-// Purpose: Guard the complete Viper.GUI registry-to-C ABI manifest.
+// Purpose: Guard the complete Zanna.GUI registry-to-C ABI manifest.
 //
 // Key invariants:
 //   - Every public GUI function has a valid signature, handler, and C symbol.
@@ -17,7 +17,7 @@
 //   - Reads immutable process-lifetime runtime registries and retains no values.
 //
 // Links: docs/adr/0106-gui-runtime-lifetime-contract-and-coordinate-policy.md,
-//        src/tools/viper/main.cpp
+//        src/tools/zanna/main.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,9 +38,9 @@ constexpr std::size_t kExpectedMethodCount = 999;
 
 /// @brief Test whether a canonical runtime name belongs to the GUI boundary.
 /// @param name Function or class name from the live runtime registry.
-/// @return True only for names rooted at `Viper.GUI.`.
+/// @return True only for names rooted at `Zanna.GUI.`.
 bool isGuiName(std::string_view name) {
-    return name.starts_with("Viper.GUI.");
+    return name.starts_with("Zanna.GUI.");
 }
 
 /// @brief Deterministic length-delimited FNV-1a accumulator for manifest fields.
@@ -117,7 +117,7 @@ bool checkTarget(std::string_view target) {
 /// @return Zero when counts, targets, uniqueness, and the reviewed hash match; otherwise one.
 int main() {
     ManifestHash hash;
-    hash.addString("viper-gui-abi-manifest-v1");
+    hash.addString("zanna-gui-abi-manifest-v1");
 
     std::size_t functionCount = 0;
     std::unordered_set<std::string_view> functionNames;
@@ -207,7 +207,7 @@ int main() {
 
     // Set after deliberate review of every registry row. Any future mismatch prints the new value
     // and requires an explicit count/signature/class-binding review before this constant changes.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x9b3e422a9cb96aca);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x9ab695008e99dea);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: GUI ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

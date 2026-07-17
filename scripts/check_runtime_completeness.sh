@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 readonly DEF="src/il/runtime/runtime.def"
-RTGEN="${VIPER_RTGEN:-build/src/rtgen}"
+RTGEN="${ZANNA_RTGEN:-build/src/rtgen}"
 
 if [[ ! -f "${DEF}" ]]; then
     echo "ERROR: ${DEF} not found. Run from the project root." >&2
@@ -29,7 +29,7 @@ if [[ ! -f "${DEF}" ]]; then
 fi
 
 if [[ ! -x "${RTGEN}" ]]; then
-    config="${VIPER_BUILD_TYPE:-Debug}"
+    config="${ZANNA_BUILD_TYPE:-Debug}"
     candidate="build/src/${config}/rtgen.exe"
     if [[ -x "${candidate}" ]]; then
         RTGEN="${candidate}"
@@ -47,7 +47,7 @@ echo "OK: Runtime definition references are complete."
 #
 # The generated VM handler table takes the address of every RT_FUNC c-symbol
 # unconditionally, so each 3D entry point must be defined by a source that
-# still compiles when VIPER_ENABLE_GRAPHICS is OFF: an always-on file listed
+# still compiles when ZANNA_ENABLE_GRAPHICS is OFF: an always-on file listed
 # in RT_GRAPHICS_DISABLED_SOURCES / RT_AUDIO_SOURCES (plus one level of .inc
 # includes) or a trap stub in src/runtime/graphics/common/*stubs*.c.
 #===----------------------------------------------------------------------===//

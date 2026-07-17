@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@ struct BasicBlock;
 using Block = BasicBlock;
 } // namespace il::core
 
-namespace viper::analysis {
+namespace zanna::analysis {
 struct CFGContext;
 
 /// @brief Dominator tree for a function.
@@ -103,4 +103,4 @@ struct PostDomTree {
 /// @return Post-dominator tree with immediate post-dominators and child map.
 PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &F);
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

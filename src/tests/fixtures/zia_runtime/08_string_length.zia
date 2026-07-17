@@ -3,9 +3,9 @@ module RuntimeTest08;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.String.get_Length
+// COVER: Zanna.String.get_Length
 
-func start() {    var len = Viper.String.get_Length("abc");
+func start() {    var len = Zanna.String.get_Length("abc");
     assertEqInt(len, 3, "length");
     report();
 }

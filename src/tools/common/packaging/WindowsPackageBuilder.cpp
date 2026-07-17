@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //     The main payload is a DEFLATE-compressed inner ZIP expanded at install time.
 //   - Installer/uninstaller behavior is driven by an explicit package layout,
 //     not by parsing installer metadata at runtime.
-//   - All package construction happens inside Viper; no external tools are used.
+//   - All package construction happens inside Zanna; no external tools are used.
 //
 // Ownership/Lifetime:
 //   - Single-use builder.
@@ -47,14 +47,14 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
 constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
-constexpr std::string_view kComponentViperIDE = "viperide";
+constexpr std::string_view kComponentZannaIDE = "zannaide";
 constexpr std::string_view kComponentSDK = "sdk";
 constexpr std::string_view kComponentSamples = "samples";
 constexpr std::string_view kComponentVSCode = "vscode";
@@ -66,26 +66,26 @@ bool isToolchainInstallerBootstrapPath(std::string_view relativePath) {
     std::string normalized(relativePath);
     std::replace(normalized.begin(), normalized.end(), '\\', '/');
     normalized = lowerAscii(std::move(normalized));
-    return normalized == "bin/viper-installer-host.exe" ||
-           normalized == "bin/viper-installer-cleanup.exe";
+    return normalized == "bin/zanna-installer-host.exe" ||
+           normalized == "bin/zanna-installer-cleanup.exe";
 }
 
 /// @brief Return the optional Windows toolchain component owning an install path.
 std::string toolchainComponentForPath(const std::string &relativePath, bool packagedVSIX) {
     const std::string lower = lowerAscii(relativePath);
-    if (lower.rfind("bin/viperide", 0) == 0 || lower.rfind("share/viper/viperide/", 0) == 0 ||
-        lower.rfind("share/viper/ide/", 0) == 0) {
-        return std::string(kComponentViperIDE);
+    if (lower.rfind("bin/zannaide", 0) == 0 || lower.rfind("share/zanna/zannaide/", 0) == 0 ||
+        lower.rfind("share/zanna/ide/", 0) == 0) {
+        return std::string(kComponentZannaIDE);
     }
-    if (lower.rfind("share/viper/samples/", 0) == 0 || lower.rfind("share/viper/examples/", 0) == 0)
+    if (lower.rfind("share/zanna/samples/", 0) == 0 || lower.rfind("share/zanna/examples/", 0) == 0)
         return std::string(kComponentSamples);
-    if (lower.rfind("share/viper/vscode/", 0) == 0 ||
-        lower == "bin/viper-install-vscode-extension.cmd") {
+    if (lower.rfind("share/zanna/vscode/", 0) == 0 ||
+        lower == "bin/zanna-install-vscode-extension.cmd") {
         return std::string(packagedVSIX ? kComponentVSCode : kComponentSDK);
     }
     if (lower.rfind("include/", 0) == 0 || lower.rfind("lib/", 0) == 0 ||
-        lower.rfind("share/viper/sdk/", 0) == 0 || lower.rfind("share/viper/cmake/", 0) == 0 ||
-        lower.rfind("share/cmake/viper/", 0) == 0) {
+        lower.rfind("share/zanna/sdk/", 0) == 0 || lower.rfind("share/zanna/cmake/", 0) == 0 ||
+        lower.rfind("share/cmake/zanna/", 0) == 0) {
         return std::string(kComponentSDK);
     }
     return {};
@@ -159,7 +159,7 @@ void alphaComposite(PkgImage &background,
 }
 
 /// @brief Compose the wide setup banner from the canonical wallpaper and logo artwork.
-PkgImage buildViperWizardBanner(const PkgImage &wallpaper, const PkgImage &logo) {
+PkgImage buildZannaWizardBanner(const PkgImage &wallpaper, const PkgImage &logo) {
     constexpr uint32_t kWidth = 960;
     constexpr uint32_t kHeight = 200;
     PkgImage banner = imageCover(wallpaper, kWidth, kHeight);
@@ -269,7 +269,7 @@ void addWindowsCaseFoldedPath(std::set<std::string> &seen,
             " collides with another path on case-insensitive Windows: " + clean);
 }
 
-/// @brief Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\viper.exe)
+/// @brief Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\zanna.exe)
 /// fits within the installer stub's fixed-size WCHAR path buffer (32768 code units).
 /// The check uses UTF-16 unit count so multi-byte UTF-8 characters are counted correctly.
 void validateStubPathFits(const std::string &path, const char *fieldName) {
@@ -694,7 +694,7 @@ bool isAppLocalMsvcRuntimeDll(const std::string &dll) {
     return false;
 }
 
-/// @brief Return whether a staged file is a Viper-owned PE eligible for nested signing.
+/// @brief Return whether a staged file is a Zanna-owned PE eligible for nested signing.
 /// @details Microsoft compiler runtime DLLs retain their original Microsoft signatures.
 ///          Non-PE fixture files and ordinary data with an executable-looking suffix are
 ///          not passed to the signer.
@@ -897,22 +897,22 @@ std::string shortStableHexHash(std::string_view text) {
 }
 
 /// @brief Build a valid default Windows ProgID base for an executable.
-/// @details Windows ProgID bases are capped at 39 characters by Viper's registry
-///          policy. The generated `viper.<exe>` base is truncated and hash-
+/// @details Windows ProgID bases are capped at 39 characters by Zanna's registry
+///          policy. The generated `zanna.<exe>` base is truncated and hash-
 ///          suffixed when needed, while preserving alphanumeric/underscore/dash
 ///          characters already produced by normalizeExecName().
 /// @param exec Normalized executable stem.
 /// @return Valid ProgID base that passes validateWindowsProgIdBase().
 std::string defaultWindowsProgIdBase(const std::string &exec) {
     std::string component = exec.empty() ? "app" : exec;
-    constexpr size_t kPrefixLen = 6; // "viper."
+    constexpr size_t kPrefixLen = 6; // "zanna."
     constexpr size_t kHashLen = 9;   // "-" + 8 hex chars
     constexpr size_t kMaxBaseLen = 39;
     if (kPrefixLen + component.size() > kMaxBaseLen) {
         const size_t keep = kMaxBaseLen - kPrefixLen - kHashLen;
         component = component.substr(0, keep) + "-" + shortStableHexHash(component);
     }
-    std::string base = "viper." + component;
+    std::string base = "zanna." + component;
     validateWindowsProgIdBase(base, "Windows file association ProgID base");
     return base;
 }
@@ -952,21 +952,21 @@ std::string windowsQuotedPath(const std::string &path) {
     return "\"" + path + "\"";
 }
 
-/// @brief Generate the "Viper Developer Prompt" .bat with CLI and CMake discovery enabled.
+/// @brief Generate the "Zanna Developer Prompt" .bat with CLI and CMake discovery enabled.
 std::string toolchainDeveloperPromptScript() {
     std::ostringstream os;
     os << "@echo off\r\n"
-       << "for %%I in (\"%~dp0..\") do set \"VIPER_HOME=%%~fI\"\r\n"
-       << "set \"PATH=%VIPER_HOME%\\bin;%PATH%\"\r\n"
-       << "set \"Viper_DIR=%VIPER_HOME%\\lib\\cmake\\Viper\"\r\n"
-       << "set \"CMAKE_PREFIX_PATH=%VIPER_HOME%;%CMAKE_PREFIX_PATH%\"\r\n"
+       << "for %%I in (\"%~dp0..\") do set \"ZANNA_HOME=%%~fI\"\r\n"
+       << "set \"PATH=%ZANNA_HOME%\\bin;%PATH%\"\r\n"
+       << "set \"Zanna_DIR=%ZANNA_HOME%\\lib\\cmake\\Zanna\"\r\n"
+       << "set \"CMAKE_PREFIX_PATH=%ZANNA_HOME%;%CMAKE_PREFIX_PATH%\"\r\n"
        << "if not exist \"%USERPROFILE%\" goto prompt\r\n"
        << "cd /d \"%USERPROFILE%\"\r\n"
        << ":prompt\r\n"
-       << "echo Viper developer environment\r\n"
-       << "echo VIPER_HOME=%VIPER_HOME%\r\n"
-       << "echo Viper_DIR=%Viper_DIR%\r\n"
-       << "viper --version\r\n";
+       << "echo Zanna developer environment\r\n"
+       << "echo ZANNA_HOME=%ZANNA_HOME%\r\n"
+       << "echo Zanna_DIR=%Zanna_DIR%\r\n"
+       << "zanna --version\r\n";
     return os.str();
 }
 
@@ -974,8 +974,8 @@ std::string toolchainDeveloperPromptScript() {
 std::string toolchainVSCodeInstallScript() {
     return "@echo off\r\n"
            "setlocal\r\n"
-           "set \"VIPER_HOME=%~dp0..\"\r\n"
-           "set \"VSIX_DIR=%VIPER_HOME%\\share\\viper\\vscode\"\r\n"
+           "set \"ZANNA_HOME=%~dp0..\"\r\n"
+           "set \"VSIX_DIR=%ZANNA_HOME%\\share\\zanna\\vscode\"\r\n"
            "set \"VSIX=\"\r\n"
            "for %%F in (\"%VSIX_DIR%\\*.vsix\") do set \"VSIX=%%~fF\"\r\n"
            "if not defined VSIX (\r\n"
@@ -999,11 +999,11 @@ std::string toolchainVSCodeInstallScript() {
 /// @brief Generate the prerequisites README text bundled with the installer.
 std::string toolchainWindowsPrerequisitesReadme(std::string_view installDirName) {
     std::string readme =
-        "Viper Windows developer installation\r\n"
+        "Zanna Windows developer installation\r\n"
         "\r\n"
         "The native setup program is self-contained: it does not invoke PowerShell, fetch "
         "packages, or require a separately installed Microsoft C++ redistributable. "
-        "Architecture-matched runtime DLLs are installed next to the Viper tools.\r\n"
+        "Architecture-matched runtime DLLs are installed next to the Zanna tools.\r\n"
         "\r\n"
         "Git, CMake, Ninja, Visual Studio C++, the Windows SDK, VS Code, and Windows "
         "Terminal are optional companions. Setup reports what it detects but never downloads "
@@ -1017,10 +1017,10 @@ std::string toolchainWindowsPrerequisitesReadme(std::string_view installDirName)
     readme += installDirName;
     readme += ". Setup also supports a validated custom folder.\r\n"
               "\r\n"
-              "The Viper Developer Prompt configures VIPER_HOME, PATH, Viper_DIR, and "
-              "CMAKE_PREFIX_PATH so CMake projects can use find_package(Viper CONFIG REQUIRED).\r\n"
+              "The Zanna Developer Prompt configures ZANNA_HOME, PATH, Zanna_DIR, and "
+              "CMAKE_PREFIX_PATH so CMake projects can use find_package(Zanna CONFIG REQUIRED).\r\n"
               "\r\n"
-              "Start Menu shortcuts include a Viper developer prompt, ViperIDE, and the VS Code "
+              "Start Menu shortcuts include a Zanna developer prompt, ZannaIDE, and the VS Code "
               "extension installer when a verified .vsix was packaged. Settings > Apps supports "
               "Modify, Repair, and Uninstall. Direct uninstall.exe removal safely hands off to the "
               "verified maintenance cache before deleting the install directory.\r\n";
@@ -1177,7 +1177,7 @@ std::string appLicenseTextFor(const std::string &projectRoot, const PackageConfi
 
 /// @brief Resolve the Windows publisher shown in ARP and VERSIONINFO.
 /// @details The manifest can provide a Windows-specific publisher override.
-///          Otherwise Viper falls back to package-author, then the display name
+///          Otherwise Zanna falls back to package-author, then the display name
 ///          so release installers do not emit blank Publisher/Company fields.
 /// @param pkg Package metadata.
 /// @param displayName User-visible app name.
@@ -1203,7 +1203,7 @@ std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &a
     return progId;
 }
 
-/// @brief Return ViperIDE arguments used before the quoted source path.
+/// @brief Return ZannaIDE arguments used before the quoted source path.
 /// @details Opening a source association must never execute the file implicitly.
 std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
     (void)assoc;
@@ -1605,7 +1605,7 @@ fs::path toolchainNativeHostPath(const WindowsToolchainBuildParams &params) {
     if (!params.installerHostPath.empty())
         return params.installerHostPath;
     for (const ToolchainFileEntry &file : params.manifest.files) {
-        if (lowerAscii(metadataPath(file.stagedRelativePath)) == "bin/viper-installer-host.exe") {
+        if (lowerAscii(metadataPath(file.stagedRelativePath)) == "bin/zanna-installer-host.exe") {
             return file.stagedAbsolutePath;
         }
     }
@@ -1618,7 +1618,7 @@ fs::path toolchainNativeCleanupPath(const WindowsToolchainBuildParams &params) {
         return params.installerCleanupPath;
     for (const ToolchainFileEntry &file : params.manifest.files) {
         if (lowerAscii(metadataPath(file.stagedRelativePath)) ==
-            "bin/viper-installer-cleanup.exe") {
+            "bin/zanna-installer-cleanup.exe") {
             return file.stagedAbsolutePath;
         }
     }
@@ -1708,9 +1708,9 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     ZipWriter payloadZip;
     payloadZip.setCompressionEnabled(true);
     std::vector<std::string> installedManifestPaths;
-    layout.compressedPayloadRelativePath = ".viper-payload.zip";
-    layout.compressedPayloadManifestRelativePath = ".viper-install-manifest.next";
-    layout.installedManifestRelativePath = ".viper-install-manifest.txt";
+    layout.compressedPayloadRelativePath = ".zanna-payload.zip";
+    layout.compressedPayloadManifestRelativePath = ".zanna-install-manifest.next";
+    layout.installedManifestRelativePath = ".zanna-install-manifest.txt";
     std::ostringstream payloadManifest;
 
     std::vector<uint8_t> icoData;
@@ -1722,7 +1722,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         auto srcImage = pngRead(iconSrc.string());
         icoData = generateIco(srcImage);
     } else {
-        icoData = generateIco(defaultViperToolchainIconImage());
+        icoData = generateIco(defaultZannaToolchainIconImage());
     }
 
     const auto execData = signWindowsPayloadPe(
@@ -2104,13 +2104,13 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.version = params.manifest.version;
     layout.identifier = params.identifier;
     layout.publisher = params.publisher;
-    layout.description = "Viper compiler toolchain";
+    layout.description = "Zanna compiler toolchain";
     layout.contact = params.manifest.maintainerEmail.empty() ? params.publisher
                                                              : params.manifest.maintainerEmail;
     layout.licenseText = params.manifest.license;
     layout.wizardSummary =
-        "Choose the developer tools you want, review the license, and install Viper.";
-    layout.executableName = "viper.exe";
+        "Choose the developer tools you want, review the license, and install Zanna.";
+    layout.executableName = "zanna.exe";
     layout.homepage = params.homepage;
     layout.documentationUrl = params.documentationUrl;
     layout.updateManifestUrl = params.updateManifestUrl;
@@ -2118,14 +2118,14 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.updateRsaExponent = params.updateRsaExponent;
     layout.releaseChannel = params.releaseChannel;
     layout.sourceCommit = params.sourceCommit;
-    layout.displayIconRelativePath = "share\\viper\\viper.ico";
+    layout.displayIconRelativePath = "share\\zanna\\zanna.ico";
     layout.minimumWindowsVersion = "10.0.17763";
     layout.createDesktopShortcut = false;
     layout.createStartMenuShortcut = params.createStartMenuShortcuts;
     layout.addToPath = params.addToPath;
     layout.cleanInstallRootBeforeInstall = false;
     layout.pathRelativePath = "bin";
-    layout.fileAssociationExecutableRelativePath = "bin\\viperide.exe";
+    layout.fileAssociationExecutableRelativePath = "bin\\zannaide.exe";
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
         if (params.identifier.empty())
@@ -2148,9 +2148,9 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     ZipWriter payloadZip;
     payloadZip.setCompressionEnabled(true);
     std::vector<std::string> installedManifestPaths;
-    layout.compressedPayloadRelativePath = ".viper-payload.zip";
-    layout.compressedPayloadManifestRelativePath = ".viper-install-manifest.next";
-    layout.installedManifestRelativePath = ".viper-install-manifest.txt";
+    layout.compressedPayloadRelativePath = ".zanna-payload.zip";
+    layout.compressedPayloadManifestRelativePath = ".zanna-install-manifest.next";
+    layout.installedManifestRelativePath = ".zanna-install-manifest.txt";
     std::ostringstream payloadManifest;
     std::string stagedLicenseText;
     std::string windowsReadmeText;
@@ -2158,14 +2158,14 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     bool hasReadmeOverlay = false;
     bool hasPackagedVSIX = false;
     const auto stagedLogo =
-        stagedToolchainPng(params.manifest, "share/viper/branding/viperlogo2.png");
+        stagedToolchainPng(params.manifest, "share/zanna/branding/zannalogo2.png");
     const auto stagedWallpaper =
-        stagedToolchainPng(params.manifest, "share/viper/branding/viperwallpaper2.png");
+        stagedToolchainPng(params.manifest, "share/zanna/branding/zannawallpaper2.png");
     const PkgImage toolchainIconImage =
-        stagedLogo.has_value() ? *stagedLogo : defaultViperToolchainIconImage();
+        stagedLogo.has_value() ? *stagedLogo : defaultZannaToolchainIconImage();
     const std::vector<uint8_t> toolchainIcon = generateIco(toolchainIconImage);
     if (stagedLogo.has_value() && stagedWallpaper.has_value()) {
-        const PkgImage banner = buildViperWizardBanner(*stagedWallpaper, *stagedLogo);
+        const PkgImage banner = buildZannaWizardBanner(*stagedWallpaper, *stagedLogo);
         layout.wizardImageWidth = banner.width;
         layout.wizardImageHeight = banner.height;
         layout.wizardImageRgba = banner.pixels;
@@ -2173,7 +2173,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
 
     for (const ToolchainFileEntry &file : params.manifest.files) {
         const std::string lowerRel = lowerAscii(file.stagedRelativePath);
-        if (lowerRel.rfind("share/viper/vscode/", 0) != 0 || lowerRel.size() < 5U ||
+        if (lowerRel.rfind("share/zanna/vscode/", 0) != 0 || lowerRel.size() < 5U ||
             lowerRel.substr(lowerRel.size() - 5U) != ".vsix") {
             continue;
         }
@@ -2196,7 +2196,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         hasPackagedVSIX = true;
     }
 
-    bool hasViperIDEComponent = false;
+    bool hasZannaIDEComponent = false;
     bool hasSDKComponent = false;
     bool hasSamplesComponent = false;
     bool hasVSCodeComponent = false;
@@ -2205,24 +2205,24 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             continue;
         const std::string component =
             toolchainComponentForPath(file.stagedRelativePath, hasPackagedVSIX);
-        hasViperIDEComponent = hasViperIDEComponent || component == kComponentViperIDE;
+        hasZannaIDEComponent = hasZannaIDEComponent || component == kComponentZannaIDE;
         hasSDKComponent = hasSDKComponent || component == kComponentSDK;
         hasSamplesComponent = hasSamplesComponent || component == kComponentSamples;
         hasVSCodeComponent = hasVSCodeComponent || component == kComponentVSCode;
     }
-    if (!hasViperIDEComponent)
+    if (!hasZannaIDEComponent)
         layout.fileAssociations.clear();
-    if (hasViperIDEComponent) {
+    if (hasZannaIDEComponent) {
         layout.optionalComponents.push_back(
-            {std::string(kComponentViperIDE),
-             "ViperIDE",
+            {std::string(kComponentZannaIDE),
+             "ZannaIDE",
              "Native editor, project workflow, debugger, and language services",
              true});
     }
     if (hasSDKComponent) {
         layout.optionalComponents.push_back(
             {std::string(kComponentSDK),
-             "Viper SDK",
+             "Zanna SDK",
              "Headers, libraries, CMake integration, and extension development files",
              true});
     }
@@ -2230,7 +2230,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         layout.optionalComponents.push_back(
             {std::string(kComponentSamples),
              "Samples and example projects",
-             "Install the complete source-level examples under share/viper/samples",
+             "Install the complete source-level examples under share/zanna/samples",
              false});
     }
     if (hasVSCodeComponent) {
@@ -2273,9 +2273,9 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
 
         const std::string lowerRel = lowerAscii(relInstall);
         const bool isCanonicalLicense =
-            lowerRel == "license" || lowerRel == "share/doc/viper/license";
+            lowerRel == "license" || lowerRel == "share/doc/zanna/license";
         const bool isCanonicalReadme =
-            lowerRel == "readme.md" || lowerRel == "share/doc/viper/readme.md";
+            lowerRel == "readme.md" || lowerRel == "share/doc/zanna/readme.md";
         if ((isCanonicalLicense && !hasLicenseOverlay) ||
             (isCanonicalReadme && !hasReadmeOverlay)) {
             const std::string overlayName =
@@ -2302,26 +2302,26 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     {
         const std::string script = toolchainDeveloperPromptScript();
         addCompressedPayloadFile(payloadZip,
-                                 "bin/viper-dev.cmd",
+                                 "bin/zanna-dev.cmd",
                                  reinterpret_cast<const uint8_t *>(script.data()),
                                  script.size(),
                                  0100644,
                                  layout,
                                  WindowsInstallRoot::InstallDir,
-                                 "bin/viper-dev.cmd",
+                                 "bin/zanna-dev.cmd",
                                  true,
                                  &installedManifestPaths);
     }
     if (hasPackagedVSIX) {
         const std::string script = toolchainVSCodeInstallScript();
         addCompressedPayloadFile(payloadZip,
-                                 "bin/viper-install-vscode-extension.cmd",
+                                 "bin/zanna-install-vscode-extension.cmd",
                                  reinterpret_cast<const uint8_t *>(script.data()),
                                  script.size(),
                                  0100644,
                                  layout,
                                  WindowsInstallRoot::InstallDir,
-                                 "bin/viper-install-vscode-extension.cmd",
+                                 "bin/zanna-install-vscode-extension.cmd",
                                  true,
                                  &installedManifestPaths,
                                  std::string(kComponentVSCode));
@@ -2330,53 +2330,53 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         addUniqueDir(layout.installDirectories,
                      installDirSet,
                      WindowsInstallRoot::InstallDir,
-                     "share/viper");
+                     "share/zanna");
         addCompressedPayloadFile(payloadZip,
-                                 "share/viper/viper.ico",
+                                 "share/zanna/zanna.ico",
                                  toolchainIcon.data(),
                                  toolchainIcon.size(),
                                  0100644,
                                  layout,
                                  WindowsInstallRoot::InstallDir,
-                                 "share/viper/viper.ico",
+                                 "share/zanna/zanna.ico",
                                  true,
                                  &installedManifestPaths);
-        if (hasViperIDEComponent) {
+        if (hasZannaIDEComponent) {
             addCompressedPayloadFile(payloadZip,
-                                     "bin/viperide.ico",
+                                     "bin/zannaide.ico",
                                      toolchainIcon.data(),
                                      toolchainIcon.size(),
                                      0100644,
                                      layout,
                                      WindowsInstallRoot::InstallDir,
-                                     "bin/viperide.ico",
+                                     "bin/zannaide.ico",
                                      true,
                                      &installedManifestPaths,
-                                     std::string(kComponentViperIDE));
+                                     std::string(kComponentZannaIDE));
         }
         const std::string readme = toolchainWindowsPrerequisitesReadme(params.installDirName);
         windowsReadmeText = readme;
         addCompressedPayloadFile(payloadZip,
-                                 "share/viper/README.windows-prerequisites.txt",
+                                 "share/zanna/README.windows-prerequisites.txt",
                                  reinterpret_cast<const uint8_t *>(readme.data()),
                                  readme.size(),
                                  0100644,
                                  layout,
                                  WindowsInstallRoot::InstallDir,
-                                 "share/viper/README.windows-prerequisites.txt",
+                                 "share/zanna/README.windows-prerequisites.txt",
                                  true,
                                  &installedManifestPaths);
     }
 
     if (params.createStartMenuShortcuts) {
         layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
-                                          "Viper Developer Prompt.lnk",
+                                          "Zanna Developer Prompt.lnk",
                                           "windows",
                                           "System32/cmd.exe",
                                           "profile",
                                           {},
                                           "/k",
-                                          "bin/viper-dev.cmd",
+                                          "bin/zanna-dev.cmd",
                                           params.displayName + " Developer Prompt",
                                           "install",
                                           metadataPath(layout.displayIconRelativePath),
@@ -2387,20 +2387,20 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         promptLnk.workingDir = "%USERPROFILE%";
         promptLnk.arguments =
             "/k " + windowsQuotedPath(windowsInstallEnvPath(
-                        params.installDirName, layout.perUserInstall, "bin\\viper-dev.cmd"));
+                        params.installDirName, layout.perUserInstall, "bin\\zanna-dev.cmd"));
         promptLnk.description = params.displayName + " Developer Prompt";
         promptLnk.iconPath = windowsInstallEnvPath(
             params.installDirName, layout.perUserInstall, layout.displayIconRelativePath);
         const auto promptData = generateLnk(promptLnk);
         if (!useNativeHost) {
             addStoredOverlayFile(zip,
-                                 "meta/viper_developer_prompt.lnk",
+                                 "meta/zanna_developer_prompt.lnk",
                                  promptData.data(),
                                  promptData.size(),
                                  0100644,
                                  layout,
                                  WindowsInstallRoot::StartMenuDir,
-                                 "Viper Developer Prompt.lnk",
+                                 "Zanna Developer Prompt.lnk",
                                  true,
                                  &payloadManifest);
         }
@@ -2414,7 +2414,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                  "profile",
                  {},
                  "/c",
-                 "bin/viper-install-vscode-extension.cmd",
+                 "bin/zanna-install-vscode-extension.cmd",
                  "Install " + params.displayName + " VS Code extension",
                  "install",
                  metadataPath(layout.displayIconRelativePath),
@@ -2427,14 +2427,14 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                 "/c " +
                 windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
                                                         layout.perUserInstall,
-                                                        "bin\\viper-install-vscode-extension.cmd"));
+                                                        "bin\\zanna-install-vscode-extension.cmd"));
             vscodeLnk.description = "Install " + params.displayName + " VS Code extension";
             vscodeLnk.iconPath = windowsInstallEnvPath(
                 params.installDirName, layout.perUserInstall, layout.displayIconRelativePath);
             const auto vscodeData = generateLnk(vscodeLnk);
             if (!useNativeHost) {
                 addStoredOverlayFile(zip,
-                                     "meta/viper_vscode_extension.lnk",
+                                     "meta/zanna_vscode_extension.lnk",
                                      vscodeData.data(),
                                      vscodeData.size(),
                                      0100644,
@@ -2447,40 +2447,40 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             }
         }
 
-        if (hasViperIDEComponent) {
+        if (hasZannaIDEComponent) {
             layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
-                                              "ViperIDE.lnk",
+                                              "ZannaIDE.lnk",
                                               "install",
-                                              "bin/viperide.exe",
+                                              "bin/zannaide.exe",
                                               "profile",
                                               {},
                                               {},
                                               {},
-                                              "ViperIDE",
+                                              "ZannaIDE",
                                               "install",
-                                              "bin/viperide.ico",
+                                              "bin/zannaide.ico",
                                               0,
-                                              std::string(kComponentViperIDE)});
+                                              std::string(kComponentZannaIDE)});
             LnkParams ideLnk;
             ideLnk.targetPath = windowsInstallEnvPath(
-                params.installDirName, layout.perUserInstall, "bin\\viperide.exe");
+                params.installDirName, layout.perUserInstall, "bin\\zannaide.exe");
             ideLnk.workingDir = "%USERPROFILE%";
-            ideLnk.description = "ViperIDE";
+            ideLnk.description = "ZannaIDE";
             ideLnk.iconPath = windowsInstallEnvPath(
-                params.installDirName, layout.perUserInstall, "bin\\viperide.ico");
+                params.installDirName, layout.perUserInstall, "bin\\zannaide.ico");
             const auto ideData = generateLnk(ideLnk);
             if (!useNativeHost) {
                 addStoredOverlayFile(zip,
-                                     "meta/viperide.lnk",
+                                     "meta/zannaide.lnk",
                                      ideData.data(),
                                      ideData.size(),
                                      0100644,
                                      layout,
                                      WindowsInstallRoot::StartMenuDir,
-                                     "ViperIDE.lnk",
+                                     "ZannaIDE.lnk",
                                      true,
                                      &payloadManifest,
-                                     std::string(kComponentViperIDE));
+                                     std::string(kComponentZannaIDE));
             }
         }
     }
@@ -2489,7 +2489,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         const fs::path nativeCleanupPath = toolchainNativeCleanupPath(params);
         if (nativeCleanupPath.empty()) {
             throw std::runtime_error(
-                "Windows toolchain stage is missing bin/viper-installer-cleanup.exe");
+                "Windows toolchain stage is missing bin/zanna-installer-cleanup.exe");
         }
         finalizeUninstallDirs(layout);
         const std::vector<uint8_t> compressedPayload = payloadZip.finishToVector();
@@ -2623,4 +2623,4 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     writePEToFile(peBytes, params.outputPath);
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

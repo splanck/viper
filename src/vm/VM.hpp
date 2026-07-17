@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 /**
  * @file
- * @brief Stack-based virtual machine that executes Viper IL.
+ * @brief Stack-based virtual machine that executes Zanna IL.
  *
  * Declares the interpreter core, associated execution context, and dispatch
  * strategies. The VM caches runtime data (e.g., string literals) and exposes
@@ -52,13 +52,13 @@
 #include "il/core/fwd.hpp"
 #include "rt.hpp"
 #include "support/source_location.hpp"
-#include "viper/vm/debug/Debug.hpp"
-#include "viper/vm/debug/DebugFrontend.hpp"
+#include "zanna/vm/debug/Debug.hpp"
+#include "zanna/vm/debug/DebugFrontend.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VMConfig.hpp"
 #include "vm/VMConstants.hpp"
-#include "vm/ViperStringHandle.hpp"
+#include "vm/ZannaStringHandle.hpp"
 #include "vm/control_flow.hpp"
 
 // Forward declare C runtime context struct
@@ -248,7 +248,7 @@ struct Frame {
 };
 
 /**
- * @brief Virtual machine for executing Viper IL modules.
+ * @brief Virtual machine for executing Zanna IL modules.
  *
  * The VM interprets IL bytecode using one of three dispatch strategies:
  * function table, switch statement, or threaded code (when supported).
@@ -301,14 +301,14 @@ class VM {
     friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
     friend class detail::FnTableDispatchDriver;
     friend class detail::SwitchDispatchDriver;
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     friend class detail::ThreadedDispatchDriver;
 #endif
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class DispatchStrategy; ///< Allow dispatch strategies to access execution state
     friend class detail::FnTableStrategy;
     friend class detail::SwitchStrategy;
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     friend class detail::ThreadedStrategy;
 #endif
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
@@ -500,7 +500,7 @@ class VM {
                                      TransparentHashSV,
                                      TransparentEqualSV>;
     using StrMap = std::
-        unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>;
+        unordered_map<std::string_view, ZannaStringHandle, TransparentHashSV, TransparentEqualSV>;
 
     using MutableGlobalMap =
         std::unordered_map<std::string_view, void *, TransparentHashSV, TransparentEqualSV>;
@@ -902,11 +902,11 @@ class VM {
         fnMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
-    /// @ownership Owned by the VM via ViperStringHandle RAII; handles created via @c
+    /// @ownership Owned by the VM via ZannaStringHandle RAII; handles created via @c
     /// rt_string_from_bytes.
     /// @invariant Each literal string maps to at most one active handle, released automatically
     ///            when the cache is cleared or the VM is destroyed.
-    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>
+    std::unordered_map<std::string_view, ZannaStringHandle, TransparentHashSV, TransparentEqualSV>
         inlineLiteralCache;
 
     /// @brief Reverse map from basic block pointer to owning function.
@@ -934,7 +934,7 @@ class VM {
     /// @details Persists across function calls — entries are deterministic
     ///          (derived from stable @c const @c Instr* + case values) so
     ///          clearing on function transitions is unnecessary and wasteful.
-    viper::vm::SwitchCache switchCache_;
+    zanna::vm::SwitchCache switchCache_;
 
     /// @brief Per-function operand resolution caches, keyed by BasicBlock*.
     /// @details Built lazily on first entry to each function. Entries are stable
@@ -975,8 +975,8 @@ class VM {
     TrapToken trapToken{};
 
   public:
-#if VIPER_VM_OPCOUNTS
-    /// @brief Per-opcode execution counters (enabled via VIPER_VM_OPCOUNTS).
+#if ZANNA_VM_OPCOUNTS
+    /// @brief Per-opcode execution counters (enabled via ZANNA_VM_OPCOUNTS).
     /// @note Made public for dispatch strategy access.
     std::array<uint64_t, il::core::kNumOpcodes> opCounts_{};
     /// @brief Runtime toggle for counting.
@@ -1164,7 +1164,7 @@ class VM {
     /// @brief Emit a tail-call debug/trace event.
     void onTailCall(const il::core::Function *from, const il::core::Function *to);
 
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     /// @brief Access per-opcode execution counters.
     const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const;
     /// @brief Reset all opcode execution counters to zero.

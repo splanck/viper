@@ -1,18 +1,18 @@
 ' Multi-threaded stress test for collections
 ' Tests for race conditions and thread safety
 
-DIM counter AS Viper.Threads.SafeI64
-DIM startGate AS Viper.Threads.Barrier
-DIM endGate AS Viper.Threads.Barrier
-DIM errCount AS Viper.Threads.SafeI64
+DIM counter AS Zanna.Threads.SafeI64
+DIM startGate AS Zanna.Threads.Barrier
+DIM endGate AS Zanna.Threads.Barrier
+DIM errCount AS Zanna.Threads.SafeI64
 
 CONST NUM_THREADS AS INTEGER = 4
 CONST ITERS_PER_THREAD AS INTEGER = 1000
 
-counter = Viper.Threads.SafeI64.New(0)
-errCount = Viper.Threads.SafeI64.New(0)
-startGate = Viper.Threads.Barrier.New(NUM_THREADS + 1)
-endGate = Viper.Threads.Barrier.New(NUM_THREADS + 1)
+counter = Zanna.Threads.SafeI64.New(0)
+errCount = Zanna.Threads.SafeI64.New(0)
+startGate = Zanna.Threads.Barrier.New(NUM_THREADS + 1)
+endGate = Zanna.Threads.Barrier.New(NUM_THREADS + 1)
 
 PRINT "=== Multi-threaded Stress Test ==="
 PRINT "Threads: "; NUM_THREADS
@@ -39,7 +39,7 @@ DIM threads(NUM_THREADS) AS OBJECT
 DIM t AS INTEGER
 FOR t = 1 TO NUM_THREADS
     DIM th AS OBJECT
-    th = Viper.Threads.Thread.Start(ADDRESSOF Worker, NOTHING)
+    th = Zanna.Threads.Thread.Start(ADDRESSOF Worker, NOTHING)
     threads(t) = th
     PRINT "Started thread "; threads(t).Id
 NEXT t

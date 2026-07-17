@@ -24,10 +24,10 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     env:
-      VIPER_BUILD_DIR: build
-      VIPER_BUILD_TYPE: Release
-      VIPER_SKIP_INSTALL: "1"
-      VIPER_EXTRA_CMAKE_ARGS: -DVIPER_INSTALL_VIPERIDE=ON
+      ZANNA_BUILD_DIR: build
+      ZANNA_BUILD_TYPE: Release
+      ZANNA_SKIP_INSTALL: "1"
+      ZANNA_EXTRA_CMAKE_ARGS: -DZANNA_INSTALL_ZANNAIDE=ON
 
     steps:
       - name: Check out source
@@ -39,7 +39,7 @@ jobs:
 
       - name: Build and test with the canonical macOS script
         shell: bash
-        run: ./scripts/build_viper_mac.sh
+        run: ./scripts/build_zanna_mac.sh
 
       - name: Stage the release payload
         shell: bash
@@ -52,25 +52,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stale="build/release-stage/share/viper/installer-upgrade-stale.txt"
+          stale="build/release-stage/share/zanna/installer-upgrade-stale.txt"
           mkdir -p "$(dirname "$stale")"
           printf '%s\n' 'owned only by upgrade baseline' > "$stale"
-          build/src/tools/viper/viper install-package \
+          build/src/tools/zanna/zanna install-package \
             --stage-dir build/release-stage --target macos \
-            --output-file build/viper-upgrade-baseline.pkg
+            --output-file build/zanna-upgrade-baseline.pkg
           rm -f "$stale"
 
       - name: Configure ephemeral Developer ID and notarization credentials
         if: ${{ inputs.release }}
         shell: bash
         env:
-          MACOS_P12_BASE64: ${{ secrets.VIPER_MACOS_CERTIFICATE_P12_BASE64 }}
-          MACOS_P12_PASSWORD: ${{ secrets.VIPER_MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_INSTALLER_IDENTITY: ${{ secrets.VIPER_MACOS_INSTALLER_IDENTITY }}
-          MACOS_APPLICATION_IDENTITY: ${{ secrets.VIPER_MACOS_APPLICATION_IDENTITY }}
-          NOTARY_KEY_BASE64: ${{ secrets.VIPER_MACOS_NOTARY_KEY_BASE64 }}
-          NOTARY_KEY_ID: ${{ secrets.VIPER_MACOS_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.VIPER_MACOS_NOTARY_ISSUER_ID }}
+          MACOS_P12_BASE64: ${{ secrets.ZANNA_MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.ZANNA_MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_INSTALLER_IDENTITY: ${{ secrets.ZANNA_MACOS_INSTALLER_IDENTITY }}
+          MACOS_APPLICATION_IDENTITY: ${{ secrets.ZANNA_MACOS_APPLICATION_IDENTITY }}
+          NOTARY_KEY_BASE64: ${{ secrets.ZANNA_MACOS_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.ZANNA_MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.ZANNA_MACOS_NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
           for name in MACOS_P12_BASE64 MACOS_P12_PASSWORD MACOS_INSTALLER_IDENTITY MACOS_APPLICATION_IDENTITY NOTARY_KEY_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
@@ -79,9 +79,9 @@ jobs:
               exit 1
             fi
           done
-          keychain="$RUNNER_TEMP/viper-release.keychain-db"
+          keychain="$RUNNER_TEMP/zanna-release.keychain-db"
           keychain_password="$(openssl rand -hex 24)"
-          p12="$RUNNER_TEMP/viper-release.p12"
+          p12="$RUNNER_TEMP/zanna-release.p12"
           notary_key="$RUNNER_TEMP/AuthKey.p8"
           printf '%s' "$MACOS_P12_BASE64" | base64 -D > "$p12"
           printf '%s' "$NOTARY_KEY_BASE64" | base64 -D > "$notary_key"
@@ -92,14 +92,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
           security list-keychains -d user -s "$keychain" login.keychain-db
           security default-keychain -d user -s "$keychain"
-          xcrun notarytool store-credentials viper-ci \
+          xcrun notarytool store-credentials zanna-ci \
             --key "$notary_key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
           rm -f "$p12" "$notary_key"
           {
-            echo "VIPER_MACOS_SIGN_IDENTITY=$MACOS_INSTALLER_IDENTITY"
-            echo "VIPER_MACOS_APP_SIGN_IDENTITY=$MACOS_APPLICATION_IDENTITY"
-            echo "VIPER_MACOS_NOTARY_PROFILE=viper-ci"
-            echo "VIPER_RELEASE_KEYCHAIN=$keychain"
+            echo "ZANNA_MACOS_SIGN_IDENTITY=$MACOS_INSTALLER_IDENTITY"
+            echo "ZANNA_MACOS_APP_SIGN_IDENTITY=$MACOS_APPLICATION_IDENTITY"
+            echo "ZANNA_MACOS_NOTARY_PROFILE=zanna-ci"
+            echo "ZANNA_RELEASE_KEYCHAIN=$keychain"
           } >> "$GITHUB_ENV"
 
       - name: Generate verified developer artifacts
@@ -107,18 +107,18 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          build/src/tools/viper/viper install-package \
+          build/src/tools/zanna/zanna install-package \
             --stage-dir build/release-stage --target macos --macos-dmg \
-            --output-dir artifacts --artifact-manifest artifacts/viper-artifacts.json
+            --output-dir artifacts --artifact-manifest artifacts/zanna-artifacts.json
 
       - name: Generate signed, notarized, and stapled release artifacts
         if: ${{ inputs.release }}
         shell: bash
         run: |
           mkdir -p artifacts
-          build/src/tools/viper/viper install-package \
+          build/src/tools/zanna/zanna install-package \
             --stage-dir build/release-stage --target macos --macos-dmg \
-            --output-dir artifacts --artifact-manifest artifacts/viper-artifacts.json \
+            --output-dir artifacts --artifact-manifest artifacts/zanna-artifacts.json \
             --macos-staple --release
 
       - name: Reverify package, disk image, checksums, and trust
@@ -128,8 +128,8 @@ jobs:
           pkg="$(find artifacts -maxdepth 1 -type f -name '*.pkg' -print -quit)"
           dmg="$(find artifacts -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           [[ -n "$pkg" && -n "$dmg" ]]
-          build/src/tools/viper/viper install-package --verify-only "$pkg" --require-checksum
-          build/src/tools/viper/viper install-package --verify-only "$dmg" --require-checksum
+          build/src/tools/zanna/zanna install-package --verify-only "$pkg" --require-checksum
+          build/src/tools/zanna/zanna install-package --verify-only "$dmg" --require-checksum
           hdiutil verify "$dmg"
           if [[ '${{ inputs.release }}' == 'true' ]]; then
             pkgutil --check-signature "$pkg"
@@ -148,29 +148,29 @@ jobs:
           trust=0
           [[ '${{ inputs.release }}' == 'true' ]] && trust=1
           sudo env \
-            VIPER_RUN_MACOS_INSTALLER_SMOKE=1 \
-            VIPER_REQUIRE_MACOS_PACKAGE_TRUST="$trust" \
+            ZANNA_RUN_MACOS_INSTALLER_SMOKE=1 \
+            ZANNA_REQUIRE_MACOS_PACKAGE_TRUST="$trust" \
             cmake \
               -DCMAKE_BIN="$(command -v cmake)" \
-              -DVIPER_BIN="$PWD/build/src/tools/viper/viper" \
-              -DVIPER_BUILD_DIR="$PWD/build" \
-              -DVIPER_EXISTING_PACKAGE="$PWD/$pkg" \
-              -DVIPER_BASELINE_PACKAGE="$PWD/build/viper-upgrade-baseline.pkg" \
+              -DZANNA_BIN="$PWD/build/src/tools/zanna/zanna" \
+              -DZANNA_BUILD_DIR="$PWD/build" \
+              -DZANNA_EXISTING_PACKAGE="$PWD/$pkg" \
+              -DZANNA_BASELINE_PACKAGE="$PWD/build/zanna-upgrade-baseline.pkg" \
               -P src/tests/tools/MacOSToolchainInstallerSmoke.cmake
 
       - name: Remove ephemeral signing keychain
         if: ${{ always() && inputs.release }}
         shell: bash
         run: |
-          if [[ -n "${VIPER_RELEASE_KEYCHAIN:-}" ]]; then
+          if [[ -n "${ZANNA_RELEASE_KEYCHAIN:-}" ]]; then
             security default-keychain -d user -s login.keychain-db || true
-            security delete-keychain "$VIPER_RELEASE_KEYCHAIN" || true
+            security delete-keychain "$ZANNA_RELEASE_KEYCHAIN" || true
           fi
 
       - name: Upload verified artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: viper-toolchain-macos-arm64
+          name: zanna-toolchain-macos-arm64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14

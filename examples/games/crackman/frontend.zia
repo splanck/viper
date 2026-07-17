@@ -6,7 +6,7 @@
 //          state machine can dispatch.
 //
 // KEY-DESIGN-CHOICES:
-//   * VIPER.GAME.BUTTONGROUP. Each menu screen uses a ButtonGroup
+//   * ZANNA.GAME.BUTTONGROUP. Each menu screen uses a ButtonGroup
 //     for exclusive-selection + wraparound navigation. The group
 //     handles arrow / D-pad input; the controller just maps the
 //     selected index to a FRONTEND_EVENT_*.
@@ -20,9 +20,9 @@
 
 module frontend;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Game;
 
 bind "./config";
 bind "./settings";

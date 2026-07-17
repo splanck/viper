@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,11 +25,11 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
-using viper::codegen::objfile::checkedRange;
-using viper::codegen::objfile::readLE32;
-using viper::codegen::objfile::readLE64;
+using zanna::codegen::objfile::checkedRange;
+using zanna::codegen::objfile::readLE32;
+using zanna::codegen::objfile::readLE64;
 
 // ELF64 structures — defined inline to avoid system header dependencies.
 namespace elf {
@@ -834,4 +834,4 @@ bool readElfObj(
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

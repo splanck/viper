@@ -8,7 +8,7 @@ module utils;
 
 bind "./config";
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 // =============================================================================
 // COORDINATE CONVERSION
@@ -129,7 +129,7 @@ func pointInRect(px: Integer, py: Integer,
 }
 
 // =============================================================================
-// INPUT HELPERS — Now uses Viper.Input.Action (see game.zia setupActions)
+// INPUT HELPERS — Now uses Zanna.Input.Action (see game.zia setupActions)
 // =============================================================================
 // All input is handled via Action.Held/Action.Pressed in game.zia and player.zia.
 // Raw key code helpers have been removed.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTFuzzyMatchTests.cpp
@@ -23,8 +23,8 @@ extern "C" void vm_trap(const char *msg) {
 }
 
 int main() {
-    assert(rt_fuzzy_match_score(rt_const_cstr("vf"), rt_const_cstr("viperide_file.zia")) > 0);
-    assert(rt_fuzzy_match_score(rt_const_cstr("zz"), rt_const_cstr("viperide_file.zia")) == -1);
+    assert(rt_fuzzy_match_score(rt_const_cstr("zf"), rt_const_cstr("zannaide_file.zia")) > 0);
+    assert(rt_fuzzy_match_score(rt_const_cstr("vv"), rt_const_cstr("zannaide_file.zia")) == -1);
 
     // VDOC-059: a successful match never scores below 0, so -1 reliably
     // signals a miss even for heavily penalized matches.
@@ -36,10 +36,10 @@ int main() {
         int64_t clamped = rt_fuzzy_match_score(rt_const_cstr("z"), rt_string_from_bytes(noisy, 101));
         assert(clamped >= 0);
     }
-    assert(rt_fuzzy_match_score(rt_const_cstr("VS"), rt_const_cstr("ViperSceneEditor.zia")) >
-           rt_fuzzy_match_score(rt_const_cstr("VS"), rt_const_cstr("very/slow/file.zia")));
+    assert(rt_fuzzy_match_score(rt_const_cstr("ZS"), rt_const_cstr("ZannaSceneEditor.zia")) >
+           rt_fuzzy_match_score(rt_const_cstr("ZS"), rt_const_cstr("zany/slow/file.zia")));
 
-    void *match = rt_fuzzy_match_match(rt_const_cstr("vse"), rt_const_cstr("ViperSceneEditor.zia"));
+    void *match = rt_fuzzy_match_match(rt_const_cstr("zse"), rt_const_cstr("ZannaSceneEditor.zia"));
     assert(rt_map_get_bool(match, rt_const_cstr("matched")) == 1);
     void *ranges = rt_map_get(match, rt_const_cstr("ranges"));
     assert(rt_seq_len(ranges) >= 2);

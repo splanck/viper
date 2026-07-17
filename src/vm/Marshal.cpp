@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include "vm/Marshal.hpp"
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 #include "vm/DiagFormat.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
@@ -133,7 +133,7 @@ const KindAccessors &dispatchFor(Type::Kind kind) {
 /// @param assumeNullTerminated When Yes, skip embedded NUL check (fast path).
 /// @return Runtime handle suitable for passing to C helpers; may be null when
 ///         @p text lacks backing storage.
-ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTerminated) {
+ZannaString toZannaString(StringRef text, AssumeNullTerminated assumeNullTerminated) {
     if (text.data() == nullptr)
         return nullptr;
     if (text.empty())
@@ -166,7 +166,7 @@ ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTermina
 /// @param str Runtime string handle to translate.
 /// @return Non-owning view of the runtime string's contents, or an empty view
 ///         when the handle is null.
-StringRef fromViperString(const ViperString &str) {
+StringRef fromZannaString(const ZannaString &str) {
     if (!str)
         return {};
     const char *data = rt_string_cstr(str);

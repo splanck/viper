@@ -1,7 +1,7 @@
 module InputDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Input (All Classes) ===");
+    Say("=== API Audit: Zanna.Input (All Classes) ===");
     Say("NOTE: Input classes require a window/event loop. API surface documentation only.");
     Say("");
     Say("--- Keyboard ---");

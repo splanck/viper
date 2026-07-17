@@ -29,10 +29,10 @@ upgrade. It is release evidence, not a backlog. Runtime/API history remains in
 
 ## Verification record
 
-Validated on 2026-07-13 using the existing macOS arm64/Metal Viper executable,
-without rebuilding Viper and without running Viper CTest:
+Validated on 2026-07-13 using the existing macOS arm64/Metal Zanna executable,
+without rebuilding Zanna and without running Zanna CTest:
 
-- `viper check examples/games/ridgebound --diagnostic-format=json` completed
+- `zanna check examples/games/ridgebound --diagnostic-format=json` completed
   with no diagnostics.
 - `topology_probe.zia`, `traversal_probe.zia`, `state_probe.zia`, and
   `smoke_probe.zia` all reported `RESULT: ok`.
@@ -47,5 +47,5 @@ without rebuilding Viper and without running Viper CTest:
 
 The new C++ uneven-heightfield regression is present but was intentionally not
 executed in this pass because the work request explicitly prohibited rebuilding
-Viper and running its CTest suite. The standalone demo traversal gate validates
+Zanna and running its CTest suite. The standalone demo traversal gate validates
 the shipping terrain and controller behavior with the existing executable.

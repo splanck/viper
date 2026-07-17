@@ -70,14 +70,14 @@ target_include_directories(fe_zia PUBLIC
 )
 
 target_link_libraries(fe_zia PUBLIC
-        viper_support
-        viper_il_core
+        zanna_support
+        zanna_il_core
         il_build
         il_runtime
         il_transform
         fe_common
         PRIVATE
-        viper_common_opts
+        zanna_common_opts
 )
 add_dependencies(fe_zia generate_runtime_registry)
 
@@ -99,13 +99,13 @@ target_include_directories(zia_editor_services PUBLIC
 
 target_link_libraries(zia_editor_services PUBLIC
         fe_zia
-        viper_support
-        viper_il_core
+        zanna_support
+        zanna_il_core
         il_build
         il_runtime
         il_transform
         fe_common
         PRIVATE
-        viper_common_opts
+        zanna_common_opts
 )
 add_dependencies(zia_editor_services generate_runtime_registry)

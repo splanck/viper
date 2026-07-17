@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -44,7 +44,7 @@ int main() {
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path tmpPath = fs::temp_directory_path();
-    tmpPath /= "viper-bench-test-" + std::to_string(stamp) + ".il";
+    tmpPath /= "zanna-bench-test-" + std::to_string(stamp) + ".il";
     {
         std::ofstream ofs(tmpPath);
         ofs << kModuleSource;
@@ -97,7 +97,7 @@ loop:
 )";
         const auto stamp2 = std::chrono::steady_clock::now().time_since_epoch().count();
         fs::path loopPath =
-            fs::temp_directory_path() / ("viper-bench-loop-" + std::to_string(stamp2) + ".il");
+            fs::temp_directory_path() / ("zanna-bench-loop-" + std::to_string(stamp2) + ".il");
         {
             std::ofstream ofs(loopPath);
             ofs << kInfiniteSource;

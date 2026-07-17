@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -372,7 +372,7 @@ VM::ExecResult handleTrapErr(VM &vm,
     if (in.operands.size() > 1) {
         Slot textSlot = VMAccess::eval(vm, fr, in.operands[1]);
         if (textSlot.str != nullptr) {
-            auto view = fromViperString(textSlot.str);
+            auto view = fromZannaString(textSlot.str);
             message.assign(view.begin(), view.end());
         }
     }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 
 #include <utility>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Begin a new transaction, grouping subsequent edits together.
 /// @details When a transaction is already open the call is ignored, allowing
 ///          nested begin/end pairs from higher-level code to collapse into a
@@ -144,4 +144,4 @@ void EditHistory::append(Op op) {
     txn.push_back(std::move(op));
     undo_stack_.push_back(std::move(txn));
 }
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

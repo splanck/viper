@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,10 +26,10 @@
 
 #include <string>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 static const ServerConfig kBasicConfig{
-    "vbasic-server", "0.1.0", "vbasic", "basic", ".bas", "Viper BASIC"};
+    "vbasic-server", "0.1.0", "vbasic", "basic", ".bas", "Zanna BASIC"};
 
 /// Helper: build a JsonRpcRequest from method, params, and id.
 static JsonRpcRequest makeReq(const std::string &method,
@@ -153,11 +153,11 @@ TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
 
-    // The check tool description should mention "Viper BASIC"
+    // The check tool description should mention "Zanna BASIC"
     for (const auto &tool : tools) {
         if (tool["name"].asString() == "basic/check") {
             auto desc = tool["description"].asString();
-            EXPECT_TRUE(desc.find("Viper BASIC") != std::string::npos);
+            EXPECT_TRUE(desc.find("Zanna BASIC") != std::string::npos);
         }
     }
 }
@@ -257,6 +257,6 @@ TEST(BasicMcp, ToolsCallMissingName) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

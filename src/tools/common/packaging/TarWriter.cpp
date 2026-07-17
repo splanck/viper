@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -237,7 +237,7 @@ std::string buildPaxRecord(const std::string &key, const std::string &value) {
 /// @param index Monotonic index of the generated PAX header in the archive.
 /// @return Archive path for the PAX header.
 std::string paxHeaderPath(size_t index) {
-    return "PaxHeaders.X/viper-" + std::to_string(index);
+    return "PaxHeaders.X/zanna-" + std::to_string(index);
 }
 
 /// @brief Return the short fallback USTAR path for an entry covered by PAX metadata.
@@ -245,7 +245,7 @@ std::string paxHeaderPath(size_t index) {
 ///          This fallback is only for legacy readers that ignore PAX and must fit
 ///          in the basic USTAR name field.
 std::string paxPayloadFallbackPath(size_t index) {
-    return "PaxPayloads.X/viper-" + std::to_string(index);
+    return "PaxPayloads.X/zanna-" + std::to_string(index);
 }
 
 void splitUstarPath(const std::string &path, std::string &prefix, std::string &name);
@@ -439,4 +439,4 @@ std::vector<uint8_t> TarWriter::finish() const {
     return out;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

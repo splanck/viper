@@ -1,20 +1,20 @@
 # Graphics3D perf harness.
 #
 # Required -D arguments:
-#   VIPER_EXE    Path to the viper executable
+#   ZANNA_EXE    Path to the zanna executable
 #   WORKING_DIR  Directory containing the probe script
 #   SCRIPT       Probe script filename
-#   BACKEND      VIPER_3D_BACKEND value
+#   BACKEND      ZANNA_3D_BACKEND value
 #   NAME         Stable fixture/probe name for log output
 
-foreach (required_var IN ITEMS VIPER_EXE WORKING_DIR SCRIPT BACKEND NAME)
+foreach (required_var IN ITEMS ZANNA_EXE WORKING_DIR SCRIPT BACKEND NAME)
     if (NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "Graphics3DPerfHarness: missing ${required_var}")
     endif ()
 endforeach ()
 
 execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E env "VIPER_3D_BACKEND=${BACKEND}" "${VIPER_EXE}" run "${SCRIPT}"
+        COMMAND "${CMAKE_COMMAND}" -E env "ZANNA_3D_BACKEND=${BACKEND}" "${ZANNA_EXE}" run "${SCRIPT}"
         WORKING_DIRECTORY "${WORKING_DIR}"
         RESULT_VARIABLE probe_result
         OUTPUT_VARIABLE probe_stdout

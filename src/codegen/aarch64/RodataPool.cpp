@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 
 #include <cstdint>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 std::string RodataPool::makeLabel(std::size_t index) {
     return std::string("L.str.") + std::to_string(index);
@@ -89,7 +89,7 @@ void RodataPool::buildFromModule(const il::core::Module &mod) {
         // Writable scalar globals (e.g. `global i64 @counter = 41`) need a real
         // .data symbol, otherwise gaddr @counter resolves to an undefined symbol.
         // Layout/initializer rules are shared with the x86-64 path.
-        const auto layout = viper::codegen::common::scalarGlobalLayout(g.type.kind);
+        const auto layout = zanna::codegen::common::scalarGlobalLayout(g.type.kind);
         if (layout.sizeBytes == 0)
             continue; // void / error / resumetok — nothing to emit
         DataGlobal dg;
@@ -98,7 +98,7 @@ void RodataPool::buildFromModule(const il::core::Module &mod) {
         dg.sizeBytes = layout.sizeBytes;
         dg.isFloat = layout.isFloat;
         // Compute little-endian initializer bytes for the binary object path.
-        const uint64_t raw = viper::codegen::common::scalarGlobalRawBits(g.init, layout.isFloat);
+        const uint64_t raw = zanna::codegen::common::scalarGlobalRawBits(g.init, layout.isFloat);
         dg.bytes.resize(static_cast<size_t>(dg.sizeBytes));
         for (int i = 0; i < dg.sizeBytes; ++i)
             dg.bytes[static_cast<size_t>(i)] = static_cast<uint8_t>((raw >> (8 * i)) & 0xFF);
@@ -116,7 +116,7 @@ void RodataPool::emitData(std::ostream &os, const TargetInfo &target) const {
     else
         os << ".section __DATA,__data\n";
     for (const auto &dg : dataGlobals_) {
-        const std::string sanitized = viper::codegen::common::sanitizeLabel(dg.name);
+        const std::string sanitized = zanna::codegen::common::sanitizeLabel(dg.name);
         const std::string sym =
             target.isLinux() || target.isWindows() ? sanitized : "_" + sanitized;
         const int p2align =
@@ -159,4 +159,4 @@ void RodataPool::emit(std::ostream &os, const TargetInfo &target) const {
     os << "\n";
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

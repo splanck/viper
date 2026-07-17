@@ -1,14 +1,14 @@
-# Viper Examples
+# Zanna Examples
 
-Showcase programs demonstrating the Viper compiler toolchain, [runtime library](../docs/viperlib/README.md), and language frontends. All examples can be run via the VM or compiled to native binaries.
+Showcase programs demonstrating the Zanna compiler toolchain, [runtime library](../docs/zannalib/README.md), and language frontends. All examples can be run via the VM or compiled to native binaries.
 
 ---
 
 ## 🚀 Quick Reference
 
 ```sh
-viper run examples/games/chess/       # Run a project directory
-viper build examples/apps/paint/ -o paint  # Compile to native binary
+zanna run examples/games/chess/       # Run a project directory
+zanna build examples/apps/paint/ -o paint  # Compile to native binary
 ./scripts/build_demos.sh              # Build all demos (outputs to examples/bin/)
 scripts\build_demos_win.cmd           # Windows equivalent
 ```
@@ -21,17 +21,17 @@ Full-featured applications built with [Zia](../docs/languages/zia-reference.md).
 
 | Project | Description | Highlights |
 |---------|-------------|------------|
-| [ViperSQL](apps/vipersql/) | PostgreSQL-compatible SQL database server | MVCC, WAL, B-tree indexes, PG wire protocol, vsql client, 70K+ lines |
+| [ZannaSQL](apps/zannasql/) | PostgreSQL-compatible SQL database server | MVCC, WAL, B-tree indexes, PG wire protocol, vsql client, 70K+ lines |
 | [Paint](apps/paint/) | Drawing application (MS Paint-style) | 8 tools, runtime actions, file dialogs, zoomable canvas, undo/redo, layers |
-| [WebServer](apps/webserver/) | Multi-threaded HTTP server | Routing, static files, JSON API, [thread pool](../docs/viperlib/threads.md) |
-| [Varc](apps/varc/) | Archive utility | DEFLATE compression, AES [encryption](../docs/viperlib/crypto.md), checksums |
-| [Telnet](apps/telnet/) | Telnet client and server | [TCP sockets](../docs/viperlib/network.md), session management, threading |
+| [WebServer](apps/webserver/) | Multi-threaded HTTP server | Routing, static files, JSON API, [thread pool](../docs/zannalib/threads.md) |
+| [Varc](apps/varc/) | Archive utility | DEFLATE compression, AES [encryption](../docs/zannalib/crypto.md), checksums |
+| [Telnet](apps/telnet/) | Telnet client and server | [TCP sockets](../docs/zannalib/network.md), session management, threading |
 
 ---
 
 ## 🎮 Games
 
-Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, and [game engine](../docs/viperlib/game/README.md) patterns.
+Playable games showcasing [graphics](../docs/zannalib/graphics/README.md), AI, and [game engine](../docs/zannalib/game/README.md) patterns.
 
 ### Zia Games
 
@@ -40,7 +40,7 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 | [Ridgebound](games/ridgebound/) | Open-world Game3D sample | Game3D world loop, procedural terrain, water, skybox, PBR materials, beacon objectives, post-FX, final overlay |
 | [Chess](games/chess/) | Polished chess game with AI opponent | Alpha-beta AI, save slots, clocks, puzzles, themes, audio, FEN/PGN, drag-and-drop GUI |
 | [XENOSCAPE](games/xenoscape/) | Release-quality action Metroidvania | 10-region nonlinear campaign, 80 rooms, hub/economy, profiles, accessibility, ranks, Time Trials, Boss Rush, New Game+, authored/fallback art and adaptive audio |
-| [Crackman](games/crackman/) | Maze chase game with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |
+| [Crackman](games/crackman/) | Maze chase game with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/zannalib/graphics/canvas.md) rendering |
 | [Centipede](games/centipede/) | Arcade centipede game | Multiple enemy types, particle effects, Canvas graphics |
 | [Frogger](games/frogger/) | Frogger clone | Single-file implementation, ANSI terminal |
 | [Graphics Show](games/graphics-show/) | Visual effects showcase | Fireworks, plasma, Mandelbrot, starfield, matrix rain, snake |
@@ -72,7 +72,7 @@ A [SQL database engine](sqldb-basic/) written entirely in [BASIC](../docs/langua
 
 ## 🔍 API Audit
 
-The [`apiaudit/`](apiaudit/) directory provides **systematic coverage of Viper runtime classes** across hundreds of source files. Most APIs have both a Zia and BASIC version; `graphics3d` is still more Zia-heavy for rendering demos, but shared runtime surfaces such as `SceneAsset`, `AnimController3D`, and `SceneNode` binding sync now ship with both Zia and BASIC samples.
+The [`apiaudit/`](apiaudit/) directory provides **systematic coverage of Zanna runtime classes** across hundreds of source files. Most APIs have both a Zia and BASIC version; `graphics3d` is still more Zia-heavy for rendering demos, but shared runtime surfaces such as `SceneAsset`, `AnimController3D`, and `SceneNode` binding sync now ship with both Zia and BASIC samples.
 
 Organized by namespace:
 
@@ -131,7 +131,7 @@ The [`basic/`](basic/) directory contains 28 BASIC programs demonstrating langua
 
 ## ⚙️ IL Examples
 
-The [`il/`](il/) directory contains 22 [Viper IL](../docs/il/il-guide.md) programs for VM development and testing:
+The [`il/`](il/) directory contains 22 [Zanna IL](../docs/il/il-guide.md) programs for VM development and testing:
 
 - **Tutorials** — `ex1` through `ex6`: progressive IL feature demonstrations (hello, loops, tables, factorial, strings, heap arrays)
 - **Benchmarks** — [`benchmarks/`](il/benchmarks/): VM and [optimizer](../docs/il/il-passes.md) performance tests (fib, arithmetic, branching, strings)
@@ -143,7 +143,7 @@ The [`il/`](il/) directory contains 22 [Viper IL](../docs/il/il-guide.md) progra
 
 ## 🔗 C++ Embedding
 
-The [`embedding/`](embedding/) directory demonstrates embedding the Viper VM in C++ host applications:
+The [`embedding/`](embedding/) directory demonstrates embedding the Zanna VM in C++ host applications:
 
 | File | Description |
 |------|-------------|
@@ -160,8 +160,8 @@ The [`embedding/`](embedding/) directory demonstrates embedding the Viper VM in 
 ### Run a demo directly
 
 ```sh
-viper run examples/games/chess/          # Zia game
-viper run examples/apps/paint/           # Zia app
+zanna run examples/games/chess/          # Zia game
+zanna run examples/apps/paint/           # Zia app
 ./build/src/tools/ilrun/ilrun examples/il/ex1_hello_cond.il  # IL program
 ```
 
@@ -182,6 +182,6 @@ Native binaries are output to `examples/bin/`.
 ### Build a single demo
 
 ```sh
-viper build examples/apps/paint/ -o paint
+zanna build examples/apps/paint/ -o paint
 ./paint
 ```

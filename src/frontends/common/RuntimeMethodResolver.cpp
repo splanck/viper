@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -137,14 +137,14 @@ std::optional<int> scoreSignature(const std::vector<il::runtime::ILScalarType> &
 
 bool matchesGuiWidgetSubclass(std::string_view classQName) {
     static constexpr std::array<std::string_view, 23> kGuiWidgetClasses = {
-        "Viper.GUI.Button",     "Viper.GUI.Checkbox",      "Viper.GUI.CodeEditor",
-        "Viper.GUI.Dropdown",   "Viper.GUI.FloatingPanel", "Viper.GUI.Grid",
-        "Viper.GUI.GroupBox",   "Viper.GUI.HBox",          "Viper.GUI.Image",
-        "Viper.GUI.Label",      "Viper.GUI.ListBox",       "Viper.GUI.OutputPane",
-        "Viper.GUI.PopupList",  "Viper.GUI.ProgressBar",   "Viper.GUI.RadioButton",
-        "Viper.GUI.ScrollView", "Viper.GUI.Slider",        "Viper.GUI.Spinner",
-        "Viper.GUI.SplitPane",  "Viper.GUI.TabBar",        "Viper.GUI.TextInput",
-        "Viper.GUI.TreeView",   "Viper.GUI.VBox",
+        "Zanna.GUI.Button",     "Zanna.GUI.Checkbox",      "Zanna.GUI.CodeEditor",
+        "Zanna.GUI.Dropdown",   "Zanna.GUI.FloatingPanel", "Zanna.GUI.Grid",
+        "Zanna.GUI.GroupBox",   "Zanna.GUI.HBox",          "Zanna.GUI.Image",
+        "Zanna.GUI.Label",      "Zanna.GUI.ListBox",       "Zanna.GUI.OutputPane",
+        "Zanna.GUI.PopupList",  "Zanna.GUI.ProgressBar",   "Zanna.GUI.RadioButton",
+        "Zanna.GUI.ScrollView", "Zanna.GUI.Slider",        "Zanna.GUI.Spinner",
+        "Zanna.GUI.SplitPane",  "Zanna.GUI.TabBar",        "Zanna.GUI.TextInput",
+        "Zanna.GUI.TreeView",   "Zanna.GUI.VBox",
     };
 
     for (std::string_view widgetClass : kGuiWidgetClasses) {
@@ -217,12 +217,12 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(std::string_view cl
     }
 
     if (isGuiWidgetSubclass(classQName)) {
-        parsed = registry.findMethod("Viper.GUI.Widget", method, arity);
+        parsed = registry.findMethod("Zanna.GUI.Widget", method, arity);
     }
     if (!parsed) {
         return std::nullopt;
     }
-    return makeRuntimeMethodInfo("Viper.GUI.Widget", method, *parsed);
+    return makeRuntimeMethodInfo("Zanna.GUI.Widget", method, *parsed);
 }
 
 std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
@@ -243,7 +243,7 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
 
     if (isGuiWidgetSubclass(classQName)) {
         for (const auto &klass : registry.rawCatalog()) {
-            if (klass.qname && string_utils::iequals(klass.qname, "Viper.GUI.Widget")) {
+            if (klass.qname && string_utils::iequals(klass.qname, "Zanna.GUI.Widget")) {
                 return findTypedInClass(klass, method, argTypes);
             }
         }
@@ -258,7 +258,7 @@ std::vector<std::string> RuntimeMethodResolver::candidates(std::string_view clas
     if (!direct.empty() || !isGuiWidgetSubclass(classQName)) {
         return direct;
     }
-    return registry.methodCandidates("Viper.GUI.Widget", method);
+    return registry.methodCandidates("Zanna.GUI.Widget", method);
 }
 
 } // namespace il::frontends::common

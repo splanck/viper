@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/system/rt_machine.h
-// Purpose: System information queries for Viper.System.Machine providing OS name, version,
+// Purpose: System information queries for Zanna.System.Machine providing OS name, version,
 // hostname, username, home/temp directories, CPU count, and memory statistics.
 //
 // Key invariants:

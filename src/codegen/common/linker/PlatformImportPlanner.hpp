@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// @brief Result of resolving Windows dynamic-library imports.
 /// @details The synthetic @c obj carries the .idata$* sections produced from
@@ -88,4 +88,4 @@ bool generateWindowsImports(LinkArch arch,
                             WindowsImportPlan &plan,
                             std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 
 //
 // File: src/runtime/network/rt_network.c
-// Purpose: TCP client and server support for Viper.Network.Tcp and TcpServer.
+// Purpose: TCP client and server support for Zanna.Network.Tcp and TcpServer.
 //   Contains platform initialization (WSA), socket helpers, TCP connection
 //   creation, send/receive, and server accept. UDP lives in rt_network_udp.c,
 //   DNS in rt_network_dns.c.

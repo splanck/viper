@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_seq_functional.h
@@ -59,7 +59,7 @@ void *rt_seq_find_where_wrapper(void *seq, void *pred);
 /// @brief Find first element matching predicate as an Option (wrapper for IL).
 /// @param seq Seq object.
 /// @param pred Predicate function (int8_t (*)(void *) cast to void*).
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_seq_find_where_option_wrapper(void *seq, void *pred);
 
 /// @brief Take elements while predicate is true (wrapper for IL).

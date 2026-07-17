@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <optional>
 #include <string_view>
 
-namespace viper::codegen::macho {
+namespace zanna::codegen::macho {
 
 inline constexpr uint32_t kPlatformMacOS = 1; ///< LC_BUILD_VERSION platform value.
 inline constexpr uint32_t kDefaultMacOSMinVersion = 0x000E0000; ///< macOS 14.0.0.
@@ -119,16 +119,16 @@ inline constexpr uint32_t kDefaultMacOSSDKVersion = 0x000F0000; ///< macOS SDK 1
 
 /// @brief Return the LC_BUILD_VERSION minimum macOS version.
 /// @details Defaults to macOS 14.0.0 and can be overridden with
-///          VIPER_MACHO_MINOS=major.minor.patch for tests or SDK targeting.
+///          ZANNA_MACHO_MINOS=major.minor.patch for tests or SDK targeting.
 [[nodiscard]] inline uint32_t minimumMacOSVersion() noexcept {
-    return versionFromEnvironment("VIPER_MACHO_MINOS", kDefaultMacOSMinVersion);
+    return versionFromEnvironment("ZANNA_MACHO_MINOS", kDefaultMacOSMinVersion);
 }
 
 /// @brief Return the LC_BUILD_VERSION SDK version.
 /// @details Defaults to macOS SDK 15.0.0 and can be overridden with
-///          VIPER_MACHO_SDK=major.minor.patch for tests or SDK targeting.
+///          ZANNA_MACHO_SDK=major.minor.patch for tests or SDK targeting.
 [[nodiscard]] inline uint32_t macOSSDKVersion() noexcept {
-    return versionFromEnvironment("VIPER_MACHO_SDK", kDefaultMacOSSDKVersion);
+    return versionFromEnvironment("ZANNA_MACHO_SDK", kDefaultMacOSSDKVersion);
 }
 
-} // namespace viper::codegen::macho
+} // namespace zanna::codegen::macho

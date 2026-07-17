@@ -7,12 +7,12 @@
 //          them illegal under no-DH rules. The probe asserts that
 //          simulate() bails out cleanly with the "Lineup invalid" message
 //          rather than producing nonsense play-by-play.
-// Run via: viper run examples/games/baseball/lineup_legality_probe.zia
+// Run via: zanna run examples/games/baseball/lineup_legality_probe.zia
 // ============================================================================
 module lineup_legality_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";

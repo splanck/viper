@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -92,7 +92,7 @@ static void rt_ring_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 
 /// @brief Finalizer callback invoked by the garbage collector when a Ring is collected.
 ///
-/// This function is called automatically by the Viper runtime's garbage collector
+/// This function is called automatically by the Zanna runtime's garbage collector
 /// when a Ring object becomes unreachable and is about to be freed. The finalizer
 /// releases the internal items array that was allocated to store element pointers.
 ///
@@ -124,7 +124,7 @@ static void rt_ring_finalize(void *obj) {
 /// When the buffer is full and a new element is pushed, the oldest element is
 /// automatically overwritten (no memory allocation occurs during push operations).
 ///
-/// The Ring is allocated through Viper's garbage-collected object system via
+/// The Ring is allocated through Zanna's garbage-collected object system via
 /// `rt_obj_new_i64`, which means it will be automatically freed when no longer
 /// referenced. A finalizer is registered to clean up the internal items array.
 ///

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,12 +17,12 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Standalone binary demonstrating how to assemble a minimal ViperTUI
+/// @brief Standalone binary demonstrating how to assemble a minimal ZannaTUI
 ///        application.
 /// @details The executable builds a widget hierarchy consisting of a text view
 ///          and a list view, registers them with the focus manager, and then
 ///          exercises the event loop.  It supports headless rendering via the
-///          @c VIPERTUI_NO_TTY environment toggle to keep the demo scriptable
+///          @c ZANNATUI_NO_TTY environment toggle to keep the demo scriptable
 ///          during CI runs.
 
 #include "tui/app.hpp"
@@ -47,33 +47,33 @@
 #endif
 
 /// @brief Entry point that constructs and runs the TUI demonstration app.
-/// @details The routine wires up a @ref viper::tui::TerminalSession,
-///          @ref viper::tui::App, and a pair of widgets showing a simple text
-///          buffer and list.  When the @c VIPERTUI_NO_TTY environment variable
+/// @details The routine wires up a @ref zanna::tui::TerminalSession,
+///          @ref zanna::tui::App, and a pair of widgets showing a simple text
+///          buffer and list.  When the @c ZANNATUI_NO_TTY environment variable
 ///          is set to ``1`` the demo performs a single render and exits.  When
 ///          interactive, keyboard events are decoded until Ctrl+Q is received.
 /// @return Zero on success after the application exits.
 int main() {
     bool headless = false;
-    if (const char *v = std::getenv("VIPERTUI_NO_TTY")) {
+    if (const char *v = std::getenv("ZANNATUI_NO_TTY")) {
         headless = (v[0] == '1');
     }
 
-    viper::tui::TerminalSession session;
-    viper::tui::term::RealTermIO tio;
+    zanna::tui::TerminalSession session;
+    zanna::tui::term::RealTermIO tio;
 
-    viper::tui::style::Theme theme;
-    viper::tui::text::TextBuffer buf;
-    buf.load("Hello from ViperTUI demo\nPress Ctrl+Q to quit.");
-    auto tv = std::make_unique<viper::tui::views::TextView>(buf, theme, false);
+    zanna::tui::style::Theme theme;
+    zanna::tui::text::TextBuffer buf;
+    buf.load("Hello from ZannaTUI demo\nPress Ctrl+Q to quit.");
+    auto tv = std::make_unique<zanna::tui::views::TextView>(buf, theme, false);
     auto *tv_ptr = tv.get();
     std::vector<std::string> items{"Item 1", "Item 2", "Item 3"};
-    auto lv = std::make_unique<viper::tui::widgets::ListView>(items, theme);
+    auto lv = std::make_unique<zanna::tui::widgets::ListView>(items, theme);
     auto *lv_ptr = lv.get();
     auto root =
-        std::make_unique<viper::tui::widgets::HSplitter>(std::move(tv), std::move(lv), 0.5F);
+        std::make_unique<zanna::tui::widgets::HSplitter>(std::move(tv), std::move(lv), 0.5F);
 
-    viper::tui::App app(std::move(root), tio, 24, 80);
+    zanna::tui::App app(std::move(root), tio, 24, 80);
     app.focus().registerWidget(tv_ptr);
     app.focus().registerWidget(lv_ptr);
 
@@ -82,7 +82,7 @@ int main() {
         return 0;
     }
 
-    viper::tui::term::InputDecoder decoder;
+    zanna::tui::term::InputDecoder decoder;
 #if defined(_WIN32)
     while (true) {
         int c = _getch();
@@ -92,7 +92,7 @@ int main() {
         char ch = static_cast<char>(c);
         decoder.feed(std::string_view(&ch, 1));
         for (auto &ev : decoder.drain()) {
-            viper::tui::ui::Event e{};
+            zanna::tui::ui::Event e{};
             e.key = ev;
             app.pushEvent(e);
         }
@@ -113,7 +113,7 @@ int main() {
         }
         decoder.feed(std::string_view(in, static_cast<size_t>(n)));
         for (auto &ev : decoder.drain()) {
-            viper::tui::ui::Event e{};
+            zanna::tui::ui::Event e{};
             e.key = ev;
             app.pushEvent(e);
         }

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_plural_rules.c
-// Purpose: Implementation of Viper.Localization.PluralRules. Walks the
+// Purpose: Implementation of Zanna.Localization.PluralRules. Walks the
 //          cardinal/ordinal rule AST chains stored on rt_locale_data_t and
 //          returns the matching CLDR plural category. The AST is a compact
 //          recursive-descent structure; evaluation is a single pass across
@@ -28,7 +28,7 @@
 //
 // Links: src/runtime/localization/rt_plural_rules.h (interface),
 //        src/runtime/localization/rt_locale_data.h (AST node shape),
-//        docs/viperlib/localization/messages.md (user documentation).
+//        docs/zannalib/localization/messages.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 
@@ -482,7 +482,7 @@ void *rt_plural_rules_for_locale(void *locale) {
     rt_plural_rules_inst_t *self =
         (rt_plural_rules_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_plural_rules_inst_t));
     if (!self) {
-        rt_trap("Viper.Localization.PluralRules: allocation failed");
+        rt_trap("Zanna.Localization.PluralRules: allocation failed");
         return NULL;
     }
     self->locale = locale;

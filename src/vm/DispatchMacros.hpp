@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -156,7 +156,7 @@
 //       if (state.exitRequested) return true;
 //       opcode = fetchNext();
 //       if (state.exitRequested) return true;
-//       VIPER_VM_DISPATCH_BEFORE(context, opcode);
+//       ZANNA_VM_DISPATCH_BEFORE(context, opcode);
 //       DISPATCH_TO(opcode);
 //   }
 //
@@ -175,8 +175,8 @@
 //
 // To ensure all opcodes have handlers, this header provides:
 //
-// 1. VIPER_HANDLER_COUNT - Total handlers in the table
-// 2. VIPER_ASSERT_HANDLER_COVERAGE - static_assert for table size
+// 1. ZANNA_HANDLER_COUNT - Total handlers in the table
+// 2. ZANNA_ASSERT_HANDLER_COVERAGE - static_assert for table size
 //
 // The handler table size must equal il::core::kNumOpcodes to ensure every
 // opcode has a corresponding handler (or explicit stub).
@@ -213,13 +213,13 @@ constexpr size_t kDispatchCount = static_cast<size_t>(VMDispatch::Count);
 /// @brief Assert that the handler table covers all opcodes.
 /// @details Use this macro in handler table definitions to catch mismatches
 ///          at compile time rather than runtime.
-#define VIPER_ASSERT_HANDLER_TABLE_SIZE(TABLE)                                                     \
+#define ZANNA_ASSERT_HANDLER_TABLE_SIZE(TABLE)                                                     \
     static_assert(std::size(TABLE) == il::core::kNumOpcodes,                                       \
                   "Handler table size mismatch: missing or extra opcode handlers")
 
 /// @brief Assert that a specific table has the expected size.
 /// @details For arrays where std::size() isn't available.
-#define VIPER_ASSERT_HANDLER_COUNT(COUNT)                                                          \
+#define ZANNA_ASSERT_HANDLER_COUNT(COUNT)                                                          \
     static_assert((COUNT) == il::core::kNumOpcodes,                                                \
                   "Handler count mismatch: missing or extra opcode handlers")
 
@@ -229,18 +229,18 @@ constexpr size_t kDispatchCount = static_cast<size_t>(VMDispatch::Count);
 
 /// @brief Generate a handler table entry using the opcode name.
 /// @details Expands to the handler function address for TABLE dispatch.
-#define VIPER_HANDLER_ENTRY(NAME) &il::vm::detail::handle##NAME
+#define ZANNA_HANDLER_ENTRY(NAME) &il::vm::detail::handle##NAME
 
 /// @brief Generate a switch case for an opcode.
 /// @details Expands to a case statement calling the inline handler.
-#define VIPER_SWITCH_CASE(NAME)                                                                    \
+#define ZANNA_SWITCH_CASE(NAME)                                                                    \
     case il::core::Opcode::NAME:                                                                   \
         inline_handle_##NAME(state);                                                               \
         break
 
 /// @brief Generate a threaded dispatch label.
 /// @details Expands to a computed goto label address.
-#define VIPER_THREADED_LABEL(NAME) &&LBL_##NAME
+#define ZANNA_THREADED_LABEL(NAME) &&LBL_##NAME
 
 //===----------------------------------------------------------------------===//
 // Runtime Handler Verification

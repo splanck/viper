@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_datetime.c
-// Purpose: Implements the Viper.DateTime class — wall-clock date/time
+// Purpose: Implements the Zanna.DateTime class — wall-clock date/time
 //          operations backed by Unix timestamps (seconds since epoch). Provides
 //          current time query (NowMs/NowSec), component extraction (Year, Month,
 //          Day, Hour, Minute, Second, DayOfWeek), arithmetic (AddDays, AddHours,
@@ -586,7 +586,7 @@ int64_t rt_datetime_day_of_week(int64_t timestamp) {
 /// ```
 ///
 /// @param timestamp Unix timestamp (seconds since epoch).
-/// @param format Viper string containing strftime format specifiers.
+/// @param format Zanna string containing strftime format specifiers.
 ///
 /// @return Formatted date/time string, or empty string if:
 ///         - The timestamp is invalid
@@ -856,7 +856,7 @@ int64_t rt_datetime_create(
 ///          so callers can distinguish failure from a genuine pre-epoch result
 ///          (VDOC-225). Components are interpreted in the local time zone,
 ///          exactly as `Create`.
-/// @return Opaque Viper.Option holding the timestamp, or None on failure.
+/// @return Opaque Zanna.Option holding the timestamp, or None on failure.
 void *rt_datetime_create_option(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
     int64_t result;
@@ -1412,7 +1412,7 @@ int64_t rt_datetime_try_parse(rt_string s) {
 ///          embedded-NUL input. This is the non-ambiguous replacement for the
 ///          legacy sentinel-returning @ref rt_datetime_try_parse helper.
 /// @param s Runtime string to parse.
-/// @return Opaque Viper.Option containing the parsed timestamp or time value.
+/// @return Opaque Zanna.Option containing the parsed timestamp or time value.
 void *rt_datetime_try_parse_option(rt_string s) {
     int64_t result = 0;
     return dt_try_parse_any(s, &result) ? rt_option_some_i64(result) : rt_option_none();

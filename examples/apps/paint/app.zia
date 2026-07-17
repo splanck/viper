@@ -1,6 +1,6 @@
 // ============================================================================
 // MODULE: app (PaintApp)
-// PURPOSE: Top-level Viper Paint controller. Owns every subsystem —
+// PURPOSE: Top-level Zanna Paint controller. Owns every subsystem —
 //          canvas, document, colors, brush, tools, history, viewport,
 //          tool palette, layer panel, feedback, file service, UI
 //          widgets — and runs the per-frame loop.
@@ -29,16 +29,16 @@
 //     pixels to `gfx`.
 // ============================================================================
 
-// app.viper - Main application controller for Viper Paint
+// app.zanna - Main application controller for Zanna Paint
 module app;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Core.Convert;
-bind Viper.GUI as GUI;
-bind Viper.Game;
-bind Viper.Collections;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Core.Convert;
+bind Zanna.GUI as GUI;
+bind Zanna.Game;
+bind Zanna.Collections;
 
 bind "./config";
 bind "./settings";
@@ -427,14 +427,14 @@ class PaintApp {
         lastMouseY = mouseY;
         lastMouseDown = mouseDown;
         lastMouseRight = mouseRight;
-        mouseX = Viper.Input.Mouse.X();
-        mouseY = Viper.Input.Mouse.Y();
-        if Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) {
+        mouseX = Zanna.Input.Mouse.X();
+        mouseY = Zanna.Input.Mouse.Y();
+        if Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft) {
             mouseDown = 1;
         } else {
             mouseDown = 0;
         }
-        if Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonRight) {
+        if Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonRight) {
             mouseRight = 1;
         } else {
             mouseRight = 0;
@@ -464,11 +464,11 @@ class PaintApp {
             return;
         }
 
-        view.applyWheel(Viper.Input.Mouse.WheelX(),
-                        Viper.Input.Mouse.WheelY(),
+        view.applyWheel(Zanna.Input.Mouse.WheelX(),
+                        Zanna.Input.Mouse.WheelY(),
                         canvas.width,
                         canvas.height,
-                        boolToInt(Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftControl)));
+                        boolToInt(Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftControl)));
         feedbackMgr.setCanvasCursor(view.contains(mouseX, mouseY));
 
         if inputActions.pressed(actions.ACT_QUIT) == 1 {
@@ -536,23 +536,23 @@ class PaintApp {
     hide func handleKeyboard() {
         // While typing with the text tool, capture keys for the text buffer.
         if currentTool == config.TOOL_TEXT and textTool.active == 1 {
-            var typed = Viper.Input.Keyboard.GetText();
+            var typed = Zanna.Input.Keyboard.GetText();
             if typed != "" {
                 textTool.appendText(typed);
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Backspace) {
+            if Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.Backspace) {
                 textTool.backspace();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
+            if Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.Enter) {
                 textTool.requestCommit();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
+            if Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
                 textTool.cancel();
             }
             return;
         }
 
-        var ctrl = boolToInt(Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftControl));
+        var ctrl = boolToInt(Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftControl));
 
         if ctrl == 1 {
             if inputActions.pressed(actions.ACT_NEW) == 1 {
@@ -564,7 +564,7 @@ class PaintApp {
                 return;
             }
             if inputActions.pressed(actions.ACT_SAVE) == 1 {
-                if Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftShift) {
+                if Zanna.Input.Keyboard.IsDown(Zanna.Input.Key.LeftShift) {
                     saveDocumentAs();
                 } else {
                     saveDocument();
@@ -849,7 +849,7 @@ class PaintApp {
     }
 
     // Bake the text tool's buffer into the active layer. Pixels has no text
-    // primitive (viper_bugs ISSUE-001), so render the glyphs white-on-black to a
+    // primitive (zanna_bugs ISSUE-001), so render the glyphs white-on-black to a
     // scratch corner, capture with CopyRect, and write the foreground colour for
     // every non-black (glyph) pixel. The scratch corner is overwritten by the
     // normal render that follows (bake runs before gfx.Clear).
@@ -1138,9 +1138,9 @@ class PaintApp {
         syncToolButtons();
         // Toggle OS text input so the text tool can receive typed characters.
         if currentTool == config.TOOL_TEXT {
-            Viper.Input.Keyboard.EnableTextInput();
+            Zanna.Input.Keyboard.EnableTextInput();
         } else {
-            Viper.Input.Keyboard.DisableTextInput();
+            Zanna.Input.Keyboard.DisableTextInput();
             textTool.cancel();
         }
         setStatus(activeTool.name());
@@ -1443,7 +1443,7 @@ class PaintApp {
         gfx.Box(0, 0, appWidth, appHeight, 0x101015);
         gfx.RoundBox(px, py, pw, ph, 8, config.UI_BG_PANEL);
         gfx.RoundFrame(px, py, pw, ph, 8, config.UI_ACCENT);
-        gfx.Text(px + 16, py + 12, "Viper Paint - Shortcuts", config.UI_TEXT);
+        gfx.Text(px + 16, py + 12, "Zanna Paint - Shortcuts", config.UI_TEXT);
         var ly = py + 38;
         helpLine(px + 16, ly, "Tools", "1-8 / P B E L R O F I"); ly = ly + 18;
         helpLine(px + 16, ly, "More", "S sel  G grad  U curve  Y poly  A spray  T text"); ly = ly + 18;

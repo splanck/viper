@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d.h
-// Purpose: Runtime-backed Viper.Game3D ergonomic layer over the lower-level
+// Purpose: Runtime-backed Zanna.Game3D ergonomic layer over the lower-level
 //   Graphics3D, Physics3D, input, audio, and post-FX primitives. Bundles a
 //   window, camera, scene graph, physics world, input, audio, and effects into
 //   a single World3D and exposes batteries-included entities, prefabs,
@@ -105,7 +105,7 @@ enum {
 };
 
 //=========================================================================
-// Layers — collision-layer bit constants (Viper.Game3D.Layers)
+// Layers — collision-layer bit constants (Zanna.Game3D.Layers)
 //=========================================================================
 
 /// @brief Layer bit for static world geometry (RT_GAME3D_LAYER_WORLD).
@@ -120,7 +120,7 @@ int64_t rt_game3d_layers_trigger(void);
 int64_t rt_game3d_layers_debris(void);
 
 //=========================================================================
-// BodyShape — rigid-body shape kind constants (Viper.Game3D.BodyShape)
+// BodyShape — rigid-body shape kind constants (Zanna.Game3D.BodyShape)
 //=========================================================================
 
 /// @brief Box shape kind constant (RT_GAME3D_BODY_SHAPE_BOX).
@@ -131,7 +131,7 @@ int64_t rt_game3d_body_shape_sphere(void);
 int64_t rt_game3d_body_shape_capsule(void);
 
 //=========================================================================
-// SyncMode — body/node transform sync constants (Viper.Game3D.SyncMode)
+// SyncMode — body/node transform sync constants (Zanna.Game3D.SyncMode)
 //=========================================================================
 
 /// @brief Sync constant: physics body drives the scene node.
@@ -144,7 +144,7 @@ int64_t rt_game3d_sync_mode_node_from_anim_root_motion(void);
 int64_t rt_game3d_sync_mode_two_way_kinematic(void);
 
 //=========================================================================
-// AlphaMode — material alpha mode constants (Viper.Game3D.AlphaMode)
+// AlphaMode — material alpha mode constants (Zanna.Game3D.AlphaMode)
 //=========================================================================
 
 /// @brief Opaque alpha-mode constant (RT_GAME3D_ALPHA_OPAQUE).
@@ -155,7 +155,7 @@ int64_t rt_game3d_alpha_mode_mask(void);
 int64_t rt_game3d_alpha_mode_blend(void);
 
 //=========================================================================
-// ShadingModel — surface shading model constants (Viper.Game3D.ShadingModel)
+// ShadingModel — surface shading model constants (Zanna.Game3D.ShadingModel)
 //=========================================================================
 
 /// @brief Blinn-Phong shading-model constant.
@@ -172,7 +172,7 @@ int64_t rt_game3d_shading_model_emissive(void);
 int64_t rt_game3d_shading_model_unlit(void);
 
 //=========================================================================
-// Quality — render quality preset constants (Viper.Game3D.Quality)
+// Quality — render quality preset constants (Zanna.Game3D.Quality)
 //=========================================================================
 
 /// @brief Performance quality preset constant.
@@ -183,7 +183,7 @@ int64_t rt_game3d_quality_balanced(void);
 int64_t rt_game3d_quality_cinematic(void);
 
 //=========================================================================
-// CollisionPhase — collision-event phase constants (Viper.Game3D.CollisionPhase)
+// CollisionPhase — collision-event phase constants (Zanna.Game3D.CollisionPhase)
 //=========================================================================
 
 /// @brief Enter-phase constant (first contact frame).
@@ -196,7 +196,7 @@ int64_t rt_game3d_collision_exit(void);
 int64_t rt_game3d_collision_any(void);
 
 //=========================================================================
-// Keys — keyboard key-code constants (Viper.Game3D.Keys)
+// Keys — keyboard key-code constants (Zanna.Game3D.Keys)
 //=========================================================================
 
 /// @brief Key code for the W key.
@@ -227,7 +227,7 @@ int64_t rt_game3d_key_right(void);
 int64_t rt_game3d_key_f11(void);
 
 // --- Full keyboard coverage: remaining A-Z / 0-9 / F1-F12 / navigation /
-//     modifier / punctuation / numpad keys, completing Viper.Game3D.Keys so any
+//     modifier / punctuation / numpad keys, completing Zanna.Game3D.Keys so any
 //     physical key is reachable as Keys.get_<Name>(). Backing: rt_input table. ---
 /// @brief Key code for the B key.
 int64_t rt_game3d_key_b(void);
@@ -403,7 +403,7 @@ int64_t rt_game3d_key_numadd(void);
 int64_t rt_game3d_key_numenter(void);
 
 //=========================================================================
-// MouseButtons — mouse-button code constants (Viper.Game3D.MouseButtons)
+// MouseButtons — mouse-button code constants (Zanna.Game3D.MouseButtons)
 //=========================================================================
 
 /// @brief Button code for the left mouse button.
@@ -418,7 +418,7 @@ int64_t rt_game3d_mouse_x1(void);
 int64_t rt_game3d_mouse_x2(void);
 
 //=========================================================================
-// LayerMask — collision-filter bitmask object (Viper.Game3D.LayerMask)
+// LayerMask — collision-filter bitmask object (Zanna.Game3D.LayerMask)
 //=========================================================================
 
 /// @brief Create an empty layer mask that matches no layers.
@@ -437,7 +437,7 @@ void *rt_game3d_layermask_include(void *mask, int64_t layer);
 int8_t rt_game3d_layermask_includes(void *mask, int64_t layer);
 
 //=========================================================================
-// BodyDef — rigid-body construction descriptor (Viper.Game3D.BodyDef)
+// BodyDef — rigid-body construction descriptor (Zanna.Game3D.BodyDef)
 //=========================================================================
 
 /// @brief Build a dynamic box body definition from half-extents and mass.
@@ -504,7 +504,7 @@ void *rt_game3d_body_def_as_trigger(void *def);
 void *rt_game3d_body_def_with_sync(void *def, int64_t sync_mode);
 
 //=========================================================================
-// Collision3DEvent — per-contact collision event record (Viper.Game3D.Collision3DEvent)
+// Collision3DEvent — per-contact collision event record (Zanna.Game3D.Collision3DEvent)
 //=========================================================================
 
 /// @brief Get the event phase (RT_GAME3D_COLLISION_*).
@@ -537,7 +537,7 @@ double rt_game3d_collision_event_contact_separation(void *event, int64_t index);
 void *rt_game3d_collision_event_other(void *event, void *entity);
 
 //=========================================================================
-// Input3D — keyboard/mouse input state (Viper.Game3D.Input3D)
+// Input3D — keyboard/mouse input state (Zanna.Game3D.Input3D)
 //=========================================================================
 
 /// @brief Create a new input-state object bound to the active window.
@@ -583,7 +583,7 @@ double rt_game3d_input_get_pad_look_sensitivity(void *input);
 
 //=========================================================================
 // Entity3D — scene entity composing node, mesh, material, body, animator
-//   (Viper.Game3D.Entity3D)
+//   (Zanna.Game3D.Entity3D)
 //=========================================================================
 
 /// @brief Create a new empty entity (a bare scene node with no renderable).
@@ -677,7 +677,7 @@ void *rt_game3d_entity_attach_behavior(void *entity, void *behavior);
 void *rt_game3d_entity_get_behavior(void *entity);
 
 //=========================================================================
-// Behavior3D — composable per-entity preset behaviors (Viper.Game3D.Behavior3D)
+// Behavior3D — composable per-entity preset behaviors (Zanna.Game3D.Behavior3D)
 //=========================================================================
 
 /// @brief Create an empty behavior; compose presets with the fluent Add* calls.
@@ -724,7 +724,7 @@ int8_t rt_game3d_entity_is_spawned(void *entity);
 int8_t rt_game3d_entity_is_destroyed(void *entity);
 
 //=========================================================================
-// Animator3D — animation state-machine driver (Viper.Game3D.Animator3D)
+// Animator3D — animation state-machine driver (Zanna.Game3D.Animator3D)
 //=========================================================================
 
 /// @brief Create an animator driven by an AnimController3D or NodeAnimator3D.
@@ -770,7 +770,7 @@ rt_string rt_game3d_animator_event_name(void *animator, int64_t index);
 void rt_game3d_animator_update(void *animator, double dt);
 
 //=========================================================================
-// Sound3D — spatial audio subsystem (Viper.Game3D.Sound3D)
+// Sound3D — spatial audio subsystem (Zanna.Game3D.Sound3D)
 //=========================================================================
 
 /// @brief Get the audio listener (ears) object.
@@ -807,7 +807,7 @@ int64_t rt_game3d_audio_play2d(void *audio, void *clip);
 void rt_game3d_audio_clear_sources(void *audio);
 
 //=========================================================================
-// Effects3D registry — per-world particle/decal manager (Viper.Game3D.EffectRegistry3D)
+// Effects3D registry — per-world particle/decal manager (Zanna.Game3D.EffectRegistry3D)
 //=========================================================================
 
 /// @brief Get the post-FX stack associated with this effect registry.
@@ -830,7 +830,7 @@ void rt_game3d_effects_draw(void *effects, void *canvas, void *camera);
 void rt_game3d_effects_clear(void *effects);
 
 //=========================================================================
-// Effects3D presets — one-shot effect factories (Viper.Game3D.Effects3D)
+// Effects3D presets — one-shot effect factories (Zanna.Game3D.Effects3D)
 //=========================================================================
 
 /// @brief Spawn an explosion effect at the given world position.
@@ -845,7 +845,7 @@ void *rt_game3d_effects3d_smoke(void *world, void *position);
 void *rt_game3d_effects3d_impact_decal(void *world, void *position, void *normal);
 
 //=========================================================================
-// Lighting — scene lighting presets (Viper.Game3D.Lighting)
+// Lighting — scene lighting presets (Zanna.Game3D.Lighting)
 //=========================================================================
 
 /// @brief Apply a neutral three-point studio lighting rig to the world.
@@ -860,7 +860,7 @@ void rt_game3d_lighting_interior(void *world);
 void rt_game3d_lighting_clear(void *world);
 
 //=========================================================================
-// Materials — material presets (Viper.Game3D.Materials)
+// Materials — material presets (Zanna.Game3D.Materials)
 //=========================================================================
 
 /// @brief Create a matte plastic material of the given RGB color.
@@ -879,7 +879,7 @@ void *rt_game3d_materials_unlit(double r, double g, double b);
 void *rt_game3d_materials_from_albedo_map(void *pixels);
 
 //=========================================================================
-// PostFX — post-processing presets (Viper.Game3D.PostFX)
+// PostFX — post-processing presets (Zanna.Game3D.PostFX)
 //=========================================================================
 
 /// @brief Apply a cinematic post-FX chain with bloom, tone-map, and subtle vignette.
@@ -890,14 +890,14 @@ void rt_game3d_postfx_crisp(void *world);
 void rt_game3d_postfx_none(void *world);
 
 //=========================================================================
-// Quality — quality preset application (Viper.Game3D.Quality)
+// Quality — quality preset application (Zanna.Game3D.Quality)
 //=========================================================================
 
 /// @brief Apply a render quality preset (RT_GAME3D_QUALITY_*) to the world.
 void rt_game3d_quality_apply(void *world, int64_t quality);
 
 //=========================================================================
-// Prefab — primitive mesh-entity factories (Viper.Game3D.Prefab)
+// Prefab — primitive mesh-entity factories (Zanna.Game3D.Prefab)
 //=========================================================================
 
 /// @brief Create a cube entity of the given uniform size with a material.
@@ -914,7 +914,7 @@ void *rt_game3d_prefab_plane(double width, double depth, void *material);
 void *rt_game3d_prefab_ground(double size, void *material);
 
 //=========================================================================
-// Assets3D — model loading and caching (Viper.Game3D.Assets3D)
+// Assets3D — model loading and caching (Zanna.Game3D.Assets3D)
 //=========================================================================
 
 /// @brief Load a model from a filesystem path as a ready-to-spawn entity.
@@ -959,7 +959,7 @@ void rt_game3d_assets_preload_asset(rt_string path);
 void rt_game3d_assets_clear_cache(void);
 
 //=========================================================================
-// AssetHandle3D — asset-loading status/result handle (Viper.Game3D.AssetHandle3D)
+// AssetHandle3D — asset-loading status/result handle (Zanna.Game3D.AssetHandle3D)
 //=========================================================================
 
 /// @brief True once the asset request has reached a terminal state.
@@ -976,7 +976,7 @@ void *rt_game3d_asset_handle_get_entity(void *asset_handle);
 void *rt_game3d_asset_handle_get_template(void *asset_handle);
 
 //=========================================================================
-// ModelTemplate — cached model for instancing (Viper.Game3D.ModelTemplate)
+// ModelTemplate — cached model for instancing (Zanna.Game3D.ModelTemplate)
 //=========================================================================
 
 /// @brief Get the underlying loaded model backing the template.
@@ -999,7 +999,7 @@ void *rt_game3d_model_template_instantiate(void *model_template);
 void *rt_game3d_model_template_instantiate_scene_at(void *model_template, int64_t index);
 
 //=========================================================================
-// Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment3D /
+// Environment / EnvHandle — environment presets and builder (Zanna.Game3D.Environment3D /
 // EnvHandle)
 //=========================================================================
 
@@ -1025,7 +1025,7 @@ void *rt_game3d_env_handle_with_height_fog(void *obj,
                                            double falloff);
 
 //=========================================================================
-// Debug3D — debug visualization toggles (Viper.Game3D.Debug3D)
+// Debug3D — debug visualization toggles (Zanna.Game3D.Debug3D)
 //=========================================================================
 
 /// @brief Show or hide the on-screen debug stats overlay.
@@ -1040,7 +1040,7 @@ void rt_game3d_debug_draw_camera_info(void *world, int8_t enabled);
 void rt_game3d_debug_draw_capabilities(void *world, int8_t enabled);
 
 //=========================================================================
-// CharacterController3D — kinematic character mover (Viper.Game3D.CharacterController3D)
+// CharacterController3D — kinematic character mover (Zanna.Game3D.CharacterController3D)
 //=========================================================================
 
 /// @brief Create a capsule character controller bound to an entity in the world.
@@ -1097,7 +1097,7 @@ void *rt_game3d_character_controller_probe_vault(void *controller,
                                                  double max_thickness);
 
 //=========================================================================
-// Combat volumes and health (Viper.Game3D.Hitbox3D / Health3D / events)
+// Combat volumes and health (Zanna.Game3D.Hitbox3D / Health3D / events)
 //=========================================================================
 
 /// @brief Create an entity-space combat volume (kind Hurt, team 0, channel 1).
@@ -1225,7 +1225,7 @@ int64_t rt_game3d_damage_event_get_tag(void *event);
 int8_t rt_game3d_damage_event_get_was_lethal(void *event);
 
 //=========================================================================
-// FirstPersonController — FPS camera/movement rig (Viper.Game3D.FirstPersonController)
+// FirstPersonController — FPS camera/movement rig (Zanna.Game3D.FirstPersonController)
 //=========================================================================
 
 /// @brief Create a first-person controller bound to the world's camera.
@@ -1252,7 +1252,7 @@ void rt_game3d_first_person_controller_update(void *controller, void *world, dou
 void rt_game3d_first_person_controller_late_update(void *controller, void *world, double dt);
 
 //=========================================================================
-// FreeFlyController — unconstrained spectator camera (Viper.Game3D.FreeFlyController)
+// FreeFlyController — unconstrained spectator camera (Zanna.Game3D.FreeFlyController)
 //=========================================================================
 
 /// @brief Create a free-fly (noclip spectator) controller for the world's camera.
@@ -1275,7 +1275,7 @@ void rt_game3d_free_fly_controller_update(void *controller, void *world, double 
 void rt_game3d_free_fly_controller_late_update(void *controller, void *world, double dt);
 
 //=========================================================================
-// OrbitController — target-orbiting camera (Viper.Game3D.OrbitController)
+// OrbitController — target-orbiting camera (Zanna.Game3D.OrbitController)
 //=========================================================================
 
 /// @brief Create an orbit controller circling the given target for the world's camera.
@@ -1302,7 +1302,7 @@ void rt_game3d_orbit_controller_update(void *controller, void *world, double dt)
 void rt_game3d_orbit_controller_late_update(void *controller, void *world, double dt);
 
 //=========================================================================
-// FollowController — smoothed third-person chase camera (Viper.Game3D.FollowController)
+// FollowController — smoothed third-person chase camera (Zanna.Game3D.FollowController)
 //=========================================================================
 
 /// @brief Create a follow controller chasing the target entity at the given offset.
@@ -1326,7 +1326,7 @@ void rt_game3d_follow_controller_late_update(void *controller, void *world, doub
 
 //=========================================================================
 // ThirdPersonController — collision-aware spring-arm over-the-shoulder camera
-// with camera-relative character drive (Viper.Game3D.ThirdPersonController)
+// with camera-relative character drive (Zanna.Game3D.ThirdPersonController)
 //=========================================================================
 
 /// @brief Create a third-person spring-arm controller orbiting the target entity.
@@ -1405,7 +1405,7 @@ void rt_game3d_thirdperson_controller_update(void *controller, void *world, doub
 void rt_game3d_thirdperson_controller_late_update(void *controller, void *world, double dt);
 
 //=========================================================================
-// RailCamera3D — spline camera on a Path3D (Viper.Game3D.RailCamera3D)
+// RailCamera3D — spline camera on a Path3D (Zanna.Game3D.RailCamera3D)
 //=========================================================================
 
 /// @brief Create a rail camera riding a Path3D (arclength-constant traversal).
@@ -1443,7 +1443,7 @@ void rt_game3d_rail_camera_late_update(void *controller, void *world, double dt)
 
 //=========================================================================
 // TargetLock3D — lock-on target acquisition, cycling, and framing source
-// (Viper.Game3D.TargetLock3D)
+// (Zanna.Game3D.TargetLock3D)
 //=========================================================================
 
 /// @brief Create a lock-on helper scoring candidates around the owner entity.
@@ -1494,7 +1494,7 @@ int8_t rt_game3d_targetlock_just_lost(void *lock);
 void *rt_game3d_targetlock_locked_move_bias(void *lock, void *move);
 
 //=========================================================================
-// Timeline3D — in-engine cutscene sequencer (Viper.Game3D.Timeline3D)
+// Timeline3D — in-engine cutscene sequencer (Zanna.Game3D.Timeline3D)
 //=========================================================================
 
 /// @brief Create an empty timeline bound to a world (start via playTimeline).
@@ -1552,7 +1552,7 @@ void *rt_game3d_world_active_timeline(void *world);
 void rt_game3d_world_stop_timeline(void *world);
 
 //=========================================================================
-// Dialogue3D — 3D conversation surface (Viper.Game3D.Dialogue3D)
+// Dialogue3D — 3D conversation surface (Zanna.Game3D.Dialogue3D)
 //=========================================================================
 
 /// @brief Create a conversation bound to a world (shown via Show).
@@ -1601,7 +1601,7 @@ void rt_game3d_dialogue_set_locale(void *dialogue, void *bundle);
 void rt_game3d_dialogue_set_style(void *dialogue, double panel_alpha, int64_t name_color);
 
 //=========================================================================
-// LipSync3D — amplitude visemes + blink/gaze layer (Viper.Game3D.LipSync3D)
+// LipSync3D — amplitude visemes + blink/gaze layer (Zanna.Game3D.LipSync3D)
 //=========================================================================
 
 /// @brief Create and attach a facial component to an entity (one per entity).
@@ -1631,7 +1631,7 @@ int8_t rt_game3d_lipsync_get_driving(void *lipsync);
 double rt_game3d_lipsync_get_level(void *lipsync);
 
 //=========================================================================
-// World3D — top-level game world bundling all subsystems (Viper.Game3D.World3D)
+// World3D — top-level game world bundling all subsystems (Zanna.Game3D.World3D)
 //=========================================================================
 
 /// @brief Create a game world (window + default camera/scene/physics/etc.).
@@ -1847,7 +1847,7 @@ void *rt_game3d_world_capture_final_frame(void *world);
 void rt_game3d_world_present(void *world);
 
 //=========================================================================
-// WorldStream3D — deterministic streaming state (Viper.Game3D.WorldStream3D)
+// WorldStream3D — deterministic streaming state (Zanna.Game3D.WorldStream3D)
 //=========================================================================
 
 /// @brief Create a stream controller bound to a live World3D.

@@ -22,9 +22,9 @@ The old collection names are already public, so the cleanup must be additive.
 
 Add canonical aliases:
 
-- `Viper.Collections.LruCache.Set(key, value)`
-- `Viper.Collections.BiMap.Set(key, value)`
-- `Viper.Collections.MultiMap.Add(key, value)`
+- `Zanna.Collections.LruCache.Set(key, value)`
+- `Zanna.Collections.BiMap.Set(key, value)`
+- `Zanna.Collections.MultiMap.Add(key, value)`
 
 Keep compatibility aliases:
 

@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-Viper generates native toolchain installers for Windows, macOS, and Linux, but
+Zanna generates native toolchain installers for Windows, macOS, and Linux, but
 the release path is not represented consistently in the repository. ADR 0025
 records a Windows release workflow that is no longer present, macOS signing and
 notarization do not yet validate every nested executable, and Linux package
@@ -29,7 +29,7 @@ remain manually dispatchable while release credentials and clean-machine test
 capacity are being configured. Each workflow must:
 
 1. build with the canonical platform build script;
-2. generate packages with `viper install-package`;
+2. generate packages with `zanna install-package`;
 3. run native structural verification for every artifact;
 4. sign and verify signatures when release credentials are configured;
 5. run the platform's install, functional, upgrade, and uninstall checks on a

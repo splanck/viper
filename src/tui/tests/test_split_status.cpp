@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,14 +22,14 @@
 
 #include <memory>
 
-using viper::tui::render::ScreenBuffer;
-using viper::tui::style::Role;
-using viper::tui::style::Theme;
-using viper::tui::ui::Rect;
-using viper::tui::ui::Widget;
-using viper::tui::widgets::HSplitter;
-using viper::tui::widgets::StatusBar;
-using viper::tui::widgets::VSplitter;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::style::Role;
+using zanna::tui::style::Theme;
+using zanna::tui::ui::Rect;
+using zanna::tui::ui::Widget;
+using zanna::tui::widgets::HSplitter;
+using zanna::tui::widgets::StatusBar;
+using zanna::tui::widgets::VSplitter;
 
 struct Dummy : Widget {
     void paint(ScreenBuffer &) override {}
@@ -74,6 +74,6 @@ TEST(TUI, SplitStatus) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

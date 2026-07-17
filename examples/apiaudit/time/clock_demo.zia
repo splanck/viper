@@ -1,14 +1,14 @@
 // =============================================================================
-// API Audit: Viper.Time.Clock - System Clock Utilities
+// API Audit: Zanna.Time.Clock - System Clock Utilities
 // =============================================================================
 // Tests: Ticks, TicksUs, Sleep
 // =============================================================================
 
 module ClockDemo;
-bind Viper.Terminal;
-bind Viper.Time.Clock as Clk;
+bind Zanna.Terminal;
+bind Zanna.Time.Clock as Clk;
 func start() {
-    Say("=== API Audit: Viper.Time.Clock ===");
+    Say("=== API Audit: Zanna.Time.Clock ===");
 
     // --- Ticks ---
     Say("--- Ticks ---");

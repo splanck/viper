@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/term/term_io.cpp
-// Purpose: Provide terminal I/O backends for the Viper TUI runtime, covering the
+// Purpose: Provide terminal I/O backends for the Zanna TUI runtime, covering the
 //          real ANSI terminal bridge and a string-backed mock used by tests and
 //          headless tooling.
 // Key invariants: RealTermIO streams bytes directly to stdout and flushes on
@@ -15,12 +15,12 @@
 // Ownership/Lifetime: Implementations borrow or own only their immediate
 //                     buffers—no global state beyond the C stdio handles is
 //                     touched.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements concrete terminal I/O strategies for the Viper TUI.
+/// @brief Implements concrete terminal I/O strategies for the Zanna TUI.
 /// @details The runtime needs both a production bridge that writes escape
 ///          sequences to stdout and a capture backend for tests.  This file
 ///          collects their definitions so callers can switch implementations
@@ -29,7 +29,7 @@
 #include "tui/term/term_io.hpp"
 #include <cstdio>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 
 /// @brief Emit raw bytes to the process stdout stream.
 /// @details Writes the provided view in a single @ref std::fwrite call when the
@@ -83,4 +83,4 @@ void StringTermIO::clear() {
     buf_.clear();
 }
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

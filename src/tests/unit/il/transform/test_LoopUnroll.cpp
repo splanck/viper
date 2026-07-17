@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,10 +54,10 @@ BasicBlock *findBlock(Function &function, const std::string &label) {
 void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fnRef) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fnRef);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",
@@ -65,9 +65,9 @@ void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+    registry.registerFunctionAnalysis<zanna::analysis::BasicAA>(
         "basic-aa",
-        [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
+        [](Module &mod, Function &fnRef) { return zanna::analysis::BasicAA(mod, fnRef); });
 }
 
 /// @brief Test that a simple for(i=0; i<4; i++) loop gets unrolled.
@@ -227,10 +227,10 @@ void testSimpleCountedLoop() {
 void setupAnalysisRegistry2(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fnRef) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fnRef);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",
@@ -238,9 +238,9 @@ void setupAnalysisRegistry2(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+    registry.registerFunctionAnalysis<zanna::analysis::BasicAA>(
         "basic-aa",
-        [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
+        [](Module &mod, Function &fnRef) { return zanna::analysis::BasicAA(mod, fnRef); });
 }
 
 /// @brief Test that loops exceeding trip count threshold are not unrolled.

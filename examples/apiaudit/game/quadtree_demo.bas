@@ -1,4 +1,4 @@
-' quadtree_demo.bas - Comprehensive API audit for Viper.Game.Quadtree
+' quadtree_demo.bas - Comprehensive API audit for Zanna.Game.Quadtree
 ' Tests: New, Insert, Remove, Update, QueryRectResult, QueryPointResult,
 '        QueryPairs, QueryResult, QuadtreePairResult, ItemCount, Clear
 
@@ -7,7 +7,7 @@ PRINT "=== Quadtree API Audit ==="
 ' --- New (x, y, width, height) ---
 PRINT "--- New ---"
 DIM qt AS OBJECT
-qt = Viper.Game.Quadtree.New(0, 0, 800, 600)
+qt = Zanna.Game.Quadtree.New(0, 0, 800, 600)
 PRINT qt.ItemCount       ' 0
 
 ' --- Insert (id, x, y, w, h) ---

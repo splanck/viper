@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale_info.c
-// Purpose: Implementation of Viper.Localization.LocaleInfo. Each query pulls
+// Purpose: Implementation of Zanna.Localization.LocaleInfo. Each query pulls
 //          the bound rt_locale_data_t via rt_locale_get_data (which falls back
 //          to the invariant record when the Locale has no bound data) and
 //          returns a fresh rt_string with the appropriate field.

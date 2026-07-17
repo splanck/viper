@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Threads.Barrier
+// API Audit: Zanna.Threads.Barrier
 // =============================================================================
 // Tests: New, Arrive, Reset, Parties, Waiting
 // =============================================================================
 
 module BarrierDemo;
-bind Viper.Threads.Barrier as Barrier;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Barrier as Barrier;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Barrier ===");
+    Say("=== API Audit: Zanna.Threads.Barrier ===");
 
     // --- New ---
     Say("--- New ---");

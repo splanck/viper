@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_textwrap.c
 // Purpose: Implements text word-wrapping and layout utilities for the
-//          Viper.Text.TextWrapper class: Wrap/WrapLines/Fill, Indent/Dedent/
+//          Zanna.Text.TextWrapper class: Wrap/WrapLines/Fill, Indent/Dedent/
 //          Hang, Truncate/TruncateWith/Shorten, AlignLeft/AlignRight/Center,
 //          and the LineCount/MaxLineLength measurements.
 //

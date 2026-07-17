@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -134,20 +134,20 @@ inline bool isLoadFromTempPtr(const Instr &I) {
 }
 
 inline std::optional<unsigned> accessSize(const Instr &I) {
-    return viper::analysis::BasicAA::typeSizeBytes(I.type);
+    return zanna::analysis::BasicAA::typeSizeBytes(I.type);
 }
 
 bool fullyOverwrites(const Value &laterPtr,
                      std::optional<unsigned> laterSize,
                      const Value &earlierPtr,
                      std::optional<unsigned> earlierSize,
-                     viper::analysis::BasicAA &AA) {
+                     zanna::analysis::BasicAA &AA) {
     if (!laterSize || !earlierSize)
         return false;
     if (*laterSize < *earlierSize)
         return false;
     return AA.alias(laterPtr, earlierPtr, laterSize, earlierSize) ==
-           viper::analysis::AliasResult::MustAlias;
+           zanna::analysis::AliasResult::MustAlias;
 }
 
 } // namespace
@@ -155,8 +155,8 @@ bool fullyOverwrites(const Value &laterPtr,
 /// @brief Run dse.
 bool runDSE(Function &F, AnalysisManager &AM) {
     // Acquire BasicAA when available
-    viper::analysis::BasicAA &AA =
-        AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
+    zanna::analysis::BasicAA &AA =
+        AM.getFunctionResult<zanna::analysis::BasicAA>(kAnalysisBasicAA, F);
     std::vector<InstructionSite> toRemove;
 
     for (auto &B : F.blocks) {
@@ -171,7 +171,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
                 Addr a{I.operands[0], accessSize(I)};
                 for (auto it = killed.begin(); it != killed.end();) {
                     if (AA.alias(a.v, it->v, a.size, it->size) !=
-                        viper::analysis::AliasResult::NoAlias)
+                        zanna::analysis::AliasResult::NoAlias)
                         it = killed.erase(it);
                     else
                         ++it;
@@ -182,7 +182,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
             // Calls: conservative clobber when may Mod/Ref
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
                 auto mr = AA.modRef(I);
-                if (mr != viper::analysis::ModRefResult::NoModRef)
+                if (mr != zanna::analysis::ModRefResult::NoModRef)
                     killed.clear();
                 continue;
             }
@@ -304,8 +304,8 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
     if (hasExceptionHandling(F))
         return false;
 
-    viper::analysis::BasicAA &AA =
-        AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
+    zanna::analysis::BasicAA &AA =
+        AM.getFunctionResult<zanna::analysis::BasicAA>(kAnalysisBasicAA, F);
 
     // Build a map from block label to block pointer for successor lookup
     std::unordered_map<std::string, BasicBlock *> blockMap;
@@ -315,8 +315,8 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
 
     bool changed = false;
     std::vector<PendingStore> pendingStores;
-    const auto defs = viper::analysis::collectAllocaRootDefs(F);
-    const auto roots = viper::analysis::computeAllocaRoots(F, defs);
+    const auto defs = zanna::analysis::collectAllocaRootDefs(F);
+    const auto roots = zanna::analysis::computeAllocaRoots(F, defs);
 
     // For each block, look for stores to non-escaping allocas
     for (auto &B : F.blocks) {
@@ -330,15 +330,15 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 continue;
 
             // Only consider stores to allocas (stack allocations)
-            auto allocaId = viper::analysis::getAllocaId(ptr, defs);
+            auto allocaId = zanna::analysis::getAllocaId(ptr, defs);
             if (!allocaId)
                 continue;
 
             // Skip if the alloca escapes
-            if (viper::analysis::allocaEscapes(F, *allocaId, roots))
+            if (zanna::analysis::allocaEscapes(F, *allocaId, roots))
                 continue;
 
-            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            auto storeSize = zanna::analysis::BasicAA::typeSizeBytes(I.type);
 
             // Check if this store is read before being killed
             // Walk forward from this point to see if store is dead
@@ -349,16 +349,16 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
             for (size_t j = i + 1; j < B.instructions.size(); ++j) {
                 const Instr &next = B.instructions[j];
                 if (next.op == Opcode::Load && !next.operands.empty()) {
-                    auto loadSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                    auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
                     if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                        viper::analysis::AliasResult::NoAlias) {
+                        zanna::analysis::AliasResult::NoAlias) {
                         reachedRead = true;
                         isDeadStore = false;
                         break;
                     }
                 }
                 if (next.op == Opcode::Store && !next.operands.empty()) {
-                    auto nextSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                    auto nextSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
                     if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
                         // Killed by later store in same block - already handled
                         // by intra-block DSE
@@ -369,7 +369,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 // Conservative for calls
                 if (next.op == Opcode::Call || next.op == Opcode::CallIndirect) {
                     auto mr = AA.modRef(next);
-                    if (mr != viper::analysis::ModRefResult::NoModRef) {
+                    if (mr != zanna::analysis::ModRefResult::NoModRef) {
                         isDeadStore = false;
                         break;
                     }
@@ -406,19 +406,19 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 BasicBlock *succ = it->second;
                 for (const auto &next : succ->instructions) {
                     if (next.op == Opcode::Load && !next.operands.empty()) {
-                        auto loadSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                        auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
                         if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                            viper::analysis::AliasResult::NoAlias)
+                            zanna::analysis::AliasResult::NoAlias)
                             return finish(false);
                     }
                     if (next.op == Opcode::Store && !next.operands.empty()) {
-                        auto nextSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                        auto nextSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
                         if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA))
                             return finish(true);
                     }
                     if (next.op == Opcode::Call || next.op == Opcode::CallIndirect) {
                         auto mr = AA.modRef(next);
-                        if (mr != viper::analysis::ModRefResult::NoModRef)
+                        if (mr != zanna::analysis::ModRefResult::NoModRef)
                             return finish(false);
                     }
                 }
@@ -472,8 +472,8 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
     if (hasExceptionHandling(F))
         return false;
 
-    viper::analysis::MemorySSA &mssa =
-        AM.getFunctionResult<viper::analysis::MemorySSA>(kAnalysisMemorySSA, F);
+    zanna::analysis::MemorySSA &mssa =
+        AM.getFunctionResult<zanna::analysis::MemorySSA>(kAnalysisMemorySSA, F);
 
     std::vector<InstructionSite> toRemove;
 

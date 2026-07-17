@@ -1,5 +1,5 @@
 ' =============================================================================
-' API Audit: Viper.Network.Url (BASIC)
+' API Audit: Zanna.Network.Url (BASIC)
 ' =============================================================================
 ' Tests: Parse, New, Scheme, Host, Port, Path, Query, Fragment, User, Pass,
 '        Authority, HostPort, Full, SetQueryParam, GetQueryParam,
@@ -7,11 +7,11 @@
 '        IsValid
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Network.Url ==="
+PRINT "=== API Audit: Zanna.Network.Url ==="
 
 ' --- Parse ---
 PRINT "--- Parse ---"
-DIM u AS OBJECT = Viper.Network.Url.Parse("https://user:pass@example.com:8080/path/to/page?key=val&a=b#section")
+DIM u AS OBJECT = Zanna.Network.Url.Parse("https://user:pass@example.com:8080/path/to/page?key=val&a=b#section")
 PRINT "Parsed URL"
 
 ' --- Scheme ---
@@ -60,7 +60,7 @@ PRINT u.Full
 
 ' --- New (empty URL builder) ---
 PRINT "--- New ---"
-DIM u2 AS OBJECT = Viper.Network.Url.New()
+DIM u2 AS OBJECT = Zanna.Network.Url.New()
 u2.Scheme = "https"
 u2.Host = "api.example.com"
 u2.Port = 443
@@ -69,53 +69,53 @@ PRINT "Built URL: "; u2.Full
 
 ' --- SetQueryParam --- (use static calls: A-072 workaround for BASIC method dispatch)
 PRINT "--- SetQueryParam ---"
-Viper.Network.Url.SetQueryParam(u2, "page", "1")
-Viper.Network.Url.SetQueryParam(u2, "limit", "10")
-PRINT Viper.Network.Url.get_Full(u2)
+Zanna.Network.Url.SetQueryParam(u2, "page", "1")
+Zanna.Network.Url.SetQueryParam(u2, "limit", "10")
+PRINT Zanna.Network.Url.get_Full(u2)
 
 ' --- GetQueryParam ---
 PRINT "--- GetQueryParam ---"
-PRINT "page: "; Viper.Network.Url.GetQueryParam(u2, "page")
-PRINT "limit: "; Viper.Network.Url.GetQueryParam(u2, "limit")
+PRINT "page: "; Zanna.Network.Url.GetQueryParam(u2, "page")
+PRINT "limit: "; Zanna.Network.Url.GetQueryParam(u2, "limit")
 
 ' --- HasQueryParam ---
 PRINT "--- HasQueryParam ---"
-PRINT "Has page: "; Viper.Network.Url.HasQueryParam(u2, "page")
-PRINT "Has missing: "; Viper.Network.Url.HasQueryParam(u2, "missing")
+PRINT "Has page: "; Zanna.Network.Url.HasQueryParam(u2, "page")
+PRINT "Has missing: "; Zanna.Network.Url.HasQueryParam(u2, "missing")
 
 ' --- DelQueryParam ---
 PRINT "--- DelQueryParam ---"
-Viper.Network.Url.RemoveQueryParam(u2, "page")
-PRINT "Has page after delete: "; Viper.Network.Url.HasQueryParam(u2, "page")
-PRINT Viper.Network.Url.get_Full(u2)
+Zanna.Network.Url.RemoveQueryParam(u2, "page")
+PRINT "Has page after delete: "; Zanna.Network.Url.HasQueryParam(u2, "page")
+PRINT Zanna.Network.Url.get_Full(u2)
 
 ' --- Clone ---
 PRINT "--- Clone ---"
-DIM u3 AS OBJECT = Viper.Network.Url.Clone(u)
-PRINT Viper.Network.Url.get_Full(u3)
+DIM u3 AS OBJECT = Zanna.Network.Url.Clone(u)
+PRINT Zanna.Network.Url.get_Full(u3)
 
 ' --- Resolve ---
 PRINT "--- Resolve ---"
-DIM base AS OBJECT = Viper.Network.Url.Parse("https://example.com/a/b/c")
-DIM resolved AS OBJECT = Viper.Network.Url.Resolve(base, "/x/y/z")
-PRINT Viper.Network.Url.get_Full(resolved)
+DIM base AS OBJECT = Zanna.Network.Url.Parse("https://example.com/a/b/c")
+DIM resolved AS OBJECT = Zanna.Network.Url.Resolve(base, "/x/y/z")
+PRINT Zanna.Network.Url.get_Full(resolved)
 
 ' --- Encode ---
 PRINT "--- Encode ---"
-PRINT Viper.Network.Url.Encode("hello world&foo=bar")
+PRINT Zanna.Network.Url.Encode("hello world&foo=bar")
 
 ' --- Decode ---
 PRINT "--- Decode ---"
-PRINT Viper.Network.Url.Decode("hello%20world%26foo%3Dbar")
+PRINT Zanna.Network.Url.Decode("hello%20world%26foo%3Dbar")
 
 ' --- IsValid ---
 PRINT "--- IsValid ---"
-PRINT "Valid URL: "; Viper.Network.Url.IsValid("https://example.com")
-PRINT "Invalid URL: "; Viper.Network.Url.IsValid("not a url")
+PRINT "Valid URL: "; Zanna.Network.Url.IsValid("https://example.com")
+PRINT "Invalid URL: "; Zanna.Network.Url.IsValid("not a url")
 
 ' --- Setters ---
 PRINT "--- Setters ---"
-DIM u4 AS OBJECT = Viper.Network.Url.New()
+DIM u4 AS OBJECT = Zanna.Network.Url.New()
 u4.Scheme = "ftp"
 u4.Host = "files.example.com"
 u4.Path = "/pub/data.txt"
@@ -132,7 +132,7 @@ PRINT "Full: "; u4.Full
 
 ' --- Simple URL ---
 PRINT "--- Simple URL ---"
-DIM u5 AS OBJECT = Viper.Network.Url.Parse("http://localhost:3000")
+DIM u5 AS OBJECT = Zanna.Network.Url.Parse("http://localhost:3000")
 PRINT "Scheme: "; u5.Scheme
 PRINT "Host: "; u5.Host
 PRINT "Port: "; u5.Port

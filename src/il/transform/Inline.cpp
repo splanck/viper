@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -321,7 +321,7 @@ void ensureValueName(Function &F, unsigned id, const std::string &name) {
     F.valueNames[id] = name;
 }
 
-InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGraph &cg) {
+InlineCost evaluateInlineCost(const Function &fn, const zanna::analysis::CallGraph &cg) {
     InlineCost cost;
     cost.instrCount = countInstructions(fn);
     cost.blockCount = static_cast<unsigned>(fn.blocks.size());
@@ -351,7 +351,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
     // when jumping to the cloned entry block (see inlineCallSite).
 
     for (const auto &B : fn.blocks) {
-        if (!viper::il::isTerminated(B)) {
+        if (!zanna::il::isTerminated(B)) {
             cost.unsupportedCFG = true;
             continue;
         }
@@ -649,7 +649,7 @@ bool inlineCallSite(Function &caller,
     if (!returnsValue && callInstr.result)
         return false;
 
-    unsigned nextId = viper::il::nextTempId(caller);
+    unsigned nextId = zanna::il::nextTempId(caller);
 
     // Value mapping from callee temps/params to caller values.
     std::unordered_map<unsigned, Value> valueMap;
@@ -675,7 +675,7 @@ bool inlineCallSite(Function &caller,
     continuation.instructions.assign(callBlock.instructions.begin() +
                                          static_cast<long>(callIndex + 1),
                                      callBlock.instructions.end());
-    continuation.terminated = viper::il::isTerminated(continuation);
+    continuation.terminated = zanna::il::isTerminated(continuation);
 
     // Compute return param info (but don't add to continuation yet).
     std::unordered_set<std::string> usedValueNames = collectUsedValueNames(caller);
@@ -791,7 +791,7 @@ bool inlineCallSite(Function &caller,
         ensureValueName(caller, retParam.id, retParam.name);
 
         Value repl = Value::temp(retParam.id);
-        viper::il::UseDefInfo useInfo(caller);
+        zanna::il::UseDefInfo useInfo(caller);
         useInfo.replaceAllUses(*callInstr.result, repl);
         replaceUsesInBlock(continuation, *callInstr.result, repl);
     }
@@ -923,7 +923,7 @@ bool inlineCallSite(Function &caller,
         }
 
         if (!clone.terminated)
-            clone.terminated = viper::il::isTerminated(clone);
+            clone.terminated = zanna::il::isTerminated(clone);
 
         clonedBlocks.push_back(std::move(clone));
     }
@@ -987,7 +987,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
 
     const unsigned maxRounds = config_.aggressive ? 8U : 1U;
     for (unsigned round = 0; round < maxRounds; ++round) {
-        viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(module);
+        zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(module);
 
         std::unordered_map<std::string, const Function *> functionLookup;
         std::unordered_map<std::string, InlineCost> costCache;

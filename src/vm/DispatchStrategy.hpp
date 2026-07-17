@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,10 +24,10 @@
 //   3. Threaded (Computed Goto)
 //      - Uses vm/ops/generated/ThreadedLabels.inc + ThreadedCases.inc
 //      - goto *kOpLabels[opcode] with LBL_* labels
-//      - Fastest dispatch, GCC/Clang only (VIPER_THREADING_SUPPORTED)
+//      - Fastest dispatch, GCC/Clang only (ZANNA_THREADING_SUPPORTED)
 //
 // Strategy Selection:
-// - Environment: VIPER_DISPATCH=threaded|switch|table
+// - Environment: ZANNA_DISPATCH=threaded|switch|table
 // - API: VM constructor DispatchKind parameter
 // - Default: Threaded if supported, otherwise Switch
 //

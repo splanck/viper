@@ -1,9 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// This source file is part of the Viper project.
+// This source file is part of the Zanna project.
 //
 // File: src/frontends/basic/constfold/FoldLogical.cpp
 // Purpose: Realise the logical-expression portion of the BASIC constant folder
@@ -159,7 +159,7 @@ std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
         default:
             return std::nullopt;
     }
-#ifdef VIPER_CONSTFOLD_ASSERTS
+#ifdef ZANNA_CONSTFOLD_ASSERTS
     if (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalOr) {
         long long swapped =
             (op == AST::BinaryExpr::Op::LogicalAnd) ? (right & left) : (right | left);

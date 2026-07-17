@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_map.c
 // Purpose: Implements the primary string-keyed hash map (Map / Dictionary) for
-//   the Viper runtime. Maps arbitrary string keys to object values using keyed
+//   the Zanna runtime. Maps arbitrary string keys to object values using keyed
 //   SipHash-2-4 with separate chaining. Supports get, put, remove, contains,
 //   keys, values, and iteration. This is the most commonly used associative
-//   collection in the Viper standard library.
+//   collection in the Zanna standard library.
 //
 // Key invariants:
 //   - Initial capacity is MAP_INITIAL_CAPACITY (16) buckets; resizes (doubles)
@@ -111,12 +111,12 @@ static rt_map_impl *as_map(void *obj, const char *what) {
     return (rt_map_impl *)obj;
 }
 
-/// @brief Extracts C string data and length from a Viper string.
+/// @brief Extracts C string data and length from a Zanna string.
 ///
 /// Helper function to safely get the underlying character data from a
-/// Viper string object for use with the hash table operations.
+/// Zanna string object for use with the hash table operations.
 ///
-/// @param key The Viper string to extract data from.
+/// @param key The Zanna string to extract data from.
 /// @param out_len Pointer to receive the string length.
 ///
 /// @return Pointer to the string's character data (not owned by caller).
@@ -194,7 +194,7 @@ static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 
 /// @brief Finalizer callback invoked when a Map is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// Map object becomes unreachable. It clears all entries (freeing keys and
 /// releasing value references) and frees the buckets array.
 ///

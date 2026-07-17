@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Debouncer (BASIC)
+' API Audit: Zanna.Threads.Debouncer (BASIC)
 ' =============================================================================
 ' Tests: New, Signal, IsReady, Reset, Delay, SignalCount
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Debouncer ==="
+PRINT "=== API Audit: Zanna.Threads.Debouncer ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM d AS OBJECT = Viper.Threads.Debouncer.New(100)
+DIM d AS OBJECT = Zanna.Threads.Debouncer.New(100)
 PRINT "Created debouncer with 100ms delay"
 
 ' --- Delay ---
@@ -47,7 +47,7 @@ PRINT "IsReady after Reset: "; d.IsReady
 
 ' --- New with 0 delay ---
 PRINT "--- New with 0 delay ---"
-DIM d2 AS OBJECT = Viper.Threads.Debouncer.New(0)
+DIM d2 AS OBJECT = Zanna.Threads.Debouncer.New(0)
 PRINT "Delay: "; d2.Delay
 d2.Signal()
 PRINT "SignalCount: "; d2.SignalCount

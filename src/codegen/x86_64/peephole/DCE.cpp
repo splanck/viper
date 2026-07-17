@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 namespace {
 
 using RegMask = uint64_t;
@@ -272,4 +272,4 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs,
     return eliminated;
 }
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

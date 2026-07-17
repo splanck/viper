@@ -158,7 +158,7 @@ To implement an interface, a class must:
 3. Match the exact signatures (names, parameters, return types)
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -189,7 +189,7 @@ Both classes are Drawable. They each provide their own implementation of `draw()
 If you claim to implement an interface but forget a method, the compiler will complain:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -421,7 +421,7 @@ You can't express this with single inheritance. A smartphone isn't "a type of ph
 ### Implementing Multiple Interfaces
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -500,7 +500,7 @@ Each class implements exactly what it needs. No more, no less.
 You can combine inheritance and interfaces. This is common and powerful.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     expose Integer health;
@@ -549,7 +549,7 @@ class Goblin implements Drawable extends Enemy { ... }
 ### A Richer Example
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class GameObject {
     expose Integer id;
@@ -1025,8 +1025,8 @@ Interfaces are perfect for plugin systems where you don't know what implementati
 ```rust
 module PluginSystem;
 
-bind Viper.Terminal;
-bind Viper.String as Str;
+bind Zanna.Terminal;
+bind Zanna.String as Str;
 
 // Interface that all plugins must implement
 interface Plugin {
@@ -1130,7 +1130,7 @@ This is the power of interfaces: *designing for extension without modification*.
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Printable {
     func print();
@@ -1210,7 +1210,7 @@ if data.Length < 10 {
 The observer pattern notifies interested parties when something happens:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Observer {
     func onEvent(event: String);

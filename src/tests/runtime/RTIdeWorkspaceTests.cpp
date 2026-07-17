@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTIdeWorkspaceTests.cpp
@@ -63,7 +63,7 @@ static std::string read_file(const fs::path &path) {
 
 static fs::path temp_root() {
     auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-    fs::path root = fs::temp_directory_path() / ("viper_ide_workspace_" + std::to_string(now));
+    fs::path root = fs::temp_directory_path() / ("zanna_ide_workspace_" + std::to_string(now));
     fs::create_directories(root);
     return root;
 }
@@ -330,11 +330,11 @@ static void test_workspace_edits() {
     assert(read_file(a) == "one\nTWO\n");
     assert(read_file(b) == "ALPHA\nbeta\n");
 
-    // VDOC-196: a successful apply leaves no `.viper-edit-*` temp/backup sidecars
+    // VDOC-196: a successful apply leaves no `.zanna-edit-*` temp/backup sidecars
     // behind (backups are reserved with unpredictable names and cleaned up).
     for (const auto &entry : fs::directory_iterator(root)) {
         const std::string name = entry.path().filename().string();
-        assert(name.find(".viper-edit-") == std::string::npos);
+        assert(name.find(".zanna-edit-") == std::string::npos);
     }
 
     write_file(a, "abcdef\n");

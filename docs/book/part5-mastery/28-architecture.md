@@ -589,8 +589,8 @@ MVC separates user interface applications into three components:
 **Controller** handles user input and coordinates between model and view. It translates user actions into model updates and triggers view refreshes.
 
 ```text
-bind Convert = Viper.Core.Convert;
-bind Viper.Text.Fmt as Fmt;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Text.Fmt as Fmt;
 
 // Model: Business logic and data
 class TodoList {
@@ -2127,7 +2127,7 @@ But rewriting is expensive and risky. Usually, incremental improvement is better
 
 ## The Three Languages
 
-Architecture concepts are language-independent. Here is how they appear in Viper's three languages.
+Architecture concepts are language-independent. Here is how they appear in Zanna's three languages.
 
 **Zia**
 ```rust
@@ -2269,7 +2269,7 @@ Write tests for your implementation.
 **Exercise 28.8 (Refactoring Journey)**: Take this starter code and refactor it step by step:
 
 ```rust
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 func main() {
     var items = [];
@@ -2311,7 +2311,7 @@ Document your architecture decisions and implement at least two sample plugins.
 
 ---
 
-*Congratulations! You have completed the main chapters of The Viper Book. You have learned programming from the ground up, from your first "Hello, World!" to architecting complex systems.*
+*Congratulations! You have completed the main chapters of The Zanna Book. You have learned programming from the ground up, from your first "Hello, World!" to architecting complex systems.*
 
 *The appendices provide quick references for the languages and runtime. Use them as you continue your journey.*
 

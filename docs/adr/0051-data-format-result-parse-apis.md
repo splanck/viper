@@ -15,10 +15,10 @@ Accepted
 Several text and data parsing APIs reported failures through side-channel error
 methods:
 
-- `Viper.Text.JsonStream.Error`
-- `Viper.Data.Xml.Error`
-- `Viper.Data.Yaml.Error`
-- `Viper.Data.Serialize.Error`
+- `Zanna.Text.JsonStream.Error`
+- `Zanna.Data.Xml.Error`
+- `Zanna.Data.Yaml.Error`
+- `Zanna.Data.Serialize.Error`
 
 That pattern is easy to use in small examples, but it is fragile in production
 code because the successful value and failure diagnostic are split across
@@ -30,11 +30,11 @@ distinguish them.
 
 Add Result-returning parse and token APIs while preserving every existing API:
 
-- `JsonStream.NextResult() -> Viper.Result`
-- `Xml.ParseResult(xml) -> Viper.Result`
-- `Yaml.ParseResult(yaml) -> Viper.Result`
-- `Serialize.ParseResult(text, format) -> Viper.Result`
-- `Serialize.AutoParseResult(text) -> Viper.Result`
+- `JsonStream.NextResult() -> Zanna.Result`
+- `Xml.ParseResult(xml) -> Zanna.Result`
+- `Yaml.ParseResult(yaml) -> Zanna.Result`
+- `Serialize.ParseResult(text, format) -> Zanna.Result`
+- `Serialize.AutoParseResult(text) -> Zanna.Result`
 
 Successful document parses return `Ok(value)`. Valid null documents return
 `Ok(NULL)`. Parse, tokenization, format-detection, nil-input, and unknown-format

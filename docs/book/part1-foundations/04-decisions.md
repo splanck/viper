@@ -85,7 +85,7 @@ Here's the mental picture you should hold in your mind: You're walking down a pa
 You can't take both paths. You can't take neither. You must choose one.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var gateOpen = true;
 
@@ -109,7 +109,7 @@ This is the fundamental pattern of decision-making in programs. Master this, and
 The simplest form has no `else`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var temperature = 35;
 
@@ -179,7 +179,7 @@ if password == secret { ... }  // do passwords match?
 Here's a crucial skill for programmers: you need to be able to "run" code in your head, step by step, just like a computer would. Let's practice with another example:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var balance = 50;
 var price = 75;
@@ -219,7 +219,7 @@ Now imagine `balance` was `100`:
 When you need to do one thing OR another (but never both, and never neither), use `else`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hour = 14;
 
@@ -258,7 +258,7 @@ The room is always in exactly one of these states.
 Imagine a bouncer at a club checking IDs:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 17;
 
@@ -278,7 +278,7 @@ The bouncer doesn't have three or four responses. It's binary: you're either old
 Sometimes there are more than two possibilities:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hour = 20;
 
@@ -311,7 +311,7 @@ The final `else` catches anything that didn't match earlier conditions. It's the
 Consider this buggy code:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 95;
 
@@ -329,7 +329,7 @@ Wait — 95 is also >= 90. Shouldn't it print "Excellent work!"? Nope. We alread
 The fix: Put more specific conditions first.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 95;
 
@@ -461,7 +461,7 @@ In English, we use "equals" for both, which causes confusion. In code, they're c
 You can store boolean values in variables:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var isRaining = true;
 var hasUmbrella = false;
@@ -492,7 +492,7 @@ if !isRaining { ... }          // This is cleaner (we'll learn ! soon)
 You can store the result of a comparison:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 25;
 var canVote = age >= 18;    // canVote is now true
@@ -517,7 +517,7 @@ Often you need to check multiple things at once. The logical operators let you c
 The AND operator (`&&`) returns `true` only when BOTH sides are true.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 25;
 var hasTicket = true;
@@ -562,7 +562,7 @@ age < 18 && hasCar;               // false && false = false
 You can chain multiple conditions:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasTicket = true;
 var age = 25;
@@ -580,7 +580,7 @@ ALL three conditions must be true. Think of it as: "Do you have a ticket? Are yo
 The OR operator (`||`) returns `true` when AT LEAST ONE side is true.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = "Saturday";
 
@@ -618,7 +618,7 @@ hasCash || hasCard || hasCoupon; // false || true || false = true
 #### Real Example: Multiple Payment Methods
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasCash = false;
 var hasCard = true;
@@ -638,7 +638,7 @@ The customer can pay as long as they have at least one valid method.
 The NOT operator (`!`) reverses a boolean. True becomes false, false becomes true.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var gameOver = false;
 
@@ -661,7 +661,7 @@ Simple as that. NOT just flips the value.
 #### Common Uses of NOT
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Check if something is NOT the case
 if !isLoggedIn {
@@ -684,7 +684,7 @@ if !agreedToTerms {
 You can build complex conditions:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 42;
 var hasSpecialPass = false;
@@ -722,7 +722,7 @@ if (a || b) && c { ... }    // Clear: either a or b, AND c
 #### Complex Example: Movie Theater
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 15;
 var hasParent = true;
@@ -767,7 +767,7 @@ if true || someExpensiveFunction() {
 This is useful for safety checks:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Safe: if divisor is zero, the division never runs
 var divisor = 0;
@@ -785,7 +785,7 @@ If `divisor` is zero, the left side is false, so we never try to divide by zero.
 You can put `if` statements inside other `if` statements:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasAccount = true;
 var password = "secret123";
@@ -832,7 +832,7 @@ Each decision branches into more decisions. The program follows one path through
 Nesting works, but deep nesting gets hard to read:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasAccount = true;
 var isVerified = true;
@@ -871,7 +871,7 @@ This is sometimes called "pyramid of doom" or "arrow code" (because the indentat
 Often you can flatten nested code using "guard clauses" — checking for problems first and handling the happy path at the end:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasAccount = true;
 var isVerified = true;
@@ -922,11 +922,11 @@ Let's build some real programs that use decisions.
 
 ```rust
 module Grader;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print("Enter the score (0-100): ");
-    var score = Viper.Core.Convert.ToInt64(InputLine());
+    var score = Zanna.Core.Convert.ToInt64(InputLine());
 
     // First, validate the input
     if score < 0 || score > 100 {
@@ -977,11 +977,11 @@ Notice how the conditions are ordered from highest to lowest. A score of 85 isn'
 
 ```rust
 module AgeChecker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print("Enter your age: ");
-    var age = Viper.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(InputLine());
 
     Say("");  // Blank line for readability
 
@@ -1026,7 +1026,7 @@ func start() {
 
 ```rust
 module BattleGame;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Player stats
@@ -1055,7 +1055,7 @@ func start() {
     Say("3. Defend (reduce incoming damage by half)");
 
     Print("Your choice: ");
-    var choice = Viper.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
     var damage = 0;
     var defended = false;
@@ -1115,7 +1115,7 @@ func start() {
 
 ```rust
 module FormValidator;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Account Registration ===");
@@ -1131,7 +1131,7 @@ func start() {
 
     // Get age
     Print("Age: ");
-    var age = Viper.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(InputLine());
 
     // Validation
     var isValid = true;
@@ -1139,7 +1139,7 @@ func start() {
     Say("Validation results:");
 
     // Check username length
-    var usernameLength = Viper.String.get_Length(username);
+    var usernameLength = Zanna.String.get_Length(username);
     if usernameLength < 4 {
         Say("[FAIL] Username too short (minimum 4 characters)");
         isValid = false;
@@ -1151,7 +1151,7 @@ func start() {
     }
 
     // Check email contains @
-    if Viper.String.Has(email, "@") && Viper.String.Has(email, ".") {
+    if Zanna.String.Has(email, "@") && Zanna.String.Has(email, ".") {
         Say("[ OK ] Email format appears valid");
     } else {
         Say("[FAIL] Email must contain @ and .");
@@ -1186,7 +1186,7 @@ func start() {
 When you're comparing one value against many specific possibilities, `match` can be cleaner than a long `if-else if` chain:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = 3;
 
@@ -1226,7 +1226,7 @@ Use `if-else if` when:
 - Your conditions involve complex boolean expressions
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // GOOD use of match: checking one value against specific options
 match menuChoice {
@@ -1255,7 +1255,7 @@ if score >= 90 {
 You can match multiple values with `|`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = 6;
 match day {
@@ -1273,7 +1273,7 @@ Match shines in menu-driven programs:
 
 ```rust
 module MenuDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func newGame() {
     Say("Starting new game...");
@@ -1306,7 +1306,7 @@ func start() {
     Say("5. Quit");
     Print("Choose an option: ");
 
-    var choice = Viper.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
     match choice {
         1 => newGame(),
@@ -1326,7 +1326,7 @@ Notice that when you need multiple statements for a case, you use `{ }` braces.
 Match can be used as an expression that returns a value:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = 3;
 
@@ -1352,7 +1352,7 @@ This is more concise than setting a variable in each branch.
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 85;
 
@@ -1436,7 +1436,7 @@ Different languages disagree on whether empty strings are truthy or falsy. Zia a
 
 ```rust
 if name != "" { ... }       // Explicit: "if name is not empty"
-if Viper.String.get_Length(name) > 0 { ... }  // Also explicit
+if Zanna.String.get_Length(name) > 0 { ... }  // Also explicit
 ```
 
 ---
@@ -1453,7 +1453,7 @@ Your code inside an `if` block never executes, even when you think it should.
 
 1. **Print the actual values** before the condition:
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 85;
 Say("DEBUG: score = " + score);
@@ -1484,7 +1484,7 @@ The code takes the `else` path when it should take the `if` path (or vice versa)
 
 1. **Print the condition result**:
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 17;
 var result = age >= 18;
@@ -1493,7 +1493,7 @@ Say("DEBUG: age >= 18 evaluates to: " + result);
 
 2. **Simplify complex conditions**. Break them into parts:
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Instead of:
 if age >= 18 && hasID && !isBanned { ... }
@@ -1528,7 +1528,7 @@ You expected only one action, but multiple things happened.
 **Diagnosis:** You probably used multiple `if` statements instead of `if-else if`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // BUG: Both messages might print!
 var score = 95;
@@ -1552,7 +1552,7 @@ if score >= 90 {
 Your conditions are in the wrong order, and an earlier condition catches cases meant for later ones.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // BUG: score = 95 prints "You passed" instead of "Excellent"
 var score = 95;
@@ -1577,7 +1577,7 @@ if score >= 90 {
 When in doubt, print everything:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 17;
 var hasAccount = true;
@@ -1605,7 +1605,7 @@ This reveals exactly what values you're working with and how the condition evalu
 
 **Off-by-one errors:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // User enters 18, expecting to pass, but fails
 var age = 18;
@@ -1616,7 +1616,7 @@ if age > 18 {    // Should be >= 18
 
 **Inverted logic:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Meant to check if NOT empty, but checked if empty
 var name = "";
@@ -1644,7 +1644,7 @@ if username == "admin" && password == "secret" {
 
 **Forgetting braces:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if score > 100
     Say("High score!");  // Error: missing braces
@@ -1676,7 +1676,7 @@ if score >= 90 {
 
 **Overlapping conditions with separate ifs:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Both could be true for score = 85
 var score = 85;
@@ -1690,7 +1690,7 @@ if score >= 70 {
 
 If you want only one to run, use `else if`:
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 85;
 if score >= 80 {
@@ -1702,7 +1702,7 @@ if score >= 80 {
 
 **Confusing && and ||:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Wrong: This is never true (nothing is both < 0 AND > 100)
 var score = 150;
@@ -1724,7 +1724,7 @@ Here's a number guessing game that uses everything we've learned:
 
 ```rust
 module GuessGame;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     final SECRET = 7;
@@ -1736,7 +1736,7 @@ func start() {
     Say("");
 
     Print("Your guess: ");
-    var guess = Viper.Core.Convert.ToInt64(InputLine());
+    var guess = Zanna.Core.Convert.ToInt64(InputLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Utf8Decoder class, a stateful byte-at-a-time
-// UTF-8 decoder for Viper's TUI input processing pipeline. The decoder
+// UTF-8 decoder for Zanna's TUI input processing pipeline. The decoder
 // accepts individual bytes via feed() and produces Unicode code points
 // when complete multi-byte sequences are recognized.
 //
@@ -28,7 +28,7 @@
 
 #include <cstdint>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 /// @brief Result of decoding a single byte through the UTF-8 state machine.
 /// @details Communicates whether a complete code point was produced, whether an
 ///          encoding error was detected, and whether the caller should replay the
@@ -65,4 +65,4 @@ class Utf8Decoder {
     unsigned length_{0};
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

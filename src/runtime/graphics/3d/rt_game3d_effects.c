@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_effects.c
-// Purpose: EffectRegistry3D + Effects3D spawners for the Viper.Game3D layer —
+// Purpose: EffectRegistry3D + Effects3D spawners for the Zanna.Game3D layer —
 //   particle/decal item management and explosion/sparks/dust/smoke/impact helpers.
 //   Split out of rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Links: rt_game3d_internal.h, rt_particles3d.h, rt_decal3d.h, rt_postfx3d.h

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -89,13 +89,13 @@ int main() {
     assert(core::switchCaseCount(switchInstr) == 2);
     assert(core::switchDefaultLabel(switchInstr) == "default");
 
-    viper::analysis::CFGContext directCtx(module);
-    auto directSucc = viper::analysis::successors(directCtx, entry);
+    zanna::analysis::CFGContext directCtx(module);
+    auto directSucc = zanna::analysis::successors(directCtx, entry);
     assert(directSucc.size() == 3);
-    auto rpo = viper::analysis::reversePostOrder(directCtx, fn);
+    auto rpo = zanna::analysis::reversePostOrder(directCtx, fn);
     assert(rpo.size() == fn.blocks.size());
     assert(!rpo.empty() && rpo.front() == &entry);
-    viper::analysis::DomTree dt = viper::analysis::computeDominatorTree(directCtx, fn);
+    zanna::analysis::DomTree dt = zanna::analysis::computeDominatorTree(directCtx, fn);
     assert(dt.immediateDominator(&fn.blocks[0]) == nullptr);
     for (std::size_t idx = 1; idx < fn.blocks.size(); ++idx)
         assert(dt.immediateDominator(&fn.blocks[idx]) == &fn.blocks[0]);
@@ -131,7 +131,7 @@ int main() {
     assert(pipelineRan);
     assert(checkedCfg);
 
-    viper::passes::mem2reg(module);
+    zanna::passes::mem2reg(module);
     transform::dce(module);
 
     core::BasicBlock &entryAfter = module.functions[0].blocks[0];

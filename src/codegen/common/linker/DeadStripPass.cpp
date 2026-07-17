@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <queue>
 #include <unordered_set>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 static bool hasPrefix(const std::string &s, const char *prefix) {
     return s.rfind(prefix, 0) == 0;
@@ -313,4 +313,4 @@ void deadStrip(std::vector<ObjFile> &allObjects,
             << " bytes)\n";
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

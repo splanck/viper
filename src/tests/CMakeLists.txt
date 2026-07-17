@@ -3,7 +3,7 @@
 # Purpose: Configure test suites.
 #
 # ============================================================================
-# Viper Test Suite — Quick Reference
+# Zanna Test Suite — Quick Reference
 # ============================================================================
 # Labels (use with ctest -L <label>):
 #   basic       — BASIC frontend tests (lexer, parser, sema, lowerer)
@@ -56,7 +56,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/TestHelpers.cmake)
 
 ## Docs lint disabled (no external scripting dependencies)
 
-set(VIPER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
+set(ZANNA_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 if (WIN32)
     if (DEFINED ENV{SystemDrive})
@@ -66,34 +66,34 @@ if (WIN32)
     endif ()
 endif ()
 
-file(GLOB VIPER_TEST_SCRIPT_FILES
+file(GLOB ZANNA_TEST_SCRIPT_FILES
         LIST_DIRECTORIES FALSE
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh")
-foreach (_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
+foreach (_zanna_test_script IN LISTS ZANNA_TEST_SCRIPT_FILES)
     file(
-            CHMOD "${_viper_test_script}"
+            CHMOD "${_zanna_test_script}"
             PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
             GROUP_READ GROUP_EXECUTE
             WORLD_READ WORLD_EXECUTE)
 endforeach ()
 
 find_package(Threads REQUIRED)
-find_program(VIPER_BASH_EXECUTABLE NAMES bash)
-set(VIPER_BASH_COMMAND)
-if (VIPER_BASH_EXECUTABLE)
-    set(VIPER_BASH_COMMAND "${VIPER_BASH_EXECUTABLE}")
+find_program(ZANNA_BASH_EXECUTABLE NAMES bash)
+set(ZANNA_BASH_COMMAND)
+if (ZANNA_BASH_EXECUTABLE)
+    set(ZANNA_BASH_COMMAND "${ZANNA_BASH_EXECUTABLE}")
     if (WIN32)
         # Git Bash must run as a login shell so /usr/bin tools and the inherited
         # Windows toolchain PATH are initialized consistently for CTest.
-        list(APPEND VIPER_BASH_COMMAND "--login")
+        list(APPEND ZANNA_BASH_COMMAND "--login")
     endif ()
 endif ()
 
 if (WIN32)
     add_test(NAME windows_installer_host_launch
-            COMMAND $<TARGET_FILE:viper_installer_host> /selftest /quiet)
+            COMMAND $<TARGET_FILE:zanna_installer_host> /selftest /quiet)
     add_test(NAME windows_installer_cleanup_launch
-            COMMAND $<TARGET_FILE:viper_installer_cleanup> /selftest)
+            COMMAND $<TARGET_FILE:zanna_installer_cleanup> /selftest)
     set_tests_properties(
             windows_installer_host_launch
             windows_installer_cleanup_launch
@@ -102,14 +102,14 @@ if (WIN32)
             TIMEOUT 15)
 endif ()
 
-if (VIPER_BASH_EXECUTABLE)
-    set(_viper_source_health_audit_timeout 60)
+if (ZANNA_BASH_EXECUTABLE)
+    set(_zanna_source_health_audit_timeout 60)
     if (WIN32)
-        set(_viper_source_health_audit_timeout 300)
+        set(_zanna_source_health_audit_timeout 300)
     endif ()
 
     add_test(NAME check_vm_semantics_duplication
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/check_vm_semantics_duplication.sh
             .)
     set_tests_properties(check_vm_semantics_duplication PROPERTIES
@@ -117,7 +117,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "conformance;vm;bytecode;requires_posix_shell")
 
     add_test(NAME zia_runtime_name_literal_lint
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/lint_zia_runtime_names.sh
             .)
     set_tests_properties(zia_runtime_name_literal_lint PROPERTIES
@@ -125,7 +125,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "tools;zia;requires_posix_shell")
 
     add_test(NAME benchmark_compare_self_test
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/benchmark_compare.sh
             --self-test)
     set_tests_properties(benchmark_compare_self_test PROPERTIES
@@ -138,7 +138,7 @@ if (VIPER_BASH_EXECUTABLE)
     # driver (notably the UBSan runtime/link model).
     if (NOT WIN32)
         add_test(NAME sanitizer_script_self_test
-                COMMAND ${VIPER_BASH_COMMAND}
+                COMMAND ${ZANNA_BASH_COMMAND}
                 scripts/ci_full_sanitizer.sh
                 --self-test)
         set_tests_properties(sanitizer_script_self_test PROPERTIES
@@ -147,19 +147,19 @@ if (VIPER_BASH_EXECUTABLE)
     endif ()
 
     if (WIN32 AND CLANG_EXECUTABLE)
-        get_filename_component(_viper_coverage_llvm_bin "${CLANG_EXECUTABLE}" DIRECTORY)
-        string(REPLACE ";" "\\;" _viper_coverage_host_path "$ENV{PATH}")
+        get_filename_component(_zanna_coverage_llvm_bin "${CLANG_EXECUTABLE}" DIRECTORY)
+        string(REPLACE ";" "\\;" _zanna_coverage_host_path "$ENV{PATH}")
         add_test(NAME coverage_script_self_test
                 COMMAND "${CMAKE_COMMAND}" -E env
-                "PATH=${_viper_coverage_llvm_bin}\;${_viper_coverage_host_path}"
-                ${VIPER_BASH_COMMAND}
+                "PATH=${_zanna_coverage_llvm_bin}\;${_zanna_coverage_host_path}"
+                ${ZANNA_BASH_COMMAND}
                 scripts/coverage.sh
                 --self-test)
-        unset(_viper_coverage_host_path)
-        unset(_viper_coverage_llvm_bin)
+        unset(_zanna_coverage_host_path)
+        unset(_zanna_coverage_llvm_bin)
     else ()
         add_test(NAME coverage_script_self_test
-                COMMAND ${VIPER_BASH_COMMAND}
+                COMMAND ${ZANNA_BASH_COMMAND}
                 scripts/coverage.sh
                 --self-test)
     endif ()
@@ -168,7 +168,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "tools;requires_posix_shell")
 
     add_test(NAME example_smoke_manifest_audit
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/example_smoke.sh
             --audit)
     set_tests_properties(example_smoke_manifest_audit PROPERTIES
@@ -176,24 +176,24 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "examples;requires_posix_shell")
 
     add_test(NAME demo_project_manifest_audit
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/check_demo_projects.sh)
     set_tests_properties(demo_project_manifest_audit PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "build;examples;requires_posix_shell")
 
     add_test(NAME example_smoke_fast
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/example_smoke.sh
             --fast
-            --viper $<TARGET_FILE:viper>)
+            --zanna $<TARGET_FILE:zanna>)
     set_tests_properties(example_smoke_fast PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "examples;smoke;requires_posix_shell"
             TIMEOUT 120)
 
     add_test(NAME fuzz_smoke_self_test
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/fuzz_smoke.sh
             --self-test)
     set_tests_properties(fuzz_smoke_self_test PROPERTIES
@@ -201,19 +201,19 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "fuzz;tools;requires_posix_shell")
 
     add_test(NAME source_health_audit
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             scripts/source_health_audit.sh
             --check)
     set_tests_properties(source_health_audit PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "tools;audit;requires_posix_shell;slow"
-            TIMEOUT ${_viper_source_health_audit_timeout})
+            TIMEOUT ${_zanna_source_health_audit_timeout})
 endif ()
 
-add_library(viper_testing INTERFACE)
-target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
+add_library(zanna_testing INTERFACE)
+target_link_libraries(zanna_testing INTERFACE zanna_common_opts zanna::il_full)
 
-add_library(viper_test_common STATIC
+add_library(zanna_test_common STATIC
         ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/ILGenerator.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/ProcessIsolation.cpp
@@ -222,13 +222,13 @@ add_library(viper_test_common STATIC
 # Limit include paths to avoid clashing with the C++ <version> header on
 # case-insensitive filesystems (root contains a VERSION file).
 # Expose only tests dir, public headers, generated headers, and src as needed.
-target_include_directories(viper_test_common PUBLIC
+target_include_directories(zanna_test_common PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_BINARY_DIR}/generated
         ${CMAKE_SOURCE_DIR}/src
 )
-target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
+target_link_libraries(zanna_test_common PUBLIC zanna_testing il_vm il_build)
 
 ## docs_comment_check removed to avoid Python dependency
 
@@ -246,44 +246,44 @@ add_subdirectory(e2e)
 # ── Zia Language Server tests ──────────────────────────────────────────────
 set(_ZIA_SERVER_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zia-server)
 
-viper_add_test(test_zia_server_json ${_ZIA_SERVER_TEST_DIR}/test_json.cpp
+zanna_add_test(test_zia_server_json ${_ZIA_SERVER_TEST_DIR}/test_json.cpp
         LIBS zia_server_lib)
 
-viper_add_test(test_zia_server_transport ${_ZIA_SERVER_TEST_DIR}/test_transport.cpp
+zanna_add_test(test_zia_server_transport ${_ZIA_SERVER_TEST_DIR}/test_transport.cpp
         LIBS zia_server_lib)
 
-viper_add_test(test_zia_server_bridge ${_ZIA_SERVER_TEST_DIR}/test_compiler_bridge.cpp
+zanna_add_test(test_zia_server_bridge ${_ZIA_SERVER_TEST_DIR}/test_compiler_bridge.cpp
         LIBS zia_server_lib)
 
-viper_add_test(test_zia_server_mcp ${_ZIA_SERVER_TEST_DIR}/test_mcp_handler.cpp
+zanna_add_test(test_zia_server_mcp ${_ZIA_SERVER_TEST_DIR}/test_mcp_handler.cpp
         LIBS zia_server_lib)
 
-viper_add_test(test_zia_server_lsp ${_ZIA_SERVER_TEST_DIR}/test_lsp_handler.cpp
+zanna_add_test(test_zia_server_lsp ${_ZIA_SERVER_TEST_DIR}/test_lsp_handler.cpp
         LIBS zia_server_lib)
 
 # ── BASIC Language Server tests ───────────────────────────────────────────
 set(_VBASIC_SERVER_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vbasic-server)
 
-viper_add_test(test_vbasic_server_bridge ${_VBASIC_SERVER_TEST_DIR}/test_basic_compiler_bridge.cpp
+zanna_add_test(test_vbasic_server_bridge ${_VBASIC_SERVER_TEST_DIR}/test_basic_compiler_bridge.cpp
         LIBS vbasic_server_lib)
 
-viper_add_test(test_vbasic_server_mcp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_mcp.cpp
+zanna_add_test(test_vbasic_server_mcp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_mcp.cpp
         LIBS vbasic_server_lib)
 
-viper_add_test(test_vbasic_server_lsp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_lsp.cpp
+zanna_add_test(test_vbasic_server_lsp ${_VBASIC_SERVER_TEST_DIR}/test_basic_server_lsp.cpp
         LIBS vbasic_server_lib)
 
 # ── BASIC Analysis & Completion tests ─────────────────────────────────────
-viper_add_test(test_basic_analysis
+zanna_add_test(test_basic_analysis
         ${CMAKE_CURRENT_SOURCE_DIR}/basic/test_basic_analysis.cpp
-        LIBS fe_basic viper::il_full)
+        LIBS fe_basic zanna::il_full)
 
-viper_add_test(test_basic_completion
+zanna_add_test(test_basic_completion
         ${CMAKE_CURRENT_SOURCE_DIR}/basic/test_basic_completion.cpp
-        LIBS fe_basic viper::il_full)
+        LIBS fe_basic zanna::il_full)
 
 # ── Fuzz harnesses (opt-in, not registered as ctest targets) ────────────────
-if (VIPER_ENABLE_FUZZ)
+if (ZANNA_ENABLE_FUZZ)
     add_subdirectory(fuzz)
 endif ()
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
@@ -299,10 +299,10 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/aarch64)
 macro(_aarch64_add_test _name _src)
     add_executable(${_name} ${_src})
     if (WIN32)
-        target_sources(${_name} PRIVATE ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+        target_sources(${_name} PRIVATE ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_name} PRIVATE viper_testing ${ARGN})
-    viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+    target_link_libraries(${_name} PRIVATE zanna_testing ${ARGN})
+    zanna_add_ctest(${_name} $<TARGET_FILE:${_name}>)
 endmacro()
 
 macro(_aarch64_add_cmd_test _name _src)
@@ -313,10 +313,10 @@ endmacro()
 macro(_aarch64_add_test_common _name _src)
     add_executable(${_name} ${_src})
     if (WIN32)
-        target_sources(${_name} PRIVATE ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+        target_sources(${_name} PRIVATE ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_name} PRIVATE viper_test_common ${ARGN})
-    viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
+    target_link_libraries(${_name} PRIVATE zanna_test_common ${ARGN})
+    zanna_add_ctest(${_name} $<TARGET_FILE:${_name}>)
 endmacro()
 
 # ── Pure AArch64 backend tests: build on every host; they do not execute
@@ -366,7 +366,7 @@ _aarch64_add_test_common(test_aarch64_block_layout
 # assumes Unix/Darwin assembler and process semantics.
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
 
-    # ── Group 2: il_codegen_aarch64 + viper_cmd_arm64 ──────────────────
+    # ── Group 2: il_codegen_aarch64 + zanna_cmd_arm64 ──────────────────
     set(_AARCH64_CMD_TESTS
             test_codegen_arm64_cli
             test_codegen_arm64_add_params
@@ -438,25 +438,25 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_cmd_test(${_test}
                 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
-                "il_codegen_aarch64;viper_cmd_arm64")
+                "il_codegen_aarch64;zanna_cmd_arm64")
     endforeach ()
 
     _aarch64_add_cmd_test(test_codegen_arm64_casts
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp
-            "il_codegen_aarch64;viper_cmd_arm64")
+            "il_codegen_aarch64;zanna_cmd_arm64")
 
     # CLI run-native should return user exit code
     # Note: run-native exit code coverage exists in other tests; keep CI stable.
     # _aarch64_add_test(test_codegen_arm64_run_ret42
     #     ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_ret42.cpp
-    #     "il_codegen_aarch64;viper_cmd_arm64")
+    #     "il_codegen_aarch64;zanna_cmd_arm64")
 
     # ── Group 3: special link patterns ──────────────────────────────────
 
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
-            "il_codegen_aarch64;viper_cmd_arm64")
+            "il_codegen_aarch64;zanna_cmd_arm64")
     set_tests_properties(test_codegen_env_is_native PROPERTIES RESOURCE_LOCK aarch64_codegen_artifacts)
 
     # Property-based differential testing: VM vs ARM64 native
@@ -464,7 +464,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     # codegen tests that use the same assembler/linker toolchain.
     _aarch64_add_test_common(test_diff_vm_native_property
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp
-            "il_codegen_aarch64;viper_cmd_arm64")
+            "il_codegen_aarch64;zanna_cmd_arm64")
     set_tests_properties(test_diff_vm_native_property PROPERTIES
             RUN_SERIAL TRUE
             TIMEOUT 120
@@ -479,7 +479,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     foreach (_test IN LISTS _AARCH64_E2E_TESTS)
         _aarch64_add_cmd_test(${_test}
                 ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${_test}.cpp
-                "viper_common")
+                "zanna_common")
     endforeach ()
 
 endif () # ARM64 processor tests
@@ -495,46 +495,46 @@ add_subdirectory(conformance)
 # Windows ARM64 target, HIGH-4 LinkerSupport archive extension).
 _aarch64_add_test_common(test_cross_platform_abi
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_cross_platform_abi.cpp
-        "il_codegen_aarch64;viper_codegen_x86_64")
+        "il_codegen_aarch64;zanna_codegen_x86_64")
 
 # x86-64 runtime map — no ARM64 execution required.
 _aarch64_add_test_common(test_emit_x86_runtime_map
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp
-        "viper_codegen_x86_64")
+        "zanna_codegen_x86_64")
 
 # IL optimizer differential testing (VM baseline vs O0/O1/O2) — pure IL, no
 # architecture dependency.
 _aarch64_add_test_common(test_il_opt_equivalence
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
-        "il_transform;viper::il_verify")
+        "il_transform;zanna::il_verify")
 
 _aarch64_add_test_common(test_il_backend_benchmark_regressions
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_backend_benchmark_regressions.cpp
-        "il_transform;viper::il_verify")
+        "il_transform;zanna::il_verify")
 
-viper_add_ctest(NoAssertFalseGuard
+zanna_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}
-        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DZANNA_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/NoAssertFalseTest.cmake)
 
-viper_add_ctest(test_tools_tls_signature_policy
+zanna_add_ctest(test_tools_tls_signature_policy
         ${CMAKE_COMMAND}
-        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DZANNA_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/TlsSignaturePolicyTest.cmake)
 
-viper_add_ctest(test_tools_trap_kind_spec_consistency
+zanna_add_ctest(test_tools_trap_kind_spec_consistency
         ${CMAKE_COMMAND}
-        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DZANNA_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/TrapKindSpecConsistencyTest.cmake)
 
-viper_add_ctest(smoke_term_basic
-        $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
+zanna_add_ctest(smoke_term_basic
+        $<TARGET_FILE:zanna> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
 # Shell script tests - skip on Windows
 if (NOT WIN32)
     add_test(NAME basic_sum_no_linenos
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
-            $<TARGET_FILE:viper>)
+            $<TARGET_FILE:zanna>)
     set_tests_properties(basic_sum_no_linenos
             PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -542,12 +542,12 @@ if (NOT WIN32)
 endif ()
 
 # ── BASIC OOP unit tests ────────────────────────────────────────────────
-viper_add_test(test_basic_oop_parsing
+zanna_add_test(test_basic_oop_parsing
         SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp
         TEST_NAME unit_basic_oop_parsing
         LIBS fe_basic)
 
-viper_add_test(test_basic_oop_lowering
+zanna_add_test(test_basic_oop_lowering
         SRCS ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Lowering.cpp
         TEST_NAME unit_basic_oop_lowering
         LIBS fe_basic)
@@ -555,221 +555,221 @@ viper_add_test(test_basic_oop_lowering
 ## Removed: test_basic_oop_string_array_field, test_basic_oop_object_array_field
 ## Covered by test_basic_oop_numeric_array_field (same lowering pattern).
 
-viper_add_test(test_basic_global_string_array_sub_store
+zanna_add_test(test_basic_global_string_array_sub_store
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp
         LIBS fe_basic)
 
-viper_add_test(test_basic_select_case_object_assign
+zanna_add_test(test_basic_select_case_object_assign
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp
         LIBS fe_basic)
 
 ## Removed: test_basic_input_typing (covered by test_basic_lowerer_conversions)
 ## Removed: test_basic_nested_member_method_call (covered by BasicOOP_Lowering + TestInheritance)
 
-viper_add_test(test_basic_class_return
+zanna_add_test(test_basic_class_return
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_class_return.cpp
         LIBS fe_basic)
 
-viper_add_test(test_basic_lower_builtin_dispatch
+zanna_add_test(test_basic_lower_builtin_dispatch
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp
         LIBS fe_basic)
 
 # ── Runtime class catalog and binding tests ─────────────────────────────
 ## Removed: test_runtime_class_catalog (covered by TestCatalog.cpp)
 
-viper_add_test(test_runtime_property_binding
+zanna_add_test(test_runtime_property_binding
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp
         LIBS fe_basic)
 
-viper_add_test(test_runtime_method_binding
+zanna_add_test(test_runtime_method_binding
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp
         LIBS fe_basic)
 
-viper_add_test(test_runtime_wishlist_bindings
+zanna_add_test(test_runtime_wishlist_bindings
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeWishlistBindings.cpp
         LIBS fe_basic)
 
 # TODO: Fix arity check for static methods (no receiver param). 1056 false
 # positives because the test unconditionally adds +1 for receiver on all methods.
-viper_add_test(test_jpeg_decode
+zanna_add_test(test_jpeg_decode
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestJpegDecode.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_ogg_vorbis
+zanna_add_test(test_ogg_vorbis
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestOggVorbis.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_gif_decode
+zanna_add_test(test_gif_decode
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGifDecode.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_mp3_decode
+zanna_add_test(test_mp3_decode
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestMp3Decode.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-# viperaud only exists when an audio backend is available (ALSA/CoreAudio/WASAPI).
-if (TARGET viperaud)
-    viper_add_test(test_wav_stream
+# zannaaud only exists when an audio backend is available (ALSA/CoreAudio/WASAPI).
+if (TARGET zannaaud)
+    zanna_add_test(test_wav_stream
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestWavStream.cpp
-            LIBS viperaud viper_test_common
+            LIBS zannaaud zanna_test_common
             INCLUDES ${CMAKE_SOURCE_DIR}/src/lib/audio/include ${CMAKE_SOURCE_DIR}/src/lib/audio/src)
 endif ()
 
-viper_add_test(test_stl_load
+zanna_add_test(test_stl_load
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestStlLoad.cpp
-        LIBS viper_runtime viper_test_common
+        LIBS zanna_runtime zanna_test_common
         INCLUDES ${CMAKE_SOURCE_DIR}/src/lib/graphics/include)
 
-viper_add_test(test_rt_behavior
+zanna_add_test(test_rt_behavior
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestBehavior.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_typewriter
+zanna_add_test(test_rt_typewriter
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestTypewriter.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_lighting2d
+zanna_add_test(test_rt_lighting2d
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestLighting2D.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_game_menu
+zanna_add_test(test_rt_game_menu
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameMenu.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_tilemap_anim
+zanna_add_test(test_rt_tilemap_anim
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestTilemapAnim.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_raycast_2d
+zanna_add_test(test_rt_raycast_2d
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRaycast2D.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_scene_manager
+zanna_add_test(test_rt_scene_manager
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestSceneManager.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_entity
+zanna_add_test(test_rt_entity
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestEntity.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_animstate_named
+zanna_add_test(test_rt_animstate_named
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimStateNamed.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_animtimeline
+zanna_add_test(test_rt_animtimeline
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimTimeline.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_game_result_objects
+zanna_add_test(test_rt_game_result_objects
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameResultObjects.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_data_format_result_apis
+zanna_add_test(test_rt_data_format_result_apis
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestDataFormatResultApis.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_open_load_result_apis
+zanna_add_test(test_rt_open_load_result_apis
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRuntimeOpenLoadResultApis.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_search_option_apis
+zanna_add_test(test_rt_search_option_apis
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRuntimeSearchOptionApis.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_camera_enhance
+zanna_add_test(test_rt_camera_enhance
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestCameraEnhance.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_rt_vpa_format
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestVpaFormat.cpp
-        LIBS viper_runtime viper_packaging viper_test_common)
+zanna_add_test(test_rt_zpak_format
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestZpakFormat.cpp
+        LIBS zanna_runtime zanna_packaging zanna_test_common)
 
-viper_add_test(test_rt_asset_manager
+zanna_add_test(test_rt_asset_manager
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAssetManager.cpp
-        LIBS viper_runtime viper_packaging viper_test_common)
+        LIBS zanna_runtime zanna_packaging zanna_test_common)
 
-viper_add_test(test_rt_path_exe_dir
+zanna_add_test(test_rt_path_exe_dir
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestPathExeDir.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS zanna_runtime zanna_test_common)
 
-viper_add_test(test_runtime_catalog_targets_resolve
+zanna_add_test(test_runtime_catalog_targets_resolve
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
         LIBS fe_basic)
 
-viper_add_test(test_frontends_basic_runtime_property_diag
+zanna_add_test(test_frontends_basic_runtime_property_diag
         ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp
         LIBS fe_basic)
 
-viper_add_test(test_basic_semantic_new_ctor
+zanna_add_test(test_basic_semantic_new_ctor
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp
         LIBS fe_basic)
 
-viper_add_test(test_run_process_quotes
+zanna_add_test(test_run_process_quotes
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp
-        LIBS viper_common)
+        LIBS zanna_common)
 
-viper_add_ctest(smoke_basic_oop
-        $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
+zanna_add_ctest(smoke_basic_oop
+        $<TARGET_FILE:zanna> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
 
-viper_add_ctest(smoke_basic_point_ctor
-        $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_point_ctor.bas)
+zanna_add_ctest(smoke_basic_point_ctor
+        $<TARGET_FILE:zanna> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_point_ctor.bas)
 
-viper_add_unit_support_tests()
-viper_add_il_core_tests()
-viper_add_basic_early_tests()
-viper_add_il_utils_test()
-viper_add_tools_tests()
-viper_add_vm_debug_tests()
-viper_add_il_analysis_tests()
-viper_add_il_verify_examples()
-viper_add_e2e_vm_examples_smoke()
-viper_add_runtime_tests()
-viper_add_e2e_vm_suite()
-viper_add_il_invalid_tests()
-viper_add_basic_main_tests()
-viper_add_zia_tests()
-viper_add_vm_unit_tests()
-viper_add_il_liveness_tests()
-viper_add_vm_path_tests()
-viper_add_basic_ast_golden_tests()
-viper_add_basic_lex_golden_tests()
-viper_add_basic_to_il_golden_tests()
-viper_add_basic_strings_test()
-viper_add_basic_semantics_golden_tests()
-viper_add_basic_proc_tests()
-viper_add_basic_call_tests()
-viper_add_basic_integration_tests()
-viper_add_basic_namespace_tests()
-viper_add_e2e_codegen_tests()
-viper_add_golden_suite_tests()
+zanna_add_unit_support_tests()
+zanna_add_il_core_tests()
+zanna_add_basic_early_tests()
+zanna_add_il_utils_test()
+zanna_add_tools_tests()
+zanna_add_vm_debug_tests()
+zanna_add_il_analysis_tests()
+zanna_add_il_verify_examples()
+zanna_add_e2e_vm_examples_smoke()
+zanna_add_runtime_tests()
+zanna_add_e2e_vm_suite()
+zanna_add_il_invalid_tests()
+zanna_add_basic_main_tests()
+zanna_add_zia_tests()
+zanna_add_vm_unit_tests()
+zanna_add_il_liveness_tests()
+zanna_add_vm_path_tests()
+zanna_add_basic_ast_golden_tests()
+zanna_add_basic_lex_golden_tests()
+zanna_add_basic_to_il_golden_tests()
+zanna_add_basic_strings_test()
+zanna_add_basic_semantics_golden_tests()
+zanna_add_basic_proc_tests()
+zanna_add_basic_call_tests()
+zanna_add_basic_integration_tests()
+zanna_add_basic_namespace_tests()
+zanna_add_e2e_codegen_tests()
+zanna_add_golden_suite_tests()
 
 # ── Milestone D unit tests (OOP) ────────────────────────────────────────
 ## Removed: test_oop_static_members (covered by integration tests)
 ## Removed: test_oop_properties (covered by TestPropertyBinding)
 
-viper_add_test(test_oop_overloads
+zanna_add_test(test_oop_overloads
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp
         LIBS fe_basic)
 
-viper_add_test(test_oop_inheritance
+zanna_add_test(test_oop_inheritance
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp
-        LIBS fe_basic viper_test_common)
+        LIBS fe_basic zanna_test_common)
 
 ## Removed: test_oop_destructor_dispose (syntax validation; semantics in TestDispose)
 
-viper_add_test(test_oop_destructor_chain
+zanna_add_test(test_oop_destructor_chain
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp
-        LIBS fe_basic viper_test_common)
+        LIBS fe_basic zanna_test_common)
 
-viper_add_test(test_oop_dispose
+zanna_add_test(test_oop_dispose
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp
-        LIBS fe_basic viper_test_common)
+        LIBS fe_basic zanna_test_common)
 
 # Shell script tests - skip on Windows
 if (NOT WIN32)
     add_test(NAME basic_repros
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
-            $<TARGET_FILE:viper>)
+            $<TARGET_FILE:zanna>)
     set_tests_properties(basic_repros
             PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -779,8 +779,8 @@ endif ()
 # =============================================================================
 # Test Labels Configuration
 # =============================================================================
-# Labels are assigned automatically by _viper_assign_test_label() in
-# TestHelpers.cmake, called from viper_add_ctest() and viper_add_test().
+# Labels are assigned automatically by _zanna_assign_test_label() in
+# TestHelpers.cmake, called from zanna_add_ctest() and zanna_add_test().
 # All tests should use those functions for registration. The few remaining
 # raw add_test() calls (shell scripts with WORKING_DIRECTORY) have explicit
 # LABELS properties set at their definition site.
@@ -796,7 +796,7 @@ endif ()
 
 # =============================================================================
 # Zia Runtime Tests
-# These tests verify the Viper runtime API functions work correctly via Zia.
+# These tests verify the Zanna runtime API functions work correctly via Zia.
 # Each test outputs "RESULT: ok" on success.
 # =============================================================================
 set(ZIA_RUNTIME_TESTS_DIR "${CMAKE_SOURCE_DIR}/src/tests/fixtures/runtime")
@@ -897,8 +897,8 @@ foreach (test_file IN LISTS ZIA_RT_API_TEST_FILES)
             TIMEOUT 30)
 endforeach ()
 
-viper_add_ctest(basic_rt_api_test_scene
-        $<TARGET_FILE:viper> front basic -run "${ZIA_RT_API_TESTS_DIR}/test_scene.bas")
+zanna_add_ctest(basic_rt_api_test_scene
+        $<TARGET_FILE:zanna> front basic -run "${ZIA_RT_API_TESTS_DIR}/test_scene.bas")
 set_tests_properties(basic_rt_api_test_scene PROPERTIES
         LABELS "runtime;basic;rt_api"
         TIMEOUT 30)
@@ -938,7 +938,7 @@ set(ZIA_LANG_TESTS_DIR "${CMAKE_SOURCE_DIR}/src/tests/fixtures/zia_runtime")
 # Note: Some tests excluded due to environment requirements:
 # - 04_environment, 17_time_env: require command-line arguments
 # - 07_terminal_input: requires interactive input
-# - 09_math_rnd: requires specific Viper namespace bindings
+# - 09_math_rnd: requires specific Zanna namespace bindings
 set(ZIA_LANG_TESTS
         01_terminal_math_random
         02_strings
@@ -1003,7 +1003,7 @@ foreach (test_name IN LISTS ZIA_LANG_TESTS)
     endif ()
 endforeach ()
 
-set(ZIA_VIPER_RUN_O1_REGRESSION_TESTS
+set(ZIA_ZANNA_RUN_O1_REGRESSION_TESTS
         18_numeric_algorithms
         31_typed_catch_list_shorthand
         42_try_catch_promises
@@ -1011,15 +1011,15 @@ set(ZIA_VIPER_RUN_O1_REGRESSION_TESTS
         44_language_promises
 )
 
-foreach (test_name IN LISTS ZIA_VIPER_RUN_O1_REGRESSION_TESTS)
+foreach (test_name IN LISTS ZIA_ZANNA_RUN_O1_REGRESSION_TESTS)
     set(test_file "${ZIA_LANG_TESTS_DIR}/${test_name}.zia")
     if (EXISTS "${test_file}")
-        add_test(NAME viper_run_o1_zia_${test_name}
-                COMMAND $<TARGET_FILE:viper> run "${test_file}"
+        add_test(NAME zanna_run_o1_zia_${test_name}
+                COMMAND $<TARGET_FILE:zanna> run "${test_file}"
                 WORKING_DIRECTORY "${ZIA_LANG_TESTS_DIR}")
-        set_tests_properties(viper_run_o1_zia_${test_name} PROPERTIES
+        set_tests_properties(zanna_run_o1_zia_${test_name} PROPERTIES
                 PASS_REGULAR_EXPRESSION "RESULT: ok"
-                LABELS "zia;viper;optimization"
+                LABELS "zia;zanna;optimization"
                 TIMEOUT 30)
     endif ()
 endforeach ()
@@ -1027,7 +1027,7 @@ endforeach ()
 if (NOT WIN32)
     add_test(NAME native_run_zia_42_try_catch_promises
             COMMAND ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/42_try_catch_promises.zia
             -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_42_try_catch_promises_native
             -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
@@ -1038,7 +1038,7 @@ if (NOT WIN32)
 
     add_test(NAME native_run_zia_43_alpha_hardening
             COMMAND ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/43_alpha_hardening.zia
             -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_43_alpha_hardening_native
             -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
@@ -1049,7 +1049,7 @@ if (NOT WIN32)
 
     add_test(NAME native_run_zia_44_language_promises
             COMMAND ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/44_language_promises.zia
             -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_44_language_promises_native
             -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
@@ -1064,7 +1064,7 @@ if (NOT WIN32)
     foreach (opt_level IN ITEMS O0 O2)
         add_test(NAME native_run_zia_51_struct_return_abi_${opt_level}
                 COMMAND ${CMAKE_COMMAND}
-                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DZANNA_EXE=$<TARGET_FILE:zanna>
                 -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/51_struct_return_abi.zia
                 -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_51_struct_return_abi_native_${opt_level}
                 -DOPT_FLAG=-${opt_level}
@@ -1079,7 +1079,7 @@ endif ()
 if (WIN32)
     add_test(NAME native_run_windows_environment
             COMMAND ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_WORK_DIR=${CMAKE_BINARY_DIR}/native_windows_environment
             -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_windows_native_environment.cmake
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
@@ -1088,9 +1088,9 @@ if (WIN32)
             TIMEOUT 90)
 endif ()
 
-if (VIPER_BASH_EXECUTABLE)
+if (ZANNA_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
-            COMMAND ${VIPER_BASH_COMMAND}
+            COMMAND ${ZANNA_BASH_COMMAND}
             "src/tests/e2e/test_zia_async_functions_repeat.sh"
             $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
     set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
@@ -1102,7 +1102,7 @@ endif ()
 
 # =============================================================================
 # Zia Namespace Bind Tests
-# These tests verify the bind Viper.* namespace import feature.
+# These tests verify the bind Zanna.* namespace import feature.
 # Each test outputs "RESULT: ok" on success.
 # =============================================================================
 set(ZIA_BIND_NAMESPACE_TESTS_DIR "${CMAKE_SOURCE_DIR}/src/tests/fixtures/zia/bind_namespace")
@@ -1154,309 +1154,309 @@ set_tests_properties(zia_smoke_paint_canvas_capture PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_smoke_viperide
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_smoke_viperide PROPERTIES
+add_test(NAME zia_smoke_zannaide
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_smoke_zannaide PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         FAIL_REGULAR_EXPRESSION "Framebuffer resize dimensions exceed maximum"
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_smoke_viperide_project_compile
-        COMMAND $<TARGET_FILE:viper> build "${CMAKE_SOURCE_DIR}/src/viperide" -o "${CMAKE_BINARY_DIR}/viperide_smoke.il")
-set_tests_properties(zia_smoke_viperide_project_compile PROPERTIES
+add_test(NAME zia_smoke_zannaide_project_compile
+        COMMAND $<TARGET_FILE:zanna> build "${CMAKE_SOURCE_DIR}/src/zannaide" -o "${CMAKE_BINARY_DIR}/zannaide_smoke.il")
+set_tests_properties(zia_smoke_zannaide_project_compile PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 180)
 
-add_test(NAME zia_viperide_phase0_phase1
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/phase0_phase1_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_phase0_phase1 PROPERTIES
+add_test(NAME zia_zannaide_phase0_phase1
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/phase0_phase1_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_phase0_phase1 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;phase0;phase1"
+        LABELS "zia;zannaide;phase0;phase1"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_phase2_phase3
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/phase2_phase3_probe.zia" -- --zia-bin $<TARGET_FILE:zia> --viper-bin $<TARGET_FILE:viper>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_phase2_phase3 PROPERTIES
+add_test(NAME zia_zannaide_phase2_phase3
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/phase2_phase3_probe.zia" -- --zia-bin $<TARGET_FILE:zia> --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_phase2_phase3 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;phase2;phase3"
+        LABELS "zia;zannaide;phase2;phase3"
         RUN_SERIAL TRUE
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_editor_hot_path
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/editor_hot_path_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_editor_hot_path PROPERTIES
+add_test(NAME zia_zannaide_editor_hot_path
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/editor_hot_path_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;requires_display;perf"
+        LABELS "zia;zannaide;editor;requires_display;perf"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_palette_query
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/palette_query_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_palette_query PROPERTIES
+add_test(NAME zia_zannaide_palette_query
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/palette_query_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_palette_query PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;palette;requires_display"
+        LABELS "zia;zannaide;palette;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_welcome
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/welcome_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_welcome PROPERTIES
+add_test(NAME zia_zannaide_welcome
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/welcome_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_welcome PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;shell;requires_display"
+        LABELS "zia;zannaide;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_editor_buffer
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/editor_buffer_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_editor_buffer PROPERTIES
+add_test(NAME zia_zannaide_editor_buffer
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/editor_buffer_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_editor_buffer PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;requires_display"
+        LABELS "zia;zannaide;editor;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_undo_across_tabs
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/undo_across_tabs_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_undo_across_tabs PROPERTIES
+add_test(NAME zia_zannaide_undo_across_tabs
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/undo_across_tabs_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_undo_across_tabs PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;requires_display"
+        LABELS "zia;zannaide;editor;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_tab_switch
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/tab_switch_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_tab_switch PROPERTIES
+add_test(NAME zia_zannaide_tab_switch
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/tab_switch_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_tab_switch PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;perf;requires_display"
+        LABELS "zia;zannaide;editor;perf;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_split_editor
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/split_editor_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_split_editor PROPERTIES
+add_test(NAME zia_zannaide_split_editor
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/split_editor_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_split_editor PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;shell;requires_display"
+        LABELS "zia;zannaide;editor;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_bottom_panel
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/bottom_panel_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_bottom_panel PROPERTIES
+add_test(NAME zia_zannaide_bottom_panel
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/bottom_panel_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_bottom_panel PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;shell;requires_display"
+        LABELS "zia;zannaide;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_tree_move
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/tree_move_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_tree_move PROPERTIES
+add_test(NAME zia_zannaide_tree_move
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/tree_move_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_tree_move PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;explorer"
+        LABELS "zia;zannaide;explorer"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_recovery
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/recovery_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_recovery PROPERTIES
+add_test(NAME zia_zannaide_recovery
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/recovery_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_recovery PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;session"
+        LABELS "zia;zannaide;session"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_palette_modes
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/palette_modes_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_palette_modes PROPERTIES
+add_test(NAME zia_zannaide_palette_modes
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/palette_modes_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_palette_modes PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;palette;requires_display"
+        LABELS "zia;zannaide;palette;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_scm_diff
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/scm_diff_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_scm_diff PROPERTIES
+add_test(NAME zia_zannaide_scm_diff
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_diff_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_scm_diff PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;scm"
+        LABELS "zia;zannaide;scm"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_scm_gutter
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/scm_gutter_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_scm_gutter PROPERTIES
+add_test(NAME zia_zannaide_scm_gutter
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_gutter_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_scm_gutter PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;scm;requires_display"
+        LABELS "zia;zannaide;scm;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_intellisense
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/intellisense_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_intellisense PROPERTIES
+add_test(NAME zia_zannaide_intellisense
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/intellisense_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_intellisense PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;intellisense;requires_display"
+        LABELS "zia;zannaide;intellisense;requires_display"
         TIMEOUT 180)
 
-add_test(NAME zia_viperide_file_tree
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/file_tree_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_file_tree PROPERTIES
+add_test(NAME zia_zannaide_file_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_file_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;file-tree;requires_display"
+        LABELS "zia;zannaide;file-tree;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_activity_bar
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/activity_bar_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_activity_bar PROPERTIES
+add_test(NAME zia_zannaide_activity_bar
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/activity_bar_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_activity_bar PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;activity-bar;requires_display"
+        LABELS "zia;zannaide;activity-bar;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_multi_root
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/multi_root_file_tree_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_multi_root PROPERTIES
+add_test(NAME zia_zannaide_multi_root
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/multi_root_file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_multi_root PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;multi-root;requires_display"
+        LABELS "zia;zannaide;multi-root;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_scm
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/scm_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_scm PROPERTIES
+add_test(NAME zia_zannaide_scm
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_scm PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;scm"
+        LABELS "zia;zannaide;scm"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_terminal
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/terminal_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_terminal PROPERTIES
+add_test(NAME zia_zannaide_terminal
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_terminal PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;terminal"
+        LABELS "zia;zannaide;terminal"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_terminal_open
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/terminal_open_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_terminal_open PROPERTIES
+add_test(NAME zia_zannaide_terminal_open
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_open_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_terminal_open PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;terminal;requires_display"
+        LABELS "zia;zannaide;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_terminal_hidden_start
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/terminal_hidden_start_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_terminal_hidden_start PROPERTIES
+add_test(NAME zia_zannaide_terminal_hidden_start
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_hidden_start_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_terminal_hidden_start PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;terminal;requires_display"
+        LABELS "zia;zannaide;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_terminal_render
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/terminal_render_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_terminal_render PROPERTIES
+add_test(NAME zia_zannaide_terminal_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_terminal_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;terminal;requires_display"
+        LABELS "zia;zannaide;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_terminal_multi
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/terminal_multi_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_terminal_multi PROPERTIES
+add_test(NAME zia_zannaide_terminal_multi
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_multi_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_terminal_multi PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;terminal;requires_display"
+        LABELS "zia;zannaide;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_context_menu
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/context_menu_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_context_menu PROPERTIES
+add_test(NAME zia_zannaide_context_menu
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/context_menu_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_context_menu PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;context-menu;requires_display"
+        LABELS "zia;zannaide;context-menu;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_syntax_render
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/syntax_render_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_syntax_render PROPERTIES
+add_test(NAME zia_zannaide_syntax_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/syntax_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_syntax_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;syntax;requires_display"
+        LABELS "zia;zannaide;syntax;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_formatting
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/formatting_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_formatting PROPERTIES
+add_test(NAME zia_zannaide_formatting
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/formatting_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_formatting PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;format"
+        LABELS "zia;zannaide;format"
         TIMEOUT 30)
 
-add_test(NAME zia_viperide_debug
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/debug_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_debug PROPERTIES
+add_test(NAME zia_zannaide_debug
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_debug PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;debug"
+        LABELS "zia;zannaide;debug"
         RUN_SERIAL TRUE
         TIMEOUT 240)
 
-add_test(NAME zia_viperide_debug_vars
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/debug_vars_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_debug_vars PROPERTIES
+add_test(NAME zia_zannaide_debug_vars
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_vars_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_debug_vars PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;debug"
+        LABELS "zia;zannaide;debug"
         RUN_SERIAL TRUE
         TIMEOUT 120)
 
-add_test(NAME zia_viperide_debug_tree
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/debug_tree_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_debug_tree PROPERTIES
+add_test(NAME zia_zannaide_debug_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_tree_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_debug_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;debug"
+        LABELS "zia;zannaide;debug"
         RUN_SERIAL TRUE
         TIMEOUT 120)
 
-add_test(NAME zia_viperide_semantic_tokens
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/semantic_tokens_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_semantic_tokens PROPERTIES
+add_test(NAME zia_zannaide_semantic_tokens
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/semantic_tokens_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_semantic_tokens PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;semantic;requires_display"
+        LABELS "zia;zannaide;semantic;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_viperide_language_service_sync
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/language_service_sync_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_language_service_sync PROPERTIES
+add_test(NAME zia_zannaide_language_service_sync
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/language_service_sync_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_language_service_sync PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;semantic;requires_display"
+        LABELS "zia;zannaide;semantic;requires_display"
         TIMEOUT 90)
 
-add_test(NAME zia_viperide_paint_damage
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/paint_damage_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_paint_damage PROPERTIES
+add_test(NAME zia_zannaide_paint_damage
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/paint_damage_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_paint_damage PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;perf;requires_display"
+        LABELS "zia;zannaide;perf;requires_display"
         TIMEOUT 90)
 
-add_test(NAME zia_viperide_console_search
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/console_search_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/viperide/src/probes")
-set_tests_properties(zia_viperide_console_search PROPERTIES
+add_test(NAME zia_zannaide_console_search
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/console_search_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
+set_tests_properties(zia_zannaide_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;console;search;requires_display"
+        LABELS "zia;zannaide;console;search;requires_display"
         TIMEOUT 420)
 
-add_test(NAME zia_smoke_vipersql
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/vipersql")
-set_tests_properties(zia_smoke_vipersql PROPERTIES
+add_test(NAME zia_smoke_zannasql
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/zannasql/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/zannasql")
+set_tests_properties(zia_smoke_zannasql PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
         TIMEOUT 240)
@@ -1470,11 +1470,11 @@ set_tests_properties(zia_smoke_3dbowling PROPERTIES
         TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 
 add_test(NAME zia_smoke_3dbowling_trajectory
@@ -1508,7 +1508,7 @@ add_test(NAME zia_smoke_ashfall_movement
 set_tests_properties(zia_smoke_ashfall_movement PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
 add_test(NAME zia_smoke_ashfall_perf
@@ -1517,7 +1517,7 @@ add_test(NAME zia_smoke_ashfall_perf
 set_tests_properties(zia_smoke_ashfall_perf PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
 add_test(NAME zia_smoke_ashfall_stress
@@ -1526,15 +1526,15 @@ add_test(NAME zia_smoke_ashfall_stress
 set_tests_properties(zia_smoke_ashfall_stress PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 180)
 
 # Software-rasterizer determinism gate for the backend-conformance harness:
 # renders the fixed conformance scene twice and requires byte-identical output.
 # GPU backends are compared by hand via scripts/run_backend_conformance.sh.
-if (VIPER_BASH_EXECUTABLE)
+if (ZANNA_BASH_EXECUTABLE)
     add_test(NAME zia_graphics_conformance_sw_determinism
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/scripts/run_backend_conformance.sh"
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/scripts/run_backend_conformance.sh"
                     --self-check --zia $<TARGET_FILE:zia>
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(zia_graphics_conformance_sw_determinism PROPERTIES
@@ -1549,7 +1549,7 @@ add_test(NAME zia_smoke_ashfall_combat
 set_tests_properties(zia_smoke_ashfall_combat PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
 add_test(NAME zia_smoke_ashfall_enemy
@@ -1558,7 +1558,7 @@ add_test(NAME zia_smoke_ashfall_enemy
 set_tests_properties(zia_smoke_ashfall_enemy PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 180)
 
 add_test(NAME zia_smoke_ashfall_level
@@ -1567,7 +1567,7 @@ add_test(NAME zia_smoke_ashfall_level
 set_tests_properties(zia_smoke_ashfall_level PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 180)
 
 add_test(NAME zia_smoke_ashfall_manifest
@@ -1592,7 +1592,7 @@ add_test(NAME zia_smoke_ashfall_render
 set_tests_properties(zia_smoke_ashfall_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
 add_test(NAME zia_smoke_ashfall_campaign
@@ -1601,7 +1601,7 @@ add_test(NAME zia_smoke_ashfall_campaign
 set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 240)
 
 add_test(NAME zia_smoke_ashfall_menu
@@ -1610,7 +1610,7 @@ add_test(NAME zia_smoke_ashfall_menu
 set_tests_properties(zia_smoke_ashfall_menu PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
 add_test(NAME zia_smoke_ashfall_assets
@@ -1619,7 +1619,7 @@ add_test(NAME zia_smoke_ashfall_assets
 set_tests_properties(zia_smoke_ashfall_assets PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 240)
 
 add_test(NAME zia_smoke_3dbowling_aim
@@ -1631,11 +1631,11 @@ set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
         TIMEOUT 120)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 
 add_test(NAME zia_smoke_3dscene
@@ -1647,11 +1647,11 @@ set_tests_properties(zia_smoke_3dscene PROPERTIES
         TIMEOUT 30)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dscene PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dscene PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 
 add_test(NAME zia_smoke_ridgebound
@@ -1661,9 +1661,9 @@ set_tests_properties(zia_smoke_ridgebound PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display;slow"
         TIMEOUT 300)
-set(VIPER_RIDGEBOUND_MAPLE_ASSET
+set(ZANNA_RIDGEBOUND_MAPLE_ASSET
         "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/MapleTree_1.fbx")
-if (EXISTS "${VIPER_RIDGEBOUND_MAPLE_ASSET}")
+if (EXISTS "${ZANNA_RIDGEBOUND_MAPLE_ASSET}")
     add_test(NAME zia_smoke_ridgebound_tree_materials
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/tree_material_probe.zia"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
@@ -1681,13 +1681,13 @@ set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
         TIMEOUT 300)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
     if (TEST zia_smoke_ridgebound_tree_materials)
         set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
-                ENVIRONMENT "VIPER_3D_BACKEND=software")
+                ENVIRONMENT "ZANNA_3D_BACKEND=software")
     endif ()
     set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     # Ridgebound asserts a measured cinematic-frame budget. Keep its Windows
@@ -1695,23 +1695,23 @@ if (WIN32)
     # use explicit smoke ceilings for the MSVC software and hidden D3D11 paths.
     # The demo's stricter defaults remain in effect outside this CTest lane.
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software;VIPER_RIDGEBOUND_PERF_BUDGET_SOFTWARE_MS=8000"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software;ZANNA_RIDGEBOUND_PERF_BUDGET_SOFTWARE_MS=8000"
             PROCESSORS 8)
     if (TEST zia_smoke_ridgebound_tree_materials)
         set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
-                ENVIRONMENT "VIPER_3D_BACKEND=software")
+                ENVIRONMENT "ZANNA_3D_BACKEND=software")
     endif ()
     set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
     add_test(NAME zia_smoke_ridgebound_d3d11
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
     set_tests_properties(zia_smoke_ridgebound_d3d11 PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok backend=d3d11"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
-            ENVIRONMENT "VIPER_3D_BACKEND=d3d11;VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS=100"
+            ENVIRONMENT "ZANNA_3D_BACKEND=d3d11;ZANNA_RIDGEBOUND_PERF_BUDGET_GPU_MS=100"
             RUN_SERIAL TRUE
-            RESOURCE_LOCK viper_display
+            RESOURCE_LOCK zanna_display
             TIMEOUT 600)
     add_test(NAME zia_smoke_d3d11_rtt_readback
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/3d/d3d11_rtt_readback_probe.zia"
@@ -1719,8 +1719,8 @@ if (WIN32)
     set_tests_properties(zia_smoke_d3d11_rtt_readback PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok backend=d3d11"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
-            ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
-            RESOURCE_LOCK viper_display
+            ENVIRONMENT "ZANNA_3D_BACKEND=d3d11"
+            RESOURCE_LOCK zanna_display
             TIMEOUT 120)
 endif ()
 if (APPLE)
@@ -1730,7 +1730,7 @@ if (APPLE)
     set_tests_properties(zia_smoke_ridgebound_software PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display;slow"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 90)
 endif ()
 
@@ -1743,12 +1743,12 @@ set_tests_properties(zia_smoke_3dbaseball PROPERTIES
         TIMEOUT 30)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 90)
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 90)
 endif ()
 
@@ -1761,11 +1761,11 @@ set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
         TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 180)
 endif ()
 
@@ -1778,11 +1778,11 @@ set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
         TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "ZANNA_3D_BACKEND=software")
 endif ()
 
 add_test(NAME zia_smoke_chess
@@ -1935,7 +1935,7 @@ add_test(NAME zia_xenoscape_render
 set_tests_properties(zia_xenoscape_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;render;requires_display"
-        RESOURCE_LOCK viper_display
+        RESOURCE_LOCK zanna_display
         TIMEOUT 30)
 
 add_test(NAME zia_xenoscape_package
@@ -1971,25 +1971,25 @@ if (WIN32)
 endif ()
 
 add_test(NAME xenoscape_package_dry_run
-        COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+        COMMAND $<TARGET_FILE:zanna> package "." --target tarball --dry-run
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
 set_tests_properties(xenoscape_package_dry_run PROPERTIES
         LABELS "zia;smoke;package"
         TIMEOUT 60)
 
-add_test(NAME viper_asset_bake_roundtrip
-        COMMAND $<TARGET_FILE:viper> asset bake
+add_test(NAME zanna_asset_bake_roundtrip
+        COMMAND $<TARGET_FILE:zanna> asset bake
         "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb"
         "${CMAKE_BINARY_DIR}/asset_bake_test.vscn" --lods 2)
-set_tests_properties(viper_asset_bake_roundtrip PROPERTIES
+set_tests_properties(zanna_asset_bake_roundtrip PROPERTIES
         PASS_REGULAR_EXPRESSION "baked "
         LABELS "tools;graphics3d;smoke"
         TIMEOUT 60)
 
-add_test(NAME viper_asset_validate_report
-        COMMAND $<TARGET_FILE:viper> asset validate
+add_test(NAME zanna_asset_validate_report
+        COMMAND $<TARGET_FILE:zanna> asset validate
         "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb")
-set_tests_properties(viper_asset_validate_report PROPERTIES
+set_tests_properties(zanna_asset_validate_report PROPERTIES
         PASS_REGULAR_EXPRESSION "skippedPrimitives"
         LABELS "tools;graphics3d;smoke"
         TIMEOUT 60)
@@ -1998,7 +1998,7 @@ if (NOT WIN32)
     foreach (probe IN ITEMS mechanics campaign)
         add_test(NAME native_xenoscape_${probe}
                 COMMAND ${CMAKE_COMMAND}
-                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DZANNA_EXE=$<TARGET_FILE:zanna>
                 -DTEST_FILE=${CMAKE_SOURCE_DIR}/examples/games/xenoscape/${probe}_probe.zia
                 -DOUT_EXE=${CMAKE_BINARY_DIR}/xenoscape_${probe}_native
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
@@ -2009,20 +2009,20 @@ if (NOT WIN32)
     endforeach ()
 endif ()
 
-set(VIPER_DISPLAY_TESTS
+set(ZANNA_DISPLAY_TESTS
         zia_smoke_paint_canvas_capture
-        zia_smoke_viperide
-        zia_viperide_editor_hot_path
-        zia_viperide_intellisense
-        zia_viperide_file_tree
-        zia_viperide_activity_bar
-        zia_viperide_multi_root
-        zia_viperide_terminal_open
-        zia_viperide_terminal_hidden_start
-        zia_viperide_terminal_multi
-        zia_viperide_bottom_panel
-        zia_viperide_split_editor
-        zia_viperide_console_search
+        zia_smoke_zannaide
+        zia_zannaide_editor_hot_path
+        zia_zannaide_intellisense
+        zia_zannaide_file_tree
+        zia_zannaide_activity_bar
+        zia_zannaide_multi_root
+        zia_zannaide_terminal_open
+        zia_zannaide_terminal_hidden_start
+        zia_zannaide_terminal_multi
+        zia_zannaide_bottom_panel
+        zia_zannaide_split_editor
+        zia_zannaide_console_search
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim
         zia_smoke_3dscene
@@ -2033,10 +2033,10 @@ set(VIPER_DISPLAY_TESTS
 if (APPLE)
     # The primary Ridgebound probe uses Metal on macOS. Windows and Linux
     # explicitly select the headless software backend and need no display lock.
-    list(APPEND VIPER_DISPLAY_TESTS zia_smoke_ridgebound)
+    list(APPEND ZANNA_DISPLAY_TESTS zia_smoke_ridgebound)
 endif ()
-set_tests_properties(${VIPER_DISPLAY_TESTS} PROPERTIES
-        RESOURCE_LOCK viper_display)
+set_tests_properties(${ZANNA_DISPLAY_TESTS} PROPERTIES
+        RESOURCE_LOCK zanna_display)
 
 add_test(NAME zia_smoke_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/smoke_probe.zia"
@@ -2102,7 +2102,7 @@ set_tests_properties(zia_reporting_baseball PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 90)
 
-set(VIPER_BASEBALL_DATA_TESTS
+set(ZANNA_BASEBALL_DATA_TESTS
         zia_smoke_baseball
         zia_lineup_legality_baseball
         zia_calibration_baseball
@@ -2111,12 +2111,12 @@ set(VIPER_BASEBALL_DATA_TESTS
         zia_season_baseball
         zia_persistence_baseball
         zia_reporting_baseball)
-set_tests_properties(${VIPER_BASEBALL_DATA_TESTS} PROPERTIES
-        RESOURCE_LOCK viper_baseball_data)
+set_tests_properties(${ZANNA_BASEBALL_DATA_TESTS} PROPERTIES
+        RESOURCE_LOCK zanna_baseball_data)
 
-if (VIPER_BASH_EXECUTABLE)
+if (ZANNA_BASH_EXECUTABLE)
     add_test(NAME platform_policy_lint_empty_candidates
-            COMMAND ${VIPER_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
+            COMMAND ${ZANNA_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
             "${CMAKE_SOURCE_DIR}")
     set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2127,7 +2127,7 @@ endif ()
 
 set(VEC3_MUTATORS_PROBE "${CMAKE_SOURCE_DIR}/src/tests/e2e/vec3_mutators_probe.zia")
 add_test(NAME zia_smoke_vec3_mutators
-        COMMAND $<TARGET_FILE:viper> run "${VEC3_MUTATORS_PROBE}")
+        COMMAND $<TARGET_FILE:zanna> run "${VEC3_MUTATORS_PROBE}")
 set_tests_properties(zia_smoke_vec3_mutators PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;runtime"
@@ -2135,97 +2135,97 @@ set_tests_properties(zia_smoke_vec3_mutators PROPERTIES
 
 set(PHYSICS3D_FIXED_STEP_PROBE "${CMAKE_SOURCE_DIR}/src/tests/e2e/physics3d_fixed_step_probe.zia")
 add_test(NAME zia_smoke_physics3d_fixed_step
-        COMMAND $<TARGET_FILE:viper> run "${PHYSICS3D_FIXED_STEP_PROBE}")
+        COMMAND $<TARGET_FILE:zanna> run "${PHYSICS3D_FIXED_STEP_PROBE}")
 set_tests_properties(zia_smoke_physics3d_fixed_step PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;runtime"
         TIMEOUT 30)
 
-if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+if (APPLE AND ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_vec3_mutators_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_vec3_mutators_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_vec3_mutators_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_vec3_mutators_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_physics3d_fixed_step_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_physics3d_fixed_step_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_physics3d_fixed_step_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_physics3d_fixed_step_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_3dbowling_build_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_3dbowling_build_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
     add_test(NAME native_smoke_achievement_draw_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;requires_display;slow"
-            RESOURCE_LOCK viper_display
+            RESOURCE_LOCK zanna_display
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_start_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;requires_display;slow"
-            RESOURCE_LOCK viper_display
+            RESOURCE_LOCK zanna_display
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_action_names_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_chess_ai_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
     add_test(NAME native_smoke_crackman_movement_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_crackman_movement_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_crackman_movement_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_crackman_movement_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
-    # Regression gate for the ViperIDE IntelliSense fix: a codegen'd native
+    # Regression gate for the ZannaIDE IntelliSense fix: a codegen'd native
     # binary must force-load zia_editor_services so rt_zia_* resolve to the real engine
     # rather than the weak "unavailable" stubs. Fails before the fix.
-    add_test(NAME native_smoke_viperide_completion_arm64
-            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(native_smoke_viperide_completion_arm64 PROPERTIES
+    add_test(NAME native_smoke_zannaide_completion_arm64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannaide_completion_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_zannaide_completion_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
 endif ()
 
-if (VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-    add_test(NAME native_smoke_viperide_completion_x64
-            COMMAND "${CMAKE_COMMAND}" -E env VIPER_NATIVE_TEST_ARCH=x64
-            ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
-            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(native_smoke_viperide_completion_x64 PROPERTIES
+if (ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    add_test(NAME native_smoke_zannaide_completion_x64
+            COMMAND "${CMAKE_COMMAND}" -E env ZANNA_NATIVE_TEST_ARCH=x64
+            ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannaide_completion_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_zannaide_completion_x64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
@@ -2261,7 +2261,7 @@ foreach (test_name IN LISTS G3D_ZIA_TESTS)
     set(test_file "${G3D_TESTS_DIR}/${test_name}.zia")
     if (EXISTS "${test_file}")
         add_test(NAME g3d_${test_name}
-                COMMAND $<TARGET_FILE:viper> run "${test_file}"
+                COMMAND $<TARGET_FILE:zanna> run "${test_file}"
                 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
         set_tests_properties(g3d_${test_name} PROPERTIES
                 PASS_REGULAR_EXPRESSION "PASS"
@@ -2273,72 +2273,72 @@ endforeach ()
 set(GAME3D_SURFACE_PROBE "${G3D_TESTS_DIR}/game3d_surface_probe.zia")
 if (EXISTS "${GAME3D_SURFACE_PROBE}")
     add_test(NAME g3d_game3d_surface_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SURFACE_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_SURFACE_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_game3d_surface_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_WORLD_PROBE "${G3D_TESTS_DIR}/test_game3d_world_probe.zia")
 if (EXISTS "${GAME3D_WORLD_PROBE}")
     add_test(NAME g3d_test_game3d_world_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_WORLD_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_WORLD_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_world_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_RUNFRAMES_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_probe.zia")
 if (EXISTS "${GAME3D_RUNFRAMES_PROBE}")
     add_test(NAME g3d_test_game3d_runframes_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_RUNFRAMES_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_runframes_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_RUNFRAMES_CALLBACK_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_callback_probe.zia")
 if (EXISTS "${GAME3D_RUNFRAMES_CALLBACK_PROBE}")
     add_test(NAME g3d_test_game3d_runframes_callback_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_CALLBACK_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_RUNFRAMES_CALLBACK_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_runframes_callback_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_RUNFIXED_CALLBACK_PROBE "${G3D_TESTS_DIR}/test_game3d_runfixed_callback_probe.zia")
 if (EXISTS "${GAME3D_RUNFIXED_CALLBACK_PROBE}")
     add_test(NAME g3d_test_game3d_runfixed_callback_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFIXED_CALLBACK_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_RUNFIXED_CALLBACK_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_runfixed_callback_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
     if (NOT WIN32)
         add_test(NAME native_run_game3d_runfixed_callback_probe
                 COMMAND ${CMAKE_COMMAND}
-                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DZANNA_EXE=$<TARGET_FILE:zanna>
                 -DTEST_FILE=${GAME3D_RUNFIXED_CALLBACK_PROBE}
                 -DOUT_EXE=${CMAKE_BINARY_DIR}/game3d_runfixed_callback_probe_native
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
                 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
         set_tests_properties(native_run_game3d_runfixed_callback_probe PROPERTIES
                 LABELS "zia;native_run;runtime;graphics3d;requires_display"
-                ENVIRONMENT "VIPER_3D_BACKEND=software"
+                ENVIRONMENT "ZANNA_3D_BACKEND=software"
                 TIMEOUT 60)
     endif ()
 endif ()
@@ -2346,127 +2346,127 @@ endif ()
 set(GAME3D_DESTROYED_HANDLE_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_destroyed_handle_reject.zia")
 if (EXISTS "${GAME3D_DESTROYED_HANDLE_REJECT_PROBE}")
     add_test(NAME g3d_test_game3d_destroyed_handle_reject
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DESTROYED_HANDLE_REJECT_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_DESTROYED_HANDLE_REJECT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_destroyed_handle_reject PROPERTIES
             PASS_REGULAR_EXPRESSION "Game3D.World3D.get_Frame: world is destroyed"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_DESTROYED_ENTITY_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_destroyed_entity_reject.zia")
 if (EXISTS "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}")
     add_test(NAME g3d_test_game3d_destroyed_entity_reject
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_destroyed_entity_reject PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS stale entity no-op"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_DOUBLE_DESPAWN_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_double_despawn_reject.zia")
 if (EXISTS "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}")
     add_test(NAME g3d_test_game3d_double_despawn_reject
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_double_despawn_reject PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS double despawn no-op"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(CANVAS3D_SYNTHETIC_INPUT_PROBE "${G3D_TESTS_DIR}/test_canvas3d_synthetic_input.zia")
 if (EXISTS "${CANVAS3D_SYNTHETIC_INPUT_PROBE}")
     add_test(NAME g3d_test_canvas3d_synthetic_input
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_SYNTHETIC_INPUT_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_SYNTHETIC_INPUT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_synthetic_input PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_CAMERA_CONTROLLERS_PROBE "${G3D_TESTS_DIR}/test_game3d_camera_controllers_probe.zia")
 if (EXISTS "${GAME3D_CAMERA_CONTROLLERS_PROBE}")
     add_test(NAME g3d_test_game3d_camera_controllers_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CAMERA_CONTROLLERS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_CAMERA_CONTROLLERS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_camera_controllers_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_CHARACTER_CONTROLLER_PROBE "${G3D_TESTS_DIR}/test_game3d_character_controller_probe.zia")
 if (EXISTS "${GAME3D_CHARACTER_CONTROLLER_PROBE}")
     add_test(NAME g3d_test_game3d_character_controller_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CHARACTER_CONTROLLER_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_CHARACTER_CONTROLLER_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_character_controller_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_THIRDPERSON_PROBE "${G3D_TESTS_DIR}/test_game3d_thirdperson_probe.zia")
 if (EXISTS "${GAME3D_THIRDPERSON_PROBE}")
     add_test(NAME g3d_test_game3d_thirdperson_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_THIRDPERSON_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_THIRDPERSON_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_thirdperson_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_COMBAT_PROBE "${G3D_TESTS_DIR}/test_game3d_combat_probe.zia")
 if (EXISTS "${GAME3D_COMBAT_PROBE}")
     add_test(NAME g3d_test_game3d_combat_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_COMBAT_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_COMBAT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_combat_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(INTERACT_FIXTURE "${G3D_TESTS_DIR}/test_game3d_interact_probe.zia")
 if (EXISTS "${INTERACT_FIXTURE}")
     add_test(NAME g3d_test_game3d_interact_probe
-            COMMAND $<TARGET_FILE:viper> run "${INTERACT_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${INTERACT_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_interact_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_PROFILING_FIXTURE "${G3D_TESTS_DIR}/test_game3d_profiling_probe.zia")
 if (EXISTS "${GAME3D_PROFILING_FIXTURE}")
     add_test(NAME g3d_test_game3d_profiling_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PROFILING_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_PROFILING_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_profiling_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME_QUESTS_FIXTURE "${G3D_TESTS_DIR}/test_game_quests_probe.zia")
 if (EXISTS "${GAME_QUESTS_FIXTURE}")
     add_test(NAME zia_test_game_quests_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME_QUESTS_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME_QUESTS_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(zia_test_game_quests_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2477,288 +2477,288 @@ endif ()
 set(GAME3D_MINIMAP_FIXTURE "${G3D_TESTS_DIR}/test_game3d_minimap_probe.zia")
 if (EXISTS "${GAME3D_MINIMAP_FIXTURE}")
     add_test(NAME g3d_test_game3d_minimap_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_MINIMAP_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_MINIMAP_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_minimap_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_PERSIST_FIXTURE "${G3D_TESTS_DIR}/test_game3d_persistence_probe.zia")
 if (EXISTS "${GAME3D_PERSIST_FIXTURE}")
     add_test(NAME g3d_test_game3d_persistence_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PERSIST_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_PERSIST_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_persistence_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_CLOTH_FIXTURE "${G3D_TESTS_DIR}/test_game3d_cloth_probe.zia")
 if (EXISTS "${GAME3D_CLOTH_FIXTURE}")
     add_test(NAME g3d_test_game3d_cloth_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CLOTH_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_CLOTH_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_cloth_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_AUDIO_IMM_FIXTURE "${G3D_TESTS_DIR}/test_game3d_audio_immersion_probe.zia")
 if (EXISTS "${GAME3D_AUDIO_IMM_FIXTURE}")
     add_test(NAME g3d_test_game3d_audio_immersion_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_AUDIO_IMM_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_AUDIO_IMM_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_audio_immersion_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software;VIPER_AUDIO_SILENT=1"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software;ZANNA_AUDIO_SILENT=1"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_AI_FIXTURE "${G3D_TESTS_DIR}/test_game3d_ai_probe.zia")
 if (EXISTS "${GAME3D_AI_FIXTURE}")
     add_test(NAME g3d_test_game3d_ai_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_AI_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_AI_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_ai_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(FOOTSTEPS_FIXTURE "${G3D_TESTS_DIR}/test_game3d_footsteps_probe.zia")
 if (EXISTS "${FOOTSTEPS_FIXTURE}")
     add_test(NAME g3d_test_game3d_footsteps_probe
-            COMMAND $<TARGET_FILE:viper> run "${FOOTSTEPS_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${FOOTSTEPS_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_footsteps_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(SURFACES_FIXTURE "${G3D_TESTS_DIR}/test_game3d_surfaces_probe.zia")
 if (EXISTS "${SURFACES_FIXTURE}")
     add_test(NAME g3d_test_game3d_surfaces_probe
-            COMMAND $<TARGET_FILE:viper> run "${SURFACES_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${SURFACES_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_surfaces_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(TIMEOFDAY_FIXTURE "${G3D_TESTS_DIR}/test_timeofday3d_clock.zia")
 if (EXISTS "${TIMEOFDAY_FIXTURE}")
     add_test(NAME g3d_test_timeofday3d_clock
-            COMMAND $<TARGET_FILE:viper> run "${TIMEOFDAY_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${TIMEOFDAY_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_timeofday3d_clock PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(SKY3D_FIXTURE "${G3D_TESTS_DIR}/test_sky3d_procedural.zia")
 if (EXISTS "${SKY3D_FIXTURE}")
     add_test(NAME g3d_test_sky3d_procedural
-            COMMAND $<TARGET_FILE:viper> run "${SKY3D_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${SKY3D_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_sky3d_procedural PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(REFLECTION_PROBE_FIXTURE "${G3D_TESTS_DIR}/test_reflection_probe_capture.zia")
 if (EXISTS "${REFLECTION_PROBE_FIXTURE}")
     add_test(NAME g3d_test_reflection_probe_capture
-            COMMAND $<TARGET_FILE:viper> run "${REFLECTION_PROBE_FIXTURE}"
+            COMMAND $<TARGET_FILE:zanna> run "${REFLECTION_PROBE_FIXTURE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_reflection_probe_capture PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_CINEMATICS_PROBE "${G3D_TESTS_DIR}/test_game3d_cinematics_probe.zia")
 if (EXISTS "${GAME3D_CINEMATICS_PROBE}")
     add_test(NAME g3d_test_game3d_cinematics_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CINEMATICS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_CINEMATICS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_cinematics_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_PRESETS_PROBE "${G3D_TESTS_DIR}/test_game3d_presets_probe.zia")
 if (EXISTS "${GAME3D_PRESETS_PROBE}")
     add_test(NAME g3d_test_game3d_presets_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PRESETS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_PRESETS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_presets_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_ASSETS_PROBE "${G3D_TESTS_DIR}/test_game3d_assets_probe.zia")
 if (EXISTS "${GAME3D_ASSETS_PROBE}")
     add_test(NAME g3d_test_game3d_assets_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_ASSETS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_ASSETS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_assets_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_PHYSICS_PROBE "${G3D_TESTS_DIR}/test_game3d_physics_probe.zia")
 if (EXISTS "${GAME3D_PHYSICS_PROBE}")
     add_test(NAME g3d_test_game3d_physics_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PHYSICS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_PHYSICS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_physics_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_COLLISION_PROBE "${G3D_TESTS_DIR}/test_game3d_collision_probe.zia")
 if (EXISTS "${GAME3D_COLLISION_PROBE}")
     add_test(NAME g3d_test_game3d_collision_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_COLLISION_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_COLLISION_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_collision_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_ANIM_PROBE "${G3D_TESTS_DIR}/test_game3d_anim_probe.zia")
 if (EXISTS "${GAME3D_ANIM_PROBE}")
     add_test(NAME g3d_test_game3d_anim_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_ANIM_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_ANIM_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_anim_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_SOUND_PROBE "${G3D_TESTS_DIR}/test_game3d_sound_probe.zia")
 if (EXISTS "${GAME3D_SOUND_PROBE}")
     add_test(NAME g3d_test_game3d_sound_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SOUND_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_SOUND_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_sound_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_EFFECTS_PROBE "${G3D_TESTS_DIR}/test_game3d_effects_probe.zia")
 if (EXISTS "${GAME3D_EFFECTS_PROBE}")
     add_test(NAME g3d_test_game3d_effects_probe
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_EFFECTS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_EFFECTS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_effects_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_DOCS_SNIPPETS_PROBE "${G3D_TESTS_DIR}/test_game3d_docs_snippets.zia")
 if (EXISTS "${GAME3D_DOCS_SNIPPETS_PROBE}")
     add_test(NAME g3d_test_game3d_docs_snippets
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOCS_SNIPPETS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_DOCS_SNIPPETS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_docs_snippets PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GRAPHICS3D_DOCS_SNIPPETS_PROBE "${G3D_TESTS_DIR}/test_graphics3d_docs_snippets.zia")
 if (EXISTS "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}")
     add_test(NAME g3d_test_graphics3d_docs_snippets
-            COMMAND $<TARGET_FILE:viper> run "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_graphics3d_docs_snippets PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(CANVAS3D_SHADOW_BUDGET_PROBE "${G3D_TESTS_DIR}/test_canvas3d_shadow_budget.zia")
 if (EXISTS "${CANVAS3D_SHADOW_BUDGET_PROBE}")
     add_test(NAME g3d_test_canvas3d_shadow_budget
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_SHADOW_BUDGET_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_SHADOW_BUDGET_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_shadow_budget PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 endif ()
 
 set(CANVAS3D_VISUAL_POLISH_PROBE "${G3D_TESTS_DIR}/test_canvas3d_visual_polish.zia")
 if (EXISTS "${CANVAS3D_VISUAL_POLISH_PROBE}")
     add_test(NAME g3d_test_canvas3d_visual_polish
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_VISUAL_POLISH_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_VISUAL_POLISH_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_visual_polish PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 endif ()
 
 set(CANVAS3D_POSTFX_PARITY_PROBE "${G3D_TESTS_DIR}/test_canvas3d_postfx_parity.zia")
 if (EXISTS "${CANVAS3D_POSTFX_PARITY_PROBE}")
     add_test(NAME g3d_test_canvas3d_postfx_parity
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_POSTFX_PARITY_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_POSTFX_PARITY_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_postfx_parity PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 endif ()
 
 set(CANVAS3D_POINT_SHADOWS_PROBE "${G3D_TESTS_DIR}/test_canvas3d_point_shadows.zia")
 if (EXISTS "${CANVAS3D_POINT_SHADOWS_PROBE}")
     add_test(NAME g3d_test_canvas3d_point_shadows
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_POINT_SHADOWS_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_POINT_SHADOWS_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_point_shadows PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
     if (WIN32)
         add_test(NAME g3d_test_canvas3d_point_shadows_d3d11
@@ -2767,7 +2767,7 @@ if (EXISTS "${CANVAS3D_POINT_SHADOWS_PROBE}")
         set_tests_properties(g3d_test_canvas3d_point_shadows_d3d11 PROPERTIES
                 PASS_REGULAR_EXPRESSION "PASS"
                 LABELS "runtime;graphics3d;zia;requires_display;d3d11"
-                ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
+                ENVIRONMENT "ZANNA_3D_BACKEND=d3d11"
                 TIMEOUT 120)
     endif ()
 endif ()
@@ -2775,78 +2775,78 @@ endif ()
 set(CANVAS3D_RENDER_SCALE_PROBE "${G3D_TESTS_DIR}/test_canvas3d_render_scale.zia")
 if (EXISTS "${CANVAS3D_RENDER_SCALE_PROBE}")
     add_test(NAME g3d_test_canvas3d_render_scale
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_RENDER_SCALE_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_RENDER_SCALE_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_render_scale PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 endif ()
 
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")
 if (EXISTS "${CANVAS3D_QUALITY_PROFILES_PROBE}")
     add_test(NAME g3d_test_canvas3d_quality_profiles
-            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_QUALITY_PROFILES_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_QUALITY_PROFILES_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_canvas3d_quality_profiles PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(WALK_MIN_VISUAL_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/walk_min_probe.zia")
 if (EXISTS "${WALK_MIN_VISUAL_PROBE}")
     add_test(NAME g3d_walk_min_visual_probe
-            COMMAND $<TARGET_FILE:viper> run "${WALK_MIN_VISUAL_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${WALK_MIN_VISUAL_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_walk_min_visual_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(BOUNDED_NO_REGRESSION_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/bounded_no_regression_probe.zia")
 if (EXISTS "${BOUNDED_NO_REGRESSION_PROBE}")
     add_test(NAME g3d_bounded_no_regression_probe
-            COMMAND $<TARGET_FILE:viper> run "${BOUNDED_NO_REGRESSION_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${BOUNDED_NO_REGRESSION_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/3d")
     set_tests_properties(g3d_bounded_no_regression_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok .*byte_exact=1.*state_exact=1.*scale_flags_off=1"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 set(GAME3D_SHOWCASE_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_showcase/showcase.zia")
 if (EXISTS "${GAME3D_SHOWCASE_PROBE}")
     add_test(NAME g3d_game3d_showcase
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SHOWCASE_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_SHOWCASE_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_game3d_showcase PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 45)
 endif ()
 
 set(GAME3D_HELLO_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_hello.zia")
 if (EXISTS "${GAME3D_HELLO_PROBE}")
     add_test(NAME g3d_game3d_hello
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_HELLO_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_HELLO_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_game3d_hello PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
 add_test(NAME g3d_game3d_common_no_mat4
         COMMAND ${CMAKE_COMMAND}
-        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DZANNA_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/CheckGame3DCommonNoMat4.cmake)
 set_tests_properties(g3d_game3d_common_no_mat4 PROPERTIES
         PASS_REGULAR_EXPRESSION "PASS"
@@ -2857,16 +2857,16 @@ set(GAME3D_STARTER_DIR "${CMAKE_SOURCE_DIR}/examples/3d/game3d_starter")
 set(GAME3D_STARTER_PROBE "${GAME3D_STARTER_DIR}/test.zia")
 if (EXISTS "${GAME3D_STARTER_PROBE}")
     add_test(NAME g3d_game3d_starter_probe
-            COMMAND $<TARGET_FILE:viper> run "test.zia"
+            COMMAND $<TARGET_FILE:zanna> run "test.zia"
             WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
     set_tests_properties(g3d_game3d_starter_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 
     add_test(NAME g3d_game3d_starter_package_dry_run
-            COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+            COMMAND $<TARGET_FILE:zanna> package "." --target tarball --dry-run
             WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
     set_tests_properties(g3d_game3d_starter_package_dry_run PROPERTIES
             PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
@@ -2877,12 +2877,12 @@ endif ()
 set(G3D_OVERHAUL_SHOWCASE_DIR "${CMAKE_SOURCE_DIR}/examples/3d/overhaul_showcase")
 if (EXISTS "${G3D_OVERHAUL_SHOWCASE_DIR}/probe.zia")
     add_test(NAME g3d_overhaul_showcase_probe
-            COMMAND $<TARGET_FILE:viper> run "probe.zia"
+            COMMAND $<TARGET_FILE:zanna> run "probe.zia"
             WORKING_DIRECTORY "${G3D_OVERHAUL_SHOWCASE_DIR}")
     set_tests_properties(g3d_overhaul_showcase_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 endif ()
 
@@ -2897,27 +2897,27 @@ else ()
 endif ()
 if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
     add_test(NAME g3d_openworld_slice_probe
-            COMMAND $<TARGET_FILE:viper> run "test.zia"
+            COMMAND $<TARGET_FILE:zanna> run "test.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 45)
 
     add_test(NAME g3d_openworld_slice_perf_probe
-            COMMAND $<TARGET_FILE:viper> run "perf_probe.zia"
+            COMMAND $<TARGET_FILE:zanna> run "perf_probe.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_perf_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_perf_probe"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
-            RESOURCE_LOCK viper_display
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
+            RESOURCE_LOCK zanna_display
             TIMEOUT 120)
 
     add_test(NAME g3d_openworld_slice_perf_harness
             COMMAND "${CMAKE_COMMAND}"
-            -D "VIPER_EXE=$<TARGET_FILE:viper>"
+            -D "ZANNA_EXE=$<TARGET_FILE:zanna>"
             -D "WORKING_DIR=${GAME3D_OPENWORLD_SLICE_DIR}"
             -D "SCRIPT=perf_probe.zia"
             -D "BACKEND=software"
@@ -2926,11 +2926,11 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
     set_tests_properties(g3d_openworld_slice_perf_harness PROPERTIES
             PASS_REGULAR_EXPRESSION "HARNESS: name=openworld_slice"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
-            RESOURCE_LOCK viper_display
+            RESOURCE_LOCK zanna_display
             TIMEOUT 150)
 
     add_test(NAME g3d_openworld_slice_streaming_hitch_probe
-            COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"
+            COMMAND $<TARGET_FILE:zanna> run "streaming_hitch_probe.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_streaming_hitch_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_streaming_hitch_probe"
@@ -2938,34 +2938,34 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             TIMEOUT 45)
 
     add_test(NAME g3d_openworld_slice_streaming_hitch_native_compressed_probe
-            COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"
+            COMMAND $<TARGET_FILE:zanna> run "streaming_hitch_probe.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_streaming_hitch_native_compressed_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "(native_compressed_upload=1.*native_raw_rgba_bytes=64.*native_compressed_bytes=16.*native_ram_reduction_pct=75.*native_vram_reduction_pct=75.*native_tolerance_checked=1|SKIP: native compressed upload unsupported)"
             LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke;perf"
-            ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND};VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1"
+            ENVIRONMENT "ZANNA_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND};ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE=1"
             TIMEOUT 45)
 
     add_test(NAME g3d_openworld_slice_long_traversal
-            COMMAND $<TARGET_FILE:viper> run "long_traversal.zia"
+            COMMAND $<TARGET_FILE:zanna> run "long_traversal.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_long_traversal PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_long_traversal"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
 
     add_test(NAME g3d_openworld_slice_visibility_dense_probe
-            COMMAND $<TARGET_FILE:viper> run "visibility_dense_probe.zia"
+            COMMAND $<TARGET_FILE:zanna> run "visibility_dense_probe.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_visibility_dense_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_visibility_dense_probe"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 45)
 
     add_test(NAME g3d_openworld_slice_package_dry_run
-            COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+            COMMAND $<TARGET_FILE:zanna> package "." --target tarball --dry-run
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_package_dry_run PROPERTIES
             PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
@@ -2976,24 +2976,24 @@ endif ()
 set(GAME3D_OPENWORLD_SLICE_GPU_SMOKE "${GAME3D_OPENWORLD_SLICE_DIR}/gpu_smoke.zia")
 if (EXISTS "${GAME3D_OPENWORLD_SLICE_GPU_SMOKE}")
     add_test(NAME g3d_openworld_slice_gpu_smoke
-            COMMAND $<TARGET_FILE:viper> run "gpu_smoke.zia"
+            COMMAND $<TARGET_FILE:zanna> run "gpu_smoke.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_gpu_smoke PROPERTIES
             PASS_REGULAR_EXPRESSION "(PASS|SKIP):"
             LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke"
-            ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND}"
+            ENVIRONMENT "ZANNA_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND}"
             TIMEOUT 45)
 endif ()
 
 set(GAME3D_BOWLING_SETUP_PROBE "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/game3d/game3d_setup.zia")
 if (EXISTS "${GAME3D_BOWLING_SETUP_PROBE}")
     add_test(NAME g3d_game3d_bowling_setup
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_BOWLING_SETUP_PROBE}"
+            COMMAND $<TARGET_FILE:zanna> run "${GAME3D_BOWLING_SETUP_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_game3d_bowling_setup PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "runtime;graphics3d;zia;requires_display"
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 30)
 endif ()
 
@@ -3016,7 +3016,7 @@ if (WIN32)
     # under roughly 30 seconds. These measured VM/render/system simulations are
     # valuable coverage, but together add more than 20 minutes of serial CPU
     # time and create severe contention during an eight-worker full-suite run.
-    set(_viper_windows_slow_tests
+    set(_zanna_windows_slow_tests
             test_rt_game3d_thirdperson
             test_rt_game3d_combat
             test_rt_game3d_streaming_async
@@ -3025,52 +3025,52 @@ if (WIN32)
             test_rt_game3d_cinematics
             test_rt_game3d_hlod
             test_rt_restclient
-            zia_viperide_console_search
+            zia_zannaide_console_search
             zia_season_baseball
             zia_smoke_ridgebound_d3d11
             zia_smoke_3dbowling_title_postfx
             zia_smoke_ashfall_stress
             zia_smoke_ashfall_menu
             test_zia_repl)
-    foreach (_test IN LISTS _viper_windows_slow_tests)
+    foreach (_test IN LISTS _zanna_windows_slow_tests)
         if (TEST ${_test})
             set_property(TEST ${_test} APPEND PROPERTY LABELS slow)
         endif ()
     endforeach ()
-    unset(_viper_windows_slow_tests)
+    unset(_zanna_windows_slow_tests)
 
     # The Windows build clears CTest's historical cost cache before every run.
     # Seed the known VM/render-heavy tests so the parallel scheduler starts them
     # while the short unit tests fill the remaining workers, rather than leaving
     # several minutes of single-test tail latency at the end of the suite.
-    function(_viper_set_windows_test_cost test_name cost)
+    function(_zanna_set_windows_test_cost test_name cost)
         if (TEST ${test_name})
             set_property(TEST ${test_name} PROPERTY COST ${cost})
         endif ()
     endfunction()
-    _viper_set_windows_test_cost(zia_smoke_ridgebound 170)
-    _viper_set_windows_test_cost(zia_smoke_ridgebound_tree_fallback_materials 90)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_level 80)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_render 75)
-    _viper_set_windows_test_cost(test_zia_server_lsp 70)
-    _viper_set_windows_test_cost(zia_smoke_ridgebound_d3d11 65)
-    _viper_set_windows_test_cost(zia_viperide_console_search 60)
-    _viper_set_windows_test_cost(zia_season_baseball 50)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_enemy 45)
-    _viper_set_windows_test_cost(zia_xenoscape_performance 200)
-    _viper_set_windows_test_cost(test_zia_repl 40)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_campaign 35)
-    _viper_set_windows_test_cost(zia_calibration_baseball 30)
-    _viper_set_windows_test_cost(test_zia_bugfixes 30)
-    _viper_set_windows_test_cost(test_rt_scene3d 30)
-    _viper_set_windows_test_cost(zia_smoke_vipersql 25)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_combat 20)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_menu 20)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_assets 20)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_movement 15)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_perf 15)
-    _viper_set_windows_test_cost(zia_smoke_ashfall_stress 25)
-    _viper_set_windows_test_cost(zia_viperide_intellisense 15)
+    _zanna_set_windows_test_cost(zia_smoke_ridgebound 170)
+    _zanna_set_windows_test_cost(zia_smoke_ridgebound_tree_fallback_materials 90)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_level 80)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_render 75)
+    _zanna_set_windows_test_cost(test_zia_server_lsp 70)
+    _zanna_set_windows_test_cost(zia_smoke_ridgebound_d3d11 65)
+    _zanna_set_windows_test_cost(zia_zannaide_console_search 60)
+    _zanna_set_windows_test_cost(zia_season_baseball 50)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_enemy 45)
+    _zanna_set_windows_test_cost(zia_xenoscape_performance 200)
+    _zanna_set_windows_test_cost(test_zia_repl 40)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_campaign 35)
+    _zanna_set_windows_test_cost(zia_calibration_baseball 30)
+    _zanna_set_windows_test_cost(test_zia_bugfixes 30)
+    _zanna_set_windows_test_cost(test_rt_scene3d 30)
+    _zanna_set_windows_test_cost(zia_smoke_zannasql 25)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_combat 20)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_menu 20)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_assets 20)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_movement 15)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_perf 15)
+    _zanna_set_windows_test_cost(zia_smoke_ashfall_stress 25)
+    _zanna_set_windows_test_cost(zia_zannaide_intellisense 15)
 
     # The level probe completes in roughly 80-100 seconds by itself and in the
     # representative eight-test contention group, but a clean MSVC Debug suite
@@ -3078,29 +3078,29 @@ if (WIN32)
     # ceiling. Match the other large Windows render probes so sustained host
     # load cannot turn a deterministic pass into a timeout.
     set_property(TEST zia_smoke_ashfall_level PROPERTY TIMEOUT 300)
-    _viper_set_windows_test_cost(zia_smoke_3dbaseball 10)
+    _zanna_set_windows_test_cost(zia_smoke_3dbaseball 10)
 
     # Every display-labelled test runs in its own process with window activation
     # disabled and windows hidden. A single Windows-wide display lock therefore
     # serialized unrelated software, 2D, and D3D probes without protecting shared
     # state. Keep only a narrow lock between tests that actually use D3D11.
-    get_property(_viper_windows_tests DIRECTORY PROPERTY TESTS)
-    foreach (_test IN LISTS _viper_windows_tests)
+    get_property(_zanna_windows_tests DIRECTORY PROPERTY TESTS)
+    foreach (_test IN LISTS _zanna_windows_tests)
         get_property(_resource_locks TEST ${_test} PROPERTY RESOURCE_LOCK)
         if (_resource_locks)
-            list(REMOVE_ITEM _resource_locks viper_display)
+            list(REMOVE_ITEM _resource_locks zanna_display)
             set_property(TEST ${_test} PROPERTY RESOURCE_LOCK "${_resource_locks}")
         endif ()
 
         get_property(_labels TEST ${_test} PROPERTY LABELS)
         get_property(_environment TEST ${_test} PROPERTY ENVIRONMENT)
         if ("d3d11" IN_LIST _labels OR
-            "${_environment}" MATCHES "(^|;)VIPER_3D_BACKEND=d3d11($|;)")
-            set_property(TEST ${_test} APPEND PROPERTY RESOURCE_LOCK viper_d3d11)
+            "${_environment}" MATCHES "(^|;)ZANNA_3D_BACKEND=d3d11($|;)")
+            set_property(TEST ${_test} APPEND PROPERTY RESOURCE_LOCK zanna_d3d11)
         endif ()
     endforeach ()
-    unset(_viper_windows_tests)
+    unset(_zanna_windows_tests)
 endif ()
 
-viper_apply_display_test_environment()
-viper_apply_audio_test_environment()
+zanna_apply_display_test_environment()
+zanna_apply_audio_test_environment()

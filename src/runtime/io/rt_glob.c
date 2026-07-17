@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_glob.c
 // Purpose: Implements glob-style wildcard pattern matching against filesystem
-//          paths for the Viper.IO.Glob class. Supports single-component '*',
+//          paths for the Zanna.IO.Glob class. Supports single-component '*',
 //          cross-directory '**', '?' wildcards, and character classes '[...]'.
 //
 // Key invariants:

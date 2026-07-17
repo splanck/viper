@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 
@@ -1106,4 +1106,4 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
     return std::nullopt;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

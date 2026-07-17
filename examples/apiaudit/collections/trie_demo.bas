@@ -1,4 +1,4 @@
-' trie_demo.bas - Comprehensive API audit for Viper.Collections.Trie
+' trie_demo.bas - Comprehensive API audit for Zanna.Collections.Trie
 ' Tests: New, Put, Get, Has, HasPrefix, Remove, Clear, Len, IsEmpty,
 '        Keys, LongestPrefix, WithPrefix
 
@@ -7,26 +7,26 @@ PRINT "=== Trie API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM t AS OBJECT
-t = Viper.Collections.Trie.New()
+t = Zanna.Collections.Trie.New()
 PRINT t.Count       ' 0
 PRINT t.IsEmpty   ' 1
 
 ' --- Put / Len ---
 PRINT "--- Put / Len ---"
-t.Put("cat", Viper.Core.Box.I64(1))
-t.Put("car", Viper.Core.Box.I64(2))
-t.Put("card", Viper.Core.Box.I64(3))
-t.Put("care", Viper.Core.Box.I64(4))
-t.Put("dog", Viper.Core.Box.I64(5))
+t.Put("cat", Zanna.Core.Box.I64(1))
+t.Put("car", Zanna.Core.Box.I64(2))
+t.Put("card", Zanna.Core.Box.I64(3))
+t.Put("care", Zanna.Core.Box.I64(4))
+t.Put("dog", Zanna.Core.Box.I64(5))
 PRINT t.Count       ' 5
 PRINT t.IsEmpty   ' 0
 
 ' --- Get ---
 PRINT "--- Get ---"
-PRINT Viper.Core.Box.ToI64(t.Get("cat"))   ' 1
-PRINT Viper.Core.Box.ToI64(t.Get("car"))   ' 2
-PRINT Viper.Core.Box.ToI64(t.Get("card"))  ' 3
-PRINT Viper.Core.Box.ToI64(t.Get("care"))  ' 4
+PRINT Zanna.Core.Box.ToI64(t.Get("cat"))   ' 1
+PRINT Zanna.Core.Box.ToI64(t.Get("car"))   ' 2
+PRINT Zanna.Core.Box.ToI64(t.Get("card"))  ' 3
+PRINT Zanna.Core.Box.ToI64(t.Get("care"))  ' 4
 
 ' --- Has ---
 PRINT "--- Has ---"
@@ -68,8 +68,8 @@ PRINT keys.Count                       ' 5
 
 ' --- Put (update existing) ---
 PRINT "--- Put (update) ---"
-t.Put("cat", Viper.Core.Box.I64(100))
-PRINT Viper.Core.Box.ToI64(t.Get("cat"))  ' 100
+t.Put("cat", Zanna.Core.Box.I64(100))
+PRINT Zanna.Core.Box.ToI64(t.Get("cat"))  ' 100
 PRINT t.Count                                ' 5
 
 ' --- Remove ---

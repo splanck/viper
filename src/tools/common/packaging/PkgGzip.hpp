@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 //          Wraps DEFLATE output with GZIP header and CRC-32/size trailer.
 //
 // Key invariants:
-//   - No runtime (viper_rt_*) dependencies — uses PkgDeflate + rt_crc32.
+//   - No runtime (zanna_rt_*) dependencies — uses PkgDeflate + rt_crc32.
 //   - Produces standard GZIP streams decompressible by gunzip/zlib.
 //
 // Ownership/Lifetime:
@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Compress data with GZIP wrapper (RFC 1952).
 /// @param data Input bytes to compress.
@@ -41,4 +41,4 @@ std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level = 6);
 /// @throws std::runtime_error on malformed GZIP data or CRC/size mismatch.
 std::vector<uint8_t> gunzip(const uint8_t *data, size_t len);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

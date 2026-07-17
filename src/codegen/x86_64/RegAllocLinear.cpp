@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include "ra/Allocator.hpp"
 #include "ra/LiveIntervals.hpp"
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Run the linear-scan register allocator over a function.
 /// @details The orchestration follows three clear steps:
@@ -55,4 +55,4 @@ AllocationResult allocate(MFunction &func, const TargetInfo &target) {
     return allocator.run();
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

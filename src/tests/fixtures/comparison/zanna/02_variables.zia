@@ -1,0 +1,48 @@
+// Test: Variables and Constants
+// Tests: var, final, type inference
+module Test;
+
+func main() {
+    // Mutable variable
+    var x: Integer = 10;
+    Zanna.Terminal.Say("Variable x: " + Zanna.Text.Fmt.Int(x));
+
+    // Constants (final)
+    final PI = 3.14159;
+    final MAX_SIZE = 100;
+    final GREETING = "Hello";
+    Zanna.Terminal.Say("Constant PI: " + Zanna.Text.Fmt.Num(PI));
+    Zanna.Terminal.Say("Constant MAX_SIZE: " + Zanna.Text.Fmt.Int(MAX_SIZE));
+    Zanna.Terminal.Say("Constant GREETING: " + GREETING);
+
+    // Multiple variable declarations
+    var a = 1;
+    var b = 2;
+    var c = 3;
+    Zanna.Terminal.Say("a, b, c: " + Zanna.Text.Fmt.Int(a) + ", " + Zanna.Text.Fmt.Int(b) + ", " + Zanna.Text.Fmt.Int(c));
+
+    // No STATIC equivalent in ZannaLang - would need entity field
+    // Testing via closure instead
+    var counter = 0;
+    testClosure(counter);
+
+    // Variable reassignment
+    x = 20;
+    Zanna.Terminal.Say("Reassigned x: " + Zanna.Text.Fmt.Int(x));
+
+    // Type inference works automatically
+    var inferInt = 42;
+    var inferFloat = 3.14;
+    var inferStr = "test";
+    Zanna.Terminal.Say("Inferred int: " + Zanna.Text.Fmt.Int(inferInt));
+    Zanna.Terminal.Say("Inferred float: " + Zanna.Text.Fmt.Num(inferFloat));
+    Zanna.Terminal.Say("Inferred string: " + inferStr);
+
+    Zanna.Terminal.Say("=== Variables test complete ===");
+}
+
+func testClosure(counter: Integer) {
+    // Note: ZannaLang doesn't have STATIC variables
+    // Static behavior would need to be achieved via entity fields
+    Zanna.Terminal.Say("ZannaLang has no STATIC - use entity fields instead");
+}

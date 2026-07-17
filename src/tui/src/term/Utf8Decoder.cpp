@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,13 +14,13 @@
 //                 error.
 // Ownership/Lifetime: Utf8Decoder stores only its internal state; callers
 //                     manage the buffers that feed bytes into @ref feed().
-// Links: docs/internals/architecture.md#vipertui-architecture, Unicode Standard §3.9
+// Links: docs/internals/architecture.md#zannatui-architecture, Unicode Standard §3.9
 //
 //===----------------------------------------------------------------------===//
 
 #include "tui/term/Utf8Decoder.hpp"
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 
 /// @brief Consume a single byte from the terminal and produce decoding status.
 /// @details Implements a small state machine that recognises one- through
@@ -116,4 +116,4 @@ void Utf8Decoder::reset() noexcept {
     length_ = 0;
 }
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

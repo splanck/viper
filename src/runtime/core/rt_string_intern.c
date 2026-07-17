@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_intern.c
-// Purpose: Implements the global string interning table for the Viper runtime
+// Purpose: Implements the global string interning table for the Zanna runtime
 //          (P2-3.8). After interning, two equal strings share the same rt_string
 //          pointer, reducing equality tests from O(n) memcmp to O(1) pointer
 //          comparison.

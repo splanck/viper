@@ -22,7 +22,7 @@ string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out "${out}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" expected "${expected}")
 ## Normalize selected BASIC helper symbols that lower to canonical runtime API calls.
 set(_aliases rt_print_str;rt_print_i64;rt_print_f64;rt_str_substr;rt_trap_string;rt_trap;rt_diag_assert;rt_str_concat;rt_input_line;rt_to_int;rt_to_double;rt_parse_int64;rt_parse_double;rt_int_to_str;rt_f64_to_str;rt_str_split_fields;rt_str_i16_alloc;rt_str_i32_alloc;rt_str_f_alloc)
-set(_canon Viper.Terminal.PrintStr;Viper.Terminal.PrintI64;Viper.Terminal.PrintF64;Viper.String.Substring;Viper.Diagnostics.Trap;Viper.Diagnostics.Trap;Viper.Diagnostics.Assert;Viper.String.Concat;Viper.Terminal.ReadLine;Viper.Core.Convert.ToInt64;Viper.Core.Convert.ToDouble;Viper.Core.Parse.TryInt;Viper.Core.Parse.TryDouble;Viper.Core.Convert.ToString_Int;Viper.Core.Convert.ToString_Double;Viper.String.SplitFields;Viper.String.FromI16;Viper.String.FromI32;Viper.String.FromSingle)
+set(_canon Zanna.Terminal.PrintStr;Zanna.Terminal.PrintI64;Zanna.Terminal.PrintF64;Zanna.String.Substring;Zanna.Diagnostics.Trap;Zanna.Diagnostics.Trap;Zanna.Diagnostics.Assert;Zanna.String.Concat;Zanna.Terminal.ReadLine;Zanna.Core.Convert.ToInt64;Zanna.Core.Convert.ToDouble;Zanna.Core.Parse.TryInt;Zanna.Core.Parse.TryDouble;Zanna.Core.Convert.ToString_Int;Zanna.Core.Convert.ToString_Double;Zanna.String.SplitFields;Zanna.String.FromI16;Zanna.String.FromI32;Zanna.String.FromSingle)
 list(LENGTH _aliases _n)
 math(EXPR _last "${_n} - 1")
 foreach (i RANGE 0 ${_last})

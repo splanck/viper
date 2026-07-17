@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include <cctype>
 #include <string>
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 
 /// @brief Convert a string to lowercase in-place.
 /// @details Uses ASCII-only lowercase conversion via std::tolower.
@@ -40,4 +40,4 @@ inline void toLowerInPlace(std::string &s) {
     return result;
 }
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

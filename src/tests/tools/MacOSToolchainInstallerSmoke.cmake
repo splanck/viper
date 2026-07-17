@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required CMAKE_BIN VIPER_BIN VIPER_BUILD_DIR)
+foreach (_required CMAKE_BIN ZANNA_BIN ZANNA_BUILD_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to MacOSToolchainInstallerSmoke.cmake")
     endif ()
@@ -8,38 +8,38 @@ endforeach ()
 
 include("${CMAKE_CURRENT_LIST_DIR}/ToolchainInstallerSmokeHelpers.cmake")
 
-set(_tmp_root "${VIPER_BUILD_DIR}/tests/macos-toolchain-installer-smoke")
-set(_pkg "${_tmp_root}/viper-toolchain.pkg")
+set(_tmp_root "${ZANNA_BUILD_DIR}/tests/macos-toolchain-installer-smoke")
+set(_pkg "${_tmp_root}/zanna-toolchain.pkg")
 set(_src_dir "${_tmp_root}/consumer-src")
 set(_build_dir "${_tmp_root}/consumer-build")
 set(_baseline_pkg "")
-set(_upgrade_stale "/usr/local/viper/share/viper/installer-upgrade-stale.txt")
-set(_upgrade_unrelated "/usr/local/viper/share/viper/installer-upgrade-unrelated.txt")
+set(_upgrade_stale "/usr/local/zanna/share/zanna/installer-upgrade-stale.txt")
+set(_upgrade_unrelated "/usr/local/zanna/share/zanna/installer-upgrade-unrelated.txt")
 set(_upgrade_unrelated_expected FALSE)
 
-if (DEFINED VIPER_BASELINE_PACKAGE AND NOT "${VIPER_BASELINE_PACKAGE}" STREQUAL "")
-    if (NOT EXISTS "${VIPER_BASELINE_PACKAGE}")
-        message(FATAL_ERROR "VIPER_BASELINE_PACKAGE does not exist: ${VIPER_BASELINE_PACKAGE}")
+if (DEFINED ZANNA_BASELINE_PACKAGE AND NOT "${ZANNA_BASELINE_PACKAGE}" STREQUAL "")
+    if (NOT EXISTS "${ZANNA_BASELINE_PACKAGE}")
+        message(FATAL_ERROR "ZANNA_BASELINE_PACKAGE does not exist: ${ZANNA_BASELINE_PACKAGE}")
     endif ()
-    get_filename_component(_baseline_pkg "${VIPER_BASELINE_PACKAGE}" ABSOLUTE)
+    get_filename_component(_baseline_pkg "${ZANNA_BASELINE_PACKAGE}" ABSOLUTE)
 endif ()
 
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}" "${_src_dir}")
 
-if (DEFINED VIPER_EXISTING_PACKAGE AND NOT "${VIPER_EXISTING_PACKAGE}" STREQUAL "")
-    if (NOT EXISTS "${VIPER_EXISTING_PACKAGE}")
-        message(FATAL_ERROR "VIPER_EXISTING_PACKAGE does not exist: ${VIPER_EXISTING_PACKAGE}")
+if (DEFINED ZANNA_EXISTING_PACKAGE AND NOT "${ZANNA_EXISTING_PACKAGE}" STREQUAL "")
+    if (NOT EXISTS "${ZANNA_EXISTING_PACKAGE}")
+        message(FATAL_ERROR "ZANNA_EXISTING_PACKAGE does not exist: ${ZANNA_EXISTING_PACKAGE}")
     endif ()
-    get_filename_component(_pkg "${VIPER_EXISTING_PACKAGE}" ABSOLUTE)
+    get_filename_component(_pkg "${ZANNA_EXISTING_PACKAGE}" ABSOLUTE)
 else ()
     set(_pkg_cmd
-            "${VIPER_BIN}" install-package
-            --build-dir "${VIPER_BUILD_DIR}"
+            "${ZANNA_BIN}" install-package
+            --build-dir "${ZANNA_BUILD_DIR}"
             --target macos
             -o "${_pkg}")
-    if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-        list(APPEND _pkg_cmd --config "${VIPER_CONFIG}")
+    if (DEFINED ZANNA_CONFIG AND NOT "${ZANNA_CONFIG}" STREQUAL "")
+        list(APPEND _pkg_cmd --config "${ZANNA_CONFIG}")
     endif ()
 
     execute_process(
@@ -52,7 +52,7 @@ else ()
     endif ()
 endif ()
 
-if ("$ENV{VIPER_REQUIRE_MACOS_PACKAGE_TRUST}" STREQUAL "1")
+if ("$ENV{ZANNA_REQUIRE_MACOS_PACKAGE_TRUST}" STREQUAL "1")
     foreach (_trust_command IN ITEMS pkgutil spctl xcrun)
         find_program(_trust_program_${_trust_command} ${_trust_command})
         if (NOT _trust_program_${_trust_command})
@@ -93,13 +93,13 @@ execute_process(
         RESULT_VARIABLE _choices_rv
         OUTPUT_VARIABLE _choices_out
         ERROR_VARIABLE _choices_err)
-if (NOT _choices_rv EQUAL 0 OR NOT _choices_out MATCHES "org[.]viper[.]toolchain")
+if (NOT _choices_rv EQUAL 0 OR NOT _choices_out MATCHES "org[.]zanna[.]toolchain")
     message(FATAL_ERROR
             "macOS Installer.app could not evaluate the generated Distribution choices\nstdout:\n${_choices_out}\nstderr:\n${_choices_err}")
 endif ()
 
-if (NOT "$ENV{VIPER_RUN_MACOS_INSTALLER_SMOKE}" STREQUAL "1")
-    message(STATUS "Skipping macOS installer smoke install step; set VIPER_RUN_MACOS_INSTALLER_SMOKE=1 to install into /usr/local")
+if (NOT "$ENV{ZANNA_RUN_MACOS_INSTALLER_SMOKE}" STREQUAL "1")
+    message(STATUS "Skipping macOS installer smoke install step; set ZANNA_RUN_MACOS_INSTALLER_SMOKE=1 to install into /usr/local")
     return()
 endif ()
 
@@ -117,9 +117,9 @@ if (NOT _uid STREQUAL "0")
     return()
 endif ()
 
-if (EXISTS "/usr/local/viper" OR EXISTS "/Applications/Viper Toolchain.app")
+if (EXISTS "/usr/local/zanna" OR EXISTS "/Applications/Zanna Toolchain.app")
     message(FATAL_ERROR
-            "macOS installer lifecycle smoke requires a clean host; remove the existing Viper Toolchain installation first")
+            "macOS installer lifecycle smoke requires a clean host; remove the existing Zanna Toolchain installation first")
 endif ()
 
 if (NOT "${_baseline_pkg}" STREQUAL "")
@@ -161,21 +161,21 @@ if (NOT "${_baseline_pkg}" STREQUAL "")
     endif ()
 endif ()
 
-viper_installer_smoke_verify_installed_tools("/usr/local/bin" "" "macOS installer smoke")
+zanna_installer_smoke_verify_installed_tools("/usr/local/bin" "" "macOS installer smoke")
 
-viper_installer_smoke_verify_cmake_consumer(
+zanna_installer_smoke_verify_cmake_consumer(
         "${CMAKE_BIN}"
         "${_src_dir}"
         "${_build_dir}"
-        "${VIPER_CONFIG}"
+        "${ZANNA_CONFIG}"
         "macOS installer smoke")
-viper_installer_smoke_verify_native_codegen(
+zanna_installer_smoke_verify_native_codegen(
         "${CMAKE_BIN}"
-        /usr/local/bin/viper
+        /usr/local/bin/zanna
         "${_tmp_root}"
         "macOS installer smoke")
 
-set(_uninstaller "/usr/local/viper/share/viper/uninstall.sh")
+set(_uninstaller "/usr/local/zanna/share/zanna/uninstall.sh")
 if (NOT EXISTS "${_uninstaller}")
     message(FATAL_ERROR "macOS installer smoke did not install its uninstall helper: ${_uninstaller}")
 endif ()
@@ -189,16 +189,16 @@ if (NOT _uninstall_rv EQUAL 0)
             "macOS uninstaller failed\nstdout:\n${_uninstall_out}\nstderr:\n${_uninstall_err}")
 endif ()
 
-viper_installer_smoke_required_tool_names(_uninstalled_tools)
+zanna_installer_smoke_required_tool_names(_uninstalled_tools)
 foreach (_tool IN LISTS _uninstalled_tools)
     if (EXISTS "/usr/local/bin/${_tool}" OR IS_SYMLINK "/usr/local/bin/${_tool}")
         message(FATAL_ERROR "macOS uninstaller left an owned command link: /usr/local/bin/${_tool}")
     endif ()
 endforeach ()
 foreach (_removed_path IN ITEMS
-        "/usr/local/lib/cmake/Viper/ViperConfig.cmake"
-        "/usr/local/lib/cmake/Viper/ViperConfigVersion.cmake"
-        "/Applications/Viper Toolchain.app")
+        "/usr/local/lib/cmake/Zanna/ZannaConfig.cmake"
+        "/usr/local/lib/cmake/Zanna/ZannaConfigVersion.cmake"
+        "/Applications/Zanna Toolchain.app")
     if (EXISTS "${_removed_path}" OR IS_SYMLINK "${_removed_path}")
         message(FATAL_ERROR "macOS uninstaller left an owned path: ${_removed_path}")
     endif ()
@@ -218,25 +218,25 @@ if (_upgrade_unrelated_expected)
     file(REMOVE "${_upgrade_unrelated}")
     execute_process(
             COMMAND rmdir
-                    "/usr/local/viper/share/viper"
-                    "/usr/local/viper/share"
-                    "/usr/local/viper"
+                    "/usr/local/zanna/share/zanna"
+                    "/usr/local/zanna/share"
+                    "/usr/local/zanna"
             RESULT_VARIABLE _cleanup_rv
             ERROR_VARIABLE _cleanup_err)
     if (NOT _cleanup_rv EQUAL 0)
         message(FATAL_ERROR
-                "macOS lifecycle cleanup found unexpected files under /usr/local/viper\nstderr:\n${_cleanup_err}")
+                "macOS lifecycle cleanup found unexpected files under /usr/local/zanna\nstderr:\n${_cleanup_err}")
     endif ()
 endif ()
-if (EXISTS "/usr/local/viper" OR IS_SYMLINK "/usr/local/viper")
-    message(FATAL_ERROR "macOS uninstaller left unexpected content under /usr/local/viper")
+if (EXISTS "/usr/local/zanna" OR IS_SYMLINK "/usr/local/zanna")
+    message(FATAL_ERROR "macOS uninstaller left unexpected content under /usr/local/zanna")
 endif ()
 
 execute_process(
-        COMMAND pkgutil --pkg-info org.viper.toolchain
+        COMMAND pkgutil --pkg-info org.zanna.toolchain
         RESULT_VARIABLE _receipt_rv
         OUTPUT_QUIET
         ERROR_QUIET)
 if (_receipt_rv EQUAL 0)
-    message(FATAL_ERROR "macOS uninstaller left the org.viper.toolchain package receipt")
+    message(FATAL_ERROR "macOS uninstaller left the org.zanna.toolchain package receipt")
 endif ()

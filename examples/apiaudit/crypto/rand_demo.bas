@@ -1,28 +1,28 @@
 ' =============================================================================
-' API Audit: Viper.Crypto.SecureRandom - Cryptographically Secure Random
+' API Audit: Zanna.Crypto.SecureRandom - Cryptographically Secure Random
 ' =============================================================================
 ' Tests: Int, Bytes
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Crypto.SecureRandom ==="
+PRINT "=== API Audit: Zanna.Crypto.SecureRandom ==="
 
 ' --- Int ---
 PRINT "--- Int ---"
-PRINT "Rand.Int(1,100): "; Viper.Crypto.SecureRandom.Int(1, 100)
-PRINT "Rand.Int(1,100): "; Viper.Crypto.SecureRandom.Int(1, 100)
-PRINT "Rand.Int(1,100): "; Viper.Crypto.SecureRandom.Int(1, 100)
+PRINT "Rand.Int(1,100): "; Zanna.Crypto.SecureRandom.Int(1, 100)
+PRINT "Rand.Int(1,100): "; Zanna.Crypto.SecureRandom.Int(1, 100)
+PRINT "Rand.Int(1,100): "; Zanna.Crypto.SecureRandom.Int(1, 100)
 
 ' --- Bytes ---
 PRINT "--- Bytes ---"
 DIM b AS OBJECT
-b = Viper.Crypto.SecureRandom.Bytes(8)
-PRINT "Length: "; Viper.Collections.Bytes.get_Length(b)
-PRINT "Hex: "; Viper.Collections.Bytes.ToHex(b)
+b = Zanna.Crypto.SecureRandom.Bytes(8)
+PRINT "Length: "; Zanna.Collections.Bytes.get_Length(b)
+PRINT "Hex: "; Zanna.Collections.Bytes.ToHex(b)
 
 DIM b2 AS OBJECT
-b2 = Viper.Crypto.SecureRandom.Bytes(32)
-PRINT "Length: "; Viper.Collections.Bytes.get_Length(b2)
-PRINT "Hex: "; Viper.Collections.Bytes.ToHex(b2)
+b2 = Zanna.Crypto.SecureRandom.Bytes(32)
+PRINT "Length: "; Zanna.Collections.Bytes.get_Length(b2)
+PRINT "Hex: "; Zanna.Collections.Bytes.ToHex(b2)
 
 PRINT "=== CryptoRand Demo Complete ==="
 END

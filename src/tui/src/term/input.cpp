@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/term/input.cpp
 // Purpose: Decode raw terminal byte streams into structured key, mouse, and
-//          paste events for ViperTUI applications.
+//          paste events for ZannaTUI applications.
 // Key invariants: Partial UTF-8 sequences survive across feed calls and escape
 //                 state machines preserve queued parameters until completion.
 // Ownership/Lifetime: The decoder owns event buffers but borrows incoming byte
@@ -28,7 +28,7 @@
 
 #include <string_view>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 
 /// @brief Construct an input decoder with empty event buffers.
 /// @details Initialises the CSI parser with references to the decoder's
@@ -262,4 +262,4 @@ std::vector<PasteEvent> InputDecoder::drain_paste() {
     return out;
 }
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

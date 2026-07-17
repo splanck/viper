@@ -1,59 +1,59 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Core.Parse.TryInt
-' COVER: Viper.Core.Parse.TryDouble
-' COVER: Viper.Core.Parse.TryBool
-' COVER: Viper.Core.Parse.IntOr
-' COVER: Viper.Core.Parse.DoubleOr
-' COVER: Viper.Core.Parse.BoolOr
-' COVER: Viper.Core.Parse.IsInt
-' COVER: Viper.Core.Parse.IsNum
-' COVER: Viper.Core.Parse.IntRadix
-' COVER: Viper.Core.Box.I64
-' COVER: Viper.Core.Box.F64
-' COVER: Viper.Core.Box.I1
-' COVER: Viper.Core.Box.Str
-' COVER: Viper.Core.Box.ToI64
-' COVER: Viper.Core.Box.ToF64
-' COVER: Viper.Core.Box.ToI1
-' COVER: Viper.Core.Box.ToStr
-' COVER: Viper.Core.Box.Type
-' COVER: Viper.Core.Box.EqI64
-' COVER: Viper.Core.Box.EqF64
-' COVER: Viper.Core.Box.EqStr
+' COVER: Zanna.Core.Parse.TryInt
+' COVER: Zanna.Core.Parse.TryDouble
+' COVER: Zanna.Core.Parse.TryBool
+' COVER: Zanna.Core.Parse.IntOr
+' COVER: Zanna.Core.Parse.DoubleOr
+' COVER: Zanna.Core.Parse.BoolOr
+' COVER: Zanna.Core.Parse.IsInt
+' COVER: Zanna.Core.Parse.IsNum
+' COVER: Zanna.Core.Parse.IntRadix
+' COVER: Zanna.Core.Box.I64
+' COVER: Zanna.Core.Box.F64
+' COVER: Zanna.Core.Box.I1
+' COVER: Zanna.Core.Box.Str
+' COVER: Zanna.Core.Box.ToI64
+' COVER: Zanna.Core.Box.ToF64
+' COVER: Zanna.Core.Box.ToI1
+' COVER: Zanna.Core.Box.ToStr
+' COVER: Zanna.Core.Box.Type
+' COVER: Zanna.Core.Box.EqI64
+' COVER: Zanna.Core.Box.EqF64
+' COVER: Zanna.Core.Box.EqStr
 
-Viper.Core.Diagnostics.Assert(Viper.Option.get_IsSome(Viper.Core.Parse.TryInt("42")), "parse.tryint")
-Viper.Core.Diagnostics.Assert(Viper.Option.get_IsSome(Viper.Core.Parse.TryDouble("3.25")), "parse.trynum")
-Viper.Core.Diagnostics.Assert(Viper.Option.get_IsSome(Viper.Core.Parse.TryBool("true")), "parse.trybool")
+Zanna.Core.Diagnostics.Assert(Zanna.Option.get_IsSome(Zanna.Core.Parse.TryInt("42")), "parse.tryint")
+Zanna.Core.Diagnostics.Assert(Zanna.Option.get_IsSome(Zanna.Core.Parse.TryDouble("3.25")), "parse.trynum")
+Zanna.Core.Diagnostics.Assert(Zanna.Option.get_IsSome(Zanna.Core.Parse.TryBool("true")), "parse.trybool")
 
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Parse.IntOr("42", -1), 42, "parse.intor")
-Viper.Core.Diagnostics.AssertEqNum(Viper.Core.Parse.DoubleOr("2.5", -1.0), 2.5, "parse.numor")
-Viper.Core.Diagnostics.Assert(Viper.Core.Parse.BoolOr("yes", FALSE), "parse.boolor")
-Viper.Core.Diagnostics.Assert(Viper.Core.Parse.IsInt(" -7 "), "parse.isint")
-Viper.Core.Diagnostics.Assert(Viper.Core.Parse.IsNum("3.14"), "parse.isnum")
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Parse.IntRadix("ff", 16, -1), 255, "parse.intradix")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Parse.IntOr("42", -1), 42, "parse.intor")
+Zanna.Core.Diagnostics.AssertEqNum(Zanna.Core.Parse.DoubleOr("2.5", -1.0), 2.5, "parse.numor")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Parse.BoolOr("yes", FALSE), "parse.boolor")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Parse.IsInt(" -7 "), "parse.isint")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Parse.IsNum("3.14"), "parse.isnum")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Parse.IntRadix("ff", 16, -1), 255, "parse.intradix")
 
 DIM bInt AS OBJECT
 DIM bNum AS OBJECT
 DIM bBool AS OBJECT
 DIM bStr AS OBJECT
-bInt = Viper.Core.Box.I64(123)
-bNum = Viper.Core.Box.F64(4.5)
-bBool = Viper.Core.Box.I1(1)
-bStr = Viper.Core.Box.Str("hi")
+bInt = Zanna.Core.Box.I64(123)
+bNum = Zanna.Core.Box.F64(4.5)
+bBool = Zanna.Core.Box.I1(1)
+bStr = Zanna.Core.Box.Str("hi")
 
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Box.ToI64(bInt), 123, "box.toi64")
-Viper.Core.Diagnostics.AssertEqNum(Viper.Core.Box.ToF64(bNum), 4.5, "box.tof64")
-Viper.Core.Diagnostics.Assert(Viper.Core.Box.ToI1(bBool), "box.toi1")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(bStr), "hi", "box.tostr")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Box.ToI64(bInt), 123, "box.toi64")
+Zanna.Core.Diagnostics.AssertEqNum(Zanna.Core.Box.ToF64(bNum), 4.5, "box.tof64")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Box.ToI1(bBool), "box.toi1")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Core.Box.ToStr(bStr), "hi", "box.tostr")
 
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Box.Type(bInt), 0, "box.type.i64")
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Box.Type(bNum), 1, "box.type.f64")
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Box.Type(bBool), 2, "box.type.i1")
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Box.Type(bStr), 3, "box.type.str")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Box.Type(bInt), 0, "box.type.i64")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Box.Type(bNum), 1, "box.type.f64")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Box.Type(bBool), 2, "box.type.i1")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Box.Type(bStr), 3, "box.type.str")
 
-Viper.Core.Diagnostics.Assert(Viper.Core.Box.EqI64(bInt, 123), "box.eqi64")
-Viper.Core.Diagnostics.Assert(Viper.Core.Box.EqF64(bNum, 4.5), "box.eqf64")
-Viper.Core.Diagnostics.Assert(Viper.Core.Box.EqStr(bStr, "hi"), "box.eqstr")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Box.EqI64(bInt, 123), "box.eqi64")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Box.EqF64(bNum, 4.5), "box.eqf64")
+Zanna.Core.Diagnostics.Assert(Zanna.Core.Box.EqStr(bStr, "hi"), "box.eqstr")
 
 PRINT "RESULT: ok"
 END

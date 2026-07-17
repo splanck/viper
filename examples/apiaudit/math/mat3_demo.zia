@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math.Mat3 - 3x3 Matrix Operations
+// API Audit: Zanna.Math.Mat3 - 3x3 Matrix Operations
 // =============================================================================
 // Tests: Identity, Zero, Translate, Scale, ScaleUniform, Rotate, Shear,
 //        Get, Row, Col, Add, Sub, Mul, MulScalar, TransformPoint,
@@ -7,11 +7,11 @@
 // =============================================================================
 
 module Mat3Demo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Mat3 ===");
+    Say("=== API Audit: Zanna.Math.Mat3 ===");
 
     // --- Identity ---
     Say("--- Identity ---");

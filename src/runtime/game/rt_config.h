@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_config.h
-// Purpose: Runtime bridge for Viper.Game.Config — a typed configuration loader
+// Purpose: Runtime bridge for Zanna.Game.Config — a typed configuration loader
 //   that parses JSON and exposes values via dotted-path lookups with caller-
 //   supplied defaults for missing/mistyped keys.
 //

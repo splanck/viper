@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Unit tests for Game UI widgets (Label, Bar, Panel, NineSlice,
 //   MenuList). Tests state management, value clamping, menu navigation
 //   wrap-around, and NULL safety. Does not test Canvas drawing (requires
-//   VIPER_ENABLE_GRAPHICS).
+//   ZANNA_ENABLE_GRAPHICS).
 //
 // Key invariants:
 //   - UIBar value clamped to [0, max], max >= 1.
@@ -98,7 +98,7 @@ static const char *gameui_test_bdf = "STARTFONT 2.1\n"
                                      "ENDFONT\n";
 
 static void *make_test_font(void) {
-    const char *path = "/tmp/viper_gameui_test_font.bdf";
+    const char *path = "/tmp/zanna_gameui_test_font.bdf";
     FILE *f = fopen(path, "w");
     assert(f != NULL);
     fputs(gameui_test_bdf, f);

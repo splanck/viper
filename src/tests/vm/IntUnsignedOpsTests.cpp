@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -74,7 +74,7 @@ void buildComparisonFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs
 bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildComparisonFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const int64_t raw = fixture.run(module);
     assert(raw == 0 || raw == 1);
     return raw == 1;
@@ -83,17 +83,17 @@ bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs) {
 void expectDivideByZeroTrap(Opcode op) {
     Module module;
     buildBinaryFunction(module, op, Type::Kind::I64, 1, 0);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find("DivideByZero (code=0)") != std::string::npos);
 }
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    using viper::tests::VmFixture;
+    using zanna::tests::VmFixture;
 
     VmFixture fixture;
 

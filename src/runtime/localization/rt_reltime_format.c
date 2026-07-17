@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_reltime_format.c
-// Purpose: Implementation of Viper.Localization.RelativeTimeFormat. Selects a
+// Purpose: Implementation of Zanna.Localization.RelativeTimeFormat. Selects a
 //          unit from a duration, looks up the locale's plural category for
 //          the unit magnitude, and expands the locale's past/future template
 //          ("{n} {unit} ago" etc.).
@@ -96,7 +96,7 @@ static void *rtf_alloc(void *locale) {
     rt_reltimefmt_inst_t *fmt =
         (rt_reltimefmt_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_reltimefmt_inst_t));
     if (!fmt) {
-        rt_trap("Viper.Localization.RelativeTimeFormat: allocation failed");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: allocation failed");
         return NULL;
     }
     fmt->locale = locale;
@@ -141,7 +141,7 @@ void rt_reltimefmt_set_style(void *self, rt_string style) {
     else if (strcmp(cs, "long") == 0)
         as_fmt(self)->style = RTF_STYLE_LONG;
     else
-        rt_trap("Viper.Localization.RelativeTimeFormat: unknown style (expected long/short)");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: unknown style (expected long/short)");
 }
 
 //===----------------------------------------------------------------------===//
@@ -482,13 +482,13 @@ rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts)
     // Check for overflow before the multiply by 1000.
     if ((then_ts < 0 && now_ts > INT64_MAX + then_ts) ||
         (then_ts > 0 && now_ts < INT64_MIN + then_ts)) {
-        rt_trap("Viper.Localization.RelativeTimeFormat: FormatFrom delta overflow");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: FormatFrom delta overflow");
         return rt_string_from_bytes("", 0);
     }
     int64_t delta_sec = now_ts - then_ts;
     int64_t delta_ms;
     if (delta_sec > INT64_MAX / 1000 || delta_sec < INT64_MIN / 1000) {
-        rt_trap("Viper.Localization.RelativeTimeFormat: FormatFrom delta overflow");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: FormatFrom delta overflow");
         return rt_string_from_bytes("", 0);
     }
     delta_ms = delta_sec * 1000;
@@ -510,13 +510,13 @@ rt_string rt_reltimefmt_long(void *self, int64_t duration) {
 
 rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
     if (!self || !unit) {
-        rt_trap("Viper.Localization.RelativeTimeFormat: Numeric requires a unit");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: Numeric requires a unit");
         return rt_string_from_bytes("", 0);
     }
     const char *unit_cs = rt_string_cstr(unit);
     rtf_unit_t u;
     if (!unit_from_name(unit_cs, &u)) {
-        rt_trap("Viper.Localization.RelativeTimeFormat: unknown unit name");
+        rt_trap("Zanna.Localization.RelativeTimeFormat: unknown unit name");
         return rt_string_from_bytes("", 0);
     }
     rt_reltimefmt_inst_t *fmt = as_fmt(self);

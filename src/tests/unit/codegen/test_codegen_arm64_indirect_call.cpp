@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 TEST(Arm64IndirectCall, PointerCallUsesBlrRatherThanDirectBl) {
     using namespace il::core;
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     Function fn;
     fn.name = "caller";
@@ -74,7 +74,7 @@ TEST(Arm64IndirectCall, PointerCallUsesBlrRatherThanDirectBl) {
 
 TEST(Arm64IndirectCall, FloatingArgumentsStayInFprLanes) {
     using namespace il::core;
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     Function fn;
     fn.name = "caller";
@@ -130,7 +130,7 @@ TEST(Arm64IndirectCall, FloatingArgumentsStayInFprLanes) {
 
 TEST(Arm64IndirectCall, OverflowArgumentsUseStackArea) {
     using namespace il::core;
-    using namespace viper::codegen::aarch64;
+    using namespace zanna::codegen::aarch64;
 
     Function fn;
     fn.name = "caller";
@@ -207,6 +207,6 @@ TEST(Arm64IndirectCall, OverflowArgumentsUseStackArea) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

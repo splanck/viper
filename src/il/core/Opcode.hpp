@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: il/core/Opcode.hpp
 // Purpose: Declares the Opcode enum class -- all instruction operation codes
-//          supported by Viper IL. Generated from Opcode.def via X-macros,
+//          supported by Zanna IL. Generated from Opcode.def via X-macros,
 //          covering arithmetic, comparisons, memory, control flow, calls,
 //          casts, exception handling, and bitwise operations.
 // Key invariants:

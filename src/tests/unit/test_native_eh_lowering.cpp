@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -74,7 +74,7 @@ TEST(NativeEHLowering, RewritesResumeNextIntoRuntimeHelpers) {
                            "}\n";
 
     il::core::Module mod = parseModule(il);
-    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    ASSERT_TRUE(zanna::codegen::common::lowerNativeEh(mod));
     auto verify = il::api::v2::verify_module_expected(mod);
     ASSERT_TRUE(verify.hasValue());
     ASSERT_EQ(mod.functions.size(), 1U);
@@ -146,7 +146,7 @@ TEST(NativeEHLowering, RewritesResumeSameIntoFaultSiteDispatch) {
                            "}\n";
 
     il::core::Module mod = parseModule(il);
-    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    ASSERT_TRUE(zanna::codegen::common::lowerNativeEh(mod));
     auto verify = il::api::v2::verify_module_expected(mod);
     ASSERT_TRUE(verify.hasValue());
 
@@ -187,10 +187,10 @@ TEST(NativeEHLowering, RewritesTypedCatchHelperBlocks) {
                            "}\n";
 
     il::core::Module mod = parseModule(il);
-    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    ASSERT_TRUE(zanna::codegen::common::lowerNativeEh(mod));
     auto verify = il::api::v2::verify_module_expected(mod);
     ASSERT_TRUE(verify.hasValue());
-    EXPECT_FALSE(viper::codegen::common::findResidualStructuredEh(mod).has_value());
+    EXPECT_FALSE(zanna::codegen::common::findResidualStructuredEh(mod).has_value());
 
     const auto &fn = mod.functions.front();
     for (const auto *label : {"handler", "catch", "rethrow"}) {
@@ -216,7 +216,7 @@ TEST(NativeEHLowering, ResumeLabelValidatesSiteTokenBeforeBranch) {
                            "}\n";
 
     il::core::Module mod = parseModule(il);
-    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    ASSERT_TRUE(zanna::codegen::common::lowerNativeEh(mod));
     auto verify = il::api::v2::verify_module_expected(mod);
     ASSERT_TRUE(verify.hasValue());
 
@@ -272,7 +272,7 @@ TEST(NativeEHLowering, HandlerHelperTrapFromErrUsesOuterNativeSite) {
                            "}\n";
 
     il::core::Module mod = parseModule(il);
-    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    ASSERT_TRUE(zanna::codegen::common::lowerNativeEh(mod));
     auto verify = il::api::v2::verify_module_expected(mod);
     ASSERT_TRUE(verify.hasValue());
 
@@ -291,6 +291,6 @@ TEST(NativeEHLowering, HandlerHelperTrapFromErrUsesOuterNativeSite) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

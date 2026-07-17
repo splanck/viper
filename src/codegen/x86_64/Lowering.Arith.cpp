@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <limits>
 #include <string>
 
-namespace viper::codegen::x64::lowering {
+namespace zanna::codegen::x64::lowering {
 namespace {
 
 constexpr int64_t kErrInvalidCast = 5;
@@ -1082,4 +1082,4 @@ void emitUiToFp(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
-} // namespace viper::codegen::x64::lowering
+} // namespace zanna::codegen::x64::lowering

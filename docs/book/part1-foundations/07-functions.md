@@ -20,7 +20,7 @@ Before we define functions formally, let's experience the problem they solve. Im
 
 ```rust
 module MessyProgram;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Welcome the user
@@ -55,7 +55,7 @@ Let's see an even worse example. Suppose you need to calculate the area of recta
 
 ```rust
 module MessierProgram;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Calculate area for room 1
@@ -94,7 +94,7 @@ Now imagine your requirements change. Instead of simple rectangles, you need to 
 
 ## What Is a Function?
 
-You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Core.Convert.ToInt64()` is a function. Someone else wrote the code that makes them work; you just use them by name.
+You've already used functions. `Zanna.Terminal.Say()` is a function. `Zanna.Core.Convert.ToInt64()` is a function. Someone else wrote the code that makes them work; you just use them by name.
 
 A function is a named, reusable block of code. You define it once, then *call* it whenever you need that behavior. Think of a function like a recipe in a cookbook. The recipe has a name ("Chocolate Cake"), a list of ingredients you need to provide (flour, eggs, sugar), and a series of steps. When you want a chocolate cake, you don't invent the process from scratch --- you follow the recipe. You can make the cake multiple times, with slightly different ingredients (more sugar for a sweeter cake), and you always get a cake back.
 
@@ -142,7 +142,7 @@ You give `calculateArea` the values 5 and 10. It returns 50. How does it calcula
 
 This separation between *what a function does* and *how it does it* is called **abstraction**. It's one of the most important concepts in all of computer science. Abstraction lets you:
 
-- **Use code without understanding it**: You use `Viper.Terminal.Say()` without understanding terminal I/O, buffering, or system calls.
+- **Use code without understanding it**: You use `Zanna.Terminal.Say()` without understanding terminal I/O, buffering, or system calls.
 - **Change implementations without breaking users**: If someone improves how `calculateArea` works internally (making it faster, for example), your code keeps working unchanged.
 - **Build complex systems from simple parts**: Each function is a black box. You combine black boxes to build bigger black boxes. A car is made of an engine, transmission, wheels --- each a black box you use without fully understanding.
 
@@ -155,7 +155,7 @@ When you write your own functions, think about them as black boxes you're creati
 Here's a simple function:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say("Hello!");
@@ -176,7 +176,7 @@ To use it:
 
 ```rust
 module Greeting;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say("Hello!");
@@ -210,7 +210,7 @@ Notice the syntax for calling a function: the function name followed by parenthe
 A function that always does the exact same thing is limited. Usually, we want to customize behavior. We do this by giving functions **parameters** --- placeholders for values that will be provided when the function is called.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say("Hello, " + name + "!");
@@ -241,7 +241,7 @@ These two terms are often confused, but they mean different things:
 Think of it this way: the **parameter** is the parking space, the **argument** is the car you park in it.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {    // 'name' is the PARAMETER (the parking space)
     Say("Hello, " + name + "!");
@@ -280,7 +280,7 @@ Each call gets its own copy of the parameters. They don't interfere with each ot
 You can have multiple parameters, separated by commas:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func introduce(name: String, age: Integer) {
     Say(name + " is " + age + " years old.");
@@ -305,7 +305,7 @@ Bob is 25 years old.
 When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Parameters themselves are immutable, so if you want to experiment with a changed value inside the function, copy the parameter into a local variable first. Changing that local copy does not affect the original:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func tryToChange(x: Integer) {
     var localX = x;
@@ -332,7 +332,7 @@ The function received a copy of `42`. Changing `localX` doesn't change the origi
 Some functions compute a value and give it back to the caller. They *return* a result:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -359,7 +359,7 @@ When a function executes a `return` statement, two things happen:
 Think of it like a tennis ball machine. You press the button (call the function), the machine does some internal work (the function body), and a ball shoots out (the return value). The `return` statement is the moment the ball leaves the machine.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -390,7 +390,7 @@ var sum = add(3, 4);
 The returned value can be used in any way a regular value can be used:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -446,7 +446,7 @@ This nested evaluation is powerful. Functions can use other functions, which can
 Some functions do things without computing a result --- like printing, saving files, or modifying state. These functions perform *actions* rather than *calculations*. They don't specify a return type:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func sayGoodbye() {
     Say("Goodbye!");
@@ -468,7 +468,7 @@ func start() {
 You can use `return` without a value to exit early:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func maybeGreet(shouldGreet: Boolean) {
     if !shouldGreet {
@@ -492,7 +492,7 @@ Early returns are useful for handling special cases at the beginning of a functi
 Variables created inside a function are *local* --- they exist only within that function. This region where a variable is valid is called its **scope**.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func calculateArea(width: Integer, height: Integer) -> Integer {
     var area = width * height;  // 'area' is born here
@@ -513,7 +513,7 @@ The variable `area` exists only while `calculateArea` is running. When the funct
 Scope is a feature, not a limitation. It provides **isolation**:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func calculateRectangleArea(w: Integer, h: Integer) -> Integer {
     var temp = w * h;
@@ -543,7 +543,7 @@ A **local variable** is declared inside a function and exists only within that f
 
 ```rust
 module ScopeDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var globalCounter = 0;  // Global: accessible everywhere
 
@@ -571,7 +571,7 @@ func start() {
 Blocks (code inside `{ }`) create nested scopes:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func scopeExample() {
     var outer = 10;
@@ -620,7 +620,7 @@ A stack is a data structure like a stack of plates: you add plates to the top, a
 Let's trace through this code:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func multiply(a: Integer, b: Integer) -> Integer {
     return a * b;
@@ -734,7 +734,7 @@ Understanding the call stack helps you trace through complex code and debug prob
 In many languages (including Zia), you can define multiple functions with the same name as long as they have different parameters. This is called **function overloading**.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say("Hello, stranger!");
@@ -770,7 +770,7 @@ Overloading is useful for:
 
 2. **Handling different types**:
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func printValue(n: Integer) {
     Say("Integer: " + n);
@@ -806,7 +806,7 @@ Factorial is the product of all positive integers up to n. For example, 5! (read
 Notice something interesting: 5! = 5 x 4! And 4! = 4 x 3! The factorial of n is n times the factorial of (n-1). This is a recursive definition --- factorial is defined in terms of itself.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func factorial(n: Integer) -> Integer {
     if n <= 1 {
@@ -870,7 +870,7 @@ Every recursive function needs:
 The Fibonacci sequence is: 0, 1, 1, 2, 3, 5, 8, 13, 21, ... Each number is the sum of the two before it.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func fib(n: Integer) -> Integer {
     if n <= 1 {
@@ -931,7 +931,7 @@ Let's see functions in action by taking messy code and improving it. Here's a di
 
 ```rust
 module MessyStats;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var numbers: List[Integer] = [4, 8, 15, 16, 23, 42];
@@ -999,7 +999,7 @@ This code has serious problems:
 
 ```rust
 module CleanStats;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Calculate the sum of an array of numbers
 func sum(numbers: List[Integer]) -> Integer {
@@ -1092,8 +1092,8 @@ Over decades, programmers have developed principles for writing good functions. 
 A function should have a single, clear purpose. If you find yourself using "and" to describe what a function does ("calculates the average AND prints it AND saves it to a file"), consider splitting it.
 
 ```rust
-bind Viper.Terminal;
-bind Viper.IO as IO;
+bind Zanna.Terminal;
+bind Zanna.IO as IO;
 
 // Bad: Does three things
 func processGradesBad(grades: List[Integer]) {
@@ -1185,7 +1185,7 @@ func formatName(first: String, last: String) -> String {
 A function with **side effects** changes something outside itself:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counter = 0;
 
@@ -1269,7 +1269,7 @@ Let's see all these principles applied to a complete, well-organized program:
 
 ```rust
 module GradeTracker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // ============================================
 // Input Functions
@@ -1279,7 +1279,7 @@ bind Viper.Terminal;
 // Returns -1 if user wants to finish
 func readGrade() -> Integer {
     Print("Grade: ");
-    return Viper.Core.Convert.ToInt64(InputLine());
+    return Zanna.Core.Convert.ToInt64(InputLine());
 }
 
 // Check if a grade is within valid range
@@ -1449,7 +1449,7 @@ Each function does one thing. They're short. They have clear names. They build o
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -1516,7 +1516,7 @@ func badFactorial(n: Integer) -> Integer {
 
 **Trying to use local variables outside their function:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func compute() {
     var result = 42;
@@ -1530,7 +1530,7 @@ func start() {
 
 **Expecting parameters to modify original variables:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func double(x: Integer) {
     var localX = x;

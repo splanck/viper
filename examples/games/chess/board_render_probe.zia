@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 
 module board_render_probe;
 
-bind Viper.Graphics;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 bind "./core/config";
 bind "./settings";
 bind "./ui/layout";
@@ -65,7 +65,7 @@ func checkSquare(canvas: Canvas, rank: Integer, file: Integer) -> Boolean {
 
 /// @brief Probe entry point. Draws one board frame, samples 64 squares, and exits.
 func main() {
-    var canvas = Canvas.New("Viper Chess Board Render Probe", WIN_W, WIN_H);
+    var canvas = Canvas.New("Zanna Chess Board Render Probe", WIN_W, WIN_H);
     var render = new BoardRenderer();
     render.setCanvas(canvas);
     render.drawGameBackdrop();

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_frame.inc  (#included from
 // vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL frame begin/end,
 // submit, resize, readback, present, post-FX, and shadow passes
@@ -643,10 +643,10 @@ static int gl_readback_rgba(
     return 1;
 }
 
-/// @brief Present an offscreen OpenGL final target through the ViperGFX window buffer.
+/// @brief Present an offscreen OpenGL final target through the ZannaGFX window buffer.
 /// @details This fallback is used only when the GLX default framebuffer probe shows that the
 ///          window drawable does not accept RGB writes. Rendering and post-FX remain on OpenGL;
-///          the resolved final FBO is copied to the existing RGBA ViperGFX framebuffer and
+///          the resolved final FBO is copied to the existing RGBA ZannaGFX framebuffer and
 ///          presented through the platform XImage path.
 static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     vgfx_framebuffer_t fb;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <limits>
 #include <vector>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -1681,4 +1681,4 @@ L_DEFAULT:
 #endif // __GNUC__ || __clang__
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

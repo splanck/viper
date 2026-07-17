@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -588,7 +588,7 @@ void registerDCEPass(PassRegistry &registry) {
 void registerMem2RegPass(PassRegistry &registry) {
     registry.registerModulePass("mem2reg", [](core::Module &module, AnalysisManager &) {
         return runVoidModulePass(module,
-                                 [](core::Module &m) { viper::passes::mem2reg(m, nullptr); });
+                                 [](core::Module &m) { zanna::passes::mem2reg(m, nullptr); });
     });
 }
 

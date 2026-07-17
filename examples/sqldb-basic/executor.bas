@@ -1,5 +1,5 @@
 ' executor.bas - SQL Executor
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "database.bas"
 
@@ -20,7 +20,7 @@ FUNCTION ExecuteCreateTable(stmt AS CreateTableStmt) AS QueryResult
     result.Init()
     InitDatabase()
 
-    ' Workaround: Copy class member to local var (Viper Basic compiler bug)
+    ' Workaround: Copy class member to local var (Zanna Basic compiler bug)
     tName = stmt.tableName
 
     ' Check if table exists
@@ -2187,7 +2187,7 @@ FUNCTION ExecuteCreateIndex(stmt AS CreateIndexStmt) AS QueryResult
     result.Init()
     InitDatabase()
 
-    ' Workaround: Copy class member to local var (Viper Basic bug #011)
+    ' Workaround: Copy class member to local var (Zanna Basic bug #011)
     idxName = stmt.indexName
     tblName = stmt.tableName
 
@@ -2250,7 +2250,7 @@ FUNCTION ExecuteDropIndex(stmt AS DropIndexStmt) AS QueryResult
     result.Init()
     InitDatabase()
 
-    ' Workaround: Copy class member to local var (Viper Basic bug #011)
+    ' Workaround: Copy class member to local var (Zanna Basic bug #011)
     idxName = stmt.indexName
 
     ' Check if index exists

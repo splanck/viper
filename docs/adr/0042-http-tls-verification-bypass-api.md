@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Network.HttpReq.SetTlsVerify(false)` disables HTTPS certificate and
+`Zanna.Network.HttpReq.SetTlsVerify(false)` disables HTTPS certificate and
 hostname verification. The behavior is needed for local self-signed fixtures and
 some compatibility tests, but the boolean setter is easy to copy into production
 code because the dangerous value is visually small.
@@ -22,7 +22,7 @@ the feature while making insecure use explicit in source, docs, and API dumps.
 
 ## Decision
 
-Add `Viper.Network.HttpReq.AllowInsecureCertificatesForTesting()` as the
+Add `Zanna.Network.HttpReq.AllowInsecureCertificatesForTesting()` as the
 canonical public escape hatch for disabling HTTPS verification on a request.
 
 The helper is equivalent to `SetTlsVerify(false)`, returns the same request for

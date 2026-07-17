@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 //   - Callers should call rt_physics2d_world_remove() before dropping a body
 //     handle to avoid dangling references.
 //
-// Links: src/runtime/graphics/2d/rt_physics2d.h (public API), docs/viperlib/game.md (usage guide)
+// Links: src/runtime/graphics/2d/rt_physics2d.h (public API), docs/zannalib/game.md (usage guide)
 //
 //===----------------------------------------------------------------------===//
 

@@ -154,9 +154,9 @@ editor/minimap, and 1,000,000 widget create/destroy cycles for liveness probing.
 ## 5. Commands per increment
 
 ```sh
-VIPER_SKIP_CLEAN=1 VIPER_SKIP_TESTS=1 VIPER_SKIP_LINT=1 \
-VIPER_SKIP_AUDIT=1 VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 \
-./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ZANNA_SKIP_TESTS=1 ZANNA_SKIP_LINT=1 \
+ZANNA_SKIP_AUDIT=1 ZANNA_SKIP_SMOKE=1 ZANNA_SKIP_INSTALL=1 \
+./scripts/build_zanna_mac.sh
 
 ctest --test-dir build -L gui --output-on-failure
 ctest --test-dir build -R 'test_rt_gui_runtime|test_rt_gui_ide|zia_runtime_test_gui' \

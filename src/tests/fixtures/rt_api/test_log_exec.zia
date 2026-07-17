@@ -1,36 +1,36 @@
 // test_log_exec.zia — Log, Exec, NumberFormat
 module TestLogExec;
 
-bind Viper.Terminal;
-bind Viper.Diagnostics.Log;
-bind Viper.System.Exec;
-bind Viper.Text.Fmt;
+bind Zanna.Terminal;
+bind Zanna.Diagnostics.Log;
+bind Zanna.System.Exec;
+bind Zanna.Text.Fmt;
 
 func start() {
-    SayInt(Viper.Diagnostics.Log.LevelDebug);
-    SayInt(Viper.Diagnostics.Log.LevelInfo);
-    SayInt(Viper.Diagnostics.Log.LevelWarn);
-    SayInt(Viper.Diagnostics.Log.LevelError);
-    SayInt(Viper.Diagnostics.Log.LevelOff);
-    SayInt(Viper.Diagnostics.Log.Level);
-    SayBool(Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.LevelDebug));
-    Viper.Diagnostics.Log.Info("test info message");
-    Viper.Diagnostics.Log.Warn("test warn message");
-    Viper.Diagnostics.Log.Error("test error message");
+    SayInt(Zanna.Diagnostics.Log.LevelDebug);
+    SayInt(Zanna.Diagnostics.Log.LevelInfo);
+    SayInt(Zanna.Diagnostics.Log.LevelWarn);
+    SayInt(Zanna.Diagnostics.Log.LevelError);
+    SayInt(Zanna.Diagnostics.Log.LevelOff);
+    SayInt(Zanna.Diagnostics.Log.Level);
+    SayBool(Zanna.Diagnostics.Log.Enabled(Zanna.Diagnostics.Log.LevelDebug));
+    Zanna.Diagnostics.Log.Info("test info message");
+    Zanna.Diagnostics.Log.Warn("test warn message");
+    Zanna.Diagnostics.Log.Error("test error message");
 
     Say(ShellCapture("echo hello"));
 
-    Say(Viper.Text.Fmt.SizeBytes(1048576));
-    Say(Viper.Text.Fmt.Ordinal(1));
-    Say(Viper.Text.Fmt.Ordinal(2));
-    Say(Viper.Text.Fmt.Ordinal(3));
-    Say(Viper.Text.Fmt.Ordinal(11));
-    Say(Viper.Text.Fmt.IntPad(42, 5, " "));
-    Say(Viper.Text.Fmt.Percent(0.756, 1));
-    Say(Viper.Text.Fmt.IntGrouped(1234567, ","));
-    Say(Viper.Text.Fmt.ToWords(42));
-    Say(Viper.Text.Fmt.NumFixed(3.14159, 2));
-    Say(Viper.Text.Fmt.Currency(1234.56, 2, "$"));
+    Say(Zanna.Text.Fmt.SizeBytes(1048576));
+    Say(Zanna.Text.Fmt.Ordinal(1));
+    Say(Zanna.Text.Fmt.Ordinal(2));
+    Say(Zanna.Text.Fmt.Ordinal(3));
+    Say(Zanna.Text.Fmt.Ordinal(11));
+    Say(Zanna.Text.Fmt.IntPad(42, 5, " "));
+    Say(Zanna.Text.Fmt.Percent(0.756, 1));
+    Say(Zanna.Text.Fmt.IntGrouped(1234567, ","));
+    Say(Zanna.Text.Fmt.ToWords(42));
+    Say(Zanna.Text.Fmt.NumFixed(3.14159, 2));
+    Say(Zanna.Text.Fmt.Currency(1234.56, 2, "$"));
 
     Say("done");
 }

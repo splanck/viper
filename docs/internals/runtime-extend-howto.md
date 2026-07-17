@@ -4,9 +4,9 @@ audience: developers
 last-verified: 2026-06-27
 ---
 
-# How to Extend the Viper Runtime
+# How to Extend the Zanna Runtime
 
-Complete implementation guide for adding new classes, methods, and static functions to the Viper runtime library. This document walks through every step required to expose new functionality to Viper programs.
+Complete implementation guide for adding new classes, methods, and static functions to the Zanna runtime library. This document walks through every step required to expose new functionality to Zanna programs.
 
 ---
 
@@ -32,10 +32,10 @@ Complete implementation guide for adding new classes, methods, and static functi
 
 ### What You'll Learn
 
-This guide teaches you how to extend the Viper runtime with:
+This guide teaches you how to extend the Zanna runtime with:
 
-- **Static functions**: Standalone utility functions (like `Viper.Math.Sin`)
-- **Classes with methods**: Object-oriented types (like `Viper.Collections.Map`)
+- **Static functions**: Standalone utility functions (like `Zanna.Math.Sin`)
+- **Classes with methods**: Object-oriented types (like `Zanna.Collections.Map`)
 - **Properties**: Getter/setter pairs on class instances
 - **Constructor functions**: Factory functions for creating class instances
 
@@ -46,13 +46,13 @@ Extend the runtime when you need to:
 - Expose platform-specific functionality (file I/O, networking, graphics)
 - Provide high-performance operations implemented in C
 - Add new data structures or algorithms
-- Wrap platform APIs or in-tree C implementations. Viper is zero-dependency, so do not add product dependencies on external libraries.
+- Wrap platform APIs or in-tree C implementations. Zanna is zero-dependency, so do not add product dependencies on external libraries.
 
 ### Prerequisites
 
 - Familiarity with C programming
-- Basic understanding of the Viper build system (CMake)
-- Knowledge of Viper IL type system (see [IL Guide](../il/il-guide.md))
+- Basic understanding of the Zanna build system (CMake)
+- Knowledge of Zanna IL type system (see [IL Guide](../il/il-guide.md))
 
 ---
 
@@ -73,7 +73,7 @@ Extend the runtime when you need to:
 │  └─────────────────┘        └─────────────────┘      └────────┬────────┘    │
 │                                                                │             │
 │                                                                ▼             │
-│  4. Generated Headers       5. Frontend Integration  6. Usage in Viper      │
+│  4. Generated Headers       5. Frontend Integration  6. Usage in Zanna      │
 │  ┌─────────────────┐        ┌─────────────────┐      ┌─────────────────┐    │
 │  │ RuntimeNameMap  │        │ RuntimeRegistry │      │ Dim c = Counter │    │
 │  │ RuntimeClasses  │───────▶│ + frontend      │─────▶│ c.Increment()   │    │
@@ -100,14 +100,14 @@ Extend the runtime when you need to:
 | C source file | `src/runtime/<component>/rt_<module>.c` | `src/runtime/core/rt_counter.c` |
 | C header file | `src/runtime/<component>/rt_<module>.h` | `src/runtime/core/rt_counter.h` |
 | C function | `rt_<module>_<action>` | `rt_counter_new` |
-| Canonical name | `Viper.<Namespace>.<Class>.<Method>` | `Viper.Utils.Counter.New` |
+| Canonical name | `Zanna.<Namespace>.<Class>.<Method>` | `Zanna.Utils.Counter.New` |
 | Definition ID | PascalCase unique identifier | `CounterNew` |
 
 ---
 
 ## 3. Quick Start: Adding a Simple Function
 
-Let's add a simple static function: `Viper.Utils.Square` that squares an integer.
+Let's add a simple static function: `Zanna.Utils.Square` that squares an integer.
 
 ### Step 1: Add the C Implementation
 
@@ -141,41 +141,41 @@ Edit `src/il/runtime/runtime.def` and add in the appropriate section:
 
 // ... existing functions ...
 
-RT_FUNC(MathSquare, rt_math_square, "Viper.Math.Square", "i64(i64)")
+RT_FUNC(MathSquare, rt_math_square, "Zanna.Math.Square", "i64(i64)")
 ```
 
 The `RT_FUNC` macro parameters are:
 1. **id**: Unique C++ identifier (`MathSquare`)
 2. **c_symbol**: C function name (`rt_math_square`)
-3. **canonical**: Viper namespace path (`Viper.Math.Square`)
+3. **canonical**: Zanna namespace path (`Zanna.Math.Square`)
 4. **signature**: IL type signature (`i64(i64)`)
 
 ### Step 3: Regenerate Code
 
 ```bash
-VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 ```
 
-Use the platform build script (`build_viper_linux.sh`, `build_viper_mac.sh`, or
-`build_viper_win.cmd`). The build system automatically runs `rtgen` when
+Use the platform build script (`build_zanna_linux.sh`, `build_zanna_mac.sh`, or
+`build_zanna_win.cmd`). The build system automatically runs `rtgen` when
 `runtime.def` changes.
 
-### Step 4: Use in Viper
+### Step 4: Use in Zanna
 
 **BASIC:**
 ```basic
 DIM result AS INTEGER
-result = Viper.Math.Square(5)
+result = Zanna.Math.Square(5)
 PRINT result  ' Outputs: 25
 ```
 
 **Zia:**
 ```rust
 module Main;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var result = Viper.Math.Square(5);
+    var result = Zanna.Math.Square(5);
     SayInt(result);  // Outputs: 25
 }
 ```
@@ -193,8 +193,8 @@ Classes are more complex than standalone functions. They require:
 
 | Category | Constructor | Example |
 |----------|-------------|---------|
-| **Instance Class** | Has constructor | `Viper.Collections.Map` |
-| **Static Utility** | `none` | `Viper.DateTime` |
+| **Instance Class** | Has constructor | `Zanna.Collections.Map` |
+| **Static Utility** | `none` | `Zanna.DateTime` |
 
 ### Internal Structure Pattern
 
@@ -207,7 +207,7 @@ typedef struct
 {
     int64_t value;      // Current counter value
     int64_t step;       // Increment step size
-} ViperCounter;
+} ZannaCounter;
 ```
 
 The struct is allocated via `rt_obj_new_i64()`, which returns zeroed
@@ -231,7 +231,7 @@ RT_FUNC(id, c_symbol, "canonical", "signature")
 |-----------|-------------|---------|
 | `id` | Unique C++ identifier | `MathSin` |
 | `c_symbol` | C function name | `rt_math_sin` |
-| `canonical` | Viper namespace path | `"Viper.Math.Sin"` |
+| `canonical` | Zanna namespace path | `"Zanna.Math.Sin"` |
 | `signature` | IL type signature | `"f64(f64)"` |
 
 Aliases are intentionally unsupported. When a runtime API is renamed, update
@@ -247,7 +247,7 @@ RT_CLASS_END()
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `name` | Fully qualified class name | `"Viper.Utils.Counter"` |
+| `name` | Fully qualified class name | `"Zanna.Utils.Counter"` |
 | `type_id` | Type identifier suffix | `Counter` |
 | `layout` | Memory layout type | `"obj"` |
 | `ctor_id` | Constructor function ID or `none` | `CounterNew` |
@@ -265,8 +265,8 @@ RT_PROP("name", "type", getter_id, setter_id_or_none)
 | `getter_id` | Getter function ID | `CounterGetValue` |
 | `setter_id_or_none` | Setter function ID or `none` | `CounterSetValue` |
 
-**Getter convention:** `"Viper.Class.get_PropName"` canonical name
-**Setter convention:** `"Viper.Class.set_PropName"` canonical name
+**Getter convention:** `"Zanna.Class.get_PropName"` canonical name
+**Setter convention:** `"Zanna.Class.set_PropName"` canonical name
 
 ### RT_METHOD - Methods
 
@@ -305,8 +305,8 @@ Use parameterized signatures whenever the runtime object type is known:
 
 | Signature | Meaning |
 |-----------|---------|
-| `obj<Viper.Collections.Bytes>` | A typed runtime object |
-| `obj<Viper.Option>` | An Option object |
+| `obj<Zanna.Collections.Bytes>` | A typed runtime object |
+| `obj<Zanna.Option>` | An Option object |
 | `seq<str>` | A sequence of strings |
 | `seq<obj>` | A sequence of runtime objects |
 
@@ -319,8 +319,8 @@ Preferred replacements:
 
 - Return `obj<Runtime.Class>` for managed handles instead of `ptr`.
 - Return `seq<T>` for arrays/lists of values instead of raw buffers.
-- Return `obj<Viper.Option>` or `obj<Viper.Result>` instead of using out parameters.
-- Accept typed runtime classes such as `obj<Viper.Graphics.Path2D>` instead of raw coordinate buffers.
+- Return `obj<Zanna.Option>` or `obj<Zanna.Result>` instead of using out parameters.
+- Accept typed runtime classes such as `obj<Zanna.Graphics.Path2D>` instead of raw coordinate buffers.
 - For callbacks, add a managed bridge that takes an explicit `&function` and a typed/object payload; keep native callback pointers inside the runtime implementation.
 
 Frontend builds reject raw pointer APIs. If a legacy C ABI must remain, add a safe wrapper beside it and document the wrapper in the diagnostic alternative map and tests.
@@ -345,12 +345,12 @@ The `rtgen` tool reads `runtime.def` and generates five output files:
 
 For a function defined as:
 ```c
-RT_FUNC(CounterNew, rt_counter_new, "Viper.Utils.Counter.New", "obj()")
+RT_FUNC(CounterNew, rt_counter_new, "Zanna.Utils.Counter.New", "obj()")
 ```
 
 `RuntimeNameMap.inc` generates:
 ```c
-RUNTIME_NAME_ALIAS("Viper.Utils.Counter.New", "rt_counter_new")
+RUNTIME_NAME_ALIAS("Zanna.Utils.Counter.New", "rt_counter_new")
 ```
 
 ### When rtgen Runs
@@ -449,17 +449,17 @@ set(RT_COLLECTIONS_SOURCES
 )
 
 # Object libraries (for compilation)
-add_library(viper_rt_base_obj OBJECT ${RT_BASE_SOURCES})
-add_library(viper_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
+add_library(zanna_rt_base_obj OBJECT ${RT_BASE_SOURCES})
+add_library(zanna_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
 
 # Static libraries (for linking)
-add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
-add_library(viper_rt_collections STATIC $<TARGET_OBJECTS:viper_rt_collections_obj>)
+add_library(zanna_rt_base STATIC $<TARGET_OBJECTS:zanna_rt_base_obj>)
+add_library(zanna_rt_collections STATIC $<TARGET_OBJECTS:zanna_rt_collections_obj>)
 
 # Combined runtime library
-add_library(viper_runtime STATIC
-    $<TARGET_OBJECTS:viper_rt_base_obj>
-    $<TARGET_OBJECTS:viper_rt_collections_obj>
+add_library(zanna_runtime STATIC
+    $<TARGET_OBJECTS:zanna_rt_base_obj>
+    $<TARGET_OBJECTS:zanna_rt_collections_obj>
     # ... all component object libraries
 )
 ```
@@ -545,7 +545,7 @@ PRINT c.Value      ' Expected: 1
 
 ```bash
 # Build and run all tests
-VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 
 # Run specific test
 ctest --test-dir build -R counter
@@ -555,7 +555,7 @@ ctest --test-dir build -R counter
 
 ## 10. Complete Example: Counter Class
 
-Let's implement a complete `Viper.Utils.Counter` class with:
+Let's implement a complete `Zanna.Utils.Counter` class with:
 - Constructor: `Counter.New()` and `Counter.NewWithStep(step)`
 - Properties: `Value` (read-only), `Step` (read/write)
 - Methods: `Increment()`, `Decrement()`, `Reset()`
@@ -638,11 +638,11 @@ typedef struct
 {
     int64_t value; ///< Current counter value.
     int64_t step;  ///< Increment/decrement step size.
-} ViperCounter;
+} ZannaCounter;
 
 void *rt_counter_new(void)
 {
-    ViperCounter *counter = (ViperCounter *)rt_obj_new_i64(0, (int64_t)sizeof(ViperCounter));
+    ZannaCounter *counter = (ZannaCounter *)rt_obj_new_i64(0, (int64_t)sizeof(ZannaCounter));
     if (!counter)
     {
         rt_trap("Counter: memory allocation failed");
@@ -657,7 +657,7 @@ void *rt_counter_new(void)
 
 void *rt_counter_new_with_step(int64_t step)
 {
-    ViperCounter *counter = (ViperCounter *)rt_obj_new_i64(0, (int64_t)sizeof(ViperCounter));
+    ZannaCounter *counter = (ZannaCounter *)rt_obj_new_i64(0, (int64_t)sizeof(ZannaCounter));
     if (!counter)
     {
         rt_trap("Counter: memory allocation failed");
@@ -672,34 +672,34 @@ void *rt_counter_new_with_step(int64_t step)
 
 int64_t rt_counter_get_value(void *obj)
 {
-    return ((ViperCounter *)obj)->value;
+    return ((ZannaCounter *)obj)->value;
 }
 
 int64_t rt_counter_get_step(void *obj)
 {
-    return ((ViperCounter *)obj)->step;
+    return ((ZannaCounter *)obj)->step;
 }
 
 void rt_counter_set_step(void *obj, int64_t step)
 {
-    ((ViperCounter *)obj)->step = step;
+    ((ZannaCounter *)obj)->step = step;
 }
 
 void rt_counter_increment(void *obj)
 {
-    ViperCounter *counter = (ViperCounter *)obj;
+    ZannaCounter *counter = (ZannaCounter *)obj;
     counter->value += counter->step;
 }
 
 void rt_counter_decrement(void *obj)
 {
-    ViperCounter *counter = (ViperCounter *)obj;
+    ZannaCounter *counter = (ZannaCounter *)obj;
     counter->value -= counter->step;
 }
 
 void rt_counter_reset(void *obj)
 {
-    ((ViperCounter *)obj)->value = 0;
+    ((ZannaCounter *)obj)->value = 0;
 }
 ```
 
@@ -712,17 +712,17 @@ Add to `src/il/runtime/runtime.def` in an appropriate section:
 // UTILS - COUNTER
 //=============================================================================
 
-RT_FUNC(CounterNew,         rt_counter_new,           "Viper.Utils.Counter.New",           "obj()")
-RT_FUNC(CounterNewWithStep, rt_counter_new_with_step, "Viper.Utils.Counter.NewWithStep",   "obj(i64)")
-RT_FUNC(CounterGetValue,    rt_counter_get_value,     "Viper.Utils.Counter.get_Value",     "i64(obj)")
-RT_FUNC(CounterGetStep,     rt_counter_get_step,      "Viper.Utils.Counter.get_Step",      "i64(obj)")
-RT_FUNC(CounterSetStep,     rt_counter_set_step,      "Viper.Utils.Counter.set_Step",      "void(obj,i64)")
-RT_FUNC(CounterIncrement,   rt_counter_increment,     "Viper.Utils.Counter.Increment",     "void(obj)")
-RT_FUNC(CounterDecrement,   rt_counter_decrement,     "Viper.Utils.Counter.Decrement",     "void(obj)")
-RT_FUNC(CounterReset,       rt_counter_reset,         "Viper.Utils.Counter.Reset",         "void(obj)")
+RT_FUNC(CounterNew,         rt_counter_new,           "Zanna.Utils.Counter.New",           "obj()")
+RT_FUNC(CounterNewWithStep, rt_counter_new_with_step, "Zanna.Utils.Counter.NewWithStep",   "obj(i64)")
+RT_FUNC(CounterGetValue,    rt_counter_get_value,     "Zanna.Utils.Counter.get_Value",     "i64(obj)")
+RT_FUNC(CounterGetStep,     rt_counter_get_step,      "Zanna.Utils.Counter.get_Step",      "i64(obj)")
+RT_FUNC(CounterSetStep,     rt_counter_set_step,      "Zanna.Utils.Counter.set_Step",      "void(obj,i64)")
+RT_FUNC(CounterIncrement,   rt_counter_increment,     "Zanna.Utils.Counter.Increment",     "void(obj)")
+RT_FUNC(CounterDecrement,   rt_counter_decrement,     "Zanna.Utils.Counter.Decrement",     "void(obj)")
+RT_FUNC(CounterReset,       rt_counter_reset,         "Zanna.Utils.Counter.Reset",         "void(obj)")
 
 // Class definition for OOP dispatch
-RT_CLASS_BEGIN("Viper.Utils.Counter", Counter, "obj", CounterNew)
+RT_CLASS_BEGIN("Zanna.Utils.Counter", Counter, "obj", CounterNew)
     RT_PROP("Value", "i64", CounterGetValue, none)
     RT_PROP("Step", "i64", CounterGetStep, CounterSetStep)
     RT_METHOD("Increment", "void()", CounterIncrement)
@@ -751,7 +751,7 @@ set(RT_PUBLIC_HEADERS
 
 ```bash
 # Build
-VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 
 # Verify the function is registered
 rg "Counter" build/generated/il/runtime/
@@ -760,7 +760,7 @@ rg "Counter" build/generated/il/runtime/
 ctest --test-dir build --output-on-failure
 ```
 
-### Step 6: Use in Viper Programs
+### Step 6: Use in Zanna Programs
 
 **BASIC:**
 ```basic
@@ -786,11 +786,11 @@ PRINT "Value: "; c.Value   ' Output: Value: 0
 **Zia:**
 ```rust
 module Main;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Create a counter
-    var c = Viper.Utils.Counter.New();
+    var c = Zanna.Utils.Counter.New();
 
     // Use methods
     c.Increment();
@@ -818,7 +818,7 @@ For classes with no instances (all static methods):
 
 ```c
 // runtime.def
-RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)  // note: ctor is 'none'
+RT_CLASS_BEGIN("Zanna.Math", Math, "obj", none)  // note: ctor is 'none'
     RT_METHOD("Sin", "f64(f64)", MathSin)
     RT_METHOD("Cos", "f64(f64)", MathCos)
     RT_METHOD("Sqrt", "f64(f64)", MathSqrt)
@@ -831,13 +831,13 @@ For classes with multiple constructors:
 
 ```c
 // runtime.def
-RT_FUNC(F64BufNew,     rt_f64buf_new,      "Viper.Collections.F64Buffer.New",     "obj(i64)")
-RT_FUNC(F64BufFromSeq, rt_f64buf_from_seq, "Viper.Collections.F64Buffer.FromSeq", "obj<Viper.Collections.F64Buffer>(obj)")
+RT_FUNC(F64BufNew,     rt_f64buf_new,      "Zanna.Collections.F64Buffer.New",     "obj(i64)")
+RT_FUNC(F64BufFromSeq, rt_f64buf_from_seq, "Zanna.Collections.F64Buffer.FromSeq", "obj<Zanna.Collections.F64Buffer>(obj)")
 
-RT_CLASS_BEGIN("Viper.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
+RT_CLASS_BEGIN("Zanna.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
     // F64BufNew is the default constructor.
     // F64BufFromSeq is a static factory method.
-    RT_METHOD("FromSeq", "obj<Viper.Collections.F64Buffer>(obj)", F64BufFromSeq)
+    RT_METHOD("FromSeq", "obj<Zanna.Collections.F64Buffer>(obj)", F64BufFromSeq)
     // ... other methods
 RT_CLASS_END()
 ```
@@ -870,9 +870,9 @@ RT_METHOD("Append", "obj(str)", BuilderAppend)
 
 Usage:
 ```basic
-builder = Viper.Text.StringBuilder.Append(builder, "Hello")
-builder = Viper.Text.StringBuilder.Append(builder, " ")
-builder = Viper.Text.StringBuilder.Append(builder, "World")
+builder = Zanna.Text.StringBuilder.Append(builder, "Hello")
+builder = Zanna.Text.StringBuilder.Append(builder, " ")
+builder = Zanna.Text.StringBuilder.Append(builder, "World")
 ```
 
 ### Pattern 6: Optional Behavior Without Overloads
@@ -882,8 +882,8 @@ canonical names or implement frontend syntax/lowering that chooses one runtime
 helper:
 
 ```c
-RT_FUNC(BytesNew,      rt_bytes_new,      "Viper.Collections.Bytes.New",      "obj(i64)")
-RT_FUNC(BytesFromStr,  rt_bytes_from_str, "Viper.Collections.Bytes.FromStr",  "obj(str)")
+RT_FUNC(BytesNew,      rt_bytes_new,      "Zanna.Collections.Bytes.New",      "obj(i64)")
+RT_FUNC(BytesFromStr,  rt_bytes_from_str, "Zanna.Collections.Bytes.FromStr",  "obj(str)")
 ```
 
 ### Pattern 7: Error Handling with Traps
@@ -891,7 +891,7 @@ RT_FUNC(BytesFromStr,  rt_bytes_from_str, "Viper.Collections.Bytes.FromStr",  "o
 ```c
 void *rt_list_get(void *obj, int64_t index)
 {
-    ViperList *list = (ViperList *)obj;
+    ZannaList *list = (ZannaList *)obj;
     if (index < 0 || index >= list->count)
     {
         char message[128];
@@ -913,7 +913,7 @@ void *rt_list_get(void *obj, int64_t index)
 
 ### "Unknown runtime function" Error
 
-**Symptom:** Compiler reports unknown function when calling `Viper.X.Y`
+**Symptom:** Compiler reports unknown function when calling `Zanna.X.Y`
 
 **Causes:**
 1. Function not added to `runtime.def`
@@ -924,7 +924,7 @@ void *rt_list_get(void *obj, int64_t index)
 ```bash
 # Force regeneration
 rm -rf build/generated/il/runtime/
-VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 ```
 
 ### "Signature mismatch" Error
@@ -961,7 +961,7 @@ VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 
 **Solution:** Verify class definition includes all methods:
 ```c
-RT_CLASS_BEGIN("Viper.Utils.Counter", Counter, "obj", CounterNew)
+RT_CLASS_BEGIN("Zanna.Utils.Counter", Counter, "obj", CounterNew)
     RT_METHOD("Increment", "void()", CounterIncrement)  // Must be inside the block
 RT_CLASS_END()
 ```
@@ -973,8 +973,8 @@ RT_CLASS_END()
 **Cause:** Canonical name convention not followed
 
 **Solution:** Use exact conventions:
-- Getter: `"Viper.Class.get_PropertyName"`
-- Setter: `"Viper.Class.set_PropertyName"`
+- Getter: `"Zanna.Class.get_PropertyName"`
+- Setter: `"Zanna.Class.set_PropertyName"`
 
 ---
 
@@ -1004,10 +1004,10 @@ Study these existing implementations as references:
 
 | Class | Location | Complexity |
 |-------|----------|------------|
-| `Viper.Collections.Map` | `src/runtime/collections/rt_map.c` | Complex (data structure) |
-| `Viper.IO.File` | `src/runtime/io/rt_file.c` | Complex (OS integration) |
-| `Viper.Text.Uuid` | `src/runtime/text/rt_guid.c` | Simple (static utility) |
-| `Viper.Time.Stopwatch` | `src/runtime/core/rt_stopwatch.c` | Medium (instance class) |
+| `Zanna.Collections.Map` | `src/runtime/collections/rt_map.c` | Complex (data structure) |
+| `Zanna.IO.File` | `src/runtime/io/rt_file.c` | Complex (OS integration) |
+| `Zanna.Text.Uuid` | `src/runtime/text/rt_guid.c` | Simple (static utility) |
+| `Zanna.Time.Stopwatch` | `src/runtime/core/rt_stopwatch.c` | Medium (instance class) |
 
 ---
 
@@ -1023,10 +1023,10 @@ int64_t rt_module_func(int64_t arg) { ... }
 int64_t rt_module_func(int64_t arg);
 
 // 3. Add to runtime.def
-RT_FUNC(ModuleFunc, rt_module_func, "Viper.Module.Func", "i64(i64)")
+RT_FUNC(ModuleFunc, rt_module_func, "Zanna.Module.Func", "i64(i64)")
 
 // 4. Add source to CMakeLists.txt (if new file)
-// 5. Build: VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
+// 5. Build: ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 ```
 
 ### Adding a New Class
@@ -1038,12 +1038,12 @@ void rt_myclass_do_thing(void *obj) { ... }
 int64_t rt_myclass_get_value(void *obj) { ... }
 
 // 2. Add RT_FUNCs for all functions
-RT_FUNC(MyClassNew, rt_myclass_new, "Viper.MyClass.New", "obj()")
-RT_FUNC(MyClassDoThing, rt_myclass_do_thing, "Viper.MyClass.DoThing", "void(obj)")
-RT_FUNC(MyClassGetValue, rt_myclass_get_value, "Viper.MyClass.get_Value", "i64(obj)")
+RT_FUNC(MyClassNew, rt_myclass_new, "Zanna.MyClass.New", "obj()")
+RT_FUNC(MyClassDoThing, rt_myclass_do_thing, "Zanna.MyClass.DoThing", "void(obj)")
+RT_FUNC(MyClassGetValue, rt_myclass_get_value, "Zanna.MyClass.get_Value", "i64(obj)")
 
 // 3. Add RT_CLASS_BEGIN/END block
-RT_CLASS_BEGIN("Viper.MyClass", MyClass, "obj", MyClassNew)
+RT_CLASS_BEGIN("Zanna.MyClass", MyClass, "obj", MyClassNew)
     RT_PROP("Value", "i64", MyClassGetValue, none)
     RT_METHOD("DoThing", "void()", MyClassDoThing)
 RT_CLASS_END()

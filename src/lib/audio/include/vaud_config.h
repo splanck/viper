@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Configuration
+// ZannaAUD Configuration
 //
-// Build-time configuration constants for the ViperAUD audio library.
+// Build-time configuration constants for the ZannaAUD audio library.
 // These values can be overridden via compiler defines if needed.
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief ViperAUD build configuration constants.
+/// @brief ZannaAUD build configuration constants.
 
 #pragma once
 
@@ -82,7 +82,7 @@ extern "C" {
 #elif defined(_WIN32)
 #define VAUD_PLATFORM_WINDOWS 1
 #else
-#error "ViperAUD: Unsupported platform"
+#error "ZannaAUD: Unsupported platform"
 #endif
 
 //===----------------------------------------------------------------------===//

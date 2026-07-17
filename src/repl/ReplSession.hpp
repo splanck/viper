@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Information about a session variable.
 struct VarInfo {
@@ -161,7 +161,7 @@ class ReplSession {
     bool loadFile(const std::string &path);
 
     /// @brief Get the history file path for the current language.
-    /// @return Path like ~/.viper/repl_history_zia or ~/.viper/repl_history_basic.
+    /// @return Path like ~/.zanna/repl_history_zia or ~/.zanna/repl_history_basic.
     std::filesystem::path historyFilePath() const;
 
     std::unique_ptr<ReplAdapter> adapter_;
@@ -174,4 +174,4 @@ class ReplSession {
     int consecutiveInterrupts_{0}; ///< Tracks consecutive Ctrl-C on empty line.
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

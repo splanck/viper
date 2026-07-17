@@ -1,9 +1,9 @@
 # XENOSCAPE first-party assets
 
 All files in this directory are project-bound runtime or QA-reference assets for XENOSCAPE and
-are distributed under the Viper project's GNU GPL v3 license unless a nested
+are distributed under the Zanna project's GNU GPL v3 license unless a nested
 notice states otherwise. No runtime download or external product dependency is
-required; `viper.project` bundles this directory into packaged builds.
+required; `zanna.project` bundles this directory into packaged builds.
 
 ## Art provenance
 

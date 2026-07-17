@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # Cross-Language Interop Guide
 
-Viper supports mixed-language projects where Zia and BASIC source files coexist
+Zanna supports mixed-language projects where Zia and BASIC source files coexist
 in a single project. One language provides the entry point (`main`/`start`),
 while the other provides library functions that are called across the language
 boundary.
@@ -105,7 +105,7 @@ InitSystem()
 
 ## Project Configuration
 
-Mixed-language projects require a `viper.project` manifest with `lang mixed` and
+Mixed-language projects require a `zanna.project` manifest with `lang mixed` and
 an `entry` directive specifying which file provides the entry point.
 
 ### Manifest Format
@@ -128,7 +128,7 @@ entry main.bas
 
 ```text
 my-project/
-  viper.project
+  zanna.project
   main.zia          <-- entry point (has start())
   mathlib.bas       <-- library (exports functions)
 ```
@@ -235,7 +235,7 @@ The IL module linker (`il::link::linkModules`) merges multiple modules:
 
 ## Example: Zia Main + BASIC Library
 
-### `viper.project`
+### `zanna.project`
 
 ```text
 project FactorialDemo
@@ -246,7 +246,7 @@ entry main.zia
 ### `main.zia`
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 foreign func Factorial(n: Integer) -> Integer
 
@@ -271,7 +271,7 @@ END FUNCTION
 ### Running
 
 ```sh
-viper run .
+zanna run .
 # Output: 3628800
 ```
 

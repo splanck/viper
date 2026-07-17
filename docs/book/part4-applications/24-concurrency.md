@@ -22,7 +22,7 @@ Consider a program that downloads 100 images:
 
 ```rust
 // Sequential: ~100 seconds (1 second per image)
-bind Http = Viper.Network.Http;
+bind Http = Zanna.Network.Http;
 
 for url in urls {
     var image = Http.Get(url);
@@ -47,13 +47,13 @@ But concurrency comes with serious challenges. When multiple things happen simul
 
 A *thread* is an independent path of execution within your program. All threads share the same memory, but each has its own instruction pointer — its own "place" in the code.
 
-Viper provides threads through the `Viper.Threads.Thread` class.
+Zanna provides threads through the `Zanna.Threads.Thread` class.
 
 ### Starting a Thread
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Zanna.Terminal as Terminal;
 
 func helloWorker(arg: Any) {
     Terminal.Say("Hello from another thread!");
@@ -83,9 +83,9 @@ Every thread handle exposes useful properties:
 | `Error` | `String` | Error message (if `HasError` is true) |
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 func sleepyWorker(arg: Any) {
     Thread.Sleep(100);  // Sleep 100 milliseconds
@@ -107,7 +107,7 @@ func start() {
 `Join()` blocks the calling thread until the target thread finishes. Without joining, the main thread might exit before worker threads complete.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func slowWorker(arg: Any) {
     // Simulate work
@@ -130,9 +130,9 @@ func start() {
 `StartSafe` wraps the thread body in error handling, so unhandled errors don't crash the program:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Box = Viper.Core.Box;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Box = Zanna.Core.Box;
+bind Zanna.Terminal as Terminal;
 
 func riskyWorker(arg: Any) {
     // If this traps, the error is captured by StartSafe
@@ -169,11 +169,11 @@ When threads share data, they can corrupt it. Two threads incrementing a counter
 A `Monitor` provides mutual exclusion: only one thread can hold the monitor at a time. Other threads that try to enter will block until it's released.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
-bind Map = Viper.Collections.Map;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
+bind Map = Zanna.Collections.Map;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var counter = 0;
 var lock = Map.New();  // Any runtime object can serve as a monitor target
@@ -217,13 +217,13 @@ func start() {
 ### Producer-Consumer with Monitor
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var buffer: List[Integer] = [];
-var lock = Viper.Collections.Map.New();
+var lock = Zanna.Collections.Map.New();
 var done = false;
 
 func producer() {
@@ -265,10 +265,10 @@ func consumer(id: Integer) {
 For simple numeric shared state, `SafeI64` provides lock-free atomic operations:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind SafeI64 = Viper.Threads.SafeI64;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind SafeI64 = Zanna.Threads.SafeI64;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var counter = SafeI64.New(0);
 
@@ -302,7 +302,7 @@ func start() {
 The `CompareExchange` operation (CAS) is the building block for lock-free algorithms:
 
 ```rust
-bind SafeI64 = Viper.Threads.SafeI64;
+bind SafeI64 = Zanna.Threads.SafeI64;
 
 // Lock-free maximum update
 func atomicMax(atom: SafeI64, candidate: Integer) {
@@ -320,18 +320,18 @@ func atomicMax(atom: SafeI64, candidate: Integer) {
 
 ## 24.3 Synchronization Primitives
 
-Beyond monitors, Viper provides specialized synchronization tools for different coordination patterns.
+Beyond monitors, Zanna provides specialized synchronization tools for different coordination patterns.
 
 ### Gate (Semaphore)
 
 A `Gate` controls access to a limited resource. It maintains a count of available permits. Threads enter (consuming a permit) and leave (releasing a permit).
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Gate = Viper.Threads.Gate;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Gate = Zanna.Threads.Gate;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var dbGate = Gate.New(3);
 
@@ -371,11 +371,11 @@ func start() {
 A `Barrier` makes multiple threads wait until all of them have arrived at a synchronization point before any can proceed. Useful for phased algorithms.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Barrier = Viper.Threads.Barrier;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Barrier = Zanna.Threads.Barrier;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var barrier = Barrier.New(3);  // Wait for 3 threads
 
@@ -410,8 +410,8 @@ func start() {
 A `RwLock` allows multiple simultaneous readers *or* one exclusive writer. This is more efficient than a Monitor when reads vastly outnumber writes.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind RwLock = Viper.Threads.RwLock;
+bind Thread = Zanna.Threads.Thread;
+bind RwLock = Zanna.Threads.RwLock;
 
 var cache: List[String] = [];
 var rwLock = RwLock.New();
@@ -449,11 +449,11 @@ Read-to-write upgrades are rejected to avoid self-deadlock. A thread that alread
 Channels provide safe communication between threads without shared mutable state. One thread *sends* data into the channel; another thread *receives* it. This is the "communicate by sharing" approach to concurrency.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Channel = Viper.Threads.Channel;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Channel = Zanna.Threads.Channel;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var ch = Channel.New(5);  // Buffered channel with capacity 5
 
@@ -513,11 +513,11 @@ At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks availability wit
 Channels naturally compose into pipelines where each stage processes data and passes results to the next:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Channel = Viper.Threads.Channel;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Channel = Zanna.Threads.Channel;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var raw = Channel.New(10);
 var processed = Channel.New(10);
@@ -564,11 +564,11 @@ func start() {
 Creating a new OS thread for every task is expensive. A *thread pool* maintains a set of reusable worker threads. You submit tasks; the pool assigns them to available workers.
 
 ```rust
-bind Pool = Viper.Threads.Pool;
-bind Thread = Viper.Threads.Thread;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Pool = Zanna.Threads.Pool;
+bind Thread = Zanna.Threads.Thread;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 func poolTask(arg: Any) {
     var id = Box.ToI64(arg);
@@ -621,12 +621,12 @@ Pool waits remain correct when a task traps: the worker still marks the task com
 A `Promise` represents a value that will be provided later. A `Future` is the read-side of a promise — it lets another thread wait for and retrieve the result.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Promise = Viper.Threads.Promise;
-bind Future = Viper.Threads.Future;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Promise = Zanna.Threads.Promise;
+bind Future = Zanna.Threads.Future;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 func computeWorker(p: Promise) {
     Thread.Sleep(200);  // Simulate computation
@@ -652,10 +652,10 @@ func start() {
 Promises can propagate errors to futures:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Promise = Viper.Threads.Promise;
-bind Future = Viper.Threads.Future;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Promise = Zanna.Threads.Promise;
+bind Future = Zanna.Threads.Future;
+bind Zanna.Terminal as Terminal;
 
 func failingPromiseWorker(p: Promise) {
     p.SetError("computation failed");
@@ -696,9 +696,9 @@ func start() {
 The `Async` class provides higher-level operations built on futures:
 
 ```rust
-bind Async = Viper.Threads.Async;
-bind Box = Viper.Core.Box;
-bind Seq = Viper.Collections.Seq;
+bind Async = Zanna.Threads.Async;
+bind Box = Zanna.Core.Box;
+bind Seq = Zanna.Collections.Seq;
 
 func computeExpensiveValue(arg: Any) -> Any {
     return Box.I64(42);
@@ -738,18 +738,18 @@ Traps raised inside `Async.Run`, `Async.RunCancellable`, and `Async.Map` callbac
 
 ## 24.7 Concurrent Collections
 
-Regular collections (`List`, `Map`) are **not** thread-safe. Accessing them from multiple threads without locks leads to corruption. Viper provides two thread-safe collections.
+Regular collections (`List`, `Map`) are **not** thread-safe. Accessing them from multiple threads without locks leads to corruption. Zanna provides two thread-safe collections.
 
 ### ConcurrentQueue
 
 A thread-safe FIFO queue, ideal for producer-consumer patterns:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind ConcurrentQueue = Viper.Threads.ConcurrentQueue;
-bind Box = Viper.Core.Box;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind ConcurrentQueue = Zanna.Threads.ConcurrentQueue;
+bind Box = Zanna.Core.Box;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var queue = ConcurrentQueue.New();
 
@@ -793,10 +793,10 @@ func start() {
 A thread-safe key-value store with string keys:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind ConcurrentMap = Viper.Threads.ConcurrentMap;
-bind Box = Viper.Core.Box;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind ConcurrentMap = Zanna.Threads.ConcurrentMap;
+bind Box = Zanna.Core.Box;
+bind Zanna.Terminal as Terminal;
 
 var config = ConcurrentMap.New();
 
@@ -841,10 +841,10 @@ func start() {
 The `Parallel` class provides high-level utilities for common parallel patterns without manual thread management:
 
 ```rust
-bind Parallel = Viper.Threads.Parallel;
-bind Box = Viper.Core.Box;
-bind Seq = Viper.Collections.Seq;
-bind Viper.Terminal as Terminal;
+bind Parallel = Zanna.Threads.Parallel;
+bind Box = Zanna.Core.Box;
+bind Seq = Zanna.Collections.Seq;
+bind Zanna.Terminal as Terminal;
 
 func processIndex(i: Integer) {
     // Process item i
@@ -880,8 +880,8 @@ func start() {
 By default, `Parallel` uses a shared default pool. You can provide your own:
 
 ```rust
-bind Parallel = Viper.Threads.Parallel;
-bind Pool = Viper.Threads.Pool;
+bind Parallel = Zanna.Threads.Parallel;
+bind Pool = Zanna.Threads.Pool;
 
 func processIndex(i: Integer) {
     // Runs on the custom pool
@@ -922,10 +922,10 @@ Parallel operations wake the caller and trap with a `Parallel.*: task trapped` m
 Long-running tasks should be cancellable. The `CancelToken` provides cooperative cancellation — a way for one part of the program to signal "stop" and for the running task to check periodically and comply.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind CancelToken = Viper.Threads.CancelToken;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind CancelToken = Zanna.Threads.CancelToken;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 var token = CancelToken.New();
 
@@ -954,7 +954,7 @@ func start() {
 Create a child token that cancels when the parent does:
 
 ```rust
-bind CancelToken = Viper.Threads.CancelToken;
+bind CancelToken = Zanna.Threads.CancelToken;
 
 var parentToken = CancelToken.New();
 var childToken = CancelToken.Linked(parentToken);
@@ -980,9 +980,9 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 A `Debouncer` suppresses repeated signals that arrive within a quiet period. Only after the signals stop for the configured delay does the debouncer become "ready". This is useful for UI events like search-as-you-type, where you want to wait until the user stops typing.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Debouncer = Viper.Threads.Debouncer;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Debouncer = Zanna.Threads.Debouncer;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var debounce = Debouncer.New(300);  // 300ms quiet period
@@ -1017,10 +1017,10 @@ func start() {
 A `Throttler` limits how often an action can occur. At most one action per interval.
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Throttler = Viper.Threads.Throttler;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Throttler = Zanna.Threads.Throttler;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var throttle = Throttler.New(1000);  // At most once per second
@@ -1053,10 +1053,10 @@ func start() {
 The `Scheduler` manages named tasks that should execute at scheduled times:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Scheduler = Viper.Threads.Scheduler;
-bind Box = Viper.Core.Box;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Scheduler = Zanna.Threads.Scheduler;
+bind Box = Zanna.Core.Box;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var sched = Scheduler.New();
@@ -1106,7 +1106,7 @@ The primary source of concurrency bugs is shared mutable state. Prefer:
 Unjoined threads can outlive the main function, leading to undefined behavior or resource leaks:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func doWork(arg: Any) {
     // Work goes here
@@ -1127,9 +1127,9 @@ func start() {
 `Thread.StartSafe` catches errors in the thread body, preventing crashes and allowing error inspection:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Box = Viper.Core.Box;
-bind Viper.Terminal as Terminal;
+bind Thread = Zanna.Threads.Thread;
+bind Box = Zanna.Core.Box;
+bind Zanna.Terminal as Terminal;
 
 func riskyOperation(arg: Any) {
     var divisor = Box.ToI64(arg);
@@ -1150,9 +1150,9 @@ func start() {
 Thread pools reuse threads, avoiding the overhead of creating and destroying OS threads:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Pool = Viper.Threads.Pool;
-bind Box = Viper.Core.Box;
+bind Thread = Zanna.Threads.Thread;
+bind Pool = Zanna.Threads.Pool;
+bind Box = Zanna.Core.Box;
 
 func processItem(arg: Any) {
     // Process one item
@@ -1188,7 +1188,7 @@ A *deadlock* occurs when two threads each wait for something the other holds. Ru
 Cooperative cancellation via `CancelToken` lets you cleanly stop long-running work:
 
 ```rust
-bind CancelToken = Viper.Threads.CancelToken;
+bind CancelToken = Zanna.Threads.CancelToken;
 
 var token = CancelToken.New();
 
@@ -1229,12 +1229,12 @@ token.Cancel();
 | Rate limiting | `Debouncer` / `Throttler` | Controlling action frequency |
 | Task scheduling | `Scheduler` | Time-based task management |
 
-All concurrency types live under `Viper.Threads`. Import them with:
+All concurrency types live under `Zanna.Threads`. Import them with:
 
 ```rust
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
-bind Channel = Viper.Threads.Channel;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
+bind Channel = Zanna.Threads.Channel;
 // ... etc.
 ```
 
@@ -1242,6 +1242,6 @@ Concurrency is powerful but demands discipline. Start simple — use channels an
 
 ---
 
-*We've covered the full breadth of Viper's concurrency model. Part V takes you deeper into how Viper itself works — the compiler, the VM, and how to write fast, testable, well-architected code.*
+*We've covered the full breadth of Zanna's concurrency model. Part V takes you deeper into how Zanna itself works — the compiler, the VM, and how to write fast, testable, well-architected code.*
 
-*[Continue to Part V: Mastery ->](../part5-mastery/25-how-viper-works.md)*
+*[Continue to Part V: Mastery ->](../part5-mastery/25-how-zanna-works.md)*

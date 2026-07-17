@@ -12,7 +12,7 @@
 // Recompiling the whole game every time you bump friction from
 // 0.82 to 0.85 is a miserable way to iterate.
 //
-// This file wraps the Viper runtime's `Viper.Game.Config` class.
+// This file wraps the Zanna runtime's `Zanna.Game.Config` class.
 // On startup, `RuntimeTuning.init(path)` loads a JSON file from
 // disk and stashes a handle.  Anywhere in the game code that wants
 // a tunable, it calls `getInt(path, default)` or `getBool(path,
@@ -47,7 +47,7 @@
 //      sites.
 //
 //   2. Dotted paths.  `"camera.shake_peak_strength"` is one key;
-//      `Viper.Game.Config` handles the JSON navigation
+//      `Zanna.Game.Config` handles the JSON navigation
 //      internally.  This lets the tuning file be organized like
 //      the code ("camera.*", "player.*", "enemy.*") without
 //      carrying that structure in Zia types.
@@ -70,11 +70,11 @@
 
 module tuning;
 
-// `Viper.Game.Config` is the runtime's JSON-config reader.
+// `Zanna.Game.Config` is the runtime's JSON-config reader.
 // Aliased as `RuntimeConfig` so `RuntimeTuning` below doesn't
 // shadow `Config` (which is a different, save-slot-level config
 // in `./config.zia`).
-bind Viper.Game.Config as RuntimeConfig;
+bind Zanna.Game.Config as RuntimeConfig;
 
 /// @brief Holds a loaded runtime-tunables JSON, if any.
 ///

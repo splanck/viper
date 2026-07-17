@@ -1,11 +1,11 @@
 // intl-numbers.zia
 // Number format + parse round-trip demo across multiple locales. Shows that
-// Viper.Localization.NumberFormat preserves value identity through
+// Zanna.Localization.NumberFormat preserves value identity through
 // locale-specific separators in strict mode.
 
-bind Locale        : Viper.Localization.Locale
-bind LocaleManager : Viper.Localization.LocaleManager
-bind NumberFormat  : Viper.Localization.NumberFormat
+bind Locale        : Zanna.Localization.Locale
+bind LocaleManager : Zanna.Localization.LocaleManager
+bind NumberFormat  : Zanna.Localization.NumberFormat
 
 func showRoundTrip(tagName: String, value: Float)
     var loc = Locale.Parse(tagName)

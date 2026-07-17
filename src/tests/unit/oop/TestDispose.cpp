@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@ END
     Lowerer lowerer;
     auto module = lowerer.lowerProgram(*prog);
 
-    viper::tests::VmFixture fx;
+    zanna::tests::VmFixture fx;
     (void)fx.run(module);
 }
 
@@ -79,14 +79,14 @@ END
     Lowerer lowerer;
     auto module = lowerer.lowerProgram(*prog);
 
-    viper::tests::VmFixture fx;
+    zanna::tests::VmFixture fx;
     auto trap = fx.runExpectingTrap(module);
     EXPECT_TRUE(trap.exited);
 }
 
 int main(int argc, char **argv) {
-    if (viper::tests::dispatchChild(argc, const_cast<char **>(argv)))
+    if (zanna::tests::dispatchChild(argc, const_cast<char **>(argv)))
         return 0;
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

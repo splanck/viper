@@ -1,18 +1,18 @@
 // Test: Sprite FlipX/FlipY properties
 module TestSpriteFlip;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Create a small pixel buffer
-    var px = new Viper.Graphics.Pixels(4, 4);
+    var px = new Zanna.Graphics.Pixels(4, 4);
 
     // Create sprite from pixels
-    var sprite = new Viper.Graphics.Sprite(px);
+    var sprite = new Zanna.Graphics.Sprite(px);
 
     // Default: no flip
-    var fx = Viper.Graphics.Sprite.get_FlipX(sprite);
-    var fy = Viper.Graphics.Sprite.get_FlipY(sprite);
+    var fx = Zanna.Graphics.Sprite.get_FlipX(sprite);
+    var fy = Zanna.Graphics.Sprite.get_FlipY(sprite);
 
     if (fx != false) {
         Say("FAIL: FlipX default should be 0");
@@ -24,24 +24,24 @@ func start() {
     }
 
     // Set FlipX
-    Viper.Graphics.Sprite.set_FlipX(sprite, true);
-    fx = Viper.Graphics.Sprite.get_FlipX(sprite);
+    Zanna.Graphics.Sprite.set_FlipX(sprite, true);
+    fx = Zanna.Graphics.Sprite.get_FlipX(sprite);
     if (fx != true) {
         Say("FAIL: FlipX should be 1 after set");
         return;
     }
 
     // Set FlipY
-    Viper.Graphics.Sprite.set_FlipY(sprite, true);
-    fy = Viper.Graphics.Sprite.get_FlipY(sprite);
+    Zanna.Graphics.Sprite.set_FlipY(sprite, true);
+    fy = Zanna.Graphics.Sprite.get_FlipY(sprite);
     if (fy != true) {
         Say("FAIL: FlipY should be 1 after set");
         return;
     }
 
     // Unset FlipX
-    Viper.Graphics.Sprite.set_FlipX(sprite, false);
-    fx = Viper.Graphics.Sprite.get_FlipX(sprite);
+    Zanna.Graphics.Sprite.set_FlipX(sprite, false);
+    fx = Zanna.Graphics.Sprite.get_FlipX(sprite);
     if (fx != false) {
         Say("FAIL: FlipX should be 0 after unset");
         return;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <iostream>
 #include <sstream>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -113,7 +113,7 @@ int main() {
         auto obj2 = makeRodataObj("b.o", "collision");
 
         ObjSymbol existing;
-        existing.name = "__viper_dedup_str_0";
+        existing.name = "__zanna_dedup_str_0";
         existing.binding = ObjSymbol::Global;
         existing.sectionIndex = 1;
         existing.offset = 0;
@@ -121,15 +121,15 @@ int main() {
 
         std::vector<ObjFile> objs = {obj1, obj2};
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
-        globalSyms["__viper_dedup_str_1"] = {
-            "__viper_dedup_str_1", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["__zanna_dedup_str_1"] = {
+            "__zanna_dedup_str_1", GlobalSymEntry::Global, 0, 1, 0, 0};
 
         size_t eliminated = deduplicateStrings(objs, globalSyms);
 
         CHECK(eliminated == 1);
-        CHECK(objs[0].symbols[1].name == "__viper_dedup_str_2");
-        CHECK(objs[1].symbols[1].name == "__viper_dedup_str_2");
-        CHECK(globalSyms.count("__viper_dedup_str_2") == 1);
+        CHECK(objs[0].symbols[1].name == "__zanna_dedup_str_2");
+        CHECK(objs[1].symbols[1].name == "__zanna_dedup_str_2");
+        CHECK(globalSyms.count("__zanna_dedup_str_2") == 1);
     }
 
     // --- Synthetic name assignment is deterministic by string contents ---
@@ -144,10 +144,10 @@ int main() {
         size_t eliminated = deduplicateStrings(objs, globalSyms);
 
         CHECK(eliminated == 2);
-        CHECK(objs[2].symbols[1].name == "__viper_dedup_str_0");
-        CHECK(objs[3].symbols[1].name == "__viper_dedup_str_0");
-        CHECK(objs[0].symbols[1].name == "__viper_dedup_str_1");
-        CHECK(objs[1].symbols[1].name == "__viper_dedup_str_1");
+        CHECK(objs[2].symbols[1].name == "__zanna_dedup_str_0");
+        CHECK(objs[3].symbols[1].name == "__zanna_dedup_str_0");
+        CHECK(objs[0].symbols[1].name == "__zanna_dedup_str_1");
+        CHECK(objs[1].symbols[1].name == "__zanna_dedup_str_1");
     }
 
     // --- Same-section duplicate strings are compacted using original offsets ---

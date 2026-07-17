@@ -4,9 +4,9 @@ audience: internal
 last-verified: 2026-04-09
 ---
 
-# Viper C++ Compiler Specifications
+# Zanna C++ Compiler Specifications
 
-This document provides the complete specification for the Viper C++ system compiler.
+This document provides the complete specification for the Zanna C++ system compiler.
 
 ## Scope
 
@@ -17,7 +17,7 @@ This document provides the complete specification for the Viper C++ system compi
 | **C++ Standard** | C++20 |
 | **C Standard** | C17 |
 
-The compiler is a **cross-compiler**: it runs on macOS/Linux development machines and generates code exclusively for AArch64 targets (Viper OS).
+The compiler is a **cross-compiler**: it runs on macOS/Linux development machines and generates code exclusively for AArch64 targets (Zanna OS).
 
 ---
 
@@ -1002,7 +1002,7 @@ The compiler implements the ARM Architecture Procedure Call Standard for 64-bit.
 
 | Target | Format |
 |--------|--------|
-| Viper OS | ELF64 (little-endian) |
+| Zanna OS | ELF64 (little-endian) |
 
 ### 12.4 Name Mangling
 
@@ -1448,7 +1448,7 @@ struct __vmi_class_type_info : type_info {
 | ELF64 | Target object/executable format (AArch64) |
 | Static library (.a) | Archive of objects |
 
-**Note:** vcpp only generates ELF64 for the AArch64 target (Viper OS). The host compiler (building vcpp itself) uses native formats (Mach-O on macOS, ELF on Linux).
+**Note:** vcpp only generates ELF64 for the AArch64 target (Zanna OS). The host compiler (building vcpp itself) uses native formats (Mach-O on macOS, ELF on Linux).
 
 ### 14.4 Debug Information
 
@@ -1460,4 +1460,4 @@ struct __vmi_class_type_info : type_info {
 
 ---
 
-*Viper C++ Compiler Specifications v1.0*
+*Zanna C++ Compiler Specifications v1.0*

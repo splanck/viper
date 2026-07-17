@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -251,7 +251,7 @@ func render(item: INamed) -> String {
 func start() {
     var t = new Thing();
     var item: INamed = t;
-    Viper.Terminal.Say(render(item));
+    Zanna.Terminal.Say(render(item));
 }
 )";
     CompilerInput input{.source = source, .path = "iface_default.zia"};
@@ -293,5 +293,5 @@ func start() {    var f = new Foo();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,0 +1,76 @@
+module multi_root_file_tree_probe;
+
+// ============================================================================
+// MODULE: multi_root_file_tree_probe
+// PURPOSE: Headless probe for multi-root workspace file discovery.
+//
+// WHERE-THIS-FITS: ProjectManager owns the primary root, extra roots, ignore
+//          checks, and aggregate Quick Open/search cache. This probe verifies
+//          cache membership across multiple temporary roots.
+//
+// TEACHING-NOTE: Multi-root behavior should always check root ownership rather
+//          than assuming the primary project owns every workspace path.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../core/project_manager";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func cacheContains(projMgr: project_manager.ProjectManager, needle: String) -> Boolean {
+    var n = projMgr.CachedFileCount();
+    var i = 0;
+    while i < n {
+        var p = projMgr.CachedFileAt(i);
+        if Str.EndsWith(p, needle) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ZannaIDE Multi-Root Probe", 960, 640);
+
+    var root1 = TempFile.CreateDirWithPrefix("zannaide_mroot1_");
+    var root2 = TempFile.CreateDirWithPrefix("zannaide_mroot2_");
+    File.WriteAllText(Path.Join(root1, "alpha.zia"), "module Alpha;\n");
+    File.WriteAllText(Path.Join(root2, "beta.zia"), "module Beta;\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+
+    // Single root first.
+    projMgr.OpenFolder(root1);
+    if projMgr.extraRoots.count() != 0 { fail(shell, "extraRoots not empty after OpenFolder"); return; }
+    if cacheContains(projMgr, "alpha.zia") == false { fail(shell, "alpha.zia missing from single-root cache"); return; }
+    if cacheContains(projMgr, "beta.zia") { fail(shell, "beta.zia present before AddFolder"); return; }
+
+    // Add a second root — both roots' files should now be cached.
+    projMgr.AddFolderToWorkspace(root2);
+    if projMgr.extraRoots.count() != 1 { fail(shell, "extraRoots count != 1 after AddFolder"); return; }
+    if cacheContains(projMgr, "alpha.zia") == false { fail(shell, "alpha.zia missing from multi-root cache"); return; }
+    if cacheContains(projMgr, "beta.zia") == false { fail(shell, "beta.zia missing from multi-root cache"); return; }
+
+    // Adding a duplicate root is a no-op.
+    projMgr.AddFolderToWorkspace(root2);
+    if projMgr.extraRoots.count() != 1 { fail(shell, "duplicate AddFolder changed root count"); return; }
+
+    // OwningProject resolves a file to its own root (relative path strips that root).
+    var betaAbs = Path.Join(root2, "beta.zia");
+    if projMgr.RelativePath(betaAbs) != "beta.zia" { fail(shell, "RelativePath not root-aware for second root"); return; }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

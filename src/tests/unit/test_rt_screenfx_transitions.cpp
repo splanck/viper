@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Unit tests for new ScreenFX transition effects (Wipe, CircleIn/Out,
 //   Dissolve, Pixelate). Tests lifecycle, progress tracking, completion
 //   detection, and NULL safety. Does not test Canvas rendering (requires
-//   VIPER_ENABLE_GRAPHICS).
+//   ZANNA_ENABLE_GRAPHICS).
 //
 // Key invariants:
 //   - Transitions advance with Update(dt) and complete when elapsed >= duration.

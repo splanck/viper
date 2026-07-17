@@ -19,11 +19,11 @@
 //     row rendering trivial.
 // ============================================================================
 
-// button.viper - Button UI control for Viper Paint
+// button.zanna - Button UI control for Zanna Paint
 module button;
 
-bind Viper.Graphics;
-bind Viper.Game.UI;
+bind Zanna.Graphics;
+bind Zanna.Game.UI;
 
 bind "../config";
 

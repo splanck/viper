@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTLogTests.cpp
-// Purpose: Tests for Viper.Diagnostics.Log simple logging functions.
+// Purpose: Tests for Zanna.Diagnostics.Log simple logging functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -312,7 +312,7 @@ static void test_default_level() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Diagnostics.Log Tests ===\n\n");
+    printf("=== Zanna.Diagnostics.Log Tests ===\n\n");
 
     // Level constants
     test_level_constants();

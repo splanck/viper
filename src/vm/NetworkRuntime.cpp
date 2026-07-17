@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/vm/NetworkRuntime.cpp
-// Purpose: VM-aware runtime helpers for Viper.Network.HttpServer handler binding.
+// Purpose: VM-aware runtime helpers for Zanna.Network.HttpServer handler binding.
 //
 //===----------------------------------------------------------------------===//
 
@@ -165,14 +165,14 @@ static void network_https_server_bind_handler_handler(void **args, void *result)
 void registerNetworkRuntimeExternals() {
     {
         ExternDesc ext;
-        ext.name = "Viper.Network.HttpServer.BindHandler";
+        ext.name = "Zanna.Network.HttpServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&network_http_server_bind_handler_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Network.HttpsServer.BindHandler";
+        ext.name = "Zanna.Network.HttpsServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&network_https_server_bind_handler_handler);
         RuntimeBridge::registerExtern(ext);

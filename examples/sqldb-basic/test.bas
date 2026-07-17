@@ -1,5 +1,5 @@
 ' test.bas - Test Functions
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "executor.bas"
 
@@ -1593,7 +1593,7 @@ END SUB
 ' MAIN - Run all tests
 '=============================================================================
 
-PRINT "SQLite Clone - Viper Basic Edition"
+PRINT "SQLite Clone - Zanna Basic Edition"
 PRINT "==================================="
 PRINT ""
 

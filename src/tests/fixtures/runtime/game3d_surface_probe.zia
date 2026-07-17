@@ -1,9 +1,9 @@
-// Phase 0A probe for the planned Viper.Game3D consumer surface.
+// Phase 0A probe for the planned Zanna.Game3D consumer surface.
 module Game3DSurfaceProbe;
 
-bind Viper.Graphics3D as G3D;
-bind Viper.Input.Keyboard as Keyboard;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Input.Keyboard as Keyboard;
+bind Zanna.Terminal as Terminal;
 
 interface CameraController {
     func update(dt: Float);
@@ -72,7 +72,7 @@ func start() {
 
     var canvas = G3D.Canvas3D.New("Game3D Surface Probe", 64, 64);
     G3D.Canvas3D.Poll(canvas);
-    var wDown = Keyboard.IsDown(Viper.Input.Key.W);
+    var wDown = Keyboard.IsDown(Zanna.Input.Key.W);
     if (wDown) {
         controller.lateCalls = controller.lateCalls + 0;
     }

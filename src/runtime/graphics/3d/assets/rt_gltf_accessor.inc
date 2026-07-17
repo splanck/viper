@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_gltf_accessor.inc  (#included from rt_gltf.c; not a
 // standalone translation unit) Purpose: glTF accessor binding, sparse handling, and component
 // decode/read
@@ -830,7 +830,7 @@ static int32_t gltf_primitive_triangle_count(int64_t mode, int32_t index_count) 
 ///     consecutive pair of subsequent vertices.
 ///   Other topology modes (POINTS, LINES, LINE_STRIP, LINE_LOOP — modes 0-3) are not
 ///   supported and return 0. @p index_view may be NULL for unindexed draws.
-/// @param mesh         Viper mesh object to receive the triangles.
+/// @param mesh         Zanna mesh object to receive the triangles.
 /// @param mode         glTF primitive topology mode (4, 5, or 6).
 /// @param index_view   Optional index buffer accessor; NULL for non-indexed draw.
 /// @param vertex_count Total number of vertices in the primitive (used for bounds-checking).

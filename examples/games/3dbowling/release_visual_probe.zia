@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,11 +24,11 @@
 
 module release_visual_probe;
 
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.Terminal;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.Terminal;
 bind "./config";
 bind "./menu";
 bind "./engine/renderer";

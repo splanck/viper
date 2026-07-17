@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Check if an instruction is an identity move (mov r, r).
 [[nodiscard]] bool isIdentityMovRR(const MInstr &instr) noexcept;
@@ -46,4 +46,4 @@ namespace viper::codegen::aarch64::peephole {
                                       std::size_t idx,
                                       PeepholeStats &stats);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

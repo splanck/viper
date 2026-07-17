@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/common/PosixCompat.h
 // Purpose: Cross-platform POSIX function compatibility for C tests.
 //          Include this instead of <unistd.h> in C test files.
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_TESTS_POSIX_COMPAT_H
-#define VIPER_TESTS_POSIX_COMPAT_H
+#ifndef ZANNA_TESTS_POSIX_COMPAT_H
+#define ZANNA_TESTS_POSIX_COMPAT_H
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -31,8 +31,8 @@
 #endif
 
 // Disable all Windows debug/error dialogs so tests exit cleanly.
-// Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables.
-static inline void viper_disable_abort_dialog_(void) {
+// Call ZANNA_DISABLE_ABORT_DIALOG() at the start of main() in test executables.
+static inline void zanna_disable_abort_dialog_(void) {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #ifdef _DEBUG
@@ -45,7 +45,7 @@ static inline void viper_disable_abort_dialog_(void) {
 #endif
 }
 
-#define VIPER_DISABLE_ABORT_DIALOG() viper_disable_abort_dialog_()
+#define ZANNA_DISABLE_ABORT_DIALOG() zanna_disable_abort_dialog_()
 
 // Standard file descriptors
 #ifndef STDIN_FILENO
@@ -239,7 +239,7 @@ typedef int pid_t;
 #else
 // POSIX systems
 #include <unistd.h>
-#define VIPER_DISABLE_ABORT_DIALOG() (void)0
+#define ZANNA_DISABLE_ABORT_DIALOG() (void)0
 #endif
 
-#endif // VIPER_TESTS_POSIX_COMPAT_H
+#endif // ZANNA_TESTS_POSIX_COMPAT_H

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -69,7 +69,7 @@ const Instr *getTerminator(const BasicBlock &block) {
 }
 
 static inline unsigned nextTempId(Function &function) {
-    return viper::il::nextTempId(function);
+    return zanna::il::nextTempId(function);
 }
 
 std::string makeUniqueLabel(const Function &function, const std::string &base) {

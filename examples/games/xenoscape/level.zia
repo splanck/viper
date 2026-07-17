@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -56,10 +56,10 @@
 //
 // `Tilemap` IS A RUNTIME CLASS
 // ----------------------------
-// `Viper.Graphics2D.Tilemap` is the runtime's tile-grid structure
+// `Zanna.Graphics2D.Tilemap` is the runtime's tile-grid structure
 // with `Get(x, y)` / `Set(x, y, id)` / bounds checks.  It
 // also serves as the input to
-// `Viper.Game.Raycast.HasLineOfSight` (used by AI and
+// `Zanna.Game.Raycast.HasLineOfSight` (used by AI and
 // projectiles), so there's no per-game tile-grid type to
 // reinvent.
 //
@@ -98,9 +98,9 @@
 
 module level;
 
-bind Viper.Graphics;
-bind Viper.Graphics2D.Tilemap as Tilemap;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Graphics2D.Tilemap as Tilemap;
+bind Zanna.Game;
 bind "./abilities";
 bind "./config";
 bind "./world_graph";

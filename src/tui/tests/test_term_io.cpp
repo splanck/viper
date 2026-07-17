@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,13 +18,13 @@
 #include "tests/TestHarness.hpp"
 
 TEST(TUI, TermIO) {
-    viper::tui::term::StringTermIO tio;
+    zanna::tui::term::StringTermIO tio;
     tio.write("hello");
     tio.flush();
     ASSERT_EQ(tio.buffer(), "hello");
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

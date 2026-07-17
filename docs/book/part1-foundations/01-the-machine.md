@@ -132,7 +132,7 @@ Programming languages are a gift from programmers to other programmers (includin
 
 ## Why Two Languages?
 
-Viper gives you two languages: Zia and BASIC. Why?
+Zanna gives you two languages: Zia and BASIC. Why?
 
 They're different ways to express the same ideas. Like how you can give directions by listing turns ("left, right, straight, left") or by giving landmarks ("past the church, toward the lake"). Same destination, different paths.
 

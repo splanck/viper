@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: src/tests/vm/ThreadsRuntimeTests.cpp
-// Purpose: Validate VM-side Viper.Threads integration (notably Thread.Start override).
+// Purpose: Validate VM-side Zanna.Threads integration (notably Thread.Start override).
 // Key invariants: VM Thread.Start accepts IL function pointers and shares module globals.
 //===----------------------------------------------------------------------===//
 
@@ -32,25 +32,25 @@ int main() {
     b.addGlobal("g_async_ext", Type(Type::Kind::I64));
 
     // Runtime externs (canonical names).
-    b.addExtern("Viper.Threads.Thread.Start",
+    b.addExtern("Zanna.Threads.Thread.Start",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.StartOwned",
+    b.addExtern("Zanna.Threads.Thread.StartOwned",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.StartSafe",
+    b.addExtern("Zanna.Threads.Thread.StartSafe",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.StartSafeOwned",
+    b.addExtern("Zanna.Threads.Thread.StartSafeOwned",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.get_HasError", Type(Type::Kind::I1), {Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Async.Run",
+    b.addExtern("Zanna.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern("Zanna.Threads.Thread.get_HasError", Type(Type::Kind::I1), {Type(Type::Kind::Ptr)});
+    b.addExtern("Zanna.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern("Zanna.Threads.Async.Run",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
-    b.addExtern("Viper.Threads.Future.Get", Type(Type::Kind::Ptr), {Type(Type::Kind::Ptr)});
+    b.addExtern("Zanna.Threads.Future.Get", Type(Type::Kind::Ptr), {Type(Type::Kind::Ptr)});
     b.addExtern("test.worker.value", Type(Type::Kind::I64), {});
 
     // worker() -> void: g = g + 1
@@ -251,29 +251,29 @@ int main() {
     const unsigned nullId = *nullArg.result;
 
     unsigned threadId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Thread.Start",
+    b.emitCall("Zanna.Threads.Thread.Start",
                {Value::temp(entryId), Value::temp(nullId)},
                Value::temp(threadId),
                {1, 2, 5});
     b.emitCall(
-        "Viper.Threads.Thread.Join", {Value::temp(threadId)}, std::optional<Value>{}, {1, 2, 6});
+        "Zanna.Threads.Thread.Join", {Value::temp(threadId)}, std::optional<Value>{}, {1, 2, 6});
 
     unsigned ownedThreadId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Thread.StartOwned",
+    b.emitCall("Zanna.Threads.Thread.StartOwned",
                {Value::temp(entryId), Value::temp(nullId)},
                Value::temp(ownedThreadId),
                {1, 2, 6});
-    b.emitCall("Viper.Threads.Thread.Join",
+    b.emitCall("Zanna.Threads.Thread.Join",
                {Value::temp(ownedThreadId)},
                std::optional<Value>{},
                {1, 2, 6});
 
     unsigned safeOwnedThreadId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Thread.StartSafeOwned",
+    b.emitCall("Zanna.Threads.Thread.StartSafeOwned",
                {Value::temp(entryId), Value::temp(nullId)},
                Value::temp(safeOwnedThreadId),
                {1, 2, 6});
-    b.emitCall("Viper.Threads.Thread.SafeJoin",
+    b.emitCall("Zanna.Threads.Thread.SafeJoin",
                {Value::temp(safeOwnedThreadId)},
                std::optional<Value>{},
                {1, 2, 6});
@@ -287,17 +287,17 @@ int main() {
     mainEntry.instructions.push_back(trapEntryPtr);
 
     unsigned safeTrapThreadId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Thread.StartSafe",
+    b.emitCall("Zanna.Threads.Thread.StartSafe",
                {Value::temp(*trapEntryPtr.result), Value::temp(nullId)},
                Value::temp(safeTrapThreadId),
                {1, 2, 6});
-    b.emitCall("Viper.Threads.Thread.Join",
+    b.emitCall("Zanna.Threads.Thread.Join",
                {Value::temp(safeTrapThreadId)},
                std::optional<Value>{},
                {1, 2, 6});
 
     unsigned safeTrapHasErrorId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Thread.get_HasError",
+    b.emitCall("Zanna.Threads.Thread.get_HasError",
                {Value::temp(safeTrapThreadId)},
                Value::temp(safeTrapHasErrorId),
                {1, 2, 6});
@@ -329,14 +329,14 @@ int main() {
     const unsigned asyncEntryId = *asyncEntryPtr.result;
 
     unsigned futureId = b.reserveTempId();
-    b.emitCall("Viper.Threads.Async.Run",
+    b.emitCall("Zanna.Threads.Async.Run",
                {Value::temp(asyncEntryId), Value::temp(nullId)},
                Value::temp(futureId),
                {1, 2, 8});
 
     unsigned awaitedId = b.reserveTempId();
     b.emitCall(
-        "Viper.Threads.Future.Get", {Value::temp(futureId)}, Value::temp(awaitedId), {1, 2, 9});
+        "Zanna.Threads.Future.Get", {Value::temp(futureId)}, Value::temp(awaitedId), {1, 2, 9});
 
     Instr loadFinal;
     loadFinal.result = b.reserveTempId();

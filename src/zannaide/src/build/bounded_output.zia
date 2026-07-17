@@ -1,0 +1,46 @@
+module bounded_output;
+
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: bounded_output
+// PURPOSE: Shared string-buffer truncation policy for process-backed IDE output.
+//
+// WHERE-THIS-FITS: BuildSystem and DebugSession both stream text from child
+//          processes. This leaf helper owns the "keep the newest text and make
+//          truncation visible" rule so each process controller can focus on
+//          lifecycle state.
+//
+// TEACHING-NOTE: Long-running tools can produce unbounded logs. Keeping output
+//          caps in a pure helper makes the memory policy easy to test and avoids
+//          repeating subtle front-truncation logic in each controller.
+// ============================================================================
+
+/// @brief Append text to a bounded output buffer.
+/// @param existing Current buffer content.
+/// @param text New text to append.
+/// @param prefix Visible marker inserted when older text is discarded.
+/// @param maxChars Maximum number of tail characters to keep after prefix.
+/// @return Combined output, trimmed from the front when necessary.
+expose func Append(existing: String,
+                   text: String,
+                   prefix: String,
+                   maxChars: Integer) -> String {
+    var combined = existing + text;
+    if maxChars <= 0 {
+        return combined;
+    }
+
+    var textLen = Str.get_Length(text);
+    if textLen >= maxChars {
+        return prefix + Str.Mid(text, textLen - maxChars + 1);
+    }
+
+    var existingLen = Str.get_Length(existing);
+    var keepExisting = maxChars - textLen;
+    if existingLen > keepExisting {
+        return prefix + Str.Mid(existing, existingLen - keepExisting + 1) + text;
+    }
+
+    return combined;
+}

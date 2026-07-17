@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -256,7 +256,7 @@ void *rt_pathfinder_new(int64_t width, int64_t height) {
 /// @brief Release the pathfinder and free its internal cell array when the last reference drops.
 void rt_pathfinder_destroy(void *ptr) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.Destroy: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.Destroy: expected Zanna.Game.Pathfinder");
     if (pf && rt_obj_release_check0(pf))
         rt_obj_free(pf);
 }
@@ -331,7 +331,7 @@ void *rt_pathfinder_from_grid2d(void *grid) {
 /// @brief Mark cell (x, y) as walkable (1) or blocked (0). Out-of-bounds is a silent no-op.
 void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.SetWalkable: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.SetWalkable: expected Zanna.Game.Pathfinder");
     if (!pf)
         return;
     if (!pf_in_bounds_i64(pf, x, y))
@@ -342,7 +342,7 @@ void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable
 /// @brief Returns 1 if cell (x, y) is walkable. Out-of-bounds returns 0 (treat as wall).
 int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.IsWalkable: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.IsWalkable: expected Zanna.Game.Pathfinder");
     if (!pf)
         return 0;
     if (!pf_in_bounds_i64(pf, x, y))
@@ -354,7 +354,7 @@ int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
 /// Use SetWalkable(x, y, 0) to block a cell.
 void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.SetCost: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.SetCost: expected Zanna.Game.Pathfinder");
     if (!pf)
         return;
     if (!pf_in_bounds_i64(pf, x, y))
@@ -369,7 +369,7 @@ void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
 /// @brief Read the traversal cost multiplier for cell (x, y). Default is 100.
 int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.GetCost: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.GetCost: expected Zanna.Game.Pathfinder");
     if (!pf)
         return 0;
     if (!pf_in_bounds_i64(pf, x, y))
@@ -380,7 +380,7 @@ int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
 /// @brief Toggle diagonal moves. 1 = octile (8-neighbor), 0 = manhattan (4-neighbor only).
 void rt_pathfinder_set_diagonal(void *ptr, int8_t allow) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.SetDiagonal: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.SetDiagonal: expected Zanna.Game.Pathfinder");
     if (!pf)
         return;
     pf->allow_diagonal = allow ? 1 : 0;
@@ -390,7 +390,7 @@ void rt_pathfinder_set_diagonal(void *ptr, int8_t allow) {
 /// "no path". 0 disables the cap. Useful to prevent runaway searches in pathological maps.
 void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.SetMaxSteps: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.SetMaxSteps: expected Zanna.Game.Pathfinder");
     if (!pf)
         return;
     if (max < 0)
@@ -407,14 +407,14 @@ void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
 /// @brief Grid width in cells.
 int64_t rt_pathfinder_get_width(void *ptr) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.Width: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.Width: expected Zanna.Game.Pathfinder");
     return pf ? pf->width : 0;
 }
 
 /// @brief Grid height in cells.
 int64_t rt_pathfinder_get_height(void *ptr) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.Height: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.Height: expected Zanna.Game.Pathfinder");
     return pf ? pf->height : 0;
 }
 
@@ -422,14 +422,14 @@ int64_t rt_pathfinder_get_height(void *ptr) {
 /// for performance tuning and verifying the max-steps cap.
 int64_t rt_pathfinder_get_last_steps(void *ptr) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.LastSteps: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.LastSteps: expected Zanna.Game.Pathfinder");
     return pf ? pf->last_steps : 0;
 }
 
 /// @brief Returns 1 if the most recent `_find_path` actually reached the goal, 0 otherwise.
 int8_t rt_pathfinder_get_last_found(void *ptr) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.LastFound: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.LastFound: expected Zanna.Game.Pathfinder");
     return pf ? pf->last_found : 0;
 }
 
@@ -439,37 +439,37 @@ int8_t rt_pathfinder_get_last_found(void *ptr) {
 
 int8_t rt_path_result_found(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.Found: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.Found: expected Zanna.Game.PathResult");
     return result ? result->found : 0;
 }
 
 int64_t rt_path_result_steps(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.Steps: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.Steps: expected Zanna.Game.PathResult");
     return result ? result->steps : 0;
 }
 
 int64_t rt_path_result_cost(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.Cost: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.Cost: expected Zanna.Game.PathResult");
     return result ? result->cost : -1;
 }
 
 int64_t rt_path_result_step_count(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.StepCount: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.StepCount: expected Zanna.Game.PathResult");
     return result ? result->length : -1;
 }
 
 int64_t rt_path_result_length(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.Length: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.Length: expected Zanna.Game.PathResult");
     return result ? result->length : -1;
 }
 
 void *rt_path_result_path(void *ptr) {
     rt_path_result_impl *result =
-        checked_path_result(ptr, "PathResult.Path: expected Viper.Game.PathResult");
+        checked_path_result(ptr, "PathResult.Path: expected Zanna.Game.PathResult");
     if (!result || !result->path)
         return rt_list_new();
     rt_obj_retain_maybe(result->path);
@@ -902,7 +902,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 /// Empty list if no path exists or `max_steps` was hit before reaching the goal.
 void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.FindPath: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.FindPath: expected Zanna.Game.Pathfinder");
     if (!pf)
         return rt_list_new();
     if (!pf_in_bounds_i64(pf, sx, sy) || !pf_in_bounds_i64(pf, gx, gy)) {
@@ -915,7 +915,7 @@ void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int
 
 void *rt_pathfinder_find_path_result(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.FindPathResult: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.FindPathResult: expected Zanna.Game.Pathfinder");
     if (!pf)
         return path_result_new_empty();
     int64_t cost = -1;
@@ -939,7 +939,7 @@ void *rt_pathfinder_find_path_result(void *ptr, int64_t sx, int64_t sy, int64_t 
 /// -1 if no path exists.
 int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.FindPathLength: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.FindPathLength: expected Zanna.Game.Pathfinder");
     if (!pf)
         return -1;
     if (!pf_in_bounds_i64(pf, sx, sy) || !pf_in_bounds_i64(pf, gx, gy)) {
@@ -961,7 +961,7 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_
 /// resource / enemy / waypoint marker" workflows. Empty list if none found within `max_steps`.
 void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.FindNearest: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.FindNearest: expected Zanna.Game.Pathfinder");
     if (!pf)
         return rt_list_new();
     pf->last_found = 0;
@@ -1046,7 +1046,7 @@ void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t targ
 
 void *rt_pathfinder_find_nearest_result(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
     rt_pathfinder_impl *pf =
-        checked_pathfinder(ptr, "Pathfinder.FindNearestResult: expected Viper.Game.Pathfinder");
+        checked_pathfinder(ptr, "Pathfinder.FindNearestResult: expected Zanna.Game.Pathfinder");
     if (!pf)
         return path_result_new_empty();
     void *path = rt_pathfinder_find_nearest(ptr, sx, sy, target_value);

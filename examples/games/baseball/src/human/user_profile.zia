@@ -23,10 +23,10 @@
 // ============================================================================
 module user_profile;
 
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.String as String;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.String as String;
+bind Zanna.Collections.Seq as Seq;
 bind "./pacing_profile";
 
 // Sentinel used when no user profile was found on disk (legacy AI-only save).

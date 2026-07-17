@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 namespace {
 
 /// @brief Description of a frame-relative memory access used by the optimiser.
@@ -261,4 +261,4 @@ std::size_t forwardFrameStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &s
     return forwarded;
 }
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

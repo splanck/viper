@@ -1,11 +1,11 @@
 // test_timezone.zia — TimeZone.Find returns a typed handle (VDOC-228)
-// Before the registry gained the concrete obj<Viper.Time.TimeZone> return type,
+// Before the registry gained the concrete obj<Zanna.Time.TimeZone> return type,
 // the natural lookup expression produced an untyped value: instance chaining and
 // assignment to a TimeZone-typed local were both rejected by the front end.
 module TestTimeZone;
 
-bind Viper.Terminal;
-bind Viper.Time.TimeZone as TZ;
+bind Zanna.Terminal;
+bind Zanna.Time.TimeZone as TZ;
 
 func start() {
     // Inferred-type chaining: the instance method resolves on the Find result

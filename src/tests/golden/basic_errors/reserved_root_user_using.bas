@@ -1,7 +1,7 @@
-REM Test E_NS_009: reserved root namespace "Viper" (USING)
-REM User code cannot import Viper or Viper.* namespaces
+REM Test E_NS_009: reserved root namespace "Zanna" (USING)
+REM User code cannot import Zanna or Zanna.* namespaces
 
-USING Viper.Text
+USING Zanna.Text
 
 NAMESPACE MyApplication
   CLASS Program

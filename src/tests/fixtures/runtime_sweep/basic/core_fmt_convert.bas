@@ -1,50 +1,50 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Core.Convert.ToDouble
-' COVER: Viper.Core.Convert.ToInt64
-' COVER: Viper.Core.Convert.ToStringDouble
-' COVER: Viper.Core.Convert.ToStringInt
-' COVER: Viper.Text.Fmt.Bin
-' COVER: Viper.Text.Fmt.Bool
-' COVER: Viper.Text.Fmt.Bool
-' COVER: Viper.Text.Fmt.Hex
-' COVER: Viper.Text.Fmt.HexPad
-' COVER: Viper.Text.Fmt.Int
-' COVER: Viper.Text.Fmt.IntPad
-' COVER: Viper.Text.Fmt.IntRadix
-' COVER: Viper.Text.Fmt.Num
-' COVER: Viper.Text.Fmt.NumFixed
-' COVER: Viper.Text.Fmt.Percent
-' COVER: Viper.Text.Fmt.Scientific
-' COVER: Viper.Text.Fmt.Oct
-' COVER: Viper.Text.Fmt.SizeBytes
+' COVER: Zanna.Core.Convert.ToDouble
+' COVER: Zanna.Core.Convert.ToInt64
+' COVER: Zanna.Core.Convert.ToStringDouble
+' COVER: Zanna.Core.Convert.ToStringInt
+' COVER: Zanna.Text.Fmt.Bin
+' COVER: Zanna.Text.Fmt.Bool
+' COVER: Zanna.Text.Fmt.Bool
+' COVER: Zanna.Text.Fmt.Hex
+' COVER: Zanna.Text.Fmt.HexPad
+' COVER: Zanna.Text.Fmt.Int
+' COVER: Zanna.Text.Fmt.IntPad
+' COVER: Zanna.Text.Fmt.IntRadix
+' COVER: Zanna.Text.Fmt.Num
+' COVER: Zanna.Text.Fmt.NumFixed
+' COVER: Zanna.Text.Fmt.Percent
+' COVER: Zanna.Text.Fmt.Scientific
+' COVER: Zanna.Text.Fmt.Oct
+' COVER: Zanna.Text.Fmt.SizeBytes
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
-    IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Core.Diagnostics.Assert(FALSE, msg)
+    IF Zanna.Math.Abs(actual - expected) > eps THEN
+        Zanna.Core.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
 DIM d AS DOUBLE
-d = Viper.Core.Convert.ToDouble("3.5")
+d = Zanna.Core.Convert.ToDouble("3.5")
 AssertApprox(d, 3.5, 0.000001, "conv.double")
-Viper.Core.Diagnostics.AssertEq(Viper.Core.Convert.ToInt64("42"), 42, "conv.int")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Convert.ToStringInt(42), "42", "conv.toStrInt")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Convert.ToStringDouble(2.5), "2.5", "conv.toStrDouble")
+Zanna.Core.Diagnostics.AssertEq(Zanna.Core.Convert.ToInt64("42"), 42, "conv.int")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Core.Convert.ToStringInt(42), "42", "conv.toStrInt")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Core.Convert.ToStringDouble(2.5), "2.5", "conv.toStrDouble")
 
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Int(12345), "12345", "fmt.int")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.IntRadix(255, 16), "ff", "fmt.radix")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.IntPad(42, 5, "0"), "00042", "fmt.intpad")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Num(3.14159), "3.14159", "fmt.num")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.NumFixed(3.14159, 2), "3.14", "fmt.numfixed")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Scientific(1234.5, 2), "1.23e+03", "fmt.numsci")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Percent(0.756, 1), "75.6%", "fmt.numpct")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Bool(TRUE), "true", "fmt.bool")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.YesNo(FALSE), "No", "fmt.boolyn")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.SizeBytes(1024), "1.0 KB", "fmt.size")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Hex(255), "ff", "fmt.hex")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.HexPad(255, 4), "00ff", "fmt.hexpad")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Bin(10), "1010", "fmt.bin")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Fmt.Oct(64), "100", "fmt.oct")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Int(12345), "12345", "fmt.int")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.IntRadix(255, 16), "ff", "fmt.radix")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.IntPad(42, 5, "0"), "00042", "fmt.intpad")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Num(3.14159), "3.14159", "fmt.num")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.NumFixed(3.14159, 2), "3.14", "fmt.numfixed")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Scientific(1234.5, 2), "1.23e+03", "fmt.numsci")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Percent(0.756, 1), "75.6%", "fmt.numpct")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Bool(TRUE), "true", "fmt.bool")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.YesNo(FALSE), "No", "fmt.boolyn")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.SizeBytes(1024), "1.0 KB", "fmt.size")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Hex(255), "ff", "fmt.hex")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.HexPad(255, 4), "00ff", "fmt.hexpad")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Bin(10), "1010", "fmt.bin")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Text.Fmt.Oct(64), "100", "fmt.oct")
 
 PRINT "RESULT: ok"
 END

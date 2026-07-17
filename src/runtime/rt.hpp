@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include <setjmp.h>
 #include <stdint.h>
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -130,7 +130,7 @@ void *rt_str_split_fields_seq(rt_string line);
 void *rt_str_split_fields_result(rt_string line);
 
 // =========================================================================
-// Viper.Terminal I/O Functions
+// Zanna.Terminal I/O Functions
 // =========================================================================
 
 /// @brief Print string followed by newline.
@@ -164,35 +164,35 @@ rt_string rt_term_ask(rt_string prompt);
 rt_string rt_term_read_line(void);
 
 /// @brief Read a line of input from stdin as an Option.
-/// @details Returns an opaque `Viper.Option` object. The object is `Some(String)`
+/// @details Returns an opaque `Zanna.Option` object. The object is `Some(String)`
 ///          when a line is read and `None` when stdin reaches EOF before any
 ///          bytes are available. Allocation failures and overlong input still
 ///          trap, matching @ref rt_input_line.
-/// @return Opaque `Viper.Option` object containing the line or `None`.
+/// @return Opaque `Zanna.Option` object containing the line or `None`.
 void *rt_term_try_read_line(void);
 
 /// @brief Print a prompt and read a line of input from stdin as an Option.
 /// @details The prompt is flushed before reading. Returns an opaque
-///          `Viper.Option` object containing `Some(String)` for a line and
+///          `Zanna.Option` object containing `Some(String)` for a line and
 ///          `None` for EOF before input. Fatal input errors still trap.
 /// @param prompt Runtime string to display before reading input; may be NULL.
-/// @return Opaque `Viper.Option` object containing the line or `None`.
+/// @return Opaque `Zanna.Option` object containing the line or `None`.
 void *rt_term_try_ask(rt_string prompt);
 
 /// @brief Read a line of input from stdin as a Result.
-/// @details Returns an opaque `Viper.Result` object containing `Ok(String)` for
+/// @details Returns an opaque `Zanna.Result` object containing `Ok(String)` for
 ///          a line and `Err(String)` for EOF before input. Fatal input errors
 ///          still trap because they indicate runtime failure rather than normal
 ///          end-of-input.
-/// @return Opaque `Viper.Result` object containing the line or EOF error.
+/// @return Opaque `Zanna.Result` object containing the line or EOF error.
 void *rt_term_read_line_result(void);
 
 /// @brief Print a prompt and read a line of input from stdin as a Result.
 /// @details The prompt is flushed before reading. Returns an opaque
-///          `Viper.Result` object containing `Ok(String)` for a line and
+///          `Zanna.Result` object containing `Ok(String)` for a line and
 ///          `Err(String)` for EOF before input. Fatal input errors still trap.
 /// @param prompt Runtime string to display before reading input; may be NULL.
-/// @return Opaque `Viper.Result` object containing the line or EOF error.
+/// @return Opaque `Zanna.Result` object containing the line or EOF error.
 void *rt_term_ask_result(rt_string prompt);
 
 /// @brief Report EOF status for the specified channel.
@@ -250,7 +250,7 @@ void rt_term_alt_screen_i32(int32_t enable);
 
 /// @brief Emit a bell/beep sound using BEL character or platform-specific API.
 /// @details Writes ASCII BEL to stdout. On Windows, optionally calls Beep() API
-///          when VIPER_BEEP_WINAPI environment variable is set to "1".
+///          when ZANNA_BEEP_WINAPI environment variable is set to "1".
 void rt_bell(void);
 
 /// @brief Block until a single key is read and return it as a 1-character string.

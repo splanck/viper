@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@ int8_t rt_canvas_is_available(void) {
 ///        Canvas window handle.
 ///
 /// This stub is reached when a program calls `Canvas.New(title, w, h)` in a
-/// build without `VIPER_ENABLE_GRAPHICS`. There is no underlying window
+/// build without `ZANNA_ENABLE_GRAPHICS`. There is no underlying window
 /// system, so we cannot construct a Canvas at all; the only correct response
 /// is to raise an `InvalidOperation` trap so the failure surfaces at the call
 /// site instead of returning a NULL handle that would crash later inside
@@ -1038,7 +1038,7 @@ int64_t rt_canvas_save_bmp(void *canvas, rt_string path) {
 /// @brief Stub for `Canvas.SavePng` — would normally serialize the
 ///        canvas's current framebuffer to a PNG file at `path`.
 ///
-/// The real implementation uses Viper's from-scratch PNG encoder (no
+/// The real implementation uses Zanna's from-scratch PNG encoder (no
 /// libpng) and supports all 5 PNG color types.
 ///
 /// @param canvas Canvas handle (ignored).

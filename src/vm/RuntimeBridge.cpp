@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/vm/RuntimeBridge.cpp
-// Purpose: Provide the glue between the Viper VM and the C runtime library.
+// Purpose: Provide the glue between the Zanna VM and the C runtime library.
 // Key invariants: The bridge maintains thread-local trap context and validates
 //                 runtime signatures before invocation.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
@@ -254,7 +254,7 @@ static void finalizeTrap(TrapCtx &ctx) {
 
     if (ctx.vm) {
         // Assert that activeInstance is consistent with ctx.vm
-        VIPER_TRAP_ASSERT(RuntimeBridge::hasActiveVm(),
+        ZANNA_TRAP_ASSERT(RuntimeBridge::hasActiveVm(),
                           "ActiveVMGuard inconsistency: ctx.vm set but no active VM");
         vm_raise_from_error(ctx.error);
         // Tests may override vm_trap() with a non-terminating observer. In that
@@ -308,7 +308,7 @@ static void handleGenericTrap(TrapCtx &ctx) {
 /// the trap through `RuntimeBridge::trap` so diagnostics carry function, block,
 /// and source information.
 #if defined(_WIN32)
-// On Windows, vm_trap is provided by viper_runtime.lib via alternatename.
+// On Windows, vm_trap is provided by zanna_runtime.lib via alternatename.
 // Tests can define their own vm_trap to override the default.
 // We don't define vm_trap here to avoid duplicate symbol errors with lld-link.
 #elif defined(__GNUC__) || defined(__clang__)

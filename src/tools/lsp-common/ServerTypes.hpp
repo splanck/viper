@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Related location attached to a diagnostic (e.g., "previous definition is here").
 struct DiagnosticNoteInfo {
@@ -186,4 +186,4 @@ struct CompileResult {
     std::vector<DiagnosticInfo> diagnostics; ///< Diagnostics emitted during compilation.
 };
 
-} // namespace viper::server
+} // namespace zanna::server

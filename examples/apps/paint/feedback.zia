@@ -16,7 +16,7 @@
 // feedback.zia - Status, cursor, and GUI notification helpers
 module feedback;
 
-bind Viper.GUI as GUI;
+bind Zanna.GUI as GUI;
 
 final CURSOR_ARROW = 0;
 final CURSOR_CROSSHAIR = 3;

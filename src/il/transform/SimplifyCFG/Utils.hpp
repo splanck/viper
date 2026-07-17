@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,11 +37,11 @@
 #if defined(__has_include)
 #if __has_include("llvm_like/ADT/BitVector.hpp")
 #include "llvm_like/ADT/BitVector.hpp"
-#define VIPER_HAVE_LLVM_LIKE_BITVECTOR 1
+#define ZANNA_HAVE_LLVM_LIKE_BITVECTOR 1
 #endif
 #endif
 
-#ifndef VIPER_HAVE_LLVM_LIKE_BITVECTOR
+#ifndef ZANNA_HAVE_LLVM_LIKE_BITVECTOR
 namespace llvm_like {
 
 /// @brief Minimal BitVector drop-in used when llvm_like is unavailable.
@@ -79,7 +79,7 @@ class BitVector {
 
 } // namespace llvm_like
 
-#endif // VIPER_HAVE_LLVM_LIKE_BITVECTOR
+#endif // ZANNA_HAVE_LLVM_LIKE_BITVECTOR
 
 namespace il::transform::simplify_cfg {
 

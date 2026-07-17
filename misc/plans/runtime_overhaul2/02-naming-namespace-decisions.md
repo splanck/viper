@@ -66,12 +66,12 @@ acronym styles such as `Pbkdf2SHA256`, `SetAOMap`, `AddSSAO`, or `AddDOF`.
 
 ### Core And Runtime
 
-Decision: `Viper.Runtime.Unsafe` owns low-level memory, trap mutation, and
-runtime-internal-adjacent operations. `Viper.Memory` should expose safe memory
+Decision: `Zanna.Runtime.Unsafe` owns low-level memory, trap mutation, and
+runtime-internal-adjacent operations. `Zanna.Memory` should expose safe memory
 utilities only. Duplicate `Memory` and `Runtime.Unsafe` rows must be resolved.
 
-Decision: public trap-state mutation does not belong under `Viper.Error`.
-Read-only diagnostics belong under `Viper.Diagnostics`.
+Decision: public trap-state mutation does not belong under `Zanna.Error`.
+Read-only diagnostics belong under `Zanna.Diagnostics`.
 
 ### Collections
 
@@ -87,46 +87,46 @@ Decision: collection APIs should use common vocabulary:
 
 ### Text And Data
 
-Decision: `Viper.Text` owns text algorithms, formatting, regex/patterns,
-wrapping, codecs, and string utilities. `Viper.Data` owns structured data
+Decision: `Zanna.Text` owns text algorithms, formatting, regex/patterns,
+wrapping, codecs, and string utilities. `Zanna.Data` owns structured data
 formats and serializers: `Json`, `Xml`, `Yaml`, `Toml`, `Csv`, and `Ini`.
 
-Migration consequence: current `Viper.Data.Json`, `Viper.Data.Csv`,
-`Viper.Data.Toml`, and `Viper.Data.Ini` should either move to `Viper.Data.*`
+Migration consequence: current `Zanna.Data.Json`, `Zanna.Data.Csv`,
+`Zanna.Data.Toml`, and `Zanna.Data.Ini` should either move to `Zanna.Data.*`
 or become legacy facades.
 
 ### Graphics, Game, And GUI
 
 Decision: use dimension-specific roots for dimension-specific rendering:
 
-- `Viper.Graphics2D` for 2D rendering concepts.
-- `Viper.Graphics3D` for 3D rendering concepts.
-- `Viper.Graphics` only for shared primitives such as color, pixels, fonts,
+- `Zanna.Graphics2D` for 2D rendering concepts.
+- `Zanna.Graphics3D` for 3D rendering concepts.
+- `Zanna.Graphics` only for shared primitives such as color, pixels, fonts,
   image codecs, and compatibility facades.
 
-Decision: `Viper.Game` owns dimension-independent engine systems.
-`Viper.Game2D` and `Viper.Game3D` own dimension-specific gameplay/world
+Decision: `Zanna.Game` owns dimension-independent engine systems.
+`Zanna.Game2D` and `Zanna.Game3D` own dimension-specific gameplay/world
 systems. Rendering-only APIs should not live under `Game`.
 
-Decision: GUI remains `Viper.GUI`, but large widgets such as `CodeEditor`
+Decision: GUI remains `Zanna.GUI`, but large widgets such as `CodeEditor`
 should expose structured option/result/event objects instead of accumulating
 many positional methods.
 
 ### Input
 
-Decision: `Viper.Input.Key` is the canonical key constant domain. Deprecate
-`Viper.Input.Keyboard.Key*` constants and `Viper.Input.Key`.
+Decision: `Zanna.Input.Key` is the canonical key constant domain. Deprecate
+`Zanna.Input.Keyboard.Key*` constants and `Zanna.Input.Key`.
 
 Add canonical companion domains:
 
-- `Viper.Input.MouseButton`.
-- `Viper.Input.GamepadButton`.
-- `Viper.Input.ModifierKey`.
-- `Viper.Input.KeyChord`.
+- `Zanna.Input.MouseButton`.
+- `Zanna.Input.GamepadButton`.
+- `Zanna.Input.ModifierKey`.
+- `Zanna.Input.KeyChord`.
 
 ### Audio
 
-Decision: canonical root should be `Viper.Audio`. Existing `Viper.Sound` APIs
+Decision: canonical root should be `Zanna.Audio`. Existing `Zanna.Sound` APIs
 can remain as legacy facades if needed, but new public APIs should use `Audio`
 for the domain and reserve `Sound` for concrete sound asset types.
 
@@ -136,6 +136,6 @@ Decision: network APIs use safe defaults and `Result`-returning operations.
 Security-affecting toggles must be named as process-scoped, test-only,
 legacy, or unsafe.
 
-Decision: weak crypto algorithms live only under `Viper.Crypto.Legacy`.
+Decision: weak crypto algorithms live only under `Zanna.Crypto.Legacy`.
 Canonical hash/KDF/cipher names use the acronym policy above.
 

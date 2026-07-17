@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <ostream>
 #include <unordered_map>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 namespace {
 
@@ -275,7 +275,7 @@ std::string makeTrampolineSymbolName(const std::vector<ObjFile> &objects,
                                      const LinkLayout &layout,
                                      size_t &counter) {
     for (;;) {
-        std::string name = "__viper_trampoline_" + std::to_string(counter++);
+        std::string name = "__zanna_trampoline_" + std::to_string(counter++);
         if (!trampolineSymbolExists(objects, layout, name))
             return name;
     }
@@ -830,4 +830,4 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

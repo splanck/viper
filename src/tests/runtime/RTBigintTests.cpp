@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTBigintTests.cpp
-// Purpose: Validate Viper.Math.BigInt (rt_bigint_*) arithmetic and conversions.
+// Purpose: Validate Zanna.Math.BigInt (rt_bigint_*) arithmetic and conversions.
 // Key invariants: All operations produce normalized results; i64 roundtrip is
 //                 exact for values in [-2^63, 2^63-1].
 // Ownership/Lifetime: BigInt objects are released via rt_obj_release_check0.
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_bigint.h"
 #include "rt_string.h"

@@ -1,7 +1,7 @@
 module test_game3d_double_despawn_reject;
 
-bind Viper.Game3D as Game3D;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Terminal as Terminal;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);

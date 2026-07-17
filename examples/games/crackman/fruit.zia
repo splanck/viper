@@ -8,7 +8,7 @@
 //   * TIMER-DRIVEN LIFECYCLE. Fruit appears for a fixed window, then
 //     vanishes if uncollected. A second Timer controls the points
 //     popup ("500!") animation after collection.
-//   * TWEEN FOR FLOATING POINTS. Uses Viper.Game.Tween to animate the
+//   * TWEEN FOR FLOATING POINTS. Uses Zanna.Game.Tween to animate the
 //     points text upward + fading after collection, giving the classic
 //     arcade "score pop" feedback.
 // ============================================================================
@@ -16,16 +16,16 @@
 // =============================================================================
 // CRACKMAN - Fruit Entity
 // =============================================================================
-// Uses new Viper runtime features:
+// Uses new Zanna runtime features:
 // - Timer for fruit visibility and points display duration
 // - Tween for floating points animation
 // =============================================================================
 
 module fruit;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Text.Fmt;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Text.Fmt;
 
 bind "./config";
 bind "./utils";

@@ -1,15 +1,15 @@
 module TestBugfixText;
 
 bind "./_support";
-bind Viper.Terminal;
-bind Viper.Data.Csv as Csv;
-bind Viper.Text.Markdown as Md;
-bind Viper.Data.JsonPath as JP;
-bind Viper.Data.Json as Json;
-bind Viper.Data.Toml as Toml;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Box as Box;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Data.Csv as Csv;
+bind Zanna.Text.Markdown as Md;
+bind Zanna.Data.JsonPath as JP;
+bind Zanna.Data.Json as Json;
+bind Zanna.Data.Toml as Toml;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Box as Box;
+bind Zanna.Text.Fmt as Fmt;
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Bug #8  - Csv.ParseLine count via Seq.get_Count

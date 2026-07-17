@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_bits.c
-// Purpose: Implements the Viper.Bits namespace — low-level bit manipulation
+// Purpose: Implements the Zanna.Bits namespace — low-level bit manipulation
 //          operations on 64-bit integers. Covers bitwise AND/OR/XOR/NOT,
 //          left/arithmetic-right/logical-right shifts, rotations, population
 //          count, leading/trailing zero counts, bit-reverse, byte-swap, and

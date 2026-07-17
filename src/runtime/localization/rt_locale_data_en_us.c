@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale_data_en_us.c
 // Purpose: Statically baked rt_locale_data_t record for en-US. Provides the
-//          out-of-the-box default locale for Viper.Localization.*, used both
+//          out-of-the-box default locale for Zanna.Localization.*, used both
 //          as the invariant-fallback target when system detection fails and
 //          as the reference fixture that validates the JSON-loader path in
 //          tests (baked and JSON-loaded en-US should be structurally equal).

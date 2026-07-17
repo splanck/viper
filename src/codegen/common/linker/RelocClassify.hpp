@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 
 #include <cstdint>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Format-independent relocation categories.
 enum class RelocAction {
@@ -226,4 +226,4 @@ inline RelocAction classifyReloc(ObjFileFormat format, LinkArch arch, uint32_t t
     }
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

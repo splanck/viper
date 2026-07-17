@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //          all GC dependencies removed. Uses std::vector for output buffers.
 //
 // Key invariants:
-//   - No runtime (viper_rt_*) dependencies — fully self-contained.
+//   - No runtime (zanna_rt_*) dependencies — fully self-contained.
 //   - Compression levels 1-9 are supported (default 6).
 //   - Implements RFC 1951 DEFLATE with LZ77 + fixed Huffman coding.
 //   - Decompression supports stored, fixed Huffman, and dynamic Huffman blocks.
@@ -30,7 +30,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Error thrown when compression or decompression fails.
 class DeflateError : public std::runtime_error {
@@ -61,4 +61,4 @@ std::vector<uint8_t> inflate(const uint8_t *data, size_t len);
 /// @throws DeflateError on invalid/truncated data or output larger than maxOutputBytes.
 std::vector<uint8_t> inflate(const uint8_t *data, size_t len, size_t maxOutputBytes);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

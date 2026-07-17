@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // Purpose: Tier 2 GUI widget tests — treeview, tabbar, toolbar, statusbar, listbox, output pane.
@@ -802,7 +802,7 @@ TEST(grid_explicit_tracks_survive_dimension_growth) {
 // PARTIAL-001/002: CodeEditor gutter icon / highlight span arrays
 //
 // The C-level manipulation functions live in the runtime layer (rt_gui_codeeditor.c)
-// and are not part of vipergui.  These tests verify the struct fields are zero-
+// and are not part of zannagui.  These tests verify the struct fields are zero-
 // initialized on creation — which is the precondition for the rendering code that
 // iterates over them (for i < editor->gutter_icon_count / highlight_span_count).
 //=============================================================================

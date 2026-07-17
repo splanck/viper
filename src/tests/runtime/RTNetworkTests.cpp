@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTNetworkTests.cpp
-// Purpose: Validate Viper.Network.Tcp and TcpServer support.
+// Purpose: Validate Zanna.Network.Tcp and TcpServer support.
 // Key invariants:
 //   - Client/server communication and timeout handling remain deterministic.
 //   - Local socket probes bind only to loopback or wildcard addresses.
 // Ownership/Lifetime:
 //   - Each helper owns and closes any native socket it creates.
 //   - Runtime objects allocated by tests remain valid for each test scope.
-// Links: docs/viperlib/network.md
+// Links: docs/zannalib/network.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -129,7 +129,7 @@ static bool localhost_bind_available() {
 
         sockaddr_in addr = {};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
+        addr.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
         addr.sin_port = 0;
 
         const int rc = bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
@@ -2047,7 +2047,7 @@ static void test_http_download() {
     char url[64];
     snprintf(url, sizeof(url), "http://127.0.0.1:%d/download", port);
     char path[128];
-    snprintf(path, sizeof(path), "/tmp/viper_http_download_%d.txt", port);
+    snprintf(path, sizeof(path), "/tmp/zanna_http_download_%d.txt", port);
     remove(path);
 
     int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
@@ -2084,7 +2084,7 @@ static void test_http_download_identity_encoding() {
     char url[64];
     snprintf(url, sizeof(url), "http://127.0.0.1:%d/download-identity", port);
     char path[128];
-    snprintf(path, sizeof(path), "/tmp/viper_http_download_identity_%d.txt", port);
+    snprintf(path, sizeof(path), "/tmp/zanna_http_download_identity_%d.txt", port);
     remove(path);
 
     int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
@@ -2406,7 +2406,7 @@ int main() {
     const bool canBindLocal = localhost_bind_available();
 
     if (canBindLocal) {
-        printf("=== Viper.Network.Tcp/TcpServer Tests ===\n");
+        printf("=== Zanna.Network.Tcp/TcpServer Tests ===\n");
 
         test_server_properties();
         test_server_ephemeral_port();
@@ -2426,7 +2426,7 @@ int main() {
         test_recv_line();
         test_connect_with_timeout();
 
-        printf("\n=== Viper.Network.Udp Tests ===\n");
+        printf("\n=== Zanna.Network.Udp Tests ===\n");
 
         test_udp_new();
         test_udp_bind();
@@ -2439,11 +2439,11 @@ int main() {
         test_udp_broadcast();
         test_udp_set_recv_timeout();
     } else {
-        printf("=== Viper.Network Tcp/Udp Tests ===\n");
+        printf("=== Zanna.Network Tcp/Udp Tests ===\n");
         printf("  SKIP: local bind unavailable in this environment\n");
     }
 
-    printf("\n=== Viper.Network.Dns Tests ===\n");
+    printf("\n=== Zanna.Network.Dns Tests ===\n");
 
     test_dns_resolve_localhost();
     test_dns_resolve4_localhost();
@@ -2454,7 +2454,7 @@ int main() {
     test_dns_local_addrs();
     test_dns_resolve_all();
 
-    printf("\n=== Viper.Network.Http Tests ===\n");
+    printf("\n=== Zanna.Network.Http Tests ===\n");
     if (canBindLocal) {
         test_http_get();
         test_http_get_bytes();
@@ -2470,7 +2470,7 @@ int main() {
         printf("  SKIP: local bind unavailable in this environment\n");
     }
 
-    printf("\n=== Viper.Network.Url Tests ===\n");
+    printf("\n=== Zanna.Network.Url Tests ===\n");
 
     test_url_parse_full();
     test_url_parse_minimal();

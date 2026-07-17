@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Software Mixer
+// ZannaAUD Software Mixer
 //
 // Combines multiple audio voices and music streams into a single stereo output.
 // The mixer is called from the audio thread to fill platform audio buffers.
@@ -26,7 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Software audio mixer for ViperAUD.
+/// @brief Software audio mixer for ZannaAUD.
 
 #include "vaud_internal.h"
 

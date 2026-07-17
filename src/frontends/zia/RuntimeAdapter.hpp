@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 ///
 /// ## Architecture Overview
 ///
-/// The Viper compiler uses a layered architecture where runtime function
+/// The Zanna compiler uses a layered architecture where runtime function
 /// signatures are defined once in `runtime.def` and parsed into structured
 /// form by the IL layer's RuntimeRegistry. Each frontend (BASIC, Zia)
 /// then provides a thin adapter to map IL types to their native type systems:
@@ -130,7 +130,7 @@ namespace il::frontends::zia {
 ///         - Object → types::any() (type-erased runtime value)
 ///         - Unknown → types::unknown() (error/unrecognized)
 ///
-/// @note Annotated object signatures such as obj<Viper.Graphics.Canvas> are
+/// @note Annotated object signatures such as obj<Zanna.Graphics.Canvas> are
 ///       converted by toZiaReturnType(); plain obj remains a safe Any value.
 ///
 TypeRef toZiaType(il::runtime::ILScalarType t);
@@ -154,7 +154,7 @@ TypeRef toZiaType(il::runtime::ILScalarType t);
 /// std::vector<TypeRef> params = toZiaParamTypes(sig);
 /// // params = [types::integer(), types::integer()]
 ///
-/// defineExternFunction("Viper.String.Substring",
+/// defineExternFunction("Zanna.String.Substring",
 ///                      toZiaType(sig.returnType),  // types::string()
 ///                      params);                     // [Integer, Integer]
 /// ```

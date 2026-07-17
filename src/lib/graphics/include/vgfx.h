@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Public API
+// ZannaGFX Public API
 //
 // Provides a cross-platform software 2D graphics library with window
 // management, pixel operations, drawing primitives, and event handling.
@@ -340,7 +340,7 @@ typedef struct {
 
 /// @brief Error code enumeration.
 /// @details Identifies the category of the last error that occurred in a
-///          ViperGFX API call.  Error details are stored in thread-local
+///          ZannaGFX API call.  Error details are stored in thread-local
 ///          storage and retrieved via vgfx_get_last_error().
 typedef enum {
     VGFX_ERR_NONE = 0,     ///< No error
@@ -394,7 +394,7 @@ void vgfx_destroy_window(vgfx_window_t window);
 
 /// @brief Update the window display and process pending events.
 /// @details Blits the framebuffer to the native window surface, polls OS
-///          events (translating them to ViperGFX events), and applies FPS
+///          events (translating them to ZannaGFX events), and applies FPS
 ///          limiting if configured.  Must be called regularly in the main
 ///          loop to keep the window responsive.
 /// @param window Window handle
@@ -413,7 +413,7 @@ int vgfx_update(vgfx_window_t window);
 void vgfx_frame_pace(vgfx_window_t window, int32_t min_idle_sleep_ms);
 
 /// @brief Pump pending OS events without presenting the framebuffer.
-/// @details Polls the native event queue and enqueues translated ViperGFX
+/// @details Polls the native event queue and enqueues translated ZannaGFX
 ///          events for later consumption via vgfx_poll_event(). Use this when
 ///          input must be processed before rendering or presenting a frame.
 /// @param window Window handle
@@ -663,7 +663,7 @@ void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled);
 /// @brief Get the platform-specific native display/connection handle.
 /// @details On Linux, returns the X11 Display* (as void*). Returns NULL
 ///          on macOS, Windows, and mock backends. Used by the OpenGL backend
-///          to share the X11 connection with ViperGFX.
+///          to share the X11 connection with ZannaGFX.
 /// @param window Window handle
 /// @return Native display handle, or NULL if unavailable
 void *vgfx_get_native_display(vgfx_window_t window);

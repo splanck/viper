@@ -1,0 +1,15 @@
+# ZannaPaint — A simple drawing application
+project paint
+version 0.1.0
+lang zia
+entry main.zia
+
+# === Package Metadata ===
+package-name ZannaPaint
+package-description "A simple drawing application built with Zanna"
+package-identifier org.zanna-lang.paint
+# package-icon assets/paint-icon.png
+
+# === Shortcuts ===
+shortcut-desktop on
+shortcut-menu on

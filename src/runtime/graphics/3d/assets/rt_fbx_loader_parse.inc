@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc  (#included from rt_fbx_loader.c;
 // not a standalone translation unit) Purpose: FBX binary reader, node tree, array decompression,
 // property/node parsing, queries, connections
@@ -249,10 +249,10 @@ static int fbx_has_uri_scheme(const char *path) {
 
 /// @brief Return whether absolute FBX texture references may be loaded directly.
 /// @details Absolute paths can expose arbitrary local files when loading untrusted FBX assets, so
-///          they are disabled by default. Set VIPER_FBX_ALLOW_ABSOLUTE_TEXTURES=1 to opt in.
+///          they are disabled by default. Set ZANNA_FBX_ALLOW_ABSOLUTE_TEXTURES=1 to opt in.
 /// @return Non-zero when absolute texture loading is explicitly enabled.
 static int fbx_absolute_texture_paths_allowed(void) {
-    const char *value = getenv("VIPER_FBX_ALLOW_ABSOLUTE_TEXTURES");
+    const char *value = getenv("ZANNA_FBX_ALLOW_ABSOLUTE_TEXTURES");
     return value && value[0] == '1' && value[1] == '\0';
 }
 

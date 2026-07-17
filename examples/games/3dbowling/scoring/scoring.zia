@@ -32,7 +32,7 @@
 // Handles strikes, spares, 10th frame bonus rolls, and running totals.
 module scoring;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 bind "../config";
 
 /// @brief Bowling 10-frame score engine.

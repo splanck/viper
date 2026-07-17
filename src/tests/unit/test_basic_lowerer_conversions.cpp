@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -78,7 +78,7 @@ int main() {
                     break;
                 case il::core::Opcode::Call:
                     if (instr.callee == "rt_to_double" ||
-                        instr.callee == "Viper.Core.Convert.ToDouble")
+                        instr.callee == "Zanna.Core.Convert.ToDouble")
                         toDoubleLines.push_back(instr.loc.line);
                     break;
                 default:

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_watcher.c
-// Purpose: Cross-platform filesystem watcher for the Viper.IO.Watcher class.
+// Purpose: Cross-platform filesystem watcher for the Zanna.IO.Watcher class.
 //          Watches directories or files for changes (create, modify, delete,
 //          rename) using native OS APIs: inotify on Linux, kqueue on macOS,
 //          and ReadDirectoryChangesW on Windows.
@@ -86,7 +86,7 @@ static int watcher_timeout_to_int(int64_t ms) {
 #define WATCHER_EVENT_QUEUE_SIZE 64
 
 /// Sentinel `dropped_count` for a NATIVE (kernel) queue overflow, where the OS
-/// dropped an unknown number of events before Viper could read them. Distinct
+/// dropped an unknown number of events before Zanna could read them. Distinct
 /// from an internal ring overflow, which counts dropped events exactly
 /// (VDOC-190). Exposed to callers via `Watcher.EventOverflowCount()`.
 #define WATCHER_OVERFLOW_COUNT_UNKNOWN ((int64_t)-1)
@@ -282,7 +282,7 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
 }
 
 /// @brief Queue an overflow marker for a NATIVE (kernel) queue overflow.
-/// @details The OS dropped an unknown number of events before Viper could read
+/// @details The OS dropped an unknown number of events before Zanna could read
 ///          them, so the marker carries the UNKNOWN count sentinel rather than
 ///          a fabricated zero (VDOC-190). If the ring is full it coalesces into
 ///          the newest slot, keeping the count UNKNOWN. Distinct from the
@@ -344,7 +344,7 @@ static void watcher_close_inotify(rt_watcher_impl *w) {
 ///
 /// A single `read` can return multiple packed `struct inotify_event`
 /// records — the loop walks them using each event's `len` field for
-/// stride. Maps inotify's event flags to the Viper event taxonomy:
+/// stride. Maps inotify's event flags to the Zanna event taxonomy:
 /// MOVED_FROM/TO/MOVE_SELF collapse to RENAMED, DELETE/DELETE_SELF to
 /// DELETED. Each event's `name` (relative to the watched dir) is
 /// converted to a full path via `watcher_event_path_from_relative`,
@@ -435,7 +435,7 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
 /// against the *watched inode* rather than by filename — so every
 /// event is associated with the watched path itself, and the queued
 /// event's path is just `w->watch_path`. The filter bits are mapped
-/// to Viper event types (DELETE→DELETED, WRITE/EXTEND/ATTRIB→
+/// to Zanna event types (DELETE→DELETED, WRITE/EXTEND/ATTRIB→
 /// MODIFIED, RENAME→RENAMED). `timeout_ms < 0` means wait forever;
 /// 0 is a non-blocking poll.
 static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
@@ -471,7 +471,7 @@ typedef BOOL(WINAPI *watcher_cancel_io_ex_fn)(HANDLE, LPOVERLAPPED);
 
 /// @brief Request cross-thread overlapped cancellation without a static import.
 /// @details CancelIoEx is present on every supported Windows release, but the
-///          native Viper linker intentionally keeps a fixed import surface.
+///          native Zanna linker intentionally keeps a fixed import surface.
 ///          Resolve it from kernel32 and retain CancelIo as a legacy fallback.
 static int watcher_cancel_pending_windows_io(rt_watcher_impl *w) {
     HMODULE kernel32;
@@ -664,7 +664,7 @@ void *rt_watcher_new(rt_string path) {
     }
 
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || cpath[0] == '\0') {
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || cpath[0] == '\0') {
         rt_trap("Watcher.New: empty path");
         return NULL;
     }
@@ -1066,7 +1066,7 @@ int64_t rt_watcher_event_type(void *obj) {
 /// @brief Read how many file-system events were represented by the last overflow marker.
 /// @details Returns zero when no event has been polled or when the most recent
 ///          event was not `RT_WATCH_EVENT_OVERFLOW`. For an INTERNAL ring
-///          overflow (Viper's own 64-entry queue filled), the value is the exact
+///          overflow (Zanna's own 64-entry queue filled), the value is the exact
 ///          number of dropped events and is coalesced upward while the queue
 ///          stays full, so it can be greater than one. For a NATIVE (kernel)
 ///          overflow — Linux `IN_Q_OVERFLOW` or a Windows change-buffer overflow

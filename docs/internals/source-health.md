@@ -6,7 +6,7 @@ last-verified: 2026-06-21
 
 # Source Health Guardrails
 
-Viper owns large parts of its stack directly: runtime APIs, VM dispatch, native
+Zanna owns large parts of its stack directly: runtime APIs, VM dispatch, native
 backends, graphics-disabled stubs, packaging formats, IDE services, and parser
 fuzzers. That ownership is intentional. The local source-health audit keeps the
 known high-ownership areas visible and prevents new debt from being added
@@ -72,7 +72,7 @@ The audit handles two metric directions:
 | `basic_server_semantic_entrypoints` | Tracks BASIC language-server semantic entry points. |
 | `vbasic_server_test_targets` | Tracks BASIC server analysis/completion/LSP/MCP tests. |
 | `ide_basic_capability_gates` | Tracks explicit BASIC IDE capability gating until adapters are wired. |
-| `ide_scheduler_capability_jobs` | Tracks non-blocking ViperIDE semantic job scheduling coverage. |
+| `ide_scheduler_capability_jobs` | Tracks non-blocking ZannaIDE semantic job scheduling coverage. |
 | `debug_adapter_protocol_markers` | Tracks debugger JSON protocol request/event coverage. |
 | `packaging_verifier_entrypoints` | Ensures package verification entry points remain present. |
 | `packaging_negative_test_markers` | Tracks package CLI negative-verification coverage. |
@@ -132,7 +132,7 @@ focused tests. Examples:
 
 - Removing the VM bridge duplication still needs VM/bytecode thread and async
   behavioral tests.
-- Wiring BASIC into ViperIDE still needs non-blocking adapters and display-safe
+- Wiring BASIC into ZannaIDE still needs non-blocking adapters and display-safe
   probes.
 - Backend lowering convergence still needs shared IL fixtures that run through
   every backend.

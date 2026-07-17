@@ -1,9 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
-// This source file is part of the Viper project.
+// This source file is part of the Zanna project.
 //
 // File: src/il/verify/ExceptionHandlerAnalysis.cpp
 // Purpose: Provide verifier utilities that describe exception-handler blocks,

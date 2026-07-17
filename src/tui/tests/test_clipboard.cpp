@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,24 +21,24 @@
 
 static void clear_disable() {
 #if defined(_WIN32)
-    _putenv_s("VIPERTUI_DISABLE_OSC52", "");
+    _putenv_s("ZANNATUI_DISABLE_OSC52", "");
 #else
-    unsetenv("VIPERTUI_DISABLE_OSC52");
+    unsetenv("ZANNATUI_DISABLE_OSC52");
 #endif
 }
 
 static void set_disable() {
 #if defined(_WIN32)
-    _putenv_s("VIPERTUI_DISABLE_OSC52", "1");
+    _putenv_s("ZANNATUI_DISABLE_OSC52", "1");
 #else
-    setenv("VIPERTUI_DISABLE_OSC52", "1", 1);
+    setenv("ZANNATUI_DISABLE_OSC52", "1", 1);
 #endif
 }
 
 TEST(TUI, Clipboard) {
     clear_disable();
-    viper::tui::term::StringTermIO tio;
-    viper::tui::term::Osc52Clipboard cb(tio);
+    zanna::tui::term::StringTermIO tio;
+    zanna::tui::term::Osc52Clipboard cb(tio);
     [[maybe_unused]] bool ok = cb.copy("hello");
     ASSERT_TRUE(ok);
     ASSERT_EQ(tio.buffer(), "\x1b]52;c;aGVsbG8=\x07");
@@ -49,7 +49,7 @@ TEST(TUI, Clipboard) {
     ASSERT_EQ(tio.buffer(), "\x1b]52;c;aGVsbG8=\x07");
 
     clear_disable();
-    viper::tui::term::MockClipboard mock;
+    zanna::tui::term::MockClipboard mock;
     ok = mock.copy("test");
     ASSERT_TRUE(ok);
     ASSERT_EQ(mock.last(), "\x1b]52;c;dGVzdA==\x07");
@@ -63,6 +63,6 @@ TEST(TUI, Clipboard) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

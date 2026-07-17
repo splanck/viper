@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,7 +76,7 @@ void buildFloatCompareFunction(Module &module, Opcode op, double lhs, double rhs
 bool runFloatCompare(Opcode op, double lhs, double rhs) {
     Module module;
     buildFloatCompareFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     int64_t result = fixture.run(module);
     assert(result == 0 || result == 1);
     return result == 1;

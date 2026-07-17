@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// DLL import for PE linking.
 struct DllImport {
@@ -61,4 +61,4 @@ inline bool writePeExe(const std::string &path,
     return writePeExe(path, layout, arch, imports, kNoSlots, true, 0, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

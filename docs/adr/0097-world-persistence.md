@@ -17,7 +17,7 @@ Accepted
 An open world must remember itself — doors opened, pickups taken, enemies
 dead — across cell unload/reload and across save files. Today a cell reload
 re-instantiates the authored scene and every runtime mutation is lost, and
-`Viper.IO.SaveData` only covers scalar JSON progress, not world-shaped
+`Zanna.IO.SaveData` only covers scalar JSON progress, not world-shaped
 state.
 
 ## Decision
@@ -74,4 +74,4 @@ state.
 
 - misc/plans/thirdpersonupgrade/17-world-persistence.md
 - src/runtime/graphics/3d/rt_game3d_persistence.c
-- docs/viperlib/game/persistence.md, ADR 0083 (async streaming)
+- docs/zannalib/game/persistence.md, ADR 0083 (async streaming)

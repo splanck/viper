@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: codegen/aarch64/passes/PeepholePass.cpp
 // Purpose: Peephole optimisation pass for the AArch64 modular pipeline.
 //          Runs the optimizer on each post-RA MIR function, optionally
-//          collecting statistics via VIPER_CODEGEN_STATS, and validates that
+//          collecting statistics via ZANNA_CODEGEN_STATS, and validates that
 //          no virtual registers remain and branches target known blocks.
 // Key invariants:
 //   - Must run after RegAllocPass (all regs must be physical).
@@ -32,7 +32,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 namespace {
 
 /// @brief Return true if @p opcode is any branch instruction (conditional or unconditional).
@@ -41,9 +41,9 @@ namespace {
            opcode == MOpcode::Cbnz || opcode == MOpcode::Tbz || opcode == MOpcode::Tbnz;
 }
 
-/// @brief Return true when VIPER_CODEGEN_STATS is set to a non-zero value.
+/// @brief Return true when ZANNA_CODEGEN_STATS is set to a non-zero value.
 [[nodiscard]] bool codegenStatsEnabled() noexcept {
-    if (const char *value = std::getenv("VIPER_CODEGEN_STATS"))
+    if (const char *value = std::getenv("ZANNA_CODEGEN_STATS"))
         return value[0] != '\0' && value[0] != '0';
     return false;
 }
@@ -223,4 +223,4 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

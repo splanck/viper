@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::installer {
+namespace zanna::installer {
 namespace {
 
 uint16_t readLe16(const uint8_t *p) {
@@ -144,8 +144,8 @@ void requirePeArchitecture(const std::vector<uint8_t> &bytes,
         throw std::runtime_error(std::string(label) + " architecture does not match metadata");
 }
 
-void requireOuterInventory(const viper::pkg::ZipReader &outer,
-                           const viper::pkg::WindowsInstallerMetadata &metadata) {
+void requireOuterInventory(const zanna::pkg::ZipReader &outer,
+                           const zanna::pkg::WindowsInstallerMetadata &metadata) {
     std::set<std::string> allowed = {
         "meta/installer-v2.txt", metadata.payloadEntry, metadata.cleanupEntry};
     if (!metadata.licenseEntry.empty())
@@ -154,7 +154,7 @@ void requireOuterInventory(const viper::pkg::ZipReader &outer,
         allowed.insert(metadata.readmeEntry);
     for (const auto &file : metadata.outerFiles)
         allowed.insert(file.overlayPath);
-    for (const viper::pkg::ZipEntry &entry : outer.entries()) {
+    for (const zanna::pkg::ZipEntry &entry : outer.entries()) {
         if (!entry.name.empty() && entry.name.back() == '/')
             continue;
         if (allowed.find(entry.name) == allowed.end())
@@ -380,7 +380,7 @@ fs::path defaultLogPath(std::string_view identifier) {
     GetSystemTime(&now);
     const DWORD pid = GetCurrentProcessId();
     std::wostringstream leaf;
-    leaf << L"ViperInstaller-" << utf8ToWide(identifier) << L'-' << std::setfill(L'0')
+    leaf << L"ZannaInstaller-" << utf8ToWide(identifier) << L'-' << std::setfill(L'0')
          << std::setw(4) << now.wYear << std::setw(2) << now.wMonth << std::setw(2) << now.wDay
          << L'T' << std::setw(2) << now.wHour << std::setw(2) << now.wMinute << std::setw(2)
          << now.wSecond << L'Z' << L'-' << pid << L".log";
@@ -677,7 +677,7 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
 }
 
 std::wstring commandLineHelp() {
-    return LR"HELP(Viper Tools Installer
+    return LR"HELP(Zanna Tools Installer
 
 Usage:
   setup.exe [/install|/modify|/repair|/uninstall|/inspect|/checkForUpdates] [options]
@@ -714,57 +714,57 @@ HostPackage loadHostPackage(const fs::path &executablePath) {
     package.executablePath = executablePath;
     package.executableBytes = readWholeFile(executablePath);
     package.executableSha256 =
-        viper::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size());
+        zanna::pkg::sha256Hex(package.executableBytes.data(), package.executableBytes.size());
     const OverlayRange overlay = locateZipOverlay(package.executableBytes);
     package.overlayOffset = overlay.offset;
     package.overlayLength = overlay.length;
-    viper::pkg::ZipReader outer(package.executableBytes.data() + overlay.offset, overlay.length);
-    const viper::pkg::ZipEntry *metadataEntry = outer.find("meta/installer-v2.txt");
+    zanna::pkg::ZipReader outer(package.executableBytes.data() + overlay.offset, overlay.length);
+    const zanna::pkg::ZipEntry *metadataEntry = outer.find("meta/installer-v2.txt");
     if (!metadataEntry)
         throw std::runtime_error("installer metadata entry is missing");
     const std::vector<uint8_t> metadataBytes = outer.extract(*metadataEntry);
-    package.metadata = viper::pkg::parseWindowsInstallerMetadata(bytesToString(metadataBytes));
+    package.metadata = zanna::pkg::parseWindowsInstallerMetadata(bytesToString(metadataBytes));
     requirePeArchitecture(
         package.executableBytes, package.metadata.architecture, "installer executable");
     requireOuterInventory(outer, package.metadata);
-    const viper::pkg::ZipEntry *payloadEntry = outer.find(package.metadata.payloadEntry);
+    const zanna::pkg::ZipEntry *payloadEntry = outer.find(package.metadata.payloadEntry);
     if (!payloadEntry)
         throw std::runtime_error("installer payload entry is missing");
     package.payloadZip = outer.extract(*payloadEntry);
-    const viper::pkg::ZipEntry *cleanupEntry = outer.find(package.metadata.cleanupEntry);
+    const zanna::pkg::ZipEntry *cleanupEntry = outer.find(package.metadata.cleanupEntry);
     if (!cleanupEntry)
         throw std::runtime_error("installer detached cleanup helper is missing");
     package.cleanupBytes = outer.extract(*cleanupEntry);
-    if (viper::pkg::sha256Hex(package.cleanupBytes.data(), package.cleanupBytes.size()) !=
+    if (zanna::pkg::sha256Hex(package.cleanupBytes.data(), package.cleanupBytes.size()) !=
         package.metadata.cleanupSha256) {
         throw std::runtime_error("installer detached cleanup helper SHA-256 verification failed");
     }
     requirePeArchitecture(
         package.cleanupBytes, package.metadata.architecture, "installer cleanup helper");
 
-    viper::pkg::ZipReader payload(package.payloadZip.data(), package.payloadZip.size());
+    zanna::pkg::ZipReader payload(package.payloadZip.data(), package.payloadZip.size());
     if (payload.entries().size() != package.metadata.payloadFiles.size())
         throw std::runtime_error("installer payload entry count does not match metadata");
     for (const auto &file : package.metadata.payloadFiles) {
-        const viper::pkg::ZipEntry *entry = payload.find(file.path);
+        const zanna::pkg::ZipEntry *entry = payload.find(file.path);
         if (!entry || entry->uncompressedSize != file.sizeBytes)
             throw std::runtime_error("installer payload inventory does not match metadata");
         const std::vector<uint8_t> bytes = payload.extract(*entry);
-        if (viper::pkg::sha256Hex(bytes.data(), bytes.size()) != file.sha256)
+        if (zanna::pkg::sha256Hex(bytes.data(), bytes.size()) != file.sha256)
             throw std::runtime_error("installer payload SHA-256 verification failed");
     }
 
-    if (const viper::pkg::ZipEntry *license = outer.find(package.metadata.licenseEntry))
+    if (const zanna::pkg::ZipEntry *license = outer.find(package.metadata.licenseEntry))
         package.licenseText = bytesToString(outer.extract(*license));
-    if (const viper::pkg::ZipEntry *readme = outer.find(package.metadata.readmeEntry))
+    if (const zanna::pkg::ZipEntry *readme = outer.find(package.metadata.readmeEntry))
         package.readmeText = bytesToString(outer.extract(*readme));
     for (const auto &file : package.metadata.outerFiles) {
-        const viper::pkg::ZipEntry *entry = outer.find(file.overlayPath);
+        const zanna::pkg::ZipEntry *entry = outer.find(file.overlayPath);
         if (!entry || entry->uncompressedSize != file.sizeBytes)
             throw std::runtime_error(
                 "installer outer-file payload is missing or has the wrong size");
         std::vector<uint8_t> bytes = outer.extract(*entry);
-        if (viper::pkg::sha256Hex(bytes.data(), bytes.size()) != file.sha256)
+        if (zanna::pkg::sha256Hex(bytes.data(), bytes.size()) != file.sha256)
             throw std::runtime_error("installer outer-file SHA-256 verification failed");
         if (file.path == package.metadata.uninstallerRelativePath)
             requirePeArchitecture(bytes, package.metadata.architecture, "maintenance executable");
@@ -804,4 +804,4 @@ std::wstring inspectPackageJson(const HostPackage &package) {
     return utf8ToWide(out.str());
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer

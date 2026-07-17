@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 
 #include <algorithm>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
@@ -201,4 +201,4 @@ std::size_t runPeepholes(MFunction &fn, const TargetInfo &target) {
     return stats.total();
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

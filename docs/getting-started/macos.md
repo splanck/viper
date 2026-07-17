@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # Getting Started on macOS
 
-This guide walks you through installing and running the Viper compiler toolchain on macOS (Intel or Apple Silicon).
+This guide walks you through installing and running the Zanna compiler toolchain on macOS (Intel or Apple Silicon).
 
 ---
 
@@ -26,7 +26,7 @@ Open Terminal and run:
 xcode-select --install
 ```
 
-A dialog will appear — click **Install** and accept the license agreement. This provides Apple Clang (the canonical compiler for Viper on macOS), Git, Make, and all required system frameworks (Cocoa, AudioToolbox, IOKit, CoreFoundation, ImageIO).
+A dialog will appear — click **Install** and accept the license agreement. This provides Apple Clang (the canonical compiler for Zanna on macOS), Git, Make, and all required system frameworks (Cocoa, AudioToolbox, IOKit, CoreFoundation, ImageIO).
 
 Verify the installation:
 
@@ -67,9 +67,9 @@ brew install ninja
 Clone the repository and run the build script:
 
 ```bash
-git clone https://github.com/splanck/viper.git
-cd viper
-./scripts/build_viper_mac.sh
+git clone https://github.com/zannagames/zanna.git
+cd zanna
+./scripts/build_zanna_mac.sh
 ```
 
 The build script will:
@@ -83,7 +83,7 @@ The build script will:
 A successful build ends with output similar to:
 
 ```text
-[100%] Built target viper
+[100%] Built target zanna
 ...
 100% tests passed, 0 tests failed
 ...
@@ -94,13 +94,13 @@ Install complete.
 
 ## Verify the Installation
 
-After building, confirm Viper is working:
+After building, confirm Zanna is working:
 
 ```bash
-viper --version
+zanna --version
 ```
 
-You should see the version string (e.g., `viper v0.2.x-dev`) followed by the IL version. If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
+You should see the version string (e.g., `zanna v0.2.x-dev`) followed by the IL version. If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin
@@ -115,14 +115,14 @@ source ~/.zshrc
 
 ### Installing a Release Package
 
-The macOS `.pkg` toolchain installer places the toolchain under `/usr/local/viper`,
+The macOS `.pkg` toolchain installer places the toolchain under `/usr/local/zanna`,
 adds command symlinks in `/usr/local/bin`, adds CMake discovery wrappers under
-`/usr/local/lib/cmake/Viper`, registers `.zia`, `.bas`, and `.il` files with the
-Viper Toolchain handler app, and installs `/usr/local/viper/share/viper/uninstall.sh`
+`/usr/local/lib/cmake/Zanna`, registers `.zia`, `.bas`, and `.il` files with the
+Zanna Toolchain handler app, and installs `/usr/local/zanna/share/zanna/uninstall.sh`
 for local cleanup.
 
 The package does not install Xcode Command Line Tools or CMake. Install those
-prerequisites first, then run the `.pkg` and verify `viper --version`.
+prerequisites first, then run the `.pkg` and verify `zanna --version`.
 
 Public release packages sign every nested executable with a Developer ID
 Application identity, sign the product with a Developer ID Installer identity,
@@ -131,15 +131,15 @@ notarized/stapled and includes a styled Finder window. You can validate trust
 before installation with:
 
 ```bash
-pkgutil --check-signature Viper.pkg
-spctl --assess --verbose=2 --type install Viper.pkg
-xcrun stapler validate Viper.pkg
+pkgutil --check-signature Zanna.pkg
+spctl --assess --verbose=2 --type install Zanna.pkg
+xcrun stapler validate Zanna.pkg
 ```
 
 To remove a package installed locally, run:
 
 ```bash
-sudo /usr/local/viper/share/viper/uninstall.sh
+sudo /usr/local/zanna/share/zanna/uninstall.sh
 ```
 
 See the [installer and package release guide](../installer-release.md) for
@@ -155,7 +155,7 @@ Create a file called `hello.zia` with the following content:
 ```zia
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -165,7 +165,7 @@ func start() {
 Run it:
 
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
 **Expected output:**
@@ -177,7 +177,7 @@ Hello, World!
 **What this program does:**
 
 - `module Hello;` declares the module name (required in every Zia file)
-- `bind Viper.Terminal;` imports the Terminal module so you can call its functions directly
+- `bind Zanna.Terminal;` imports the Terminal module so you can call its functions directly
 - `func start()` is the program entry point (like `main()` in C)
 - `Say()` prints a line of text to the console with a trailing newline
 
@@ -187,8 +187,8 @@ Hello, World!
 
 - **[Zia Tutorial](../tutorials/zia-tutorial.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
 - **[Zia Reference](../languages/zia-reference.md)** — Complete language reference
-- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Viper also ships a BASIC frontend
-- **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference
+- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Zanna also ships a BASIC frontend
+- **[Getting Started (general)](../getting-started.md)** — Project creation with `zanna init`, the REPL, IL programs, and the full command reference
 
 ---
 
@@ -246,12 +246,12 @@ file INSTALL cannot copy file ... Permission denied
 **Fix:** Run the build script normally — it will prompt for your password when it reaches the install step. If you prefer to skip installation and run directly from the build directory:
 
 ```bash
-./build/src/tools/viper/viper --version
+./build/src/tools/zanna/zanna --version
 ```
 
 You can add the build directory to your PATH instead:
 
 ```bash
-export PATH="$PWD/build/src/tools/viper:$PATH"
-viper --version
+export PATH="$PWD/build/src/tools/zanna:$PATH"
+zanna --version
 ```

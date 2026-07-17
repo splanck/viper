@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Abstract interface implemented by individual pipeline passes.
 /// @tparam ModuleT The backend-specific module state type.
@@ -106,4 +106,4 @@ template <typename ModuleT> class PassManager {
     std::string timingPrefix_{};
 };
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

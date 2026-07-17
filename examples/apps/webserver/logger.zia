@@ -1,12 +1,12 @@
-// Viper Web Server - Thread-Safe Logger
+// Zanna Web Server - Thread-Safe Logger
 // Provides logging with levels, timestamps, and request tracking
 module logger;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Time as Time;
-bind Viper.Threads as Threads;
-bind Viper.Collections as Collections;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time as Time;
+bind Zanna.Threads as Threads;
+bind Zanna.Collections as Collections;
+bind Zanna.Text.Fmt as Fmt;
 
 // ============================================================================
 // LOG LEVELS

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,15 +25,15 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Parameters for .desktop file generation.
 struct DesktopEntryParams {
-    std::string name;           ///< Display name (e.g. "ViperIDE")
+    std::string name;           ///< Display name (e.g. "ZannaIDE")
     std::string comment;        ///< Short description
-    std::string execPath;       ///< Path to executable (e.g. "/usr/bin/viperide")
+    std::string execPath;       ///< Path to executable (e.g. "/usr/bin/zannaide")
     std::string execArguments;  ///< Additional literal Exec= arguments after the executable token.
-    std::string iconName;       ///< Icon name (e.g. "viperide")
+    std::string iconName;       ///< Icon name (e.g. "zannaide")
     std::string categories;     ///< freedesktop.org categories (e.g. "Development;TextEditor;")
     std::string startupWmClass; ///< Optional StartupWMClass for desktop/window matching.
     std::string keywords;       ///< Optional semicolon-separated Keywords= metadata.
@@ -56,4 +56,4 @@ std::string generateDesktopEntry(const DesktopEntryParams &params);
 std::string generateMimeTypeXml(const std::string &packageName,
                                 const std::vector<FileAssoc> &assocs);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

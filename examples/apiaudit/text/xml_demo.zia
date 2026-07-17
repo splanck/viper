@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Data.Xml - XML Processing
+// API Audit: Zanna.Data.Xml - XML Processing
 // =============================================================================
 // Tests: ParseResult, Parse, Error, IsValid, Element, Text, Comment, Cdata,
 //        NodeType, Tag, Content, TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
@@ -8,10 +8,10 @@
 // =============================================================================
 
 module XmlDemo;
-bind Viper.Terminal;
-bind Viper.Data.Xml as Xml;
+bind Zanna.Terminal;
+bind Zanna.Data.Xml as Xml;
 func start() {
-    Say("=== API Audit: Viper.Data.Xml ===");
+    Say("=== API Audit: Zanna.Data.Xml ===");
 
     // --- IsValid ---
     Say("--- IsValid ---");

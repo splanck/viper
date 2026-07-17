@@ -6,12 +6,12 @@ last-verified: 2026-07-15
 
 # Getting Started on Windows
 
-Viper Tools supports Windows 10 version 1809 or newer and Windows 11 on x64
+Zanna Tools supports Windows 10 version 1809 or newer and Windows 11 on x64
 and ARM64. The installer is self-contained: it does not run PowerShell,
 download packages, or require a separately installed Microsoft C++
 redistributable.
 
-## Install Viper Tools
+## Install Zanna Tools
 
 Run the installer that matches the computer's architecture. A signed release
 should show its expected publisher in Windows. Do not bypass an unexpected or
@@ -19,7 +19,7 @@ invalid signature warning.
 
 The first page offers four clear paths:
 
-- **Install recommended** installs the compiler tools, ViperIDE, SDK files, and
+- **Install recommended** installs the compiler tools, ZannaIDE, SDK files, and
   available integrations.
 - **Install SDK tools** installs the command-line tools and native development
   files without the IDE-focused extras.
@@ -28,31 +28,31 @@ The first page offers four clear paths:
   folder, individual components, PATH, safe file associations, and shortcuts.
 
 Current-user setup is the default and needs no administrator approval. A
-stable release defaults to `%LocalAppData%\Programs\Viper`; an all-users install
-defaults to `%ProgramFiles%\Viper`. Local builds use a separate development
-identity and `Viper development` directory so they can coexist with a stable
+stable release defaults to `%LocalAppData%\Programs\Zanna`; an all-users install
+defaults to `%ProgramFiles%\Zanna`. Local builds use a separate development
+identity and `Zanna development` directory so they can coexist with a stable
 release.
 
-The source-file integration adds Viper to **Open with** for `.zia`, `.bas`, and
+The source-file integration adds Zanna to **Open with** for `.zia`, `.bas`, and
 `.il`. It does not take over an existing default application. PATH and shortcut
-entries are explicitly owned by the selected Viper package and are removed
+entries are explicitly owned by the selected Zanna package and are removed
 only if that package created them.
 
 Open a new terminal after setup so it receives the updated PATH. You can also
-open **Viper Developer Prompt** from the Start menu. That prompt sets
-`VIPER_HOME`, `Viper_DIR`, and `CMAKE_PREFIX_PATH` for installed SDK use.
+open **Zanna Developer Prompt** from the Start menu. That prompt sets
+`ZANNA_HOME`, `Zanna_DIR`, and `CMAKE_PREFIX_PATH` for installed SDK use.
 
 ## Verify the Installation
 
 In a new PowerShell window, run:
 
 ```powershell
-viper --version
-viper eval '40 + 2' --type
+zanna --version
+zanna eval '40 + 2' --type
 ```
 
-If PATH integration was not selected, launch the Viper Developer Prompt or run
-`bin\viper.exe` from the chosen installation folder.
+If PATH integration was not selected, launch the Zanna Developer Prompt or run
+`bin\zanna.exe` from the chosen installation folder.
 
 ## Your First Program
 
@@ -61,7 +61,7 @@ Create `hello.zia`:
 ```zia
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -71,32 +71,32 @@ func start() {
 Run it:
 
 ```powershell
-viper run .\hello.zia
+zanna run .\hello.zia
 ```
 
 The expected output is `Hello, World!`.
 
 ## Installed Developer Features
 
-The recommended setup includes the Viper command-line tools, language servers,
-ViperIDE, headers, static libraries, CMake package files, documentation, and
+The recommended setup includes the Zanna command-line tools, language servers,
+ZannaIDE, headers, static libraries, CMake package files, documentation, and
 available editor integration. An external CMake project can use the installed
-SDK from the Viper Developer Prompt:
+SDK from the Zanna Developer Prompt:
 
 ```cmake
-find_package(Viper CONFIG REQUIRED)
-target_link_libraries(my_program PRIVATE viper::il_core viper::il_io)
+find_package(Zanna CONFIG REQUIRED)
+target_link_libraries(my_program PRIVATE zanna::il_core zanna::il_io)
 ```
 
 Git, CMake, Ninja, Visual Studio C++, the Windows SDK, VS Code, and Windows
 Terminal are optional companion tools; setup detects but never downloads or
-changes them. Running Zia, BASIC, IL, ViperIDE, and the VM needs none of those
+changes them. Running Zia, BASIC, IL, ZannaIDE, and the VM needs none of those
 tools. Native code generation and compiling an external C++ consumer require
 an architecture-matched compiler, linker, and Windows SDK.
 
-## Change, Repair, or Remove Viper
+## Change, Repair, or Remove Zanna
 
-Open **Settings > Apps > Installed apps**, find the exact Viper channel, and
+Open **Settings > Apps > Installed apps**, find the exact Zanna channel, and
 choose its maintenance action:
 
 - **Modify** changes components and integrations.
@@ -107,7 +107,7 @@ choose its maintenance action:
 
 Running the installed `uninstall.exe` directly also starts the verified cached
 maintenance package, so the installation directory can be removed completely.
-If a Viper process has files open, setup identifies it with Windows Restart
+If a Zanna process has files open, setup identifies it with Windows Restart
 Manager and offers a safe close-and-retry path.
 
 Installation and maintenance are transactional. A power loss or terminated
@@ -121,11 +121,11 @@ Use `/quiet` for no interface or `/passive` for progress without prompts. Quote
 paths containing spaces.
 
 ```powershell
-.\viper-toolchain-windows-x64.exe /install /quiet /norestart `
-  /scope user /type typical /log "$env:TEMP\viper-setup.log"
+.\zanna-toolchain-windows-x64.exe /install /quiet /norestart `
+  /scope user /type typical /log "$env:TEMP\zanna-setup.log"
 
-.\viper-toolchain-windows-x64.exe /install /quiet /norestart `
-  /installDir 'D:\Developer Tools\Viper' /type sdk /noAssociations
+.\zanna-toolchain-windows-x64.exe /install /quiet /norestart `
+  /installDir 'D:\Developer Tools\Zanna' /type sdk /noAssociations
 ```
 
 Maintenance accepts `/modify`, `/repair`, or `/uninstall`. Other automation
@@ -141,8 +141,8 @@ installer replaces that UTF-8 JSON file atomically or returns an error; it never
 reports success after producing a partial or missing document.
 
 ```powershell
-./viper-toolchain-windows-x64.exe /inspect /quiet /output package.json
-./viper-toolchain-windows-x64.exe /checkForUpdates /quiet /output update.json
+./zanna-toolchain-windows-x64.exe /inspect /quiet /output package.json
+./zanna-toolchain-windows-x64.exe /checkForUpdates /quiet /output update.json
 ```
 
 Important exit codes are:
@@ -153,32 +153,32 @@ Important exit codes are:
 | 87 | Invalid command line or path |
 | 1602 | User cancellation |
 | 1603 | Fatal setup error; inspect the log |
-| 1618 | Another Viper lifecycle operation is active |
+| 1618 | Another Zanna lifecycle operation is active |
 | 1638 | A newer version is already installed |
 | 3010 | Success; restart is required |
 
 Without `/log`, setup writes a redacted UTF-8 log named
-`ViperInstaller-<package-id>-<UTC-time>-<pid>.log` under `%TEMP%`.
+`ZannaInstaller-<package-id>-<UTC-time>-<pid>.log` under `%TEMP%`.
 
-## Build Viper and the Installer from Source
+## Build Zanna and the Installer from Source
 
 Source builds require CMake 3.20 or newer and Visual Studio or Build Tools with
 the **Desktop development with C++** workload and a Windows SDK. For ARM64,
 install the ARM64 C++ build tools and ARM64 MSVC libraries as well. Open a
-Developer PowerShell for Visual Studio in an existing Viper source checkout:
+Developer PowerShell for Visual Studio in an existing Zanna source checkout:
 
 ```powershell
-.\scripts\build_viper_win.cmd
+.\scripts\build_zanna_win.cmd
 ```
 
-The canonical script builds and tests Viper with MSVC by default. Optional
+The canonical script builds and tests Zanna with MSVC by default. Optional
 fast-iteration settings include:
 
 ```powershell
-$env:VIPER_SKIP_CLEAN = '1'
-$env:VIPER_CMAKE_GENERATOR = 'Ninja'
-$env:VIPER_BUILD_TYPE = 'Release'
-.\scripts\build_viper_win.cmd
+$env:ZANNA_SKIP_CLEAN = '1'
+$env:ZANNA_CMAKE_GENERATOR = 'Ninja'
+$env:ZANNA_BUILD_TYPE = 'Release'
+.\scripts\build_zanna_win.cmd
 ```
 
 Build a local developer installer with:
@@ -195,20 +195,20 @@ validation matrix.
 
 ## Troubleshooting
 
-### `viper` is not recognized
+### `zanna` is not recognized
 
-Open a new terminal, use the Viper Developer Prompt, or modify the installation
+Open a new terminal, use the Zanna Developer Prompt, or modify the installation
 and enable PATH integration. Existing terminals retain their old environment.
 
 ### Setup reports another operation is active
 
-Wait for the other Viper setup, repair, or uninstall process to finish and run
+Wait for the other Zanna setup, repair, or uninstall process to finish and run
 setup again. Lifecycle operations are serialized to prevent two packages from
 editing the same owned state concurrently.
 
 ### Setup reports files in use
 
-Save work and close the listed Viper applications, then retry. In unattended
+Save work and close the listed Zanna applications, then retry. In unattended
 deployment, `/closeApplications` asks Restart Manager to close eligible
 applications; `/norestart` prevents automatic restart behavior.
 
@@ -220,7 +220,7 @@ channel first, or use `/allowDowngrade` only when the rollback is intentional.
 ### Native code generation cannot find a linker or SDK
 
 Install the architecture-matched Visual Studio C++ build tools and Windows SDK,
-then use a Developer PowerShell or the Viper Developer Prompt. The Viper runtime
+then use a Developer PowerShell or the Zanna Developer Prompt. The Zanna runtime
 itself remains installed and usable without those optional native build tools.
 
 ### Source build cannot find a C++ compiler

@@ -6,7 +6,7 @@ bind "./_support";
 // All functions now aligned between sema and runtime
 
 func start() {
-    Viper.Terminal.Say("=== IO Tests ===");
+    Zanna.Terminal.Say("=== IO Tests ===");
 
     testPath();
     testDir();
@@ -17,107 +17,107 @@ func start() {
 
 func testPath() {
     // Join paths
-    var joined = Viper.IO.Path.Join("/home/user", "documents");
+    var joined = Zanna.IO.Path.Join("/home/user", "documents");
     assertNotEmpty(joined, "path join");
 
     // Dir (fixed from GetDir)
-    var dir = Viper.IO.Path.Directory("/home/user/file.txt");
+    var dir = Zanna.IO.Path.Directory("/home/user/file.txt");
     assertEqStr(dir, "/home/user", "path dir");
 
     // Name (fixed from GetName)
-    var name = Viper.IO.Path.Name("/home/user/file.txt");
+    var name = Zanna.IO.Path.Name("/home/user/file.txt");
     assertEqStr(name, "file.txt", "path name");
 
     // Ext (fixed from GetExt)
-    var ext = Viper.IO.Path.Extension("/home/user/file.txt");
+    var ext = Zanna.IO.Path.Extension("/home/user/file.txt");
     assertEqStr(ext, ".txt", "path ext");
 
     // Stem (fixed from GetBase)
-    var stem = Viper.IO.Path.Stem("/home/user/file.txt");
+    var stem = Zanna.IO.Path.Stem("/home/user/file.txt");
     assertEqStr(stem, "file", "path stem");
 
     // Multiple extensions
-    var ext2 = Viper.IO.Path.Extension("/home/user/archive.tar.gz");
+    var ext2 = Zanna.IO.Path.Extension("/home/user/archive.tar.gz");
     assertEqStr(ext2, ".gz", "path ext multi");
 
     // No extension
-    var noExt = Viper.IO.Path.Extension("/home/user/README");
+    var noExt = Zanna.IO.Path.Extension("/home/user/README");
     assertEqStr(noExt, "", "path ext none");
 
     // Norm (fixed from Normalize)
-    var normalized = Viper.IO.Path.Normalize("/home/user/../user/./docs");
+    var normalized = Zanna.IO.Path.Normalize("/home/user/../user/./docs");
     assertNotEmpty(normalized, "path norm");
 
     // Abs (fixed from Absolute)
-    var absolute = Viper.IO.Path.Absolute("relative/path");
+    var absolute = Zanna.IO.Path.Absolute("relative/path");
     assertNotEmpty(absolute, "path abs");
 
     // IsAbs
-    assertTrue(Viper.IO.Path.IsAbsolute("/absolute/path"), "path isabs true");
-    assertFalse(Viper.IO.Path.IsAbsolute("relative/path"), "path isabs false");
+    assertTrue(Zanna.IO.Path.IsAbsolute("/absolute/path"), "path isabs true");
+    assertFalse(Zanna.IO.Path.IsAbsolute("relative/path"), "path isabs false");
 
     // Sep
-    var sep = Viper.IO.Path.Separator();
+    var sep = Zanna.IO.Path.Separator();
     assertNotEmpty(sep, "path sep");
 
     // WithExt
-    var withExt = Viper.IO.Path.WithExtension("/home/user/file.txt", ".md");
-    assertEqStr(Viper.IO.Path.Extension(withExt), ".md", "path withext");
+    var withExt = Zanna.IO.Path.WithExtension("/home/user/file.txt", ".md");
+    assertEqStr(Zanna.IO.Path.Extension(withExt), ".md", "path withext");
 }
 
 func testDir() {
     // Current (fixed from GetCurrent)
-    var cwd = Viper.IO.Dir.Current();
+    var cwd = Zanna.IO.Dir.Current();
     assertNotEmpty(cwd, "dir current");
 
     // Exists
-    assertTrue(Viper.IO.Dir.Exists("/tmp"), "dir exists tmp");
-    assertFalse(Viper.IO.Dir.Exists("/nonexistent_xyz_12345"), "dir not exists");
+    assertTrue(Zanna.IO.Dir.Exists("/tmp"), "dir exists tmp");
+    assertFalse(Zanna.IO.Dir.Exists("/nonexistent_xyz_12345"), "dir not exists");
 
     // Make/Remove (fixed from Create/Delete)
-    var testDir = "/tmp/viper_test_dir_12345";
-    Viper.IO.Dir.Make(testDir);
-    assertTrue(Viper.IO.Dir.Exists(testDir), "dir make");
-    Viper.IO.Dir.Remove(testDir);
-    assertFalse(Viper.IO.Dir.Exists(testDir), "dir remove");
+    var testDir = "/tmp/zanna_test_dir_12345";
+    Zanna.IO.Dir.Make(testDir);
+    assertTrue(Zanna.IO.Dir.Exists(testDir), "dir make");
+    Zanna.IO.Dir.Remove(testDir);
+    assertFalse(Zanna.IO.Dir.Exists(testDir), "dir remove");
 }
 
 func testFileOps() {
-    var testPath = "/tmp/viper_test_file.txt";
+    var testPath = "/tmp/zanna_test_file.txt";
 
     // Write file
-    Viper.IO.File.WriteAllText(testPath, "Hello, Viper!");
+    Zanna.IO.File.WriteAllText(testPath, "Hello, Zanna!");
 
     // Exists
-    assertTrue(Viper.IO.File.Exists(testPath), "file exists after write");
+    assertTrue(Zanna.IO.File.Exists(testPath), "file exists after write");
 
     // Read back
-    var content = Viper.IO.File.ReadAllText(testPath);
-    assertEqStr(content, "Hello, Viper!", "file read content");
+    var content = Zanna.IO.File.ReadAllText(testPath);
+    assertEqStr(content, "Hello, Zanna!", "file read content");
 
     // Size
-    var size = Viper.IO.File.SizeBytes(testPath);
+    var size = Zanna.IO.File.SizeBytes(testPath);
     assertEqInt(size, 13, "file size");
 
     // Append (fixed from AppendText)
-    Viper.IO.File.Append(testPath, " More text.");
-    var appended = Viper.IO.File.ReadAllText(testPath);
-    assertEqStr(appended, "Hello, Viper! More text.", "file append");
+    Zanna.IO.File.Append(testPath, " More text.");
+    var appended = Zanna.IO.File.ReadAllText(testPath);
+    assertEqStr(appended, "Hello, Zanna! More text.", "file append");
 
     // Modified (fixed from GetModTime)
-    var modTime = Viper.IO.File.Modified(testPath);
+    var modTime = Zanna.IO.File.Modified(testPath);
     assertGt(modTime, 0, "file modified time");
 
     // Delete (now returns void)
-    Viper.IO.File.Delete(testPath);
-    assertFalse(Viper.IO.File.Exists(testPath), "file not exists after delete");
+    Zanna.IO.File.Delete(testPath);
+    assertFalse(Zanna.IO.File.Exists(testPath), "file not exists after delete");
 
     // Copy/Move tests
-    var src = "/tmp/viper_copy_src.txt";
-    var dst = "/tmp/viper_copy_dst.txt";
-    Viper.IO.File.WriteAllText(src, "copy test");
-    Viper.IO.File.Copy(src, dst);  // Now returns void
-    assertTrue(Viper.IO.File.Exists(dst), "file copy");
-    Viper.IO.File.Delete(src);
-    Viper.IO.File.Delete(dst);
+    var src = "/tmp/zanna_copy_src.txt";
+    var dst = "/tmp/zanna_copy_dst.txt";
+    Zanna.IO.File.WriteAllText(src, "copy test");
+    Zanna.IO.File.Copy(src, dst);  // Now returns void
+    assertTrue(Zanna.IO.File.Exists(dst), "file copy");
+    Zanna.IO.File.Delete(src);
+    Zanna.IO.File.Delete(dst);
 }

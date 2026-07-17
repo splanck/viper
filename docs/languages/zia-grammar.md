@@ -28,7 +28,7 @@ ModuleDecl       = "module" IDENT ";" ;
 
 Bind             = "bind" BindTarget [ "as" IDENT ] [ BindList ] ";" ;
 BindTarget       = STRING_LIT            (* file bind: "./utils" — .zia is implied *)
-                 | QualifiedName ;       (* namespace bind: Viper.Terminal *)
+                 | QualifiedName ;       (* namespace bind: Zanna.Terminal *)
 BindList         = "{" IDENT { "," IDENT } [ "," ] "}" ;
 
 QualifiedName    = IDENT { "." IDENT } ;

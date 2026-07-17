@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_behavior.c
-// Purpose: Viper.Game3D.Behavior3D — composable preset behaviors that drive an
+// Purpose: Zanna.Game3D.Behavior3D — composable preset behaviors that drive an
 //   Entity3D each simulation step without per-entity script callbacks: spin,
 //   orbit, sine float, face-target, chase (direct steer or via NavAgent3D),
 //   follow-path, and lifetime despawn.

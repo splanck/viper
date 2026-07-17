@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <intrin.h>
 #endif
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Physical register identifiers for AArch64.
 ///
@@ -61,7 +61,7 @@ namespace viper::codegen::aarch64 {
 /// | V8-V15   | Callee-saved (only lower 64 bits / D-register)         |
 /// | V16-V31  | Temporary registers (caller-saved)                     |
 ///
-/// @note We model V registers as their 64-bit D-register aliases since Viper
+/// @note We model V registers as their 64-bit D-register aliases since Zanna
 ///       currently only supports scalar floating-point (f64) values.
 ///
 /// @see RegClass for distinguishing GPR vs FPR
@@ -216,7 +216,7 @@ enum class ABIFormat {
     Windows, ///< Windows ARM64; no symbol prefix, PE/COFF format (no .type/.size).
 };
 
-struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs> {
+struct TargetInfo : zanna::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs> {
     ABIFormat abiFormat = ABIFormat::Darwin;
     bool emitBranchTargetIdentification{true};
     bool emitReturnAddressSigning{true};
@@ -376,7 +376,7 @@ class CallingConvention {
 /// @brief Returns the assembly syntax name for a physical register.
 ///
 /// Returns strings like "x0", "x29", "sp", "d0", etc. for use in
-/// assembly output. For FPRs, returns the D-register name since Viper
+/// assembly output. For FPRs, returns the D-register name since Zanna
 /// uses 64-bit scalar floating-point.
 ///
 /// @param reg The register to name.
@@ -504,4 +504,4 @@ class CallingConvention {
     return false;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

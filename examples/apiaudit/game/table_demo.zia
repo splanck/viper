@@ -1,11 +1,11 @@
-// API Audit: Viper.Game.UI.HudTable and HudTableClickResult (Zia)
+// API Audit: Zanna.Game.UI.HudTable and HudTableClickResult (Zia)
 module GameUITableDemo;
 
-bind Viper.Game.UI;
-bind Viper.Terminal;
+bind Zanna.Game.UI;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Game.UI.HudTable ===");
+    Say("=== API Audit: Zanna.Game.UI.HudTable ===");
 
     var table = HudTable.New(0, 0, 220, 96);
     table.AddColumn("Name", 100, 0);

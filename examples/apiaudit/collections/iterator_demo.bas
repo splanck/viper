@@ -1,12 +1,12 @@
-' iterator_demo.bas - Comprehensive API audit for Viper.Collections.Iterator
+' iterator_demo.bas - Comprehensive API audit for Zanna.Collections.Iterator
 ' Tests: FromSeq, HasNext, Next, Peek, Reset, Index, Count, ToSeq, Skip
 
 PRINT "=== Iterator API Audit ==="
 
 ' --- FromSeq ---
 PRINT "--- FromSeq ---"
-DIM seq AS Viper.Collections.Seq
-seq = Viper.Collections.Seq.New()
+DIM seq AS Zanna.Collections.Seq
+seq = Zanna.Collections.Seq.New()
 seq.Push("a")
 seq.Push("b")
 seq.Push("c")
@@ -14,7 +14,7 @@ seq.Push("d")
 seq.Push("e")
 
 DIM it AS OBJECT
-it = Viper.Collections.Iterator.FromSeq(seq)
+it = Zanna.Collections.Iterator.FromSeq(seq)
 PRINT it.Count       ' 5
 
 ' --- HasNext ---
@@ -75,16 +75,16 @@ PRINT rest.Get(2)    ' e
 ' --- Skip past end ---
 PRINT "--- Skip past end ---"
 DIM it2 AS OBJECT
-it2 = Viper.Collections.Iterator.FromSeq(seq)
+it2 = Zanna.Collections.Iterator.FromSeq(seq)
 PRINT it2.Skip(10)   ' 5
 PRINT it2.HasNext    ' 0
 
 ' --- Empty iterator ---
 PRINT "--- Empty iterator ---"
-DIM emptySeq AS Viper.Collections.Seq
-emptySeq = Viper.Collections.Seq.New()
+DIM emptySeq AS Zanna.Collections.Seq
+emptySeq = Zanna.Collections.Seq.New()
 DIM it3 AS OBJECT
-it3 = Viper.Collections.Iterator.FromSeq(emptySeq)
+it3 = Zanna.Collections.Iterator.FromSeq(emptySeq)
 PRINT it3.HasNext    ' 0
 PRINT it3.Count      ' 0
 PRINT it3.Index      ' 0

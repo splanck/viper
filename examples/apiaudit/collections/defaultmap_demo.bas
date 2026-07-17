@@ -1,4 +1,4 @@
-' defaultmap_demo.bas - Comprehensive API audit for Viper.Collections.DefaultMap
+' defaultmap_demo.bas - Comprehensive API audit for Zanna.Collections.DefaultMap
 ' Tests: New(default_value), Get, Set, Has, Remove, Keys, GetDefault, Clear, Len
 
 PRINT "=== DefaultMap API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== DefaultMap API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM dm AS OBJECT
-dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
+dm = Zanna.Collections.DefaultMap.New(Zanna.Core.Box.Str("N/A"))
 PRINT dm.Count       ' 0
 
 ' --- Set / Len ---
@@ -64,10 +64,10 @@ PRINT dm.Get("name")      ' N/A
 ' --- New with integer default ---
 PRINT "--- New (integer default) ---"
 DIM dm2 AS OBJECT
-dm2 = Viper.Collections.DefaultMap.New(Viper.Core.Box.I64(0))
-dm2.Set("count", Viper.Core.Box.I64(42))
-PRINT Viper.Core.Box.ToI64(dm2.Get("count"))    ' 42
-PRINT Viper.Core.Box.ToI64(dm2.Get("missing"))  ' 0
+dm2 = Zanna.Collections.DefaultMap.New(Zanna.Core.Box.I64(0))
+dm2.Set("count", Zanna.Core.Box.I64(42))
+PRINT Zanna.Core.Box.ToI64(dm2.Get("count"))    ' 42
+PRINT Zanna.Core.Box.ToI64(dm2.Get("missing"))  ' 0
 
 PRINT "=== DefaultMap audit complete ==="
 END

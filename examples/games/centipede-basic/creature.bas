@@ -286,12 +286,12 @@ Class Centipede
                 screenX = FIELD_LEFT + seg.X
                 screenY = FIELD_TOP + seg.Y
 
-                Viper.Terminal.SetPosition(screenY, screenX)
+                Zanna.Terminal.SetPosition(screenY, screenX)
                 If seg.IsHead = 1 Then
-                    Viper.Terminal.SetColor(12, 0)  ' Red head.
+                    Zanna.Terminal.SetColor(12, 0)  ' Red head.
                     PRINT "O"
                 Else
-                    Viper.Terminal.SetColor(10, 0)  ' Green body.
+                    Zanna.Terminal.SetColor(10, 0)  ' Green body.
                     PRINT "o"
                 End If
             End If
@@ -434,8 +434,8 @@ Class Spider
             screenX = FIELD_LEFT + Me.X
             screenY = FIELD_TOP + Me.Y
 
-            Viper.Terminal.SetPosition(screenY, screenX)
-            Viper.Terminal.SetColor(13, 0)  ' Magenta.
+            Zanna.Terminal.SetPosition(screenY, screenX)
+            Zanna.Terminal.SetColor(13, 0)  ' Magenta.
             PRINT "X"
         End If
     End Sub

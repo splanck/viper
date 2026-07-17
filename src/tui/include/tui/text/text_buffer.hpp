@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the TextBuffer class, the central text management
-// abstraction for Viper's TUI editor. TextBuffer orchestrates three
+// abstraction for Zanna's TUI editor. TextBuffer orchestrates three
 // underlying data structures:
 //   - PieceTable: efficient insert/erase operations on the text content
 //   - LineIndex: tracks line boundaries for fast line-number lookups
@@ -43,7 +43,7 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief High-level text buffer orchestrating piece table storage, line indexing,
 ///        and undo/redo history for the TUI text editor.
 /// @details Provides the primary editing API used by views and widgets. Edits are
@@ -169,4 +169,4 @@ class TextBuffer {
     LineIndex line_index_{};
     EditHistory history_{};
 };
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

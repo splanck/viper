@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ TEST(ZiaBinds, BindStringLiteralWithExtension) {
                                        R"(
 module Lib;
 
-func greet() {    Viper.Terminal.Say("hi");
+func greet() {    Zanna.Terminal.Say("hi");
 }
 )");
 
@@ -121,7 +121,7 @@ func start() {}
 TEST(ZiaBinds, LegacyAliasFirstNamespaceBindWorks) {
     const std::string source = R"(
 module Main;
-bind IO = Viper.Terminal;
+bind IO = Zanna.Terminal;
 
 func start() {
     IO.Say("hi");
@@ -150,7 +150,7 @@ func start() {
         hasMain = true;
         for (const auto &block : fn.blocks) {
             for (const auto &instr : block.instructions) {
-                if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Terminal.Say")
+                if (instr.op == il::core::Opcode::Call && instr.callee == "Zanna.Terminal.Say")
                     hasSay = true;
             }
         }
@@ -170,7 +170,7 @@ TEST(ZiaBinds, LegacyAliasFirstFileBindWorks) {
 module Utils;
 
 expose func greet() {
-    Viper.Terminal.Say("hi");
+    Zanna.Terminal.Say("hi");
 }
 )");
 
@@ -215,19 +215,19 @@ TEST(ZiaBinds, RuntimeCompatibilityAliasesDoNotPolluteBroadImports) {
     const std::string source = R"(
 module Main;
 
-bind Viper.Graphics;
-bind Viper.Game;
-bind Viper.Text;
-bind Viper.Localization;
-bind Viper.GUI;
-bind Viper.System;
-bind Viper.IO;
-bind Viper.Workspace;
-bind Viper.Game.UI;
-bind Viper.Game3D;
-bind Viper.System.Process;
-bind Viper.Zia.SemanticJob;
-bind Viper.Zia.ProjectIndex;
+bind Zanna.Graphics;
+bind Zanna.Game;
+bind Zanna.Text;
+bind Zanna.Localization;
+bind Zanna.GUI;
+bind Zanna.System;
+bind Zanna.IO;
+bind Zanna.Workspace;
+bind Zanna.Game.UI;
+bind Zanna.Game3D;
+bind Zanna.System.Process;
+bind Zanna.Zia.SemanticJob;
+bind Zanna.Zia.ProjectIndex;
 
 func start() {
 }
@@ -304,7 +304,7 @@ bind "./beta";
 func start() {
     var a: A.WishDup = new A.WishDup(7);
     var b: Beta.WishDup = new Beta.WishDup(11);
-    Viper.Terminal.SayInt(a.score() + b.score());
+    Zanna.Terminal.SayInt(a.score() + b.score());
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -379,7 +379,7 @@ bind "./alpha" as A;
 bind "./beta";
 
 func start() {
-    Viper.Terminal.SayInt(A.make() + Beta.make() + A.VALUE + Beta.VALUE);
+    Zanna.Terminal.SayInt(A.make() + Beta.make() + A.VALUE + Beta.VALUE);
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -450,7 +450,7 @@ class Child extends Base.Parent implements Base.Named {
 func start() {
     var child = new Child();
     var point: Base.Point = Base.Point { x = 4, y = 5 };
-    Viper.Terminal.SayInt(child.base() + point.x + point.y);
+    Zanna.Terminal.SayInt(child.base() + point.x + point.y);
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -549,8 +549,8 @@ func useFoo() -> Integer {    var f: Foo = new Foo(10);
 
 func start() {    var a: Integer = useFoo();
     var b: Integer = useBar();
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
 }
 )";
     const fs::path aPath = writeFile(dir, "a.zia", aSource);
@@ -618,7 +618,7 @@ TEST(ZiaBinds, CircularBindSelfImport) {
 module A;
 bind "./a";
 
-func start() {    Viper.Terminal.Say("self");
+func start() {    Zanna.Terminal.Say("self");
 }
 )";
     const fs::path aPath = writeFile(dir, "a.zia", aSource);
@@ -695,7 +695,7 @@ bind "./outer";
 func start() {    var o: Outer = new Outer();
     o.inner = new Inner(42);
     var result: Integer = o.test();
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -741,7 +741,7 @@ func start() {    var o: Outer = new Outer();
     (void)outerPath;
 }
 
-/// @brief A malformed bind (an incomplete "bind Viper.X." captured mid-edit by
+/// @brief A malformed bind (an incomplete "bind Zanna.X." captured mid-edit by
 /// live diagnostics) must not abort resolution of a valid relative bind beside
 /// it, nor fabricate a "<dir>/.zia" import. Regression for the 55-error cascade.
 TEST(ZiaBinds, MalformedBindDoesNotCascade) {
@@ -757,8 +757,8 @@ var WIDTH: Integer = 100;
     const std::string mainSource = R"(
 module Main;
 bind "./cfg";
-bind Viper.Game3D.
-func start() {    Viper.Terminal.SayInt(cfg.WIDTH);
+bind Zanna.Game3D.
+func start() {    Zanna.Terminal.SayInt(cfg.WIDTH);
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -798,5 +798,5 @@ func start() {    Viper.Terminal.SayInt(cfg.WIDTH);
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

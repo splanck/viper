@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_regex.h
@@ -50,7 +50,7 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern);
 ///          match, and `None` when no match exists.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 /// @note Traps on invalid pattern syntax.
 void *rt_pattern_find_option(rt_string text, rt_string pattern);
 
@@ -66,7 +66,7 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
 /// @param start Starting position (0-based).
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 /// @note Traps on invalid pattern syntax.
 void *rt_pattern_find_from_option(rt_string text, rt_string pattern, int64_t start);
 
@@ -80,7 +80,7 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern);
 /// @brief Find position of first match as an Option index.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
-/// @return Opaque Viper.Option containing the first position, or None.
+/// @return Opaque Zanna.Option containing the first position, or None.
 /// @note Traps on invalid pattern syntax.
 void *rt_pattern_find_pos_option(rt_string text, rt_string pattern);
 

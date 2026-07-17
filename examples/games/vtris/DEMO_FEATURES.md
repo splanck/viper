@@ -54,7 +54,7 @@
 3. **Return to Menu, Select [2] High Scores** (Shows leaderboard)
    - Point out top 10 format
    - Note color-coded rankings
-   - HAL, GLaDOS, VIPER are default champions
+   - HAL, GLaDOS, ZANNA are default champions
 
 4. **Return to Menu, Select [1] New Game** (Play!)
    - **Board**: Point out gradient border (yellow→blue)
@@ -152,7 +152,7 @@
 ## 📁 File Locations
 
 ```
-/Users/stephen/git/viper/
+/Users/stephen/git/zanna/
 └── demos/
     └── vTris/
         ├── README.md           ← Complete documentation
@@ -171,4 +171,4 @@ All verification tests in `/bugs/bug_testing/`:
 
 ---
 
-**Ready to impress!** This demo shows off Viper BASIC's OOP capabilities, ANSI graphics, and ability to create complex, polished applications. 🎮✨
+**Ready to impress!** This demo shows off Zanna BASIC's OOP capabilities, ANSI graphics, and ability to create complex, polished applications. 🎮✨

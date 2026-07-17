@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -290,8 +290,8 @@ typedef enum vg_filedialog_mode {
 
 /// @brief File filter
 typedef struct vg_file_filter {
-    char *name;    ///< Display name (e.g., "Viper Files")
-    char *pattern; ///< Glob pattern (e.g., "*.viper;*.vpr")
+    char *name;    ///< Display name (e.g., "Zanna Files")
+    char *pattern; ///< Glob pattern (e.g., "*.zanna;*.vpr")
 } vg_file_filter_t;
 
 /// @brief File/directory entry
@@ -410,8 +410,8 @@ void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm);
 
 /// @brief Add a file-type filter to the filter dropdown.
 /// @param dialog  File dialog.
-/// @param name    Display name (e.g. "Viper Files").
-/// @param pattern Semicolon-separated glob patterns (e.g. "*.viper;*.vpr");
+/// @param name    Display name (e.g. "Zanna Files").
+/// @param pattern Semicolon-separated glob patterns (e.g. "*.zanna;*.vpr");
 ///                empty tokens are ignored.
 void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern);
 
@@ -421,7 +421,7 @@ void vg_filedialog_clear_filters(vg_filedialog_t *dialog);
 
 /// @brief Set an extension automatically appended to the filename in save mode.
 /// @param dialog File dialog.
-/// @param ext    Extension including the leading dot (e.g. ".viper").
+/// @param ext    Extension including the leading dot (e.g. ".zanna").
 void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext);
 
 /// @brief Add a named quick-access bookmark to the sidebar.

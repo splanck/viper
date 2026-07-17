@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 //      collection, speedrun, secret.  Purely organisational;
 //      the menu UI groups achievements by category.
 //
-//   2. **`Viper.Game.AchievementTracker`** — the runtime
+//   2. **`Zanna.Game.AchievementTracker`** — the runtime
 //      class that owns:
 //        - the unlocked-bit bitmask (one bit per achievement),
 //        - stat counters (`enemies_killed`, `coins_total`,
@@ -76,10 +76,10 @@
 
 module achievements;
 
-bind Viper.Graphics;
-bind Viper.Game;
-bind Viper.Input;
-bind Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Zanna.Game;
+bind Zanna.Input;
+bind Zanna.Text.Fmt;
 bind "./config";
 bind "./palette";
 

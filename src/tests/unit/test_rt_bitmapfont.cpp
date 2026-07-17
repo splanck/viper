@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: tests/unit/test_rt_bitmapfont.cpp
 // Purpose: Unit tests for BitmapFont BDF/PSF parsing, glyph properties, and
 //   text measurement. Tests the parser logic without requiring a graphics
-//   context (no Canvas drawing tests — those require VIPER_ENABLE_GRAPHICS).
+//   context (no Canvas drawing tests — those require ZANNA_ENABLE_GRAPHICS).
 //
 // Key invariants:
 //   - BDF parser correctly reads ENCODING, BBX, BITMAP, DWIDTH fields.
@@ -120,7 +120,7 @@ static const char *test_bdf_content = "STARTFONT 2.1\n"
 /// @brief Write the test BDF content to a temporary file.
 static const char *create_test_bdf(void) {
     static char path[256];
-    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font.bdf");
+    snprintf(path, sizeof(path), "%s", "/tmp/zanna_test_font.bdf");
     FILE *f = fopen(path, "w");
     if (!f)
         return NULL;
@@ -135,7 +135,7 @@ static const char *create_test_bdf(void) {
 
 static const char *create_test_psf(void) {
     static char path[256];
-    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font.psf");
+    snprintf(path, sizeof(path), "%s", "/tmp/zanna_test_font.psf");
     FILE *f = fopen(path, "wb");
     if (!f)
         return NULL;
@@ -186,7 +186,7 @@ static const char *create_test_psf(void) {
 
 static const char *create_unicode_psf(void) {
     static char path[256];
-    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_unicode.psf");
+    snprintf(path, sizeof(path), "%s", "/tmp/zanna_test_font_unicode.psf");
     FILE *f = fopen(path, "wb");
     if (!f)
         return NULL;
@@ -218,7 +218,7 @@ static const char *create_unicode_psf(void) {
 
 static const char *create_truncated_bdf(void) {
     static char path[256];
-    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_truncated.bdf");
+    snprintf(path, sizeof(path), "%s", "/tmp/zanna_test_font_truncated.bdf");
     FILE *f = fopen(path, "w");
     if (!f)
         return NULL;
@@ -242,7 +242,7 @@ static const char *create_truncated_bdf(void) {
 
 static const char *create_truncated_psf(void) {
     static char path[256];
-    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_truncated.psf");
+    snprintf(path, sizeof(path), "%s", "/tmp/zanna_test_font_truncated.psf");
     FILE *f = fopen(path, "wb");
     if (!f)
         return NULL;
@@ -447,7 +447,7 @@ static void test_psf_load_invalid(void) {
 static void test_psf_load_bad_magic(void) {
     TEST("PSF load file with bad magic returns NULL");
     // Create a file with wrong magic bytes
-    const char *path = "/tmp/viper_test_bad_magic.psf";
+    const char *path = "/tmp/zanna_test_bad_magic.psf";
     FILE *f = fopen(path, "wb");
     assert(f);
     uint8_t bad[32] = {0xDE, 0xAD, 0xBE, 0xEF};

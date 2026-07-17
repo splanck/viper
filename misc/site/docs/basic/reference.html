@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BASIC Language Reference — Viper</title>
-  <meta name="description" content="Viper documentation: BASIC Language Reference">
+  <title>BASIC Language Reference — Zanna</title>
+  <meta name="description" content="Zanna documentation: BASIC Language Reference">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -36,10 +36,10 @@
         <li><a href="#key-language-features">Key Language Features</a></li>
         <li><a href="#table-of-contents">Table of Contents</a></li>
         <li><a href="#statements-a-z">Statements A–Z</a></li>
-        <li><a href="#runtime-classes-viper">Runtime Classes (Viper.*)</a></li>
+        <li><a href="#runtime-classes-zanna">Runtime Classes (Zanna.*)</a></li>
         <li><a href="#expressions-operators">Expressions &amp; operators</a></li>
         <li><a href="#built-in-functions">Built-in functions</a></li>
-        <li><a href="#viperlib-namespaces">ViperLib &amp; Namespaces</a></li>
+        <li><a href="#zannalib-namespaces">ZannaLib &amp; Namespaces</a></li>
         <li><a href="#reserved-root">Reserved Root</a></li>
         <li><a href="#namespaces-using">Namespaces &amp; USING</a></li>
         <li><a href="#keyword-index">Keyword index</a></li>
@@ -50,8 +50,8 @@
   </aside>
   <main class="page-main prose">
     <h1>BASIC Language Reference</h1>
-<h1 id="viper-basic-reference">Viper BASIC — Reference</h1>
-<p>Complete language reference for Viper BASIC. This document describes <strong>statements</strong>, <strong>expressions &amp; operators</strong>, *</p>
+<h1 id="zanna-basic-reference">Zanna BASIC — Reference</h1>
+<p>Complete language reference for Zanna BASIC. This document describes <strong>statements</strong>, <strong>expressions &amp; operators</strong>, *</p>
 <p><em>built-in functions<strong>, </strong>object features<strong>, and </strong>I/O</em><em>. For a tutorial introduction, see </em></p>
 <p><em>[BASIC Tutorial](basic-language.md)</em>*.</p>
 <p>---</p>
@@ -77,10 +77,10 @@
 <li>[Expressions &amp; Operators](#expressions--operators)</li>
 <li>[Built-in Functions](#built-in-functions)</li>
 <li>[Namespaces &amp; USING](#namespaces--using)</li>
-<li>[ViperLib &amp; Namespaces](#viperlib--namespaces)</li>
+<li>[ZannaLib &amp; Namespaces](#zannalib--namespaces)</li>
 <li>[Reserved Root](#reserved-root)</li>
 <li>[Keyword Index](#keyword-index)</li>
-<li>[Runtime Classes (Viper.*)](#runtime-classes-viper)</li>
+<li>[Runtime Classes (Zanna.*)](#runtime-classes-zanna)</li>
 <li>[Runtime Classes Usage Examples](#runtime-classes-usage-examples)</li>
 </ul>
 <p>---</p>
@@ -238,31 +238,31 @@ END ENUM
 110 RETURN
 </code></pre>
 <p>---</p>
-<h2 id="runtime-classes-viper">Runtime Classes (Viper.*)</h2>
-<p>Runtime classes are built-in types provided by the Viper runtime and exposed under the <code>Viper.*</code> namespace. They behave</p>
+<h2 id="runtime-classes-zanna">Runtime Classes (Zanna.*)</h2>
+<p>Runtime classes are built-in types provided by the Zanna runtime and exposed under the <code>Zanna.*</code> namespace. They behave</p>
 <p>like objects with properties and methods but are implemented by canonical runtime extern functions. The receiver (</p>
 <p>instance) is passed as the first argument when lowering to the runtime.</p>
 <ul>
-<li>Properties/methods lower to canonical <code>Viper.*</code> externs with the receiver as arg0.</li>
+<li>Properties/methods lower to canonical <code>Zanna.*</code> externs with the receiver as arg0.</li>
 <li>Behavior and traps match the underlying runtime helpers.</li>
-<li>BASIC <code>STRING</code> is an alias of <code>Viper.String</code>.</li>
+<li>BASIC <code>STRING</code> is an alias of <code>Zanna.String</code>.</li>
 <li>Optional <code>NEW</code> is available when a constructor helper is defined.</li>
 </ul>
-<h3 id="example-viper-string">Example: `Viper.String`</h3>
+<h3 id="example-zanna-string">Example: `Zanna.String`</h3>
 <pre><code data-lang="basic">
-10 DIM s AS Viper.String
+10 DIM s AS Zanna.String
 20 LET s = &quot;hello&quot;
 30 PRINT s.Length              &#x27; prints 5
 40 PRINT s.Substring(1, 3)     &#x27; zero-based start, length → &quot;ell&quot;
 45 PRINT s.Mid(1)              &#x27; suffix from index 1 → &quot;ello&quot;
-50 LET s2 = NEW Viper.String(&quot;abc&quot;)  &#x27; optional: requires ctor helper
+50 LET s2 = NEW Zanna.String(&quot;abc&quot;)  &#x27; optional: requires ctor helper
 </code></pre>
 <p>Lowering equivalence (receiver as first argument):</p>
 <ul>
-<li><code>s.Length</code> → <code>Viper.String.get_Length(s)</code></li>
-<li><code>s.Substring(i, n)</code> → <code>Viper.String.Substring(s, i, n)</code></li>
-<li><code>s.Mid(i)</code> → <code>Viper.String.Mid(s, i)</code> — suffix from position i (no length)</li>
-<li><code>NEW Viper.String(x)</code> → <code>Viper.String.FromStr(x)</code> (when available)</li>
+<li><code>s.Length</code> → <code>Zanna.String.get_Length(s)</code></li>
+<li><code>s.Substring(i, n)</code> → <code>Zanna.String.Substring(s, i, n)</code></li>
+<li><code>s.Mid(i)</code> → <code>Zanna.String.Mid(s, i)</code> — suffix from position i (no length)</li>
+<li><code>NEW Zanna.String(x)</code> → <code>Zanna.String.FromStr(x)</code> (when available)</li>
 </ul>
 <p>Null and bounds:</p>
 <ul>
@@ -273,38 +273,38 @@ END ENUM
 <pre><code data-lang="basic">
 10 DIM s AS STRING
 20 LET s = &quot;abcd&quot;
-30 PRINT s.Length   &#x27; same as Viper.String
+30 PRINT s.Length   &#x27; same as Zanna.String
 </code></pre>
-<h3 id="viper-string-api">`Viper.String` API</h3>
+<h3 id="zanna-string-api">`Zanna.String` API</h3>
 <p>Properties:</p>
 <ul>
-<li><code>Length: i64</code> → <code>Viper.String.get_Length(string)</code></li>
-<li><code>IsEmpty: i1</code> → <code>Viper.String.get_IsEmpty(string)</code></li>
+<li><code>Length: i64</code> → <code>Zanna.String.get_Length(string)</code></li>
+<li><code>IsEmpty: i1</code> → <code>Zanna.String.get_IsEmpty(string)</code></li>
 </ul>
 <p>Methods:</p>
 <ul>
-<li><code>Substring(i64 start, i64 length) -&gt; string</code> → <code>Viper.String.Substring(string, i64, i64)</code></li>
-<li><code>Mid(i64 start) -&gt; string</code> → <code>Viper.String.Mid(string, i64)</code> — suffix from start (no length)</li>
-<li><code>Concat(string other) -&gt; string</code> → <code>Viper.String.Concat(string, string)</code></li>
+<li><code>Substring(i64 start, i64 length) -&gt; string</code> → <code>Zanna.String.Substring(string, i64, i64)</code></li>
+<li><code>Mid(i64 start) -&gt; string</code> → <code>Zanna.String.Mid(string, i64)</code> — suffix from start (no length)</li>
+<li><code>Concat(string other) -&gt; string</code> → <code>Zanna.String.Concat(string, string)</code></li>
 </ul>
 <p>Constructor helper (optional):</p>
 <ul>
-<li><code>FromStr(string s) -&gt; string</code> → <code>Viper.String.FromStr(string)</code></li>
+<li><code>FromStr(string s) -&gt; string</code> → <code>Zanna.String.FromStr(string)</code></li>
 </ul>
-<h3 id="viper-collections-list-non-generic">`Viper.Collections.List` (non-generic)</h3>
+<h3 id="zanna-collections-list-non-generic">`Zanna.Collections.List` (non-generic)</h3>
 <p>Canonical, non-generic list that stores object references (opaque <code>obj</code>). Type safety is enforced by user code; the</p>
 <p>runtime does not check element types.</p>
 <p>Properties:</p>
 <ul>
-<li><code>Len: i64</code> → <code>Viper.Collections.List.get_Count(obj)</code></li>
+<li><code>Len: i64</code> → <code>Zanna.Collections.List.get_Count(obj)</code></li>
 </ul>
 <p>Methods:</p>
 <ul>
-<li><code>Push(obj value) -&gt; void</code> → <code>Viper.Collections.List.Push(obj,obj)</code></li>
-<li><code>Clear() -&gt; void</code> → <code>Viper.Collections.List.Clear(obj)</code></li>
-<li><code>RemoveAt(i64 index) -&gt; void</code> → <code>Viper.Collections.List.RemoveAt(obj,i64)</code></li>
-<li><code>Get(i64 index) -&gt; obj</code> → <code>Viper.Collections.List.Get(obj,i64)</code></li>
-<li><code>Set(i64 index, obj value) -&gt; void</code> → <code>Viper.Collections.List.Set(obj,i64,obj)</code></li>
+<li><code>Push(obj value) -&gt; void</code> → <code>Zanna.Collections.List.Push(obj,obj)</code></li>
+<li><code>Clear() -&gt; void</code> → <code>Zanna.Collections.List.Clear(obj)</code></li>
+<li><code>RemoveAt(i64 index) -&gt; void</code> → <code>Zanna.Collections.List.RemoveAt(obj,i64)</code></li>
+<li><code>Get(i64 index) -&gt; obj</code> → <code>Zanna.Collections.List.Get(obj,i64)</code></li>
+<li><code>Set(i64 index, obj value) -&gt; void</code> → <code>Zanna.Collections.List.Set(obj,i64,obj)</code></li>
 </ul>
 <p>Semantics:</p>
 <ul>
@@ -808,106 +808,106 @@ outer-body
 40 PRINT LOC(#1)         &#x27; current byte position
 50 CLOSE #1
 </code></pre>
-<h2 id="viperlib-namespaces">ViperLib &amp; Namespaces</h2>
-<p>ViperLib exposes procedures and types under the reserved <code>Viper.*</code> root namespace. You can call</p>
+<h2 id="zannalib-namespaces">ZannaLib &amp; Namespaces</h2>
+<p>ZannaLib exposes procedures and types under the reserved <code>Zanna.*</code> root namespace. You can call</p>
 <p>procedures fully qualified, or import a namespace with <code>USING</code>.</p>
 <ul>
 <li>Fully qualified:</li>
 </ul>
 <pre><code data-lang="basic">
-Viper.Terminal.PrintI64(42)
+Zanna.Terminal.PrintI64(42)
 </code></pre>
 <ul>
 <li>With USING (same line using <code>:</code>):</li>
 </ul>
 <pre><code data-lang="basic">
-USING Viper.Terminal : PrintI64(42)
+USING Zanna.Terminal : PrintI64(42)
 </code></pre>
 <ul>
 <li>Or as two lines:</li>
 </ul>
 <pre><code data-lang="basic">
-USING Viper.Terminal
+USING Zanna.Terminal
 PrintI64(42)
 </code></pre>
 <h3 id="runtime-procedures">Runtime Procedures</h3>
-<p>All runtime procedures are available under canonical <code>Viper.<em></code> namespace names. Legacy <code>rt_</em></code> public aliases are intentionally unsupported.</p>
+<p>All runtime procedures are available under canonical <code>Zanna.<em></code> namespace names. Legacy <code>rt_</em></code> public aliases are intentionally unsupported.</p>
 <p>Signatures shown as <code>Name(params)-&gt;result</code>.</p>
-<h4 id="viper-terminal">Viper.Terminal</h4>
+<h4 id="zanna-terminal">Zanna.Terminal</h4>
 <p>Console I/O operations:</p>
 <ul>
-<li><code>Viper.Terminal.PrintI64(i64)-&gt;void</code> — Print an integer to console</li>
-<li><code>Viper.Terminal.PrintF64(f64)-&gt;void</code> — Print a floating-point number to console</li>
-<li><code>Viper.Terminal.PrintStr(str)-&gt;void</code> — Print a string to console</li>
-<li><code>Viper.Terminal.ReadLine()-&gt;str</code> — Compatibility API; prefer <code>TryReadLine</code> or <code>ReadLineResult</code> for EOF</li>
+<li><code>Zanna.Terminal.PrintI64(i64)-&gt;void</code> — Print an integer to console</li>
+<li><code>Zanna.Terminal.PrintF64(f64)-&gt;void</code> — Print a floating-point number to console</li>
+<li><code>Zanna.Terminal.PrintStr(str)-&gt;void</code> — Print a string to console</li>
+<li><code>Zanna.Terminal.ReadLine()-&gt;str</code> — Compatibility API; prefer <code>TryReadLine</code> or <code>ReadLineResult</code> for EOF</li>
 </ul>
-<h4 id="viper-string">Viper.String</h4>
+<h4 id="zanna-string">Zanna.String</h4>
 <p>String manipulation:</p>
 <ul>
-<li><code>Viper.String.get_Length(str)-&gt;i64</code> — Get string length</li>
-<li><code>Viper.String.Mid(str, i64, i64)-&gt;str</code> — Extract substring (start, length)</li>
-<li><code>Viper.String.Concat(str, str)-&gt;str</code> — Concatenate two strings</li>
-<li><code>Viper.String.SplitFields(str, ptr str, i64)-&gt;i64</code> — Split string into fields</li>
-<li><code>Viper.String.FromI16(i16)-&gt;str</code> — Convert int16 to string</li>
-<li><code>Viper.String.FromI32(i32)-&gt;str</code> — Convert int32 to string</li>
-<li><code>Viper.String.FromSingle(f64)-&gt;str</code> — Convert float to string (formats with single precision)</li>
-<li><code>Viper.Text.StringBuilder.New()-&gt;ptr</code> — Create a new StringBuilder instance</li>
+<li><code>Zanna.String.get_Length(str)-&gt;i64</code> — Get string length</li>
+<li><code>Zanna.String.Mid(str, i64, i64)-&gt;str</code> — Extract substring (start, length)</li>
+<li><code>Zanna.String.Concat(str, str)-&gt;str</code> — Concatenate two strings</li>
+<li><code>Zanna.String.SplitFields(str, ptr str, i64)-&gt;i64</code> — Split string into fields</li>
+<li><code>Zanna.String.FromI16(i16)-&gt;str</code> — Convert int16 to string</li>
+<li><code>Zanna.String.FromI32(i32)-&gt;str</code> — Convert int32 to string</li>
+<li><code>Zanna.String.FromSingle(f64)-&gt;str</code> — Convert float to string (formats with single precision)</li>
+<li><code>Zanna.Text.StringBuilder.New()-&gt;ptr</code> — Create a new StringBuilder instance</li>
 </ul>
-<h4 id="viper-core-convert">Viper.Core.Convert</h4>
+<h4 id="zanna-core-convert">Zanna.Core.Convert</h4>
 <p>Type conversion:</p>
 <ul>
-<li><code>Viper.Core.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
-<li><code>Viper.Core.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
-<li><code>Viper.Core.Convert.ToStringInt(i64)-&gt;str</code> — Convert integer to string</li>
-<li><code>Viper.Core.Convert.ToStringDouble(f64)-&gt;str</code> — Convert double to string</li>
+<li><code>Zanna.Core.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
+<li><code>Zanna.Core.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
+<li><code>Zanna.Core.Convert.ToStringInt(i64)-&gt;str</code> — Convert integer to string</li>
+<li><code>Zanna.Core.Convert.ToStringDouble(f64)-&gt;str</code> — Convert double to string</li>
 </ul>
-<h4 id="viper-core-parse">Viper.Core.Parse</h4>
+<h4 id="zanna-core-parse">Zanna.Core.Parse</h4>
 <p>Type parsing (with explicit error handling):</p>
 <ul>
-<li><code>Viper.Core.Parse.TryInt(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse integer</li>
-<li><code>Viper.Core.Parse.TryNum(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse double</li>
-<li><code>Viper.Core.Parse.TryBool(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse boolean</li>
-<li><code>Viper.Core.Parse.IntOr(str, i64)-&gt;i64</code> — Parse integer or return default</li>
-<li><code>Viper.Core.Parse.NumOr(str, f64)-&gt;f64</code> — Parse double or return default</li>
-<li><code>Viper.Core.Parse.BoolOr(str, i1)-&gt;i1</code> — Parse boolean or return default</li>
-<li><code>Viper.Core.Parse.IsInt(str)-&gt;i1</code> — Validate integer text</li>
-<li><code>Viper.Core.Parse.IsNum(str)-&gt;i1</code> — Validate numeric text</li>
-<li><code>Viper.Core.Parse.IntRadix(str, i64, i64)-&gt;i64</code> — Parse radix 2-36 integer or return default</li>
+<li><code>Zanna.Core.Parse.TryInt(str)-&gt;obj&lt;Zanna.Option&gt;</code> — Try to parse integer</li>
+<li><code>Zanna.Core.Parse.TryNum(str)-&gt;obj&lt;Zanna.Option&gt;</code> — Try to parse double</li>
+<li><code>Zanna.Core.Parse.TryBool(str)-&gt;obj&lt;Zanna.Option&gt;</code> — Try to parse boolean</li>
+<li><code>Zanna.Core.Parse.IntOr(str, i64)-&gt;i64</code> — Parse integer or return default</li>
+<li><code>Zanna.Core.Parse.NumOr(str, f64)-&gt;f64</code> — Parse double or return default</li>
+<li><code>Zanna.Core.Parse.BoolOr(str, i1)-&gt;i1</code> — Parse boolean or return default</li>
+<li><code>Zanna.Core.Parse.IsInt(str)-&gt;i1</code> — Validate integer text</li>
+<li><code>Zanna.Core.Parse.IsNum(str)-&gt;i1</code> — Validate numeric text</li>
+<li><code>Zanna.Core.Parse.IntRadix(str, i64, i64)-&gt;i64</code> — Parse radix 2-36 integer or return default</li>
 </ul>
-<h4 id="viper-diagnostics">Viper.Diagnostics</h4>
+<h4 id="zanna-diagnostics">Zanna.Diagnostics</h4>
 <p>Error and diagnostic utilities:</p>
 <ul>
-<li><code>Viper.Diagnostics.Trap(str)-&gt;void</code> — Trigger a runtime trap with message</li>
+<li><code>Zanna.Diagnostics.Trap(str)-&gt;void</code> — Trigger a runtime trap with message</li>
 </ul>
 <h3 id="runtime-types">Runtime Types</h3>
-<p>ViperLib classes are recognized under <code>Viper.*</code>. These namespaced runtime types are known to the compiler for</p>
+<p>ZannaLib classes are recognized under <code>Zanna.*</code>. These namespaced runtime types are known to the compiler for</p>
 <p>declarations and construction. Their method surfaces are being exposed progressively.</p>
-<h4 id="viper">Viper</h4>
+<h4 id="zanna">Zanna</h4>
 <p>Core types:</p>
 <ul>
-<li><code>Viper.Object</code> — Base class for all objects</li>
-<li><code>Viper.String</code> — Managed string type</li>
+<li><code>Zanna.Object</code> — Base class for all objects</li>
+<li><code>Zanna.String</code> — Managed string type</li>
 </ul>
-<h4 id="viper-text">Viper.Text</h4>
+<h4 id="zanna-text">Zanna.Text</h4>
 <p>Text processing types:</p>
 <ul>
-<li><code>Viper.Text.StringBuilder</code> — Mutable string builder (can be constructed with NEW)</li>
+<li><code>Zanna.Text.StringBuilder</code> — Mutable string builder (can be constructed with NEW)</li>
 </ul>
-<h4 id="viper-io">Viper.IO</h4>
+<h4 id="zanna-io">Zanna.IO</h4>
 <p>I/O types:</p>
 <ul>
-<li><code>Viper.IO.File</code> — File operations class</li>
+<li><code>Zanna.IO.File</code> — File operations class</li>
 </ul>
-<h4 id="viper-collections">Viper.Collections</h4>
+<h4 id="zanna-collections">Zanna.Collections</h4>
 <p>Collection types:</p>
 <ul>
-<li><code>Viper.Collections.List</code> — Dynamic list container</li>
+<li><code>Zanna.Collections.List</code> — Dynamic list container</li>
 </ul>
 <h3 id="examples">Examples</h3>
 <p>Using runtime procedures:</p>
 <pre><code data-lang="basic">
-USING Viper.Terminal
-USING Viper.String
+USING Zanna.Terminal
+USING Zanna.String
 
 PrintStr(&quot;Length: &quot;)
 PrintI64(Len(&quot;hello&quot;))
@@ -915,14 +915,14 @@ PrintStr(Concat(&quot;hello&quot;, &quot; world&quot;))
 </code></pre>
 <p>Using runtime types:</p>
 <pre><code data-lang="basic">
-DIM sb AS Viper.Text.StringBuilder
-LET sb = NEW Viper.Text.StringBuilder()
+DIM sb AS Zanna.Text.StringBuilder
+LET sb = NEW Zanna.Text.StringBuilder()
 </code></pre>
 <h3 id="runtime-name-policy">Runtime Name Policy</h3>
-<p>Runtime APIs are canonical-only. Use the <code>Viper.*</code> names listed above; legacy <code>rt_*</code> public aliases are not part of the runtime surface.</p>
+<p>Runtime APIs are canonical-only. Use the <code>Zanna.*</code> names listed above; legacy <code>rt_*</code> public aliases are not part of the runtime surface.</p>
 <h2 id="reserved-root">Reserved Root</h2>
-<p>The <code>Viper</code> root namespace is reserved for ViperLib. User code may not declare symbols under <code>Viper</code> (for</p>
-<p>example, <code>NAMESPACE Viper.Tools</code> is an error). You may import and call <code>Viper.*</code> library procedures, but define your own</p>
+<p>The <code>Zanna</code> root namespace is reserved for ZannaLib. User code may not declare symbols under <code>Zanna</code> (for</p>
+<p>example, <code>NAMESPACE Zanna.Tools</code> is an error). You may import and call <code>Zanna.*</code> library procedures, but define your own</p>
 <p>symbols under a different root.</p>
 <h2 id="namespaces-using">Namespaces &amp; USING</h2>
 <p><strong>IMPORTANT</strong>: USING directives are <strong>file-scoped only</strong> and must appear at the top of the file before any declarations.</p>
@@ -930,14 +930,14 @@ LET sb = NEW Viper.Text.StringBuilder()
 <h3 id="correct-usage">Correct Usage</h3>
 <pre><code data-lang="basic">
 &#x27; ✓ CORRECT: USING at file scope, before declarations
-USING Viper.Terminal
+USING Zanna.Terminal
 
 NAMESPACE App
   SUB Main()
     &#x27; Use imported namespace without qualification
     PrintI64(99)
     &#x27; Or fully qualified (always works)
-    Viper.Terminal.PrintI64(99)
+    Zanna.Terminal.PrintI64(99)
   END SUB
 END NAMESPACE
 
@@ -951,12 +951,12 @@ NAMESPACE App
   END SUB
 END NAMESPACE
 
-USING Viper.Terminal  &#x27; Error: USING must appear before all declarations
+USING Zanna.Terminal  &#x27; Error: USING must appear before all declarations
 </code></pre>
 <pre><code data-lang="basic">
 &#x27; ✗ WRONG: USING inside NAMESPACE block (Error: E_NS_008)
 NAMESPACE App
-  USING Viper.Terminal  &#x27; Error: USING inside NAMESPACE block not allowed
+  USING Zanna.Terminal  &#x27; Error: USING inside NAMESPACE block not allowed
   SUB Main()
   END SUB
 END NAMESPACE
@@ -967,8 +967,8 @@ END NAMESPACE
 <li>**Before declarations**: USING must appear before any NAMESPACE, CLASS, or INTERFACE declarations</li>
 <li>**File-scoped effect**: Each file&#x27;s USING directives do not affect other compilation units</li>
 <li>**Two forms**:</li>
-<li>Simple: <code>USING Viper.Terminal</code> (imports all from namespace)</li>
-<li>Aliased: <code>USING VC = Viper.Terminal</code> (creates shorthand alias)</li>
+<li>Simple: <code>USING Zanna.Terminal</code> (imports all from namespace)</li>
+<li>Aliased: <code>USING VC = Zanna.Terminal</code> (creates shorthand alias)</li>
 </ul>
 <p>For complete namespace documentation, see [Namespace Reference](basic-namespaces.md).</p>
 <h2 id="keyword-index">Keyword index</h2>
@@ -1170,47 +1170,47 @@ END NAMESPACE
 <p>Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern</p>
 <p>functions provided by the runtime. Two families are currently available:</p>
 <ul>
-<li>Viper.String (aliased in BASIC as STRING)</li>
-<li>Viper.Text.StringBuilder</li>
+<li>Zanna.String (aliased in BASIC as STRING)</li>
+<li>Zanna.Text.StringBuilder</li>
 </ul>
-<p>These object members are functional equivalents of the procedural helpers under Viper.String.<em> and Viper.Text.</em>. The</p>
+<p>These object members are functional equivalents of the procedural helpers under Zanna.String.<em> and Zanna.Text.</em>. The</p>
 <p>compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.</p>
 <p>Examples:</p>
 <pre><code data-lang="basic">
-10 DIM s AS STRING                 &#x27; STRING is an alias of Viper.String
+10 DIM s AS STRING                 &#x27; STRING is an alias of Zanna.String
 20 LET s = &quot;hello&quot;
-30 Viper.Terminal.PrintI64(s.Length)
-40 Viper.Terminal.PrintStr(s.Substring(2, 3))  &#x27; zero-based start, length 3
+30 Zanna.Terminal.PrintI64(s.Length)
+40 Zanna.Terminal.PrintStr(s.Substring(2, 3))  &#x27; zero-based start, length 3
 
-100 DIM sb AS Viper.Text.StringBuilder
-110 LET sb = NEW Viper.Text.StringBuilder()
+100 DIM sb AS Zanna.Text.StringBuilder
+110 LET sb = NEW Zanna.Text.StringBuilder()
 120 &#x27; Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
 130 &#x27; sb.Append(&quot;X&quot;)
-140 &#x27; or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, &quot;X&quot;)
-150 Viper.Terminal.PrintI64(sb.Length)
-160 Viper.Terminal.PrintStr(sb.ToString())
+140 &#x27; or equivalently (procedural): sb = Zanna.Text.StringBuilder.Append(sb, &quot;X&quot;)
+150 Zanna.Terminal.PrintI64(sb.Length)
+160 Zanna.Terminal.PrintStr(sb.ToString())
 </code></pre>
 <p>Conventions and semantics:</p>
 <ul>
 <li>Properties and methods lower to canonical externs with the receiver as arg0.</li>
-<li>Examples: s.Length → call @Viper.String.get_Length(s);</li>
+<li>Examples: s.Length → call @Zanna.String.get_Length(s);</li>
 </ul>
-<p>s.Substring(i,n) → call @Viper.String.Substring(s,i,n);</p>
-<p>s.Mid(i) → call @Viper.String.Mid(s,i);</p>
-<p>sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)</p>
+<p>s.Substring(i,n) → call @Zanna.String.Substring(s,i,n);</p>
+<p>s.Mid(i) → call @Zanna.String.Mid(s,i);</p>
+<p>sb.ToString() → call @Zanna.Text.StringBuilder.ToString(sb)</p>
 <ul>
-<li>STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.</li>
+<li>STRING alias: The BASIC type STRING is the same nominal runtime class as Zanna.String.</li>
 <li>Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.</li>
 <li>Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with</li>
 </ul>
 <p>TRY/CATCH.</p>
 <ul>
-<li>Procedural equivalence: For every object member there is a procedural helper under Viper.String.* or Viper.Text.*</li>
+<li>Procedural equivalence: For every object member there is a procedural helper under Zanna.String.* or Zanna.Text.*</li>
 </ul>
 <p>with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name</p>
 <p>collides with a BASIC keyword (e.g., APPEND).</p>
-<p>Cross-reference: See [ViperLib &amp; Namespaces](#viperlib--namespaces) for procedural helpers under</p>
-<p>Viper.String.<em> and Viper.Text.</em>.</p>
+<p>Cross-reference: See [ZannaLib &amp; Namespaces](#zannalib--namespaces) for procedural helpers under</p>
+<p>Zanna.String.<em> and Zanna.Text.</em>.</p>
 <p>---</p>
 <h2 id="oop-semantics">OOP Semantics</h2>
 <h3 id="inheritance">Inheritance</h3>
@@ -1303,13 +1303,13 @@ END CLASS
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

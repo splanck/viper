@@ -1,0 +1,898 @@
+module debug_commands;
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../build/breakpoints";
+bind "../build/debug_session";
+bind "../build/var_model";
+bind "../build/build_system";
+bind "../commands/file_commands";
+bind "../ui/debug_breakpoint_overlay";
+
+bind Zanna.GUI;
+bind IO = Zanna.IO;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Convert = Zanna.Core.Convert;
+bind Pixels = Zanna.Graphics.Pixels;
+
+final DEBUG_STOP_SLOT = 1;
+final DEBUG_STOP_COLOR = 1031952639; // 0x3D7DFFFF
+
+// ============================================================================
+// MODULE: debug_commands
+// PURPOSE: Command handlers and per-frame UI sync for debugger features.
+//
+// WHERE-THIS-FITS: main_command_dispatcher routes menu, toolbar, shortcut, and
+//          palette triggers here. DebugSession owns adapter process state, while
+//          BreakpointStore owns persistent breakpoints. This module coordinates
+//          those pieces with AppShell and the active editor.
+//
+// TEACHING-NOTE: Keep debugger commands idempotent and state-aware. A command
+//          should validate saved paths, active sessions, stopped state, and
+//          breakpoint sync before touching the adapter.
+// ============================================================================
+
+func handleToggleBreakpoint(shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            store: breakpoints.BreakpointStore) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    if doc.filePath == "" or doc.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var line = engine.GetCursorLine();
+    var added = store.Toggle(doc.filePath, line);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if added {
+        shell.SetStatusLeft("Breakpoint set at line " + line);
+    } else {
+        shell.SetStatusLeft("Breakpoint cleared at line " + line);
+    }
+}
+
+/// @brief Open the integrated conditional-breakpoint editor at the cursor line.
+/// @details The non-modal overlay owns text entry and completion; the workbench
+///          applies and live-syncs the condition when the overlay is submitted.
+func handleSetCondition(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                        store: breakpoints.BreakpointStore) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    overlay.OpenCondition(shell, doc.filePath, line, store.ConditionAt(doc.filePath, line));
+}
+
+/// @brief Open the integrated logpoint editor at the cursor line.
+/// @details A logpoint logs its message with {expr} interpolation and continues;
+///          the workbench persists and live-syncs the value after overlay submit.
+func handleAddLogpoint(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                       store: breakpoints.BreakpointStore) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    overlay.OpenLogpoint(shell, doc.filePath, line, store.LogMessageAt(doc.filePath, line));
+}
+
+/// @brief Navigate the editor to the source of the clicked Call Stack frame.
+/// @details The Call Stack panel lists frames in order (row i == frame i), so the
+///          selected row maps straight to FramePath/FrameLine. Selecting a lower
+///          frame jumps there without moving the execution-stop marker.
+func handleCallStackSelect(shell: app_shell.AppShell,
+                           docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine,
+                           tabs: editor_tabs.EditorTabs,
+                           session: debug_session.DebugSession) {
+    if session == null { return; }
+    var idx = shell.toolPanels.callStackListBox.SelectedIndex;
+    if idx < 0 or idx >= session.FrameCount() { return; }
+    var path = session.FramePath(idx);
+    var line = session.FrameLine(idx);
+    if path == "" or line <= 0 { return; }
+    var maybeActive = docMgr.GetActive();
+    var needsOpen = maybeActive == null;
+    if maybeActive != null and SamePath(maybeActive!.filePath, path) == false {
+        needsOpen = true;
+    }
+    if needsOpen and IO.File.Exists(path) {
+        file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    }
+    engine.GoToLine(line);
+    shell.SetStatusLeft("Frame: " + session.FrameLabel(idx));
+}
+
+func PumpGutter(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                engine: editor_engine.EditorEngine,
+                store: breakpoints.BreakpointStore) {
+    if engine == null or engine.editor == null { return; }
+    var click = engine.editor.TakeGutterClick();
+    if Map.GetBool(click, "clicked") == false { return; }
+    var clickedLine0 = Map.GetInt(click, "line");
+    if clickedLine0 < 0 { return; }
+
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    if doc.filePath == "" or doc.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+
+    var line = clickedLine0 + 1;
+    var added = store.Toggle(doc.filePath, line);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if added {
+        shell.SetStatusLeft("Breakpoint set at line " + line);
+    } else {
+        shell.SetStatusLeft("Breakpoint cleared at line " + line);
+    }
+}
+
+func handleDebugStart(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      buildSys: build_system.BuildSystem,
+                      store: breakpoints.BreakpointStore,
+                      session: debug_session.DebugSession,
+                      saveAllBeforeBuild: Boolean) {
+    if session.IsActive() {
+        shell.SetStatusLeft("A debug session is already running");
+        return;
+    }
+    var plan = PrepareDebugLaunch(shell, docMgr, engine, tabs, buildSys, saveAllBeforeBuild);
+    if Map.GetBool(plan, "ok") == false { return; }
+    LaunchPreparedDebug(shell, session, store, plan);
+}
+
+hide func PrepareDebugLaunch(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             buildSys: build_system.BuildSystem,
+                             saveAllBeforeBuild: Boolean) -> Any {
+    var result = Map.New();
+    Map.SetBool(result, "ok", false);
+    Map.SetStr(result, "zannaBin", "");
+    Map.SetStr(result, "path", "");
+    if buildSys == null {
+        shell.SetStatusLeft("Debug failed: build system unavailable");
+        return result;
+    }
+    if buildSys.IsActive() {
+        shell.SetStatusLeft("Debug disabled while a build or run job is active");
+        GUI.Toast.Info("Wait for the active job to finish before debugging");
+        return result;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null {
+        shell.SetStatusLeft("No file to debug");
+        return result;
+    }
+    var doc = maybeDoc!;
+    if doc.isNew {
+        shell.SetStatusLeft("Save file before debugging");
+        return result;
+    }
+
+    var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                          saveAllBeforeBuild);
+    if saveResult.success == false {
+        if saveResult.message != "" {
+            shell.SetStatusLeft("Debug canceled: " + saveResult.message);
+        } else {
+            shell.SetStatusLeft("Debug canceled: files were not saved");
+        }
+        return result;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    maybeDoc = docMgr.GetActive();
+    if maybeDoc == null { return result; }
+    doc = maybeDoc!;
+    if doc.isNew { return result; }
+
+    var zannaBin = buildSys.ResolveCompiler("zanna");
+    if zannaBin == "" {
+        shell.toolPanels.SetDebugOutput("Cannot debug: the zanna compiler was not found.\n"
+            + "Add zanna to your PATH or set ZANNA_BINARY=/full/path/to/zanna.");
+        shell.SetStatusLeft("Debug failed: zanna not found");
+        GUI.Toast.Error("zanna compiler not found");
+        return result;
+    }
+
+    Map.SetBool(result, "ok", true);
+    Map.SetStr(result, "zannaBin", zannaBin);
+    Map.SetStr(result, "path", doc.filePath);
+    return result;
+}
+
+hide func LaunchPreparedDebug(shell: app_shell.AppShell,
+                              session: debug_session.DebugSession,
+                              store: breakpoints.BreakpointStore,
+                              plan: Any) -> Boolean {
+    var zannaBin = Map.GetStr(plan, "zannaBin");
+    var path = Map.GetStr(plan, "path");
+    if session.Launch(zannaBin, path, store) {
+        shell.toolPanels.SetDebugOutput("[debug] launched " + path
+            + " — running to the first breakpoint...");
+        shell.SetStatusLeft("Debugging " + path);
+        GUI.Toast.Info("Debugger started");
+        return true;
+    } else {
+        shell.SetStatusLeft("Debug session did not start");
+        GUI.Toast.Warning("Debug session did not start");
+    }
+    return false;
+}
+
+/// @brief Restart: terminate any active session, then relaunch the active file
+///        with the current breakpoints.
+func handleDebugRestart(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        tabs: editor_tabs.EditorTabs,
+                        buildSys: build_system.BuildSystem,
+                        store: breakpoints.BreakpointStore,
+                        session: debug_session.DebugSession,
+                        saveAllBeforeBuild: Boolean) {
+    var plan = PrepareDebugLaunch(shell, docMgr, engine, tabs, buildSys, saveAllBeforeBuild);
+    if Map.GetBool(plan, "ok") == false { return; }
+    if session.IsActive() {
+        if session.RequestRestart(Map.GetStr(plan, "zannaBin"), Map.GetStr(plan, "path")) {
+            shell.toolPanels.SetDebugOutput("[debug] restarting...");
+            shell.SetStatusLeft("Restarting debugger...");
+            GUI.Toast.Info("Restarting debugger");
+        } else {
+            shell.SetStatusLeft("Debug restart did not start");
+        }
+        return;
+    }
+    LaunchPreparedDebug(shell, session, store, plan);
+}
+
+/// @brief Per-frame pump: drain adapter events and refresh the UI on change.
+func DebugUpdate(shell: app_shell.AppShell,
+                 docMgr: document_manager.DocumentManager,
+                 engine: editor_engine.EditorEngine,
+                 tabs: editor_tabs.EditorTabs,
+                 store: breakpoints.BreakpointStore,
+                 session: debug_session.DebugSession) {
+    if session == null or session.processHandle == null { return; }
+    if session.Poll() {
+        if session.restartPending and session.IsActive() == false {
+            var restartBin = session.restartZannaBin;
+            var restartPath = session.restartPath;
+            session.ClearRestartRequest();
+            var plan = Map.New();
+            Map.SetBool(plan, "ok", true);
+            Map.SetStr(plan, "zannaBin", restartBin);
+            Map.SetStr(plan, "path", restartPath);
+            LaunchPreparedDebug(shell, session, store, plan);
+        }
+        Publish(shell, docMgr, engine, tabs, session);
+        if session.evalJustArrived {
+            session.evalJustArrived = false;
+            var em = session.lastEvalExpr + " = ";
+            if session.lastEvalOk {
+                em = em + session.lastEvalValue + " : " + session.lastEvalType;
+            } else {
+                em = em + "(unavailable)";
+            }
+            shell.SetStatusLeft(em);
+            GUI.Toast.Info(em);
+        }
+    }
+}
+
+func handleDebugContinue(shell: app_shell.AppShell,
+                         session: debug_session.DebugSession) {
+    if session.Continue() {
+        shell.SetStatusLeft("Running...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to continue");
+    }
+}
+
+func handleDebugStepOver(shell: app_shell.AppShell,
+                         session: debug_session.DebugSession) {
+    if session.StepOver() {
+        shell.SetStatusLeft("Stepping...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to step");
+    }
+}
+
+/// @brief Step into the next debuggable call in a paused debug session.
+func handleDebugStepIn(shell: app_shell.AppShell,
+                       session: debug_session.DebugSession) {
+    if session.StepIn() {
+        shell.SetStatusLeft("Stepping into...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to step into");
+    }
+}
+
+/// @brief Step out of the current function in a paused debug session.
+func handleDebugStepOut(shell: app_shell.AppShell,
+                        session: debug_session.DebugSession) {
+    if session.StepOut() {
+        shell.SetStatusLeft("Stepping out...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to step out of");
+    }
+}
+
+func handleDebugPause(shell: app_shell.AppShell,
+                      session: debug_session.DebugSession) {
+    if session.Pause() {
+        shell.SetStatusLeft("Pausing...");
+    } else {
+        shell.SetStatusLeft("Nothing running to pause");
+    }
+}
+
+func handleDebugStop(shell: app_shell.AppShell,
+                     session: debug_session.DebugSession) {
+    if session.RequestTerminate() {
+        shell.toolPanels.SetDebugOutput("[debug] stopping...");
+        shell.SetStatusLeft("Stopping debugger...");
+        GUI.Toast.Info("Stopping debugger");
+    } else {
+        shell.SetStatusLeft("No active debug session");
+    }
+}
+
+hide func isIdentChar(ch: String) -> Boolean {
+    return (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z")
+        or (ch >= "0" and ch <= "9") or ch == "_";
+}
+
+/// @brief Extract the identifier spanning 0-based column `col0` of `lineText`.
+hide func identifierAt(lineText: String, col0: Integer) -> String {
+    var n = Str.get_Length(lineText);
+    var p = col0 + 1; // 1-based for MidLen
+    if p < 1 or p > n { return ""; }
+    if isIdentChar(Str.MidLen(lineText, p, 1)) == false { return ""; }
+    var start = p;
+    while start > 1 and isIdentChar(Str.MidLen(lineText, start - 1, 1)) {
+        start = start - 1;
+    }
+    var endp = p;
+    while endp < n and isIdentChar(Str.MidLen(lineText, endp + 1, 1)) {
+        endp = endp + 1;
+    }
+    return Str.MidLen(lineText, start, endp - start + 1);
+}
+
+/// @brief The identifier under the editor cursor, or "" if none.
+hide func wordAtCursor(engine: editor_engine.EditorEngine) -> String {
+    var idx = engine.GetCursorLine() - 1; // 0-based source line
+    var col0 = engine.GetCursorCol() - 1; // 0-based column
+    var source = engine.GetTextSnapshot();
+    var lines = Str.Split(source, "\n");
+    if idx < 0 or idx >= Seq.get_Count(lines) { return ""; }
+    var lineText = Obj.ToString(Seq.Get(lines, idx));
+    if Str.EndsWith(lineText, "\r") {
+        lineText = Str.Left(lineText, Str.get_Length(lineText) - 1);
+    }
+    return identifierAt(lineText, col0);
+}
+
+/// @brief Editor context-menu "Evaluate": evaluate the identifier under the
+///        cursor at the current debug stop. The result arrives asynchronously
+///        and is surfaced by DebugUpdate.
+func handleEvaluateAtCursor(shell: app_shell.AppShell,
+                            engine: editor_engine.EditorEngine,
+                            session: debug_session.DebugSession) {
+    if session == null or session.IsActive() == false or session.stopped == false {
+        shell.SetStatusLeft("Evaluate: pause at a breakpoint first");
+        GUI.Toast.Info("Evaluate works while paused at a breakpoint");
+        return;
+    }
+    var expr = DebugExpressionFromEditor(engine);
+    if expr == "" {
+        shell.SetStatusLeft("Evaluate: select an expression or place the cursor on a variable");
+        return;
+    }
+    session.AddWatch(expr);
+    if session.Evaluate(expr) {
+        shell.SetStatusLeft("Evaluating and watching " + expr + "...");
+    }
+}
+
+/// @brief Prompt for a watch expression and add it to the Variables panel.
+/// @details Watches can be created before execution stops; they refresh as soon
+///          as the adapter reaches a stopped frame. Duplicate expressions are
+///          left in place instead of adding another row.
+/// @param shell Workbench shell for prompt/status feedback.
+/// @param session Debug session whose watch list should be updated.
+func handleAddWatch(shell: app_shell.AppShell,
+                    session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    var expr = Str.Trim(GUI.MessageBox.Prompt("Add Watch", "Expression:"));
+    handleAddWatchExpression(shell, session, expr);
+}
+
+/// @brief Add a watch expression captured by command UI.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watch list should be updated.
+/// @param expression User-entered expression text.
+/// @return True when a new watch was added.
+func handleAddWatchExpression(shell: app_shell.AppShell,
+                              session: debug_session.DebugSession,
+                              expression: String) -> Boolean {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return false;
+    }
+    var expr = Str.Trim(expression);
+    if expr == "" {
+        shell.SetStatusLeft("Watch not added");
+        return false;
+    }
+    if session.AddWatch(expr) {
+        if session.stopped {
+            session.RefreshWatches();
+            shell.SetStatusLeft("Watching " + expr);
+        } else {
+            shell.SetStatusLeft("Watching " + expr + " when the debugger stops");
+        }
+        PopulateDebugPanels(shell, session);
+        shell.toolPanels.ShowVariablesPanel();
+        return true;
+    } else {
+        shell.SetStatusLeft("Watch already exists: " + expr);
+        shell.toolPanels.ShowVariablesPanel();
+    }
+    return false;
+}
+
+/// @brief Remove the selected watch row from the Variables panel.
+/// @details The ListBox row data is populated from VirtualTree node IDs, so the
+///          handler does not parse visible labels that may contain arbitrary
+///          expression text.
+/// @param shell Workbench shell containing the selected Variables row.
+/// @param session Debug session whose watch list should be updated.
+func handleRemoveSelectedWatch(shell: app_shell.AppShell,
+                               session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    var index = SelectedWatchIndex(shell);
+    if index < 0 {
+        shell.SetStatusLeft("Select a watch row to remove");
+        shell.toolPanels.ShowVariablesPanel();
+        return;
+    }
+    var expr = session.WatchExpression(index);
+    if session.RemoveWatch(index) {
+        PopulateDebugPanels(shell, session);
+        shell.toolPanels.ShowVariablesPanel();
+        if expr != "" {
+            shell.SetStatusLeft("Removed watch " + expr);
+        } else {
+            shell.SetStatusLeft("Removed watch");
+        }
+    } else {
+        shell.SetStatusLeft("Watch row is no longer available");
+    }
+}
+
+/// @brief Refresh all watch expressions at the current debug stop.
+/// @details Refresh is explicit for cases where locals changed through a manual
+///          evaluate or an adapter event was missed; normal breakpoint stops
+///          still refresh automatically.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watches should be refreshed.
+func handleRefreshWatches(shell: app_shell.AppShell,
+                          session: debug_session.DebugSession) {
+    if session == null or session.WatchCount() == 0 {
+        shell.SetStatusLeft("No watches to refresh");
+        return;
+    }
+    if session.stopped == false {
+        shell.SetStatusLeft("Watches refresh when the debugger is paused");
+        GUI.Toast.Info("Pause at a breakpoint before refreshing watches");
+        return;
+    }
+    session.RefreshWatches();
+    PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowVariablesPanel();
+    shell.SetStatusLeft("Refreshing watches...");
+}
+
+/// @brief Clear every persistent watch expression from the debug session.
+/// @details This does not terminate the adapter or clear locals/call stack rows;
+///          it only removes the user-created Watches section.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watches should be cleared.
+func handleClearWatches(shell: app_shell.AppShell,
+                        session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    if session.WatchCount() == 0 {
+        shell.SetStatusLeft("No watches to clear");
+        shell.toolPanels.ShowVariablesPanel();
+        return;
+    }
+    session.ClearWatches();
+    PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowVariablesPanel();
+    shell.SetStatusLeft("Cleared watches");
+}
+
+/// @brief "Run to Cursor": continue execution until it reaches the cursor's line
+///        in the active document, via a one-shot breakpoint. Only valid while
+///        paused at a breakpoint (mirrors Evaluate's gating).
+func handleRunToCursor(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       session: debug_session.DebugSession) {
+    if session == null or session.IsActive() == false or session.stopped == false {
+        shell.SetStatusLeft("Run to Cursor: pause at a breakpoint first");
+        GUI.Toast.Info("Run to Cursor works while paused at a breakpoint");
+        return;
+    }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        shell.SetStatusLeft("Run to Cursor: no active file");
+        return;
+    }
+    var line = engine.GetCursorLine();
+    if session.RunToLine(doc!.filePath, line) {
+        shell.SetStatusLeft("Running to line " + line + "...");
+    }
+}
+
+/// @brief Choose the expression to send to the debug adapter evaluator.
+/// @details A non-empty primary selection wins so users can evaluate compound
+///          expressions. With no selection, the command falls back to the
+///          identifier under the cursor for quick variable inspection.
+/// @param engine Active editor engine.
+/// @return Trimmed selected text or cursor identifier, empty if unavailable.
+func DebugExpressionFromEditor(engine: editor_engine.EditorEngine) -> String {
+    if engine == null or engine.editor == null { return ""; }
+    if engine.editor.CursorHasSelection(0) {
+        var selected = Str.Trim(engine.editor.GetSelectedText());
+        if selected != "" { return selected; }
+    }
+    return wordAtCursor(engine);
+}
+
+func Publish(shell: app_shell.AppShell,
+             docMgr: document_manager.DocumentManager,
+             engine: editor_engine.EditorEngine,
+             tabs: editor_tabs.EditorTabs,
+             session: debug_session.DebugSession) {
+    var console = session.programOutput;
+    var stopInfo = session.FormatConsole();
+    if stopInfo != "" {
+        if console != "" { console = console + "\n"; }
+        console = console + stopInfo;
+    }
+    shell.toolPanels.SetDebugOutput(console);
+    PopulateDebugPanels(shell, session);
+    if session.lastType == "stopped" {
+        shell.SetStatusLeft("Stopped at " + session.activePath + ":" + session.lastLine
+            + " (" + session.lastReason + ")");
+        OpenStopLocation(shell, docMgr, engine, tabs, session);
+    } else if session.lastType == "terminated" {
+        ClearDebugStopMarker(engine);
+        shell.SetStatusLeft("Program exited (" + session.lastReason + ", code "
+            + session.exitCode + ")");
+    }
+}
+
+/// @brief Fill the Variables and Call Stack panels from the session's structured
+///        stop snapshot. Cleared when not stopped. Does not change the active tab,
+///        so the user's panel choice (Debug Console etc.) is preserved; the rows
+///        are ready the moment they click Variables or Call Stack.
+func PopulateDebugPanels(shell: app_shell.AppShell,
+                         session: debug_session.DebugSession) {
+    shell.toolPanels.ClearToolRows(shell.toolPanels.variablesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.callStackListBox);
+    if session == null { return; }
+
+    var variableTree = GUI.VirtualTree.New();
+    var wc = session.WatchCount();
+    if session.stopped == false and wc == 0 { return; }
+    if wc > 0 {
+        variableTree.AddNode("", "watches", "Watches");
+        var wi = 0;
+        while wi < wc {
+            variableTree.AddNode("watches", "watch:" + wi, session.WatchLabel(wi));
+            wi = wi + 1;
+        }
+        variableTree.Expand("watches");
+    }
+
+    var lc = 0;
+    if session.stopped {
+        lc = session.LocalCount();
+    }
+    if lc == 0 {
+        if session.stopped == false {
+            variableTree.AddNode("", "locals", "Locals: pause debugger to inspect");
+        } else if wc == 0 {
+            variableTree.AddNode("", "locals-empty", "(no locals in scope)");
+        } else {
+            variableTree.AddNode("", "locals", "Locals: (none)");
+        }
+    } else {
+        variableTree.AddNode("", "locals", "Locals");
+        var i = 0;
+        while i < lc {
+            AddVarNode(session, variableTree, "locals", session.LocalName(i),
+                       session.LocalName(i), session.LocalValue(i),
+                       session.LocalType(i), session.LocalVarRef(i),
+                       session.LocalChildCount(i));
+            i = i + 1;
+        }
+        variableTree.Expand("locals");
+    }
+    RenderVariableTree(shell, variableTree);
+
+    if session.stopped == false { return; }
+    var fc = session.FrameCount();
+    if fc == 0 {
+        shell.toolPanels.AddToolSectionRow(shell.toolPanels.callStackListBox, "(no frames)");
+    } else {
+        var j = 0;
+        while j < fc {
+            shell.toolPanels.AddToolPlainRow(shell.toolPanels.callStackListBox, "#" + j + "  " + session.FrameLabel(j), 0);
+            j = j + 1;
+        }
+    }
+}
+
+/// @brief Render the structured Variables tree into the existing tool ListBox.
+hide func RenderVariableTree(shell: app_shell.AppShell,
+                             tree: GUI.VirtualTree) {
+    if shell == null or tree == null { return; }
+    var rows = tree.VisibleRows();
+    if rows == null { return; }
+    var i = 0;
+    while i < Seq.get_Count(rows) {
+        var row = Seq.Get(rows, i);
+        var depth = Map.GetInt(row, "depth");
+        var text = Map.GetStr(row, "text");
+        var id = Map.GetStr(row, "id");
+        var item: Any = null;
+        if depth <= 0 {
+            item = shell.toolPanels.AddToolSectionRow(shell.toolPanels.variablesListBox, text);
+        } else {
+            item = shell.toolPanels.AddToolPlainRow(shell.toolPanels.variablesListBox, IndentForDepth(depth) + text, 0);
+        }
+        if item != null and id != "" {
+            GUI.ListBox.ItemSetData(item, id);
+        }
+        i = i + 1;
+    }
+}
+
+/// @brief Return the selected watch index from the Variables panel, or -1.
+/// @details Only node IDs with the `watch:` prefix are accepted; section rows
+///          and locals intentionally cannot be removed by watch commands.
+/// @param shell Workbench shell containing the Variables list box.
+/// @return Zero-based watch index, or -1 when no watch row is selected.
+hide func SelectedWatchIndex(shell: app_shell.AppShell) -> Integer {
+    if shell == null or shell.toolPanels.variablesListBox == null { return -1; }
+    var item = shell.toolPanels.variablesListBox.Selected;
+    if item == null { return -1; }
+    var id = GUI.ListBox.ItemGetData(item);
+    if Str.StartsWith(id, "watch:") == false { return -1; }
+    return Convert.ToInt64(Str.Mid(id, 7));
+}
+
+/// @brief Add a variable row to @p tree and, when it is an expanded composite,
+///        recurse into its (lazily fetched, cached) children.
+/// @details Node ids are stable name-paths ("nums", "nums/[0]") so expansion
+///          state survives steps. A leaf that somehow carries an expanded flag
+///          (e.g. it was a composite before a step turned it scalar) is pruned so
+///          the flag set stays clean.
+hide func AddVarNode(session: debug_session.DebugSession, tree: GUI.VirtualTree,
+                     parentId: String, path: String, name: String, value: String,
+                     typeName: String, varRef: Integer, childCount: Integer) {
+    var expandable = varRef > 0 and childCount > 0;
+    var expanded = expandable and session.varTree.IsExpanded(path);
+    if expandable == false and session.varTree.IsExpanded(path) {
+        session.varTree.SetExpanded(path, false); // prune a now-scalar node
+    }
+    var twisty = "   ";
+    if expandable {
+        if expanded { twisty = " ▾ "; } else { twisty = " ▸ "; }
+    }
+    var label = twisty + name + " = " + value + " : " + typeName;
+    tree.AddNode(parentId, path, label);
+    if expanded == false { return; }
+
+    if session.varTree.HasCache(path) == false {
+        FetchAndCacheChildren(session, path, varRef);
+    }
+    var kids = session.varTree.GetCache(path);
+    if kids == null { return; }
+    tree.Expand(path);
+    var k = 0;
+    while k < kids.items.count() {
+        var c = kids.items.get(k) as var_model.VarChildRec;
+        AddVarNode(session, tree, path, path + "/" + c.name, c.name, c.value,
+                   c.typeName, c.varRef, c.childCount);
+        k = k + 1;
+    }
+}
+
+/// @brief Synchronously fetch and cache one level of children for @p path.
+/// @details Copies the adapter reply into owned VarChildRec records before it can
+///          be overwritten by a deeper fetch, then caches them under the path.
+hide func FetchAndCacheChildren(session: debug_session.DebugSession, path: String,
+                                varRef: Integer) {
+    if session.FetchChildren(varRef, 0, 100) == false { return; }
+    var wrap = new var_model.VarChildList();
+    var n = session.VarChildCount();
+    var i = 0;
+    while i < n {
+        var rec = new var_model.VarChildRec();
+        rec.name = session.VarChildName(i);
+        rec.value = session.VarChildValue(i);
+        rec.typeName = session.VarChildType(i);
+        rec.varRef = session.VarChildVarRef(i);
+        rec.childCount = session.VarChildChildCount(i);
+        wrap.items.add(rec);
+        i = i + 1;
+    }
+    session.varTree.PutCache(path, wrap);
+}
+
+/// @brief Toggle expand/collapse of the selected Variables row. Returns true when
+///        a variable row was activated (so the caller re-renders).
+/// @details Bound to the Variables list selection change. Expanding an unloaded
+///          composite triggers a synchronous child fetch on the next render.
+func HandleVariableActivate(shell: app_shell.AppShell,
+                            session: debug_session.DebugSession) -> Boolean {
+    if shell == null or session == null or session.stopped == false { return false; }
+    if shell.toolPanels.variablesListBox == null { return false; }
+    var item = shell.toolPanels.variablesListBox.Selected;
+    if item == null { return false; }
+    var id = GUI.ListBox.ItemGetData(item);
+    // Local variable rows use their name-path as the id; watch/section rows use
+    // their own prefixes and are handled elsewhere.
+    if id == "" or Str.StartsWith(id, "watch:") or id == "locals"
+        or id == "watches" or id == "locals-empty" { return false; }
+    session.varTree.Toggle(id);
+    PopulateDebugPanels(shell, session);
+    return true;
+}
+
+hide func IndentForDepth(depth: Integer) -> String {
+    var text = "";
+    var i = 0;
+    while i < depth {
+        text = text + "  ";
+        i = i + 1;
+    }
+    return text;
+}
+
+/// @brief True if two paths denote the same source file after absolute
+///        lexical normalization.
+/// @details Debugger stop paths can differ from editor paths by relative
+///          spelling or `.`/`..` segments. Normalized absolute equality covers
+///          those cases without the false positives caused by suffix matching
+///          similarly named files in different directories.
+func SamePath(a: String, b: String) -> Boolean {
+    if a == b { return true; }
+    if a == "" or b == "" { return false; }
+    var na = Path.Normalize(Path.Absolute(a));
+    var nb = Path.Normalize(Path.Absolute(b));
+    return na == nb;
+}
+
+func OpenStopLocation(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      session: debug_session.DebugSession) {
+    if session.activePath == "" or session.lastLine <= 0 { return; }
+    var maybeActive = docMgr.GetActive();
+    var needsOpen = false;
+    if maybeActive == null {
+        needsOpen = true;
+    } else {
+        var active = maybeActive!;
+        if SamePath(active.filePath, session.activePath) == false {
+            needsOpen = true;
+        }
+    }
+    if needsOpen {
+        if IO.File.Exists(session.activePath) {
+            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, session.activePath);
+        }
+    }
+    engine.GoToLine(session.lastLine);
+    MarkDebugStopLine(engine, session.lastLine);
+}
+
+/// @brief Draw the current debug stop line in the secondary gutter slot.
+/// @details Breakpoints use slot 0, so this marker can be cleared/repainted
+///          independently as the VM stops on different lines.
+/// @param engine Editor containing the stopped source file.
+/// @param line One-based source line reported by the debug adapter.
+func MarkDebugStopLine(engine: editor_engine.EditorEngine,
+                       line: Integer) {
+    if engine == null or engine.editor == null or line <= 0 { return; }
+    engine.editor.ClearGutterIcons(DEBUG_STOP_SLOT);
+    engine.editor.SetGutterIcon(line - 1, DebugStopIcon(), DEBUG_STOP_SLOT);
+}
+
+/// @brief Clear the current debug stop marker from the editor gutter.
+/// @param engine Editor whose secondary gutter slot should be cleared.
+func ClearDebugStopMarker(engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    engine.editor.ClearGutterIcons(DEBUG_STOP_SLOT);
+}
+
+/// @brief Build a compact arrow marker for the current debug execution line.
+/// @details The icon is generated at runtime to keep ZannaIDE dependency-free
+///          and avoid adding platform-specific image assets.
+/// @return Pixels object suitable for CodeEditor.SetGutterIcon.
+func DebugStopIcon() -> Any {
+    var px = Pixels.New(8, 8);
+    px.Clear();
+    px.SetRgba(2, 1, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 2, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 2, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(5, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 6, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 6, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 7, DEBUG_STOP_COLOR);
+    return px;
+}

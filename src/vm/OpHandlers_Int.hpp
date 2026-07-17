@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "viper/vm/internal/OpHelpers.hpp"
+#include "zanna/vm/internal/OpHelpers.hpp"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/VM.hpp"

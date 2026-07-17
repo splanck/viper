@@ -10,16 +10,16 @@ set(_x64_tests
 
 foreach (_case IN LISTS _x64_tests)
     set(_target test_binenc_${_case})
-    set(_source ${VIPER_TESTS_DIR}/codegen/binenc/test_${_case}.cpp)
+    set(_source ${ZANNA_TESTS_DIR}/codegen/binenc/test_${_case}.cpp)
 
     add_executable(${_target} ${_source})
     if (WIN32)
         target_sources(${_target} PRIVATE
-                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+                ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_target} PRIVATE viper_testing viper_codegen_x86_64 viper_codegen_common)
+    target_link_libraries(${_target} PRIVATE zanna_testing zanna_codegen_x86_64 zanna_codegen_common)
     target_include_directories(${_target} PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    viper_add_ctest(${_target} $<TARGET_FILE:${_target}>)
+    zanna_add_ctest(${_target} $<TARGET_FILE:${_target}>)
 endforeach ()
 
 # --- AArch64 binary encoder tests ---
@@ -28,14 +28,14 @@ set(_a64_tests
 
 foreach (_case IN LISTS _a64_tests)
     set(_target test_binenc_${_case})
-    set(_source ${VIPER_TESTS_DIR}/codegen/binenc/test_${_case}.cpp)
+    set(_source ${ZANNA_TESTS_DIR}/codegen/binenc/test_${_case}.cpp)
 
     add_executable(${_target} ${_source})
     if (WIN32)
         target_sources(${_target} PRIVATE
-                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+                ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_target} PRIVATE viper_testing il_codegen_aarch64 viper_codegen_common)
+    target_link_libraries(${_target} PRIVATE zanna_testing il_codegen_aarch64 zanna_codegen_common)
     target_include_directories(${_target} PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    viper_add_ctest(${_target} $<TARGET_FILE:${_target}>)
+    zanna_add_ctest(${_target} $<TARGET_FILE:${_target}>)
 endforeach ()

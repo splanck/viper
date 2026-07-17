@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the bump-pointer arena used throughout Viper's support library.
+// Implements the bump-pointer arena used throughout Zanna's support library.
 // The arena manages a single contiguous buffer and satisfies allocation
 // requests by monotonically advancing an offset.  Callers can request memory
 // with an explicit alignment and the arena will compute the correct aligned

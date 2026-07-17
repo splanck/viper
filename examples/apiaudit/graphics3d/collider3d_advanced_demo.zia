@@ -1,9 +1,9 @@
 module Collider3DAdvancedDemo;
 
-bind Viper.Graphics;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func heightColor(hi: Integer, lo: Integer) -> Integer {
     return hi * 16777216 + lo * 65536 + 255;

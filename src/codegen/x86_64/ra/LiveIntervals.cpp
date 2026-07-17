@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include <limits>
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 namespace {
 
@@ -122,4 +122,4 @@ const LiveInterval *LiveIntervals::lookup(uint16_t vreg) const noexcept {
     return &it->second;
 }
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

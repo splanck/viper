@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_lazy.c
 // Purpose: Implements the Lazy<T> deferred initialization wrapper for the
-//          Viper.Functional.Lazy class. The wrapped factory function is called at most
+//          Zanna.Functional.Lazy class. The wrapped factory function is called at most
 //          once on first Value access; subsequent accesses return the cached
 //          value without re-invoking the factory.
 //
@@ -320,7 +320,7 @@ void *rt_lazy_flat_map(void *obj, void *(*fn)(void *)) {
     return new_lazy;
 }
 
-/// @brief IL trampoline for `rt_lazy_new`. Registered as `Viper.Functional.Lazy.New`, the only
+/// @brief IL trampoline for `rt_lazy_new`. Registered as `Zanna.Functional.Lazy.New`, the only
 /// public factory that defers evaluation: `supplier` is invoked once on first access instead of
 /// at construction time (the `Of*` factories all wrap already-computed values).
 void *rt_lazy_new_wrapper(void *supplier) {

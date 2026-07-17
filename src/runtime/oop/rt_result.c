@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_result.c
-// Purpose: Implements the Result<T,E> type (Ok/Err) for the Viper.Result class.
+// Purpose: Implements the Result<T,E> type (Ok/Err) for the Zanna.Result class.
 //          Wraps either a success value or an error value as a heap-allocated
 //          object, providing an alternative to exceptions for error propagation.
 //

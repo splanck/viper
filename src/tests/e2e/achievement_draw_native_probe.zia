@@ -1,8 +1,8 @@
 module achievement_draw_native_probe;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var achievements = AchievementTracker.New(2);

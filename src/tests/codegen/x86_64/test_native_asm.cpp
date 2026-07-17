@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,7 +76,7 @@ static void writeFile(const std::string &path, const std::string &text) {
     ofs << text;
 }
 
-using Pipeline = viper::codegen::x64::CodegenPipeline;
+using Pipeline = zanna::codegen::x64::CodegenPipeline;
 
 /// Check whether the system assembler (cc/clang) is reachable.
 static bool hasSystemAssembler() {

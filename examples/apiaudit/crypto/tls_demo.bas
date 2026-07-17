@@ -1,5 +1,5 @@
-' API Audit: Viper.Crypto.Tls (BASIC)
-PRINT "=== API Audit: Viper.Crypto.Tls ==="
+' API Audit: Zanna.Crypto.Tls (BASIC)
+PRINT "=== API Audit: Zanna.Crypto.Tls ==="
 PRINT "NOTE: TLS requires actual network connections."
 PRINT "Testing API surface only - connect calls may fail gracefully."
 PRINT "Tls API methods:"

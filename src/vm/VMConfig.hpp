@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: vm/VMConfig.hpp
 // Purpose: Compile-time configuration flags and dispatch hook macros for the
-//          Viper VM subsystem, controlling dispatch strategy selection, pre/post
+//          Zanna VM subsystem, controlling dispatch strategy selection, pre/post
 //          instruction hooks for profiling and polling, tail-call optimization,
 //          and opcode execution counting.
 // Key invariants: Hooks compile away to no-ops when not enabled.
-//                 VIPER_VM_TAILCALL defaults to 1 (tail-call optimization enabled).
-//                 VIPER_VM_OPCOUNTS defaults to 1 (opcode counting available).
+//                 ZANNA_VM_TAILCALL defaults to 1 (tail-call optimization enabled).
+//                 ZANNA_VM_OPCOUNTS defaults to 1 (opcode counting available).
 //                 When opcode counting is enabled, DISPATCH_BEFORE is redefined to
 //                 increment per-opcode counters (gated by runtime config flag).
 // Ownership/Lifetime: Header-only; no owning objects or runtime state.
@@ -30,11 +30,11 @@
 
 /// @brief Indicates whether threaded dispatch is supported by this build.
 /// @details Threaded dispatch requires GCC/Clang labels-as-values support in
-///          addition to the `VIPER_VM_THREADED` build flag.
-#if defined(VIPER_VM_THREADED) && (defined(__GNUC__) || defined(__clang__))
-#define VIPER_THREADING_SUPPORTED 1
+///          addition to the `ZANNA_VM_THREADED` build flag.
+#if defined(ZANNA_VM_THREADED) && (defined(__GNUC__) || defined(__clang__))
+#define ZANNA_THREADING_SUPPORTED 1
 #else
-#define VIPER_THREADING_SUPPORTED 0
+#define ZANNA_THREADING_SUPPORTED 0
 #endif
 
 // -----------------------------------------------------------------------------
@@ -48,20 +48,20 @@
 /// @brief Hook executed immediately before each instruction dispatch.
 /// @details Override this macro to inject profiling or instrumentation. The
 ///          default definition is a no-op.
-#ifndef VIPER_VM_DISPATCH_BEFORE
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
+#ifndef ZANNA_VM_DISPATCH_BEFORE
+#define ZANNA_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
     do {                                                                                           \
     } while (0)
 #endif
 
-// NOTE: VIPER_VM_DISPATCH_AFTER is optimized for the common case where polling
+// NOTE: ZANNA_VM_DISPATCH_AFTER is optimized for the common case where polling
 // is disabled (interruptEveryN == 0). The pollTick increment only occurs when
 // polling is active, avoiding wasted cycles on every instruction dispatch.
 /// @brief Hook executed immediately after each instruction dispatch.
 /// @details The default implementation performs periodic polling when enabled
 ///          via the runtime config. Override to inject custom instrumentation.
-#ifndef VIPER_VM_DISPATCH_AFTER
-#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
+#ifndef ZANNA_VM_DISPATCH_AFTER
+#define ZANNA_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
     do {                                                                                           \
         if ((ST).vm() && (ST).vm()->pollPendingInterrupt()) [[unlikely]] {                         \
             (ST).requestPause();                                                                   \
@@ -84,34 +84,34 @@
 /// @brief Compile-time toggle for tail-call optimization.
 /// @details When set to 0, tail-call reuse of frames is disabled even if the
 ///          VM otherwise supports it.
-#ifndef VIPER_VM_TAILCALL
-#define VIPER_VM_TAILCALL 1
+#ifndef ZANNA_VM_TAILCALL
+#define ZANNA_VM_TAILCALL 1
 #endif
 
 // -----------------------------------------------------------------------------
 // Opcode execution counters (compile-time + runtime toggle)
 // -----------------------------------------------------------------------------
 /// @brief Compile-time toggle for opcode execution counters.
-/// @details When enabled, `VIPER_VM_DISPATCH_BEFORE` increments per-opcode
+/// @details When enabled, `ZANNA_VM_DISPATCH_BEFORE` increments per-opcode
 ///          counters if the runtime config requests it. Disabled in release
 ///          builds by default to eliminate a conditional branch per instruction
 ///          from the dispatch hot path.
-#ifndef VIPER_VM_OPCOUNTS
+#ifndef ZANNA_VM_OPCOUNTS
 #ifdef NDEBUG
-#define VIPER_VM_OPCOUNTS 0
+#define ZANNA_VM_OPCOUNTS 0
 #else
-#define VIPER_VM_OPCOUNTS 1
+#define ZANNA_VM_OPCOUNTS 1
 #endif
 #endif
 
-#if VIPER_VM_OPCOUNTS
-#undef VIPER_VM_DISPATCH_BEFORE
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
+#if ZANNA_VM_OPCOUNTS
+#undef ZANNA_VM_DISPATCH_BEFORE
+#define ZANNA_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
     do {                                                                                           \
         if ((ST).config.enableOpcodeCounts) {                                                      \
-            const size_t _viperOpcodeIndex = static_cast<size_t>(OPCODE);                          \
-            if (_viperOpcodeIndex < (ST).vm()->opCounts_.size())                                   \
-                ++((ST).vm()->opCounts_[_viperOpcodeIndex]);                                       \
+            const size_t _zannaOpcodeIndex = static_cast<size_t>(OPCODE);                          \
+            if (_zannaOpcodeIndex < (ST).vm()->opCounts_.size())                                   \
+                ++((ST).vm()->opCounts_[_zannaOpcodeIndex]);                                       \
         }                                                                                          \
     } while (0)
 #endif

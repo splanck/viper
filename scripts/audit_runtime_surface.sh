@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Audit drift between the C runtime surface and frontend-visible Viper APIs.
+# Audit drift between the C runtime surface and frontend-visible Zanna APIs.
 set -euo pipefail
 
 BUILD_DIR="build"
 STRICT_FLAG=""
 STRICT_HEADER_FLAG=""
 SUMMARY_FLAG=""
-CONFIG="${VIPER_BUILD_TYPE:-Debug}"
+CONFIG="${ZANNA_BUILD_TYPE:-Debug}"
 
 for arg in "$@"; do
     case "$arg" in

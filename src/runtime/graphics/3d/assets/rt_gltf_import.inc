@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_gltf_import.inc  (#included from rt_gltf.c; not a
 // standalone translation unit) Purpose: glTF decoded-payload take, scene/camera/light/morph import,
 // path/URI resolution
@@ -623,7 +623,7 @@ static rt_scene_node3d *gltf_clone_scene_node(const rt_scene_node3d *src) {
 }
 
 /// @brief Build a Camera3D from one glTF `cameras[]` JSON entry.
-/// @details glTF perspective `yfov` is radians; Viper stores vertical FOV in degrees. glTF
+/// @details glTF perspective `yfov` is radians; Zanna stores vertical FOV in degrees. glTF
 ///   orthographic `xmag`/`ymag` are view half-extents, matching Camera3D.NewOrtho's half-height
 ///   size parameter and aspect ratio.
 static void *gltf_make_camera(void *camera_json) {
@@ -815,7 +815,7 @@ static int gltf_install_active_scene_compat(rt_gltf_asset *asset) {
 }
 
 /// @brief Convert a glTF punctual-light range into the runtime local-light attenuation floor.
-/// @details glTF omits `range` or sets it to zero for unbounded local lights. Viper intentionally
+/// @details glTF omits `range` or sets it to zero for unbounded local lights. Zanna intentionally
 /// avoids no-falloff point/spot lights because they are visually surprising and expensive, so this
 /// helper maps omitted, invalid, overflowing, or too-small attenuation values to the same floor
 /// used by `Light3D.NewPoint` and `Light3D.NewSpot`.

@@ -1,13 +1,13 @@
-// sortedset_demo.zia - Comprehensive API audit for Viper.Collections.SortedSet
+// sortedset_demo.zia - Comprehensive API audit for Zanna.Collections.SortedSet
 // Tests: New, Put, Drop, Has, First, Last, Floor, Ceil, Lower, Higher,
 //        At, IndexOf, Items, Range, Take, Skip, Merge, Common, Diff,
 //        IsSubset, Len, IsEmpty, Clear
 
 module SortedSetDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== SortedSet API Audit ===");

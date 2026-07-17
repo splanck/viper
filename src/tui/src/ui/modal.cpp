@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Construct a modal host that wraps the root content widget.
 ///
 /// @details Ownership of the root widget transfers to the host so it can manage
@@ -198,4 +198,4 @@ bool Popup::onEvent(const Event &ev) {
     return false;
 }
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

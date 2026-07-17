@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_seq.c
-// Purpose: Core operations for Viper.Collections.Seq, the primary dynamic growable
-//   array for the Viper runtime. Contains allocation, element access, mutation
+// Purpose: Core operations for Zanna.Collections.Seq, the primary dynamic growable
+//   array for the Zanna runtime. Contains allocation, element access, mutation
 //   (push/pop/insert/remove), search, reverse, shuffle, slice, and clone.
 //   Sorting and functional operations live in rt_seq_ops.c.
 //
@@ -67,7 +67,7 @@ static rt_seq_impl *as_seq(void *obj, const char *what) {
 
 /// @brief Finalizer callback invoked when a Seq is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// Seq object becomes unreachable. It frees the internal items array to
 /// prevent memory leaks.
 ///
@@ -196,7 +196,7 @@ static int seq_ensure_capacity_or_release(
 /// of elements. The Seq starts with a default capacity of 16 slots and grows
 /// automatically as elements are added.
 ///
-/// The Seq is the most versatile Viper collection, providing:
+/// The Seq is the most versatile Zanna collection, providing:
 /// - O(1) amortized append (Push)
 /// - O(1) random access (Get/Set)
 /// - O(n) insertion/removal at arbitrary positions
@@ -1214,7 +1214,7 @@ int64_t rt_seq_find(void *obj, void *val) {
 ///          `SomeI64(index)` and absence returns `None`.
 /// @param obj Opaque Seq object pointer, or NULL.
 /// @param val Element to search for; may be NULL.
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_seq_find_option(void *obj, void *val) {
     int64_t index = rt_seq_find(obj, val);
     return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
@@ -1328,7 +1328,7 @@ void rt_seq_reverse(void *obj) {
 ///
 /// @note O(n) time complexity.
 /// @note Modifies the Seq in place (no new allocation).
-/// @note Uses Viper.Random.NextInt for randomness - seed for reproducibility.
+/// @note Uses Zanna.Random.NextInt for randomness - seed for reproducibility.
 /// @note Safe to call on empty or single-element Seqs (no-op).
 /// @note Thread safety: Not thread-safe.
 ///

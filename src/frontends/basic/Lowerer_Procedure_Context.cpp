@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
-#include "viper/il/IRBuilder.hpp"
+#include "zanna/il/IRBuilder.hpp"
 
 #include <utility>
 

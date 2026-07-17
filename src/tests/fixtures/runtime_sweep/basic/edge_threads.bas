@@ -7,24 +7,24 @@ PRINT "=== Thread Basic Tests ==="
 
 ' Test Thread.Sleep with edge values
 PRINT "Sleep(0)..."
-Viper.Threads.Thread.Sleep(0)
+Zanna.Threads.Thread.Sleep(0)
 PRINT "Sleep(0) completed"
 
 PRINT "Sleep(1)..."
-Viper.Threads.Thread.Sleep(1)
+Zanna.Threads.Thread.Sleep(1)
 PRINT "Sleep(1) completed"
 
 ' Test Sleep with negative (should clamp to 0)
 PRINT "Sleep(-1) [should clamp to 0]..."
-Viper.Threads.Thread.Sleep(-1)
+Zanna.Threads.Thread.Sleep(-1)
 PRINT "Sleep(-1) completed"
 PRINT ""
 
 ' === SafeI64 edge cases ===
 PRINT "=== SafeI64 Edge Cases ==="
-DIM counter AS Viper.Threads.SafeI64
+DIM counter AS Zanna.Threads.SafeI64
 
-counter = Viper.Threads.SafeI64.New(0)
+counter = Zanna.Threads.SafeI64.New(0)
 PRINT "SafeI64.New(0): "; counter.Get()
 
 counter.Set(100)
@@ -37,8 +37,8 @@ result = counter.Add(-200)
 PRINT "Add(-200) returned: "; result; ", Get: "; counter.Get()
 
 ' Test overflow behavior
-DIM bigCounter AS Viper.Threads.SafeI64
-bigCounter = Viper.Threads.SafeI64.New(9223372036854775807)
+DIM bigCounter AS Zanna.Threads.SafeI64
+bigCounter = Zanna.Threads.SafeI64.New(9223372036854775807)
 PRINT "SafeI64 with max int64: "; bigCounter.Get()
 
 ' CompareExchange
@@ -52,9 +52,9 @@ PRINT ""
 
 ' === Gate (semaphore) edge cases ===
 PRINT "=== Gate Edge Cases ==="
-DIM gate AS Viper.Threads.Gate
+DIM gate AS Zanna.Threads.Gate
 
-gate = Viper.Threads.Gate.New(1)
+gate = Zanna.Threads.Gate.New(1)
 PRINT "Gate.New(1) Permits: "; gate.Permits
 
 gate.Enter()
@@ -68,8 +68,8 @@ gate.Leave()
 PRINT "After Leave: Permits: "; gate.Permits
 
 ' Zero permits
-DIM zeroGate AS Viper.Threads.Gate
-zeroGate = Viper.Threads.Gate.New(0)
+DIM zeroGate AS Zanna.Threads.Gate
+zeroGate = Zanna.Threads.Gate.New(0)
 PRINT "Gate.New(0) Permits: "; zeroGate.Permits
 
 acquired = zeroGate.TryEnter()
@@ -82,9 +82,9 @@ PRINT ""
 
 ' === Barrier edge cases ===
 PRINT "=== Barrier Edge Cases ==="
-DIM barrier AS Viper.Threads.Barrier
+DIM barrier AS Zanna.Threads.Barrier
 
-barrier = Viper.Threads.Barrier.New(1)
+barrier = Zanna.Threads.Barrier.New(1)
 PRINT "Barrier.New(1) Parties: "; barrier.Parties
 PRINT "Waiting: "; barrier.Waiting
 
@@ -98,9 +98,9 @@ PRINT ""
 
 ' === RwLock edge cases ===
 PRINT "=== RwLock Edge Cases ==="
-DIM rwlock AS Viper.Threads.RwLock
+DIM rwlock AS Zanna.Threads.RwLock
 
-rwlock = Viper.Threads.RwLock.New()
+rwlock = Zanna.Threads.RwLock.New()
 PRINT "RwLock.New() Readers: "; rwlock.Readers
 PRINT "IsWriteLocked: "; rwlock.IsWriteLocked
 
@@ -128,28 +128,28 @@ PRINT ""
 
 ' === Monitor on object ===
 PRINT "=== Monitor Edge Cases ==="
-DIM obj AS Viper.Collections.Seq
-obj = Viper.Collections.Seq.New()
+DIM obj AS Zanna.Collections.Seq
+obj = Zanna.Collections.Seq.New()
 
-Viper.Threads.Monitor.Enter(obj)
+Zanna.Threads.Monitor.Enter(obj)
 PRINT "Monitor.Enter on Seq: success"
 
-Viper.Threads.Monitor.Exit(obj)
+Zanna.Threads.Monitor.Exit(obj)
 PRINT "Monitor.Exit: success"
 
-acquired = Viper.Threads.Monitor.TryEnter(obj)
+acquired = Zanna.Threads.Monitor.TryEnter(obj)
 PRINT "TryEnter: "; acquired
 
-IF acquired THEN Viper.Threads.Monitor.Exit(obj)
+IF acquired THEN Zanna.Threads.Monitor.Exit(obj)
 
 ' TryEnterFor with 0 timeout
-acquired = Viper.Threads.Monitor.TryEnterFor(obj, 0)
+acquired = Zanna.Threads.Monitor.TryEnterFor(obj, 0)
 PRINT "TryEnterFor(0ms): "; acquired
-IF acquired THEN Viper.Threads.Monitor.Exit(obj)
+IF acquired THEN Zanna.Threads.Monitor.Exit(obj)
 
-acquired = Viper.Threads.Monitor.TryEnterFor(obj, 1)
+acquired = Zanna.Threads.Monitor.TryEnterFor(obj, 1)
 PRINT "TryEnterFor(1ms): "; acquired
-IF acquired THEN Viper.Threads.Monitor.Exit(obj)
+IF acquired THEN Zanna.Threads.Monitor.Exit(obj)
 PRINT ""
 
 PRINT "=== Thread Edge Case Tests Complete ==="

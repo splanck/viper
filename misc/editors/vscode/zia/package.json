@@ -3,11 +3,11 @@
   "displayName": "Zia Language",
   "description": "Zia language support — diagnostics, completions, hover, and symbols via zia-server",
   "version": "0.1.0",
-  "publisher": "viper",
+  "publisher": "zanna",
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/splanck/viper.git",
+    "url": "https://github.com/zannagames/zanna.git",
     "directory": "misc/editors/vscode/zia"
   },
   "scripts": {

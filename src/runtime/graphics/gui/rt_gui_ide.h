@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_ide.h
@@ -52,7 +52,7 @@ void rt_gui_test_harness_clear(void *harness);
 ///          app handles are rejected without disturbing an existing live binding. Graphics-
 ///          disabled runtimes return zero and keep the harness in synthetic mode.
 /// @param harness Managed TestHarness object; invalid handles trap.
-/// @param app Live managed Viper.GUI.App object to retain.
+/// @param app Live managed Zanna.GUI.App object to retain.
 /// @return 1 when the app is bound (including an already-current binding), otherwise 0.
 int8_t rt_gui_test_harness_bind_app(void *harness, void *app);
 /// @brief Release the application retained by a GUI test harness.
@@ -64,7 +64,7 @@ void rt_gui_test_harness_unbind_app(void *harness);
 /// @brief Dispatch every pending harness input record through the bound App.Poll path.
 /// @details Key records expand to native key-down/key-up events and, for printable unmodified
 ///          ASCII, a text-input event. Mouse `click` expands to down/up. Records are attempted
-///          exactly once and use physical framebuffer coordinates and ViperGFX button ordinals
+///          exactly once and use physical framebuffer coordinates and ZannaGFX button ordinals
 ///          (left=0, right=1, middle=2). App.Poll is invoked once even when no records are pending,
 ///          allowing queued native events to participate in the same frame.
 /// @param harness Managed TestHarness object; invalid handles trap.
@@ -89,7 +89,7 @@ int8_t rt_gui_test_harness_render_frame(void *harness, double delta_ms);
 /// @param y Physical Y coordinate of the requested region.
 /// @param width Positive output width in pixels.
 /// @param height Positive output height in pixels.
-/// @return New managed Viper.Graphics.Pixels object, or NULL for invalid/unbound input or OOM.
+/// @return New managed Zanna.Graphics.Pixels object, or NULL for invalid/unbound input or OOM.
 void *rt_gui_test_harness_capture_pixels(
     void *harness, int64_t x, int64_t y, int64_t width, int64_t height);
 /// @brief Hash a physical framebuffer region into a stable lowercase hexadecimal digest.
@@ -116,7 +116,7 @@ rt_string rt_gui_test_harness_capture_hash(
 /// @param x Physical framebuffer X coordinate aligned with expected pixel (0,0).
 /// @param y Physical framebuffer Y coordinate aligned with expected pixel (0,0).
 /// @param tolerance Per-channel tolerance, clamped to the inclusive range [0,255].
-/// @return New managed Viper.Collections.Map with schemaVersion=1 comparison statistics.
+/// @return New managed Zanna.Collections.Map with schemaVersion=1 comparison statistics.
 void *rt_gui_test_harness_compare_region(
     void *harness, void *expected, int64_t x, int64_t y, int64_t tolerance);
 /// @brief Snapshot the bound application's semantic accessibility tree.
@@ -125,7 +125,7 @@ void *rt_gui_test_harness_compare_region(
 ///          in the root. An unbound, destroyed, or graphics-disabled app returns an empty Map with
 ///          schemaVersion=1 rather than NULL when allocation succeeds.
 /// @param harness Managed TestHarness object; invalid handles trap.
-/// @return New managed Viper.Collections.Map accessibility snapshot, or NULL on root OOM.
+/// @return New managed Zanna.Collections.Map accessibility snapshot, or NULL on root OOM.
 void *rt_gui_test_harness_get_accessibility_snapshot(void *harness);
 /// @brief Advance the harness by @p frames simulated frames (clamped to ≥1).
 /// @return The harness's new accumulated frame counter.
@@ -189,14 +189,14 @@ void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id);
 /// @details Text is copied into sparse model storage. Embedded NUL bytes are rendered as visible
 ///          replacement characters so the lower C provider never truncates subsequent text. An
 ///          out-of-range row or allocation failure leaves the model unchanged.
-/// @param list Managed `Viper.GUI.VirtualList` object; invalid handles trap.
+/// @param list Managed `Zanna.GUI.VirtualList` object; invalid handles trap.
 /// @param row Zero-based logical row index.
 /// @param text Managed UTF-8 text to copy; NULL is treated as empty text.
 void rt_virtual_list_set_row_text(void *list, int64_t row, rt_string text);
 /// @brief Schedule repaint for one row whose application-owned backing data changed.
 /// @details This is an O(1) no-op when the model is unbound or @p row is outside the logical
 ///          range. It does not change row identity, selection, or text stored by SetRowText.
-/// @param list Managed `Viper.GUI.VirtualList` object; invalid handles trap.
+/// @param list Managed `Zanna.GUI.VirtualList` object; invalid handles trap.
 /// @param row Zero-based logical row index to invalidate.
 void rt_virtual_list_invalidate_row(void *list, int64_t row);
 /// @brief Bind a VirtualList to a live ListBox using a non-owning, viewport-backed provider.
@@ -204,15 +204,15 @@ void rt_virtual_list_invalidate_row(void *list, int64_t row);
 ///          allocated its new viewport cache. Destroying either endpoint clears the other raw
 ///          pointer before reclamation. Graphics-disabled builds return zero.
 /// @param list Managed VirtualList object; invalid model handles trap.
-/// @param listbox Live `Viper.GUI.ListBox` handle.
+/// @param listbox Live `Zanna.GUI.ListBox` handle.
 /// @return One on success, zero for an invalid/unavailable ListBox or allocation failure.
 int8_t rt_virtual_list_bind(void *list, void *listbox);
 /// @brief Detach a VirtualList from its current ListBox without destroying either endpoint.
 /// @param list Managed VirtualList object; invalid handles trap.
 void rt_virtual_list_unbind(void *list);
 /// @brief Bind a ListBox to a VirtualList; reverse-form convenience for VirtualList.Bind.
-/// @param listbox Live `Viper.GUI.ListBox` handle.
-/// @param model Managed `Viper.GUI.VirtualList` object.
+/// @param listbox Live `Zanna.GUI.ListBox` handle.
+/// @param model Managed `Zanna.GUI.VirtualList` object.
 /// @return One on success, zero when graphics are unavailable or either endpoint is invalid.
 int8_t rt_listbox_set_virtual_model(void *listbox, void *model);
 /// @brief Remove an external model from a ListBox and restore ordinary retained-item mode.
@@ -281,10 +281,10 @@ void *rt_virtual_tree_visible_rows(void *tree);
 /// @details The model maintains a lazy stable-ID index. After structural warm-up this operation is
 ///          O(count), allocates maps only for the requested slice, clamps negative arguments to
 ///          zero, and never materializes omitted rows.
-/// @param tree Managed `Viper.GUI.VirtualTree` object; invalid handles trap.
+/// @param tree Managed `Zanna.GUI.VirtualTree` object; invalid handles trap.
 /// @param first Zero-based first visible row; negative values normalize to zero.
 /// @param count Maximum rows to return; negative values normalize to zero.
-/// @return Owned `Viper.Collections.Seq` of row maps, possibly empty.
+/// @return Owned `Zanna.Collections.Seq` of row maps, possibly empty.
 void *rt_virtual_tree_visible_rows_range(void *tree, int64_t first, int64_t count);
 /// @brief Rebuild the visible-row cache for a node's subtree after structural changes.
 void rt_virtual_tree_refresh_subtree(void *tree, rt_string id);
@@ -293,15 +293,15 @@ void rt_virtual_tree_refresh_subtree(void *tree, rt_string id);
 ///          are detached safely, and destroying either endpoint invalidates the other raw pointer.
 ///          Graphics-disabled builds return zero while the headless model remains usable.
 /// @param tree Managed VirtualTree object; invalid handles trap.
-/// @param treeview Live `Viper.GUI.TreeView` handle.
+/// @param treeview Live `Zanna.GUI.TreeView` handle.
 /// @return One on success, zero when unavailable or invalid.
 int8_t rt_virtual_tree_bind(void *tree, void *treeview);
 /// @brief Detach a VirtualTree from its bound TreeView without destroying either object.
 /// @param tree Managed VirtualTree object; invalid handles trap.
 void rt_virtual_tree_unbind(void *tree);
 /// @brief Bind a TreeView to a VirtualTree; reverse-form convenience for VirtualTree.Bind.
-/// @param treeview Live `Viper.GUI.TreeView` handle.
-/// @param model Managed `Viper.GUI.VirtualTree` object.
+/// @param treeview Live `Zanna.GUI.TreeView` handle.
+/// @param model Managed `Zanna.GUI.VirtualTree` object.
 /// @return One on success, zero for invalid endpoints or graphics-disabled builds.
 int8_t rt_treeview_set_virtual_model(void *treeview, void *model);
 /// @brief Remove an external model from a TreeView and restore retained-node rendering.
@@ -337,7 +337,7 @@ rt_string rt_command_get_id(void *command);
 /// @brief Return the command's display title.
 rt_string rt_command_get_title(void *command);
 /// @brief Set the command's keyboard shortcut chord (e.g. "Ctrl+B") and register it with the
-///        global Viper.GUI.Shortcuts registry under the command id (best-effort if no app yet).
+///        global Zanna.GUI.Shortcuts registry under the command id (best-effort if no app yet).
 void rt_command_set_shortcut(void *command, rt_string keys);
 /// @brief Return the command's shortcut chord (empty string if none).
 rt_string rt_command_get_shortcut(void *command);
@@ -353,9 +353,9 @@ int8_t rt_command_is_checkable(void *command);
 void rt_command_set_checked(void *command, int8_t checked);
 /// @brief Return 1 if the command is checked.
 int8_t rt_command_is_checked(void *command);
-/// @brief Bind a Viper.GUI.MenuItem the command should read (clicks) and drive (enabled/checked).
+/// @brief Bind a Zanna.GUI.MenuItem the command should read (clicks) and drive (enabled/checked).
 void rt_command_bind_menu_item(void *command, void *item);
-/// @brief Bind a Viper.GUI.ToolbarItem the command should read (clicks) and drive
+/// @brief Bind a Zanna.GUI.ToolbarItem the command should read (clicks) and drive
 /// (enabled/toggled).
 void rt_command_bind_toolbar_item(void *command, void *item);
 /// @brief Poll a standalone command: read bound menu/toolbar/shortcut, push state to bound
@@ -381,7 +381,7 @@ void *rt_command_registry_find(void *registry, rt_string id);
 /// @brief Return the command with id @p id as an Option.
 /// @details Returns Some(Command) when found and None when no registered command matches.
 void *rt_command_registry_find_option(void *registry, rt_string id);
-/// @brief Bind the Viper.GUI.CommandPalette whose selection routes to registered commands.
+/// @brief Bind the Zanna.GUI.CommandPalette whose selection routes to registered commands.
 void rt_command_registry_bind_palette(void *registry, void *palette);
 /// @brief Poll the palette once and every command (menu/toolbar/shortcut/palette); push state.
 /// @return The id of a command invoked this frame, or the empty string. Each command's

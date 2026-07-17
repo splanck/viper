@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Viper — IL-First Compiler Platform</title>
-  <meta name="description" content="Viper is a complete compiler platform built from scratch with zero dependencies. 446K lines of production code, two languages, native ARM64/x86-64 codegen, 300-class runtime, and performance that beats C -O0.">
-  <meta property="og:title" content="Viper — A Complete Compiler Platform, Built From Scratch">
+  <title>Zanna — IL-First Compiler Platform</title>
+  <meta name="description" content="Zanna is a complete compiler platform built from scratch with zero dependencies. 446K lines of production code, two languages, native ARM64/x86-64 codegen, 300-class runtime, and performance that beats C -O0.">
+  <meta property="og:title" content="Zanna — A Complete Compiler Platform, Built From Scratch">
   <meta property="og:description" content="Zero dependencies. Custom assemblers, linkers, optimizer passes. Two languages, 6 native targets, 300 runtime classes. Beats C -O0 on 8 of 9 benchmarks.">
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="style.css">
@@ -15,14 +15,14 @@
 
 <!-- ===== Navigation ===== -->
 <nav class="top-nav">
-  <a href="/" class="nav-logo"><img src="logo.png" alt="Viper logo">Viper</a>
+  <a href="/" class="nav-logo"><img src="logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="docs/">Docs</a>
     <a href="learn/">Learn</a>
     <a href="showcase/">Showcase</a>
     <a href="performance/">Performance</a>
     <a href="blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -31,13 +31,13 @@
 <!-- ===== Hero ===== -->
 <section class="hero">
   <div class="hero-bg" aria-hidden="true"></div>
-  <img src="logo-full.png" alt="Viper" class="hero-logo">
-  <h1 class="hero-title">Viper</h1>
+  <img src="logo-full.png" alt="Zanna" class="hero-logo">
+  <h1 class="hero-title">Zanna</h1>
   <p class="hero-tagline">A complete compiler platform built entirely from scratch &mdash; two languages, native codegen, 300-class runtime, zero dependencies</p>
   <p class="hero-status">Pre-alpha &middot; v0.2.3 &middot; GPL-3.0</p>
   <div class="hero-buttons">
     <a href="docs/" class="btn btn-primary">Get Started</a>
-    <a href="https://github.com/splanck/viper" class="btn btn-secondary">View on GitHub</a>
+    <a href="https://github.com/zannagames/zanna" class="btn btn-secondary">View on GitHub</a>
   </div>
 </section>
 
@@ -86,8 +86,8 @@
     <div class="code-tab-panel active" data-panel="zia">
       <pre><code data-lang="zia">module Hello;
 
-bind Viper.Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func start() {
     var x = 2 + 3;
@@ -106,8 +106,8 @@ PRINT y</code></pre>
 
     <div class="code-tab-panel" data-panel="il">
       <pre><code data-lang="il">il 0.3.0
-extern @Viper.Text.Fmt.Int(i64) -> str
-extern @Viper.Terminal.Say(str) -> void
+extern @Zanna.Text.Fmt.Int(i64) -> str
+extern @Zanna.Terminal.Say(str) -> void
 global const str @.L0 = "HELLO"
 func @main() -> void {
 entry_0:
@@ -119,10 +119,10 @@ entry_0:
   %t4 = alloca 8
   store i64, %t4, %t3
   %t5 = const_str @.L0
-  call @Viper.Terminal.Say(%t5)
+  call @Zanna.Terminal.Say(%t5)
   %t6 = load i64, %t4
-  %t7 = call @Viper.Text.Fmt.Int(%t6)
-  call @Viper.Terminal.Say(%t7)
+  %t7 = call @Zanna.Text.Fmt.Int(%t6)
+  call @Zanna.Terminal.Say(%t7)
   ret
 }</code></pre>
     </div>
@@ -159,7 +159,7 @@ entry_0:
         <thead>
           <tr>
             <th>Benchmark</th>
-            <th>Viper Native</th>
+            <th>Zanna Native</th>
             <th>C -O0</th>
             <th>C -O2</th>
             <th>Rust -O</th>
@@ -170,7 +170,7 @@ entry_0:
         <tbody>
           <tr>
             <td>branch_stress</td>
-            <td class="perf-viper perf-best">29ms</td>
+            <td class="perf-zanna perf-best">29ms</td>
             <td>56ms</td>
             <td>51ms</td>
             <td>51ms</td>
@@ -179,7 +179,7 @@ entry_0:
           </tr>
           <tr>
             <td>udiv_stress</td>
-            <td class="perf-viper">39ms</td>
+            <td class="perf-zanna">39ms</td>
             <td>218ms</td>
             <td>34ms</td>
             <td>85ms</td>
@@ -188,7 +188,7 @@ entry_0:
           </tr>
           <tr>
             <td>call_stress</td>
-            <td class="perf-viper">31ms</td>
+            <td class="perf-zanna">31ms</td>
             <td>74ms</td>
             <td>17ms</td>
             <td>16ms</td>
@@ -197,7 +197,7 @@ entry_0:
           </tr>
           <tr>
             <td>inline_stress</td>
-            <td class="perf-viper">58ms</td>
+            <td class="perf-zanna">58ms</td>
             <td>202ms</td>
             <td>25ms</td>
             <td>17ms</td>
@@ -206,7 +206,7 @@ entry_0:
           </tr>
           <tr>
             <td>mixed_stress</td>
-            <td class="perf-viper">27ms</td>
+            <td class="perf-zanna">27ms</td>
             <td>35ms</td>
             <td>24ms</td>
             <td>26ms</td>
@@ -215,7 +215,7 @@ entry_0:
           </tr>
           <tr>
             <td>fib_stress</td>
-            <td class="perf-viper">334ms</td>
+            <td class="perf-zanna">334ms</td>
             <td>381ms</td>
             <td>197ms</td>
             <td>192ms</td>
@@ -224,7 +224,7 @@ entry_0:
           </tr>
           <tr>
             <td>arith_stress</td>
-            <td class="perf-viper">83ms</td>
+            <td class="perf-zanna">83ms</td>
             <td>126ms</td>
             <td>15ms</td>
             <td>16ms</td>
@@ -233,7 +233,7 @@ entry_0:
           </tr>
           <tr>
             <td>string_stress</td>
-            <td class="perf-viper">19ms</td>
+            <td class="perf-zanna">19ms</td>
             <td>29ms</td>
             <td>26ms</td>
             <td>17ms</td>
@@ -242,7 +242,7 @@ entry_0:
           </tr>
           <tr>
             <td>redundant_stress</td>
-            <td class="perf-viper">73ms</td>
+            <td class="perf-zanna">73ms</td>
             <td>178ms</td>
             <td>24ms</td>
             <td>17ms</td>
@@ -258,14 +258,14 @@ entry_0:
 
 <!-- ===== Features ===== -->
 <div class="section">
-  <h2 class="section-title reveal">Why Viper?</h2>
+  <h2 class="section-title reveal">Why Zanna?</h2>
   <p class="section-subtitle reveal">A complete platform built entirely from scratch</p>
 
   <div class="feature-grid reveal-stagger">
     <a href="features/zero-deps.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/></svg></div>
       <h3>Zero Dependencies</h3>
-      <p>No LLVM, no Boost, no SDL, no libcurl. Custom assemblers, linkers, optimizer passes, and a 300-class runtime &mdash; every line is Viper's own.</p>
+      <p>No LLVM, no Boost, no SDL, no libcurl. Custom assemblers, linkers, optimizer passes, and a 300-class runtime &mdash; every line is Zanna's own.</p>
     </a>
 
     <a href="features/native-targets.html" class="feature-card reveal">
@@ -301,7 +301,7 @@ entry_0:
     <a href="features/applications.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/></svg></div>
       <h3>Real Applications</h3>
-      <p>Chess with AI, a PostgreSQL-compatible SQL database, an IDE with IntelliSense, Pac-Man, XENOSCAPE Metroid-style sidescroller, 3D bowling with Physics3D &mdash; all written in Viper's own languages.</p>
+      <p>Chess with AI, a PostgreSQL-compatible SQL database, an IDE with IntelliSense, Pac-Man, XENOSCAPE Metroid-style sidescroller, 3D bowling with Physics3D &mdash; all written in Zanna's own languages.</p>
     </a>
 
     <a href="features/cross-platform.html" class="feature-card reveal">
@@ -321,18 +321,18 @@ entry_0:
 <!-- ===== Showcase Preview ===== -->
 <div class="section-alt">
 <div class="section">
-  <h2 class="section-title reveal">Built with Viper</h2>
+  <h2 class="section-title reveal">Built with Zanna</h2>
   <p class="section-subtitle reveal">Real applications and games built on the platform</p>
 
   <div class="showcase-grid reveal-stagger">
     <a href="showcase/sqldb.html" class="showcase-card reveal">
-      <h3>ViperSQL</h3>
+      <h3>ZannaSQL</h3>
       <p>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, and PG wire protocol.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
-    <a href="showcase/viperide.html" class="showcase-card reveal">
-      <h3>ViperIDE</h3>
+    <a href="showcase/zannaide.html" class="showcase-card reveal">
+      <h3>ZannaIDE</h3>
       <p>IDE with live diagnostics, hover tooltips, IntelliSense, go-to-definition, project search.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
@@ -377,14 +377,14 @@ entry_0:
       <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
       <div class="arch-box arch-frontend">Frontend (Parser + Semantics + Lowering)</div>
       <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
-      <div class="arch-box primary">Viper IL (Typed SSA) + Verifier + Optimizer</div>
+      <div class="arch-box primary">Zanna IL (Typed SSA) + Verifier + Optimizer</div>
       <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
       <div class="arch-split">
         <div class="arch-box">Virtual Machine</div>
         <div class="arch-box">Native Backend (ARM64, x86-64)</div>
       </div>
       <svg class="arch-connector" width="2" height="32" aria-hidden="true"><line x1="1" y1="0" x2="1" y2="32" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" class="arch-flow"/></svg>
-      <div class="arch-box arch-runtime">Viper Runtime (Collections, I/O, Graphics, Audio, GUI, Network, Threads, ...)</div>
+      <div class="arch-box arch-runtime">Zanna Runtime (Collections, I/O, Graphics, Audio, GUI, Network, Threads, ...)</div>
     </div>
   </div>
 </div>
@@ -396,19 +396,19 @@ entry_0:
 
   <div class="install-block reveal">
     <pre><span class="comment"># Clone and build</span>
-<span class="cmd">git clone https://github.com/splanck/viper.git</span>
-<span class="cmd">cd viper</span>
-<span class="cmd">./scripts/build_viper_unix.sh   # macOS &amp; Linux</span>
+<span class="cmd">git clone https://github.com/zannagames/zanna.git</span>
+<span class="cmd">cd zanna</span>
+<span class="cmd">./scripts/build_zanna_unix.sh   # macOS &amp; Linux</span>
 
 <span class="comment"># Create a new project (Zia by default; --lang basic for BASIC)</span>
-<span class="cmd">viper init my-app</span>
-<span class="cmd">viper run my-app</span>
+<span class="cmd">zanna init my-app</span>
+<span class="cmd">zanna run my-app</span>
 
 <span class="comment"># Or run an existing demo</span>
-<span class="cmd">viper run examples/games/pacman/</span>
+<span class="cmd">zanna run examples/games/pacman/</span>
 
 <span class="comment"># Try the interactive REPL</span>
-<span class="cmd">viper repl</span></pre>
+<span class="cmd">zanna repl</span></pre>
   </div>
 
   <p class="text-center mt-2"><a href="docs/">Read the full guide &rarr;</a></p>
@@ -435,14 +435,14 @@ entry_0:
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="contributing/">Contributing</a>
       <a href="blog/">Blog</a>
-      <a href="https://github.com/splanck/viper/blob/master/LICENSE">License</a>
+      <a href="https://github.com/zannagames/zanna/blob/master/LICENSE">License</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="main.js"></script>

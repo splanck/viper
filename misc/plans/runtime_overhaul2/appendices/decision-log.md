@@ -13,7 +13,7 @@ This is the compact proposed decision list for implementation planning.
 | D007 | `Option<T>` is canonical for ordinary absence. |
 | D008 | Side-channel error APIs are legacy unless scoped as diagnostic telemetry. |
 | D009 | Sentinel APIs are legacy unless the sentinel is the domain value and explicitly documented. |
-| D010 | Trap-state mutation belongs under `Runtime.Unsafe` or internal APIs, not ordinary `Viper.Error`. |
+| D010 | Trap-state mutation belongs under `Runtime.Unsafe` or internal APIs, not ordinary `Zanna.Error`. |
 | D011 | Disabled capabilities must return unavailable results or trap; stable APIs cannot silently no-op or return fake success values. |
 | D012 | Runtime catalog metadata must be declared, not inferred by CLI name heuristics. |
 | D013 | Docs anchors must resolve to generated or handwritten reference entries. |

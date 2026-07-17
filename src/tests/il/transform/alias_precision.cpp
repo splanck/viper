@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,17 +45,17 @@ struct AnalysisSetup {
     AnalysisSetup() {
         registry.registerFunctionAnalysis<il::transform::CFGInfo>(
             "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
-        registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+        registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
             "dominators", [](Module &mod, Function &fn) {
-                viper::analysis::CFGContext ctx(mod);
-                return viper::analysis::computeDominatorTree(ctx, fn);
+                zanna::analysis::CFGContext ctx(mod);
+                return zanna::analysis::computeDominatorTree(ctx, fn);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
             "loop-info",
             [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
-        registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+        registry.registerFunctionAnalysis<zanna::analysis::BasicAA>(
             "basic-aa",
-            [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+            [](Module &mod, Function &fn) { return zanna::analysis::BasicAA(mod, fn); });
     }
 };
 
@@ -243,9 +243,9 @@ TEST(IL, testLICMLoadHoistWithDisjointStore) {
     ASSERT_TRUE(loadAfterSimplify != nullptr);
     ASSERT_TRUE(storeAfterSimplify != nullptr);
 
-    auto &aa = am.getFunctionResult<viper::analysis::BasicAA>("basic-aa", fn);
-    auto loadSize = viper::analysis::BasicAA::typeSizeBytes(loadAfterSimplify->type);
-    auto storeSize = viper::analysis::BasicAA::typeSizeBytes(storeAfterSimplify->type);
+    auto &aa = am.getFunctionResult<zanna::analysis::BasicAA>("basic-aa", fn);
+    auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(loadAfterSimplify->type);
+    auto storeSize = zanna::analysis::BasicAA::typeSizeBytes(storeAfterSimplify->type);
     std::cerr << "alias(load,store)="
               << static_cast<int>(aa.alias(loadAfterSimplify->operands[0],
                                            storeAfterSimplify->operands[0],
@@ -643,6 +643,6 @@ TEST(IL, testGVNRedundantLoadSameField) {
 
 /// @brief Main.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

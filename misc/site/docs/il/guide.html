@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IL Specification — Viper</title>
-  <meta name="description" content="Viper documentation: IL Specification">
+  <title>IL Specification — Zanna</title>
+  <meta name="description" content="Zanna documentation: IL Specification">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -44,8 +44,8 @@
   </aside>
   <main class="page-main prose">
     <h1>IL Specification</h1>
-<h1 id="viper-il-complete-guide">Viper IL — Complete Guide</h1>
-<p>Comprehensive guide to Viper&#x27;s Intermediate Language (IL), covering everything from quickstart to advanced topics. This</p>
+<h1 id="zanna-il-complete-guide">Zanna IL — Complete Guide</h1>
+<p>Comprehensive guide to Zanna&#x27;s Intermediate Language (IL), covering everything from quickstart to advanced topics. This</p>
 <p>document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked</p>
 <p>examples for IL v0.2.</p>
 <blockquote><p>**Note:** This guide documents IL v0.3.0. See the version header in your IL files for compatibility.</p></blockquote>
@@ -67,9 +67,9 @@
 <p>&lt;a id=&quot;quickstart&quot;&gt;&lt;/a&gt;</p>
 <h2 id="quickstart">Quickstart</h2>
 <p>Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of</p>
-<p>Viper&#x27;s intermediate language. <strong>No prior compiler experience is required.</strong></p>
-<h3 id="what-is-viper-il">What is Viper IL?</h3>
-<p>Viper IL is the <strong>&quot;thin waist&quot;</strong> of the Viper toolchain — a versioned, textual intermediate representation that</p>
+<p>Zanna&#x27;s intermediate language. <strong>No prior compiler experience is required.</strong></p>
+<h3 id="what-is-zanna-il">What is Zanna IL?</h3>
+<p>Zanna IL is the <strong>&quot;thin waist&quot;</strong> of the Zanna toolchain — a versioned, textual intermediate representation that</p>
 <p>decouples frontends from backends:</p>
 <ul>
 <li><strong>Frontends</strong> (Zia, BASIC, etc.) compile to IL</li>
@@ -113,16 +113,16 @@
 <pre><code data-lang="llvm">
 # Print the number 4 and exit.
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
-  call @Viper.Terminal.PrintI64(4)    # runtime prints `4\n`
+  call @Zanna.Terminal.PrintI64(4)    # runtime prints `4\n`
   ret 0                    # zero exit code
 }
 </code></pre>
-<p>Run it with <code>viper</code>:</p>
+<p>Run it with <code>zanna</code>:</p>
 <pre><code data-lang="bash">
-viper -run first.il
+zanna -run first.il
 </code></pre>
 <p>Expected output:</p>
 <pre><code data-lang="text">
@@ -132,21 +132,21 @@ viper -run first.il
 <ul>
 <li><code># Print the number 4 and exit.</code> – comments start with <code>#</code> and are ignored by the VM.</li>
 <li><code>il 0.3.0</code> – required version header that pins the expected IL grammar version.</li>
-<li><code>extern @Viper.Terminal.PrintI64(i64) -&gt; void</code> – declare a runtime function taking an <code>i64</code> and returning <code>void</code>.</li>
+<li><code>extern @Zanna.Terminal.PrintI64(i64) -&gt; void</code> – declare a runtime function taking an <code>i64</code> and returning <code>void</code>.</li>
 <li><code>func @main() -&gt; i64 {</code> – define the <code>@main</code> function that returns an <code>i64</code> exit code.</li>
 <li><code>entry:</code> – the initial basic block label.</li>
-<li><code>call @Viper.Terminal.PrintI64(4)</code> – invoke the extern with the literal <code>4</code>.</li>
+<li><code>call @Zanna.Terminal.PrintI64(4)</code> – invoke the extern with the literal <code>4</code>.</li>
 <li><code>ret 0</code> – terminate the function and supply the process exit status.</li>
 <li><code>}</code> – close the function body.</li>
 </ul>
 <p>Compatibility:</p>
 <ul>
-<li>When built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Viper.*</code>.</li>
-<li>New code should emit <code>@Viper.*</code>.</li>
-<li>Planned: Starting in v0.3.0, legacy <code>@rt_*</code> aliases will be OFF by default. Enable with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code></li>
+<li>When built with <code>-DZANNA_RUNTIME_NS_DUAL=ON</code>, legacy <code>@rt_*</code> externs are accepted as aliases of <code>@Zanna.*</code>.</li>
+<li>New code should emit <code>@Zanna.*</code>.</li>
+<li>Planned: Starting in v0.3.0, legacy <code>@rt_*</code> aliases will be OFF by default. Enable with <code>-DZANNA_RUNTIME_NS_DUAL=ON</code></li>
 </ul>
 <p>if you need to load legacy IL.</p>
-<p><strong>What just happened?</strong> <code>Viper.Terminal.PrintI64</code> is supplied by the runtime and prints its argument. Every function ends</p>
+<p><strong>What just happened?</strong> <code>Zanna.Terminal.PrintI64</code> is supplied by the runtime and prints its argument. Every function ends</p>
 <p>with a terminator such as <code>ret</code> giving the program&#x27;s exit code.</p>
 <p><strong>Gotcha:</strong> Every module must start with a version line (e.g., <code>il 0.3.0</code>).</p>
 <h3 id="values-and-types">Values and types</h3>
@@ -154,13 +154,13 @@ viper -run first.il
 <p><code>i16</code>, <code>i32</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, and <code>str</code>, plus specialized types <code>error</code> and <code>resumetok</code> for exception handling.</p>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
   %p = alloca 8            # reserve 8 bytes on the stack
   store i64, %p, 10        # write constant 10 to memory
   %v0 = load i64, %p       # read it back
-  call @Viper.Terminal.PrintI64(%v0)  # prints 10
+  call @Zanna.Terminal.PrintI64(%v0)  # prints 10
   ret 0
 }
 </code></pre>
@@ -169,7 +169,7 @@ entry:
 <li><code>%p = alloca 8</code> – allocate eight bytes of stack memory and bind its address to <code>%p</code> (type <code>ptr</code>).</li>
 <li><code>store i64, %p, 10</code> – store the 64‑bit constant <code>10</code> into the memory pointed to by <code>%p</code>.</li>
 <li><code>%v0 = load i64, %p</code> – load an <code>i64</code> from <code>%p</code> into <code>%v0</code>.</li>
-<li><code>call @Viper.Terminal.PrintI64(%v0)</code> – pass the loaded value to the runtime print routine.</li>
+<li><code>call @Zanna.Terminal.PrintI64(%v0)</code> – pass the loaded value to the runtime print routine.</li>
 <li><code>ret 0</code> – return from <code>main</code> with exit code 0.</li>
 </ul>
 <p><strong>What just happened?</strong> <code>alloca</code> creates a stack slot, <code>store</code> writes to it, and <code>load</code> reads from it.</p>
@@ -178,7 +178,7 @@ entry:
 <p>Functions declare typed parameters. Values are passed and returned explicitly.</p>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @add(i64 %a, i64 %b) -&gt; i64 {
 entry:
   %sum = add %a, %b        # compute a + b
@@ -187,7 +187,7 @@ entry:
 func @main() -&gt; i64 {
 entry:
   %v0 = call @add(2, 3)    # call with constants
-  call @Viper.Terminal.PrintI64(%v0)  # prints 5
+  call @Zanna.Terminal.PrintI64(%v0)  # prints 5
   ret 0
 }
 </code></pre>
@@ -198,7 +198,7 @@ entry:
 <li><code>ret %sum</code> – return the computed sum.</li>
 <li><code>func @main() -&gt; i64 { ... }</code> – define the entry point.</li>
 <li><code>%v0 = call @add(2, 3)</code> – call <code>@add</code> with literal arguments; result stored in <code>%v0</code>.</li>
-<li><code>call @Viper.Terminal.PrintI64(%v0)</code> – print the returned value.</li>
+<li><code>call @Zanna.Terminal.PrintI64(%v0)</code> – print the returned value.</li>
 <li><code>ret 0</code> – exit with status 0.</li>
 </ul>
 <p><strong>What just happened?</strong> <code>call</code> pushes arguments and receives a result. Each function has one entry block.</p>
@@ -206,12 +206,12 @@ entry:
 <h3 id="arithmetic-and-comparisons">Arithmetic and comparisons</h3>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
   %v0 = add 2, 2           # 4
   %v1 = scmp_gt %v0, 3     # 1 (true)
-  call @Viper.Terminal.PrintI64(%v1)  # prints 1
+  call @Zanna.Terminal.PrintI64(%v1)  # prints 1
   ret 0
 }
 </code></pre>
@@ -219,25 +219,25 @@ entry:
 <ul>
 <li><code>%v0 = add 2, 2</code> – compute the constant expression <code>2 + 2</code>.</li>
 <li><code>%v1 = scmp_gt %v0, 3</code> – signed compare‑greater; result is <code>1</code> because 4 &gt; 3.</li>
-<li><code>call @Viper.Terminal.PrintI64(%v1)</code> – zero‑extend the <code>i1</code> result and print it.</li>
+<li><code>call @Zanna.Terminal.PrintI64(%v1)</code> – zero‑extend the <code>i1</code> result and print it.</li>
 <li><code>ret 0</code> – terminate <code>main</code> with success.</li>
 </ul>
 <p><strong>What just happened?</strong> <code>scmp_gt</code> compares signed integers and yields an <code>i1</code> (0 or 1).</p>
-<p><strong>Gotcha:</strong> Comparison results are <code>i1</code>; printing them with <code>Viper.Terminal.PrintI64</code> zero-extends to <code>i64</code>.</p>
+<p><strong>Gotcha:</strong> Comparison results are <code>i1</code>; printing them with <code>Zanna.Terminal.PrintI64</code> zero-extends to <code>i64</code>.</p>
 <h3 id="control-flow">Control flow</h3>
 <p>Blocks end with a terminator. <code>cbr</code> chooses a target based on an <code>i1</code> value.</p>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
   %flag = scmp_gt 5, 3     # 1 means take then
   cbr %flag, then, else    # conditional branch
 then:
-  call @Viper.Terminal.PrintI64(1)    # prints 1 if flag != 0
+  call @Zanna.Terminal.PrintI64(1)    # prints 1 if flag != 0
   br done                  # jump to exit
 else:
-  call @Viper.Terminal.PrintI64(0)    # prints 0 otherwise
+  call @Zanna.Terminal.PrintI64(0)    # prints 0 otherwise
   br done
 done:
   ret 0
@@ -259,24 +259,24 @@ done:
 <p><strong>What just happened?</strong> Labels (<code>then</code>, <code>else</code>, <code>done</code>) mark basic blocks. <code>br</code> is an unconditional jump.</p>
 <p><strong>Gotcha:</strong> There is no fall-through; every block must end with a terminator.</p>
 <h3 id="strings-and-text">Strings and text</h3>
-<p>Strings live in globals and use <code>Viper.Terminal.PrintStr</code> for output.</p>
+<p>Strings live in globals and use <code>Zanna.Terminal.PrintStr</code> for output.</p>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintStr(str) -&gt; void
+extern @Zanna.Terminal.PrintStr(str) -&gt; void
 global const str @.msg = &quot;hello&quot;  # immutable global
 func @main() -&gt; i64 {
 entry:
   %s = const_str @.msg     # load pointer to string
-  call @Viper.Terminal.PrintStr(%s)   # prints hello
+  call @Zanna.Terminal.PrintStr(%s)   # prints hello
   ret 0
 }
 </code></pre>
 <p><strong>Line by line</strong></p>
 <ul>
-<li><code>extern @Viper.Terminal.PrintStr(str) -&gt; void</code> – declare the runtime string printer.</li>
+<li><code>extern @Zanna.Terminal.PrintStr(str) -&gt; void</code> – declare the runtime string printer.</li>
 <li><code>global const str @.msg = &quot;hello&quot;</code> – create an immutable global string named <code>@.msg</code>.</li>
 <li><code>%s = const_str @.msg</code> – get a pointer to the string constant.</li>
-<li><code>call @Viper.Terminal.PrintStr(%s)</code> – pass that pointer to the runtime for printing.</li>
+<li><code>call @Zanna.Terminal.PrintStr(%s)</code> – pass that pointer to the runtime for printing.</li>
 <li><code>ret 0</code> – exit normally.</li>
 </ul>
 <p><strong>What just happened?</strong> <code>const_str</code> loads the address of a global string constant.</p>
@@ -308,24 +308,24 @@ entry:
 <p>Lowered IL:</p>
 <pre><code data-lang="llvm">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
   %t0 = add 2, 2
-  call @Viper.Terminal.PrintI64(%t0)
+  call @Zanna.Terminal.PrintI64(%t0)
   ret 0
 }
 </code></pre>
 <p><strong>Line by line</strong></p>
 <ul>
 <li><code>%t0 = add 2, 2</code> – compute the arithmetic expression from the BASIC code.</li>
-<li><code>call @Viper.Terminal.PrintI64(%t0)</code> – print the result.</li>
+<li><code>call @Zanna.Terminal.PrintI64(%t0)</code> – print the result.</li>
 <li><code>ret 0</code> – exit with success.</li>
 </ul>
 <p><strong>What just happened?</strong> The front end evaluated the expression, emitted an <code>add</code>, and called the print routine.</p>
 <h3 id="debugging-il">Debugging IL</h3>
 <ul>
-<li><code>viper -run --trace foo.il</code> prints each instruction as it executes.</li>
+<li><code>zanna -run --trace foo.il</code> prints each instruction as it executes.</li>
 <li><code>il-verify foo.il</code> checks structural rules without running.</li>
 <li>Common errors like &quot;type mismatch&quot; or &quot;undefined block&quot; point to the offending line.</li>
 </ul>
@@ -339,7 +339,7 @@ entry:
 <ul>
 <li>Read the full [IL reference](#reference) for all instructions.</li>
 <li>Explore the <code>examples/</code> and <code>tests/golden/</code> directories for more programs.</li>
-<li>Try adding your own IL file and running it with <code>viper</code>.</li>
+<li>Try adding your own IL file and running it with <code>zanna</code>.</li>
 </ul>
 <h3 id="common-mistakes">Common mistakes</h3>
 <ul>
@@ -361,7 +361,7 @@ entry:
 <h3 id="il-reference-v0-3-0">IL Reference (v0.3.0)</h3>
 <blockquote><p>Start here: [IL Quickstart](#quickstart) for a hands-on introduction.</p></blockquote>
 <h4 id="overview">Overview</h4>
-<p>Viper IL is the project’s &quot;thin waist&quot; intermediate language designed to sit between diverse front ends and back ends.</p>
+<p>Zanna IL is the project’s &quot;thin waist&quot; intermediate language designed to sit between diverse front ends and back ends.</p>
 <p>Its goals are:</p>
 <ul>
 <li><strong>Determinism</strong> – VM and native back ends must produce identical observable behaviour.</li>
@@ -426,10 +426,10 @@ func import @BasicHelper(i64 %n) -&gt; i64
 <p>functions defined in other IL modules.</p>
 <pre><code data-lang="text">
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -&gt; void
+extern @Zanna.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
-  call @Viper.Terminal.PrintI64(42)
+  call @Zanna.Terminal.PrintI64(42)
   ret 0
 }
 </code></pre>
@@ -1064,8 +1064,8 @@ handler:
 }
 </code></pre>
 <h4 id="runtime-abi">Runtime ABI</h4>
-<p>The IL runtime provides helper functions used by front ends and tests. All functions use canonical <code>Viper.*</code> namespace</p>
-<p>names. Legacy <code>@rt_*</code> aliases are maintained for compatibility when built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code>.</p>
+<p>The IL runtime provides helper functions used by front ends and tests. All functions use canonical <code>Zanna.*</code> namespace</p>
+<p>names. Legacy <code>@rt_*</code> aliases are maintained for compatibility when built with <code>-DZANNA_RUNTIME_NS_DUAL=ON</code>.</p>
 <p>##### Console I/O</p>
 <table><thead><tr>
 <th>Function</th>
@@ -1073,22 +1073,22 @@ handler:
 <th>Notes</th>
 </tr></thead><tbody>
 <tr>
-<td>`@Viper.Terminal.PrintF64`</td>
+<td>`@Zanna.Terminal.PrintF64`</td>
 <td>`f64 -&gt; void`</td>
 <td>write float to stdout</td>
 </tr>
 <tr>
-<td>`@Viper.Terminal.PrintI64`</td>
+<td>`@Zanna.Terminal.PrintI64`</td>
 <td>`i64 -&gt; void`</td>
 <td>write integer to stdout</td>
 </tr>
 <tr>
-<td>`@Viper.Terminal.PrintStr`</td>
+<td>`@Zanna.Terminal.PrintStr`</td>
 <td>`str -&gt; void`</td>
 <td>write string to stdout</td>
 </tr>
 <tr>
-<td>`@Viper.Terminal.ReadLine`</td>
+<td>`@Zanna.Terminal.ReadLine`</td>
 <td>`-&gt; str`</td>
 <td>read line from stdin, newline stripped</td>
 </tr>
@@ -1100,32 +1100,32 @@ handler:
 <th>Notes</th>
 </tr></thead><tbody>
 <tr>
-<td>`@Viper.Core.Convert.ToStringDouble`</td>
+<td>`@Zanna.Core.Convert.ToStringDouble`</td>
 <td>`f64 -&gt; str`</td>
 <td>convert double to string</td>
 </tr>
 <tr>
-<td>`@Viper.Core.Convert.ToStringInt`</td>
+<td>`@Zanna.Core.Convert.ToStringInt`</td>
 <td>`i64 -&gt; str`</td>
 <td>convert integer to string</td>
 </tr>
 <tr>
-<td>`@Viper.String.Concat`</td>
+<td>`@Zanna.String.Concat`</td>
 <td>`str × str -&gt; str`</td>
 <td>concatenate strings</td>
 </tr>
 <tr>
-<td>`@Viper.String.get_Length`</td>
+<td>`@Zanna.String.get_Length`</td>
 <td>`str -&gt; i64`</td>
 <td>length in bytes</td>
 </tr>
 <tr>
-<td>`@Viper.String.Mid`</td>
+<td>`@Zanna.String.Mid`</td>
 <td>`str × i64 -&gt; str`</td>
 <td>substring from start index to end</td>
 </tr>
 <tr>
-<td>`@Viper.String.MidLen`</td>
+<td>`@Zanna.String.MidLen`</td>
 <td>`str × i64 × i64 -&gt; str`</td>
 <td>substring; indices clamp; negative bounds trap</td>
 </tr>
@@ -1137,12 +1137,12 @@ handler:
 <th>Notes</th>
 </tr></thead><tbody>
 <tr>
-<td>`@Viper.Core.Convert.ToDouble`</td>
+<td>`@Zanna.Core.Convert.ToDouble`</td>
 <td>`str -&gt; f64`</td>
 <td>convert string to double; traps on invalid numeric</td>
 </tr>
 <tr>
-<td>`@Viper.Core.Convert.ToInt64`</td>
+<td>`@Zanna.Core.Convert.ToInt64`</td>
 <td>`str -&gt; i64`</td>
 <td>convert string to integer; traps on invalid numeric</td>
 </tr>
@@ -1160,13 +1160,13 @@ handler:
 </tr>
 </tbody></table>
 <h4 id="terminal-keyboard-features">Terminal &amp; Keyboard Features</h4>
-<p>RuntimeFeature → Canonical Viper name → C runtime symbol</p>
+<p>RuntimeFeature → Canonical Zanna name → C runtime symbol</p>
 <ul>
-<li><code>TermCls</code>    → <code>Viper.Terminal.Clear</code>       → <code>rt_term_cls</code></li>
-<li><code>TermColor</code>  → <code>Viper.Terminal.SetColor</code>    → <code>rt_term_color_i32</code></li>
-<li><code>TermLocate</code> → <code>Viper.Terminal.SetPosition</code> → <code>rt_term_locate_i32</code></li>
-<li><code>GetKey</code>     → <code>Viper.Terminal.GetKey</code>      → <code>rt_getkey_str</code></li>
-<li><code>InKey</code>      → <code>Viper.Terminal.InKey</code>       → <code>rt_inkey_str</code></li>
+<li><code>TermCls</code>    → <code>Zanna.Terminal.Clear</code>       → <code>rt_term_cls</code></li>
+<li><code>TermColor</code>  → <code>Zanna.Terminal.SetColor</code>    → <code>rt_term_color_i32</code></li>
+<li><code>TermLocate</code> → <code>Zanna.Terminal.SetPosition</code> → <code>rt_term_locate_i32</code></li>
+<li><code>GetKey</code>     → <code>Zanna.Terminal.GetKey</code>      → <code>rt_getkey_str</code></li>
+<li><code>InKey</code>      → <code>Zanna.Terminal.InKey</code>       → <code>rt_inkey_str</code></li>
 </ul>
 <p>These helpers are gated by feature requests during lowering rather than being emitted unconditionally.</p>
 <p>Strings are reference-counted by the runtime implementation. See [src/runtime/](../src/runtime/) for additional details.</p>
@@ -1797,19 +1797,19 @@ Exit(%a1:i64):
 <p>fed by both the entry edge and the back-edge. The exit block receives the final</p>
 <p>value via parameter <code>%a1</code>.</p>
 <h4 id="stats">Stats</h4>
-<p><code>viper il-opt --mem2reg-stats</code> prints the number of promoted variables and the</p>
+<p><code>zanna il-opt --mem2reg-stats</code> prints the number of promoted variables and the</p>
 <p>removed loads/stores when the pass runs.</p>
 <h2 id="examples">Examples</h2>
 <h3 id="basic-to-il-examples">BASIC to IL Examples</h3>
 <p>The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL</p>
 <p>modules. The examples below update that material to IL v0.3.0 while preserving the original teaching intent.</p>
 <p><strong>Legacy Notation:</strong> The examples in this section use legacy <code>@rt_*</code> function names for compatibility. These work when</p>
-<p>the runtime is built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code> (the current default). New code should use the canonical</p>
-<p><code>@Viper.*</code> names documented in the Runtime ABI section above. For example:</p>
+<p>the runtime is built with <code>-DZANNA_RUNTIME_NS_DUAL=ON</code> (the current default). New code should use the canonical</p>
+<p><code>@Zanna.*</code> names documented in the Runtime ABI section above. For example:</p>
 <ul>
-<li><code>@rt_print_str</code> → <code>@Viper.Terminal.PrintStr</code></li>
-<li><code>@rt_print_i64</code> → <code>@Viper.Terminal.PrintI64</code></li>
-<li><code>@rt_str_len</code> → <code>@Viper.String.get_Length</code></li>
+<li><code>@rt_print_str</code> → <code>@Zanna.Terminal.PrintStr</code></li>
+<li><code>@rt_print_i64</code> → <code>@Zanna.Terminal.PrintI64</code></li>
+<li><code>@rt_str_len</code> → <code>@Zanna.String.get_Length</code></li>
 </ul>
 <h4 id="example-1-hello-arithmetic-and-a-conditional-branch">Example 1 — Hello, arithmetic, and a conditional branch</h4>
 <p><strong>BASIC</strong></p>
@@ -2201,13 +2201,13 @@ done:
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

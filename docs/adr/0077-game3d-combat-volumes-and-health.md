@@ -24,7 +24,7 @@ nothing assembled them.
 
 One C file (`rt_game3d_combat.c`) adds the paired combat layer:
 
-- `Viper.Game3D.Hitbox3D` (id `-0x60304E`) — combat-only volumes (never
+- `Zanna.Game3D.Hitbox3D` (id `-0x60304E`) — combat-only volumes (never
   physics bodies; raycasts and sweeps do not see them) attached entity-space
   or to animator bones, with team/channel filters, friendly fire, manual
   activation, and up to four animation windows (`BindWindow(state, t0, t1)`
@@ -36,7 +36,7 @@ One C file (`rt_game3d_combat.c`) adds the paired combat layer:
   resets when the volume goes inactive. Events land in a polled
   `HitEvent3D` buffer cleared each step (`World3D.hitEventCount/hitEvent`),
   fail-closed like `Collision3DEvent`.
-- `Viper.Game3D.Health3D` (id `-0x603050`) — per-entity hp with
+- `Zanna.Game3D.Health3D` (id `-0x603050`) — per-entity hp with
   damage/heal/revive, i-frames granted per applied hit and ticked by the
   combat pass, latched death, one-shot `JustDamaged`/`JustDied` flags cleared
   at step start (so same-step damage survives to the post-step poll), a polled

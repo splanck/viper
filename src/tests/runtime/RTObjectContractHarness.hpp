@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <cstdlib>
 
-namespace viper_contract {
+namespace zanna_contract {
 
 struct ObjHeader {
     int64_t class_id;
@@ -32,12 +32,12 @@ inline ObjHeader *object_header_from_payload(void *obj) {
     return reinterpret_cast<ObjHeader *>(obj) - 1;
 }
 
-} // namespace viper_contract
+} // namespace zanna_contract
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
     assert(byte_size >= 0);
-    auto *header = static_cast<viper_contract::ObjHeader *>(
-        std::calloc(1, sizeof(viper_contract::ObjHeader) + static_cast<size_t>(byte_size)));
+    auto *header = static_cast<zanna_contract::ObjHeader *>(
+        std::calloc(1, sizeof(zanna_contract::ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
     header->class_id = class_id;
     header->refcount = 1;
@@ -45,25 +45,25 @@ extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
 }
 
 extern "C" int64_t rt_obj_class_id(void *obj) {
-    return obj ? viper_contract::object_header_from_payload(obj)->class_id : 0;
+    return obj ? zanna_contract::object_header_from_payload(obj)->class_id : 0;
 }
 
 extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
     if (!obj)
         return;
-    viper_contract::object_header_from_payload(obj)->finalizer = finalizer;
+    zanna_contract::object_header_from_payload(obj)->finalizer = finalizer;
 }
 
 extern "C" void rt_obj_retain_maybe(void *obj) {
     if (!obj)
         return;
-    viper_contract::object_header_from_payload(obj)->refcount++;
+    zanna_contract::object_header_from_payload(obj)->refcount++;
 }
 
 extern "C" int32_t rt_obj_release_check0(void *obj) {
     if (!obj)
         return 0;
-    auto *header = viper_contract::object_header_from_payload(obj);
+    auto *header = zanna_contract::object_header_from_payload(obj);
     assert(header->refcount > 0);
     header->refcount--;
     return header->refcount == 0;
@@ -72,7 +72,7 @@ extern "C" int32_t rt_obj_release_check0(void *obj) {
 extern "C" void rt_obj_free(void *obj) {
     if (!obj)
         return;
-    auto *header = viper_contract::object_header_from_payload(obj);
+    auto *header = zanna_contract::object_header_from_payload(obj);
     if (header->finalizer)
         header->finalizer(obj);
     std::free(header);

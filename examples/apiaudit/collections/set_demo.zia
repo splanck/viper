@@ -1,13 +1,13 @@
-// set_demo.zia - Comprehensive API audit for Viper.Collections.Set
+// set_demo.zia - Comprehensive API audit for Zanna.Collections.Set
 // Tests: New, Add, Has, Remove, Len, IsEmpty, Items, Clear,
 //        Common, Diff, Merge, IsSubset, IsSuperset, IsDisjoint
 
 module SetDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Set API Audit ===");

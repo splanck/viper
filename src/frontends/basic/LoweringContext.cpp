@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,8 +22,8 @@
 ///          a single location.
 
 #include "frontends/basic/LoweringContext.hpp"
-#include "viper/il/IRBuilder.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/IRBuilder.hpp"
+#include "zanna/il/Module.hpp"
 
 namespace il::frontends::basic {
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -128,14 +128,14 @@ void buildMultiArgCallModule(Module &module, int64_t a, int64_t b, int64_t c) {
 int64_t runCall(int64_t arg) {
     Module module;
     buildCallModule(module, arg);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 int64_t runMultiArgCall(int64_t a, int64_t b, int64_t c) {
     Module module;
     buildMultiArgCallModule(module, a, b, c);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

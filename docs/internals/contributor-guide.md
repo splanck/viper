@@ -18,7 +18,7 @@ last-verified: 2026-04-09
 ## Style Guide
 
 See [CLAUDE.md](../../CLAUDE.md) for project-wide policies. This guide defines
-comment conventions and file headers for the Viper codebase. All contributors
+comment conventions and file headers for the Zanna codebase. All contributors
 must follow these rules when adding new code or updating existing files.
 
 ### File naming
@@ -175,7 +175,7 @@ that is the clearer ownership boundary.
 Any new parser, protocol frame reader, serialized format, or language input surface
 should add a small libFuzzer harness under `src/tests/fuzz/` and seed inputs under
 `src/tests/fuzz/corpus/`. Run `./scripts/fuzz_smoke.sh --self-test` to confirm the target
-is discoverable and `VIPER_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh` for a local mutation
+is discoverable and `ZANNA_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh` for a local mutation
 smoke.
 
 ### Tolerance checks for float e2e
@@ -274,7 +274,7 @@ On-demand helpers to query basic block successors and predecessors without
 constructing an explicit graph.
 
 ```cpp
-using namespace viper::analysis;
+using namespace zanna::analysis;
 CFGContext ctx(module);
 auto succ = successors(ctx, block);
 auto pred = predecessors(ctx, block);
@@ -359,7 +359,7 @@ parameter list.
 
 #### Breaking on source lines
 
-`viper` can halt execution before running a specific source line.
+`zanna` can halt execution before running a specific source line.
 
 #### Flags
 
@@ -368,22 +368,22 @@ parameter list.
 - `--break-src <file:line>`: Explicit source-line breakpoint. The argument must contain a colon and a numeric line.
 
 Paths are normalized before comparison, including platform separators and `.`/`..` segments. When the normalized path
-does not match the location recorded in the IL, `viper` falls back to comparing only the basename.
+does not match the location recorded in the IL, `zanna` falls back to comparing only the basename.
 
 Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the
-same source line, `viper` reports the breakpoint once per line until control transfers to a different basic block.
+same source line, `zanna` reports the breakpoint once per line until control transfers to a different basic block.
 
 #### Examples
 
 ```sh
 # Path normalization: break at the first PRINT in math_basics.bas
-viper build ./examples/basic/../basic/math_basics.bas -o /tmp/math_basics.il
-viper -run /tmp/math_basics.il \
+zanna build ./examples/basic/../basic/math_basics.bas -o /tmp/math_basics.il
+zanna -run /tmp/math_basics.il \
   --break-src ./examples/basic/../basic/math_basics.bas:4 --trace=src
 
 # Basename fallback with the explicit flag
-viper build examples/basic/sine_cosine.bas -o /tmp/sine_cosine.il
-viper -run /tmp/sine_cosine.il \
+zanna build examples/basic/sine_cosine.bas -o /tmp/sine_cosine.il
+zanna -run /tmp/sine_cosine.il \
   --break-src sine_cosine.bas:5 --trace=src
 ```
 
@@ -422,7 +422,7 @@ arguments.
 Use the factorial example to inspect recursive calls.
 
 ```sh
-viper -run src/tests/e2e/factorial.bas --trace=src \
+zanna -run src/tests/e2e/factorial.bas --trace=src \
     --break-src src/tests/e2e/factorial.bas:5 \
     --debug-cmds examples/il/debug_script.txt
 ```

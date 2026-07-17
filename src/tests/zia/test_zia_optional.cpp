@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,8 +50,8 @@ func start() {    var p1: Person? = new Person(30);
     var age1: Integer = result1.age;
     var age2: Integer = result2.age;
 
-    Viper.Terminal.SayInt(age1);
-    Viper.Terminal.SayInt(age2);
+    Zanna.Terminal.SayInt(age1);
+    Zanna.Terminal.SayInt(age2);
 }
 )";
     CompilerInput input{.source = source, .path = "optional.zia"};
@@ -112,8 +112,8 @@ func start() {    var p: Person? = maybePerson(true);
     var age: Integer? = p?.age;
     var resolved: Integer = age ?? 0;
     var wrapped: Integer? = maybeAge(true);
-    Viper.Terminal.SayInt(resolved);
-    Viper.Terminal.SayInt(wrapped ?? 0);
+    Zanna.Terminal.SayInt(resolved);
+    Zanna.Terminal.SayInt(wrapped ?? 0);
 }
 )";
     CompilerInput input{.source = source, .path = "optional_chain.zia"};
@@ -137,7 +137,7 @@ func start() {    var p: Person? = maybePerson(true);
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call &&
-                        instr.callee == "Viper.Core.Box.I64") {
+                        instr.callee == "Zanna.Core.Box.I64") {
                         foundBox = true;
                     }
                 }
@@ -179,5 +179,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

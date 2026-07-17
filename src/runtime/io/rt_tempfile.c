@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_tempfile.c
 // Purpose: Temporary-path and temporary-file helpers backing the static
-//          Viper.IO.TempFile API. Creates names in the system temporary
+//          Zanna.IO.TempFile API. Creates names in the system temporary
 //          directory using the shared platform entropy adapter.
 //
 // Key invariants:
@@ -280,10 +280,10 @@ rt_string rt_tempfile_dir(void) {
 #endif
 }
 
-/// @brief Generate a unique temp-file PATH (does NOT create the file). Default prefix "viper_",
+/// @brief Generate a unique temp-file PATH (does NOT create the file). Default prefix "zanna_",
 /// extension ".tmp". Use when you want to atomically open it yourself with specific flags.
 rt_string rt_tempfile_path(void) {
-    return rt_tempfile_path_with_prefix(rt_const_cstr("viper_"));
+    return rt_tempfile_path_with_prefix(rt_const_cstr("zanna_"));
 }
 
 /// @brief Path generator with a custom prefix; uses ".tmp" extension.
@@ -332,10 +332,10 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     return result;
 }
 
-/// @brief Atomically create a temp file (path + filesystem object). Default prefix "viper_".
+/// @brief Atomically create a temp file (path + filesystem object). Default prefix "zanna_".
 /// Returns the path of the freshly-created (empty) file.
 rt_string rt_tempfile_create(void) {
-    return rt_tempfile_create_with_prefix(rt_const_cstr("viper_"));
+    return rt_tempfile_create_with_prefix(rt_const_cstr("zanna_"));
 }
 
 /// @brief Atomic temp-file creation with custom prefix. **POSIX fast path:** uses `mkstemp`
@@ -399,10 +399,10 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
     return rt_const_cstr("");
 }
 
-/// @brief Atomically create a temp DIRECTORY (not a file). Default prefix "viper_". Mode 0700
+/// @brief Atomically create a temp DIRECTORY (not a file). Default prefix "zanna_". Mode 0700
 /// on POSIX (owner-only access). The directory companion to `_create`.
 rt_string rt_tempdir_create(void) {
-    return rt_tempdir_create_with_prefix(rt_const_cstr("viper_"));
+    return rt_tempdir_create_with_prefix(rt_const_cstr("zanna_"));
 }
 
 /// @brief Atomic temp-directory creation with custom prefix. Same retry pattern as `_create`

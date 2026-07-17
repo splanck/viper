@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,8 +20,8 @@
 
 int main() {
     using namespace il::core;
-    using viper::analysis::predecessors;
-    using viper::analysis::successors;
+    using zanna::analysis::predecessors;
+    using zanna::analysis::successors;
 
     Module m;
     il::build::IRBuilder b(m);
@@ -86,7 +86,7 @@ int main() {
     b.setInsertPoint(dupJoin);
     b.emitRet(std::nullopt, {});
 
-    viper::analysis::CFGContext ctx(m);
+    zanna::analysis::CFGContext ctx(m);
 
     auto sEntry = successors(ctx, entry);
     assert(sEntry.size() == 2);

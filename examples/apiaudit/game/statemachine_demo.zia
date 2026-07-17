@@ -1,12 +1,12 @@
-// statemachine_demo.zia - Comprehensive API audit for Viper.Game.StateMachine
+// statemachine_demo.zia - Comprehensive API audit for Zanna.Game.StateMachine
 // Tests: New, AddState, SetInitial, Current, Previous, IsState, Transition,
 //        JustEntered, JustExited, ClearFlags, FramesInState, Update,
 //        HasState, StateCount
 
 module StateMachineDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== StateMachine API Audit ===");

@@ -12,7 +12,7 @@
 // =============================================================================
 module postfx;
 
-bind Viper.Graphics3D as G3D;
+bind Zanna.Graphics3D as G3D;
 
 var TIER_PERFORMANCE: Integer = 0;
 var TIER_BALANCED: Integer = 1;

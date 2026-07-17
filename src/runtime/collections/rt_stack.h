@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_stack.h
-// Purpose: Runtime-backed LIFO stack for Viper.Collections.Stack, providing push/pop/peek with
+// Purpose: Runtime-backed LIFO stack for Zanna.Collections.Stack, providing push/pop/peek with
 // automatic growth and O(1) operations.
 //
 // Key invariants:
@@ -95,7 +95,7 @@ void *rt_stack_try_pop(void *obj);
 ///          element is removed. A stored NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_stack_try_pop.
 /// @param obj Opaque Stack object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_stack_try_pop_option(void *obj);
 
 /// @brief Create a shallow copy of the stack.

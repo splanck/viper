@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::il {
+namespace zanna::il {
 
 /// @brief Determine whether instruction @p I resides in block @p B.
 /// @details Performs a linear scan over the block's instruction list and
@@ -127,7 +127,7 @@ void replaceAllUses(::il::core::Function &F,
 /// @param dominator Candidate dominating block.
 /// @param block Candidate dominated block.
 /// @return True when @p dominator is on @p block's idom chain.
-bool dominatesInTree(const ::viper::analysis::DomTree &domTree,
+bool dominatesInTree(const ::zanna::analysis::DomTree &domTree,
                      const ::il::core::BasicBlock *dominator,
                      const ::il::core::BasicBlock *block) {
     if (!dominator || !block)
@@ -161,7 +161,7 @@ void replaceUsesDominatedBy(::il::core::Function &F,
                             const ::il::core::Value &replacement,
                             const ::il::core::BasicBlock &rootBlock,
                             std::size_t rootInstrIndex,
-                            const ::viper::analysis::DomTree &domTree) {
+                            const ::zanna::analysis::DomTree &domTree) {
     using ::il::core::BasicBlock;
     using ::il::core::Value;
 
@@ -251,7 +251,7 @@ unsigned nextTempId(const ::il::core::Function &F) {
 }
 
 /// @brief Linear search for a block with @p label in @p F.
-viper::il::Block *findBlock(::il::core::Function &F, std::string_view label) {
+zanna::il::Block *findBlock(::il::core::Function &F, std::string_view label) {
     for (auto &B : F.blocks) {
         if (B.label == label)
             return &B;
@@ -260,7 +260,7 @@ viper::il::Block *findBlock(::il::core::Function &F, std::string_view label) {
 }
 
 /// @brief Const overload of findBlock.
-const viper::il::Block *findBlock(const ::il::core::Function &F, std::string_view label) {
+const zanna::il::Block *findBlock(const ::il::core::Function &F, std::string_view label) {
     for (const auto &B : F.blocks) {
         if (B.label == label)
             return &B;
@@ -268,4 +268,4 @@ const viper::il::Block *findBlock(const ::il::core::Function &F, std::string_vie
     return nullptr;
 }
 
-} // namespace viper::il
+} // namespace zanna::il

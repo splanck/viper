@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief CFG-aware liveness analysis over AArch64 Machine IR blocks.
 ///
@@ -85,4 +85,4 @@ class LivenessAnalysis {
     void computeLiveOutSets(const MFunction &func);
 };
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

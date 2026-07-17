@@ -8,14 +8,14 @@
 //          stream cursors (injuryRngState, developmentRngState,
 //          transactionRngState) round-trip identically — that's the
 //          plan-15 § RNG handling determinism guarantee in action.
-// Run via: viper run examples/games/baseball/persistence_probe.zia
+// Run via: zanna run examples/games/baseball/persistence_probe.zia
 // ============================================================================
 module persistence_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.IO.Path as Path;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.IO.Path as Path;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/persistence";

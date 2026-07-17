@@ -1,7 +1,7 @@
 module vec3_mutators_probe;
 
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func near(a: Float, b: Float) -> Boolean {
     var d = a - b;

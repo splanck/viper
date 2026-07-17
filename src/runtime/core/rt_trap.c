@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_trap.c
-// Purpose: Fatal runtime trap helpers for the Viper runtime C ABI. Provides
+// Purpose: Fatal runtime trap helpers for the Zanna runtime C ABI. Provides
 //   narrow convenience wrappers such as rt_trap_div0() and assertion helpers
 //   that ultimately route through the structured runtime trap dispatcher.
 //   Centralising trap logic here keeps trap kinds, error codes, and messages
@@ -93,7 +93,7 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
 ///          instead of being silently replaced by the fallback text.
 static int message_has_bytes(rt_string message) {
     if (message && !rt_string_is_handle((const void *)message)) {
-        rt_trap("Viper.Core.Diagnostics: invalid message string handle");
+        rt_trap("Zanna.Core.Diagnostics: invalid message string handle");
         return 0;
     }
     if (!message || !message->data)
@@ -120,7 +120,7 @@ static const char *format_message(rt_string message, const char *fallback, char 
 /// @details The default hook terminates the process; test and embedder hooks may
 ///          return after recording the trap for diagnostics.
 void rt_trap_div0(void) {
-    rt_trap_raise_kind(RT_TRAP_KIND_DIVIDE_BY_ZERO, 0, -1, "Viper runtime trap: division by zero");
+    rt_trap_raise_kind(RT_TRAP_KIND_DIVIDE_BY_ZERO, 0, -1, "Zanna runtime trap: division by zero");
 }
 
 /// @brief Report an integer-overflow trap through the active runtime trap hook.
@@ -128,7 +128,7 @@ void rt_trap_div0(void) {
 ///          backends so backend lowering can call a no-argument helper.
 void rt_trap_ovf(void) {
     rt_trap_raise_kind(
-        RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "Viper runtime trap: integer overflow");
+        RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "Zanna runtime trap: integer overflow");
 }
 
 /// @brief Trap with a managed runtime string message.
@@ -138,7 +138,7 @@ void rt_trap_string(rt_string msg) {
         return;
     }
     if (!rt_string_is_handle((const void *)msg)) {
-        rt_trap("Viper.Core.Diagnostics.Trap: invalid string handle");
+        rt_trap("Zanna.Core.Diagnostics.Trap: invalid string handle");
         return;
     }
 

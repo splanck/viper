@@ -1,9 +1,9 @@
 module Physics3DQueriesDemo;
 
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     Say("Physics3D queries demo");

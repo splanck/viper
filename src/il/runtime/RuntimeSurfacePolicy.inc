@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Runtime surface policy for frontend-visible Viper.* APIs.
+// Runtime surface policy for frontend-visible Zanna.* APIs.
 //
 // This file is consumed by audit tests. Keep it focused on deliberate language
 // surface guarantees and intentionally-internal headers that should not be
@@ -23,7 +23,7 @@
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_crypto.h")
 
 // These headers intentionally expose additional C-runtime helpers that are not
-// part of the frontend-visible Viper.* surface. `runtime.def` remains the
+// part of the frontend-visible Zanna.* surface. `runtime.def` remains the
 // source of truth for frontend APIs; audit should not infer new surface area
 // from extra declarations in these implementation headers.
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/arrays/rt_array.h")
@@ -52,7 +52,7 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_codeeditor_inte
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_app_internal.h")
 // Narrow GUI implementation bridges: platform accessibility projection,
 // TestHarness access to validated borrowed App state, and system-font lookup.
-// None is a frontend-visible Viper.GUI namespace.
+// None is a frontend-visible Zanna.GUI namespace.
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_accessibility_platform.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_automation_bridge.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_font_platform.h")
@@ -254,29 +254,29 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_test_harness_event_count")
 // Managed replacements for legacy raw-pointer runtime surfaces. These entries
 // keep the frontend API names present while routing them to object, Option,
 // sequence, path, or callback-reference signatures.
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToI64Option", "rt_box_to_i64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToF64Option", "rt_box_to_f64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToI1Option", "rt_box_to_i1_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToStrOption", "rt_box_to_str_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.String.SplitFields", "rt_str_split_fields_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolylinePath", "rt_canvas_polyline_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolygonPath", "rt_canvas_polygon_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolygonFramePath",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Box.ToI64Option", "rt_box_to_i64_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Box.ToF64Option", "rt_box_to_f64_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Box.ToI1Option", "rt_box_to_i1_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Box.ToStrOption", "rt_box_to_str_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.String.SplitFields", "rt_str_split_fields_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.Canvas.PolylinePath", "rt_canvas_polyline_path")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.Canvas.PolygonPath", "rt_canvas_polygon_path")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.Canvas.PolygonFramePath",
                                 "rt_canvas_polygon_frame_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryDouble", "rt_parse_double_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryInt", "rt_parse_int64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryBool", "rt_parse_bool_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.New", "rt_weakref_new")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Get", "rt_weakref_get")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.IsAlive", "rt_weakref_alive")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Free", "rt_weakref_free")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Reset", "rt_weakref_reset")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.ParticleEmitter.ParticleAt",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Parse.TryDouble", "rt_parse_double_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Parse.TryInt", "rt_parse_int64_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Core.Parse.TryBool", "rt_parse_bool_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Memory.WeakRef.New", "rt_weakref_new")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Memory.WeakRef.Get", "rt_weakref_get")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Memory.WeakRef.IsAlive", "rt_weakref_alive")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Memory.WeakRef.Free", "rt_weakref_free")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Memory.WeakRef.Reset", "rt_weakref_reset")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Game.ParticleEmitter.ParticleAt",
                                 "rt_particle_emitter_particle_at")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.IO.File.WriteAllLines", "rt_io_file_write_all_lines")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.SomeI1", "rt_option_some_i1")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.UnwrapI1", "rt_option_unwrap_i1")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.UnwrapOrI1", "rt_option_unwrap_or_i1")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.IO.File.WriteAllLines", "rt_io_file_write_all_lines")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.SomeI1", "rt_option_some_i1")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.UnwrapI1", "rt_option_unwrap_i1")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.UnwrapOrI1", "rt_option_unwrap_or_i1")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_box_try_to_i64")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_box_try_to_f64")
@@ -293,43 +293,43 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parse_try_num")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parse_try_bool")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_particle_emitter_get")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToI64Option", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToF64Option", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToI1Option", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToStrOption", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryInt", "obj<Viper.Option>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryDouble", "obj<Viper.Option>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryBool", "obj<Viper.Option>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Object", "IsNull", "i1(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "New", "obj<Viper.Memory.WeakRef>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Get", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Get", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "IsAlive", "i1(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "IsAlive", "i1()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Free", "void(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Free", "void()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Reset", "void(obj,obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Reset", "void(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.String", "SplitFields", "seq<str>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Box", "ToI64Option", "obj<Zanna.Option>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Box", "ToF64Option", "obj<Zanna.Option>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Box", "ToI1Option", "obj<Zanna.Option>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Box", "ToStrOption", "obj<Zanna.Option>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Parse", "TryInt", "obj<Zanna.Option>(str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Parse", "TryDouble", "obj<Zanna.Option>(str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Parse", "TryBool", "obj<Zanna.Option>(str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Core.Object", "IsNull", "i1(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "New", "obj<Zanna.Memory.WeakRef>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Get", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Get", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "IsAlive", "i1(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "IsAlive", "i1()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Free", "void(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Free", "void()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Reset", "void(obj,obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Memory.WeakRef", "Reset", "void(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.String", "SplitFields", "seq<str>(str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.Canvas",
                               "PolylinePath",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
+                              "void(obj<Zanna.Graphics.Path2D>,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.Canvas",
                               "PolygonPath",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
+                              "void(obj<Zanna.Graphics.Path2D>,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.Canvas",
                               "PolygonFramePath",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Game.ParticleEmitter", "ParticleAt", "obj<Viper.Option>(i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.IO.File", "WriteAllLines", "void(str,seq<str>)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.Container", "SetSpacing", "void(f64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.Container", "SetPadding", "void(f64)")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.ParticleSnapshot", "X", "f64")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.ParticleSnapshot", "Y", "f64")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.ParticleSnapshot", "Size", "f64")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.ParticleSnapshot", "Color", "i64")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.GUI.VideoWidget", "ShowControls", "i1")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.GUI.VideoWidget", "Loop", "i1")
+                              "void(obj<Zanna.Graphics.Path2D>,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Game.ParticleEmitter", "ParticleAt", "obj<Zanna.Option>(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.IO.File", "WriteAllLines", "void(str,seq<str>)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.Container", "SetSpacing", "void(f64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.Container", "SetPadding", "void(f64)")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.ParticleSnapshot", "X", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.ParticleSnapshot", "Y", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.ParticleSnapshot", "Size", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.ParticleSnapshot", "Color", "i64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.GUI.VideoWidget", "ShowControls", "i1")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.GUI.VideoWidget", "Loop", "i1")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_load_mem")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_is_handle")
@@ -864,7 +864,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_retain")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_set_len")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_try_get_header")
 
-// Localization internal helpers — not part of the frontend Viper.Localization.*
+// Localization internal helpers — not part of the frontend Zanna.Localization.*
 // surface. Locale parsing, data registry access, and plural-rule evaluation
 // internals live in shared headers alongside their public counterparts.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_bind_data")
@@ -880,168 +880,168 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_cardinal")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_cardinal_int")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_ordinal")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.New", "rt_messagebox_new")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.NewInfo", "rt_messagebox_new_info")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.NewWarning", "rt_messagebox_new_warning")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.NewError", "rt_messagebox_new_error")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.NewQuestion", "rt_messagebox_new_question")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.AddButton", "rt_messagebox_add_button")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.SetDefaultButton",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.New", "rt_messagebox_new")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.NewInfo", "rt_messagebox_new_info")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.NewWarning", "rt_messagebox_new_warning")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.NewError", "rt_messagebox_new_error")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.NewQuestion", "rt_messagebox_new_question")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.AddButton", "rt_messagebox_add_button")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.SetDefaultButton",
                                 "rt_messagebox_set_default_button")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.Show", "rt_messagebox_show")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.Destroy", "rt_messagebox_destroy")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.Show", "rt_messagebox_show")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.MessageBox.Destroy", "rt_messagebox_destroy")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.New", "rt_filedialog_new")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.NewOpen", "rt_filedialog_new_open")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.NewSave", "rt_filedialog_new_save")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.NewFolder", "rt_filedialog_new_folder")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.SetTitle", "rt_filedialog_set_title")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.SetPath", "rt_filedialog_set_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.SetFilter", "rt_filedialog_set_filter")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.AddFilter", "rt_filedialog_add_filter")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.SetDefaultName",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.New", "rt_filedialog_new")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.NewOpen", "rt_filedialog_new_open")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.NewSave", "rt_filedialog_new_save")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.NewFolder", "rt_filedialog_new_folder")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.SetTitle", "rt_filedialog_set_title")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.SetPath", "rt_filedialog_set_path")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.SetFilter", "rt_filedialog_set_filter")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.AddFilter", "rt_filedialog_add_filter")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.SetDefaultName",
                                 "rt_filedialog_set_default_name")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.SetMultiple", "rt_filedialog_set_multiple")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.Show", "rt_filedialog_show")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.GetPath", "rt_filedialog_get_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.get_PathCount",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.SetMultiple", "rt_filedialog_set_multiple")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.Show", "rt_filedialog_show")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.GetPath", "rt_filedialog_get_path")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.get_PathCount",
                                 "rt_filedialog_get_path_count")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.GetPathAt", "rt_filedialog_get_path_at")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.FileDialog.Destroy", "rt_filedialog_destroy")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.GetPathAt", "rt_filedialog_get_path_at")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.GUI.FileDialog.Destroy", "rt_filedialog_destroy")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.Map", "rt_option_map_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.AndThen", "rt_option_and_then_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.OrElse", "rt_option_or_else_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Option.Filter", "rt_option_filter_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.Map", "rt_option_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.AndThen", "rt_option_and_then_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.OrElse", "rt_option_or_else_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Option.Filter", "rt_option_filter_wrapper")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.Map", "rt_result_map_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.MapErr", "rt_result_map_err_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.AndThen", "rt_result_and_then_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.OrElse", "rt_result_or_else_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Result.Map", "rt_result_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Result.MapErr", "rt_result_map_err_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Result.AndThen", "rt_result_and_then_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Result.OrElse", "rt_result_or_else_wrapper")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.New", "rt_lazy_new_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.Map", "rt_lazy_map_wrapper")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.AndThen", "rt_lazy_flat_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Functional.Lazy.New", "rt_lazy_new_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Functional.Lazy.Map", "rt_lazy_map_wrapper")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Functional.Lazy.AndThen", "rt_lazy_flat_map_wrapper")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Sprite.DrawTransformed",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.Sprite.DrawTransformed",
                                 "rt_sprite_draw_transformed")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.New", "rt_sprite_animator_new")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Destroy",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.New", "rt_sprite_animator_new")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.Destroy",
                                 "rt_sprite_animator_destroy")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.AddClip",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.AddClip",
                                 "rt_sprite_animator_add_clip_str")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Play", "rt_sprite_animator_play_str")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Stop", "rt_sprite_animator_stop")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Update", "rt_sprite_animator_update")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_IsPlaying",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.Play", "rt_sprite_animator_play_str")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.Stop", "rt_sprite_animator_stop")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.Update", "rt_sprite_animator_update")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.get_IsPlaying",
                                 "rt_sprite_animator_is_playing")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_Current",
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Graphics.SpriteAnimator.get_Current",
                                 "rt_sprite_animator_get_current_str")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevX", "rt_physics2d_body_prev_x")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevY", "rt_physics2d_body_prev_y")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Game.Physics2D.Body.get_PrevX", "rt_physics2d_body_prev_x")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Game.Physics2D.Body.get_PrevY", "rt_physics2d_body_prev_y")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.StringSet.ToSeq", "rt_bag_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Deque.ToList", "rt_deque_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Deque.ToSeq", "rt_deque_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.ToSeq", "rt_list_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToStringSet", "rt_seq_to_bag")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToDeque", "rt_seq_to_deque")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToList", "rt_seq_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToQueue", "rt_seq_to_queue")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToSet", "rt_seq_to_set")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToStack", "rt_seq_to_stack")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.ToList", "rt_set_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.ToSeq", "rt_set_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.StringSet.ToSeq", "rt_bag_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Deque.ToList", "rt_deque_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Deque.ToSeq", "rt_deque_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.List.ToSeq", "rt_list_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToStringSet", "rt_seq_to_bag")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToDeque", "rt_seq_to_deque")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToList", "rt_seq_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToQueue", "rt_seq_to_queue")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToSet", "rt_seq_to_set")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Seq.ToStack", "rt_seq_to_stack")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Set.ToList", "rt_set_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Zanna.Collections.Set.ToSeq", "rt_set_to_seq")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "New", "obj(str,str,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "NewInfo", "obj(str,str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "AddButton", "void(str,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "Show", "i64()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "Destroy", "void()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.MessageBox", "New", "obj(str,str,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.MessageBox", "NewInfo", "obj(str,str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.MessageBox", "AddButton", "void(str,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.MessageBox", "Show", "i64()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.MessageBox", "Destroy", "void()")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "New", "obj(i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "NewOpen", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "OpenMultiple", "str(str,str,str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "GetPath", "str()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "GetPathAt", "str(i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.FileDialog", "Destroy", "void()")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.GUI.FileDialog", "PathCount", "i64")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "New", "obj(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "NewOpen", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "OpenMultiple", "str(str,str,str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "GetPath", "str()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "GetPathAt", "str(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.GUI.FileDialog", "Destroy", "void()")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.GUI.FileDialog", "PathCount", "i64")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Option", "Map", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Option", "AndThen", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Option", "OrElse", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Option", "Filter", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Option", "Map", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Option", "AndThen", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Option", "OrElse", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Option", "Filter", "obj(obj)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "Map", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "MapErr", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "AndThen", "obj(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "OrElse", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Result", "Map", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Result", "MapErr", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Result", "AndThen", "obj(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Result", "OrElse", "obj(obj)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "Map", "obj<Viper.Functional.Lazy>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "AndThen", "obj<Viper.Functional.Lazy>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.Lazy", "Map", "obj<Zanna.Functional.Lazy>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.Lazy", "AndThen", "obj<Zanna.Functional.Lazy>(obj)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Text.Pattern", "FindAll", "seq<str>(str,str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Text.Pattern", "FindAll", "seq<str>(str,str)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq",
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.LazySeq",
                               "Range",
-                              "obj<Viper.Functional.LazySeq>(i64,i64,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq",
+                              "obj<Zanna.Functional.LazySeq>(i64,i64,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.LazySeq",
                               "Take",
-                              "obj<Viper.Functional.LazySeq>(i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "ToSeq", "seq<obj>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.LazySeq", "ToSeq", "seq<obj>(i64)")
+                              "obj<Zanna.Functional.LazySeq>(i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.LazySeq", "ToSeq", "seq<obj>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Functional.LazySeq", "ToSeq", "seq<obj>(i64)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Sprite",
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.Sprite",
                               "DrawTransformed",
                               "void(obj,i64,i64,i64,i64,i64,i64,i64)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "AddClip", "i1(str,i64,i64,i64,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Play", "i1(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Update", "void(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Destroy", "void()")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Graphics.SpriteAnimator", "IsPlaying", "i1")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Graphics.SpriteAnimator", "Current", "str")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.SpriteAnimator", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.SpriteAnimator", "AddClip", "i1(str,i64,i64,i64,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.SpriteAnimator", "Play", "i1(str)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.SpriteAnimator", "Update", "void(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Graphics.SpriteAnimator", "Destroy", "void()")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Graphics.SpriteAnimator", "IsPlaying", "i1")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Graphics.SpriteAnimator", "Current", "str")
 
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.Body", "PrevX", "f64")
-RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.Body", "PrevY", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.Physics2D.Body", "PrevX", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.Physics2D.Body", "PrevY", "f64")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.StringSet", "ToSeq", "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.StringSet", "ToSet", "obj<Viper.Collections.Set>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Map", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "ToSeq", "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "ToList", "obj<Viper.Collections.List>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet", "ToSeq", "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet", "ToSet", "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Map", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "ToSeq", "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "ToList", "obj<Zanna.Collections.List>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
                               "ToSeq",
-                              "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
+                              "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
                               "ToSet",
-                              "obj<Viper.Collections.Set>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
+                              "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
                               "ToStack",
-                              "obj<Viper.Collections.Stack>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Queue",
+                              "obj<Zanna.Collections.Stack>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Queue",
                               "ToSeq",
-                              "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq",
+                              "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq",
                               "ToList",
-                              "obj<Viper.Collections.List>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "ToSet", "obj<Viper.Collections.Set>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq",
+                              "obj<Zanna.Collections.List>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToSet", "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq",
                               "ToDeque",
-                              "obj<Viper.Collections.Deque>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "ToStringSet", "obj<Viper.Collections.StringSet>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Stack",
+                              "obj<Zanna.Collections.Deque>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToStringSet", "obj<Zanna.Collections.StringSet>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Stack",
                               "ToSeq",
-                              "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Deque",
+                              "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Deque",
                               "ToSeq",
-                              "obj<Viper.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Time.Stopwatch", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Time.Stopwatch", "StartNew", "obj()")
+                              "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Time.Stopwatch", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Time.Stopwatch", "StartNew", "obj()")
 
 // Retired public rows (2026-07-15 API consistency sweep): these C entry
 // points lost their public runtime.def rows when compatibility aliases,
@@ -1268,7 +1268,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_uitable_last_header_click")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_unionfind_find")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_url_decode")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_url_encode")
-RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_viper_tls_error")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_zanna_tls_error")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_xml_error")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_xml_find")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_yaml_error")

@@ -1,4 +1,4 @@
-// collision_demo.zia - Comprehensive API audit for Viper.Game.CollisionRect and Collision
+// collision_demo.zia - Comprehensive API audit for Zanna.Game.CollisionRect and Collision
 // Tests CollisionRect: New, X, Y, Width, Height, Right, Bottom, CenterX, CenterY,
 //   SetPosition, SetSize, Set, SetCenter, Move, ContainsPoint, Overlaps,
 //   OverlapsRect, OverlapX, OverlapY, Expand, ContainsRect
@@ -7,8 +7,8 @@
 
 module CollisionDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== CollisionRect API Audit ===");

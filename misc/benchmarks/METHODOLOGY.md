@@ -2,8 +2,8 @@
 
 ## Overview
 
-The Viper benchmark suite measures execution time across 16 stress programs,
-comparing Viper's native codegen against C, Rust, Lua, Python, Java, and C#.
+The Zanna benchmark suite measures execution time across 16 stress programs,
+comparing Zanna's native codegen against C, Rust, Lua, Python, Java, and C#.
 Nine are cross-language stress programs with reference implementations; seven
 are codegen-quality kernels that each isolate one native code generation path
 (register allocation, addressing modes, checked arithmetic, switch dispatch,
@@ -35,7 +35,7 @@ penalized. Approximate startup costs on Apple M4 Max:
 
 | Language        | Startup   | Impact on 30ms benchmark |
 |-----------------|-----------|--------------------------|
-| C/Rust/Viper    | ~1-2ms    | ~5%                      |
+| C/Rust/Zanna    | ~1-2ms    | ~5%                      |
 | Lua             | ~3-5ms    | ~12%                     |
 | Python          | ~15-20ms  | ~55%                     |
 | Java (JVM)      | ~30-60ms  | ~100-150%                |
@@ -54,7 +54,7 @@ Professional JVM benchmarks (JMH) run within a single long-lived process with
 thousands of warmup iterations. Our approach measures cold-start performance,
 which is a legitimate but different metric.
 
-### Anti-Optimization (minor, favors Viper)
+### Anti-Optimization (minor, favors Zanna)
 
 C/Rust/Java/C# reference implementations add `argc-1` (or `args.length`) to
 the loop bound to prevent the compiler from constant-folding the entire
@@ -66,7 +66,7 @@ so this difference is theoretical.
 
 | Language     | Optimization         | Notes                          |
 |--------------|----------------------|--------------------------------|
-| Viper native | `-O2`                | IL optimizer + native codegen  |
+| Zanna native | `-O2`                | IL optimizer + native codegen  |
 | C            | `-O0`, `-O2`, `-O3`  | Apple Clang                    |
 | Rust         | `-O` (= release)     | rustc                          |
 | Lua          | interpreted          | Lua 5.4, no compilation        |

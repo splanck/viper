@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>v0.2.7: Graphics3D Stability, a ViperIDE Workbench, and Fail-Closed Hardening — Viper</title>
-  <meta name="description" content="Viper v0.2.7 release notes: Graphics3D flicker fixed with spot-light shadows and a deterministic software rasterizer, ViperIDE becomes a workbench with a VM debugger, git source control, and an integrated terminal, a new agent-facing CLI, and a runtime hardening backbone that makes recoverable traps and asset loaders fail closed.">
+  <title>v0.2.7: Graphics3D Stability, a ZannaIDE Workbench, and Fail-Closed Hardening — Zanna</title>
+  <meta name="description" content="Zanna v0.2.7 release notes: Graphics3D flicker fixed with spot-light shadows and a deterministic software rasterizer, ZannaIDE becomes a workbench with a VM debugger, git source control, and an integrated terminal, a new agent-facing CLI, and a runtime hardening backbone that makes recoverable traps and asset loaders fail closed.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -30,10 +30,10 @@
 
 <div class="section">
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
-    <h1>v0.2.7: Graphics3D Stability, a ViperIDE Workbench, and Fail-Closed Hardening</h1>
+    <h1>v0.2.7: Graphics3D Stability, a ZannaIDE Workbench, and Fail-Closed Hardening</h1>
     <p><span class="version-badge">v0.2.7</span> <span class="release-date">June 2026</span></p>
 
-    <p>A hardening cycle continuing v0.2.6, with focused new capability in 3D, tooling, and the languages. The 3D renderer stops flickering frame-to-frame and gains spot-light shadows, a deterministic multi-threaded software rasterizer, and node animation over a rebuilt glTF/FBX importer; ViperIDE becomes a real workbench with a VM debugger, git source control, multi-root workspaces, and an integrated terminal; and the runtime's hardening backbone makes bad input fail closed &mdash; returning a safe value instead of crashing your program. The full release notes are at <code>docs/release_notes/Viper_Release_Notes_0_2_7.md</code>; this is the highlight reel.</p>
+    <p>A hardening cycle continuing v0.2.6, with focused new capability in 3D, tooling, and the languages. The 3D renderer stops flickering frame-to-frame and gains spot-light shadows, a deterministic multi-threaded software rasterizer, and node animation over a rebuilt glTF/FBX importer; ZannaIDE becomes a real workbench with a VM debugger, git source control, multi-root workspaces, and an integrated terminal; and the runtime's hardening backbone makes bad input fail closed &mdash; returning a safe value instead of crashing your program. The full release notes are at <code>docs/release_notes/Zanna_Release_Notes_0_2_7.md</code>; this is the highlight reel.</p>
 
     <h2>Graphics3D &amp; rendering</h2>
     <ul>
@@ -50,16 +50,16 @@
       <li><strong>Degradation is observable</strong> &mdash; a process-wide <code>Game3D.Diagnostics3D</code> surface counts the rare correct-but-degraded fallbacks so a smoke run can assert a clean frame.</li>
     </ul>
 
-    <h2>ViperIDE &mdash; a real workbench</h2>
+    <h2>ZannaIDE &mdash; a real workbench</h2>
     <ul>
-      <li><strong>VM debugger</strong> &mdash; <code>viper run --debug-adapter</code> drives pause/continue, step in/over/out, breakpoints, call stacks, and locals, and evaluates a watch expression or the identifier under the cursor against the stopped frame.</li>
-      <li><strong>Editor</strong> &mdash; Viper/IL syntax highlighting with a compiler-driven semantic overlay, indentation guides, right-click context menus, and two-language formatting, plus BASIC completion, diagnostics, hover, and symbols.</li>
-      <li><strong>Workbench</strong> &mdash; an activity bar with a full git Source Control view, multi-root workspaces, and an integrated terminal over a new <code>Viper.System.Pty</code> pseudo-terminal runtime (ConPTY on Windows, <code>posix_openpt</code>/<code>fork</code> on POSIX).</li>
+      <li><strong>VM debugger</strong> &mdash; <code>zanna run --debug-adapter</code> drives pause/continue, step in/over/out, breakpoints, call stacks, and locals, and evaluates a watch expression or the identifier under the cursor against the stopped frame.</li>
+      <li><strong>Editor</strong> &mdash; Zanna/IL syntax highlighting with a compiler-driven semantic overlay, indentation guides, right-click context menus, and two-language formatting, plus BASIC completion, diagnostics, hover, and symbols.</li>
+      <li><strong>Workbench</strong> &mdash; an activity bar with a full git Source Control view, multi-root workspaces, and an integrated terminal over a new <code>Zanna.System.Pty</code> pseudo-terminal runtime (ConPTY on Windows, <code>posix_openpt</code>/<code>fork</code> on POSIX).</li>
     </ul>
 
     <h2>Agent-facing CLI &mdash; new</h2>
     <ul>
-      <li><strong>Machine-readable diagnostics</strong> &mdash; <code>viper check</code>/<code>eval</code>/<code>explain</code> over a central diagnostic-code catalog, plus <code>--dump-runtime-api</code>/<code>--dump-opcodes</code> registry inventories; the LSP/MCP servers carry the same structured diagnostics.</li>
+      <li><strong>Machine-readable diagnostics</strong> &mdash; <code>zanna check</code>/<code>eval</code>/<code>explain</code> over a central diagnostic-code catalog, plus <code>--dump-runtime-api</code>/<code>--dump-opcodes</code> registry inventories; the LSP/MCP servers carry the same structured diagnostics.</li>
     </ul>
 
     <h2>Runtime fails closed &mdash; repo-wide</h2>
@@ -78,12 +78,12 @@
 
     <h2>2D drawing &mdash; new</h2>
     <ul>
-      <li><strong>Text &amp; gradients</strong> &mdash; <code>Pixels</code> gains bitmap-font text drawing and measurement, and <code>Gradient2D</code> adds normalized <code>Sample</code>/<code>SampleRGBA</code> &mdash; the runtime behind a rebuilt Viper Paint with layers, blend modes, and an HSL picker.</li>
+      <li><strong>Text &amp; gradients</strong> &mdash; <code>Pixels</code> gains bitmap-font text drawing and measurement, and <code>Gradient2D</code> adds normalized <code>Sample</code>/<code>SampleRGBA</code> &mdash; the runtime behind a rebuilt Zanna Paint with layers, blend modes, and an HSL picker.</li>
     </ul>
 
     <h2>Runtime class names disambiguated</h2>
     <ul>
-      <li><strong>Unique leaf names</strong> &mdash; colliding <code>Viper.*</code> classes are renamed unique (<code>Graphics.Scene</code>&rarr;<code>SceneGraph</code>, <code>Sound3D</code>&rarr;<code>SpatialAudio3D</code>, the <code>Game.UI</code> widgets that shadowed <code>GUI</code> ones&rarr;<code>Hud*</code>), with the old names kept working as aliases.</li>
+      <li><strong>Unique leaf names</strong> &mdash; colliding <code>Zanna.*</code> classes are renamed unique (<code>Graphics.Scene</code>&rarr;<code>SceneGraph</code>, <code>Sound3D</code>&rarr;<code>SpatialAudio3D</code>, the <code>Game.UI</code> widgets that shadowed <code>GUI</code> ones&rarr;<code>Hud*</code>), with the old names kept working as aliases.</li>
     </ul>
 
     <h2>By the numbers</h2>
@@ -97,7 +97,7 @@
     <h2>Demos shipped</h2>
     <p>The <code>game3d-showcase</code> gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, and a renderer/audio counter HUD; the <code>paint</code> app was rebuilt around a registry-driven tool set with layers, blend modes, and an HSL color picker; and <code>crackman</code> gained a vector chomp-and-death animation, pulsing power pellets, score popups, and a board-clear celebration.</p>
 
-    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/splanck/viper/blob/master/docs/release_notes/Viper_Release_Notes_0_2_7.md">Full release notes on GitHub &rarr;</a></p>
+    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/zannagames/zanna/blob/master/docs/release_notes/Zanna_Release_Notes_0_2_7.md">Full release notes on GitHub &rarr;</a></p>
   </div>
 </div>
 
@@ -121,13 +121,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_datetime.h
 // Purpose: Runtime date/time functions providing Unix timestamp queries, component extraction
 // (year, month, day, hour, minute, second), formatting, and arithmetic operations for the
-// Viper.DateTime runtime class.
+// Zanna.DateTime runtime class.
 //
 // Key invariants:
 //   - All timestamps are Unix timestamps in seconds since the UTC epoch (1970-01-01 00:00:00).
@@ -126,7 +126,7 @@ int64_t rt_datetime_create(
 /// @param hour Hour (0-23).
 /// @param minute Minute (0-59).
 /// @param second Second (0-59).
-/// @return Opaque Viper.Option holding the timestamp, or None when components are invalid or the
+/// @return Opaque Zanna.Option holding the timestamp, or None when components are invalid or the
 /// local time is not representable.
 void *rt_datetime_create_option(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
@@ -178,7 +178,7 @@ int64_t rt_datetime_try_parse(rt_string s);
 /// @details Returns `Some(i64)` on success and `None` on failure, preserving a
 ///          valid Unix epoch timestamp (`0`) as a successful parse.
 /// @param s Input string (ISO, date-only, or time-only).
-/// @return Opaque Viper.Option object containing the parsed scalar.
+/// @return Opaque Zanna.Option object containing the parsed scalar.
 void *rt_datetime_try_parse_option(rt_string s);
 
 #ifdef __cplusplus

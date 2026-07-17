@@ -12,9 +12,9 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Math.Random;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Math.Random;
 
 // =============================================================================
 // FLEA ENTITY - Mushroom-dropping enemy

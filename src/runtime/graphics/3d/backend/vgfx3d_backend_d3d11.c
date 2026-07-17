@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11.c
-// Purpose: Direct3D 11 GPU backend for Viper.Graphics3D (Windows).
+// Purpose: Direct3D 11 GPU backend for Zanna.Graphics3D (Windows).
 //
 // Key invariants:
 //   - Requires Windows 7+ with D3D11 feature level 11_0
 //   - Falls back to software if D3D11 unavailable
 //   - HLSL shaders compiled at runtime via D3DCompile
-//   - row_major float4x4 in HLSL (matches Viper row-major convention)
+//   - row_major float4x4 in HLSL (matches Zanna row-major convention)
 //   - Constant buffers packed via vgfx3d_backend_d3d11_shared float4 alignment.
 //
 // Ownership/Lifetime:
@@ -24,7 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(_WIN32) && defined(VIPER_ENABLE_GRAPHICS)
+#if defined(_WIN32) && defined(ZANNA_ENABLE_GRAPHICS)
 
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
@@ -2035,4 +2035,4 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .read_depth_probe = d3d11_read_depth_probe,
 };
 
-#endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */
+#endif /* _WIN32 && ZANNA_ENABLE_GRAPHICS */

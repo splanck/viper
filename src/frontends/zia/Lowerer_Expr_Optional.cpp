@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -483,7 +483,7 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
 /// @return The unwrapped success/inner value when present.
 /// @details For a `Result` operand, branches on `IsOk`: the error path returns the Result from
 ///          the current function early; the ok path unwraps via the type-appropriate
-///          `Viper.Result.Unwrap*` helper. For an `Optional` operand, a null operand returns
+///          `Zanna.Result.Unwrap*` helper. For an `Optional` operand, a null operand returns
 ///          early (null or void, matching the function's return type) and a present value is
 ///          unwrapped.
 LowerResult Lowerer::lowerTry(TryExpr *expr) {
@@ -667,14 +667,14 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
 /// @brief Lower an `await` expression.
 /// @param expr Await expression whose operand produces a future.
 /// @return The resolved payload, unboxed to the awaited type.
-/// @details Lowers the future operand and calls `Viper.Threads.Future.Get`, which blocks until
+/// @details Lowers the future operand and calls `Zanna.Threads.Future.Get`, which blocks until
 ///          the future resolves. Struct or non-pointer payloads are unboxed to their IL type;
 ///          pointer/any/void payloads are returned as-is.
 LowerResult Lowerer::lowerAwait(AwaitExpr *expr) {
     // Lower the future-producing operand expression.
     auto futureResult = lowerExpr(expr->operand.get());
 
-    // Emit call to Viper.Threads.Future.Get(future) which blocks until resolved.
+    // Emit call to Zanna.Threads.Future.Get(future) which blocks until resolved.
     Value result = emitCallRet(Type(Type::Kind::Ptr), runtime::kFutureGet, {futureResult.value});
 
     TypeRef awaitedType = sema_.typeOf(expr);

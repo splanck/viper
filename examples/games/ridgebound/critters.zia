@@ -1,14 +1,14 @@
 // critters.zia - Procedurally rigged wandering sentinels.
 module critters;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
 bind "./config";
 bind "./terrain";
 bind "./mathutil";
 
-bind Viper.Game3D.Layers;
+bind Zanna.Game3D.Layers;
 
 class RidgeboundCritters {
     hide Mesh3D critterMesh;

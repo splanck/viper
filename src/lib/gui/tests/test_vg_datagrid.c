@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/gui/tests/test_vg_datagrid.c
-// Purpose: Headless tests for the data grid widget (Viper.GUI.Grid), including
+// Purpose: Headless tests for the data grid widget (Zanna.GUI.Grid), including
 //          compatibility storage, sparse virtualization, selection, sorting,
 //          resizing, editing, scrolling, keyboard input, and event edges.
 // Key invariants:

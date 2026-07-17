@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -79,7 +79,7 @@ TEST(CallGraphSCC, LinearChainHasOneSCCPerFunction) {
                                   /// @brief Add Call.
     addCall(M.functions[1], "C"); // B → C
 
-    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
+    zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(M);
 
     ASSERT_EQ(cg.sccs.size(), 3u); // one SCC per function
 
@@ -112,7 +112,7 @@ TEST(CallGraphSCC, MutualRecursionFormsOneSCC) {
                                   /// @brief Add Call.
     addCall(M.functions[2], "F"); // H → F
 
-    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
+    zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(M);
 
     ASSERT_EQ(cg.sccs.size(), 2u); // {F,G} and {H}
 
@@ -139,7 +139,7 @@ TEST(CallGraphSCC, SelfRecursiveFunction) {
     /// @brief Add Call.
     addCall(M.functions[0], "recur"); // recur → recur
 
-    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
+    zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(M);
 
     ASSERT_EQ(cg.sccs.size(), 1u);
     EXPECT_EQ(cg.sccs[0].size(), 1u);
@@ -156,7 +156,7 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive) {
     /// @brief Add Call.
     addCall(M.functions[1], "leaf"); // root → leaf
 
-    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(M);
+    zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(M);
 
     EXPECT_FALSE(cg.isRecursive("leaf"));
     EXPECT_FALSE(cg.isRecursive("root"));
@@ -164,6 +164,6 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive) {
 
 /// @brief Main.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

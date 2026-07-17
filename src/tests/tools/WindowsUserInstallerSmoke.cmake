@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -18,7 +18,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required VIPER_BIN TEST_WORK_DIR)
+foreach (_required ZANNA_BIN TEST_WORK_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to WindowsUserInstallerSmoke.cmake")
     endif ()
@@ -29,41 +29,41 @@ if (NOT WIN32)
     return()
 endif ()
 
-if ("$ENV{VIPER_SKIP_WINDOWS_USER_INSTALLER_SMOKE}" STREQUAL "1")
-    message(STATUS "Skipping Windows user installer smoke because VIPER_SKIP_WINDOWS_USER_INSTALLER_SMOKE=1")
+if ("$ENV{ZANNA_SKIP_WINDOWS_USER_INSTALLER_SMOKE}" STREQUAL "1")
+    message(STATUS "Skipping Windows user installer smoke because ZANNA_SKIP_WINDOWS_USER_INSTALLER_SMOKE=1")
     return()
 endif ()
 
 file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}/project")
-file(WRITE "${TEST_WORK_DIR}/project/main.zia" "module VAPSUserSmoke;\n\nfunc start() {}\n")
-file(WRITE "${TEST_WORK_DIR}/project/viper.project"
-        "project vaps_user_smoke
+file(WRITE "${TEST_WORK_DIR}/project/main.zia" "module ZAPSUserSmoke;\n\nfunc start() {}\n")
+file(WRITE "${TEST_WORK_DIR}/project/zanna.project"
+        "project zaps_user_smoke
 version 1.0.0
 lang zia
 entry main.zia
-package-name \"VAPS User Smoke\"
-package-author \"Viper Project\"
-package-homepage https://example.invalid/vaps-user-smoke
-package-identifier org.viper.smoke.user
+package-name \"ZAPS User Smoke\"
+package-author \"Zanna Project\"
+package-homepage https://example.invalid/zaps-user-smoke
+package-identifier org.zanna.smoke.user
 windows-install-scope user
-windows-install-dir VAPSUserSmoke
+windows-install-dir ZAPSUserSmoke
 shortcut-menu on
 shortcut-desktop on
-file-assoc .vapsuser \"VAPS User Smoke Source\" text/x-vaps-user --open-source
+file-assoc .zapsuser \"ZAPS User Smoke Source\" text/x-zaps-user --open-source
 ")
 
 execute_process(
         COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
-        "$arpPath='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user'; $arp=Get-ItemProperty -LiteralPath $arpPath -ErrorAction SilentlyContinue; $cache=if($arp -and $arp.ViperMaintenanceCache){[string]$arp.ViperMaintenanceCache}else{''}; $newRoot=Join-Path $env:LOCALAPPDATA 'Programs\\VAPSUserSmoke'; $oldRoot=Join-Path $env:LOCALAPPDATA 'VAPSUserSmoke'; $candidate=if($cache -and (Test-Path -LiteralPath $cache -PathType Leaf)){$cache}elseif(Test-Path -LiteralPath (Join-Path $newRoot 'uninstall.exe') -PathType Leaf){Join-Path $newRoot 'uninstall.exe'}elseif(Test-Path -LiteralPath (Join-Path $oldRoot 'uninstall.exe') -PathType Leaf){Join-Path $oldRoot 'uninstall.exe'}else{$null}; if($candidate){$p=Start-Process -FilePath $candidate -ArgumentList @('/uninstall','/quiet','/norestart') -PassThru -Wait; if($p.ExitCode -notin @(0,3010)){throw \"Prior test uninstall returned $($p.ExitCode)\"}}; $deadline=[DateTime]::UtcNow.AddSeconds(45); while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath $arpPath) -or ($cache -and (Test-Path -LiteralPath $cache)))){Start-Sleep -Milliseconds 100}; if($cache -and (Test-Path -LiteralPath $cache)){throw \"Prior test maintenance cache remained: $cache\"}; Remove-Item -LiteralPath $newRoot,$oldRoot -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'VAPS User Smoke.lnk') -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'VAPSUserSmoke') -Recurse -Force -ErrorAction SilentlyContinue; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\.vapsuser' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\org.viper.smoke.user.vapsuser' /f 2>$null; exit 0"
+        "$arpPath='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user'; $arp=Get-ItemProperty -LiteralPath $arpPath -ErrorAction SilentlyContinue; $cache=if($arp -and $arp.ZannaMaintenanceCache){[string]$arp.ZannaMaintenanceCache}else{''}; $newRoot=Join-Path $env:LOCALAPPDATA 'Programs\\ZAPSUserSmoke'; $oldRoot=Join-Path $env:LOCALAPPDATA 'ZAPSUserSmoke'; $candidate=if($cache -and (Test-Path -LiteralPath $cache -PathType Leaf)){$cache}elseif(Test-Path -LiteralPath (Join-Path $newRoot 'uninstall.exe') -PathType Leaf){Join-Path $newRoot 'uninstall.exe'}elseif(Test-Path -LiteralPath (Join-Path $oldRoot 'uninstall.exe') -PathType Leaf){Join-Path $oldRoot 'uninstall.exe'}else{$null}; if($candidate){$p=Start-Process -FilePath $candidate -ArgumentList @('/uninstall','/quiet','/norestart') -PassThru -Wait; if($p.ExitCode -notin @(0,3010)){throw \"Prior test uninstall returned $($p.ExitCode)\"}}; $deadline=[DateTime]::UtcNow.AddSeconds(45); while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath $arpPath) -or ($cache -and (Test-Path -LiteralPath $cache)))){Start-Sleep -Milliseconds 100}; if($cache -and (Test-Path -LiteralPath $cache)){throw \"Prior test maintenance cache remained: $cache\"}; Remove-Item -LiteralPath $newRoot,$oldRoot -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'ZAPS User Smoke.lnk') -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'ZAPSUserSmoke') -Recurse -Force -ErrorAction SilentlyContinue; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\.zapsuser' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\org.zanna.smoke.user.zapsuser' /f 2>$null; exit 0"
         RESULT_VARIABLE _cleanup_rv)
 if (NOT _cleanup_rv EQUAL 0)
     message(FATAL_ERROR "Windows user smoke pre-cleanup failed")
 endif ()
 
-set(_installer "${TEST_WORK_DIR}/vaps-user-smoke-setup.exe")
+set(_installer "${TEST_WORK_DIR}/zaps-user-smoke-setup.exe")
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${TEST_WORK_DIR}/project" --target windows -o "${_installer}" --verbose
+        COMMAND "${ZANNA_BIN}" package "${TEST_WORK_DIR}/project" --target windows -o "${_installer}" --verbose
         RESULT_VARIABLE _package_rv
         OUTPUT_VARIABLE _package_out
         ERROR_VARIABLE _package_err
@@ -82,8 +82,8 @@ if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR "Windows user installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
-set(_install_root "$ENV{LOCALAPPDATA}/Programs/VAPSUserSmoke")
-set(_app_exe "${_install_root}/vaps_user_smoke.exe")
+set(_install_root "$ENV{LOCALAPPDATA}/Programs/ZAPSUserSmoke")
+set(_app_exe "${_install_root}/zaps_user_smoke.exe")
 set(_uninstall_exe "${_install_root}/uninstall.exe")
 if (NOT EXISTS "${_app_exe}")
     message(FATAL_ERROR "Installed user app executable is missing: ${_app_exe}")
@@ -103,7 +103,7 @@ if (NOT _app_rv EQUAL 0)
 endif ()
 
 execute_process(
-        COMMAND reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user"
+        COMMAND reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user"
         RESULT_VARIABLE _reg_rv
         OUTPUT_VARIABLE _reg_out
         ERROR_VARIABLE _reg_err)
@@ -112,7 +112,7 @@ if (NOT _reg_rv EQUAL 0)
 endif ()
 
 execute_process(
-        COMMAND reg query "HKCU\\Software\\Classes\\.vapsuser\\OpenWithProgids"
+        COMMAND reg query "HKCU\\Software\\Classes\\.zapsuser\\OpenWithProgids"
         RESULT_VARIABLE _assoc_rv
         OUTPUT_VARIABLE _assoc_out
         ERROR_VARIABLE _assoc_err)
@@ -121,7 +121,7 @@ if (NOT _assoc_rv EQUAL 0)
 endif ()
 
 execute_process(
-        COMMAND reg query "HKCU\\Software\\Classes\\org.viper.smoke.user.vapsuser\\shell\\open\\command" /ve
+        COMMAND reg query "HKCU\\Software\\Classes\\org.zanna.smoke.user.zapsuser\\shell\\open\\command" /ve
         RESULT_VARIABLE _cmd_rv
         OUTPUT_VARIABLE _cmd_out
         ERROR_VARIABLE _cmd_err)
@@ -147,9 +147,9 @@ string(REPLACE "\r" "\n" _folders_out "${_folders_out}")
 string(REGEX MATCH "([^\n]+)\n([^\n]+)" _folder_match "${_folders_out}")
 set(_desktop_dir "${CMAKE_MATCH_1}")
 set(_programs_dir "${CMAKE_MATCH_2}")
-set(_desktop_lnk "${_desktop_dir}/VAPS User Smoke.lnk")
-set(_menu_dir "${_programs_dir}/VAPSUserSmoke")
-set(_menu_lnk "${_menu_dir}/VAPS User Smoke.lnk")
+set(_desktop_lnk "${_desktop_dir}/ZAPS User Smoke.lnk")
+set(_menu_dir "${_programs_dir}/ZAPSUserSmoke")
+set(_menu_lnk "${_menu_dir}/ZAPS User Smoke.lnk")
 if (NOT EXISTS "${_desktop_lnk}")
     message(FATAL_ERROR "Desktop shortcut is missing: ${_desktop_lnk}")
 endif ()
@@ -159,7 +159,7 @@ endif ()
 
 execute_process(
         COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
-        "(Get-ItemProperty -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user').ViperMaintenanceCache"
+        "(Get-ItemProperty -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user').ZannaMaintenanceCache"
         RESULT_VARIABLE _cache_query_rv
         OUTPUT_VARIABLE _maintenance_cache
         ERROR_VARIABLE _cache_query_err
@@ -181,7 +181,7 @@ if (NOT _uninstall_rv EQUAL 0)
 endif ()
 execute_process(
         COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
-        "$deadline=[DateTime]::UtcNow.AddSeconds(45); $arp='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user'; while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp))){Start-Sleep -Milliseconds 100}; if((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp)){exit 1}"
+        "$deadline=[DateTime]::UtcNow.AddSeconds(45); $arp='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user'; while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp))){Start-Sleep -Milliseconds 100}; if((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp)){exit 1}"
         RESULT_VARIABLE _cleanup_wait_rv)
 if (NOT _cleanup_wait_rv EQUAL 0)
     message(FATAL_ERROR "Detached user-app cleanup did not converge")
@@ -205,7 +205,7 @@ if (EXISTS "${_menu_dir}")
 endif ()
 
 execute_process(
-        COMMAND reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user"
+        COMMAND reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.zanna.smoke.user"
         RESULT_VARIABLE _reg_after_rv
         OUTPUT_VARIABLE _reg_after_out
         ERROR_VARIABLE _reg_after_err)
@@ -214,7 +214,7 @@ if (_reg_after_rv EQUAL 0)
 endif ()
 
 execute_process(
-        COMMAND reg query "HKCU\\Software\\Classes\\org.viper.smoke.user.vapsuser"
+        COMMAND reg query "HKCU\\Software\\Classes\\org.zanna.smoke.user.zapsuser"
         RESULT_VARIABLE _prog_after_rv
         OUTPUT_VARIABLE _prog_after_out
         ERROR_VARIABLE _prog_after_err)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,9 +42,9 @@
 #include <sstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -263,6 +263,6 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the implementation of the TreeView widget used throughout the Viper
+// Provides the implementation of the TreeView widget used throughout the Zanna
 // terminal UI.  The widget renders a hierarchical set of nodes, supports
 // keyboard-driven expansion and collapse, and exposes helpers for retrieving the
 // currently selected node.  Rendering is deliberately lightweight so large
@@ -35,7 +35,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Construct a tree node with the provided label string.
 /// @details Nodes start collapsed with no children and no parent reference.
@@ -229,4 +229,4 @@ int TreeView::depth(TreeNode *n) {
     return d;
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

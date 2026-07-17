@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: il/core/Function.hpp
 // Purpose: Declares the Function struct -- an IL function definition with
 //          parameters, basic blocks, SSA value names, and semantic attributes.
-//          Functions are the primary unit of code organisation in Viper IL.
+//          Functions are the primary unit of code organisation in Zanna IL.
 // Key invariants:
 //   - Functions must contain at least one basic block.
 //   - Block labels must be unique within the function.

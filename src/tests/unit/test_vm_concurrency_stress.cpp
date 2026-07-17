@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -123,13 +123,13 @@ Module buildArithmeticModule(int threadId, int iteration) {
 /// @brief Build a module that calls a runtime function.
 /// @param threadId Thread identifier for unique labeling.
 /// @param iteration Iteration for unique labeling.
-/// @return Module that calls Viper.Math.AbsInt and returns a known value.
+/// @return Module that calls Zanna.Math.AbsInt and returns a known value.
 Module buildRuntimeCallModule(int threadId, int iteration) {
     Module module;
     build::IRBuilder builder(module);
 
     // Add extern for runtime abs function
-    builder.addExtern("Viper.Math.AbsInt", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
+    builder.addExtern("Zanna.Math.AbsInt", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
 
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     std::string blockLabel =
@@ -141,7 +141,7 @@ Module buildRuntimeCallModule(int threadId, int iteration) {
 
     // Call abs(-42) -> should return 42
     builder.emitCall(
-        "Viper.Math.AbsInt", {Value::constInt(-42)}, Value::temp(builder.reserveTempId()), loc);
+        "Zanna.Math.AbsInt", {Value::constInt(-42)}, Value::temp(builder.reserveTempId()), loc);
     unsigned absResult = builder.reserveTempId() - 1; // The last reserved temp
 
     // Add threadId * 10000 + iteration to the result

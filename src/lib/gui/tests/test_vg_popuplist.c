@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/gui/tests/test_vg_popuplist.c
-// Purpose: Headless tests for the popup list widget (Viper.GUI.PopupList) —
+// Purpose: Headless tests for the popup list widget (Zanna.GUI.PopupList) —
 //          item storage, case-insensitive filtering, selection navigation,
 //          accept (consume-on-read), and visibility. The filter/selection logic
 //          is font-independent, so no font is required.

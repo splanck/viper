@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -52,7 +52,7 @@ static void free_gif_frames(gif_frame_t *frames, int count) {
 /// @brief Write bytes to a temp file and return the path.
 static const char *write_temp(const char *name, const uint8_t *data, size_t len) {
     static char path[256];
-    snprintf(path, sizeof(path), "/tmp/viper_test_%s", name);
+    snprintf(path, sizeof(path), "/tmp/zanna_test_%s", name);
     FILE *f = fopen(path, "wb");
     if (!f)
         return nullptr;
@@ -238,5 +238,5 @@ TEST(GifDecodeTest, RejectPngAsGif) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

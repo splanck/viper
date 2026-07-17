@@ -17,11 +17,11 @@ module main;
 bind "./gamebase";
 bind "./iscene";
 
-bind Viper.Graphics;
-bind Viper.Graphics.Canvas;
-bind Viper.Graphics.Color;
-bind Viper.Game.ScreenFX as FX;
-bind Viper.Input;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Canvas;
+bind Zanna.Graphics.Color;
+bind Zanna.Game.ScreenFX as FX;
+bind Zanna.Input;
 
 // ============================================================================
 // Input constants

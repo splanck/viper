@@ -1,4 +1,4 @@
-' deque_demo.bas - Comprehensive API audit for Viper.Collections.Deque
+' deque_demo.bas - Comprehensive API audit for Zanna.Collections.Deque
 ' Tests: New, PushFront, PushBack, PopFront, PopBack, PeekFront, PeekBack,
 '        Get, Set, Len, Capacity, IsEmpty, Clear, Has, Reverse, Clone
 
@@ -7,7 +7,7 @@ PRINT "=== Deque API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM dq AS OBJECT
-dq = Viper.Collections.Deque.New()
+dq = Zanna.Collections.Deque.New()
 PRINT dq.Count       ' 0
 PRINT dq.IsEmpty   ' 1
 
@@ -39,7 +39,7 @@ PRINT dq.Get(3)  ' c
 
 ' --- Set ---
 PRINT "--- Set ---"
-dq.Set(1, Viper.Core.Box.Str("A"))
+dq.Set(1, Zanna.Core.Box.Str("A"))
 PRINT dq.Get(1)  ' A
 
 ' --- PopFront ---
@@ -56,8 +56,8 @@ PRINT dq.PeekBack()   ' b
 
 ' --- Has ---
 PRINT "--- Has ---"
-PRINT dq.Has(Viper.Core.Box.Str("A"))  ' 1
-PRINT dq.Has(Viper.Core.Box.Str("z"))  ' 0
+PRINT dq.Has(Zanna.Core.Box.Str("A"))  ' 1
+PRINT dq.Has(Zanna.Core.Box.Str("z"))  ' 0
 
 ' --- Capacity ---
 PRINT "--- Capacity ---"

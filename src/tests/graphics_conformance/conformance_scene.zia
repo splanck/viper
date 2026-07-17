@@ -9,20 +9,20 @@
 // once per backend and diffs the images with conformance_compare.zia.
 //
 // Environment:
-//   VIPER_CONFORMANCE_OUT     output PNG path (default /tmp/viper_conformance.png)
-//   VIPER_CONFORMANCE_POSTFX  "1" appends tonemap+bloom+vignette; "tonemap",
+//   ZANNA_CONFORMANCE_OUT     output PNG path (default /tmp/zanna_conformance.png)
+//   ZANNA_CONFORMANCE_POSTFX  "1" appends tonemap+bloom+vignette; "tonemap",
 //                             "bloom", or "vignette" isolates a single effect
 //
 // Prints "RESULT: ok" on success so smoke harnesses can gate on it.
 // =============================================================================
 module conformance_scene;
 
-bind Viper.Game3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.System.Environment as Env;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.System.Environment as Env;
+bind Zanna.Terminal as Terminal;
 
 class ConformanceScene {
     hide World3D world;
@@ -133,11 +133,11 @@ class ConformanceScene {
 }
 
 func main() {
-    var out = Env.GetVariable("VIPER_CONFORMANCE_OUT");
+    var out = Env.GetVariable("ZANNA_CONFORMANCE_OUT");
     if (out == "") {
-        out = "/tmp/viper_conformance.png";
+        out = "/tmp/zanna_conformance.png";
     }
-    var postfxMode = Env.GetVariable("VIPER_CONFORMANCE_POSTFX");
+    var postfxMode = Env.GetVariable("ZANNA_CONFORMANCE_POSTFX");
 
     var scene = new ConformanceScene();
     scene.setup(640, 360, postfxMode);

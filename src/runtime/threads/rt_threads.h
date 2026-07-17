@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_threads.h
-// Purpose: Runtime thread and monitor primitives backing Viper.Threads, providing thread creation,
+// Purpose: Runtime thread and monitor primitives backing Zanna.Threads, providing thread creation,
 // join, Sleep, and re-entrant FIFO-fair monitor operations.
 //
 // Key invariants:
@@ -50,7 +50,7 @@ extern "C" {
 #endif
 
 // =========================================================================
-// Viper.Threads.Monitor
+// Zanna.Threads.Monitor
 // =========================================================================
 
 /// @brief Acquire exclusive ownership of the object's monitor.
@@ -112,12 +112,12 @@ void rt_monitor_pause_all(void *obj);
 
 /// @brief Internal cleanup hook invoked when a monitored runtime object is freed.
 /// @details Removes the monitor table entry for @p obj if one exists. This is
-///          not part of the public Viper.Threads surface.
+///          not part of the public Zanna.Threads surface.
 /// @param obj Object whose monitor metadata should be discarded.
 void rt_monitor_forget(void *obj);
 
 // =========================================================================
-// Viper.Threads.Thread
+// Zanna.Threads.Thread
 // =========================================================================
 
 /// @brief Start a new thread executing the given entry function.
@@ -178,7 +178,7 @@ void rt_thread_sleep(int64_t ms);
 void rt_thread_yield(void);
 
 // =========================================================================
-// Viper.Threads.Thread (safe start with error boundaries)
+// Zanna.Threads.Thread (safe start with error boundaries)
 // =========================================================================
 
 /// @brief Start a new thread with trap recovery (error boundary).
@@ -221,7 +221,7 @@ int64_t rt_thread_safe_get_id(void *thread);
 int8_t rt_thread_safe_is_alive(void *thread);
 
 // =========================================================================
-// Viper.Threads.SafeI64
+// Zanna.Threads.SafeI64
 // =========================================================================
 
 /// @brief Create a thread-safe 64-bit integer cell.
@@ -260,7 +260,7 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta);
 int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired);
 
 // =========================================================================
-// Viper.Threads.Gate
+// Zanna.Threads.Gate
 // =========================================================================
 
 /// @brief Create a gate (counting semaphore) with initial permits.
@@ -308,7 +308,7 @@ void rt_gate_leave_many(void *gate, int64_t count);
 int64_t rt_gate_get_permits(void *gate);
 
 // =========================================================================
-// Viper.Threads.Barrier
+// Zanna.Threads.Barrier
 // =========================================================================
 
 /// @brief Create a barrier with the given number of parties.
@@ -341,7 +341,7 @@ int64_t rt_barrier_get_parties(void *barrier);
 int64_t rt_barrier_get_waiting(void *barrier);
 
 // =========================================================================
-// Viper.Threads.RwLock
+// Zanna.Threads.RwLock
 // =========================================================================
 
 /// @brief Create a new reader-writer lock.

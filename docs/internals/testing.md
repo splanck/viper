@@ -6,7 +6,7 @@ last-verified: 2026-07-16
 
 # Testing Guide
 
-This document describes the testing infrastructure for the Viper compiler stack. The test suite
+This document describes the testing infrastructure for the Zanna compiler stack. The test suite
 contains 1,740 tests across unit, golden, end-to-end, differential, conformance, audit, and fuzz
 categories.
 
@@ -36,33 +36,33 @@ Fuzz Tests (src/tests/fuzz/)
 
 ```bash
 # Build and run all tests
-./scripts/build_viper_linux.sh   # Linux
-./scripts/build_viper_mac.sh     # macOS
+./scripts/build_zanna_linux.sh   # Linux
+./scripts/build_zanna_mac.sh     # macOS
 ```
 
 The build scripts honor environment variables for faster iteration on all
-platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
+platforms (ccache is auto-detected; disable with `ZANNA_NO_CCACHE=1`):
 
 | Variable | Effect |
 |----------|--------|
-| `VIPER_BUILD_TYPE=RelWithDebInfo` | Override the full-suite script default build type (`Debug`) |
-| `VIPER_JOBS=<n>` | Override build parallelism |
-| `VIPER_CTEST_JOBS=<n>` | Override CTest parallelism independently from build jobs; macOS defaults to performance-core count |
-| `VIPER_FAST_DEBUG=0` | Disable the default fast-Debug compile mode (`-Og` on Linux/macOS or `/O1` with lean STL checks on Windows) |
-| `VIPER_SKIP_CLEAN=1` | Skip the clean-all step (incremental rebuild) |
-| `VIPER_SKIP_TESTS=1` | Build without running ctest |
-| `VIPER_TEST_LABEL=<label>` | Run only tests with the given ctest label |
-| `VIPER_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
-| `VIPER_SKIP_LINT=1`, `VIPER_SKIP_AUDIT=1`, `VIPER_SKIP_SMOKE=1`, `VIPER_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
-| `VIPER_EXTRA_CMAKE_ARGS="-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
-| `VIPER_GFX_NO_ACTIVATE=1` | On macOS and Linux, show new ViperGFX windows without making them the active app/window; CTest applies this automatically to `requires_display` and `graphics3d` tests |
-| `VIPER_GFX_HIDE_WINDOWS=1` | On macOS and Linux, keep ViperGFX windows hidden while preserving framebuffer rendering; CTest applies this automatically to `requires_display` and `graphics3d` tests |
-| `VIPER_AUDIO_SILENT=1` | Keep platform-device output silent while still advancing voices, music, effects, and playback state; CTest applies this automatically to the main repository test suite |
+| `ZANNA_BUILD_TYPE=RelWithDebInfo` | Override the full-suite script default build type (`Debug`) |
+| `ZANNA_JOBS=<n>` | Override build parallelism |
+| `ZANNA_CTEST_JOBS=<n>` | Override CTest parallelism independently from build jobs; macOS defaults to performance-core count |
+| `ZANNA_FAST_DEBUG=0` | Disable the default fast-Debug compile mode (`-Og` on Linux/macOS or `/O1` with lean STL checks on Windows) |
+| `ZANNA_SKIP_CLEAN=1` | Skip the clean-all step (incremental rebuild) |
+| `ZANNA_SKIP_TESTS=1` | Build without running ctest |
+| `ZANNA_TEST_LABEL=<label>` | Run only tests with the given ctest label |
+| `ZANNA_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
+| `ZANNA_SKIP_LINT=1`, `ZANNA_SKIP_AUDIT=1`, `ZANNA_SKIP_SMOKE=1`, `ZANNA_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
+| `ZANNA_EXTRA_CMAKE_ARGS="-DZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
+| `ZANNA_GFX_NO_ACTIVATE=1` | On macOS and Linux, show new ZannaGFX windows without making them the active app/window; CTest applies this automatically to `requires_display` and `graphics3d` tests |
+| `ZANNA_GFX_HIDE_WINDOWS=1` | On macOS and Linux, keep ZannaGFX windows hidden while preserving framebuffer rendering; CTest applies this automatically to `requires_display` and `graphics3d` tests |
+| `ZANNA_AUDIO_SILENT=1` | Keep platform-device output silent while still advancing voices, music, effects, and playback state; CTest applies this automatically to the main repository test suite |
 
 Each build script holds an exclusive lock for its resolved build directory until
 all build, test, validation, and install stages finish. A concurrent invocation
 using the same directory exits with the owning process ID instead of cleaning or
-regenerating files underneath the active run. Use a distinct `VIPER_BUILD_DIR`
+regenerating files underneath the active run. Use a distinct `ZANNA_BUILD_DIR`
 when concurrent builds are intentional.
 
 ```bash
@@ -115,7 +115,7 @@ unforced run to validate dependency-stamp behavior:
 The first command measures the interactive O1/fast-link path, the second should
 report unchanged demos as up to date, and the third measures release O2. For an
 optimizer change-report audit, rerun a representative target with
-`VIPER_VERIFY_PASS_CHANGE_REPORTS=1`; this deliberately restores full-module
+`ZANNA_VERIFY_PASS_CHANGE_REPORTS=1`; this deliberately restores full-module
 fingerprints around every pass and is not a performance configuration.
 
 ## Test Labels
@@ -144,7 +144,7 @@ fingerprints around every pass and is not a performance configuration.
 | `perf` | — | Performance benchmarks (excluded from default runs) |
 | `slow` | platform-dependent | Long-running tests (excluded by the build scripts unless explicitly enabled) |
 
-The build scripts exclude `slow` tests by default. Set `VIPER_RUN_SLOW_TESTS=1`
+The build scripts exclude `slow` tests by default. Set `ZANNA_RUN_SLOW_TESTS=1`
 to include them in the full suite, or use `ctest --test-dir build -L slow` to run
 only that lane. A test may be slow on one platform only: Windows Debug tests
 whose representative runtime is about 30 seconds or more are labeled `slow` on
@@ -180,8 +180,8 @@ Golden tests use 10 CMake runner scripts. Helper functions in `TestHelpers.cmake
 registration to one line per test.
 
 BASIC-to-IL goldens are batched by default through an in-process runner split across
-`VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS` CTest shards (default `8`). Set
-`-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON` in `VIPER_EXTRA_CMAKE_ARGS` to also
+`ZANNA_BASIC_TO_IL_GOLDEN_BATCH_SHARDS` CTest shards (default `8`). Set
+`-DZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON` in `ZANNA_EXTRA_CMAKE_ARGS` to also
 register the legacy one-CTest-per-case entries for targeted debugging.
 
 ### End-to-End Tests
@@ -248,10 +248,10 @@ The `ILGenerator` class (`src/tests/common/ILGenerator.hpp`) generates random IL
 #include "common/ILGenerator.hpp"
 
 // Create generator with specific seed for reproducibility
-viper::tests::ILGenerator generator(12345);
+zanna::tests::ILGenerator generator(12345);
 
 // Configure generation
-viper::tests::ILGeneratorConfig config;
+zanna::tests::ILGeneratorConfig config;
 config.minInstructions = 5;
 config.maxInstructions = 15;
 config.includeComparisons = true;
@@ -317,7 +317,7 @@ ctest --test-dir build -R diff_vm_native_property --output-on-failure
 ### Test Iterations
 
 By default, the test runs 10 iterations per test case. You can override this with
-`VIPER_DIFF_ITERATIONS` (e.g., `VIPER_DIFF_ITERATIONS=50` for local fuzzing). Each iteration:
+`ZANNA_DIFF_ITERATIONS` (e.g., `ZANNA_DIFF_ITERATIONS=50` for local fuzzing). Each iteration:
 
 1. Generates a new IL program from a unique seed
 2. Verifies the IL
@@ -364,7 +364,7 @@ The framework is a lightweight, header-only, dependency-free test harness in `sr
 | `EXPECT_CONTAINS(str, sub)` | No | String contains substring |
 | `EXPECT_THROWS(expr, Type)` | No | Exception of Type thrown |
 | `EXPECT_NO_THROW(expr)` | No | No exception thrown |
-| `VIPER_TEST_SKIP(reason)` | — | Skip test with reason |
+| `ZANNA_TEST_SKIP(reason)` | — | Skip test with reason |
 
 Comparison macros (`EQ`, `NE`, `GT`, `LT`, `GE`, `LE`) print actual operand values on failure.
 
@@ -376,7 +376,7 @@ Comparison macros (`EQ`, `NE`, `GT`, `LT`, `GE`, `LE`) print actual operand valu
 ### Fixtures (TEST_F)
 
 ```cpp
-class MyFixture : public viper_test::TestFixture {
+class MyFixture : public zanna_test::TestFixture {
 protected:
     void SetUp() override { /* before each test */ }
     void TearDown() override { /* after each test */ }
@@ -401,8 +401,8 @@ TEST(MySuite, MyTest) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }
 ```
 
@@ -427,7 +427,7 @@ _golden_basic_run(my_run_test ${_DIR} my_program my_program.stdout)
 Add a `.il` + `.expected` file pair in `src/tests/il/negatives/`, then register:
 
 ```cmake
-viper_add_ctest(il_verify_negative_my_case
+zanna_add_ctest(il_verify_negative_my_case
     ${CMAKE_COMMAND} -DIL_VERIFY=${IL_VERIFY}
     -DFILE=${_DIR}/my_case.il -DEXPECT_FILE=${_DIR}/my_case.expected
     -P ${_DIR}/check_negative.cmake)
@@ -479,21 +479,21 @@ The VM concurrency tests verify thread-safety of the VM execution model:
 - Runtime callbacks preserve thread-local context
 - Trap reports include correct VM context
 
-`Viper.Threads` adds additional tests that verify shared-memory threading semantics:
+`Zanna.Threads` adds additional tests that verify shared-memory threading semantics:
 
-- FIFO-fair, re-entrant monitor behavior (`Viper.Threads.Monitor`)
-- Thread lifecycle and join timeouts (`Viper.Threads.Thread`)
-- FIFO-serialized safe variables (`Viper.Threads.SafeI64`)
+- FIFO-fair, re-entrant monitor behavior (`Zanna.Threads.Monitor`)
+- Thread lifecycle and join timeouts (`Zanna.Threads.Thread`)
+- FIFO-serialized safe variables (`Zanna.Threads.SafeI64`)
 - Future/Async/Parallel result retention, listener trap isolation, and one-shot pool task error reporting
 - Scheduler, debouncer/throttler, cancellation-token, channel, and concurrent collection synchronization behavior
-- VM thread start override (`Viper.Threads.Thread.Start`) and shared globals behavior
+- VM thread start override (`Zanna.Threads.Thread.Start`) and shared globals behavior
 
 ### Stress Test
 
 Located in `src/tests/unit/test_vm_concurrency_stress.cpp`. Exercises:
 
 - Multiple VMs running concurrently across threads
-- Runtime function callbacks (e.g., `Viper.Math.AbsInt`)
+- Runtime function callbacks (e.g., `Zanna.Math.AbsInt`)
 - Rapid VM creation and destruction
 - Nested `ActiveVMGuard` usage
 
@@ -566,7 +566,7 @@ TSAN_OPTIONS="suppressions=tsan.supp" ./build-tsan/src/tests/test_vm_concurrency
 ### Measuring Coverage
 
 Clang source-based coverage is available through the opt-in
-`VIPER_ENABLE_COVERAGE` CMake option and the local coverage lane:
+`ZANNA_ENABLE_COVERAGE` CMake option and the local coverage lane:
 
 ```bash
 ./scripts/coverage.sh
@@ -604,14 +604,14 @@ tutorial BASIC, and runnable IL samples.
 baselines live in `misc/benchmarks/baseline.jsonl`.
 
 ```bash
-./scripts/benchmark.sh --viper-only
+./scripts/benchmark.sh --zanna-only
 ./scripts/benchmark_compare.sh
 ./scripts/benchmark_compare.sh --self-test
 ```
 
-Use `--viper-only` for the canonical local regression lane when external language
+Use `--zanna-only` for the canonical local regression lane when external language
 toolchains are not relevant. `benchmark_compare.sh` compares only common
-program/mode pairs and fails on Viper-mode regressions above the configured threshold.
+program/mode pairs and fails on Zanna-mode regressions above the configured threshold.
 Refresh baselines with `benchmark.sh --set-baseline` only after reviewing the measured
 delta and host metadata in the JSONL output.
 
@@ -628,8 +628,8 @@ The tests verify these invariants from `docs/internals/vm.md`:
 
 ### Defined vs Undefined Threaded Programs
 
-Viper’s VM/native determinism guarantee applies to **defined** threaded programs: shared mutable state must be accessed
-via `Viper.Threads.Monitor` (or the `Viper.Threads.Safe*` wrappers). Programs with data races are **undefined** (VM and
+Zanna’s VM/native determinism guarantee applies to **defined** threaded programs: shared mutable state must be accessed
+via `Zanna.Threads.Monitor` (or the `Zanna.Threads.Safe*` wrappers). Programs with data races are **undefined** (VM and
 native are not required to match).
 
 ---
@@ -654,7 +654,7 @@ The script runs each golden test, skips those already passing, and re-runs failu
 
 ## Fuzz Testing
 
-Fuzz harnesses are in `src/tests/fuzz/` (requires `VIPER_ENABLE_FUZZ=ON`). Each harness
+Fuzz harnesses are in `src/tests/fuzz/` (requires `ZANNA_ENABLE_FUZZ=ON`). Each harness
 has a committed seed corpus under `src/tests/fuzz/corpus/<target-without-fuzz-prefix>/`.
 
 Two cadences are supported:
@@ -667,9 +667,9 @@ Two cadences are supported:
 ```bash
 ./scripts/fuzz_smoke.sh --self-test
 ./scripts/fuzz_smoke.sh --list
-VIPER_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh
+ZANNA_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh
 
-cmake -S . -B build-fuzz -DVIPER_ENABLE_FUZZ=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake -S . -B build-fuzz -DZANNA_ENABLE_FUZZ=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build build-fuzz --target fuzz_zia_parser
 ctest --test-dir build-fuzz -L fuzz --output-on-failure
 ```
@@ -685,7 +685,7 @@ high-ownership subsystems. It tracks 35 source-backed risk and coverage counters
 across runtime surface policy, VM duplication and callback gaps, backend
 unsupported paths, graphics-disabled stubs, fuzz corpus coverage, platform
 policy debt, large files, manual allocation hotspots, machine-readable tooling,
-MCP/LSP server coverage, ViperIDE capability gates, debugger protocol coverage,
+MCP/LSP server coverage, ZannaIDE capability gates, debugger protocol coverage,
 and packaging verification.
 
 ```bash

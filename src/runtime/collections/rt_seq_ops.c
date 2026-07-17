@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_seq_ops.c
-// Purpose: Sorting and higher-order functional operations for Viper.Collections.Seq.
+// Purpose: Sorting and higher-order functional operations for Zanna.Collections.Seq.
 //   Contains the merge sort implementation and all functional-style operations
 //   (keep/reject/apply/all/any/none/fold/take/drop) that operate on sequences
 //   without mutating the underlying storage layout.
@@ -635,7 +635,7 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *)) {
 ///          behavior.
 /// @param obj Opaque Seq object pointer, or NULL.
 /// @param pred Predicate function; NULL selects the first element.
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_seq_find_where_option(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return rt_option_none();

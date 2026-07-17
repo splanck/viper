@@ -9,19 +9,19 @@
 // so multi-hour runs can also assert flat process memory.
 //
 // Environment:
-//   VIPER_SOAK_FRAMES   frames to run (default 3600 ≈ one simulated minute)
-//   VIPER_SOAK_REPORT   report interval in frames (default 600)
+//   ZANNA_SOAK_FRAMES   frames to run (default 3600 ≈ one simulated minute)
+//   ZANNA_SOAK_REPORT   report interval in frames (default 600)
 //
 // Prints "SOAK:" progress lines and a final "RESULT: ok" / "RESULT: fail".
 // =============================================================================
 module soak_scene;
 
-bind Viper.Core.Convert as Convert;
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.System.Environment as Env;
-bind Viper.Terminal as Terminal;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.System.Environment as Env;
+bind Zanna.Terminal as Terminal;
 
 func intStr(i: Integer) -> String {
     return Convert.ToStringInt(i);
@@ -186,8 +186,8 @@ class SoakScene {
 }
 
 func main() {
-    var frames = envInt("VIPER_SOAK_FRAMES", 3600);
-    var reportEvery = envInt("VIPER_SOAK_REPORT", 600);
+    var frames = envInt("ZANNA_SOAK_FRAMES", 3600);
+    var reportEvery = envInt("ZANNA_SOAK_REPORT", 600);
 
     var scene = new SoakScene();
     scene.setup();

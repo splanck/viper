@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.IO.Watcher
+// API Audit: Zanna.IO.Watcher
 // =============================================================================
 // Tests: New, Path, IsWatching, Start, Stop, Poll, PollFor,
 //        EventPath, EventType, EventNone, EventCreated, EventModified,
@@ -7,13 +7,13 @@
 // =============================================================================
 
 module WatcherDemo;
-bind Viper.Terminal;
-bind Viper.IO.Watcher as W;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
+bind Zanna.Terminal;
+bind Zanna.IO.Watcher as W;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
 func start() {
-    Say("=== API Audit: Viper.IO.Watcher ===");
+    Say("=== API Audit: Zanna.IO.Watcher ===");
 
     var tmpDir = TempFile.Dir();
 

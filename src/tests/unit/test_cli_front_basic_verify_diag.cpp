@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -44,7 +44,7 @@ void usage() {}
 
 // Include the implementation under test so the helper functions (e.g., runFrontBasic)
 // are available within this translation unit.
-#include "tools/viper/cmd_front_basic.cpp"
+#include "tools/zanna/cmd_front_basic.cpp"
 
 namespace il::support {
 struct SourceManagerTestAccess {
@@ -100,7 +100,7 @@ int main() {
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path tmpPath = fs::temp_directory_path();
-    tmpPath /= "viper-front-basic-verify-diag-" + std::to_string(stamp) + ".bas";
+    tmpPath /= "zanna-front-basic-verify-diag-" + std::to_string(stamp) + ".bas";
 
     {
         std::ofstream ofs(tmpPath);

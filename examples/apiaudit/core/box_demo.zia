@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Core.Box - Value Boxing/Unboxing
+// API Audit: Zanna.Core.Box - Value Boxing/Unboxing
 // =============================================================================
 // Tests: I64, F64, I1, Str, ToI64, ToF64, ToI1, ToStr, Type, EqI64, EqF64,
-//        EqStr; Viper.Runtime.Unsafe.ValueType compatibility hook
+//        EqStr; Zanna.Runtime.Unsafe.ValueType compatibility hook
 // =============================================================================
 
 module BoxDemo;
-bind Viper.Terminal;
-bind Viper.Core.Box as Box;
-bind Viper.Runtime.Unsafe as Unsafe;
+bind Zanna.Terminal;
+bind Zanna.Core.Box as Box;
+bind Zanna.Runtime.Unsafe as Unsafe;
 func start() {
-    Say("=== API Audit: Viper.Core.Box ===");
+    Say("=== API Audit: Zanna.Core.Box ===");
 
     // --- Box I64 ---
     Say("--- Box I64 ---");

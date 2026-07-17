@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_gui_internal.h
@@ -179,7 +179,7 @@ typedef struct {
     vg_widget_runtime_state_t widget_runtime_state;
 
     // Damage-region (partial) rendering — plan 07. When partial_paint_enabled is
-    // 0 (kill switch via VIPER_GUI_FULL_REPAINT=1), every dirty frame full-clears
+    // 0 (kill switch via ZANNA_GUI_FULL_REPAINT=1), every dirty frame full-clears
     // and repaints the whole tree, matching the pre-plan-07 behavior exactly.
     int32_t partial_paint_enabled; ///< 1 = damage-region path allowed; 0 = always full repaint.
     uint64_t frames_full;          ///< Dirty frames that took the full-window repaint path.
@@ -317,7 +317,7 @@ void rt_minimap_forget_editor_subtree(vg_widget_t *subtree);
 void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog);
 /// @brief Drop wrapper references to @p dialog before an app destroys it.
 void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog);
-/// @brief Invalidate Viper-facing subobject handles owned by @p subtree.
+/// @brief Invalidate Zanna-facing subobject handles owned by @p subtree.
 void rt_gui_invalidate_widget_subhandles(vg_widget_t *subtree);
 /// @brief Reclaim retired subobject payloads with no remaining managed wrapper.
 /// @details Walks @p subtree's owner widgets and drains individual ListBox, TreeView, TabBar,
@@ -355,25 +355,25 @@ void rt_gui_invalidate_retired_tree_node_subhandles(vg_treeview_t *tree);
 ///          live tabs. After return, `vg_tabbar_prune_retired_tabs` may safely free the tombstones.
 /// @param tabbar Tab bar whose retired tab wrappers should be invalidated; NULL is a no-op.
 void rt_gui_invalidate_retired_tab_subhandles(vg_tabbar_t *tabbar);
-/// @brief Invalidate Viper-facing handles for @p context menu and its descendants.
+/// @brief Invalidate Zanna-facing handles for @p context menu and its descendants.
 void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu);
-/// @brief Invalidate Viper-facing item/submenu handles contained by @p context menu.
+/// @brief Invalidate Zanna-facing item/submenu handles contained by @p context menu.
 void rt_gui_invalidate_contextmenu_contents(vg_contextmenu_t *menu);
-/// @brief Return a managed Viper handle for a tree node.
+/// @brief Return a managed Zanna handle for a tree node.
 void *rt_gui_wrap_tree_node(vg_tree_node_t *node);
-/// @brief Return a managed Viper handle for a tab.
+/// @brief Return a managed Zanna handle for a tab.
 void *rt_gui_wrap_tab(vg_tab_t *tab);
-/// @brief Return a managed Viper handle for a listbox item.
+/// @brief Return a managed Zanna handle for a listbox item.
 void *rt_gui_wrap_listbox_item(vg_listbox_item_t *item);
-/// @brief Return a managed Viper handle for a menu.
+/// @brief Return a managed Zanna handle for a menu.
 void *rt_gui_wrap_menu(vg_menu_t *menu);
-/// @brief Return a managed Viper handle for a menu item.
+/// @brief Return a managed Zanna handle for a menu item.
 void *rt_gui_wrap_menu_item(vg_menu_item_t *item);
-/// @brief Return a managed Viper handle for a context menu.
+/// @brief Return a managed Zanna handle for a context menu.
 void *rt_gui_wrap_contextmenu(vg_contextmenu_t *menu);
-/// @brief Return a managed Viper handle for a status-bar item.
+/// @brief Return a managed Zanna handle for a status-bar item.
 void *rt_gui_wrap_statusbar_item(vg_statusbar_item_t *item);
-/// @brief Return a managed Viper handle for a toolbar item.
+/// @brief Return a managed Zanna handle for a toolbar item.
 void *rt_gui_wrap_toolbar_item(vg_toolbar_item_t *item);
 /// @brief Resolve a managed tree-node handle to its live VG node, or NULL.
 vg_tree_node_t *rt_gui_tree_node_from_handle(void *handle);
@@ -438,7 +438,7 @@ static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle, vg_wi
     return widget && widget->type == type ? widget : NULL;
 }
 
-/// @brief Private runtime-object class tag used by managed Viper.GUI.Font wrappers.
+/// @brief Private runtime-object class tag used by managed Zanna.GUI.Font wrappers.
 /// @details This negative internal identifier cannot collide with generated public class IDs and
 ///          lets opaque-handle validation reject arbitrary heap objects before reading a wrapper.
 #define RT_GUI_FONT_HANDLE_CLASS_ID INT64_C(-0x47554601)
@@ -452,7 +452,7 @@ static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle, vg_wi
 /// @return Borrowed live vg_font_t, or NULL when validation fails.
 vg_font_t *rt_gui_font_handle_checked(void *handle);
 
-/// @brief Determine whether a handle is a live managed Viper.GUI.Font wrapper.
+/// @brief Determine whether a handle is a live managed Zanna.GUI.Font wrapper.
 /// @details The underlying font may already have been explicitly destroyed; this operation checks
 ///          wrapper identity/liveness only and is used to balance runtime retains in palettes.
 /// @param handle Candidate opaque runtime value.

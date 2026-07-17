@@ -1,182 +1,182 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.IO.Dir.Current
-' COVER: Viper.IO.Dir.Dirs
-' COVER: Viper.IO.Dir.Dirs
-' COVER: Viper.IO.Dir.Entries
-' COVER: Viper.IO.Dir.Exists
-' COVER: Viper.IO.Dir.Files
-' COVER: Viper.IO.Dir.Files
-' COVER: Viper.IO.Dir.List
-' COVER: Viper.IO.Dir.List
-' COVER: Viper.IO.Dir.Make
-' COVER: Viper.IO.Dir.MakeAll
-' COVER: Viper.IO.Dir.Move
-' COVER: Viper.IO.Dir.Remove
-' COVER: Viper.IO.Dir.RemoveAll
-' COVER: Viper.IO.Dir.SetCurrent
-' COVER: Viper.IO.File.Append
-' COVER: Viper.IO.File.AppendLine
-' COVER: Viper.IO.File.Copy
-' COVER: Viper.IO.File.Delete
-' COVER: Viper.IO.File.Exists
-' COVER: Viper.IO.File.Modified
-' COVER: Viper.IO.File.Move
-' COVER: Viper.IO.File.ReadAllBytes
-' COVER: Viper.IO.File.ReadAllLines
-' COVER: Viper.IO.File.ReadAllText
-' COVER: Viper.IO.File.ReadAllBytes
-' COVER: Viper.IO.File.ReadAllLines
-' COVER: Viper.IO.File.SizeBytes
-' COVER: Viper.IO.File.Touch
-' COVER: Viper.IO.File.WriteAllBytes
-' COVER: Viper.IO.File.WriteAllText
-' COVER: Viper.IO.File.WriteAllBytes
-' COVER: Viper.IO.File.WriteAllLines
-' COVER: Viper.IO.Path.Absolute
-' COVER: Viper.IO.Path.Directory
-' COVER: Viper.IO.Path.Extension
-' COVER: Viper.IO.Path.IsAbsolute
-' COVER: Viper.IO.Path.Join
-' COVER: Viper.IO.Path.Name
-' COVER: Viper.IO.Path.Normalize
-' COVER: Viper.IO.Path.Separator
-' COVER: Viper.IO.Path.Stem
-' COVER: Viper.IO.Path.WithExtension
+' COVER: Zanna.IO.Dir.Current
+' COVER: Zanna.IO.Dir.Dirs
+' COVER: Zanna.IO.Dir.Dirs
+' COVER: Zanna.IO.Dir.Entries
+' COVER: Zanna.IO.Dir.Exists
+' COVER: Zanna.IO.Dir.Files
+' COVER: Zanna.IO.Dir.Files
+' COVER: Zanna.IO.Dir.List
+' COVER: Zanna.IO.Dir.List
+' COVER: Zanna.IO.Dir.Make
+' COVER: Zanna.IO.Dir.MakeAll
+' COVER: Zanna.IO.Dir.Move
+' COVER: Zanna.IO.Dir.Remove
+' COVER: Zanna.IO.Dir.RemoveAll
+' COVER: Zanna.IO.Dir.SetCurrent
+' COVER: Zanna.IO.File.Append
+' COVER: Zanna.IO.File.AppendLine
+' COVER: Zanna.IO.File.Copy
+' COVER: Zanna.IO.File.Delete
+' COVER: Zanna.IO.File.Exists
+' COVER: Zanna.IO.File.Modified
+' COVER: Zanna.IO.File.Move
+' COVER: Zanna.IO.File.ReadAllBytes
+' COVER: Zanna.IO.File.ReadAllLines
+' COVER: Zanna.IO.File.ReadAllText
+' COVER: Zanna.IO.File.ReadAllBytes
+' COVER: Zanna.IO.File.ReadAllLines
+' COVER: Zanna.IO.File.SizeBytes
+' COVER: Zanna.IO.File.Touch
+' COVER: Zanna.IO.File.WriteAllBytes
+' COVER: Zanna.IO.File.WriteAllText
+' COVER: Zanna.IO.File.WriteAllBytes
+' COVER: Zanna.IO.File.WriteAllLines
+' COVER: Zanna.IO.Path.Absolute
+' COVER: Zanna.IO.Path.Directory
+' COVER: Zanna.IO.Path.Extension
+' COVER: Zanna.IO.Path.IsAbsolute
+' COVER: Zanna.IO.Path.Join
+' COVER: Zanna.IO.Path.Name
+' COVER: Zanna.IO.Path.Normalize
+' COVER: Zanna.IO.Path.Separator
+' COVER: Zanna.IO.Path.Stem
+' COVER: Zanna.IO.Path.WithExtension
 
 DIM cwd AS STRING
-cwd = Viper.IO.Dir.Current()
+cwd = Zanna.IO.Dir.Current()
 DIM base AS STRING
-base = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io")
-IF Viper.IO.Dir.Exists(base) THEN
-    Viper.IO.Dir.RemoveAll(base)
+base = Zanna.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io")
+IF Zanna.IO.Dir.Exists(base) THEN
+    Zanna.IO.Dir.RemoveAll(base)
 END IF
-Viper.IO.Dir.MakeAll(base)
+Zanna.IO.Dir.MakeAll(base)
 
 DIM subdir AS STRING
-subdir = Viper.IO.Path.Join(base, "sub")
-Viper.IO.Dir.Make(subdir)
-Viper.Core.Diagnostics.Assert(Viper.IO.Dir.Exists(subdir), "dir.exists")
+subdir = Zanna.IO.Path.Join(base, "sub")
+Zanna.IO.Dir.Make(subdir)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.Dir.Exists(subdir), "dir.exists")
 
 DIM fileA AS STRING
-fileA = Viper.IO.Path.Join(base, "a.txt")
-Viper.IO.File.WriteAllText(fileA, "one")
-Viper.IO.File.Append(fileA, " two")
-Viper.IO.File.AppendLine(fileA, "three")
+fileA = Zanna.IO.Path.Join(base, "a.txt")
+Zanna.IO.File.WriteAllText(fileA, "one")
+Zanna.IO.File.Append(fileA, " two")
+Zanna.IO.File.AppendLine(fileA, "three")
 DIM text AS STRING
-text = Viper.IO.File.ReadAllText(fileA)
-Viper.Core.Diagnostics.Assert(Viper.String.Contains(text, "one"), "file.readalltext")
+text = Zanna.IO.File.ReadAllText(fileA)
+Zanna.Core.Diagnostics.Assert(Zanna.String.Contains(text, "one"), "file.readalltext")
 
-DIM lines AS Viper.Collections.Seq
-lines = Viper.Collections.Seq.New()
+DIM lines AS Zanna.Collections.Seq
+lines = Zanna.Collections.Seq.New()
 lines.Push("L1")
 lines.Push("L2")
 DIM fileB AS STRING
-fileB = Viper.IO.Path.Join(base, "b.txt")
-Viper.IO.File.WriteAllLines(fileB, lines)
-DIM linesAll AS Viper.Collections.Seq
-linesAll = Viper.IO.File.ReadAllLines(fileB)
-Viper.Core.Diagnostics.AssertEq(linesAll.Count, 2, "file.readalllines")
-DIM linesSeq AS Viper.Collections.Seq
-linesSeq = Viper.IO.File.ReadAllLines(fileB)
-Viper.Core.Diagnostics.AssertEq(linesSeq.Count, 2, "file.readlines")
+fileB = Zanna.IO.Path.Join(base, "b.txt")
+Zanna.IO.File.WriteAllLines(fileB, lines)
+DIM linesAll AS Zanna.Collections.Seq
+linesAll = Zanna.IO.File.ReadAllLines(fileB)
+Zanna.Core.Diagnostics.AssertEq(linesAll.Count, 2, "file.readalllines")
+DIM linesSeq AS Zanna.Collections.Seq
+linesSeq = Zanna.IO.File.ReadAllLines(fileB)
+Zanna.Core.Diagnostics.AssertEq(linesSeq.Count, 2, "file.readlines")
 
-DIM bytes AS Viper.IO.BinaryBuffer
-bytes = Viper.IO.BinaryBuffer.NewCapacity(3)
+DIM bytes AS Zanna.IO.BinaryBuffer
+bytes = Zanna.IO.BinaryBuffer.NewCapacity(3)
 bytes.WriteByte(1)
 bytes.WriteByte(2)
 bytes.WriteByte(3)
 DIM fileBin AS STRING
-fileBin = Viper.IO.Path.Join(base, "c.bin")
-Viper.IO.File.WriteAllBytes(fileBin, bytes)
-DIM readAll AS Viper.Collections.Bytes
-readAll = Viper.IO.File.ReadAllBytes(fileBin)
-Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(readAll), "010203", "file.readallbytes")
-Viper.IO.File.WriteAllBytes(fileBin, bytes)
-DIM readBytes AS Viper.Collections.Bytes
-readBytes = Viper.IO.File.ReadAllBytes(fileBin)
-Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(readBytes), "010203", "file.readbytes")
+fileBin = Zanna.IO.Path.Join(base, "c.bin")
+Zanna.IO.File.WriteAllBytes(fileBin, bytes)
+DIM readAll AS Zanna.Collections.Bytes
+readAll = Zanna.IO.File.ReadAllBytes(fileBin)
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Collections.Bytes.ToHex(readAll), "010203", "file.readallbytes")
+Zanna.IO.File.WriteAllBytes(fileBin, bytes)
+DIM readBytes AS Zanna.Collections.Bytes
+readBytes = Zanna.IO.File.ReadAllBytes(fileBin)
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.Collections.Bytes.ToHex(readBytes), "010203", "file.readbytes")
 
-Viper.Core.Diagnostics.AssertEq(Viper.IO.File.SizeBytes(fileBin), 3, "file.size")
+Zanna.Core.Diagnostics.AssertEq(Zanna.IO.File.SizeBytes(fileBin), 3, "file.size")
 DIM mod1 AS INTEGER
-mod1 = Viper.IO.File.Modified(fileBin)
-Viper.IO.File.Touch(fileBin)
+mod1 = Zanna.IO.File.Modified(fileBin)
+Zanna.IO.File.Touch(fileBin)
 DIM mod2 AS INTEGER
-mod2 = Viper.IO.File.Modified(fileBin)
-Viper.Core.Diagnostics.Assert(mod2 >= mod1, "file.modified")
+mod2 = Zanna.IO.File.Modified(fileBin)
+Zanna.Core.Diagnostics.Assert(mod2 >= mod1, "file.modified")
 
 DIM copyPath AS STRING
-copyPath = Viper.IO.Path.Join(base, "copy.bin")
-Viper.IO.File.Copy(fileBin, copyPath)
-Viper.Core.Diagnostics.Assert(Viper.IO.File.Exists(copyPath), "file.copy")
+copyPath = Zanna.IO.Path.Join(base, "copy.bin")
+Zanna.IO.File.Copy(fileBin, copyPath)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.File.Exists(copyPath), "file.copy")
 DIM movePath AS STRING
-movePath = Viper.IO.Path.Join(base, "moved.bin")
-Viper.IO.File.Move(copyPath, movePath)
-Viper.Core.Diagnostics.Assert(Viper.IO.File.Exists(movePath), "file.move")
-Viper.IO.File.Delete(movePath)
-Viper.Core.Diagnostics.Assert(Viper.IO.File.Exists(movePath) = FALSE, "file.delete")
+movePath = Zanna.IO.Path.Join(base, "moved.bin")
+Zanna.IO.File.Move(copyPath, movePath)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.File.Exists(movePath), "file.move")
+Zanna.IO.File.Delete(movePath)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.File.Exists(movePath) = FALSE, "file.delete")
 
-DIM entries AS Viper.Collections.Seq
-entries = Viper.IO.Dir.Entries(base)
-DIM list1 AS Viper.Collections.Seq
-list1 = Viper.IO.Dir.List(base)
-DIM list2 AS Viper.Collections.Seq
-list2 = Viper.IO.Dir.List(base)
-DIM files1 AS Viper.Collections.Seq
-files1 = Viper.IO.Dir.Files(base)
-DIM files2 AS Viper.Collections.Seq
-files2 = Viper.IO.Dir.Files(base)
-DIM dirs1 AS Viper.Collections.Seq
-dirs1 = Viper.IO.Dir.Dirs(base)
-DIM dirs2 AS Viper.Collections.Seq
-dirs2 = Viper.IO.Dir.Dirs(base)
-Viper.Core.Diagnostics.Assert(entries.Count >= 2, "dir.entries")
-Viper.Core.Diagnostics.Assert(list1.Count = list2.Count, "dir.list")
-Viper.Core.Diagnostics.Assert(files1.Count = files2.Count, "dir.files")
-Viper.Core.Diagnostics.Assert(dirs1.Count = dirs2.Count, "dir.dirs")
+DIM entries AS Zanna.Collections.Seq
+entries = Zanna.IO.Dir.Entries(base)
+DIM list1 AS Zanna.Collections.Seq
+list1 = Zanna.IO.Dir.List(base)
+DIM list2 AS Zanna.Collections.Seq
+list2 = Zanna.IO.Dir.List(base)
+DIM files1 AS Zanna.Collections.Seq
+files1 = Zanna.IO.Dir.Files(base)
+DIM files2 AS Zanna.Collections.Seq
+files2 = Zanna.IO.Dir.Files(base)
+DIM dirs1 AS Zanna.Collections.Seq
+dirs1 = Zanna.IO.Dir.Dirs(base)
+DIM dirs2 AS Zanna.Collections.Seq
+dirs2 = Zanna.IO.Dir.Dirs(base)
+Zanna.Core.Diagnostics.Assert(entries.Count >= 2, "dir.entries")
+Zanna.Core.Diagnostics.Assert(list1.Count = list2.Count, "dir.list")
+Zanna.Core.Diagnostics.Assert(files1.Count = files2.Count, "dir.files")
+Zanna.Core.Diagnostics.Assert(dirs1.Count = dirs2.Count, "dir.dirs")
 
 DIM baseMoved AS STRING
-baseMoved = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io_moved")
-IF Viper.IO.Dir.Exists(baseMoved) THEN
-    Viper.IO.Dir.RemoveAll(baseMoved)
+baseMoved = Zanna.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io_moved")
+IF Zanna.IO.Dir.Exists(baseMoved) THEN
+    Zanna.IO.Dir.RemoveAll(baseMoved)
 END IF
-Viper.IO.Dir.Move(base, baseMoved)
-Viper.Core.Diagnostics.Assert(Viper.IO.Dir.Exists(baseMoved), "dir.move")
-Viper.IO.Dir.RemoveAll(baseMoved)
-Viper.Core.Diagnostics.Assert(Viper.IO.Dir.Exists(baseMoved) = FALSE, "dir.removeall")
+Zanna.IO.Dir.Move(base, baseMoved)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.Dir.Exists(baseMoved), "dir.move")
+Zanna.IO.Dir.RemoveAll(baseMoved)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.Dir.Exists(baseMoved) = FALSE, "dir.removeall")
 
 DIM emptyDir AS STRING
-emptyDir = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_empty")
-IF Viper.IO.Dir.Exists(emptyDir) THEN
-    Viper.IO.Dir.RemoveAll(emptyDir)
+emptyDir = Zanna.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_empty")
+IF Zanna.IO.Dir.Exists(emptyDir) THEN
+    Zanna.IO.Dir.RemoveAll(emptyDir)
 END IF
-Viper.IO.Dir.Make(emptyDir)
-Viper.IO.Dir.Remove(emptyDir)
-Viper.Core.Diagnostics.Assert(Viper.IO.Dir.Exists(emptyDir) = FALSE, "dir.remove")
+Zanna.IO.Dir.Make(emptyDir)
+Zanna.IO.Dir.Remove(emptyDir)
+Zanna.Core.Diagnostics.Assert(Zanna.IO.Dir.Exists(emptyDir) = FALSE, "dir.remove")
 
-Viper.IO.Dir.MakeAll(base)
+Zanna.IO.Dir.MakeAll(base)
 DIM cur AS STRING
-cur = Viper.IO.Dir.Current()
-Viper.IO.Dir.SetCurrent(base)
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Dir.Current(), base, "dir.setcurrent")
-Viper.IO.Dir.SetCurrent(cur)
+cur = Zanna.IO.Dir.Current()
+Zanna.IO.Dir.SetCurrent(base)
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Dir.Current(), base, "dir.setcurrent")
+Zanna.IO.Dir.SetCurrent(cur)
 
 DIM absPath AS STRING
-absPath = Viper.IO.Path.Absolute("tests")
-Viper.Core.Diagnostics.Assert(Viper.IO.Path.IsAbsolute(absPath), "path.abs")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Directory(fileA), base, "path.dir")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Name(fileA), "a.txt", "path.name")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Stem(fileA), "a", "path.stem")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Extension(fileA), ".txt", "path.ext")
+absPath = Zanna.IO.Path.Absolute("tests")
+Zanna.Core.Diagnostics.Assert(Zanna.IO.Path.IsAbsolute(absPath), "path.abs")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Path.Directory(fileA), base, "path.dir")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Path.Name(fileA), "a.txt", "path.name")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Path.Stem(fileA), "a", "path.stem")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Path.Extension(fileA), ".txt", "path.ext")
 DIM withExt AS STRING
-withExt = Viper.IO.Path.WithExtension(fileA, ".md")
-Viper.Core.Diagnostics.AssertEqStr(withExt, Viper.IO.Path.Join(base, "a.md"), "path.withext")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Normalize("a/b/../c"), "a/c", "path.norm")
+withExt = Zanna.IO.Path.WithExtension(fileA, ".md")
+Zanna.Core.Diagnostics.AssertEqStr(withExt, Zanna.IO.Path.Join(base, "a.md"), "path.withext")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.IO.Path.Normalize("a/b/../c"), "a/c", "path.norm")
 DIM sep AS STRING
-sep = Viper.IO.Path.Separator()
-Viper.Core.Diagnostics.Assert(sep <> "", "path.sep")
+sep = Zanna.IO.Path.Separator()
+Zanna.Core.Diagnostics.Assert(sep <> "", "path.sep")
 
-IF Viper.IO.Dir.Exists(base) THEN
-    Viper.IO.Dir.RemoveAll(base)
+IF Zanna.IO.Dir.Exists(base) THEN
+    Zanna.IO.Dir.RemoveAll(base)
 END IF
 
 PRINT "RESULT: ok"

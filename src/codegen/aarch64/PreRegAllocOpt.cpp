@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 namespace {
 
 /// @brief Return true if @p lhs and @p rhs refer to the same physical or virtual register.
@@ -459,10 +459,10 @@ std::size_t runAddressingFolds(MFunction &fn) {
 
 std::size_t runPreRegAllocOpt(MFunction &fn) {
     const std::size_t forwarded = common::runPreRAForwardCopy<A64PreRATraits>(fn);
-    // VIPER_NO_ADDR_FOLDS=1 disables the addressing folds for triage.
-    if (std::getenv("VIPER_NO_ADDR_FOLDS") != nullptr)
+    // ZANNA_NO_ADDR_FOLDS=1 disables the addressing folds for triage.
+    if (std::getenv("ZANNA_NO_ADDR_FOLDS") != nullptr)
         return forwarded;
     return forwarded + runAddressingFolds(fn);
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

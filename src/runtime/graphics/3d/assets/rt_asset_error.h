@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - Diagnostic strings live in thread-local storage owned by this module.
 //   - Runtime string getters return freshly allocated rt_string handles.
-// Links: rt_asset_error.c, docs/viperlib/graphics/rendering3d.md
+// Links: rt_asset_error.c, docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

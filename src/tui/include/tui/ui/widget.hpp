@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Widget base class and the Rect layout primitive for
-// Viper's TUI framework. Widget is the abstract base for all visual elements
+// Zanna's TUI framework. Widget is the abstract base for all visual elements
 // in the widget tree, defining the interface for layout, painting, input
 // handling, and focus participation.
 //
@@ -31,11 +31,11 @@
 
 #include "tui/ui/event.hpp"
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 class ScreenBuffer;
 }
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Axis-aligned rectangle used for widget layout and hit testing.
 /// @details Stores position (x, y) and dimensions (w, h) in terminal cell
 ///          coordinates. Used by the layout system to assign screen regions
@@ -81,4 +81,4 @@ class Widget {
     Rect rect_{};
 };
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

@@ -1,11 +1,11 @@
-// BUG-015 regression: Viper.Text.Fmt.BoolYN should return lowercase "yes"/"no"
+// BUG-015 regression: Zanna.Text.Fmt.BoolYN should return lowercase "yes"/"no"
 module TestBugfixBoolYN;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var yes = Viper.Text.Fmt.YesNo(true);
-    var no = Viper.Text.Fmt.YesNo(false);
+    var yes = Zanna.Text.Fmt.YesNo(true);
+    var no = Zanna.Text.Fmt.YesNo(false);
     if (yes == "yes" && no == "no") {
         Say("RESULT: ok");
     } else {

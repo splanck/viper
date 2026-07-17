@@ -34,7 +34,7 @@ coordination.
 | `game3d/*.def` | 03–11, 13–14 | Update API register first; append class IDs once; rerun surface dump after every landing |
 | `src/runtime/CMakeLists.txt` | all new C classes | Rebase immediately before landing; update real and disabled source lists |
 | `Game3DRuntime.cpp` | any callback proposal | Avoid callbacks; if unavoidable, one bridge owner and explicit signature tests |
-| `docs/viperlib/graphics/game3d.md` | most plans | Each plan owns a named section; plan 16 performs final navigation/editing pass |
+| `docs/zannalib/graphics/game3d.md` | most plans | Each plan owns a named section; plan 16 performs final navigation/editing pass |
 | `examples/games/lib` | 12, 15, 16 | Keep application and test helpers in separate modules with explicit imports |
 | demo `game.zia`/loop files | 17–19 | One migration plan per game; no cross-game mechanical rewrite |
 
@@ -64,7 +64,7 @@ coordination.
 | R10 | Unified events allocate per event or retain stale entities | Critical | GC spikes/UAF after despawn | world-owned bounded storage, immutable frame views, stable IDs, clear-boundary tests in plan 10 |
 | R11 | Query body→entity lookup misses raw bodies | Medium | raw physics hit has null Entity | valid raw-body result plus optional entity; scopes/registration can associate raw bodies |
 | R12 | Pool reuse exposes old state | High | particles/sounds resume with stale transform/timer | complete reset contract per type and reuse tests in plan 11 |
-| R13 | App framework duplicates UI widgets | Medium | new Game3D Button/Menu types | reuse `Viper.Game.UI`; framework only owns orchestration in plan 12 |
+| R13 | App framework duplicates UI widgets | Medium | new Game3D Button/Menu types | reuse `Zanna.Game.UI`; framework only owns orchestration in plan 12 |
 | R14 | Ranged combat hard-codes FPS weapon policy | High | bowling/non-combat users inherit unnecessary systems | stateless ballistics + DamageSpec; weapon cadence/ammo stay game-owned in plan 13 |
 | R15 | Save composition corrupts otherwise valid world saves | Critical | partial metadata/world write | staged temp files, manifest commit last, rollback/no-state-change tests in plan 14 |
 | R16 | Scenario harness is product-only or display-dependent | Medium | tests cannot run software/headless lane | use current software/synthetic input; keep harness in examples until proven in plan 15 |

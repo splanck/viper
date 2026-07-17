@@ -1,11 +1,11 @@
 // test_memstream.zia — IO.MemStream, IO.BinFile, IO.LineReader, IO.LineWriter, IO.Compress
 module TestMemStream;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // --- MemStream: integer read/write ---
-    var ms = new Viper.IO.MemStream();
+    var ms = new Zanna.IO.MemStream();
     SayInt(ms.Position);
     SayInt(ms.Length);
 
@@ -49,13 +49,13 @@ func start() {
     SayInt(ms.Position);
 
     // --- Text streams via explicit open factories ---
-    var textPath = "/tmp/viper_rt_api_memstream_lines.txt";
-    var writer = Viper.IO.LineWriter.Open(textPath);
+    var textPath = "/tmp/zanna_rt_api_memstream_lines.txt";
+    var writer = Zanna.IO.LineWriter.Open(textPath);
     writer.Write("alpha");
     writer.WriteLine("beta");
     writer.Close();
 
-    var reader = Viper.IO.LineReader.Open(textPath);
+    var reader = Zanna.IO.LineReader.Open(textPath);
     SayInt(reader.PeekChar());
     Say(reader.Read());
     Say(reader.Read());
@@ -63,26 +63,26 @@ func start() {
     reader.Close();
 
     // --- Binary file via explicit open factory ---
-    var binPath = "/tmp/viper_rt_api_memstream.bin";
-    var wf = Viper.IO.BinFile.Open(binPath, "w");
+    var binPath = "/tmp/zanna_rt_api_memstream.bin";
+    var wf = Zanna.IO.BinFile.Open(binPath, "w");
     wf.WriteByte(65);
     wf.WriteByte(66);
     wf.Close();
 
-    var rf = Viper.IO.BinFile.Open(binPath, "r");
+    var rf = Zanna.IO.BinFile.Open(binPath, "r");
     SayInt(rf.ReadByte());
     SayInt(rf.ReadByte());
     SayBool(rf.Eof);
     rf.Close();
 
     // --- Compress ---
-    var compressed = Viper.IO.Compress.DeflateStr("hello world hello world hello world");
+    var compressed = Zanna.IO.Compress.DeflateStr("hello world hello world hello world");
     Say("compressed ok");
-    var decompressed = Viper.IO.Compress.InflateStr(compressed);
+    var decompressed = Zanna.IO.Compress.InflateStr(compressed);
     Say(decompressed);
 
-    var gzipped = Viper.IO.Compress.GzipStr("test data for gzip");
-    var gunzipped = Viper.IO.Compress.GunzipStr(gzipped);
+    var gzipped = Zanna.IO.Compress.GzipStr("test data for gzip");
+    var gunzipped = Zanna.IO.Compress.GunzipStr(gzipped);
     Say(gunzipped);
 
     Say("done");

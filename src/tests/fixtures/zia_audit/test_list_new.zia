@@ -3,10 +3,10 @@ module TestListNew;
 // Test: Just List.New
 
 func start() {
-    Viper.Terminal.Say("=== List New Test ===");
+    Zanna.Terminal.Say("=== List New Test ===");
 
-    var list: Viper.Collections.List = Viper.Collections.List.New();
-    Viper.Terminal.Say("Created list");
+    var list: Zanna.Collections.List = Zanna.Collections.List.New();
+    Zanna.Terminal.Say("Created list");
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

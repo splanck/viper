@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Text.CompiledPattern
+// API Audit: Zanna.Text.CompiledPattern
 // =============================================================================
 // Tests: New, Pattern, IsMatch, Find, FindOption, FindFrom, FindFromOption, FindPos, FindPosOption, FindAll,
 //        Captures, CapturesFrom, Replace, ReplaceFirst, Split, SplitN
 // =============================================================================
 
 module CompiledPatternDemo;
-bind Viper.Terminal;
-bind Viper.Text.CompiledPattern as CP;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.CompiledPattern as CP;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== API Audit: Viper.Text.CompiledPattern ===");
+    Say("=== API Audit: Zanna.Text.CompiledPattern ===");
 
     // --- New ---
     Say("--- New ---");

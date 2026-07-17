@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,10 +29,10 @@
 #include <string>
 #include <vector>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 static const ServerConfig kBasicConfig{
-    "vbasic-server", "0.1.0", "vbasic", "basic", ".bas", "Viper BASIC"};
+    "vbasic-server", "0.1.0", "vbasic", "basic", ".bas", "Zanna BASIC"};
 
 // --- Mock transport that captures written messages ---
 
@@ -358,6 +358,6 @@ TEST(BasicLsp, DocumentSymbolsListsVariables) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

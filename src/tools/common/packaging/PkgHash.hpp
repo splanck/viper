@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Compute the SHA-1 digest of a byte buffer.
 /// @note Used only for archive integrity/identification (e.g. XAR TOC checksums),
@@ -49,4 +49,4 @@ std::array<uint8_t, 32> sha256Bytes(const uint8_t *data, size_t len);
 /// @return A 64-character lowercase hexadecimal digest.
 std::string sha256Hex(const uint8_t *data, size_t len);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

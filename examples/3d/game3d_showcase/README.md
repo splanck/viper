@@ -7,7 +7,7 @@ frame checks match.
 Run it from the repository root:
 
 ```sh
-VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/game3d_showcase/showcase.zia
+ZANNA_3D_BACKEND=software build/src/tools/zanna/zanna run examples/3d/game3d_showcase/showcase.zia
 ```
 
 The sample covers:

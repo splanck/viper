@@ -6,7 +6,7 @@ audience: public
 
 # Global Error and Trap Semantics
 
-This document specifies the cross-layer error and trap model used by VIPER. It covers
+This document specifies the cross-layer error and trap model used by ZANNA. It covers
 checked IL instructions, runtime bridges, handler control flow, and BASIC surface
 syntax lowering rules. The material here is normative for the VM, the BASIC front end,
 and any future languages that target the IL trap mechanism.

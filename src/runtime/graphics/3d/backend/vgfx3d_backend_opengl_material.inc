@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_material.inc  (#included from
 // vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL
 // sampler/material/light uniform binding, skybox draw, and uniform-location queries
@@ -19,7 +19,7 @@ static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint
         gl.Uniform1i(uniform_loc, unit);
 }
 
-/// @brief Map a Viper material texture-wrap constant to the corresponding OpenGL enum.
+/// @brief Map a Zanna material texture-wrap constant to the corresponding OpenGL enum.
 /// @details RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE → GL_CLAMP_TO_EDGE,
 ///          RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT → GL_MIRRORED_REPEAT,
 ///          all other values → GL_REPEAT (the GL default).
@@ -31,7 +31,7 @@ static GLenum gl_material_wrap_mode(int32_t mode) {
     return GL_REPEAT;
 }
 
-/// @brief Map a Viper material texture-filter constant to the corresponding OpenGL enum.
+/// @brief Map a Zanna material texture-filter constant to the corresponding OpenGL enum.
 /// @details RT_MATERIAL3D_TEXTURE_FILTER_NEAREST → GL_NEAREST (pixel-art / point sampling);
 ///          all other values → GL_LINEAR (bilinear).
 static GLenum gl_material_filter_mode(int32_t mode) {

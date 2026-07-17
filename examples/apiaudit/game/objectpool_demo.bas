@@ -1,4 +1,4 @@
-' objectpool_demo.bas - Comprehensive API audit for Viper.Game.ObjectPool
+' objectpool_demo.bas - Comprehensive API audit for Zanna.Game.ObjectPool
 ' Tests: New, Acquire, Release, IsActive, ActiveCount, FreeCount, Capacity,
 '        IsFull, IsEmpty, Clear, FirstActive, NextActive, SetData, GetData
 
@@ -7,7 +7,7 @@ PRINT "=== ObjectPool API Audit ==="
 ' --- New (capacity) ---
 PRINT "--- New ---"
 DIM pool AS OBJECT
-pool = Viper.Game.ObjectPool.New(4)
+pool = Zanna.Game.ObjectPool.New(4)
 PRINT pool.Capacity       ' 4
 PRINT pool.ActiveCount    ' 0
 PRINT pool.FreeCount      ' 4

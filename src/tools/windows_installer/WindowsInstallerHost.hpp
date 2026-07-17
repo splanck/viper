@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,7 +42,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::installer {
+namespace zanna::installer {
 
 inline constexpr int kExitSuccess = 0;
 inline constexpr int kExitInvalidCommandLine = 87;
@@ -113,7 +113,7 @@ struct HostPackage {
     std::string executableSha256;
     size_t overlayOffset{0};
     size_t overlayLength{0};
-    viper::pkg::WindowsInstallerMetadata metadata;
+    zanna::pkg::WindowsInstallerMetadata metadata;
     std::vector<uint8_t> payloadZip;
     std::vector<uint8_t> cleanupBytes;
     std::string licenseText;
@@ -170,4 +170,4 @@ int runLifecycle(HINSTANCE instance,
                  const HostOptions &options,
                  Logger &logger);
 
-} // namespace viper::installer
+} // namespace zanna::installer

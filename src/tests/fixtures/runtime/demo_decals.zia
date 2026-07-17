@@ -2,10 +2,10 @@
 // Decals fade out over 3 seconds. Shows surface-aligned quad rendering.
 module DemoDecals;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Decal Demo", 800, 600);
@@ -15,7 +15,7 @@ func start() {
     var floor_mat = Material3D.FromColor(0.3, 0.3, 0.35);
 
     // Create a simple "splash" texture (red circle on transparent background)
-    var splash_tex = new Viper.Graphics.Pixels(16, 16);
+    var splash_tex = new Zanna.Graphics.Pixels(16, 16);
     var tx = 0;
     while (tx < 16) {
         var ty = 0;
@@ -26,9 +26,9 @@ func start() {
             if (dist < 6.0) {
                 var alpha = 255 - (dist * 40);
                 if (alpha < 0) { alpha = 0; }
-                Viper.Graphics.Pixels.Set(splash_tex, tx, ty, 0xFF2200FF);
+                Zanna.Graphics.Pixels.Set(splash_tex, tx, ty, 0xFF2200FF);
             } else {
-                Viper.Graphics.Pixels.Set(splash_tex, tx, ty, 0x00000000);
+                Zanna.Graphics.Pixels.Set(splash_tex, tx, ty, 0x00000000);
             }
             ty = ty + 1;
         }

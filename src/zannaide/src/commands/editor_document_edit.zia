@@ -1,0 +1,36 @@
+module editor_document_edit;
+
+bind "../editor/editor_engine";
+
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: editor_document_edit
+// PURPOSE: Shared low-level document replacement helpers for edit commands.
+//
+// WHERE-THIS-FITS: High-level command modules decide whether a transform is
+//          valid and what status message to show. This module owns the single
+//          editor operation used to replace an entire buffer in place.
+//
+// TEACHING-NOTE: Small editor primitives are worth naming when many commands
+//          use them. The helper documents cursor-selection conventions once
+//          and prevents each command from rebuilding the same fragile range.
+// ============================================================================
+
+/// @brief Replace the editor's entire buffer with new text.
+/// @param engine Active editor engine containing a CodeEditor.
+/// @param text Replacement document text.
+/// @return True when a replacement was applied.
+/// @details The runtime editor replaces the current selection. Selecting from
+///          the start of the first line through the end of the final line gives
+///          whole-document transforms one consistent implementation point.
+expose func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
+                                 text: String) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    var lastLine = engine.editor.LineCount - 1;
+    if lastLine < 0 { return false; }
+    var last = engine.editor.GetLine(lastLine);
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
+    engine.editor.InsertAtCursor(text);
+    return true;
+}

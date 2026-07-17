@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares runtime tracking and declaration helpers for BASIC
-// lowering, managing the interface between generated IL and the Viper runtime
+// lowering, managing the interface between generated IL and the Zanna runtime
 // library.
 //
 // Runtime Library Integration:
@@ -27,11 +27,11 @@
 // - Calls to runtime functions use correct calling conventions
 //
 // Runtime Function Categories:
-// - viper_string_*: String manipulation (concat, compare, substring, etc.)
-// - viper_io_*: I/O operations (print, input, file operations)
-// - viper_array_*: Array operations (alloc, get, set, bounds check)
-// - viper_math_*: Mathematical functions (sin, cos, tan, sqrt, etc.)
-// - viper_convert_*: Type conversion (int to string, string to int, etc.)
+// - zanna_string_*: String manipulation (concat, compare, substring, etc.)
+// - zanna_io_*: I/O operations (print, input, file operations)
+// - zanna_array_*: Array operations (alloc, get, set, bounds check)
+// - zanna_math_*: Mathematical functions (sin, cos, tan, sqrt, etc.)
+// - zanna_convert_*: Type conversion (int to string, string to int, etc.)
 //
 // Declaration Tracking:
 // To ensure each runtime function is declared exactly once:

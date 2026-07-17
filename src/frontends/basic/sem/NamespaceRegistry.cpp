@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -139,9 +139,9 @@ const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::strin
 }
 
 /// @brief Pre-register every namespace prefix implied by runtime builtin descriptor names.
-/// @param descs Runtime descriptors (e.g. `Viper.Terminal.PrintI64`).
+/// @param descs Runtime descriptors (e.g. `Zanna.Terminal.PrintI64`).
 /// @details For each dotted name, registers each prefix up to but excluding the final segment
-///          (the function/type), so `USING Viper.Terminal` resolves against builtins.
+///          (the function/type), so `USING Zanna.Terminal` resolves against builtins.
 void NamespaceRegistry::seedFromRuntimeBuiltins(
     const std::vector<il::runtime::RuntimeDescriptor> &descs) {
     for (const auto &d : descs) {
@@ -151,7 +151,7 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
             continue;
 
         // Generate all namespace prefixes up to (but not including) the last segment.
-        // Example: "Viper.Terminal.PrintI64" → prefixes: "Viper", "Viper.Console".
+        // Example: "Zanna.Terminal.PrintI64" → prefixes: "Zanna", "Zanna.Console".
         std::string current;
         current.reserve(name.size());
         std::size_t start = 0;
@@ -172,7 +172,7 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
 /// @brief Pre-register namespace prefixes (including full qnames) for runtime classes.
 /// @param classes Runtime class catalog entries.
 /// @details Unlike seedFromRuntimeBuiltins(), this also registers the full class qname as a
-///          namespace so `USING Viper.String` does not error even though `String` is a class.
+///          namespace so `USING Zanna.String` does not error even though `String` is a class.
 void NamespaceRegistry::seedRuntimeClassNamespaces(
     const std::vector<il::runtime::RuntimeClass> &classes) {
     for (const auto &cls : classes) {
@@ -180,7 +180,7 @@ void NamespaceRegistry::seedRuntimeClassNamespaces(
         if (name.empty())
             continue;
         // Build prefixes including the full class qname as a namespace entry to
-        // avoid USING errors when users write USING Viper.String.
+        // avoid USING errors when users write USING Zanna.String.
         std::string current;
         current.reserve(name.size());
         std::size_t start = 0;

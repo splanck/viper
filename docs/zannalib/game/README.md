@@ -1,0 +1,46 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
+# Game Utilities
+> Game development helpers: physics, animation, timers, and state machines.
+
+**Part of [Zanna Runtime Library](../README.md)**
+
+---
+
+## Contents
+
+| File | Contents |
+|------|----------|
+| [Game Loop Framework](gameloop.md) | GameBase, IScene — eliminates game loop boilerplate |
+| [Core Utilities](core.md) | Timer (frame + ms modes), StateMachine, SmoothValue, ObjectPool |
+| [Physics & Collision](physics.md) | Grid2D, CollisionRect, Collision, Physics2D, Quadtree |
+| [World Projection](../game.md#zannagameworldtoscreenprojection) | Linear, isometric, and perspective world-to-screen helpers |
+| [Animation & Movement](animation.md) | Tween, SpriteAnimation, AnimStateMachine, SpriteSheet, PathFollower, ButtonGroup |
+| [Visual Effects](effects.md) | ParticleEmitter, ScreenFX, Lighting2D |
+| [Platformer](../game.md#zannagameplatformercontroller) | PlatformerController — jump buffer, coyote time, acceleration curves |
+| [Achievement Tracking](../game.md#zannagameachievementtracker) | AchievementTracker — bitmask unlocks, stat counters, notification popup |
+| [Text Reveal](../game.md#zannagametypewriter) | Typewriter — character-by-character text animation |
+| [Entity System](entity.md) | Entity — 2D game object with position, velocity, HP, tilemap collision |
+| [Behavior AI](behavior.md) | Behavior — composable AI presets (patrol, chase, gravity, shoot) |
+| [Raycast](raycast.md) | Raycast2D — line-of-sight and line collision queries |
+| [Level Documents](leveldata.md) | LevelDocument — JSON level loader with tilemap and object spawns |
+| [Editable Scene Documents](scene.md) | SceneDocument — scene-owned tile layers, placed objects, properties, JSON save/load |
+| [Scene Manager](scenemanager.md) | SceneManager — bounded scene-name registry and transition timer |
+| [Config](config.md) | Config — JSON configuration file loader |
+| [UI Menus](ui-menu.md) | HudMenuList, HudButton — game menu drawing and input helpers |
+| [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
+| [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |
+| [Quests](quests.md) | Quests — quest/stage/objective tracker with events and SaveData round-trip |
+| [UI Widgets](ui.md) | HudLabel, HudBar, HudPanel, HudNineSlice, and richer in-game HUD widgets |
+| [Pathfinding](pathfinding.md) | Weighted A* and nearest-value grid searches with PathResult snapshots |
+
+## See Also
+
+- [Time & Timing](../time.md) - `Timer`, `Countdown` for frame-based and wall-clock timing
+- [Graphics](../graphics/README.md) - `Canvas`, `Sprite` for rendering
+- [Input](../input.md) - `Keyboard`, `Mouse`, `Pad` for input handling
+- [GUI](../gui/README.md) - `Button`, `RadioButton` for GUI widgets

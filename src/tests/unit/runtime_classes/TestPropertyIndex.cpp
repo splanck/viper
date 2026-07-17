@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestPropertyIndex.cpp
 // Purpose: Verify RuntimePropertyIndex lookup for System.String.Length maps to
-// Viper.String.get_Length. Key invariants: To be documented. Ownership/Lifetime: To be documented.
+// Zanna.String.get_Length. Key invariants: To be documented. Ownership/Lifetime: To be documented.
 // Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
@@ -22,12 +22,12 @@ TEST(RuntimePropertyIndexBasic, StringLengthGetter) {
     const auto &cat = il::runtime::runtimeClassCatalog();
     runtimePropertyIndex().seed(cat);
 
-    auto info = runtimePropertyIndex().find("Viper.String", "Length");
+    auto info = runtimePropertyIndex().find("Zanna.String", "Length");
     ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->getter, std::string("Viper.String.get_Length"));
+    EXPECT_EQ(info->getter, std::string("Zanna.String.get_Length"));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

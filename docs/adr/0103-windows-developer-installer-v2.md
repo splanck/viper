@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-Viper's Windows package builder already validates staged files, hashes the
+Zanna's Windows package builder already validates staged files, hashes the
 payload, rejects unsafe paths and reparse-point traversal, owns its PATH and
 registry changes, and journals installation upgrades. The resulting developer
 installer is nevertheless not self-contained or ready for broad use:
@@ -59,7 +59,7 @@ third-party runtime is introduced.
 
 ### Runtime self-containment
 
-The installed command-line tools, language servers, ViperIDE, and exported SDK
+The installed command-line tools, language servers, ZannaIDE, and exported SDK
 libraries retain one consistent MSVC runtime model. Release staging installs
 the architecture-matched redistributable runtime files permitted by the active
 Microsoft toolchain beside the executables. The package build fails when a PE
@@ -68,14 +68,14 @@ directory. No runtime is downloaded during setup.
 
 The native installer host is built with the static MSVC runtime so it can run
 before the staged runtime exists. Runtime files retain their Microsoft
-signatures and are verified as trusted inputs; Viper does not re-sign them.
+signatures and are verified as trusted inputs; Zanna does not re-sign them.
 
 ### Trust ordering
 
 Trusted release generation uses this order:
 
 1. copy the validated stage to a private release workspace;
-2. sign every Viper-owned payload PE in that workspace and verify the expected
+2. sign every Zanna-owned payload PE in that workspace and verify the expected
    signer, while preserving Microsoft-signed runtime files unchanged;
 3. generate, sign, and verify the embedded maintenance host and cleanup helper;
 4. gather the final payload inventory and hashes from those signed bytes;
@@ -83,10 +83,10 @@ Trusted release generation uses this order:
    setup host;
 6. sign the outer setup last; and
 7. recursively verify the setup, maintenance host, cleanup helper, every
-   Viper-owned payload PE, inventories, hashes, and architecture labels.
+   Zanna-owned payload PE, inventories, hashes, and architecture labels.
 
 Unsigned developer packages remain supported and are explicitly identified as
-such. A trusted package can never contain an unsigned Viper-owned executable.
+such. A trusted package can never contain an unsigned Zanna-owned executable.
 
 ### Installation and maintenance contract
 
@@ -131,18 +131,18 @@ high-contrast mode, supports keyboard navigation and UI Automation, scales from
 100 through 300 percent DPI, and remains usable at a 1366 by 768 display work
 area.
 
-The finish page offers ViperIDE, a Viper Developer Prompt, the quickstart,
+The finish page offers ZannaIDE, a Zanna Developer Prompt, the quickstart,
 samples, and a copyable verification command after a successful self-check.
 
-File associations open files in ViperIDE and are installed only when ViperIDE
-is selected. Explicit `Run with Viper` and `Check with Viper` verbs may be
+File associations open files in ZannaIDE and are installed only when ZannaIDE
+is selected. Explicit `Run with Zanna` and `Check with Zanna` verbs may be
 offered, but source execution is never the default action.
 
 VS Code integration is selectable only when a validated VSIX is present. Its
 runtime and packaging must be implemented from repository sources without
 `npm`, package downloads, or external JavaScript libraries.
 
-Core Viper is self-contained. Optional SDK/native-development onboarding may
+Core Zanna is self-contained. Optional SDK/native-development onboarding may
 detect CMake, a supported compiler, Windows SDK, Git, VS Code, and Windows
 Terminal, but setup does not silently install or download those products.
 
@@ -186,7 +186,7 @@ residue-free uninstall.
 UI validation covers keyboard-only navigation, UI Automation names, Narrator,
 high contrast, system light and dark colors, 100 through 300 percent DPI, and
 the minimum supported work area. Release acceptance also verifies every nested
-signature and performs a first-run compiler, VM, native-code, ViperIDE, language
+signature and performs a first-run compiler, VM, native-code, ZannaIDE, language
 server, and installed CMake-package smoke.
 
 ## Compatibility and Rollout
@@ -223,7 +223,7 @@ verifiable but are not used as release baselines after v2 becomes canonical.
   divergence would continue.
 - **Adopt MSI, WiX, Inno Setup, or another installer framework.** Rejected
   because it adds an external product dependency and package-download surface.
-- **Statically link every installed Viper target.** Rejected as the sole answer
+- **Statically link every installed Zanna target.** Rejected as the sole answer
   because the exported static SDK libraries and consumer runtime model must stay
   consistent; deploying the compiler runtime beside `bin` preserves that model.
 - **Download the VC redistributable during setup.** Rejected because offline and

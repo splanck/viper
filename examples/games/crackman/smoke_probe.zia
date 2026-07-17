@@ -16,7 +16,7 @@
 
 module smoke_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "./ui/sprites";
 bind "./config";
 bind "./ghost";

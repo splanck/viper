@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -127,7 +127,7 @@ std::optional<std::string> SemanticAnalyzer::activeInstanceClassQName() const {
 
 /// @brief Get canonical lowercase USING import namespaces from file scope.
 ///
-/// @return Vector of imported namespace paths (e.g., "viper.terminal").
+/// @return Vector of imported namespace paths (e.g., "zanna.terminal").
 std::vector<std::string> SemanticAnalyzer::getUsingImports() const {
     std::vector<std::string> result;
     if (!usingStack_.empty()) {

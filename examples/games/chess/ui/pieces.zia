@@ -1,6 +1,6 @@
 module pieces;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 bind "../core/config";
 
 // ============================================================================

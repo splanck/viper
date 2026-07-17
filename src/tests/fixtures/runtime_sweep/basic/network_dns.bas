@@ -1,52 +1,52 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Network.Dns.IsIp
-' COVER: Viper.Network.Dns.IsIpv4
-' COVER: Viper.Network.Dns.IsIpv6
-' COVER: Viper.Network.Dns.LocalAddrs
-' COVER: Viper.Network.Dns.LocalHost
-' COVER: Viper.Network.Dns.Resolve
-' COVER: Viper.Network.Dns.ResolveIpv4
-' COVER: Viper.Network.Dns.ResolveIpv6
-' COVER: Viper.Network.Dns.ResolveAll
-' COVER: Viper.Network.Dns.Reverse
+' COVER: Zanna.Network.Dns.IsIp
+' COVER: Zanna.Network.Dns.IsIpv4
+' COVER: Zanna.Network.Dns.IsIpv6
+' COVER: Zanna.Network.Dns.LocalAddrs
+' COVER: Zanna.Network.Dns.LocalHost
+' COVER: Zanna.Network.Dns.Resolve
+' COVER: Zanna.Network.Dns.ResolveIpv4
+' COVER: Zanna.Network.Dns.ResolveIpv6
+' COVER: Zanna.Network.Dns.ResolveAll
+' COVER: Zanna.Network.Dns.Reverse
 
 DIM ip4 AS STRING
 ip4 = "127.0.0.1"
 DIM ip6 AS STRING
 ip6 = "::1"
 
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIp(ip4), "dns.isip")
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv4(ip4), "dns.isipv4")
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv6(ip4) = FALSE, "dns.isipv6.false")
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv6(ip6), "dns.isipv6")
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIp(ip4), "dns.isip")
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv4(ip4), "dns.isipv4")
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv6(ip4) = FALSE, "dns.isipv6.false")
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv6(ip6), "dns.isipv6")
 
 DIM host AS STRING
-host = Viper.Network.Dns.LocalHost()
-Viper.Core.Diagnostics.Assert(host <> "", "dns.localhost")
+host = Zanna.Network.Dns.LocalHost()
+Zanna.Core.Diagnostics.Assert(host <> "", "dns.localhost")
 
-DIM addrs AS Viper.Collections.Seq
-addrs = Viper.Network.Dns.LocalAddrs()
-Viper.Core.Diagnostics.Assert(addrs.Count >= 1, "dns.localaddrs")
+DIM addrs AS Zanna.Collections.Seq
+addrs = Zanna.Network.Dns.LocalAddrs()
+Zanna.Core.Diagnostics.Assert(addrs.Count >= 1, "dns.localaddrs")
 
 DIM resolved AS STRING
-resolved = Viper.Network.Dns.Resolve("localhost")
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv4(resolved), "dns.resolve")
+resolved = Zanna.Network.Dns.Resolve("localhost")
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv4(resolved), "dns.resolve")
 
 DIM resolved4 AS STRING
-resolved4 = Viper.Network.Dns.ResolveIpv4(ip4)
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv4(resolved4), "dns.resolve4")
+resolved4 = Zanna.Network.Dns.ResolveIpv4(ip4)
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv4(resolved4), "dns.resolve4")
 
 DIM resolved6 AS STRING
-resolved6 = Viper.Network.Dns.ResolveIpv6(ip6)
-Viper.Core.Diagnostics.Assert(Viper.Network.Dns.IsIpv6(resolved6), "dns.resolve6")
+resolved6 = Zanna.Network.Dns.ResolveIpv6(ip6)
+Zanna.Core.Diagnostics.Assert(Zanna.Network.Dns.IsIpv6(resolved6), "dns.resolve6")
 
-DIM all AS Viper.Collections.Seq
-all = Viper.Network.Dns.ResolveAll("localhost")
-Viper.Core.Diagnostics.Assert(all.Count >= 1, "dns.resolveall")
+DIM all AS Zanna.Collections.Seq
+all = Zanna.Network.Dns.ResolveAll("localhost")
+Zanna.Core.Diagnostics.Assert(all.Count >= 1, "dns.resolveall")
 
 DIM rev AS STRING
-rev = Viper.Network.Dns.Reverse(ip4)
-Viper.Core.Diagnostics.Assert(rev <> "", "dns.reverse")
+rev = Zanna.Network.Dns.Reverse(ip4)
+Zanna.Core.Diagnostics.Assert(rev <> "", "dns.reverse")
 
 PRINT "RESULT: ok"
 END

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -46,8 +46,8 @@
 // camera.zia — Camera controller with title, aim, follow, overhead, and cinematic modes
 module camera;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
 bind "../config";
 
 var MODE_TITLE: Integer = 0;

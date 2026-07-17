@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Establishes and tears down scoped terminal sessions for the Viper TUI.
+// Establishes and tears down scoped terminal sessions for the Zanna TUI.
 // The helper transparently switches the terminal into an alternate screen,
 // enables raw input, and optionally activates mouse reporting so interactive
 // widgets can respond to low-level events.  All configuration is guarded by
@@ -25,7 +25,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements scoped terminal configuration for the Viper TUI runtime.
+/// @brief Implements scoped terminal configuration for the Zanna TUI runtime.
 /// @details Functions in this unit wrap the platform-specific terminal APIs
 ///          needed to enable raw mode, alternate screen buffers, and optional
 ///          mouse support.  The RAII wrapper allows higher layers to opt in to a
@@ -34,16 +34,16 @@
 #include "tui/term/session.hpp"
 #include "tui/term/term_io.hpp"
 
-namespace viper::tui {
+namespace zanna::tui {
 
 /// @brief Determine whether terminal interaction is globally disabled.
-/// @details Reads the `VIPERTUI_NO_TTY` environment variable and returns true
+/// @details Reads the `ZANNATUI_NO_TTY` environment variable and returns true
 ///          when it is explicitly set to `1`.  The opt-out is honoured across
 ///          all platforms so unit tests and headless environments can run the
 ///          TUI code paths without touching real terminals.
 /// @return True when the caller should avoid configuring the terminal.
 static inline bool env_no_tty() {
-    const char *v = std::getenv("VIPERTUI_NO_TTY");
+    const char *v = std::getenv("ZANNATUI_NO_TTY");
     return v && *v == '1';
 }
 
@@ -62,21 +62,21 @@ static inline bool env_true(const char *name) {
 }
 
 /// @brief Establish a scoped terminal session with raw input and alternate screen.
-/// @details The constructor short-circuits when the `VIPERTUI_NO_TTY` flag is
+/// @details The constructor short-circuits when the `ZANNATUI_NO_TTY` flag is
 ///          set or when the active stdin stream is not a terminal.  On POSIX
 ///          systems it stores the current `termios` configuration, enables raw
 ///          mode, and ensures reads block for at least one byte.  On Windows it
 ///          toggles `ENABLE_VIRTUAL_TERMINAL_PROCESSING` so ANSI escape sequences
 ///          are honoured.  Successful setup pushes the terminal into the
 ///          alternate screen buffer, hides the cursor, and optionally enables
-///          mouse reporting when requested via `VIPERTUI_MOUSE`.
+///          mouse reporting when requested via `ZANNATUI_MOUSE`.
 TerminalSession::TerminalSession() {
     if (env_no_tty()) {
         active_ = false;
         return;
     }
 
-#if VIPERTUI_POSIX
+#if ZANNATUI_POSIX
     if (!isatty(STDIN_FILENO)) {
         active_ = false;
         return;
@@ -126,8 +126,8 @@ TerminalSession::TerminalSession() {
     io.write("\x1b[?1049h\x1b[?2004h\x1b[?25l"); // alt screen, bracketed paste on, cursor hide
     io.flush();
 
-    if (!env_no_tty() && env_true("VIPERTUI_MOUSE")) {
-        ::viper::tui::term::RealTermIO mouse_io;
+    if (!env_no_tty() && env_true("ZANNATUI_MOUSE")) {
+        ::zanna::tui::term::RealTermIO mouse_io;
         mouse_io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
         mouse_io.flush();
     }
@@ -146,8 +146,8 @@ TerminalSession::~TerminalSession() {
     if (!active_)
         return;
 
-    if (!env_no_tty() && env_true("VIPERTUI_MOUSE")) {
-        ::viper::tui::term::RealTermIO io;
+    if (!env_no_tty() && env_true("ZANNATUI_MOUSE")) {
+        ::zanna::tui::term::RealTermIO io;
         io.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l"); // disable SGR + motion + mouse
         io.flush();
     }
@@ -156,7 +156,7 @@ TerminalSession::~TerminalSession() {
     io.write("\x1b[?1049l\x1b[?2004l\x1b[?25h"); // leave alt screen, disable paste, show cursor
     io.flush();
 
-#if VIPERTUI_POSIX
+#if ZANNATUI_POSIX
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_);
 #endif
 #if defined(_WIN32)
@@ -180,4 +180,4 @@ bool TerminalSession::active() const {
     return active_;
 }
 
-} // namespace viper::tui
+} // namespace zanna::tui

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -97,7 +97,7 @@ void NoteAliasExpansion(DiagnosticEmitter &emitter,
                         std::string_view targetQn);
 
 /// @brief Emit error for attempts to declare a procedure that shadows a builtin extern.
-/// @details Used when a user-defined procedure collides with a seeded Viper.* runtime helper.
+/// @details Used when a user-defined procedure collides with a seeded Zanna.* runtime helper.
 void ErrorBuiltinShadow(DiagnosticEmitter &emitter,
                         std::string_view qname,
                         il::support::SourceLoc loc);

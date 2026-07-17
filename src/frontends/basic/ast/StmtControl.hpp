@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -401,7 +401,7 @@ struct UsingStmt : Stmt {
     /// Variable name for the managed resource.
     std::string varName;
 
-    /// Qualified type name parts, e.g. ["Viper", "IO", "File"].
+    /// Qualified type name parts, e.g. ["Zanna", "IO", "File"].
     std::vector<std::string> typeQualified;
 
     /// Initializer expression (typically a NEW expression); may be null for existing var.

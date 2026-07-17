@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,9 +28,9 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace viper::codegen;
-using namespace viper::codegen::common;
-using namespace viper::codegen::linker;
+using namespace zanna::codegen;
+using namespace zanna::codegen::common;
+using namespace zanna::codegen::linker;
 
 namespace {
 
@@ -73,10 +73,10 @@ std::vector<std::filesystem::path> collectAuditArchives(const std::filesystem::p
         appendIfExists(runtimeArchivePath(buildDir, archiveNameForComponent(comp)));
     }
 
-    appendIfExists(supportLibraryPath(buildDir, "vipergui"));
-    appendIfExists(supportLibraryPath(buildDir, "viper_text_core"));
-    appendIfExists(supportLibraryPath(buildDir, "vipergfx"));
-    appendIfExists(supportLibraryPath(buildDir, "viperaud"));
+    appendIfExists(supportLibraryPath(buildDir, "zannagui"));
+    appendIfExists(supportLibraryPath(buildDir, "zanna_text_core"));
+    appendIfExists(supportLibraryPath(buildDir, "zannagfx"));
+    appendIfExists(supportLibraryPath(buildDir, "zannaaud"));
     return paths;
 }
 
@@ -259,6 +259,6 @@ TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

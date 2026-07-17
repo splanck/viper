@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 namespace {
 using il::core::Opcode;
 
@@ -267,19 +267,19 @@ static void spillEntryBlockParams(const il::core::Function &fn,
                                   std::unordered_map<unsigned, int> &funcParamSpillOffset,
                                   const std::unordered_map<unsigned, int> &crossBlockSpillOffset,
                                   uint16_t &nextVRegId) {
-    std::vector<viper::codegen::common::CallArgClass> paramClasses;
+    std::vector<zanna::codegen::common::CallArgClass> paramClasses;
     paramClasses.reserve(bbIn.params.size());
     for (const auto &param : bbIn.params) {
         paramClasses.push_back(param.type.kind == il::core::Type::Kind::F64
-                                   ? viper::codegen::common::CallArgClass::FPR
-                                   : viper::codegen::common::CallArgClass::GPR);
+                                   ? zanna::codegen::common::CallArgClass::FPR
+                                   : zanna::codegen::common::CallArgClass::GPR);
     }
-    const auto layout = viper::codegen::common::planParamClasses(
+    const auto layout = zanna::codegen::common::planParamClasses(
         paramClasses,
-        viper::codegen::common::CallArgLayoutConfig{
+        zanna::codegen::common::CallArgLayoutConfig{
             .maxGPRArgs = ti.intArgOrder.size(),
             .maxFPRArgs = ti.f64ArgOrder.size(),
-            .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
+            .slotModel = zanna::codegen::common::CallSlotModel::IndependentRegisterBanks,
             .variadicTailOnStack = fn.isVarArg && ti.usesStackVariadicTail(),
             .numNamedArgs = paramClasses.size()});
 
@@ -287,7 +287,7 @@ static void spillEntryBlockParams(const il::core::Function &fn,
         const auto &param = bbIn.params[pi];
         const auto &loc = layout.locations[pi];
         const RegClass cls =
-            (loc.cls == viper::codegen::common::CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
+            (loc.cls == zanna::codegen::common::CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
 
         const auto spillIt = crossBlockSpillOffset.find(param.id);
         const bool needsCrossBlockSpill = spillIt != crossBlockSpillOffset.end();
@@ -912,7 +912,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     // appended; a reallocation would have invalidated MBasicBlock references
     // held by lowering helpers (silent UB). Fail loudly instead.
     if (mf.blocks.capacity() != reservedBlockCapacity) {
-        VIPER_ICE("AArch64 lowering: MFunction::blocks reallocated while lowering '" + fn.name +
+        ZANNA_ICE("AArch64 lowering: MFunction::blocks reallocated while lowering '" + fn.name +
                   "' (reserved " + std::to_string(reservedBlockCapacity) + ", now " +
                   std::to_string(mf.blocks.size()) +
                   " blocks); auxiliary block budget is too small");
@@ -922,4 +922,4 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     return mf;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

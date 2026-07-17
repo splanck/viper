@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_enums.c
-// Purpose: Enum-mirror accessors for the Viper.Game3D layer — each returns the
+// Purpose: Enum-mirror accessors for the Zanna.Game3D layer — each returns the
 //   matching RT_GAME3D_* / input constant so frontends can bind them as
 //   read-only Layers / BodyShape / SyncMode / AlphaMode / ShadingModel /
 //   Quality / CollisionPhase / Keys / MouseButtons properties. Split out of

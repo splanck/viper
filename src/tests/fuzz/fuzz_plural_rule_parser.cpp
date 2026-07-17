@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/fuzz/fuzz_plural_rule_parser.cpp
-// Purpose: libFuzzer harness exercising Viper.Localization.PluralRules on
+// Purpose: libFuzzer harness exercising Zanna.Localization.PluralRules on
 //          the baked en-US cardinal/ordinal rule chains across a wide range
 //          of numeric inputs. The rule AST is static; the fuzz coverage
 //          focuses on operand computation (n/i/v/f/t) for arbitrary double

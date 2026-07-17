@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the FocusManager class for Viper's TUI. The focus
+// This file declares the FocusManager class for Zanna's TUI. The focus
 // manager maintains a circular ring of focusable widgets and tracks which
 // widget currently has keyboard focus.
 //
@@ -32,7 +32,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 class Widget;
 
 /// @brief Manages a circular ring of focusable widgets for keyboard navigation.
@@ -70,4 +70,4 @@ class FocusManager {
     std::size_t index_{0};
 };
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

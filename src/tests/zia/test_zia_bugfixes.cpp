@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -121,7 +121,7 @@ TEST(ZiaRuntimeMemory, ExplicitReleaseUsesPublicRuntimeSurface) {
 module Test;
 
 func start() {
-    var remaining = Viper.Runtime.Unsafe.Release(Viper.Core.Box.I64(42));
+    var remaining = Zanna.Runtime.Unsafe.Release(Zanna.Core.Box.I64(42));
 }
 )";
     CompilerInput input{.source = source, .path = "memory_release_surface.zia"};
@@ -140,7 +140,7 @@ TEST(ZiaRuntimeMemory, ExplicitStringReleaseReturnsRuntimeCount) {
 module Test;
 
 func start() {
-    var remaining = Viper.Runtime.Unsafe.ReleaseStr("owned");
+    var remaining = Zanna.Runtime.Unsafe.ReleaseStr("owned");
 }
 )";
     CompilerInput input{.source = source, .path = "memory_release_str_surface.zia"};
@@ -159,7 +159,7 @@ TEST(ZiaRuntimeMemory, BoxToStrResultIsOwnedAndReleased) {
 module Test;
 
 func start() {
-    Viper.Core.Box.ToStr(Viper.Core.Box.Str("owned"));
+    Zanna.Core.Box.ToStr(Zanna.Core.Box.Str("owned"));
 }
 )";
     CompilerInput input{.source = source, .path = "box_to_str_owned.zia"};
@@ -185,9 +185,9 @@ module Test;
 var counter: Integer;
 
 func start() {    counter = 10;
-    Viper.Terminal.SayInt(counter);
+    Zanna.Terminal.SayInt(counter);
     counter = counter + 1;
-    Viper.Terminal.SayInt(counter);
+    Zanna.Terminal.SayInt(counter);
 }
 )";
     CompilerInput input{.source = source, .path = "bug38.zia"};
@@ -213,7 +213,7 @@ func start() {    running = true;
     if running {
         score = 100;
     }
-    Viper.Terminal.SayInt(score);
+    Zanna.Terminal.SayInt(score);
 }
 )";
     CompilerInput input{.source = source, .path = "bug38b.zia"};
@@ -324,7 +324,7 @@ var player: Player;
 func start() {    player = new Player();
     player.score = 10;
     player.addScore(5);
-    Viper.Terminal.SayInt(player.score);
+    Zanna.Terminal.SayInt(player.score);
 }
 )";
     CompilerInput input{.source = source, .path = "bug39.zia"};
@@ -341,10 +341,10 @@ TEST(ZiaBugFixes, ZeroArgExternFunctionsRemainCallable) {
     const std::string source = R"(
 module Test;
 
-bind Viper.System.Environment;
+bind Zanna.System.Environment;
 
-func start() {    var argc = Viper.System.Environment.GetArgumentCount();
-    Viper.Terminal.SayInt(argc);
+func start() {    var argc = Zanna.System.Environment.GetArgumentCount();
+    Zanna.Terminal.SayInt(argc);
 }
 )";
     CompilerInput input{.source = source, .path = "zero_arg_runtime.zia"};
@@ -355,7 +355,7 @@ func start() {    var argc = Viper.System.Environment.GetArgumentCount();
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.System.Environment.GetArgumentCount"),
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.System.Environment.GetArgumentCount"),
               static_cast<size_t>(1));
 }
 
@@ -420,9 +420,9 @@ struct Config {
 
 func main() {
     var cfg: Config = Config { retries = 3 };
-    Viper.Terminal.Say(cfg.name);
-    Viper.Terminal.SayBool(cfg.enabled);
-    Viper.Terminal.SayInt(cfg.retries);
+    Zanna.Terminal.Say(cfg.name);
+    Zanna.Terminal.SayBool(cfg.enabled);
+    Zanna.Terminal.SayInt(cfg.retries);
 }
 )";
     CompilerInput input{.source = source, .path = "struct_literal_defaults.zia"};
@@ -439,16 +439,16 @@ TEST(ZiaBugFixes, RuntimeNamedArgumentsUseSurfaceParameterNames) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Collections;
+bind Zanna.Collections;
 
 func start() {    var xs = List.New();
     xs.Add(value: 1);
     var first = xs.Get(index: 0);
     var part = "abcd".Substring(start: 1, len: 2);
-    Viper.Terminal.SetPosition(row: 1, col: 2);
-    Viper.Terminal.SetColor(fg: 7, bg: 0);
-    Viper.Terminal.Say(part);
-    Viper.Terminal.SayInt(Viper.Core.Box.ToI64(first));
+    Zanna.Terminal.SetPosition(row: 1, col: 2);
+    Zanna.Terminal.SetColor(fg: 7, bg: 0);
+    Zanna.Terminal.Say(part);
+    Zanna.Terminal.SayInt(Zanna.Core.Box.ToI64(first));
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_named_args.zia"};
@@ -468,9 +468,9 @@ func start() {    var xs = List.New();
     ASSERT_TRUE(mainFn != nullptr);
     EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kListGet), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.String.Substring"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Terminal.SetPosition"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Terminal.SetColor"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.String.Substring"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Terminal.SetPosition"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Terminal.SetColor"), static_cast<size_t>(1));
 }
 
 /// @brief Compatibility aliases for visibility and immutability should compile end-to-end.
@@ -483,7 +483,7 @@ export func exported() {}
 
 public class Greeter {
     expose func hi() {
-        Viper.Terminal.Say("hi");
+        Zanna.Terminal.Say("hi");
     }
 }
 
@@ -492,7 +492,7 @@ func start() {
     exported();
     var g = new Greeter();
     g.hi();
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "compat_aliases.zia"};
@@ -520,7 +520,7 @@ TEST(ZiaBugFixes, ByteArgumentsWidenForCalls) {
     const std::string source = R"(
 module Test;
 
-func sink(value: Integer) {    Viper.Terminal.SayInt(value);
+func sink(value: Integer) {    Zanna.Terminal.SayInt(value);
 }
 
 func start() {    var x: Byte = 7;
@@ -551,9 +551,9 @@ module Test;
 func start() {    var a: Boolean = true;
     var b: Boolean = false;
     if a and b {
-        Viper.Terminal.Say("both");
+        Zanna.Terminal.Say("both");
     } else {
-        Viper.Terminal.Say("not both");
+        Zanna.Terminal.Say("not both");
     }
 }
 )";
@@ -574,7 +574,7 @@ module Test;
 func start() {    var a: Boolean = true;
     var b: Boolean = false;
     if a or b {
-        Viper.Terminal.Say("at least one");
+        Zanna.Terminal.Say("at least one");
     }
 }
 )";
@@ -594,7 +594,7 @@ module Test;
 
 func start() {    var finished: Boolean = false;
     if not finished {
-        Viper.Terminal.Say("still running");
+        Zanna.Terminal.Say("still running");
     }
 }
 )";
@@ -617,12 +617,12 @@ func start() {    var x: Integer = 5;
 
     // Complex boolean expression using word-form operators
     if x > 0 and y > 0 or x < 0 and y < 0 {
-        Viper.Terminal.Say("same sign");
+        Zanna.Terminal.Say("same sign");
     }
 
     // Using not with comparison
     if not (x == y) {
-        Viper.Terminal.Say("different");
+        Zanna.Terminal.Say("different");
     }
 }
 )";
@@ -647,7 +647,7 @@ module Test;
 func getNumber() -> Integer {    return 42;
 }
 
-func start() {    Viper.Terminal.SayInt(getNumber());
+func start() {    Zanna.Terminal.SayInt(getNumber());
 }
 )";
     CompilerInput input{.source = source, .path = "bug43a.zia"};
@@ -676,7 +676,7 @@ class Calculator {
 
 func start() {    var calc = new Calculator();
     calc.value = 21;
-    Viper.Terminal.SayInt(calc.double());
+    Zanna.Terminal.SayInt(calc.double());
 }
 )";
     CompilerInput input{.source = source, .path = "bug43b.zia"};
@@ -700,13 +700,13 @@ TEST(ZiaBugFixes, Bug44_QualifiedTypeNames) {
 module Test;
 
 func start() {    // Test basic qualified API access (this uses qualified names)
-    Viper.Terminal.Say("qualified names work");
+    Zanna.Terminal.Say("qualified names work");
 
     // Test using parameterized generic type
     var items: List[Integer] = [];
     items.add(1);
     items.add(2);
-    Viper.Terminal.SayInt(items.count());
+    Zanna.Terminal.SayInt(items.count());
 }
 )";
     CompilerInput input{.source = source, .path = "bug44.zia"};
@@ -775,7 +775,7 @@ class Outer {
 func start() {    var outer = new Outer();
     outer.init();
     var val = outer.inner.getX();
-    Viper.Terminal.SayInt(val);
+    Zanna.Terminal.SayInt(val);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe007b.zia"};
@@ -837,7 +837,7 @@ func complexFunc() -> Integer {    var a = 0;
 }
 
 func start() {    var result = complexFunc();
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe005.zia"};
@@ -875,8 +875,8 @@ func start() {    var items: List[Integer] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     var evens: List[Integer] = [];
     var odds: List[Integer] = [];
     categorize(items, evens, odds);
-    Viper.Terminal.SayInt(evens.count());
-    Viper.Terminal.SayInt(odds.count());
+    Zanna.Terminal.SayInt(evens.count());
+    Zanna.Terminal.SayInt(odds.count());
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe006.zia"};
@@ -1024,7 +1024,7 @@ class Inner {
 
 func start() {    var o = new Outer();
     o.init();
-    Viper.Terminal.SayInt(o.getInnerVal());
+    Zanna.Terminal.SayInt(o.getInnerVal());
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe006_entity_chain.zia"};
@@ -1057,7 +1057,7 @@ final DEFAULT_SIZE = 42;
 
 func start() {    var c = new Config();
     c.init();
-    Viper.Terminal.SayInt(c.val);
+    Zanna.Terminal.SayInt(c.val);
 }
 )";
 
@@ -1104,7 +1104,7 @@ final VAL_B = 20;
 final VAL_C = 30;
 
 func start() {    var h = new MathHelper();
-    Viper.Terminal.SayInt(h.getSum());
+    Zanna.Terminal.SayInt(h.getSum());
 }
 )";
 
@@ -1128,12 +1128,12 @@ TEST(ZiaBugFixes, BugFE008_ChainedRuntimeMethodCalls) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Collections;
+bind Zanna.Collections;
 
 func start() {    var data: Bytes = Bytes.FromStr("hello world");
     // Chained call: data.Slice(0,5) returns Bytes, then .ToStr() on it
     var result = data.Slice(0, 5).ToStr();
-    Viper.Terminal.Say(result);
+    Zanna.Terminal.Say(result);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe008_chain.zia"};
@@ -1150,12 +1150,12 @@ TEST(ZiaBugFixes, BugFE008_MultipleChainedCalls) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Collections;
+bind Zanna.Collections;
 
 func start() {    var data: Bytes = Bytes.FromStr("hello world!");
     // Double chain: Slice then Slice again
     var sub = data.Slice(0, 11).Slice(6, 11);
-    Viper.Terminal.Say(sub.ToStr());
+    Zanna.Terminal.Say(sub.ToStr());
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe008_multi_chain.zia"};
@@ -1173,11 +1173,11 @@ TEST(ZiaBugFixes, BugFE008_RuntimeObjectGetterKeepsConcreteClass) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Audio;
+bind Zanna.Audio;
 
 func start() {    var bank = SoundBank.New();
     var voice = bank.Get("music_menu").PlayLoop(45, 0);
-    Viper.Terminal.SayInt(voice);
+    Zanna.Terminal.SayInt(voice);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe008_soundbank_get.zia"};
@@ -1189,8 +1189,8 @@ func start() {    var bank = SoundBank.New();
 
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Audio.SoundBank.Get"), 1u);
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Audio.Sound.PlayLoop"), 1u);
+    EXPECT_EQ(countCallsTo(*mainFn, "Zanna.Audio.SoundBank.Get"), 1u);
+    EXPECT_EQ(countCallsTo(*mainFn, "Zanna.Audio.Sound.PlayLoop"), 1u);
     EXPECT_FALSE(hasOpcode(*mainFn, il::core::Opcode::CallIndirect));
 }
 
@@ -1209,10 +1209,10 @@ module Test;
 
 func start() {    var flags: List[Boolean] = [true, false, true];
     if flags.get(0) {
-        Viper.Terminal.Say("first is true");
+        Zanna.Terminal.Say("first is true");
     }
     if flags.get(1) {
-        Viper.Terminal.Say("second is true");
+        Zanna.Terminal.Say("second is true");
     }
 }
 )";
@@ -1234,11 +1234,11 @@ func start() {    var flags: List[Boolean] = [true, true, false];
     var a = flags.get(0);
     var b = flags.get(1);
     if a && b {
-        Viper.Terminal.Say("both true");
+        Zanna.Terminal.Say("both true");
     }
     var c = flags.get(2);
     if a || c {
-        Viper.Terminal.Say("at least one true");
+        Zanna.Terminal.Say("at least one true");
     }
 }
 )";
@@ -1256,7 +1256,7 @@ func start() {    var flags: List[Boolean] = [true, true, false];
 
 /// @brief Runtime class method calls should work on variables whose Ptr type
 /// was inferred from a cross-class function return. For example, a function
-/// returning obj typed as Viper.Network.Tcp should still allow Bytes methods
+/// returning obj typed as Zanna.Network.Tcp should still allow Bytes methods
 /// when the variable is actually Bytes.
 TEST(ZiaBugFixes, BugFE010_CrossClassPtrMethodFallback) {
     SourceManager sm;
@@ -1265,7 +1265,7 @@ TEST(ZiaBugFixes, BugFE010_CrossClassPtrMethodFallback) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Collections;
+bind Zanna.Collections;
 
 func makeData() -> Bytes {    return Bytes.FromStr("test");
 }
@@ -1274,7 +1274,7 @@ func start() {    var data = makeData();
     // data is typed as Ptr via the return type inference.
     // Bytes methods like Slice/ToStr should resolve via fallback.
     var s = data.Slice(0, 4).ToStr();
-    Viper.Terminal.Say(s);
+    Zanna.Terminal.Say(s);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe010_cross_class.zia"};
@@ -1316,8 +1316,8 @@ final MASK = 255 & 15;
 
 func start() {    var s: Integer = SENTINEL;
     var m: Integer = MASK;
-    Viper.Terminal.SayInt(s);
-    Viper.Terminal.SayInt(m);
+    Zanna.Terminal.SayInt(s);
+    Zanna.Terminal.SayInt(m);
 }
 )";
     CompilerInput input{.source = source, .path = "bug_fe011_nonliteral.zia"};
@@ -1372,7 +1372,7 @@ module Main;
 bind "consts.zia";
 
 func start() {    var x: Integer = SENTINEL;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
 
@@ -1410,9 +1410,9 @@ module Test;
 class Dog {}
 
 func start() {
-    Viper.Terminal.Say(42);
-    Viper.Terminal.Print(true);
-    Viper.Terminal.Say(new Dog());
+    Zanna.Terminal.Say(42);
+    Zanna.Terminal.Print(true);
+    Zanna.Terminal.Say(new Dog());
 }
 )";
     CompilerInput input{.source = source, .path = "terminal_text_calls.zia"};
@@ -1438,10 +1438,10 @@ TEST(ZiaBugFixes, NonTerminalRuntimeCallsDoNotStringifyArguments) {
 module Test;
 
 func start() {
-    var abs = Viper.Math.Abs(-3.5);
-    var ch = Viper.String.Chr(66);
-    Viper.Terminal.Say(ch);
-    Viper.Terminal.SayNum(abs);
+    var abs = Zanna.Math.Abs(-3.5);
+    var ch = Zanna.String.Chr(66);
+    Zanna.Terminal.Say(ch);
+    Zanna.Terminal.SayNum(abs);
 }
 )";
     CompilerInput input{.source = source, .path = "non_terminal_runtime_calls.zia"};
@@ -1455,8 +1455,8 @@ func start() {
     if (!mainFn)
         return;
 
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Math.Abs"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.String.Chr"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Math.Abs"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.String.Chr"), static_cast<size_t>(1));
     EXPECT_EQ(countCallsTo(*mainFn, kStringFromInt), static_cast<size_t>(0));
     EXPECT_EQ(countCallsTo(*mainFn, kStringFromNum), static_cast<size_t>(0));
 }
@@ -1486,8 +1486,8 @@ final CX = PIECE_SZ / 2;
 func start() {
     var sp: Integer = SP;
     var cx: Integer = CX;
-    Viper.Terminal.SayInt(sp);
-    Viper.Terminal.SayInt(cx);
+    Zanna.Terminal.SayInt(sp);
+    Zanna.Terminal.SayInt(cx);
 }
 )";
     const fs::path mainPath = writeFileFE011(dir, "main.zia", mainSource);
@@ -1501,7 +1501,7 @@ func start() {
 }
 
 //===----------------------------------------------------------------------===//
-// ZIA-007 cleanup: integer-to-string conversion lives under Viper.Text.Fmt.
+// ZIA-007 cleanup: integer-to-string conversion lives under Zanna.Text.Fmt.
 //===----------------------------------------------------------------------===//
 
 /// @brief Fmt.Int remains the canonical integer-to-string conversion.
@@ -1509,8 +1509,8 @@ TEST(ZiaBugFixes, ZIA007_FmtIntConversion) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {    Say("x=" + Fmt.Int(42));
     Say("neg=" + Fmt.Int(-7));
@@ -1529,7 +1529,7 @@ TEST(ZiaBugFixes, ZIA007_TerminalIntIsNotAccepted) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {    var n = 100;
     Say("Result: " + Int(n) + " done");
@@ -1558,7 +1558,7 @@ func start() {    var items: List[Integer] = [];
     items.add(10);
     items.add(20);
     var sum = items.get(0) + items.get(1);
-    Viper.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(sum);
 }
 )";
     CompilerInput input{.source = source, .path = "zia006.zia"};
@@ -1579,7 +1579,7 @@ module Test;
 func start() {    var names: List[String] = [];
     names.add("alice");
     names.add("bob");
-    Viper.Terminal.SayInt(names.length());
+    Zanna.Terminal.SayInt(names.length());
 }
 )";
     CompilerInput input{.source = source, .path = "zia006b.zia"};
@@ -1604,7 +1604,7 @@ func start() {    var sum = 0;
     for x in -1..2 {
         sum = sum + x;
     }
-    Viper.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(sum);
 }
 )";
     CompilerInput input{.source = source, .path = "zia003.zia"};
@@ -1627,7 +1627,7 @@ func start() {    var count = 0;
             count = count + 1;
         }
     }
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "zia003b.zia"};
@@ -1651,12 +1651,12 @@ module Test;
 
 func start() {    var x = 10;
     var label = if x > 5 { "big" } else { "small" };
-    Viper.Terminal.Say(label);
+    Zanna.Terminal.Say(label);
     var white = true;
     var dir = if white { -1 } else { 1 };
-    Viper.Terminal.SayInt(dir);
+    Zanna.Terminal.SayInt(dir);
     var abs = if x > 0 { x } else { -x };
-    Viper.Terminal.SayInt(abs);
+    Zanna.Terminal.SayInt(abs);
 }
 )";
     CompilerInput input{.source = source, .path = "zia004.zia"};
@@ -1677,8 +1677,8 @@ func start() {    var a = 3;
     var b = 7;
     var max = if a > b { a } else { b };
     var sign = if max > 0 { 1 } else { if max < 0 { -1 } else { 0 } };
-    Viper.Terminal.SayInt(max);
-    Viper.Terminal.SayInt(sign);
+    Zanna.Terminal.SayInt(max);
+    Zanna.Terminal.SayInt(sign);
 }
 )";
     CompilerInput input{.source = source, .path = "zia004b.zia"};
@@ -1707,9 +1707,9 @@ struct Point {
 
 func start() {    var p = Point { x = 3, y = 4 };
     var q = Point { x = p.x + 1, y = p.y };
-    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
-    Viper.Terminal.SayInt(q.x);
+    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(q.x);
 }
 )";
     CompilerInput input{.source = source, .path = "zia001.zia"};
@@ -1734,8 +1734,8 @@ struct Color {
 
 func start() {    var red = Color { r = 255, g = 0, b = 0 };
     var green = Color { r = 0, g = 255, b = 0 };
-    Viper.Terminal.SayInt(red.r);
-    Viper.Terminal.SayInt(green.g);
+    Zanna.Terminal.SayInt(red.r);
+    Zanna.Terminal.SayInt(green.g);
 }
 )";
     CompilerInput input{.source = source, .path = "zia001b.zia"};
@@ -1765,8 +1765,8 @@ func start() {    var b = new Board();
     b.init();
     b.set(0, 42);
     b.set(63, 7);
-    Viper.Terminal.SayInt(b.get(0));
-    Viper.Terminal.SayInt(b.get(63));
+    Zanna.Terminal.SayInt(b.get(0));
+    Zanna.Terminal.SayInt(b.get(63));
 }
 )";
     CompilerInput input{.source = source, .path = "zia002.zia"};
@@ -1791,7 +1791,7 @@ func start() {    var v = new Vec();
     v.init();
     v.set(0, 1.0);
     v.set(1, 2.0);
-    Viper.Terminal.SayNum(v.get(0) + v.get(1));
+    Zanna.Terminal.SayNum(v.get(0) + v.get(1));
 }
 )";
     CompilerInput input{.source = source, .path = "zia002b.zia"};
@@ -1806,16 +1806,16 @@ func start() {    var v = new Vec();
 // Seq Return Types and for-in iteration
 //===----------------------------------------------------------------------===//
 
-/// @brief Test that Viper.String.Split returns a typed Seq[String] and compiles without errors.
+/// @brief Test that Zanna.String.Split returns a typed Seq[String] and compiles without errors.
 TEST(ZiaBugFixes, SeqReturnType_StrSplit_Compiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-bind Viper.Collections.Seq as Seq;
-// Viper.String.Split should now return Seq[String] (not untyped obj), allowing
+bind Zanna.Collections.Seq as Seq;
+// Zanna.String.Split should now return Seq[String] (not untyped obj), allowing
 // Seq.get_Count / Seq.Get access and for-in iteration.
-func start() {    var parts = Viper.String.Split("a,b,c", ",");
+func start() {    var parts = Zanna.String.Split("a,b,c", ",");
     var n = Seq.get_Count(parts);
     var i = 0;
     while i < n {
@@ -1832,15 +1832,15 @@ func start() {    var parts = Viper.String.Split("a,b,c", ",");
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test for-in iteration over Viper.String.Split result (Seq[String]).
+/// @brief Test for-in iteration over Zanna.String.Split result (Seq[String]).
 TEST(ZiaBugFixes, SeqForIn_StrSplit_Compiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-// for-in over Viper.String.Split works now that it returns Seq[String].
-func start() {    for part in Viper.String.Split("hello world foo", " ") {
-        Viper.Terminal.Say(part);
+// for-in over Zanna.String.Split works now that it returns Seq[String].
+func start() {    for part in Zanna.String.Split("hello world foo", " ") {
+        Zanna.Terminal.Say(part);
     }
 }
 )";
@@ -1858,12 +1858,12 @@ TEST(ZiaBugFixes, SeqReturnType_PatternFindAll_UsesSeqCount) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Text;
+bind Zanna.Text;
 
 func start() {
     var matches = Pattern.FindAll("a1b22c333", "[0-9]+");
     var count = matches.Count;
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "pattern_findall_seq.zia"};
@@ -1884,9 +1884,9 @@ TEST(ZiaBugFixes, SeqReturnType_TextWrapperWrapLines_UsesSeqCount) {
 module Test;
 
 func start() {
-    var lines = Viper.Text.TextWrapper.WrapLines("one two three", 7);
+    var lines = Zanna.Text.TextWrapper.WrapLines("one two three", 7);
     var count = lines.Count;
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "textwrapper_wraplines_seq.zia"};
@@ -1908,9 +1908,9 @@ TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesStringSetCount) {
 module Test;
 
 func start() {
-    var keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}");
+    var keys = Zanna.Text.Template.Keys("Hello {{name}} from {{place}}");
     var count = keys.Count;
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "template_keys_seq.zia"};
@@ -1921,7 +1921,7 @@ func start() {
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.StringSet.get_Count"),
+    EXPECT_GE(countCallsTo(*mainFn, "Zanna.Collections.StringSet.get_Count"),
               static_cast<size_t>(1));
 }
 
@@ -1931,13 +1931,13 @@ TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqCount) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Functional.LazySeq;
+bind Zanna.Functional.LazySeq;
 
 func start() {
     var seq = Range(1, 5, 1);
     var out = ToSeqLimited(seq, 3);
     var count = out.Count;
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "lazyseq_toseqn_seq.zia"};
@@ -1954,7 +1954,7 @@ func start() {
 /// @brief Test that calling an unknown method on an untyped obj emits a diagnostic.
 TEST(ZiaBugFixes, SeqUntypedObj_MethodCallError) {
     SourceManager sm;
-    // The `Viper.IO.Dir.Files` function returns ptr (rt_list), not seq<str>.
+    // The `Zanna.IO.Dir.Files` function returns ptr (rt_list), not seq<str>.
     // Calling .length() on its result (a raw obj/ptr with no class name) should
     // produce a compile-time error, not silently return void.
     // NOTE: Dir.FilesSeq returns seq<str> and is now typed; Dir.Files returns ptr.
@@ -2010,14 +2010,14 @@ class Animal {
 class Dog extends Animal {
 }
 
-func start() {    var animals: List[Animal] = Viper.Collections.List.New();
+func start() {    var animals: List[Animal] = Zanna.Collections.List.New();
     var dog = new Dog();
     dog.age = 7;
     animals.Add(dog);
     var first: Animal = animals[0];
     var count: Integer = animals.Count;
-    Viper.Terminal.SayInt(first.age);
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(first.age);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_list_surface.zia"};
@@ -2052,7 +2052,7 @@ class Palette {
 }
 
 func start() {    var palette = new Palette();
-    Viper.Terminal.SayInt(palette.getFirst());
+    Zanna.Terminal.SayInt(palette.getFirst());
 }
 )";
     CompilerInput input{.source = source, .path = "raw_list_get_return.zia"};
@@ -2073,12 +2073,12 @@ TEST(ZiaBugFixes, RuntimeMapConstructorPreservesCollectionSurface) {
     const std::string source = R"(
 module Test;
 
-func start() {    var scores: Map[String, Integer] = Viper.Collections.Map.New();
+func start() {    var scores: Map[String, Integer] = Zanna.Collections.Map.New();
     scores["Ada"] = 42;
     var ada: Integer = scores["Ada"];
     var count: Integer = scores.Count;
-    Viper.Terminal.SayInt(ada);
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(ada);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_map_surface.zia"};
@@ -2100,7 +2100,7 @@ TEST(ZiaBugFixes, RuntimeMapConstructorPreservesFieldAssignmentSurface) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Collections;
+bind Zanna.Collections;
 
 class Session {
     expose Map vars;
@@ -2118,7 +2118,7 @@ class Session {
 func start() {
     var session = new Session();
     session.init();
-    Viper.Terminal.Say(session.mode());
+    Zanna.Terminal.Say(session.mode());
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_map_field_surface.zia"};
@@ -2130,7 +2130,7 @@ func start() {
     const auto *initFn = findFunction(result.module, "Session.init");
     ASSERT_TRUE(initFn != nullptr);
     EXPECT_GE(countCallsTo(*initFn, kMapNew), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*initFn, "Viper.Collections.Map.SetStr"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*initFn, "Zanna.Collections.Map.SetStr"), static_cast<size_t>(1));
 }
 
 /// @brief Test that runtime Set.New preserves semantic Set methods and properties.
@@ -2139,13 +2139,13 @@ TEST(ZiaBugFixes, RuntimeSetConstructorPreservesCollectionSurface) {
     const std::string source = R"(
 module Test;
 
-func start() {    var names: Set[String] = Viper.Collections.Set.New();
+func start() {    var names: Set[String] = Zanna.Collections.Set.New();
     var inserted: Boolean = names.add("Ada");
     var hasAda: Boolean = names.contains("Ada");
     var count: Integer = names.Count;
-    Viper.Terminal.SayInt(inserted ? 1 : 0);
-    Viper.Terminal.SayInt(hasAda ? 1 : 0);
-    Viper.Terminal.SayInt(count);
+    Zanna.Terminal.SayInt(inserted ? 1 : 0);
+    Zanna.Terminal.SayInt(hasAda ? 1 : 0);
+    Zanna.Terminal.SayInt(count);
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_set_surface.zia"};
@@ -2215,7 +2215,7 @@ module Test;
 func start() {
     ();
     var values = 0..=3;
-    Viper.Terminal.SayInt(values.Count);
+    Zanna.Terminal.SayInt(values.Count);
 }
 )";
     CompilerInput input{.source = source, .path = "unit_range_exprs.zia"};
@@ -2241,7 +2241,7 @@ module Test;
 func start() {
     var values = [1, 2, 3];
     for (value in values.rev()) {
-        Viper.Terminal.SayInt(value);
+        Zanna.Terminal.SayInt(value);
     }
 }
 )";
@@ -2256,7 +2256,7 @@ module Test;
 
 func start() {
     for (value in (0..10).step(0)) {
-        Viper.Terminal.SayInt(value);
+        Zanna.Terminal.SayInt(value);
     }
 }
 )";
@@ -2275,7 +2275,7 @@ func start() {
     var values = [1, 2, 3];
     var i: Integer = 0;
     values[i + 1] += 4;
-    Viper.Terminal.SayInt(values[1]);
+    Zanna.Terminal.SayInt(values[1]);
 }
 )";
     CompilerInput pureInput{.source = pureIndex, .path = "compound_pure_index.zia"};
@@ -2317,7 +2317,7 @@ class Numbers {
 func start() {
     var n = new Numbers();
     var x: Float = n.setFirst(7);
-    Viper.Terminal.SayNum(x);
+    Zanna.Terminal.SayNum(x);
 }
 )";
     CompilerInput input{.source = source, .path = "assignment_coerces.zia"};
@@ -2354,9 +2354,9 @@ func start() {
     var len: Integer? = text?.Length;
     var values: List[Integer]? = [1, 2, 3];
     var count: Integer? = values?.Count;
-    Viper.Terminal.SayInt(value ?? 0);
-    Viper.Terminal.SayInt(len ?? 0);
-    Viper.Terminal.SayInt(count ?? 0);
+    Zanna.Terminal.SayInt(value ?? 0);
+    Zanna.Terminal.SayInt(len ?? 0);
+    Zanna.Terminal.SayInt(count ?? 0);
 }
 )";
     CompilerInput input{.source = source, .path = "optional_chain_props.zia"};
@@ -2399,7 +2399,7 @@ func start() {
     var result = match new Holder() {
         _ => sum(values.Count, labels.Count,);
     };
-    Viper.Terminal.SayInt(pick(p) + set.Count + result);
+    Zanna.Terminal.SayInt(pick(p) + set.Count + result);
 }
 )";
     CompilerInput input{.source = source, .path = "parser_gap_fixes.zia"};
@@ -2438,7 +2438,7 @@ func start() {
     var matched = match callValue {
         _ => Point { x = 8 };
     };
-    Viper.Terminal.SayInt(p.x + callValue + points.Count + chosen.x + matched.x + box.p.x + box2.p.x);
+    Zanna.Terminal.SayInt(p.x + callValue + points.Count + chosen.x + matched.x + box.p.x + box2.p.x);
 }
 )";
     CompilerInput input{.source = source, .path = "struct_literal_expr_contexts.zia"};
@@ -2461,8 +2461,8 @@ func start() {
     var matched = match (a, x, z) {
         (left, middle, right) => left + middle + right;
     };
-    Viper.Terminal.Say(b);
-    Viper.Terminal.SayInt(c + y + matched);
+    Zanna.Terminal.Say(b);
+    Zanna.Terminal.SayInt(c + y + matched);
 }
 )";
     CompilerInput input{.source = source, .path = "nary_tuple_destructure.zia"};
@@ -2575,7 +2575,7 @@ module Test;
 
 func start() {
     var values = (0..=5).rev().step(2);
-    Viper.Terminal.SayInt(values.Count);
+    Zanna.Terminal.SayInt(values.Count);
 }
 )";
     CompilerInput input{.source = source, .path = "range_modifier_expr.zia"};
@@ -2597,7 +2597,7 @@ module Test;
 
 func start() {
     var values = (0..10).step(2).step(3);
-    Viper.Terminal.SayInt(values.Count);
+    Zanna.Terminal.SayInt(values.Count);
 }
 )";
     CompilerInput dupInput{.source = duplicateStep, .path = "duplicate_range_step.zia"};
@@ -2618,7 +2618,7 @@ struct Point {
 func start() {
     var p: Point? = Point { x = 7 };
     var x: Integer? = p?.x;
-    Viper.Terminal.SayInt(x ?? 0);
+    Zanna.Terminal.SayInt(x ?? 0);
 }
 )";
     CompilerInput input{.source = source, .path = "optional_struct_chain.zia"};
@@ -2653,7 +2653,7 @@ func start() {
     var n = new Numbers();
     var i: Byte = 1;
     n.set(i, 9);
-    Viper.Terminal.SayInt(n.get(i));
+    Zanna.Terminal.SayInt(n.get(i));
 }
 )";
     CompilerInput input{.source = source, .path = "fixed_array_idxchk_byte.zia"};
@@ -2697,7 +2697,7 @@ func start() {
     var value = Pair { a = 1, b = 2 };
     pairs.set(1, value);
     var loaded = pairs.get(1);
-    Viper.Terminal.SayInt(loaded.b);
+    Zanna.Terminal.SayInt(loaded.b);
 }
 )";
     CompilerInput input{.source = source, .path = "fixed_array_struct_stride.zia"};
@@ -2723,7 +2723,7 @@ func start() {
     var a: Byte = 1;
     var b: Byte = 2;
     var t = (a, b, 99);
-    Viper.Terminal.SayInt(t.2);
+    Zanna.Terminal.SayInt(t.2);
 }
 )";
     CompilerInput input{.source = source, .path = "tuple_semantic_offsets.zia"};
@@ -2746,7 +2746,7 @@ func start() {
     var flag = true;
     var value = flag ? if flag { 1 } else { 2 } : 3;
     var negated = flag ? not false : false;
-    Viper.Terminal.SayInt(value + (negated ? 1 : 0));
+    Zanna.Terminal.SayInt(value + (negated ? 1 : 0));
 }
 )";
     CompilerInput input{.source = source, .path = "ternary_keyword_arms.zia"};
@@ -2775,7 +2775,7 @@ class Child extends Base {
 
 func start() {
     var child = new Child();
-    Viper.Terminal.SayInt(child.answer);
+    Zanna.Terminal.SayInt(child.answer);
 }
 )";
     CompilerInput input{.source = source, .path = "inherited_property_owner.zia"};
@@ -2854,7 +2854,7 @@ func check(hit: Boolean, pred: Boolean) -> Boolean {
 }
 
 func start() {
-    Viper.Terminal.SayBool(check(false, false));
+    Zanna.Terminal.SayBool(check(false, false));
 }
 )";
     CompilerInput input{.source = source, .path = "nested_terminating_if_dead_merge.zia"};
@@ -2886,7 +2886,7 @@ class Buffer {
 func start() {
     var b = new Buffer();
     b.init();
-    Viper.Terminal.SayInt(b.last());
+    Zanna.Terminal.SayInt(b.last());
 }
 )";
     CompilerInput input{.source = source, .path = "fixed_array_parsed_literal_sizes.zia"};
@@ -2911,8 +2911,8 @@ module Test;
 func start() {
     var min: Integer = 0x8000000000000000;
     var negOne: Integer = 0xFFFF_FFFF_FFFF_FFFF;
-    Viper.Terminal.SayInt(min);
-    Viper.Terminal.SayInt(negOne);
+    Zanna.Terminal.SayInt(min);
+    Zanna.Terminal.SayInt(negOne);
 }
 )";
     CompilerInput input{.source = source, .path = "hex_i64_min.zia"};
@@ -2954,7 +2954,7 @@ enum Code {
 
 func start() {
     var x: Integer = Code.Min;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput minInput{.source = minSource, .path = "enum_int64_min.zia"};
@@ -3007,7 +3007,7 @@ final ACTIVE = Inner.Mode.On;
 
 func start() {
     var active: Integer = ACTIVE;
-    Viper.Terminal.SayInt(active);
+    Zanna.Terminal.SayInt(active);
 }
 )";
     CompilerInput input{.source = source, .path = "namespace_enum_final.zia"};
@@ -3110,8 +3110,8 @@ class Packet {
 
 func start() {
     var p = new Packet();
-    Viper.Terminal.SayInt(globalByte);
-    Viper.Terminal.SayInt(p.tag);
+    Zanna.Terminal.SayInt(globalByte);
+    Zanna.Terminal.SayInt(p.tag);
 }
 )";
     CompilerInput input{.source = source, .path = "byte_global_field_init.zia"};
@@ -3221,7 +3221,7 @@ func keep(_unused: Integer, _label: String, value: Integer) -> Integer {
 }
 
 func start() {
-    Viper.Terminal.SayInt(keep(1, "ignored", 2));
+    Zanna.Terminal.SayInt(keep(1, "ignored", 2));
 }
 )";
     CompilerInput input{.source = source, .path = "underscore_parameter_unused.zia"};
@@ -3246,13 +3246,13 @@ interface Tool {
 func start() {
     var t: Tool = null;
     if t == null {
-        Viper.Terminal.Say("empty");
+        Zanna.Terminal.Say("empty");
     }
 
     var tools: List[Tool] = [];
     var maybe = tools.get(0);
     if maybe != null {
-        Viper.Terminal.SayInt(maybe.id());
+        Zanna.Terminal.SayInt(maybe.id());
     }
 }
 )";
@@ -3275,7 +3275,7 @@ TEST(ZiaBugFixes, Gradient2DSampleAcceptsNormalizedNumber) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var fg = Color.RGBA(0, 0, 0, 255);
@@ -3285,7 +3285,7 @@ func start() {
     var raw = g.SampleRgba(0.5);
     var pct = g.SamplePercent(50);
     var rawPct = g.SampleRgbaPercent(50);
-    Viper.Terminal.SayInt(Color.GetRed(c) + Color.GetRed(pct) + raw + rawPct);
+    Zanna.Terminal.SayInt(Color.GetRed(c) + Color.GetRed(pct) + raw + rawPct);
 }
 )";
     CompilerInput input{.source = source, .path = "gradient_normalized_sample.zia"};
@@ -3307,7 +3307,7 @@ TEST(ZiaBugFixes, PixelsTextMethodsResolveThroughRuntimeSurface) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var p = Pixels.New(48, 24);
@@ -3321,7 +3321,7 @@ func start() {
     var w = Pixels.TextWidth("hi");
     var h = Pixels.TextHeight();
     var sw = Pixels.TextScaledWidth("hi", 2);
-    Viper.Terminal.SayInt(w + h + sw);
+    Zanna.Terminal.SayInt(w + h + sw);
 }
 )";
     CompilerInput input{.source = source, .path = "pixels_text_methods.zia"};
@@ -3349,7 +3349,7 @@ TEST(ZiaRuntimeMemberAccess, ParenlessZeroArgMethodEmitsMethodCallDiagnostic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Game3D;
+bind Zanna.Game3D;
 func start() {
     var e: Entity3D = Entity3D.New();
     var s = e.IsSpawned;
@@ -3367,7 +3367,7 @@ TEST(ZiaRuntimeMemberAccess, ParenfulMethodCallCompiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Game3D;
+bind Zanna.Game3D;
 func start() {
     var e: Entity3D = Entity3D.New();
     var s = e.IsSpawned();
@@ -3384,7 +3384,7 @@ TEST(ZiaRuntimeMemberAccess, ParenlessArgMethodDiagnosedNotUnknownMember) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Game3D;
+bind Zanna.Game3D;
 func start() {
     var e: Entity3D = Entity3D.New();
     var f = e.SetPosition;
@@ -3403,7 +3403,7 @@ TEST(ZiaRuntimeMemberAccess, UnknownRuntimeMemberEmitsNoMemberError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Game3D;
+bind Zanna.Game3D;
 func start() {
     var e: Entity3D = Entity3D.New();
     var g = e.Nonexistent;
@@ -3420,7 +3420,7 @@ TEST(ZiaRuntimeMemberAccess, ParenlessPropertyStillResolves) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Game3D;
+bind Zanna.Game3D;
 func start() {
     var e: Entity3D = Entity3D.New();
     var n = e.Name;
@@ -3439,7 +3439,7 @@ TEST(ZiaRuntimeMemberAccess, AnonymousObjectMemberIsSemaErrorNotInternal) {
     // result must be an ordinary sema diagnostic, never V-ZIA-INTERNAL.
     const std::string source = R"(
 module Test;
-bind Viper.Graphics3D;
+bind Zanna.Graphics3D;
 func start() {
     var a = SceneAsset.LoadWithOptions("x.vscn", false);
     var node = a.Instantiate();
@@ -3460,7 +3460,7 @@ TEST(ZiaRuntimeMemberAccess, TypedExtractorReturnsResolveMembers) {
     // method syntax on their results resolves without static-call forms.
     const std::string source = R"(
 module Test;
-bind Viper.Graphics3D;
+bind Zanna.Graphics3D;
 func start() {
     var a = Fbx.Load("x.fbx");
     var n = a.MeshCount;
@@ -3478,5 +3478,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

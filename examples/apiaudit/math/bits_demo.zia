@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math.Bits - Bitwise Operations
+// API Audit: Zanna.Math.Bits - Bitwise Operations
 // =============================================================================
 // Tests: And, Or, Xor, Not, Shl, Shr, ShiftRightLogical, Set, Clear, Get,
 //        Toggle, Flip, Count, CountLeadingZeros, CountTrailingZeros,
@@ -7,11 +7,11 @@
 // =============================================================================
 
 module BitsDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Bits ===");
+    Say("=== API Audit: Zanna.Math.Bits ===");
 
     // --- And ---
     Say("--- And ---");

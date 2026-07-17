@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -107,30 +107,30 @@ static void test_result_retains_runtime_objects(void) {
 }
 
 static void test_runtime_metadata_matches_core_contracts(void) {
-    const auto retain = il::runtime::classifyRuntimeOwnership("Viper.Runtime.Unsafe.Retain");
+    const auto retain = il::runtime::classifyRuntimeOwnership("Zanna.Runtime.Unsafe.Retain");
     assert(retain.retainsArg(0));
-    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Viper.Runtime.Unsafe.ReleaseStr");
+    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Zanna.Runtime.Unsafe.ReleaseStr");
     assert(releaseStr.consumesArg(0));
     const auto releaseStrSym = il::runtime::classifyRuntimeOwnership("rt_memory_release_str");
     assert(releaseStrSym.consumesArg(0));
 
-    const auto boxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.Str");
+    const auto boxStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.Str");
     assert(boxStr.retainsArg(0));
     assert(boxStr.returnsOwned);
     assert(boxStr.mayAllocate);
-    const auto boxAliasI64 = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.I64");
+    const auto boxAliasI64 = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.I64");
     assert(boxAliasI64.returnsOwned);
     assert(boxAliasI64.mayAllocate);
-    const auto boxAliasStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.Str");
+    const auto boxAliasStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.Str");
     assert(boxAliasStr.retainsArg(0));
     assert(boxAliasStr.returnsOwned);
     assert(boxAliasStr.mayAllocate);
 
-    const auto unboxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToStr");
+    const auto unboxStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.ToStr");
     assert(unboxStr.returnsOwned);
-    const auto unboxStrAlias = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToStr");
+    const auto unboxStrAlias = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.ToStr");
     assert(unboxStrAlias.returnsOwned);
-    const auto tryToStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToStrOption");
+    const auto tryToStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.ToStrOption");
     assert(tryToStr.returnsOwned);
     assert(tryToStr.mayAllocate);
     assert(!tryToStr.writesOwnedOutArg(1));
@@ -139,86 +139,86 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto lineInput = il::runtime::classifyRuntimeOwnership("rt_line_input_ch_err");
     assert(lineInput.writesOwnedOutArg(1));
     assert(lineInput.mayAllocate);
-    const auto tryToI64 = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToI64Option");
+    const auto tryToI64 = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.ToI64Option");
     assert(tryToI64.returnsOwned);
     assert(tryToI64.mayAllocate);
-    const auto toStrOpt = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToStrOption");
+    const auto toStrOpt = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.ToStrOption");
     assert(toStrOpt.returnsOwned);
     assert(toStrOpt.mayAllocate);
     const auto boxOptSym = il::runtime::classifyRuntimeOwnership("rt_box_to_f64_option");
     assert(boxOptSym.returnsOwned);
     assert(boxOptSym.mayAllocate);
-    const auto objTypeName = il::runtime::classifyRuntimeOwnership("Viper.Core.Object.TypeName");
+    const auto objTypeName = il::runtime::classifyRuntimeOwnership("Zanna.Core.Object.TypeName");
     assert(objTypeName.returnsOwned);
     assert(objTypeName.mayAllocate);
     const auto convertToStringInt =
-        il::runtime::classifyRuntimeOwnership("Viper.Core.Convert.ToStringInt");
+        il::runtime::classifyRuntimeOwnership("Zanna.Core.Convert.ToStringInt");
     assert(convertToStringInt.returnsOwned);
     assert(convertToStringInt.mayAllocate);
     const auto convertToStringDouble =
-        il::runtime::classifyRuntimeOwnership("Viper.Core.Convert.ToStringDouble");
+        il::runtime::classifyRuntimeOwnership("Zanna.Core.Convert.ToStringDouble");
     assert(convertToStringDouble.returnsOwned);
     assert(convertToStringDouble.mayAllocate);
-    const auto parseDoubleOwn = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
+    const auto parseDoubleOwn = il::runtime::classifyRuntimeOwnership("Zanna.Core.Parse.TryDouble");
     assert(parseDoubleOwn.returnsOwned);
     assert(parseDoubleOwn.mayAllocate);
     const auto parseCanonicalDoubleOwn =
-        il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
+        il::runtime::classifyRuntimeOwnership("Zanna.Core.Parse.TryDouble");
     assert(parseCanonicalDoubleOwn.returnsOwned);
     assert(parseCanonicalDoubleOwn.mayAllocate);
-    const auto parseTryBool = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryBool");
+    const auto parseTryBool = il::runtime::classifyRuntimeOwnership("Zanna.Core.Parse.TryBool");
     assert(parseTryBool.returnsOwned);
     assert(parseTryBool.mayAllocate);
-    const auto parseAlias = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
+    const auto parseAlias = il::runtime::classifyRuntimeOwnership("Zanna.Core.Parse.TryDouble");
     assert(parseAlias.returnsOwned);
     assert(parseAlias.mayAllocate);
     const auto parseBoolSym = il::runtime::classifyRuntimeOwnership("rt_parse_bool_option");
     assert(parseBoolSym.returnsOwned);
     assert(parseBoolSym.mayAllocate);
-    const auto parseOpt = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryInt");
+    const auto parseOpt = il::runtime::classifyRuntimeOwnership("Zanna.Core.Parse.TryInt");
     assert(parseOpt.returnsOwned);
     assert(parseOpt.mayAllocate);
     const auto parseOptSym = il::runtime::classifyRuntimeOwnership("rt_parse_int64_option");
     assert(parseOptSym.returnsOwned);
     assert(parseOptSym.mayAllocate);
-    const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
+    const auto msgSub = il::runtime::classifyRuntimeOwnership("Zanna.Core.MessageBus.Subscribe");
     assert(msgSub.retainsArg(1));
     assert(msgSub.retainsArg(2));
-    const auto weakNew = il::runtime::classifyRuntimeOwnership("Viper.Memory.WeakRef.New");
+    const auto weakNew = il::runtime::classifyRuntimeOwnership("Zanna.Memory.WeakRef.New");
     assert(weakNew.returnsOwned);
     assert(weakNew.mayAllocate);
-    const auto weakGet = il::runtime::classifyRuntimeOwnership("Viper.Memory.WeakRef.Get");
+    const auto weakGet = il::runtime::classifyRuntimeOwnership("Zanna.Memory.WeakRef.Get");
     assert(weakGet.returnsOwned);
-    const auto weakFree = il::runtime::classifyRuntimeOwnership("Viper.Memory.WeakRef.Free");
+    const auto weakFree = il::runtime::classifyRuntimeOwnership("Zanna.Memory.WeakRef.Free");
     assert(weakFree.consumesArg(0));
-    const auto weakReset = il::runtime::classifyRuntimeOwnership("Viper.Memory.WeakRef.Reset");
+    const auto weakReset = il::runtime::classifyRuntimeOwnership("Zanna.Memory.WeakRef.Reset");
     assert(weakReset.mayAllocate);
-    const auto weakMapGet = il::runtime::classifyRuntimeOwnership("Viper.Collections.WeakMap.Get");
+    const auto weakMapGet = il::runtime::classifyRuntimeOwnership("Zanna.Collections.WeakMap.Get");
     assert(weakMapGet.returnsOwned);
-    const auto listGet = il::runtime::classifyRuntimeOwnership("Viper.Collections.List.Get");
+    const auto listGet = il::runtime::classifyRuntimeOwnership("Zanna.Collections.List.Get");
     assert(listGet.returnsOwned);
     const auto dequePeek =
-        il::runtime::classifyRuntimeOwnership("Viper.Collections.Deque.PeekFront");
+        il::runtime::classifyRuntimeOwnership("Zanna.Collections.Deque.PeekFront");
     assert(dequePeek.returnsOwned);
-    const auto seqRemove = il::runtime::classifyRuntimeOwnership("Viper.Collections.Seq.RemoveAt");
+    const auto seqRemove = il::runtime::classifyRuntimeOwnership("Zanna.Collections.Seq.RemoveAt");
     assert(seqRemove.returnsOwned);
-    const auto heapPop = il::runtime::classifyRuntimeOwnership("Viper.Collections.Heap.Pop");
+    const auto heapPop = il::runtime::classifyRuntimeOwnership("Zanna.Collections.Heap.Pop");
     assert(heapPop.returnsOwned);
-    const auto heapItems = il::runtime::classifyRuntimeOwnership("Viper.Collections.Heap.ToSeq");
+    const auto heapItems = il::runtime::classifyRuntimeOwnership("Zanna.Collections.Heap.ToSeq");
     assert(heapItems.returnsOwned);
     assert(heapItems.mayAllocate);
     const auto sortedFirst =
-        il::runtime::classifyRuntimeOwnership("Viper.Collections.SortedSet.First");
+        il::runtime::classifyRuntimeOwnership("Zanna.Collections.SortedSet.First");
     assert(sortedFirst.returnsOwned);
     assert(sortedFirst.mayAllocate);
-    const auto bytesHex = il::runtime::classifyRuntimeOwnership("Viper.Collections.Bytes.ToHex");
+    const auto bytesHex = il::runtime::classifyRuntimeOwnership("Zanna.Collections.Bytes.ToHex");
     assert(bytesHex.returnsOwned);
     assert(bytesHex.mayAllocate);
     const auto orderedKey =
-        il::runtime::classifyRuntimeOwnership("Viper.Collections.OrderedMap.KeyAt");
+        il::runtime::classifyRuntimeOwnership("Zanna.Collections.OrderedMap.KeyAt");
     assert(orderedKey.returnsOwned);
     assert(orderedKey.mayAllocate);
-    const auto iterNext = il::runtime::classifyRuntimeOwnership("Viper.Collections.Iterator.Next");
+    const auto iterNext = il::runtime::classifyRuntimeOwnership("Zanna.Collections.Iterator.Next");
     assert(iterNext.returnsOwned);
     const auto heapToSeq = il::runtime::classifyRuntimeOwnership("rt_pqueue_to_seq");
     assert(heapToSeq.returnsOwned);
@@ -241,18 +241,18 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(strLen.readonly);
     assert(!strLen.nothrow);
 
-    const auto *parseDouble = il::runtime::findRuntimeSignature("Viper.Core.Parse.TryDouble");
+    const auto *parseDouble = il::runtime::findRuntimeSignature("Zanna.Core.Parse.TryDouble");
     assert(parseDouble != nullptr);
     assert(parseDouble->paramTypes.size() == 1);
     assert(parseDouble->retType.kind == il::core::Type::Kind::Ptr);
     assert(parseDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
     const auto *parseCanonicalDouble =
-        il::runtime::findRuntimeSignature("Viper.Core.Parse.TryDouble");
+        il::runtime::findRuntimeSignature("Zanna.Core.Parse.TryDouble");
     assert(parseCanonicalDouble != nullptr);
     assert(parseCanonicalDouble->paramTypes.size() == 1);
     assert(parseCanonicalDouble->retType.kind == il::core::Type::Kind::Ptr);
     assert(parseCanonicalDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
-    const auto *parseInt64 = il::runtime::findRuntimeSignature("Viper.Core.Parse.TryInt");
+    const auto *parseInt64 = il::runtime::findRuntimeSignature("Zanna.Core.Parse.TryInt");
     assert(parseInt64 != nullptr);
     assert(parseInt64->paramTypes.size() == 1);
     assert(parseInt64->retType.kind == il::core::Type::Kind::Ptr);

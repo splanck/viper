@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// @brief Pre-register-allocation MIR optimization pass for the x86-64 pipeline.
 class PreRegAllocOptPass final : public Pass {
@@ -33,4 +33,4 @@ class PreRegAllocOptPass final : public Pass {
     bool run(Module &module, Diagnostics &diags) override;
 };
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 using encoding::padTo;
 using encoding::writeLE16;
@@ -118,9 +118,9 @@ struct PeSection {
     bool zeroFill = false;
 };
 
-using viper::codegen::objfile::putLE16;
-using viper::codegen::objfile::putLE32;
-using viper::codegen::objfile::putLE64;
+using zanna::codegen::objfile::putLE16;
+using zanna::codegen::objfile::putLE32;
+using zanna::codegen::objfile::putLE64;
 
 /// @brief Append a little-endian uint16 to @p buf.
 void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
@@ -1315,4 +1315,4 @@ bool writePeExe(const std::string &path,
     return writeBinaryFileAtomically(path, file, true, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

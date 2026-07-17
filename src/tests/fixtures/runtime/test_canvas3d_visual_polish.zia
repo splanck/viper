@@ -1,9 +1,9 @@
 module TestCanvas3DVisualPolish;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-07 coverage (software backend):
 //   E37 auto-exposure brightens a dark scene toward middle gray.

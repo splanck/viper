@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_print_str.cpp
-// Purpose: Verify const_str + call to Viper.Terminal.PrintStr lower and link.
+// Purpose: Verify const_str + call to Zanna.Terminal.PrintStr lower and link.
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
 #include <filesystem>
@@ -10,9 +10,9 @@
 #include <sstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -38,12 +38,12 @@ TEST(Arm64CLI, PrintConstStrAsm) {
     const std::string in = outPath("arm64_print_str.il");
     const std::string out = outPath("arm64_print_str.s");
     const std::string il = "il 0.1\n"
-                           "extern @Viper.Terminal.PrintStr(str) -> void\n"
+                           "extern @Zanna.Terminal.PrintStr(str) -> void\n"
                            "global const str @.Lmsg = \"Hello\"\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %p = const_str @.Lmsg\n"
-                           "  call @Viper.Terminal.PrintStr(%p)\n"
+                           "  call @Zanna.Terminal.PrintStr(%p)\n"
                            "  %z = alloca 8\n"
                            "  store i64, %z, 0\n"
                            "  %r = load i64, %z\n"
@@ -60,12 +60,12 @@ TEST(Arm64CLI, PrintConstStrAsm) {
 TEST(Arm64CLI, PrintConstStrRunNative) {
     const std::string in = outPath("arm64_print_str_run.il");
     const std::string il = "il 0.1\n"
-                           "extern @Viper.Terminal.PrintStr(str) -> void\n"
+                           "extern @Zanna.Terminal.PrintStr(str) -> void\n"
                            "global const str @.Lmsg = \"Hello\"\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %p = const_str @.Lmsg\n"
-                           "  call @Viper.Terminal.PrintStr(%p)\n"
+                           "  call @Zanna.Terminal.PrintStr(%p)\n"
                            "  %z = alloca 8\n"
                            "  store i64, %z, 0\n"
                            "  %r = load i64, %z\n"
@@ -79,6 +79,6 @@ TEST(Arm64CLI, PrintConstStrRunNative) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

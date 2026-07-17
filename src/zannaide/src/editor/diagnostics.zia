@@ -1,0 +1,449 @@
+module diagnostics;
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+bind "../editor/scheduler";
+bind "../build/diagnostic";
+bind "../services/locations";
+bind "../editor/quick_fixes";
+
+bind ZiaToolchain = Zanna.Zia.Toolchain;
+bind BasicToolchain = Zanna.Basic.LanguageService;
+bind Doc = Zanna.Zia.Document;
+bind SemanticJob = Zanna.Zia.SemanticJob;
+bind "../editor/zia_query";
+bind Seq = Zanna.Collections.Seq;
+bind Map = Zanna.Collections.Map;
+bind Zanna.GUI;
+bind Str = Zanna.String;
+bind Path = Zanna.IO.Path;
+
+// ============================================================================
+// MODULE: diagnostics
+// PURPOSE: Real-time error/warning checking as the user types. Drives
+//          the editor's inline highlight underlines, the minimap
+//          markers, and the bottom diagnostics panel.
+//
+// WHERE-THIS-FITS: Editor controller invoked once per frame from
+//          main.zia. Reads the editor's text and consults
+//          `Zanna.Zia.Toolchain.CheckForFile` for structured diagnostics.
+//
+// KEY-DESIGN-CHOICES:
+//   * DEBOUNCED. Re-running the type-checker on every keystroke would
+//     thrash. We defer the check by `DEBOUNCE_MS` ms after the last
+//     edit so a burst of typing produces a single check at the end.
+//     The timer is reset whenever the editor content revision changes, so
+//     a burst of typing produces one check after the final edit.
+//   * REVISION + PATH CACHE. Per-frame updates read the editor's cheap
+//     content revision first and only pull the full buffer when a debounced
+//     check is actually due. The path cache matters because a path change
+//     (tab switch) needs to re-check even if the new tab's text matches
+//     the previous run.
+//   * PATH-AWARE CheckForFile. Same reason as completion — relative
+//     `bind` paths need the active file's directory for accurate
+//     resolution.
+//   * STRUCTURED RESULTS. The engine returns a Seq of Map records with
+//     file/line/column/endLine/endColumn/severity/code/message fields.
+//     The editor consumes these records directly, so paths and locations
+//     are no longer recovered from display text.
+//   * THREE OUTPUT SURFACES IN LOCKSTEP. Diagnostics panel listbox,
+//     minimap markers, and editor inline highlights are all cleared
+//     and re-emitted together. They're conceptually one view of the
+//     diagnostic set.
+// ============================================================================
+
+final DEBOUNCE_MS = 500;       // ms to wait after last edit before checking
+final ERROR_COLOR = 16711680;  // red    (0xFF0000)
+final WARN_COLOR  = 16776960;  // yellow (0xFFFF00)
+final INFO_COLOR  = 10066329;  // grey   (0x999999)
+
+/// @brief Live error/warning checker for the active document.
+class LiveDiagnostics {
+    expose Boolean enabled;
+    expose Boolean isBasic;          // route to Zanna.Basic.* (sync) instead of Zia
+    expose Integer lastEditMs;       // tick of last detected edit
+    expose Boolean pending;          // true if a check is scheduled
+    expose String  lastCheckedSource; // retained for debugging/inspection; revision gates checks
+    expose String  sourcePath;
+    expose String  lastCheckedPath;
+    expose Integer pendingRevision;
+    expose String  pendingPath;
+    expose Integer pendingGeneration;
+    expose Integer lastCheckedRevision;
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingJobRevision;
+    expose String pendingJobPath;
+    expose Integer pendingJobGeneration;
+    expose Integer pendingJobLineOffset;
+    expose Integer lastErrorCount;
+    expose Integer lastWarningCount;
+    expose Integer lastNoteCount;
+
+    /// @brief Initialize as enabled, with no pending work and empty caches.
+    expose func init() {
+        enabled = true;
+        isBasic = false;
+        lastEditMs = 0;
+        pending = false;
+        lastCheckedSource = "";
+        sourcePath = "";
+        lastCheckedPath = "";
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingGeneration = 0;
+        lastCheckedRevision = -1;
+        workScheduler = null;
+        pendingJob = null;
+        pendingJobRevision = -1;
+        pendingJobPath = "";
+        pendingJobGeneration = 0;
+        pendingJobLineOffset = 0;
+        lastErrorCount = 0;
+        lastWarningCount = 0;
+        lastNoteCount = 0;
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
+    }
+
+    /// @brief Set the active file's path; invalidates the path cache so
+    ///        the next `update` will re-check even if the source text
+    ///        matches.
+    expose func setSourcePath(path: String) {
+        if path != sourcePath {
+            sourcePath = path;
+            lastCheckedPath = "";
+            pending = false;
+            pendingRevision = -1;
+            pendingPath = "";
+            pendingGeneration = 0;
+            lastCheckedRevision = -1;
+            CancelPendingJob();
+        }
+    }
+
+    /// @brief Per-frame diagnostic check (debounced).
+    /// @param engine Editor whose text we're checking.
+    /// @param shell  AppShell — provides diagListBox + minimap.
+    /// @return Number of error-severity diagnostics found, or 0 if no
+    ///         check was performed this frame (debounce timer not yet
+    ///         elapsed, or source unchanged since last check).
+    /// @note On a clean check, all three output surfaces (listbox,
+    ///       minimap, editor highlights) are cleared.
+    expose func update(engine: editor_engine.EditorEngine,
+                       shell: app_shell.AppShell,
+                       locStore: locations.LocationStore) -> Integer {
+        if enabled == false { return 0; }
+        if engine == null or engine.editor == null { return 0; }
+
+        var revision = engine.GetRevision();
+        if pendingJob != null {
+            if revision != pendingJobRevision or sourcePath != pendingJobPath {
+                CancelPendingJob();
+            } else {
+                return PollPendingJob(engine, shell, locStore);
+            }
+        }
+
+        if revision == lastCheckedRevision and sourcePath == lastCheckedPath { return 0; }
+
+        if workScheduler != null {
+            if workScheduler.IsQueued(scheduler.JOB_DIAGNOSTICS, sourcePath, revision) == false {
+                pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, revision, -1);
+                pending = true;
+                pendingRevision = revision;
+                pendingPath = sourcePath;
+                return 0;
+            }
+            if workScheduler.IsDue(scheduler.JOB_DIAGNOSTICS, sourcePath, revision) == false {
+                return 0;
+            }
+            pendingGeneration = workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS);
+            workScheduler.Complete(scheduler.JOB_DIAGNOSTICS);
+        } else {
+            var now = Zanna.Time.Clock.NowMs();
+            if pending == false or revision != pendingRevision or sourcePath != pendingPath {
+                pending = true;
+                pendingRevision = revision;
+                pendingPath = sourcePath;
+                pendingGeneration = 0;
+                lastEditMs = now;
+                return 0;
+            }
+
+            // Wait for debounce period
+            if now - lastEditMs < DEBOUNCE_MS {
+                return 0;
+            }
+        }
+
+        return StartDiagnosticsJob(engine, shell, locStore, revision, pendingGeneration);
+    }
+
+    hide func StartDiagnosticsJob(engine: editor_engine.EditorEngine,
+                                  shell: app_shell.AppShell,
+                                  locStore: locations.LocationStore,
+                                  revision: Integer,
+                                  generation: Integer) -> Integer {
+        var source = engine.GetTextSnapshot();
+        pending = false;
+        pendingGeneration = 0;
+        lastCheckedSource = source;
+
+        // BASIC: synchronous in-process check (no Zia module-wrapping, no line
+        // offset). Fast enough per-keystroke; results share the Zia record shape.
+        if isBasic {
+            CancelPendingJob();
+            var brecords = BasicToolchain.CheckForFile(source, sourcePath);
+            lastCheckedPath = sourcePath;
+            lastCheckedRevision = revision;
+            return ApplyDiagnostics(brecords, 0, shell, locStore, engine);
+        }
+
+        // Synthetic-module prefix for buffers lacking a `module` line;
+        // diagnostic line numbers come back shifted and are un-shifted below.
+        var qsource = zia_query.WrapForQuery(source);
+        var lineOff = zia_query.LineOffset(source);
+        CancelPendingJob();
+
+        // When the buffer is already query-ready (has its own `module` line, so
+        // lineOff == 0), keep the language service's document mirror current with
+        // incremental edit deltas and run the check straight off the mirror — the
+        // full buffer text no longer crosses the ABI into the worker on each
+        // debounced check. Module-less buffers (lineOff == 1) still take the
+        // wrapped full-text path so the synthetic prefix and line un-shift apply.
+        var job: Any = null;
+        if lineOff == 0 {
+            engine.SyncActiveDocument(sourcePath);
+            job = Doc.BeginCheckForFile(sourcePath);
+        }
+        if job == null {
+            job = ZiaToolchain.BeginCheckForFile(qsource, sourcePath);
+        }
+        if job != null {
+            pendingJob = job;
+            pendingJobRevision = revision;
+            pendingJobPath = sourcePath;
+            pendingJobGeneration = generation;
+            pendingJobLineOffset = lineOff;
+            return 0;
+        }
+
+        var records = ZiaToolchain.CheckForFile(qsource, sourcePath);
+        lastCheckedPath = sourcePath;
+        lastCheckedRevision = revision;
+        return ApplyDiagnostics(records, lineOff, shell, locStore, engine);
+    }
+
+    hide func PollPendingJob(engine: editor_engine.EditorEngine,
+                             shell: app_shell.AppShell,
+                             locStore: locations.LocationStore) -> Integer {
+        if pendingJob == null { return 0; }
+        if SemanticJob.IsDone(pendingJob) == false { return 0; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
+            return 0;
+        }
+        if engine.GetRevision() != pendingJobRevision or sourcePath != pendingJobPath {
+            return 0;
+        }
+        if workScheduler != null and pendingJobGeneration > 0
+           and workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, pendingJobGeneration) == false {
+            return 0;
+        }
+
+        var records = SemanticJob.Diagnostics(job);
+        lastCheckedPath = pendingJobPath;
+        lastCheckedRevision = pendingJobRevision;
+        return ApplyDiagnostics(records, pendingJobLineOffset, shell, locStore, engine);
+    }
+
+    hide func ApplyDiagnostics(records: Any,
+                               lineOff: Integer,
+                               shell: app_shell.AppShell,
+                               locStore: locations.LocationStore,
+                               engine: editor_engine.EditorEngine) -> Integer {
+        if records == null {
+            return 0;
+        }
+        if Seq.get_Count(records) == 0 {
+            // Clean — clear all markers and highlights
+            shell.toolPanels.ClearProblemsPanel();
+            shell.SetDiagnosticsSummary(0, 0, 0);
+            shell.workbench.minimap.ClearMarkers();
+            engine.editor.ClearHighlights();
+            lastErrorCount = 0;
+            lastWarningCount = 0;
+            lastNoteCount = 0;
+            return 0;
+        }
+
+        // Emit diagnostics
+        var errorCount = 0;
+        var warningCount = 0;
+        var noteCount = 0;
+        var shownCount = 0;
+        shell.toolPanels.BeginProblems();
+        shell.workbench.minimap.ClearMarkers();
+        engine.editor.ClearHighlights();
+
+        var i = 0;
+        while i < Seq.get_Count(records) {
+            var record = Seq.Get(records, i);
+            i = i + 1;
+
+            var sev = Map.GetInt(record, "severity");
+            var rawLine = Map.GetInt(record, "line");
+            var diagCol = Map.GetInt(record, "column");
+            var diagPath = Map.GetStr(record, "file");
+            var activeDiagnostic = IsActiveDiagnosticPath(diagPath);
+            var diagLine = rawLine;
+            if activeDiagnostic {
+                diagLine = rawLine - lineOff;
+                if diagLine < 1 { continue; }  // diagnostic on the synthetic prefix line
+            } else if diagLine < 1 {
+                continue;
+            }
+            var rawEndLine = Map.GetIntOr(record, "endLine", rawLine);
+            var endLine = rawEndLine;
+            if activeDiagnostic {
+                endLine = rawEndLine - lineOff;
+            }
+            var endCol = Map.GetIntOr(record, "endColumn", diagCol + 1);
+            var code = Map.GetStr(record, "code");
+            var msg = Map.GetStr(record, "message");
+
+            var sevLabel = "error";
+            var markerColor = ERROR_COLOR;
+            if sev == 1 {
+                sevLabel = "warning";
+                markerColor = WARN_COLOR;
+            } else if sev == 2 {
+                sevLabel = "note";
+                markerColor = INFO_COLOR;
+            }
+
+            if sev == 0 { errorCount = errorCount + 1; }
+            if sev == 1 { warningCount = warningCount + 1; }
+            if sev == 2 { noteCount = noteCount + 1; }
+
+            var displayPath = diagPath;
+            if displayPath == "" { displayPath = sourcePath; }
+            var diagnosticSource = "zia";
+            if isBasic {
+                diagnosticSource = "basic";
+            }
+            var item = shell.toolPanels.AddProblem(sevLabel, diagnosticSource, displayPath, diagLine, diagCol,
+                                        code, msg, ProblemActionForDiagnosticRecord(record));
+            shownCount = shownCount + 1;
+            var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
+                                     locations.KIND_DIAGNOSTIC, msg);
+            GUI.ListBox.ItemSetData(item, locId);
+            if activeDiagnostic {
+                shell.workbench.minimap.AddMarker(diagLine, 1, markerColor);
+
+                // Add inline highlight span (underline the error location)
+                var diagCol0 = diagCol - 1;
+                if diagCol0 < 0 { diagCol0 = 0; }
+                var endLine0 = endLine - 1;
+                if endLine0 < diagLine - 1 { endLine0 = diagLine - 1; }
+                var endCol0 = endCol - 1;
+                if endCol0 <= diagCol0 { endCol0 = diagCol0 + 1; }
+                engine.editor.AddHighlight(diagLine - 1, diagCol0, endLine0, endCol0, markerColor);
+            }
+        }
+
+        shell.toolPanels.FinishProblems(shownCount);
+        shell.SetDiagnosticsSummary(errorCount, warningCount, noteCount);
+        lastErrorCount = errorCount;
+        lastWarningCount = warningCount;
+        lastNoteCount = noteCount;
+
+        return errorCount;
+    }
+
+    /// @brief Return whether a diagnostic belongs to the current editor buffer.
+    /// @details Blank diagnostic paths are emitted for the queried source itself,
+    ///          while non-blank paths may identify bound files. Only diagnostics
+    ///          for the active buffer should paint inline highlights or minimap
+    ///          markers; all diagnostics still remain visible in Problems.
+    /// @param diagPath File path from the structured diagnostic record.
+    /// @return True when @p diagPath is blank or normalizes to `sourcePath`.
+    hide func IsActiveDiagnosticPath(diagPath: String) -> Boolean {
+        if diagPath == "" { return true; }
+        if sourcePath == "" { return false; }
+        return NormalizeDiagnosticPath(diagPath) == NormalizeDiagnosticPath(sourcePath);
+    }
+
+    /// @brief Normalize a path for active-file diagnostic comparison.
+    /// @details The compiler and editor may hand back relative, absolute, or
+    ///          differently normalized spellings of the same file. Normalizing
+    ///          both sides avoids duplicate markers caused by path spelling.
+    /// @param path Path text to normalize.
+    /// @return Absolute normalized path, or an empty string for empty input.
+    hide func NormalizeDiagnosticPath(path: String) -> String {
+        if path == "" { return ""; }
+        return Path.Normalize(Path.Absolute(path));
+    }
+
+    /// @brief Force an immediate recheck on the next `update` call.
+    /// @note Use after save / reload / any explicit "rerun checks" gesture.
+    expose func invalidate() {
+        lastCheckedSource = "";
+        lastCheckedPath = "";
+        lastCheckedRevision = -1;
+        pending = false;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingGeneration = 0;
+        CancelPendingJob();
+    }
+
+    expose func runNow(engine: editor_engine.EditorEngine,
+                       shell: app_shell.AppShell,
+                       locStore: locations.LocationStore) -> Integer {
+        if enabled == false { return 0; }
+        if engine == null or engine.editor == null { return 0; }
+        lastCheckedRevision = -1;
+        pending = true;
+        pendingRevision = engine.GetRevision();
+        pendingPath = sourcePath;
+        pendingGeneration = 0;
+        lastEditMs = Zanna.Time.Clock.NowMs() - DEBOUNCE_MS;
+        if workScheduler != null {
+            pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
+        }
+        return update(engine, shell, locStore);
+    }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
+        pendingJobGeneration = 0;
+    }
+}
+
+expose func ProblemActionForDiagnostic(severity: Integer, code: String) -> String {
+    if severity == 1 and IsSuppressibleDiagnosticCode(code) {
+        return "Suppress Warning";
+    }
+    return "No quick fix";
+}
+
+expose func ProblemActionForDiagnosticRecord(record: Any) -> String {
+    if record == null { return "No quick fix"; }
+    var quickAction = quick_fixes.ProblemActionForDiagnosticRecord(record);
+    if quickAction != "No quick fix" { return quickAction; }
+    return ProblemActionForDiagnostic(Map.GetInt(record, "severity"),
+                                      Map.GetStr(record, "code"));
+}
+
+func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
+    return Str.get_Length(code) >= 2 and Str.Left(code, 1) == "W";
+}

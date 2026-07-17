@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -47,7 +47,7 @@ void buildSignedCompareFunction(Module &module, Opcode op, int64_t lhs, int64_t 
 bool runSignedCompare(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildSignedCompareFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const int64_t result = fixture.run(module);
     assert(result == 0 || result == 1);
     return result == 1;

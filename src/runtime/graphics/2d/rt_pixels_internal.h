@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -51,7 +51,7 @@ typedef struct rt_pixels_impl {
 } rt_pixels_impl;
 
 /// @brief Trap for invalid opaque Pixels handles without exposing runtime.def symbols here.
-void viper_pixels_trap_invalid_handle(const char *op, const char *fallback);
+void zanna_pixels_trap_invalid_handle(const char *op, const char *fallback);
 
 /// @brief Validate and cast an opaque handle to a Pixels implementation.
 static inline rt_pixels_impl *rt_pixels_checked_impl(void *pixels, const char *op) {
@@ -60,11 +60,11 @@ static inline rt_pixels_impl *rt_pixels_checked_impl(void *pixels, const char *o
     return (rt_pixels_impl *)pixels;
 #else
     if (!pixels) {
-        viper_pixels_trap_invalid_handle(op, "Pixels: null pixels");
+        zanna_pixels_trap_invalid_handle(op, "Pixels: null pixels");
         return NULL;
     }
     if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
-        viper_pixels_trap_invalid_handle(op, "Pixels: invalid pixels");
+        zanna_pixels_trap_invalid_handle(op, "Pixels: invalid pixels");
         return NULL;
     }
     return (rt_pixels_impl *)pixels;

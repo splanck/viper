@@ -1,7 +1,7 @@
 module TestConvertFmt;
-bind Viper.Core.Convert;
-bind Viper.Text.Fmt;
-bind Viper.Terminal;
+bind Zanna.Core.Convert;
+bind Zanna.Text.Fmt;
+bind Zanna.Terminal;
 
 func start() {
     SayInt(ToInt64("42"));

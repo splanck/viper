@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -71,14 +71,14 @@ int main() {
     assert(rt_args_count() == 0);
 
     // Environment variables: missing, set, get, and UTF-8 round-trip.
-    rt_string missing_name = make_str("VIPER_RT_ARGS_MISSING_FOR_TEST");
+    rt_string missing_name = make_str("ZANNA_RT_ARGS_MISSING_FOR_TEST");
     assert(rt_env_has_var(missing_name) == 0);
     rt_string missing_value = rt_env_get_var(missing_name);
     assert(std::strcmp(rt_string_cstr(missing_value), "") == 0);
     rt_string_unref(missing_name);
     rt_string_unref(missing_value);
 
-    rt_string env_name = make_str("VIPER_RT_ARGS_UTF8_VALUE");
+    rt_string env_name = make_str("ZANNA_RT_ARGS_UTF8_VALUE");
     rt_string env_value = make_str("caf\xc3\xa9");
     rt_env_set_var(env_name, env_value);
     assert(rt_env_has_var(env_name) == 1);

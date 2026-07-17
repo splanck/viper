@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Current native Windows installer metadata schema.
 inline constexpr uint32_t kWindowsInstallerMetadataSchema = 3;
@@ -119,8 +119,8 @@ struct WindowsInstallerMetadata {
     std::string cleanupSha256; ///< SHA-256 of the signed detached cleanup helper.
     std::string licenseEntry{"meta/license.txt"};
     std::string readmeEntry{"meta/readme.txt"};
-    std::string installedManifestRelativePath{".viper-install-manifest.txt"};
-    std::string stateRelativePath{".viper-install-state.v2"};
+    std::string installedManifestRelativePath{".zanna-install-manifest.txt"};
+    std::string stateRelativePath{".zanna-install-state.v2"};
     std::string uninstallerRelativePath{"uninstall.exe"};
     std::string minimumWindowsVersion{"10.0.17763"};
     bool addToPath{false};
@@ -142,4 +142,4 @@ std::string serializeWindowsInstallerMetadata(const WindowsInstallerMetadata &me
 /// @throws std::runtime_error on malformed, duplicate, unknown, or unsafe data.
 WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

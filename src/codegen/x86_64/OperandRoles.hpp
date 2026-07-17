@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Return `{isUse, isDef}` for an operand of an x86-64 MIR instruction.
 /// @details Used by liveness, DCE, and the register allocator to classify every
@@ -58,4 +58,4 @@ namespace viper::codegen::x64 {
 /// @return True if @p opcode has observable side effects.
 [[nodiscard]] bool hasObservableSideEffects(MOpcode opcode) noexcept;
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

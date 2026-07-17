@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Math.Bits` exposed several terse helper names:
+`Zanna.Math.Bits` exposed several terse helper names:
 
 - `LeadZ`
 - `TrailZ`

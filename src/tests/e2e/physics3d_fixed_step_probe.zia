@@ -1,8 +1,8 @@
 module physics3d_fixed_step_probe;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func near(a: Float, b: Float) -> Boolean {
     var d = a - b;

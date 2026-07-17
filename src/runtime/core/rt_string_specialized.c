@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_string_specialized.c
-// Purpose: Specialized string operations for the Viper runtime. Contains case
+// Purpose: Specialized string operations for the Zanna runtime. Contains case
 //   conversion utilities (capitalize, title, camelCase, PascalCase, snake_case,
 //   kebab-case, screaming_snake), string distance metrics (Levenshtein, Jaro,
 //   Jaro-Winkler, Hamming), prefix/suffix manipulation, slug generation, and

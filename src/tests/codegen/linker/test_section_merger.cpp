@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <limits>
 #include <sstream>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -407,7 +407,7 @@ int main() {
         auto obj = makeObj("metadata.o",
                            ObjFileFormat::ELF,
                            {makeSection(".eh_frame", 8, false, false, false, 8),
-                            makeSection(".note.viper", 12, false, false, false, 4),
+                            makeSection(".note.zanna", 12, false, false, false, 4),
                             makeSection(".rodata", 16, false, false, false, 16)});
 
         std::vector<ObjFile> objs = {obj};
@@ -422,7 +422,7 @@ int main() {
         for (const auto &sec : layout.sections) {
             sawRodata = sawRodata || sec.name == ".rodata";
             sawEhFrame = sawEhFrame || sec.name == ".eh_frame";
-            sawNote = sawNote || sec.name == ".note.viper";
+            sawNote = sawNote || sec.name == ".note.zanna";
         }
         CHECK(sawRodata);
         CHECK(sawEhFrame);

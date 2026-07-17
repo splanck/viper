@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -70,7 +70,7 @@ TEST(ZiaArithConformance, IntAddChecked) {
 module Test;
 func start() {
     var a: Integer = 10 + 20;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "add_checked.zia"};
@@ -89,7 +89,7 @@ TEST(ZiaArithConformance, IntDivChecked) {
 module Test;
 func start() {
     var a: Integer = 20 / 4;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "div_checked.zia"};
@@ -108,7 +108,7 @@ TEST(ZiaArithConformance, IntModChecked) {
 module Test;
 func start() {
     var a: Integer = 17 % 5;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "mod_checked.zia"};
@@ -131,7 +131,7 @@ TEST(ZiaArithConformance, IntAddUncheckedStillVerified) {
 module Test;
 func start() {
     var a: Integer = 10 + 20;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "add_unchecked.zia"};
@@ -151,7 +151,7 @@ TEST(ZiaArithConformance, IntDivUncheckedStillVerified) {
 module Test;
 func start() {
     var a: Integer = 20 / 4;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "div_unchecked.zia"};
@@ -171,7 +171,7 @@ TEST(ZiaArithConformance, IntModUncheckedStillVerified) {
 module Test;
 func start() {
     var a: Integer = 17 % 5;
-    Viper.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(a);
 }
 )";
     CompilerInput input{.source = source, .path = "mod_unchecked.zia"};
@@ -195,7 +195,7 @@ TEST(ZiaArithConformance, MixedIntPlusNumber) {
 module Test;
 func start() {
     var x: Number = 42 + 3.14;
-    Viper.Terminal.SayNum(x);
+    Zanna.Terminal.SayNum(x);
 }
 )";
     CompilerInput input{.source = source, .path = "mixed.zia"};
@@ -214,7 +214,7 @@ TEST(ZiaArithConformance, FloatDiv) {
 module Test;
 func start() {
     var x: Number = 10.0 / 4.0;
-    Viper.Terminal.SayNum(x);
+    Zanna.Terminal.SayNum(x);
 }
 )";
     CompilerInput input{.source = source, .path = "fdiv.zia"};
@@ -232,7 +232,7 @@ TEST(ZiaArithConformance, FloatMul) {
 module Test;
 func start() {
     var x: Number = 2.5 * 4.0;
-    Viper.Terminal.SayNum(x);
+    Zanna.Terminal.SayNum(x);
 }
 )";
     CompilerInput input{.source = source, .path = "fmul.zia"};
@@ -248,13 +248,13 @@ TEST(ZiaArithConformance, NumberReturnFromIntFunc) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 func f() -> Integer {
     return Math.Floor(3.14);
 }
 func start() {
     var x: Integer = f();
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "narrow_return.zia"};
@@ -275,7 +275,7 @@ TEST(ZiaArithConformance, IntCompare) {
 module Test;
 func start() {
     var b: Boolean = 3 < 5;
-    if b { Viper.Terminal.Say("yes"); }
+    if b { Zanna.Terminal.Say("yes"); }
 }
 )";
     CompilerInput input{.source = source, .path = "cmp.zia"};
@@ -293,7 +293,7 @@ TEST(ZiaArithConformance, FloatCompare) {
 module Test;
 func start() {
     var b: Boolean = 3.0 < 5.0;
-    if b { Viper.Terminal.Say("yes"); }
+    if b { Zanna.Terminal.Say("yes"); }
 }
 )";
     CompilerInput input{.source = source, .path = "fcmp.zia"};
@@ -311,7 +311,7 @@ TEST(ZiaArithConformance, BitwiseAnd) {
 module Test;
 func start() {
     var x: Integer = 0xFF & 0x0F;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "bitand.zia"};
@@ -327,6 +327,6 @@ func start() {
 //=============================================================================
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

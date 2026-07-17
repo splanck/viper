@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,8 +23,8 @@
 #include "il/api/expected_api.hpp"
 #include "il/io/Serializer.hpp"
 #include "tests/TestHarness.hpp"
-#if VIPER_HAS_ARM64
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#if ZANNA_HAS_ARM64
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 #endif
 
 #include <cstdint>
@@ -48,11 +48,11 @@ Module parseModule(const std::string &src) {
 }
 
 int64_t runVm(Module &module) {
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
 int runNative(Module &module) {
     const std::string ilSource = il::io::Serializer::toString(module);
     namespace fs = std::filesystem;
@@ -64,7 +64,7 @@ int runNative(Module &module) {
     out << ilSource;
     out.close();
     const char *argv[] = {ilPath.c_str(), "-run-native"};
-    const int result = viper::tools::ilc::cmd_codegen_arm64(2, const_cast<char **>(argv));
+    const int result = zanna::tools::ilc::cmd_codegen_arm64(2, const_cast<char **>(argv));
     std::error_code ec;
     fs::remove(ilPath, ec);
     return result;
@@ -76,7 +76,7 @@ int runNative(Module &module) {
 int64_t runCrossLayer(const std::string &src) {
     Module vmModule = parseModule(src);
     const int64_t vmResult = runVm(vmModule);
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
     Module nativeModule = parseModule(src);
     const int nativeResult = runNative(nativeModule);
     const int vmExit = static_cast<int>(vmResult) & 0xFF;
@@ -215,6 +215,6 @@ handler(%err: Error, %tok: ResumeTok):
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,11 +1,11 @@
 // =============================================================================
-// Video GUI Widget Demo — VideoWidget in a Viper.GUI application
+// Video GUI Widget Demo — VideoWidget in a Zanna.GUI application
 // =============================================================================
 
 module VideoGuiDemo;
 
-bind Viper.GUI;
-bind Viper.Terminal;
+bind Zanna.GUI;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Video GUI Widget Demo ===");

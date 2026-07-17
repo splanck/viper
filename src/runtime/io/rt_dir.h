@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_dir.h
-// Purpose: Cross-platform directory operations for Viper.IO.Dir, providing listing, creation,
+// Purpose: Cross-platform directory operations for Zanna.IO.Dir, providing listing, creation,
 // deletion, existence checks, and current/home directory queries.
 //
 // Key invariants:
@@ -62,21 +62,21 @@ void rt_dir_remove_all(rt_string path);
 /// @return Seq of entry names (excluding . and ..).
 void *rt_dir_list(rt_string path);
 
-/// @brief List all entries in a directory as a Viper.Collections.Seq.
+/// @brief List all entries in a directory as a Zanna.Collections.Seq.
 /// @details Seq-returning wrapper for rt_dir_list. Returns entry names (excluding . and ..) in
 /// the
 ///          same enumeration order as rt_dir_list (no sorting; platform/filesystem-dependent).
 ///          If the directory does not exist or cannot be read, returns an empty sequence.
 /// @param path Directory path to list.
-/// @return Viper.Collections.Seq containing runtime strings for each entry name.
+/// @return Zanna.Collections.Seq containing runtime strings for each entry name.
 void *rt_dir_list_seq(rt_string path);
 
-/// @brief List all directory entries as a Viper.Collections.Seq of strings.
+/// @brief List all directory entries as a Zanna.Collections.Seq of strings.
 /// @details Returns entry names (excluding . and ..) in the same enumeration order used by
 ///          rt_dir_list/rt_dir_files/rt_dir_dirs. No sorting is performed, so ordering is
 ///          platform- and filesystem-dependent.
 /// @param path Directory path to list.
-/// @return Viper.Collections.Seq containing runtime strings for each entry name.
+/// @return Zanna.Collections.Seq containing runtime strings for each entry name.
 /// @note Traps when the directory does not exist or cannot be enumerated.
 void *rt_dir_entries_seq(rt_string path);
 
@@ -85,12 +85,12 @@ void *rt_dir_entries_seq(rt_string path);
 /// @return Seq of file names (no subdirectories).
 void *rt_dir_files(rt_string path);
 
-/// @brief List only files in a directory as a Viper.Collections.Seq.
+/// @brief List only files in a directory as a Zanna.Collections.Seq.
 /// @details Seq-returning wrapper for rt_dir_files. Returns file names in the same enumeration
 ///          order as rt_dir_files (no sorting; platform/filesystem-dependent).
 ///          If the directory does not exist or cannot be read, returns an empty sequence.
 /// @param path Directory path to list.
-/// @return Viper.Collections.Seq containing runtime strings for each file name.
+/// @return Zanna.Collections.Seq containing runtime strings for each file name.
 void *rt_dir_files_seq(rt_string path);
 
 /// @brief List only subdirectories in a directory.
@@ -98,13 +98,13 @@ void *rt_dir_files_seq(rt_string path);
 /// @return Seq of subdirectory names (excluding . and ..).
 void *rt_dir_dirs(rt_string path);
 
-/// @brief List only subdirectories in a directory as a Viper.Collections.Seq.
+/// @brief List only subdirectories in a directory as a Zanna.Collections.Seq.
 /// @details Seq-returning wrapper for rt_dir_dirs. Returns directory names (excluding . and ..)
 ///          in the same enumeration order as rt_dir_dirs (no sorting;
 ///          platform/filesystem-dependent). If the directory does not exist or cannot be read,
 ///          returns an empty sequence.
 /// @param path Directory path to list.
-/// @return Viper.Collections.Seq containing runtime strings for each directory name.
+/// @return Zanna.Collections.Seq containing runtime strings for each directory name.
 void *rt_dir_dirs_seq(rt_string path);
 
 /// @brief Get the current working directory.

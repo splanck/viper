@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_future.h
@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 //=============================================================================
-// Viper.Threads.Promise
+// Zanna.Threads.Promise
 //=============================================================================
 
 /// @brief Create a new Promise.
@@ -82,7 +82,7 @@ void rt_promise_set_error(void *promise, rt_string error);
 int8_t rt_promise_is_done(void *promise);
 
 //=============================================================================
-// Viper.Threads.Future
+// Zanna.Threads.Future
 //=============================================================================
 
 /// @brief Get the value from the Future, blocking until resolved.
@@ -127,7 +127,7 @@ void *rt_future_try_get_val(void *future);
 ///          `None` when it is still pending or resolved with an error. A
 ///          successful NULL value is represented as `Some(NULL)`.
 /// @param future Future object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_future_try_get_option(void *future);
 
 /// @brief Get the value with a timeout (IL-friendly).

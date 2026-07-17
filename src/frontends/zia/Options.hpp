@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 /// configure the Zia compilation pipeline. Options control safety checks
 /// (bounds, overflow, null), debug output (AST/IL dumps), and the
 /// optimization level applied to generated IL. These options are typically
-/// populated from command-line flags by the Viper driver and passed into
+/// populated from command-line flags by the Zanna driver and passed into
 /// the Zia Compiler constructor.
 ///
 /// @invariant Default-constructed CompilerOptions enable all safety checks
@@ -93,8 +93,8 @@ struct CompilerOptions {
 
     /// @brief Optimization level for IL transformations.
     /// @details Frontend embedders default to O0 so tests and tools can inspect
-    ///          raw lowering. `viper build` defaults to O1 for artifacts while
-    ///          `viper run` defaults to O0 unless the project or CLI asks for
+    ///          raw lowering. `zanna build` defaults to O1 for artifacts while
+    ///          `zanna run` defaults to O0 unless the project or CLI asks for
     ///          optimization.
     OptLevel optLevel{OptLevel::O0};
 

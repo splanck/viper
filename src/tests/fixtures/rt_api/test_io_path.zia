@@ -1,8 +1,8 @@
 module TestIoPath;
-bind Viper.IO.Path;
-bind Viper.IO.File;
-bind Viper.IO.Dir;
-bind Viper.Terminal;
+bind Zanna.IO.Path;
+bind Zanna.IO.File;
+bind Zanna.IO.Dir;
+bind Zanna.Terminal;
 
 func start() {
     Say(Join("a", "b"));
@@ -19,16 +19,16 @@ func start() {
 
     // File write/read round-trip
     var tmp = "_rt_api_test_tmp.txt";
-    WriteAllText(tmp, "hello from viper");
+    WriteAllText(tmp, "hello from zanna");
     SayBool(Exists(tmp));
     Say(ReadAllText(tmp));
     SayInt(SizeBytes(tmp));
     Append(tmp, "!");
     Say(ReadAllText(tmp));
     Delete(tmp);
-    SayBool(Viper.IO.File.Exists(tmp));
+    SayBool(Zanna.IO.File.Exists(tmp));
 
     // Dir
-    SayBool(Viper.IO.Dir.Exists("."));
+    SayBool(Zanna.IO.Dir.Exists("."));
     Say("done");
 }

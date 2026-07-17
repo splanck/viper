@@ -5,9 +5,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-BUILD_DIR="${VIPER_FUZZ_BUILD_DIR:-${ROOT_DIR}/build-fuzz}"
-SECONDS_PER_TARGET="${VIPER_FUZZ_SECONDS:-5}"
-JOBS="${VIPER_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+BUILD_DIR="${ZANNA_FUZZ_BUILD_DIR:-${ROOT_DIR}/build-fuzz}"
+SECONDS_PER_TARGET="${ZANNA_FUZZ_SECONDS:-5}"
+JOBS="${ZANNA_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 MODE="run"
 
 usage() {
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 discover_targets() {
-    sed -n -E 's/^[[:space:]]*viper_add_(3d_loader_)?fuzzer\((fuzz_[^[:space:]\)]+).*/\2/p' \
+    sed -n -E 's/^[[:space:]]*zanna_add_(3d_loader_)?fuzzer\((fuzz_[^[:space:]\)]+).*/\2/p' \
         "$ROOT_DIR/src/tests/fuzz/CMakeLists.txt" | sort -u
 }
 
@@ -85,7 +85,7 @@ fi
 
 cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DVIPER_ENABLE_FUZZ=ON \
+    -DZANNA_ENABLE_FUZZ=ON \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
 cmake --build "$BUILD_DIR" -j"$JOBS" --target "${targets[@]}"

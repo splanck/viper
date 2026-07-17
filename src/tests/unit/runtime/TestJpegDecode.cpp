@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -101,7 +101,7 @@ TEST(JpegDecodeTest, RejectNonJpeg) {
 
 TEST(JpegDecodeTest, RejectInvalidData) {
     // Create a file with random data (not JPEG)
-    const char *path = "/tmp/viper_test_invalid.jpg";
+    const char *path = "/tmp/zanna_test_invalid.jpg";
     FILE *f = fopen(path, "wb");
     ASSERT_TRUE(f != nullptr);
     const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
@@ -123,7 +123,7 @@ TEST(JpegDecodeTest, RoundTripViaPng) {
     // We'll create a 2x2 PNG and verify the pipeline works
     // Verify the JPEG decoder rejects a PNG file (wrong magic bytes).
     // Create a minimal file with PNG signature
-    const char *path = "/tmp/viper_jpeg_test_png_reject.png";
+    const char *path = "/tmp/zanna_jpeg_test_png_reject.png";
     FILE *fp = fopen(path, "wb");
     ASSERT_TRUE(fp != nullptr);
     // Minimal PNG signature
@@ -137,5 +137,5 @@ TEST(JpegDecodeTest, RoundTripViaPng) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

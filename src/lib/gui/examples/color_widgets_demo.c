@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: color_widgets_demo.c
-// Purpose: Demo application for ViperGUI color widgets (ColorSwatch,
+// Purpose: Demo application for ZannaGUI color widgets (ColorSwatch,
 //          ColorPalette, ColorPicker).
 //
 //===----------------------------------------------------------------------===//

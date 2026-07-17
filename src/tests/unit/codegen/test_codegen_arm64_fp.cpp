@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,10 +27,10 @@
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
-using namespace viper::codegen::aarch64;
+using namespace zanna::tools::ilc;
+using namespace zanna::codegen::aarch64;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -312,6 +312,6 @@ TEST(Arm64FP, EncodableImmediateKeepsDirectForm_SystemAsm) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

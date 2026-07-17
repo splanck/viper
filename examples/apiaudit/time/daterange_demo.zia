@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Time.DateRange - Date Range Operations
+// API Audit: Zanna.Time.DateRange - Date Range Operations
 // =============================================================================
 // Tests: New, Start, End, Contains, Overlaps, Intersection, Union, Days,
 //        Hours, Duration, ToString
 // =============================================================================
 
 module DateRangeDemo;
-bind Viper.Terminal;
-bind Viper.Time.DateRange as DR;
-bind Viper.Time.DateTime as DT;
+bind Zanna.Terminal;
+bind Zanna.Time.DateRange as DR;
+bind Zanna.Time.DateTime as DT;
 func start() {
-    Say("=== API Audit: Viper.Time.DateRange ===");
+    Say("=== API Audit: Zanna.Time.DateRange ===");
 
     // Create two date ranges
     var start1 = DT.FromParts(2024, 1, 1, 0, 0, 0);

@@ -1,4 +1,4 @@
-' screenfx_demo.bas - Comprehensive API audit for Viper.Game.ScreenFX
+' screenfx_demo.bas - Comprehensive API audit for Zanna.Game.ScreenFX
 ' Tests: New, Shake, Flash, FadeIn, FadeOut, Update, IsActive, IsTypeActive,
 '        ShakeX, ShakeY, OverlayColor, OverlayAlpha, CancelAll, CancelType
 ' Note: ScreenFX is designed for display effects but tested headlessly here.
@@ -8,7 +8,7 @@ PRINT "=== ScreenFX API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM fx AS OBJECT
-fx = Viper.Game.ScreenFX.New()
+fx = Zanna.Game.ScreenFX.New()
 PRINT fx.IsActive          ' 0
 PRINT fx.ShakeX            ' 0
 PRINT fx.ShakeY            ' 0
@@ -19,7 +19,7 @@ PRINT fx.OverlayAlpha      ' 0
 PRINT "--- Shake ---"
 fx.Shake(10, 500, 5)
 PRINT fx.IsActive          ' 1
-PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 1 (named constant, not raw 0)
+PRINT fx.IsTypeActive(Zanna.Game.ScreenFX.TypeShake)   ' 1 (named constant, not raw 0)
 
 ' --- Update (deltaMs) ---
 PRINT "--- Update ---"
@@ -30,7 +30,7 @@ PRINT fx.ShakeY
 
 ' --- CancelType ---
 PRINT "--- CancelType ---"
-fx.CancelType(Viper.Game.ScreenFX.TypeShake)
+fx.CancelType(Zanna.Game.ScreenFX.TypeShake)
 fx.Update(16)
 PRINT fx.ShakeX            ' 0
 PRINT fx.ShakeY            ' 0
@@ -82,9 +82,9 @@ fx.Update(16)
 ' --- IsTypeActive ---
 PRINT "--- IsTypeActive ---"
 fx.CancelAll()
-PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 0
+PRINT fx.IsTypeActive(Zanna.Game.ScreenFX.TypeShake)   ' 0
 fx.Shake(10, 100, 5)
-PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 1
+PRINT fx.IsTypeActive(Zanna.Game.ScreenFX.TypeShake)   ' 1
 
 ' --- Cleanup ---
 fx.CancelAll()

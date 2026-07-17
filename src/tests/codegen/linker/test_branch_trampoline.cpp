@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <sstream>
 #include <unordered_set>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -295,7 +295,7 @@ int main() {
         farTarget.binding = ObjSymbol::Undefined;
 
         ObjSymbol userCollision;
-        userCollision.name = "__viper_trampoline_0";
+        userCollision.name = "__zanna_trampoline_0";
         userCollision.binding = ObjSymbol::Global;
         userCollision.sectionIndex = 1;
         userCollision.offset = 0;
@@ -317,8 +317,8 @@ int main() {
         e.objIndex = 0;
         e.secIndex = 1;
         globalSyms["funcA"] = e;
-        e.name = "__viper_trampoline_0";
-        globalSyms["__viper_trampoline_0"] = e;
+        e.name = "__zanna_trampoline_0";
+        globalSyms["__zanna_trampoline_0"] = e;
         GlobalSymEntry far;
         far.name = "far_target";
         far.binding = GlobalSymEntry::Dynamic;
@@ -328,8 +328,8 @@ int main() {
         LinkLayout layout;
         std::ostringstream err;
         CHECK(runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
-        CHECK(layout.globalSyms.count("__viper_trampoline_1") == 1);
-        CHECK(layout.globalSyms["__viper_trampoline_0"].objIndex == 0);
+        CHECK(layout.globalSyms.count("__zanna_trampoline_1") == 1);
+        CHECK(layout.globalSyms["__zanna_trampoline_0"].objIndex == 0);
     }
 
     // --- Test 3: Out-of-range Branch26 — trampoline inserted ---
@@ -780,11 +780,11 @@ int main() {
         LinkLayout layout;
         std::ostringstream err;
         CHECK(runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
-        CHECK(layout.globalSyms.count("__viper_trampoline_0") == 1);
+        CHECK(layout.globalSyms.count("__zanna_trampoline_0") == 1);
         CHECK(layout.globalSyms.count("funcB") == 1);
-        if (layout.globalSyms.count("__viper_trampoline_0") == 1 && !layout.sections.empty()) {
+        if (layout.globalSyms.count("__zanna_trampoline_0") == 1 && !layout.sections.empty()) {
             const auto &text = layout.sections[0];
-            const uint64_t tramVA = layout.globalSyms["__viper_trampoline_0"].resolvedAddr;
+            const uint64_t tramVA = layout.globalSyms["__zanna_trampoline_0"].resolvedAddr;
             const size_t tramOff = static_cast<size_t>(tramVA - text.virtualAddr);
             CHECK(tramOff + 8 < text.data.size());
             if (tramOff + 8 < text.data.size()) {

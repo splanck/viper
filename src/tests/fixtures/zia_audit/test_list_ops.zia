@@ -3,24 +3,24 @@ module TestListOps;
 // Test: List operations
 
 func start() {
-    Viper.Terminal.Say("=== List Operations Test ===");
+    Zanna.Terminal.Say("=== List Operations Test ===");
 
-    var list: Viper.Collections.List = Viper.Collections.List.New();
-    Viper.Collections.List.Push(list, 100);
-    Viper.Collections.List.Push(list, 200);
+    var list: Zanna.Collections.List = Zanna.Collections.List.New();
+    Zanna.Collections.List.Push(list, 100);
+    Zanna.Collections.List.Push(list, 200);
 
-    var count: Integer = Viper.Collections.List.get_Count(list);
-    Viper.Terminal.Say("Count: " + Viper.String.FromInt(count));
+    var count: Integer = Zanna.Collections.List.get_Count(list);
+    Zanna.Terminal.Say("Count: " + Zanna.String.FromInt(count));
 
-    var v0: Integer = Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 0));
-    var v1: Integer = Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 1));
+    var v0: Integer = Zanna.Core.Box.ToI64(Zanna.Collections.List.Get(list, 0));
+    var v1: Integer = Zanna.Core.Box.ToI64(Zanna.Collections.List.Get(list, 1));
 
-    Viper.Terminal.Say("v0 = " + Viper.String.FromInt(v0));
-    Viper.Terminal.Say("v1 = " + Viper.String.FromInt(v1));
+    Zanna.Terminal.Say("v0 = " + Zanna.String.FromInt(v0));
+    Zanna.Terminal.Say("v1 = " + Zanna.String.FromInt(v1));
 
     if (count == 2 && v0 == 100 && v1 == 200) {
-        Viper.Terminal.Say("RESULT: ok");
+        Zanna.Terminal.Say("RESULT: ok");
     } else {
-        Viper.Terminal.Say("RESULT: fail");
+        Zanna.Terminal.Say("RESULT: fail");
     }
 }

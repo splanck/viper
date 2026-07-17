@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTXmlTests.cpp
-// Purpose: Validate Viper.Data.Xml (rt_xml_*) parse/create/format/query API.
+// Purpose: Validate Zanna.Data.Xml (rt_xml_*) parse/create/format/query API.
 // Key invariants: Parse produces correct node tree; attributes are readable;
 //                 formatted output round-trips through parse.
 // Ownership/Lifetime: XML node objects are refcounted; parent links retain children.
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_object.h"
 #include "rt_string.h"

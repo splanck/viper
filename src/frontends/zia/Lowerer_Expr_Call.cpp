@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -161,7 +161,7 @@ std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
     return tag == "start" ? "main" : tag;
 }
 
-/// @brief Pick the type-specialised `Viper.Result.Ok*` callee for @p type.
+/// @brief Pick the type-specialised `Zanna.Result.Ok*` callee for @p type.
 const char *resultOkCalleeFor(TypeRef type) {
     if (!type)
         return kResultOk;
@@ -178,7 +178,7 @@ const char *resultOkCalleeFor(TypeRef type) {
     }
 }
 
-/// @brief Pick the type-specialised `Viper.Result.Unwrap*` callee.
+/// @brief Pick the type-specialised `Zanna.Result.Unwrap*` callee.
 const char *resultUnwrapCalleeFor(TypeRef type) {
     if (!type)
         return kResultUnwrap;
@@ -195,7 +195,7 @@ const char *resultUnwrapCalleeFor(TypeRef type) {
     }
 }
 
-/// @brief Pick the type-specialised `Viper.Result.UnwrapOr*` callee.
+/// @brief Pick the type-specialised `Zanna.Result.UnwrapOr*` callee.
 const char *resultUnwrapOrCalleeFor(TypeRef type) {
     if (!type)
         return kResultUnwrapOr;
@@ -690,10 +690,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             // Handle module-qualified function calls
             if (baseType->kind == TypeKindSem::Module) {
                 // Check if sema resolved a runtime callee name for this call
-                // (e.g., "ResultOk" for Viper.Result.Ok)
+                // (e.g., "ResultOk" for Zanna.Result.Ok)
                 std::string funcName = sema_.runtimeCallee(expr);
                 if (funcName.empty()) {
-                    // Try qualified name for runtime functions (e.g., Viper.Result.Ok)
+                    // Try qualified name for runtime functions (e.g., Zanna.Result.Ok)
                     std::string qualName = baseType->name + "." + fieldExpr->field;
                     if (il::runtime::findRuntimeDescriptor(qualName))
                         funcName = qualName;

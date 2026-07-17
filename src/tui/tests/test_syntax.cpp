@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-using viper::tui::syntax::SyntaxRuleSet;
+using zanna::tui::syntax::SyntaxRuleSet;
 
 TEST(TUI, Syntax) {
     SyntaxRuleSet rules;
@@ -52,7 +52,7 @@ TEST(TUI, Syntax) {
     namespace fs = std::filesystem;
     const fs::path tmpDir = fs::temp_directory_path();
 
-    const fs::path truncatedArrayPath = tmpDir / "viper_syntax_truncated_array.json";
+    const fs::path truncatedArrayPath = tmpDir / "zanna_syntax_truncated_array.json";
     {
         std::ofstream out(truncatedArrayPath);
         out << "[{\"regex\":\"foo\",\"style\":{\"fg\":\"#ffffff\"}}";
@@ -62,7 +62,7 @@ TEST(TUI, Syntax) {
     ASSERT_FALSE(truncatedArrayOk);
     fs::remove(truncatedArrayPath);
 
-    const fs::path truncatedMapPath = tmpDir / "viper_syntax_truncated_map.json";
+    const fs::path truncatedMapPath = tmpDir / "zanna_syntax_truncated_map.json";
     {
         std::ofstream out(truncatedMapPath);
         out << "[{\"regex\":\"foo\",\"style\":{\"fg\":\"#ffffff\"}";
@@ -74,6 +74,6 @@ TEST(TUI, Syntax) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

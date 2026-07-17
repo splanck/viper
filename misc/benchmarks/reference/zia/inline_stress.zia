@@ -29,5 +29,5 @@ func start() {
         var r: Integer = combine(i);
         sum = (sum + r) & 268435455;
     }
-    Viper.System.Environment.Exit(sum);
+    Zanna.System.Environment.Exit(sum);
 }

@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.IO.MemStream - In-Memory Stream
+// API Audit: Zanna.IO.MemStream - In-Memory Stream
 // =============================================================================
 // Tests: New, NewCapacity, WriteI8, ReadI8, WriteI32, ReadI32, WriteI64, ReadI64,
 //        WriteStr, ReadStr, WriteBytes, ReadBytes, ToBytes, Pos, Len, Capacity,
@@ -7,11 +7,11 @@
 // =============================================================================
 
 module MemStreamDemo;
-bind Viper.Terminal;
-bind Viper.IO.MemStream as MS;
-bind Viper.Collections.Bytes as Bytes;
+bind Zanna.Terminal;
+bind Zanna.IO.MemStream as MS;
+bind Zanna.Collections.Bytes as Bytes;
 func start() {
-    Say("=== API Audit: Viper.IO.MemStream ===");
+    Say("=== API Audit: Zanna.IO.MemStream ===");
 
     // --- New ---
     Say("--- New ---");
@@ -64,8 +64,8 @@ func start() {
     // --- WriteStr / ReadStr ---
     Say("--- WriteStr / ReadStr ---");
     MS.Clear(ms);
-    MS.WriteStr(ms, "Hello Viper");
-    Say("Wrote string 'Hello Viper'");
+    MS.WriteStr(ms, "Hello Zanna");
+    Say("Wrote string 'Hello Zanna'");
     Say("Len after WriteStr:");
     SayInt(MS.get_Length(ms));
     MS.Seek(ms, 0);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Template-based dead code elimination for machine IR basic blocks.
 ///
@@ -156,11 +156,11 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
             break;
     }
     if (changed) {
-        VIPER_ICE("peephole dead-code elimination did not converge after " +
+        ZANNA_ICE("peephole dead-code elimination did not converge after " +
                   std::to_string(kMaxDCEIterations) + " iterations");
     }
 
     return totalEliminated;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

@@ -1,8 +1,8 @@
 module TestTreemapTrie;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var tm = new Viper.Collections.SortedMap();
+    var tm = new Zanna.Collections.SortedMap();
     SayBool(tm.IsEmpty);
     tm.Set("banana", "yellow");
     tm.Set("apple", "red");
@@ -18,7 +18,7 @@ func start() {
     SayInt(tm.Count);
     SayInt(tm.Keys().Count);
 
-    var tr = new Viper.Collections.Trie();
+    var tr = new Zanna.Collections.Trie();
     SayBool(tr.IsEmpty);
     tr.Set("hello", "1");
     tr.Set("help", "2");
@@ -33,7 +33,7 @@ func start() {
     tr.Remove("help");
     SayInt(tr.Count);
 
-    var ss = new Viper.Collections.SortedSet();
+    var ss = new Zanna.Collections.SortedSet();
     SayBool(ss.IsEmpty);
     ss.Add("cherry");
     ss.Add("apple");
@@ -49,7 +49,7 @@ func start() {
     ss.Remove("apple");
     SayInt(ss.Count);
 
-    var bm = new Viper.Collections.BiMap();
+    var bm = new Zanna.Collections.BiMap();
     SayBool(bm.IsEmpty);
     bm.Set("one", "1");
     bm.Set("two", "2");

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_env_is_native.cpp
-// Purpose: Ensure Viper.System.Environment.IsNative reports VM vs native execution.
+// Purpose: Ensure Zanna.System.Environment.IsNative reports VM vs native execution.
 // Key invariants: VM path must return 0, native AArch64 path returns 1.
 // Ownership/Lifetime: Tests generate ephemeral IL modules and files.
 // Links: docs/devdocs/runtime-vm.md
@@ -18,7 +18,7 @@
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include "tests/TestHarness.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -26,18 +26,18 @@
 #include <sstream>
 #include <string>
 
-using namespace viper::tests;
-using namespace viper::tools::ilc;
+using namespace zanna::tests;
+using namespace zanna::tools::ilc;
 
 namespace {
 
 constexpr const char kIlSource[] = R"(il 0.3.0
 
-extern @Viper.System.Environment.IsNative() -> i1
+extern @Zanna.System.Environment.IsNative() -> i1
 
 func @main() -> i64 {
 entry:
-  %flag = call @Viper.System.Environment.IsNative()
+  %flag = call @Zanna.System.Environment.IsNative()
   %wide = zext1 %flag
   ret %wide
 }
@@ -76,7 +76,7 @@ TEST(EnvironmentIsNative, VmReportsFalse) {
 
 TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable) {
     if (!isArm64Host())
-        VIPER_TEST_SKIP("ARM64 native backend not available on this host");
+        ZANNA_TEST_SKIP("ARM64 native backend not available on this host");
 
     // Write IL to a temp file
     const std::filesystem::path ilPath{"build/test-out/env_is_native.il"};
@@ -94,6 +94,6 @@ TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

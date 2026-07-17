@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include <chrono>
 
-namespace viper::tests {
+namespace zanna::tests {
 
 ILGenerator::ILGenerator()
     : seed_(
@@ -212,4 +212,4 @@ std::string printILToString(const il::core::Module &module) {
     return il::io::Serializer::toString(module, il::io::Serializer::Mode::Pretty);
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

@@ -3,22 +3,22 @@ module RuntimeTest03;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Collections.List.Push
-// COVER: Viper.Collections.List.Get
-// COVER: Viper.Collections.List.Set
-// COVER: Viper.Collections.List.get_Count
-// COVER: Viper.Collections.List.RemoveAt
-// COVER: Viper.Collections.List.Clear
-// COVER: Viper.Collections.Map.Set
-// COVER: Viper.Collections.Map.Get
-// COVER: Viper.Collections.Map.GetOr
-// COVER: Viper.Collections.Map.Has
-// COVER: Viper.Collections.Map.Remove
-// COVER: Viper.Collections.Map.SetIfMissing
-// COVER: Viper.Collections.Map.Keys
-// COVER: Viper.Collections.Map.Values
-// COVER: Viper.Collections.Map.Clear
-// COVER: Viper.Collections.Map.Count
+// COVER: Zanna.Collections.List.Push
+// COVER: Zanna.Collections.List.Get
+// COVER: Zanna.Collections.List.Set
+// COVER: Zanna.Collections.List.get_Count
+// COVER: Zanna.Collections.List.RemoveAt
+// COVER: Zanna.Collections.List.Clear
+// COVER: Zanna.Collections.Map.Set
+// COVER: Zanna.Collections.Map.Get
+// COVER: Zanna.Collections.Map.GetOr
+// COVER: Zanna.Collections.Map.Has
+// COVER: Zanna.Collections.Map.Remove
+// COVER: Zanna.Collections.Map.SetIfMissing
+// COVER: Zanna.Collections.Map.Keys
+// COVER: Zanna.Collections.Map.Values
+// COVER: Zanna.Collections.Map.Clear
+// COVER: Zanna.Collections.Map.Count
 
 func start() {    var nums = [1, 2, 3];
     nums.add(4);

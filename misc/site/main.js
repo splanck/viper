@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Viper Platform Website — main.js
+   Zanna Platform Website — main.js
    Theme toggle, code tabs, mobile nav, syntax highlighting.
    ========================================================================== */
 
@@ -12,12 +12,12 @@
 
   function setTheme(theme) {
     html.setAttribute("data-theme", theme);
-    localStorage.setItem("viper-theme", theme);
+    localStorage.setItem("zanna-theme", theme);
     if (themeBtn) themeBtn.textContent = theme === "dark" ? "\u2600" : "\u263E";
   }
 
   // Init from stored preference or system preference
-  var stored = localStorage.getItem("viper-theme");
+  var stored = localStorage.getItem("zanna-theme");
   if (stored) {
     setTheme(stored);
   } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {

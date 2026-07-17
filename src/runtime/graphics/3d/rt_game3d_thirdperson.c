@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_thirdperson.c
-// Purpose: Viper.Game3D.ThirdPersonController — an over-the-shoulder camera on a
+// Purpose: Zanna.Game3D.ThirdPersonController — an over-the-shoulder camera on a
 //   collision-aware spring arm that also drives an optional CharacterController3D
 //   camera-relatively. Update (pre-physics) consumes look input and drives the
 //   character; LateUpdate (post-sync) sweeps the camera boom against world

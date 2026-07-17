@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -103,7 +103,7 @@ class ImportResolver {
     /// @details Prevents runaway compilation from pathologically large import
     ///          graphs. Once this limit is reached, further imports are rejected.
     ///          Raised to 256 to accommodate large dogfood projects such as
-    ///          ViperIDE, which legitimately span well over 100 modules.
+    ///          ZannaIDE, which legitimately span well over 100 modules.
     static constexpr size_t kMaxImportedFiles = 256;
 
     /// @brief Convert a relative or symbolic import path to an absolute filesystem path.

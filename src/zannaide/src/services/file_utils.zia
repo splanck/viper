@@ -1,0 +1,97 @@
+module file_utils;
+
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+final DOC_KIND_CODE: Integer = 1;
+final DOC_KIND_TEXT: Integer = 2;
+final DOC_KIND_SCENE: Integer = 3;
+final DOC_KIND_BINARY_UNSUPPORTED: Integer = 4;
+
+// ============================================================================
+// MODULE: file_utils
+// PURPOSE: Single-function helper for mapping a file path to a language tag
+//          ("zia", "basic", "text"). Used by the editor and document
+//          manager to drive syntax highlighting, completion, and the
+//          "language: X" status indicator.
+//
+// WHERE-THIS-FITS: Leaf utility module. Imported by `document_manager` and
+//          `editor_engine` whenever a file is opened or its name changes.
+//          No state — purely a pure function.
+//
+// KEY-DESIGN-CHOICES:
+//   * EXTENSION-ONLY DETECTION. We don't sniff the file contents. This
+//     keeps the function O(1) and keeps the IDE responsive when opening
+//     large files. The trade-off is we mis-classify files with non-
+//     standard extensions; that's acceptable because the editor's
+//     language picker can override.
+//   * DEFAULT-TO-TEXT. Unknown extensions render as plain text rather
+//     than refusing to open. The editor degrades gracefully — no syntax
+//     highlighting, no completion, but you can still view and edit.
+//   * VB ALIASED TO BASIC. `.vb` files map to "basic" for Visual-Basic-
+//     style content. The dialects diverge but the syntax-highlighter
+//     handles both with the same tokenizer.
+// ============================================================================
+
+/// @brief Map a file path to a language identifier ("zia" / "basic" / "zanna" / "text").
+/// @param path Filesystem path; only the extension is examined.
+/// @return Language tag suitable for `Document.language` and the
+///         editor's `SetLanguage` call.
+func DetectLanguage(path: String) -> String {
+    var ext = Str.ToLower(Path.Extension(path));
+    if ext == ".zia"  { return "zia"; }
+    if ext == ".bas"  { return "basic"; }
+    if ext == ".vb"   { return "basic"; }
+    if ext == ".il"   { return "zanna"; }
+    if ext == ".txt"  { return "text"; }
+    if ext == ".md"   { return "text"; }
+    if ext == ".json" { return "text"; }
+    if ext == ".scene" { return "scene"; }
+    if ext == ".level" { return "scene"; }
+    return "text";
+}
+
+/// @brief Map a file path to an IDE document kind.
+func DetectKind(path: String) -> Integer {
+    var ext = Str.ToLower(Path.Extension(path));
+    if ext == ".zia" or ext == ".bas" or ext == ".vb" {
+        return DOC_KIND_CODE;
+    }
+    if ext == ".scene" or ext == ".level" {
+        return DOC_KIND_SCENE;
+    }
+    if ext == ".json" or ext == ".md" or ext == ".txt" or ext == ".il" {
+        return DOC_KIND_TEXT;
+    }
+    if ext == ".png" or ext == ".jpg" or ext == ".jpeg" or ext == ".gif" or ext == ".bmp" {
+        return DOC_KIND_BINARY_UNSUPPORTED;
+    }
+    return DOC_KIND_TEXT;
+}
+
+func KindName(kind: Integer) -> String {
+    if kind == DOC_KIND_CODE { return "code"; }
+    if kind == DOC_KIND_TEXT { return "text"; }
+    if kind == DOC_KIND_SCENE { return "scene"; }
+    if kind == DOC_KIND_BINARY_UNSUPPORTED { return "binary"; }
+    return "text";
+}
+
+func KindFromName(name: String) -> Integer {
+    if name == "code" { return DOC_KIND_CODE; }
+    if name == "text" { return DOC_KIND_TEXT; }
+    if name == "scene" { return DOC_KIND_SCENE; }
+    if name == "binary" { return DOC_KIND_BINARY_UNSUPPORTED; }
+    return DOC_KIND_TEXT;
+}
+
+func OpenDialogFilter() -> String {
+    return "*.zia;*.bas;*.vb;*.txt;*.md;*.json;*.scene;*.level;*.il";
+}
+
+func SaveDialogFilter(kind: Integer, language: String) -> String {
+    if kind == DOC_KIND_SCENE { return "*.scene;*.level;*.json"; }
+    if language == "basic" { return "*.bas;*.vb"; }
+    if language == "zia" { return "*.zia"; }
+    return "*.txt;*.md;*.json;*.scene;*.level;*.il";
+}

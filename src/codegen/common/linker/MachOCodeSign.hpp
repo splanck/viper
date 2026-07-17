@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Return the exact embedded signature size for a Mach-O executable.
 size_t estimateCodeSignatureSize(size_t codeLimit, const std::string &identifier, size_t pageSize);
@@ -50,4 +50,4 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
                                         uint64_t textSegFileSize,
                                         size_t pageSize);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

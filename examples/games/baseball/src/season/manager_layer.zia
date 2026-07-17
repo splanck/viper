@@ -37,7 +37,7 @@
 // ============================================================================
 module manager_layer;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "../model/constants";
 bind "../model/player";
 bind "../model/lineup_card";

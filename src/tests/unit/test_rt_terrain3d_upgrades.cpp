@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_canvas3d.h"
@@ -107,7 +107,7 @@ bool write_step_heightmap(const char *path, int width, int depth) {
     std::FILE *f = std::fopen(path, "wb");
     if (!f)
         return false;
-    std::fprintf(f, "viper-heightmap-v1 %d %d\n", width, depth);
+    std::fprintf(f, "zanna-heightmap-v1 %d %d\n", width, depth);
     for (int z = 0; z < depth; ++z) {
         for (int x = 0; x < width; ++x)
             std::fprintf(f, "%s ", x < width / 2 ? "0.0" : "1.0");
@@ -251,8 +251,8 @@ bool test_rules_generate_normalized_weights() {
 bool test_streamed_tile_manifest_holes() {
     TEST("streamed terrain tiles apply manifest holes at instantiation");
 
-    const char *heightmap_path = "/tmp/viper_terrain_holes_tile.height";
-    const char *manifest_path = "/tmp/viper_terrain_holes_manifest.json";
+    const char *heightmap_path = "/tmp/zanna_terrain_holes_tile.height";
+    const char *manifest_path = "/tmp/zanna_terrain_holes_manifest.json";
     EXPECT_TRUE(write_step_heightmap(heightmap_path, 17, 17), "tile heightmap writes");
 
     char manifest[768];

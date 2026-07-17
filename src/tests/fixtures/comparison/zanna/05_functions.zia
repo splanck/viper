@@ -1,0 +1,52 @@
+// Test: Functions
+// Tests: functions, parameters, return values, recursion
+module Test;
+
+// Simple function
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
+// Void function (no return)
+func printMessage(msg: String) {
+    Zanna.Terminal.Say("Message: " + msg);
+}
+
+// Recursive function
+func factorial(n: Integer) -> Integer {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+// Function returning string
+func greet(name: String) -> String {
+    return "Hello, " + name + "!";
+}
+
+func main() {
+    Zanna.Terminal.Say("=== Functions Test ===");
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Print("Simple function: add(3, 5) = ");
+    Zanna.Terminal.SayInt(add(3, 5));
+
+    Zanna.Terminal.Say("");
+    printMessage("Hello from function");
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Print("Recursion: factorial(5) = ");
+    Zanna.Terminal.SayInt(factorial(5));
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("String function: " + greet("World"));
+
+    // Lambda expressions
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== Lambda Test ===");
+    var addLambda = (a: Integer, b: Integer) => a + b;
+    Zanna.Terminal.Say("Lambda add(3,5) = " + Zanna.Text.Fmt.Int(addLambda(3, 5)));
+
+    Zanna.Terminal.Say("=== Functions test complete ===");
+}

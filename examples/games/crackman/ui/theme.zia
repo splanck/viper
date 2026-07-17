@@ -12,15 +12,15 @@
 //     well against the procedural sprite art.
 //   * LAZY FONT LOAD. initAssets is idempotent; every text helper
 //     calls it as a precondition guard. Font loaded once from
-//     viper_8x8.bdf (the shared bitmap font used across Crackman +
+//     zanna_8x8.bdf (the shared bitmap font used across Crackman +
 //     Chess).
 // ============================================================================
 
 module theme;
 
-bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
-bind Viper.IO.Path as Path;
+bind Zanna.Graphics;
+bind Color = Zanna.Graphics.Color;
+bind Zanna.IO.Path as Path;
 
 // Lazily-loaded bitmap fonts and their ready flag.
 var bodyFont_: BitmapFont = null;
@@ -73,16 +73,16 @@ func initAssets() {
     if assetsReady_ { return; }
     assetsReady_ = true;
 
-    bodyFont_ = BitmapFont.LoadBDF("examples/games/crackman/assets/fonts/viper_8x8.bdf");
+    bodyFont_ = BitmapFont.LoadBDF("examples/games/crackman/assets/fonts/zanna_8x8.bdf");
     if bodyFont_ == null {
-        bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
+        bodyFont_ = BitmapFont.LoadBDF("assets/fonts/zanna_8x8.bdf");
     }
     if bodyFont_ == null {
         var bundleResources = Path.Join(Path.Directory(Path.ExeDir()), "Resources");
-        bodyFont_ = BitmapFont.LoadBDF(Path.Join(bundleResources, "assets/fonts/viper_8x8.bdf"));
+        bodyFont_ = BitmapFont.LoadBDF(Path.Join(bundleResources, "assets/fonts/zanna_8x8.bdf"));
     }
     if bodyFont_ == null {
-        bodyFont_ = BitmapFont.LoadBDF("examples/games/chess/assets/fonts/viper_8x8.bdf");
+        bodyFont_ = BitmapFont.LoadBDF("examples/games/chess/assets/fonts/zanna_8x8.bdf");
     }
 
     titleFont_ = bodyFont_;

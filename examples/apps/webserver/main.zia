@@ -1,4 +1,4 @@
-// Viper Web Server - A multithreaded HTTP server written in Zia
+// Zanna Web Server - A multithreaded HTTP server written in Zia
 module main;
 
 bind "./config";
@@ -6,12 +6,12 @@ bind "./logger";
 bind "./threadpool";
 bind "./router";
 
-bind Viper.Terminal as Terminal;
-bind Viper.String as String;
-bind Viper.Network as Network;
-bind Viper.IO as IO;
-bind Viper.Time as Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.String as String;
+bind Zanna.Network as Network;
+bind Zanna.IO as IO;
+bind Zanna.Time as Time;
+bind Zanna.Text.Fmt as Fmt;
 
 // ============================================================================
 // CONFIGURATION
@@ -30,7 +30,7 @@ var webRoot: String;
 // Handler for /api/status - returns server status as JSON
 func handleApiStatus(path: String, query: String) -> String {
     var body = "{";
-    body = body + "\"server\": \"Viper Web Server\",";
+    body = body + "\"server\": \"Zanna Web Server\",";
     body = body + "\"version\": \"" + VERSION + "\",";
     body = body + "\"status\": \"running\",";
     body = body + "\"workers\": " + Fmt.Int(cfg_workers);
@@ -43,7 +43,7 @@ func handleApiStatus(path: String, query: String) -> String {
 func handleApiEcho(path: String, query: String) -> String {
     var message = router_getQueryParam(query, "message");
     if message == "" {
-        message = "Hello from Viper!";
+        message = "Hello from Zanna!";
     }
 
     var body = "{\"echo\": \"" + message + "\"}";
@@ -100,7 +100,7 @@ func registerRoutes() {
 // Parse HTTP request line and validate its structure.
 func parseRequestLine(line: String) -> Boolean {
     // Find first space (after method)
-    var len = Viper.String.get_Length(line);
+    var len = Zanna.String.get_Length(line);
     var i = 0;
     var firstSpace = -1;
     var secondSpace = -1;
@@ -140,7 +140,7 @@ func parseRequestLine(line: String) -> Boolean {
 
 // Find the end of the first line (request line)
 func findLineEnd(rawRequest: String) -> Integer {
-    var len = Viper.String.get_Length(rawRequest);
+    var len = Zanna.String.get_Length(rawRequest);
     var i = 0;
     while i < len {
         var ch = String.Substring(rawRequest, i, 1);
@@ -234,7 +234,7 @@ func isValidRequest(rawRequest: String) -> Boolean {
 // Build response with optional Last-Modified header and optional body inclusion
 func buildResponseFull(statusCode: Integer, statusText: String, contentType: String,
                        body: String, lastModified: Integer, includeBody: Boolean) -> String {
-    var bodyLen = Viper.String.get_Length(body);
+    var bodyLen = Zanna.String.get_Length(body);
 
     var response = "HTTP/1.1 ";
     response = response + Fmt.Int(statusCode);
@@ -256,7 +256,7 @@ func buildResponseFull(statusCode: Integer, statusText: String, contentType: Str
     }
 
     response = response + "Connection: close\r\n";
-    response = response + "Server: Viper/";
+    response = response + "Server: Zanna/";
     response = response + VERSION;
     response = response + "\r\n";
     response = response + "\r\n";
@@ -318,7 +318,7 @@ func response400() -> String {
 // ============================================================================
 
 func getMimeType(path: String) -> String {
-    var len = Viper.String.get_Length(path);
+    var len = Zanna.String.get_Length(path);
 
     // Find last dot
     var dotPos = -1;
@@ -384,7 +384,7 @@ func getMimeType(path: String) -> String {
 // Check if path is safe (no directory traversal)
 func isPathSafe(path: String) -> Boolean {
     // Check for ".." sequences
-    var len = Viper.String.get_Length(path);
+    var len = Zanna.String.get_Length(path);
     var i = 0;
 
     while i < len - 1 {
@@ -417,7 +417,7 @@ func normalizePath(path: String) -> String {
     }
 
     // Remove query string if present
-    var len = Viper.String.get_Length(path);
+    var len = Zanna.String.get_Length(path);
     var i = 0;
     while i < len {
         var ch = String.Substring(path, i, 1);
@@ -467,7 +467,7 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 
     // Build relative path (remove leading /)
     var relativePath = normalizedPath;
-    var pathLen = Viper.String.get_Length(normalizedPath);
+    var pathLen = Zanna.String.get_Length(normalizedPath);
     if pathLen > 0 {
         var firstChar = String.Substring(normalizedPath, 0, 1);
         if firstChar == "/" {
@@ -497,7 +497,7 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 // Response starts with "HTTP/1.1 XXX StatusText\r\n..."
 func extractStatusCode(response: String) -> Integer {
     // Find the first space (after HTTP/1.1)
-    var len = Viper.String.get_Length(response);
+    var len = Zanna.String.get_Length(response);
     if len < 12 {
         return 0;
     }
@@ -521,7 +521,7 @@ func extractStatusCode(response: String) -> Integer {
     return d1 * 100 + d2 * 10 + d3;
 }
 
-func handleClient(client: Viper.Network.Tcp) {
+func handleClient(client: Zanna.Network.Tcp) {
     var startTime = log_startTimer();
     var clientHost = Network.Tcp.get_Host(client);
     var statusCode = 200;
@@ -533,7 +533,7 @@ func handleClient(client: Viper.Network.Tcp) {
     // Read request (up to MAX_REQUEST_SIZE bytes)
     var rawRequest = Network.Tcp.RecvStr(client, MAX_REQUEST_SIZE);
 
-    var requestLen = Viper.String.get_Length(rawRequest);
+    var requestLen = Zanna.String.get_Length(rawRequest);
     if requestLen == 0 {
         Network.Tcp.Close(client);
         return;
@@ -546,7 +546,7 @@ func handleClient(client: Viper.Network.Tcp) {
     if reqMethod == "" || reqPath == "" {
         statusCode = 400;
         var response = response400();
-        responseSize = Viper.String.get_Length(response);
+        responseSize = Zanna.String.get_Length(response);
         Network.Tcp.SendStr(client, response);
         Network.Tcp.Close(client);
         log_request(clientHost, "???", "???", statusCode, responseSize, log_elapsed(startTime));
@@ -557,7 +557,7 @@ func handleClient(client: Viper.Network.Tcp) {
     if reqMethod != "GET" && reqMethod != "HEAD" {
         statusCode = 405;
         var response = buildResponse(405, "Method Not Allowed", "text/plain", "Method not allowed");
-        responseSize = Viper.String.get_Length(response);
+        responseSize = Zanna.String.get_Length(response);
         Network.Tcp.SendStr(client, response);
         Network.Tcp.Close(client);
         log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
@@ -579,7 +579,7 @@ func handleClient(client: Viper.Network.Tcp) {
         // Fall back to static file serving
         response = serveStaticFile(reqPath, isHead);
     }
-    responseSize = Viper.String.get_Length(response);
+    responseSize = Zanna.String.get_Length(response);
 
     // Extract status code from response (first line: "HTTP/1.1 XXX ...")
     statusCode = extractStatusCode(response);
@@ -611,7 +611,7 @@ func main() {
 
     // Startup banner (always shown)
     Terminal.Say("========================================");
-    Terminal.Say("  Viper Web Server v" + VERSION);
+    Terminal.Say("  Zanna Web Server v" + VERSION);
     Terminal.Say("========================================");
 
     if configLoaded {

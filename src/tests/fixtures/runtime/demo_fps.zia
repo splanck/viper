@@ -2,10 +2,10 @@
 // rays, particles at hit points, crosshair HUD, post-processing.
 module DemoFPS;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func do_shoot(cam: Camera3D, sparks: Particles3D) {
     var shoot_pos = cam.Position;
@@ -112,10 +112,10 @@ func start() {
         // WASD movement
         var fwd = 0.0;
         var right = 0.0;
-        if (Keyboard.IsDown(Viper.Input.Key.W)) { fwd = 1.0; }
-        if (Keyboard.IsDown(Viper.Input.Key.S)) { fwd = -1.0; }
-        if (Keyboard.IsDown(Viper.Input.Key.A)) { right = -1.0; }
-        if (Keyboard.IsDown(Viper.Input.Key.D)) { right = 1.0; }
+        if (Keyboard.IsDown(Zanna.Input.Key.W)) { fwd = 1.0; }
+        if (Keyboard.IsDown(Zanna.Input.Key.S)) { fwd = -1.0; }
+        if (Keyboard.IsDown(Zanna.Input.Key.A)) { right = -1.0; }
+        if (Keyboard.IsDown(Zanna.Input.Key.D)) { right = 1.0; }
         // Update FPS camera (no vertical movement — grounded)
         Camera3D.FirstPersonUpdate(cam,
             mdx * sensitivity, -mdy * sensitivity,
@@ -134,7 +134,7 @@ func start() {
 
         // Shoot on left click (with cooldown)
         shoot_cooldown = shoot_cooldown - dt;
-        var can_shoot = Mouse.IsDown(Viper.Input.Mouse.ButtonLeft);
+        var can_shoot = Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft);
         if (can_shoot) {
             if (shoot_cooldown <= 0.0) {
                 shoot_cooldown = 0.3;

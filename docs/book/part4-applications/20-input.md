@@ -107,7 +107,7 @@ A key press event occurs once, at the instant a key goes from up to down. A key 
 This distinction matters enormously:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 // This fires continuously while the key is held
 if Keyboard.IsDown(Keyboard.KeySpace) {
@@ -140,10 +140,10 @@ Some actions need the key's current state (is it down right now?). Other actions
 
 Games typically use key codes (like `KeyA`), but text input is more complex. When the user presses Shift+A, they probably want an uppercase 'A', not separate events for Shift and A. When they're typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.
 
-For text input (like typing a player's name), Viper provides text input events that handle all this complexity:
+For text input (like typing a player's name), Zanna provides text input events that handle all this complexity:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 var playerName = "";
 Keyboard.EnableTextInput();
@@ -162,17 +162,17 @@ Let's trace exactly what happens when a player presses the Space bar to jump. Un
 
 **Frame 0:** The player's finger pushes down the Space bar. The keyboard hardware detects this and sends a signal to the computer.
 
-**Frame 1:** The operating system receives the signal and creates a key-down event for Space. This event goes into your program's input queue. At the start of this frame, Viper's input system reads all queued events. It notices that Space just went from "up" to "down", so it:
+**Frame 1:** The operating system receives the signal and creates a key-down event for Space. This event goes into your program's input queue. At the start of this frame, Zanna's input system reads all queued events. It notices that Space just went from "up" to "down", so it:
 - Sets the internal state of Space to "down"
 - Sets a flag indicating Space was "just pressed" this frame
 
 Your game loop runs. When it calls `Keyboard.WasPressed(Keyboard.KeySpace)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
 
-**Frame 2:** No new Space events (the player is still holding the key). At the start of this frame, Viper clears all the "just pressed" flags from the previous frame. The state of Space is still "down", but it's no longer "just pressed."
+**Frame 2:** No new Space events (the player is still holding the key). At the start of this frame, Zanna clears all the "just pressed" flags from the previous frame. The state of Space is still "down", but it's no longer "just pressed."
 
 Your game loop runs. `Keyboard.WasPressed(Keyboard.KeySpace)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(Keyboard.KeySpace)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
 
-**Frame 10:** The player releases the Space bar. The OS creates a key-up event. Viper reads it and:
+**Frame 10:** The player releases the Space bar. The OS creates a key-up event. Zanna reads it and:
 - Sets the internal state of Space to "up"
 - Sets a flag indicating Space was "just released" this frame
 
@@ -191,7 +191,7 @@ Now let's write some code. We'll start with the keyboard, the most common input 
 To check if a key is currently held down, use `Keyboard.IsDown`:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 while gameRunning {
     if Keyboard.IsDown(Keyboard.KeyLeft) {
@@ -223,7 +223,7 @@ Notice we're checking every frame. This is polling in action — we're constantl
 For one-time actions, use `Keyboard.WasPressed`:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.WasPressed(Keyboard.KeySpace) {
     player.jump();
@@ -250,7 +250,7 @@ For jumping, you want one jump per button press. If you used `IsDown`, the chara
 Sometimes you need to know when a key is released:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.WasReleased(Keyboard.KeyLeftControl) {
     // Player released the aim button
@@ -262,7 +262,7 @@ This is common in "charge and release" mechanics. The player holds a button to c
 
 ### Common Key Codes
 
-Viper provides named constants for all standard keys:
+Zanna provides named constants for all standard keys:
 
 ```rust
 // Arrow keys
@@ -297,7 +297,7 @@ KeyLeft_ALT, KeyRight_ALT
 Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.WasPressed(Keyboard.KeyS) && Keyboard.IsDown(Keyboard.KeyLeftControl) {
     saveGame();  // Ctrl+S to save
@@ -321,7 +321,7 @@ The mouse provides position and button information. Let's explore both.
 ### Reading Mouse Position
 
 ```rust
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 var mouseX = Mouse.X();
 var mouseY = Mouse.Y();
@@ -332,8 +332,8 @@ These return the mouse position in canvas coordinates. The top-left corner of yo
 You can use mouse position for many things:
 
 ```rust
-bind Mouse = Viper.Input.Mouse;
-bind Viper.Math as Math;
+bind Mouse = Zanna.Input.Mouse;
+bind Zanna.Math as Math;
 
 // Make something follow the mouse
 cursor.x = Mouse.X();
@@ -359,7 +359,7 @@ turret.angle = Math.Atan2(dy, dx);
 Mouse buttons work like keyboard keys:
 
 ```rust
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 // Check if button is currently held (0 = left, 1 = right, 2 = middle)
 if Mouse.IsDown(0) {
@@ -390,7 +390,7 @@ The button indices are:
 The scroll wheel reports how much it moved:
 
 ```rust
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 var zoomLevel = 1.0;
 var scroll = Mouse.WheelY();  // Positive = up, negative = down
@@ -408,9 +408,9 @@ Let's put mouse input together in a practical example:
 ```rust
 module MouseDraw;
 
-bind Viper.Graphics;
-bind Mouse = Viper.Input.Mouse;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Graphics;
+bind Mouse = Zanna.Input.Mouse;
+bind Zanna.Time.Clock as Clock;
 
 func start() {
     var canvas = Canvas.New("Draw with Mouse", 800, 600);
@@ -546,7 +546,7 @@ Now that we understand the basics, let's explore patterns that make input handli
 Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func applyDeadZone(value: Number, threshold: Number) -> Number {
     if Math.Abs(value) < threshold {
@@ -565,7 +565,7 @@ A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and
 A more sophisticated dead zone smoothly scales the value to avoid a "jump" when crossing the threshold:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func applyDeadZoneSmooth(value: Number, threshold: Number) -> Number {
     var absValue = Math.Abs(value);
@@ -585,8 +585,8 @@ This makes the transition from dead zone to movement smooth rather than abrupt.
 Games should abstract input so the same action can come from different sources. This lets players use their preferred input device and makes your code cleaner:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Math as Math;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Math as Math;
 
 class InputManager {
     func getMoveX() -> Number {
@@ -666,7 +666,7 @@ while gameRunning {
 Players appreciate customizable controls. A key map stores the current bindings:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 class KeyMap {
     hide bindings: Map[String, Integer];
@@ -706,8 +706,8 @@ class KeyMap {
 To let the player rebind a key:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time;
 
 func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
     // Wait for any key press
@@ -865,10 +865,10 @@ Let's put everything together in a complete, playable example:
 ```rust
 module CharacterDemo;
 
-bind Viper.Graphics;
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time.Clock as Clock;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Graphics;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time.Clock as Clock;
+bind Convert = Zanna.Core.Convert;
 
 struct Player {
     expose Number x;
@@ -1071,7 +1071,7 @@ player.x += stickX * speed * dt;  // Character slowly drifts even with stick cen
 
 **Right:**
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
 if Math.Abs(stickX) < 0.15 {
@@ -1112,7 +1112,7 @@ Centralizing input handling makes it easy to add controller support, rebindable 
 When your game window isn't focused (the player clicked on another window), you might still receive input events in some situations, or the input state might be stale. Good practice:
 
 ```rust
-bind Viper.Time;
+bind Zanna.Time;
 
 while !canvas.ShouldClose {
     canvas.Poll();
@@ -1210,9 +1210,9 @@ If keyboard works but controller doesn't:
 For input buffering and timing-sensitive code:
 
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 if Keyboard.WasPressed(Keyboard.KeySpace) {
     Say("Jump pressed at time: " + Time.Clock.Ticks());
@@ -1234,8 +1234,8 @@ This helps you see if inputs are arriving at the right times.
 
 **Zia**
 ```rust
-bind Keyboard = Viper.Input.Keyboard;
-bind Mouse = Viper.Input.Mouse;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Mouse = Zanna.Input.Mouse;
 
 // Keyboard
 if Keyboard.IsDown(Keyboard.KeySpace) {

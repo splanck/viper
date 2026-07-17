@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestPropertyBinding.cpp
-// Purpose: Ensure member property binding for Viper.String emits canonical externs.
+// Purpose: Ensure member property binding for Zanna.String emits canonical externs.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/internals/architecture.md
@@ -24,7 +24,7 @@
 
 namespace {
 constexpr std::string_view kSrc = R"BASIC(
-10 DIM s AS Viper.String
+10 DIM s AS Zanna.String
 20 PRINT s.Length
 30 END
 )BASIC";
@@ -36,21 +36,21 @@ constexpr std::string_view kSrc = R"BASIC(
 }
 } // namespace
 
-TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern) {
+TEST(RuntimePropertyBinding, EmitsZannaStringGetterExtern) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     std::string source(kSrc);
     il::frontends::basic::BasicCompilerInput input{source, "prop_len.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_Length"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.String.get_Length"));
 }
 
-TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern) {
+TEST(RuntimePropertyBinding, EmitsZannaStringIsEmptyGetterExtern) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrcIsEmpty = R"BASIC(
-10 DIM s AS Viper.String
+10 DIM s AS Zanna.String
 20 PRINT s.IsEmpty
 30 END
 )BASIC";
@@ -58,10 +58,10 @@ TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern) {
     il::frontends::basic::BasicCompilerInput input{source, "prop_isempty.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_IsEmpty"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.String.get_IsEmpty"));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_zia_completion.h
@@ -10,10 +10,10 @@
 // Key invariants:
 //   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp
 //     (zia_editor_services).
-//   - Weak stub implementations in viper_runtime allow linking without zia_editor_services
+//   - Weak stub implementations in zanna_runtime allow linking without zia_editor_services
 //     and return protocol-shaped "completion unavailable" payloads.
 //   - Symbols are resolved at final link time when both zia_editor_services and
-//     viper_runtime are linked.
+//     zanna_runtime are linked.
 //   - Completion API takes source text, cursor line (1-based), and column (0-based).
 //
 // Ownership/Lifetime:
@@ -53,7 +53,7 @@ rt_string rt_zia_complete_for_file(rt_string source,
                                    int64_t col);
 
 /// @brief Run Zia completion and return structured completion maps.
-/// @return Viper.Collections.Seq of Viper.Collections.Map completion items.
+/// @return Zanna.Collections.Seq of Zanna.Collections.Map completion items.
 void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
 
 /// @brief Run path-aware Zia completion and return structured completion maps.
@@ -149,7 +149,7 @@ rt_string rt_zia_check_for_file_mirror(rt_string file_path);
 void *rt_zia_doc_begin_check_for_file(rt_string file_path);
 
 /// @brief Run semantic analysis and return structured diagnostic maps.
-/// @return Viper.Collections.Seq of Viper.Collections.Map diagnostics.
+/// @return Zanna.Collections.Seq of Zanna.Collections.Map diagnostics.
 void *rt_zia_toolchain_check(rt_string source);
 
 /// @brief Run path-aware semantic analysis and return structured diagnostic maps.
@@ -159,14 +159,14 @@ void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
 
 /// @brief Compile source to IL and return a structured result map.
-/// @return Viper.Collections.Map with success, diagnostics, sourcePath, outputPath, and il.
+/// @return Zanna.Collections.Map with success, diagnostics, sourcePath, outputPath, and il.
 void *rt_zia_toolchain_compile(rt_string source);
 
 /// @brief Compile source with a file path and return a structured result map.
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
 /// @brief Create a project language index rooted at @p root.
-/// @return Opaque Viper.Zia.ProjectIndex.ProjectIndexHandle object, or null when editor services
+/// @return Opaque Zanna.Zia.ProjectIndex.ProjectIndexHandle object, or null when editor services
 /// are
 ///         unavailable.
 void *rt_zia_project_index_new(rt_string root);

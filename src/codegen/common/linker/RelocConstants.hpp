@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include <cstdint>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 // ── ELF x86_64 Relocation Types (elf.h / System V AMD64 ABI) ────────────
 
@@ -121,4 +121,4 @@ constexpr uint32_t kAddr64 = 14;        // IMAGE_REL_ARM64_ADDR64
 constexpr uint32_t kBranch19 = 15;      // IMAGE_REL_ARM64_BRANCH19
 } // namespace coff_a64
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

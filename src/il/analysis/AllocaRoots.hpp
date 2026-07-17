@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Minimal definition summary needed for alloca-root propagation.
 /// @details Analyses only need the defining opcode and operands to decide
@@ -257,4 +257,4 @@ inline std::unordered_set<unsigned> nonEscapingAllocas(
     return result;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

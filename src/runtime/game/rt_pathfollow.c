@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_pathfollow.c
-// Purpose: Waypoint-based path follower for Viper games. Stores an ordered list
+// Purpose: Waypoint-based path follower for Zanna games. Stores an ordered list
 //   of 2D waypoints and advances an entity along the path at a configurable
 //   speed. The follower interpolates linearly between consecutive waypoints,
 //   computing a per-mille-quantized world-space position and eight-direction
@@ -35,7 +35,7 @@
 //     the segment-length cache; rt_pathfollow_destroy() releases a reference.
 //
 // Links: src/runtime/game/rt_pathfollow.h (public API),
-//        docs/viperlib/game.md (PathFollower section — coordinate scale note)
+//        docs/zannalib/game.md (PathFollower section — coordinate scale note)
 //
 //===----------------------------------------------------------------------===//
 
@@ -273,7 +273,7 @@ rt_pathfollow rt_pathfollow_new(void) {
 /// @brief Release the PathFollower; frees the segment-length cache via the finalizer when the
 /// reference count reaches zero.
 void rt_pathfollow_destroy(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Destroy: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Destroy: expected Zanna.Game.PathFollower");
     if (!path)
         return;
 
@@ -284,7 +284,7 @@ void rt_pathfollow_destroy(rt_pathfollow path) {
 /// @brief Reset the follower to a blank slate: no waypoints, no progress, inactive, freed cache.
 /// Useful for re-using a PathFollower handle across multiple level loads.
 void rt_pathfollow_clear(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Clear: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Clear: expected Zanna.Game.PathFollower");
     if (!path)
         return;
 
@@ -310,7 +310,7 @@ void rt_pathfollow_clear(rt_pathfollow path) {
 /// the follower's starting position. Returns 0 if the cap (`RT_PATHFOLLOW_MAX_POINTS`) is hit.
 /// Marks the segment cache dirty; the next length-dependent operation rebuilds it in O(n).
 int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
-    path = checked_pathfollow(path, "PathFollower.AddPoint: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.AddPoint: expected Zanna.Game.PathFollower");
     if (!path)
         return 0;
     if (path->point_count >= RT_PATHFOLLOW_MAX_POINTS)
@@ -334,14 +334,14 @@ int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
 
 /// @brief Number of waypoints currently in the path (0 to RT_PATHFOLLOW_MAX_POINTS).
 int64_t rt_pathfollow_point_count(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.PointCount: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.PointCount: expected Zanna.Game.PathFollower");
     return path ? path->point_count : 0;
 }
 
 /// @brief Select traversal mode: ONCE (stops at end), LOOP (wraps to start), PINGPONG (reverses).
 /// Out-of-range values are silently ignored (mode is preserved).
 void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
-    path = checked_pathfollow(path, "PathFollower.SetMode: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.SetMode: expected Zanna.Game.PathFollower");
     if (!path)
         return;
     if (mode >= RT_PATHFOLLOW_ONCE && mode <= RT_PATHFOLLOW_PINGPONG)
@@ -350,28 +350,28 @@ void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
 
 /// @brief Read the current traversal mode (ONCE/LOOP/PINGPONG as integer constants).
 int64_t rt_pathfollow_get_mode(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Mode: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Mode: expected Zanna.Game.PathFollower");
     return path ? path->mode : 0;
 }
 
 /// @brief Set traversal speed in fixed-point world-units/second (×1000). Non-positive ignored.
 /// Per-frame movement is computed as `(speed * dt_ms) / 1000`.
 void rt_pathfollow_set_speed(rt_pathfollow path, int64_t speed) {
-    path = checked_pathfollow(path, "PathFollower.SetSpeed: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.SetSpeed: expected Zanna.Game.PathFollower");
     if (path && speed > 0)
         path->speed = speed;
 }
 
 /// @brief Read the current speed in fixed-point world-units/second.
 int64_t rt_pathfollow_get_speed(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Speed: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Speed: expected Zanna.Game.PathFollower");
     return path ? path->speed : 0;
 }
 
 /// @brief Begin (or resume) following the path. Requires at least 2 waypoints; otherwise no-op.
 /// Clears the `finished` flag so a previously completed ONCE path can be replayed.
 void rt_pathfollow_start(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Start: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Start: expected Zanna.Game.PathFollower");
     if (!path || path->point_count < 2)
         return;
 
@@ -384,7 +384,7 @@ void rt_pathfollow_start(rt_pathfollow path) {
 
 /// @brief Suspend updates while preserving segment + progress; resume with `start()`.
 void rt_pathfollow_pause(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Pause: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Pause: expected Zanna.Game.PathFollower");
     if (path)
         path->active = 0;
 }
@@ -392,7 +392,7 @@ void rt_pathfollow_pause(rt_pathfollow path) {
 /// @brief Stop and rewind to the first waypoint (segment=0, progress=0). Waypoints are preserved.
 /// Differs from `pause()` (which keeps current position) and `clear()` (which discards waypoints).
 void rt_pathfollow_stop(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Stop: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Stop: expected Zanna.Game.PathFollower");
     if (!path)
         return;
 
@@ -403,14 +403,14 @@ void rt_pathfollow_stop(rt_pathfollow path) {
 
 /// @brief Returns 1 while the follower is actively advancing each `update()` tick.
 int8_t rt_pathfollow_is_active(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.IsActive: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.IsActive: expected Zanna.Game.PathFollower");
     return path ? path->active : 0;
 }
 
 /// @brief Returns 1 once a ONCE-mode path has reached its final waypoint. Always 0 for
 /// LOOP/PINGPONG.
 int8_t rt_pathfollow_is_finished(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.IsFinished: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.IsFinished: expected Zanna.Game.PathFollower");
     return path ? path->finished : 0;
 }
 
@@ -421,7 +421,7 @@ int8_t rt_pathfollow_is_finished(rt_pathfollow path) {
 /// of
 /// `(segment, segment_progress)`. Inactive/finished/empty paths early-out.
 void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
-    path = checked_pathfollow(path, "PathFollower.Update: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Update: expected Zanna.Game.PathFollower");
     if (!path || !path->active || path->finished || path->point_count < 2)
         return;
 
@@ -537,13 +537,13 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
 /// @brief Read the follower's current world X position (fixed-point ×1000). Caller divides by
 /// 1000 to recover pixel coordinates.
 int64_t rt_pathfollow_get_x(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.X: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.X: expected Zanna.Game.PathFollower");
     return path ? path->current_x : 0;
 }
 
 /// @brief Read the follower's current world Y position (fixed-point ×1000).
 int64_t rt_pathfollow_get_y(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Y: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Y: expected Zanna.Game.PathFollower");
     return path ? path->current_y : 0;
 }
 
@@ -551,7 +551,7 @@ int64_t rt_pathfollow_get_y(rt_pathfollow path) {
 /// segment lengths plus the partial distance into the current segment, divides by `total_length`.
 /// Returns 0 for empty/unbuilt paths.
 int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Progress: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Progress: expected Zanna.Game.PathFollower");
     if (!path || path->point_count < 2)
         return 0;
     ensure_lengths(path);
@@ -574,7 +574,7 @@ int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
 /// segment cache until the accumulated distance covers `target_dist`, then sets segment +
 /// progress and updates `current_x/y`. Useful for cinematic seeks or save-state restoration.
 void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
-    path = checked_pathfollow(path, "PathFollower.SetProgress: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.SetProgress: expected Zanna.Game.PathFollower");
     if (!path || path->point_count < 2)
         return;
     ensure_lengths(path);
@@ -617,7 +617,7 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
 
 /// @brief Read the index of the segment the follower is currently traversing (0..point_count-2).
 int64_t rt_pathfollow_get_segment(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Segment: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Segment: expected Zanna.Game.PathFollower");
     return path ? path->segment : 0;
 }
 
@@ -625,7 +625,7 @@ int64_t rt_pathfollow_get_segment(rt_pathfollow path) {
 /// @note Returns one of 8 cardinal/ordinal directions (0, 45, 90, ..., 315 degrees).
 ///       For smoother rotation, use atan2 on consecutive positions instead.
 int64_t rt_pathfollow_get_angle(rt_pathfollow path) {
-    path = checked_pathfollow(path, "PathFollower.Angle: expected Viper.Game.PathFollower");
+    path = checked_pathfollow(path, "PathFollower.Angle: expected Zanna.Game.PathFollower");
     if (!path || path->point_count < 2)
         return 0;
 

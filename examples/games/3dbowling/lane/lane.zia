@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,18 +54,18 @@
 // lane.zia — Lane geometry, batching, physics surfaces, oil model, trigger zones
 module lane;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Core.Convert as Convert;
-bind Viper.IO;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.IO;
 bind "../config";
 bind "../util/mathutil";
 bind "../util/assets";
 
 // Material and HUD pixels are deliberately separate decoded objects. Sharing
 // one object between a 3D material and a later 2D overlay reproduces
-// NL-VIPER-003 on Metal.
+// NL-ZANNA-003 on Metal.
 var sharedLaneMaterialTexture: Pixels = null;
 var sharedLanePreviewTexture: Pixels = null;
 
@@ -426,7 +426,7 @@ class LaneBuilder {
     }
 
     /// @brief Enable the authored maple surface on composition-safe backends.
-    /// @details NL-VIPER-003 corrupts final-overlay frames when a Pixels-backed
+    /// @details NL-ZANNA-003 corrupts final-overlay frames when a Pixels-backed
     ///          material is active on the current Metal backend. Until that
     ///          runtime defect is fixed, Metal keeps the stable procedural
     ///          board geometry; other backends receive the authored material.
@@ -670,7 +670,7 @@ class LaneBuilder {
         // Procedural boards remain a first-frame and missing-asset fallback;
         // narrow gaps let the authored grain read once its texture is resident.
         drawLaneBoards(canvas);
-        // NL-VIPER-003: submitting this correctly configured AlphaMode=2
+        // NL-ZANNA-003: submitting this correctly configured AlphaMode=2
         // surface intermittently corrupts Metal final-overlay composition.
         // Keep oil gameplay/SSR on the glossy boards and the live HUD map
         // until the documented runtime issue can be fixed and verified.

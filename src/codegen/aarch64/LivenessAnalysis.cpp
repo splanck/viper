@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include "LoweringContext.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 LivenessInfo analyzeCrossBlockLiveness(const il::core::Function &fn,
                                        const std::unordered_set<unsigned> &allocaTemps,
@@ -109,4 +109,4 @@ LivenessInfo analyzeCrossBlockLiveness(const il::core::Function &fn,
     return info;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

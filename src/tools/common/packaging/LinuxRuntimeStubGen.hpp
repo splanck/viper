@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/LinuxRuntimeStubGen.hpp
-// Purpose: Generate the Viper self-extracting Linux bundle runtime stub.
+// Purpose: Generate the Zanna self-extracting Linux bundle runtime stub.
 //
 // Key invariants:
 //   - The payload is appended after a marker line and is a gzip-compressed tar archive.
@@ -25,15 +25,15 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// Marker line separating the runtime stub from the appended Linux bundle payload.
-constexpr const char *kLinuxRuntimePayloadMarker = "__VIPER_APPIMAGE_PAYLOAD_BELOW__";
+constexpr const char *kLinuxRuntimePayloadMarker = "__ZANNA_APPIMAGE_PAYLOAD_BELOW__";
 
 /// Parameters for the self-extracting Linux bundle runtime stub.
 struct LinuxRuntimeStubParams {
-    std::string cacheName;     ///< Stable bundle cache prefix, e.g. "viper-1.2.3-x64".
-    std::string entryPath;     ///< Payload-relative executable path, e.g. "bin/viper".
+    std::string cacheName;     ///< Stable bundle cache prefix, e.g. "zanna-1.2.3-x64".
+    std::string entryPath;     ///< Payload-relative executable path, e.g. "bin/zanna".
     std::string payloadSha256; ///< Optional 64-char SHA-256 digest for the appended tar.gz payload.
     bool appImageInterface{false}; ///< Expose AppImage-named flags for real application AppImages.
 };
@@ -48,4 +48,4 @@ std::vector<uint8_t> buildLinuxAppImage(const LinuxRuntimeStubParams &params,
 /// Verify the basic self-extracting Linux bundle layout.
 bool verifyLinuxAppImage(const std::vector<uint8_t> &data, std::string *err = nullptr);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

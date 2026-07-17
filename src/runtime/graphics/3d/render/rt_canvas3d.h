@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_canvas3d.h
-// Purpose: Runtime bridge for Viper.Graphics3D — Canvas3D, Mesh3D, Camera3D,
+// Purpose: Runtime bridge for Zanna.Graphics3D — Canvas3D, Mesh3D, Camera3D,
 //   Material3D, and Light3D types. Provides 3D rendering via a software
 //   rasterizer (Phase 1) with GPU backend abstraction (Phase 2+).
 //

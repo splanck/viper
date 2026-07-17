@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 namespace {
 
@@ -61,8 +61,8 @@ const std::string *firstLabelOperand(const MInstr &instr) {
 ///          legally contain several JCCs before its final JMP, e.g. switch
 ///          compare cascades); JMP/RET/UD2 end the scan. CALL label operands
 ///          are deliberately NOT treated as branch targets.
-viper::codegen::ra::BranchDesc classifyControlFlow(const MInstr &instr) {
-    using Desc = viper::codegen::ra::BranchDesc;
+zanna::codegen::ra::BranchDesc classifyControlFlow(const MInstr &instr) {
+    using Desc = zanna::codegen::ra::BranchDesc;
     switch (instr.opcode) {
         case MOpcode::JCC:
             return Desc{Desc::Kind::Cond, firstLabelOperand(instr)};
@@ -104,11 +104,11 @@ void LivenessAnalysis::run(const MFunction &func) {
 
     buildBlockIndex(func);
     buildCFG(func);
-    preds_ = viper::codegen::ra::buildPredecessors(succs_);
+    preds_ = zanna::codegen::ra::buildPredecessors(succs_);
     computeGenKill(func);
 
     // Delegate to the shared backward dataflow solver.
-    auto result = viper::codegen::ra::solveBackwardDataflow(succs_, gen_, kill_);
+    auto result = zanna::codegen::ra::solveBackwardDataflow(succs_, gen_, kill_);
     liveIn_ = std::move(result.liveIn);
     liveOut_ = std::move(result.liveOut);
 }
@@ -138,14 +138,14 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
     for (const auto &block : func.blocks) {
         for (const auto &instr : block.instructions) {
             if (instr.opcode == MOpcode::LABEL) {
-                VIPER_ICE("x86-64 liveness: in-block LABEL '" + toString(instr) + "' in block '" +
+                ZANNA_ICE("x86-64 liveness: in-block LABEL '" + toString(instr) + "' in block '" +
                           block.label +
                           "' reached register allocation; splitInternalLabelBlocks must run first");
             }
         }
     }
 
-    succs_ = viper::codegen::ra::extractSuccessors(
+    succs_ = zanna::codegen::ra::extractSuccessors(
         func.blocks,
         blockIndex_,
         [](const MBasicBlock &block) -> const std::vector<MInstr> & { return block.instructions; },
@@ -235,4 +235,4 @@ const std::vector<std::size_t> &LivenessAnalysis::predecessors(std::size_t block
     return preds_[blockIdx];
 }
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 //   with any build configurations that reference it directly.
 //
 // Key invariants:
-//   - VIPER_ENABLE_GRAPHICS guards all real implementations in the split files.
+//   - ZANNA_ENABLE_GRAPHICS guards all real implementations in the split files.
 //   - Stub implementations for non-graphics builds are in rt_graphics_stubs.c.
 //
 // Ownership/Lifetime:

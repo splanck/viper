@@ -17,10 +17,10 @@ Layout of the documentation tree (`docs/`). The
 | `docs/` (root) | public | Index plus a small set of user guides (getting started, FAQ, memory management, installer guide, 2D/3D graphics guides) |
 | `docs/getting-started/` | public | Per-platform setup: `macos.md`, `linux.md`, `windows.md` |
 | `docs/tutorials/` | public | `zia-tutorial.md`, `basic-tutorial.md` |
-| `docs/book/` | public | The Viper Book — five-part long-form course |
+| `docs/book/` | public | The Zanna Book — five-part long-form course |
 | `docs/languages/` | public | Zia/BASIC references and grammars, interop, arithmetic semantics, lifetime model |
 | `docs/il/` | public | `il-guide.md` (normative IL spec) and `il-passes.md` |
-| `docs/viperlib/` | public | Curated runtime library guides (concepts + examples) |
+| `docs/zannalib/` | public | Curated runtime library guides (concepts + examples) |
 | `docs/generated/runtime/` | public | Auto-generated API reference (`rtgen`, DO NOT EDIT) |
 | `docs/gameengine/` | public | Game engine guide and example-game tour |
 | `docs/tools/` | public | CLI reference, REPL, debugging, language server |

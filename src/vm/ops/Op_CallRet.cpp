@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include "vm/Marshal.hpp"
 #include "vm/OpcodeHandlerHelpers.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include "vm/ViperStringHandle.hpp"
+#include "vm/ZannaStringHandle.hpp"
 #include "vm/tco.hpp"
 
 /// @file
@@ -53,8 +53,8 @@ namespace {
 /// after the call.
 bool consumesCallerOwnedStringArg(std::string_view name) {
     return name == "rt_str_release" || name == "rt_str_release_maybe" ||
-           name == "rt_memory_release_str" || name == "Viper.String.ReleaseMaybe" ||
-           name == "Viper.Memory.ReleaseStr";
+           name == "rt_memory_release_str" || name == "Zanna.String.ReleaseMaybe" ||
+           name == "Zanna.Memory.ReleaseStr";
 }
 } // namespace
 
@@ -143,7 +143,7 @@ VM::ExecResult handleCall(VM &vm,
     auto it = fnMap.find(in.callee);
     if (it != fnMap.end()) {
         // Tail-call optimisation: call immediately followed by ret
-#if defined(VIPER_VM_TAILCALL) && VIPER_VM_TAILCALL
+#if defined(ZANNA_VM_TAILCALL) && ZANNA_VM_TAILCALL
         if (bb && (ip + 1) < bb->instructions.size()) {
             const auto &nextInstr = bb->instructions[ip + 1];
             if (nextInstr.op == il::core::Opcode::Ret) {

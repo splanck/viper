@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Bit-vector dominator sets — one 64-bit-word vector per basic block.
 ///        `dom[i][w]` is the wᵗʰ 64-bit word of the dominator bitset for block i.
@@ -60,4 +60,4 @@ struct DominatorSets {
 [[nodiscard]] DominatorSets computeDominators(std::size_t blockCount,
                                               const std::vector<std::vector<std::size_t>> &preds);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

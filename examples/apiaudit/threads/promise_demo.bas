@@ -1,16 +1,16 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Promise / Viper.Threads.Future (BASIC)
+' API Audit: Zanna.Threads.Promise / Zanna.Threads.Future (BASIC)
 ' =============================================================================
 ' Tests: Promise.New, Promise.Set, Promise.SetError, Promise.GetFuture,
 '        Promise.IsDone, Future.Get, Future.Wait, Future.WaitFor,
 '        Future.IsDone, Future.IsError, Future.Error
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Promise / Future ==="
+PRINT "=== API Audit: Zanna.Threads.Promise / Future ==="
 
 ' --- Promise.New ---
 PRINT "--- Promise.New ---"
-DIM p AS OBJECT = Viper.Threads.Promise.New()
+DIM p AS OBJECT = Zanna.Threads.Promise.New()
 PRINT "Created promise"
 
 ' --- IsDone (before set) ---
@@ -32,7 +32,7 @@ PRINT f.IsError
 
 ' --- Promise.Set ---
 PRINT "--- Promise.Set ---"
-DIM boxed AS OBJECT = Viper.Core.Box.I64(42)
+DIM boxed AS OBJECT = Zanna.Core.Box.I64(42)
 p.Set(boxed)
 PRINT "Set promise with boxed 42"
 
@@ -51,7 +51,7 @@ PRINT f.IsError
 ' --- Future.Get ---
 PRINT "--- Future.Get ---"
 DIM result AS OBJECT = f.Get()
-PRINT "Future.Get returned: "; Viper.Core.Box.ToI64(result)
+PRINT "Future.Get returned: "; Zanna.Core.Box.ToI64(result)
 
 ' --- Future.Wait ---
 PRINT "--- Future.Wait ---"
@@ -64,7 +64,7 @@ PRINT f.WaitFor(1000)
 
 ' --- Promise with error ---
 PRINT "--- Promise with error ---"
-DIM p2 AS OBJECT = Viper.Threads.Promise.New()
+DIM p2 AS OBJECT = Zanna.Threads.Promise.New()
 DIM f2 AS OBJECT = p2.GetFuture()
 p2.SetError("something went wrong")
 PRINT "Set error on promise"

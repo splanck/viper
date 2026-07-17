@@ -16,7 +16,7 @@ contract portions of 40.
 
 ## Context
 
-The `Viper.GUI.*` registry exposes opaque objects whose compact signatures do
+The `Zanna.GUI.*` registry exposes opaque objects whose compact signatures do
 not encode exact nullability or ownership. Tooling consequently infers
 constructors and object getters as non-null/owned even though application
 creation can fail, lookups can return no object, and roots, split-pane children,
@@ -43,7 +43,7 @@ metadata changes, so an ADR is required.
 ### Public boundary and contract manifest
 
 - The runtime registry remains the canonical public boundary; `rt_*` GUI
-  functions remain Viper's internal embedding ABI and opaque handles remain the
+  functions remain Zanna's internal embedding ABI and opaque handles remain the
   only public object representation.
 - GUI rows receive an explicit contract source named `gui-boundary-policy`.
   Constructors are managed and fallible; lookup/selection/optional child results
@@ -54,9 +54,9 @@ metadata changes, so an ADR is required.
   signature, C symbol, fallibility, ownership, nullability, class binding,
   property binding, and method binding. Counts and the fingerprint are updated
   only after manual review of the live API dump.
-- Existing constructors/getters remain compatible. `Viper.GUI.App.TryNew` and
-  `Viper.GUI.System.IsAvailable`/`GetUnavailableReason` add explicit capability
-  and failure reporting. `TryNew` returns a `Viper.Result`; exact failures are
+- Existing constructors/getters remain compatible. `Zanna.GUI.App.TryNew` and
+  `Zanna.GUI.System.IsAvailable`/`GetUnavailableReason` add explicit capability
+  and failure reporting. `TryNew` returns a `Zanna.Result`; exact failures are
   defined in the program validation matrix.
 
 ### Subobject and widget lifetime

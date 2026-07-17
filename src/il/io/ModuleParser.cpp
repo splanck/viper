@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include "il/io/StringEscape.hpp"
 
 #include "support/diag_expected.hpp"
-#include "viper/parse/Cursor.h"
+#include "zanna/parse/Cursor.h"
 
 #include <algorithm>
 #include <cctype>
@@ -51,8 +51,8 @@ namespace {
 using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
-using viper::parse::Cursor;
-using viper::parse::SourcePos;
+using zanna::parse::Cursor;
+using zanna::parse::SourcePos;
 
 bool isIgnorableDirectiveTrailing(std::string_view text) {
     std::string trimmed = trim(std::string{text});

@@ -1,7 +1,7 @@
 // ============================================================================
 // MODULE: settings (Settings)
 // PURPOSE: Persistent user preferences — master/music/SFX volume, mute,
-//          fullscreen. Backed by Viper.IO.SaveData so settings survive
+//          fullscreen. Backed by Zanna.IO.SaveData so settings survive
 //          across sessions.
 //
 // KEY-DESIGN-CHOICES:
@@ -14,7 +14,7 @@
 
 module settings;
 
-bind Viper.IO;
+bind Zanna.IO;
 
 /// @brief Persistent user-preferences struct.
 class Settings {

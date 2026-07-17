@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,8 +38,8 @@ class Point {
 func start() {    var p = new Point();
     p.x = 10;
     p.y = 20;
-    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
 }
 )";
     CompilerInput input{.source = source, .path = "point.zia"};
@@ -75,7 +75,7 @@ func start() {    var c = new Counter();
     c.increment();
     c.increment();
     c.decrement();
-    Viper.Terminal.SayInt(c.getCount());
+    Zanna.Terminal.SayInt(c.getCount());
 }
 )";
     CompilerInput input{.source = source, .path = "counter.zia"};
@@ -109,7 +109,7 @@ func start() {    var calc = new Calculator();
     var sum: Integer = calc.add(5, 3);
     var product: Integer = calc.multiply(4, 7);
     calc.setResult(sum + product);
-    Viper.Terminal.SayInt(calc.result);
+    Zanna.Terminal.SayInt(calc.result);
 }
 )";
     CompilerInput input{.source = source, .path = "calculator.zia"};
@@ -144,7 +144,7 @@ class SecureData {
 func start() {    var data = new SecureData();
     data.publicValue = 10;
     data.setSecret(21);
-    Viper.Terminal.SayInt(data.getDoubled());
+    Zanna.Terminal.SayInt(data.getDoubled());
 }
 )";
     CompilerInput input{.source = source, .path = "visibility.zia"};
@@ -181,7 +181,7 @@ func start() {    var n1 = new Node();
     n1.value = 1;
     n2.value = 2;
     n1.setNext(n2);
-    Viper.Terminal.SayInt(n1.getValue());
+    Zanna.Terminal.SayInt(n1.getValue());
 }
 )";
     CompilerInput input{.source = source, .path = "selfref.zia"};
@@ -221,9 +221,9 @@ func start() {    var dog = new Dog();
     dog.animal = new Animal();
     dog.animal.name = "Buddy";
     dog.age = 3;
-    Viper.Terminal.Say(dog.animal.name);
-    Viper.Terminal.SayInt(dog.age);
-    Viper.Terminal.Say(dog.bark());
+    Zanna.Terminal.Say(dog.animal.name);
+    Zanna.Terminal.SayInt(dog.age);
+    Zanna.Terminal.Say(dog.bark());
 }
 )";
     CompilerInput input{.source = source, .path = "composition.zia"};
@@ -261,11 +261,11 @@ func start() {    var p = new Player();
     p.inventory.add("sword");
     p.inventory.add("shield");
 
-    Viper.Terminal.Say(p.name);
-    Viper.Terminal.SayInt(p.score);
-    Viper.Terminal.SayInt(p.health);
-    Viper.Terminal.SayBool(p.alive);
-    Viper.Terminal.SayInt(p.inventory.count());
+    Zanna.Terminal.Say(p.name);
+    Zanna.Terminal.SayInt(p.score);
+    Zanna.Terminal.SayInt(p.health);
+    Zanna.Terminal.SayBool(p.alive);
+    Zanna.Terminal.SayInt(p.inventory.count());
 }
 )";
     CompilerInput input{.source = source, .path = "player.zia"};
@@ -319,7 +319,7 @@ func start() {    var inv = new Inventory();
     inv.addItem(sword);
     inv.addItem(shield);
 
-    Viper.Terminal.SayInt(inv.totalValue());
+    Zanna.Terminal.SayInt(inv.totalValue());
 }
 )";
     CompilerInput input{.source = source, .path = "inventory.zia"};
@@ -348,10 +348,10 @@ class Config {
 }
 
 func start() {    var config = new Config();
-    Viper.Terminal.SayInt(config.width);
-    Viper.Terminal.SayInt(config.height);
-    Viper.Terminal.Say(config.title);
-    Viper.Terminal.SayBool(config.fullscreen);
+    Zanna.Terminal.SayInt(config.width);
+    Zanna.Terminal.SayInt(config.height);
+    Zanna.Terminal.Say(config.title);
+    Zanna.Terminal.SayBool(config.fullscreen);
 }
 )";
     CompilerInput input{.source = source, .path = "fielddefaults.zia"};
@@ -381,8 +381,8 @@ class Math {
 }
 
 func start() {    var m = new Math();
-    Viper.Terminal.SayInt(m.add(3, 4));
-    Viper.Terminal.SayBool(m.isPositive(5));
+    Zanna.Terminal.SayInt(m.add(3, 4));
+    Zanna.Terminal.SayBool(m.isPositive(5));
 }
 )";
     CompilerInput input{.source = source, .path = "arrowret.zia"};
@@ -408,8 +408,8 @@ class Math {
 }
 
 func start() {    var m = new Math();
-    Viper.Terminal.SayInt(m.add(3, 4));
-    Viper.Terminal.SayBool(m.isPositive(5));
+    Zanna.Terminal.SayInt(m.add(3, 4));
+    Zanna.Terminal.SayBool(m.isPositive(5));
 }
 )";
     CompilerInput input{.source = source, .path = "colonret.zia"};
@@ -454,7 +454,7 @@ class Dog extends Animal {
     }
 }
 
-func start() {    var animals = Viper.Collections.List.New();
+func start() {    var animals = Zanna.Collections.List.New();
     var d1 = new Dog(0);
     d1.setup(5, "Rex");
     animals.Add(d1);
@@ -465,7 +465,7 @@ func start() {    var animals = Viper.Collections.List.New();
     // Test single element cast
     var item = animals[0];
     var dog1 = item as Dog;
-    Viper.Terminal.SayInt(dog1.getAge());
+    Zanna.Terminal.SayInt(dog1.getAge());
 
     // Test cast in loop
     var totalAge = 0;
@@ -473,7 +473,7 @@ func start() {    var animals = Viper.Collections.List.New();
         var dog = animals[i] as Dog;
         totalAge = totalAge + dog.getAge();
     }
-    Viper.Terminal.SayInt(totalAge);
+    Zanna.Terminal.SayInt(totalAge);
 }
 )";
     CompilerInput input{.source = source, .path = "ascast.zia"};
@@ -522,9 +522,9 @@ class Dog extends Animal {
 
 func start() {    var dog = new Dog();
     dog.setup(5, "Rex");
-    Viper.Terminal.SayInt(dog.getAge());
-    Viper.Terminal.Say(dog.getName());
-    Viper.Terminal.Say(dog.speak());
+    Zanna.Terminal.SayInt(dog.getAge());
+    Zanna.Terminal.Say(dog.getName());
+    Zanna.Terminal.Say(dog.speak());
 }
 )";
     CompilerInput input{.source = source, .path = "inherit_override_setup.zia"};
@@ -576,15 +576,15 @@ func start() {    var dog = new Dog();
     var animal: Animal = dog;
     var formatter: Formatter = new Message();
 
-    Viper.Terminal.Say(greet());
-    Viper.Terminal.Say(greet(1));
-    Viper.Terminal.Say(dog.speak());
-    Viper.Terminal.Say(dog.speak("Rex"));
-    Viper.Terminal.Say(dog.speak(2));
-    Viper.Terminal.Say(animal.speak());
-    Viper.Terminal.Say(animal.speak(3));
-    Viper.Terminal.Say(formatter.fmt());
-    Viper.Terminal.Say(formatter.fmt(4));
+    Zanna.Terminal.Say(greet());
+    Zanna.Terminal.Say(greet(1));
+    Zanna.Terminal.Say(dog.speak());
+    Zanna.Terminal.Say(dog.speak("Rex"));
+    Zanna.Terminal.Say(dog.speak(2));
+    Zanna.Terminal.Say(animal.speak());
+    Zanna.Terminal.Say(animal.speak(3));
+    Zanna.Terminal.Say(formatter.fmt());
+    Zanna.Terminal.Say(formatter.fmt(4));
 }
 )";
     CompilerInput input{.source = source, .path = "cross_inheritance_overloads.zia"};
@@ -618,7 +618,7 @@ func start() {    var d = new Derived();
 
     // Cast derived to base and back
     var b = d as Base;
-    Viper.Terminal.SayInt(b.value);
+    Zanna.Terminal.SayInt(b.value);
 }
 )";
     CompilerInput input{.source = source, .path = "ascast_basic.zia"};
@@ -632,5 +632,5 @@ func start() {    var d = new Derived();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

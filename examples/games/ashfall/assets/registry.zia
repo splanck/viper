@@ -19,10 +19,10 @@
 // =============================================================================
 module registry;
 
-bind Viper.Graphics3D as G3D;
-bind Viper.Game3D as Game3D;
-bind Viper.IO.File as File;
-bind Viper.String as Str;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Game3D as Game3D;
+bind Zanna.IO.File as File;
+bind Zanna.String as Str;
 bind "../config" as config;
 
 class AssetRegistry {

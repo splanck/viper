@@ -52,8 +52,8 @@
 
 module pickups;
 
-bind Viper.Graphics;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Game;
 bind "./config";
 bind "./level";
 bind "./physics";

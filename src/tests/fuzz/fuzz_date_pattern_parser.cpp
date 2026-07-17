@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/fuzz/fuzz_date_pattern_parser.cpp
-// Purpose: libFuzzer harness exercising Viper.Localization.DateFormat.Custom.
+// Purpose: libFuzzer harness exercising Zanna.Localization.DateFormat.Custom.
 //          Feeds arbitrary byte strings as CLDR pattern input against a
 //          fixed reference timestamp; the interpreter should either format
 //          a string or trap cleanly on unsupported/invalid patterns.

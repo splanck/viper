@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/core/vg_grapheme.c
 // Purpose: Implement Unicode extended grapheme boundary scanning and bounded
-//          UTF-8 byte/codepoint/grapheme offset conversion for ViperGUI.
+//          UTF-8 byte/codepoint/grapheme offset conversion for ZannaGUI.
 // Key invariants:
 //   - Boundary decisions implement Unicode 17.0 UAX #29 rules GB3 through GB13.
 //   - A malformed UTF-8 byte decodes as one Other scalar and consumes one byte.

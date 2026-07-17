@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,15 +14,15 @@
 //   - Dots use reduced per-dot opacity so coverage accumulates gradually.
 // Ownership/Lifetime:
 //   - Stateless except the drawing flag.
-// Links: tool.zia, ../canvas.zia, Viper.Math.Random
+// Links: tool.zia, ../canvas.zia, Zanna.Math.Random
 //
 //===----------------------------------------------------------------------===//
 
-// spray.zia - Airbrush/spray tool for Viper Paint
+// spray.zia - Airbrush/spray tool for Zanna Paint
 module spray;
 
-bind Viper.Graphics;
-bind Random = Viper.Math.Random;
+bind Zanna.Graphics;
+bind Random = Zanna.Math.Random;
 
 bind "../config";
 bind "../canvas";

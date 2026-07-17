@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,13 +39,13 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 class DebugLineTable;
 }
 
-namespace viper::codegen::aarch64::binenc {
+namespace zanna::codegen::aarch64::binenc {
 
-using viper::codegen::DebugLineTable;
+using zanna::codegen::DebugLineTable;
 
 /// Encodes AArch64 MIR functions into machine code bytes.
 ///
@@ -278,4 +278,4 @@ class A64BinaryEncoder {
     size_t lastEstimatedFunctionSize_{0};
 };
 
-} // namespace viper::codegen::aarch64::binenc
+} // namespace zanna::codegen::aarch64::binenc

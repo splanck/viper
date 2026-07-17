@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 //   (BytecodeVM_threaded.cpp): every slot defaults to L_DEFAULT and BC_OPCODE
 //   entries override it with &&L_<NAME>. Opcodes with no handler label use
 //   BC_OPCODE_TRAP (below) and stay routed to L_DEFAULT — TAIL_CALL (TCO gated
-//   by VIPER_VM_TAILCALL), MAKE_ERROR, and the
+//   by ZANNA_VM_TAILCALL), MAKE_ERROR, and the
 //   OPCODE_COUNT sentinel. The classification is compiler-enforced: a missing
 //   handler label or an over-marked trap fails the build.
 // The handler BODIES (the `L_<NAME>:` code in BytecodeVM_threaded.cpp and the
@@ -41,7 +41,7 @@
 // BC_OPCODE_TRAP to expand to nothing, leaving those slots at L_DEFAULT.
 #ifndef BC_OPCODE_TRAP
 #define BC_OPCODE_TRAP(name, value) BC_OPCODE(name, value)
-#define VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#define ZANNA_BC_OPCODE_TRAP_IS_FALLBACK
 #endif
 
 // Stack Operations (0x00-0x0F)
@@ -171,7 +171,7 @@ BC_OPCODE(CALL_NATIVE, 0xB6)   // Call a native/runtime function [argCount:8][na
 BC_OPCODE(CALL_INDIRECT, 0xB7) // Indirect call through a function pointer.
 BC_OPCODE(RETURN, 0xB8)        // Return TOS from the current function.
 BC_OPCODE(RETURN_VOID, 0xB9)   // Return void from the current function.
-BC_OPCODE_TRAP(TAIL_CALL, 0xBA) // Tail-call optimization: reuse current frame (routed to default; TCO gated by VIPER_VM_TAILCALL).
+BC_OPCODE_TRAP(TAIL_CALL, 0xBA) // Tail-call optimization: reuse current frame (routed to default; TCO gated by ZANNA_VM_TAILCALL).
 
 // Exception Handling (0xC0-0xCF)
 BC_OPCODE(EH_PUSH, 0xC0)       // Register an exception handler at a given offset.
@@ -213,7 +213,7 @@ BC_OPCODE(SELECT, 0xE2) // Ternary select: pops cond, tval, fval; pushes the cho
 // Sentinel value — not a real opcode, no dispatch handler.
 BC_OPCODE_TRAP(OPCODE_COUNT, 0xFF) // Sentinel / total opcode count marker.
 
-#ifdef VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#ifdef ZANNA_BC_OPCODE_TRAP_IS_FALLBACK
 #undef BC_OPCODE_TRAP
-#undef VIPER_BC_OPCODE_TRAP_IS_FALLBACK
+#undef ZANNA_BC_OPCODE_TRAP_IS_FALLBACK
 #endif

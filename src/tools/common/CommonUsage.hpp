@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 
 #include <ostream>
 
-namespace viper::tools {
+namespace zanna::tools {
 
 /// @brief Selects how much of the shared option list to emit.
 /// @details Controls whether @ref printSharedOptions appends the rarely used
@@ -64,4 +64,4 @@ inline void printSharedOptions(std::ostream &os,
     }
 }
 
-} // namespace viper::tools
+} // namespace zanna::tools

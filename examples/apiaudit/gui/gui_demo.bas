@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.GUI (All Classes) ==="
+PRINT "=== API Audit: Zanna.GUI (All Classes) ==="
 PRINT "NOTE: GUI requires windowed app. API surface documentation only."
 PRINT ""
 PRINT "--- App ---"

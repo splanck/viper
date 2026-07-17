@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_shutdown.h
-// Purpose: Poll-based graceful shutdown requests for Viper.System.Shutdown.
+// Purpose: Poll-based graceful shutdown requests for Zanna.System.Shutdown.
 // Key invariants: Requests are process-wide bitmasks and are safe to publish
 //                 from cooperative host/runtime code.
 // Ownership/Lifetime: The module owns only atomic process state; no heap data.
-// Links: docs/viperlib/system.md
+// Links: docs/zannalib/system.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -60,7 +60,7 @@ int8_t rt_shutdown_has_pending(void);
 ///          automatically; native/AOT programs call this to opt in to the same
 ///          OS integration (they do not get it for free, since the compiler and
 ///          tools also link the runtime and must keep default signal behavior)
-///          (VDOC-210). Exposed as `Viper.System.Shutdown.InstallSignalHandlers`.
+///          (VDOC-210). Exposed as `Zanna.System.Shutdown.InstallSignalHandlers`.
 void rt_shutdown_install_signal_handlers(void);
 
 /// @brief Constant getters for runtime class properties.

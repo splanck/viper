@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include "../Peephole.hpp"
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Rewrite cmp reg, #0 to tst reg, reg.
 [[nodiscard]] bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats);
@@ -107,4 +107,4 @@ namespace viper::codegen::aarch64::peephole {
 /// @brief Rewrite FP arithmetic identity operations (placeholder for future enhancement).
 [[maybe_unused]] [[nodiscard]] bool tryFPArithmeticIdentity(MInstr &instr, PeepholeStats &stats);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

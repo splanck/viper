@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Core.Diagnostics - Assertions
+// API Audit: Zanna.Core.Diagnostics - Assertions
 // =============================================================================
 // Tests: Assert(true), AssertEq, AssertNeq, AssertEqNum, AssertEqStr,
 //        AssertGt, AssertLt, AssertGte, AssertLte
@@ -7,10 +7,10 @@
 // =============================================================================
 
 module DiagnosticsDemo;
-bind Viper.Terminal;
-bind Viper.Core.Diagnostics as Diag;
+bind Zanna.Terminal;
+bind Zanna.Core.Diagnostics as Diag;
 func start() {
-    Say("=== API Audit: Viper.Core.Diagnostics ===");
+    Say("=== API Audit: Zanna.Core.Diagnostics ===");
 
     // --- Assert (true only) ---
     Say("--- Assert ---");

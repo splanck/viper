@@ -9,19 +9,19 @@
 // convention bugs (flipped axes, wrong lighting space, missing passes).
 //
 // Environment:
-//   VIPER_CONFORMANCE_A       first PNG (golden; usually the software render)
-//   VIPER_CONFORMANCE_B       second PNG (backend under test)
-//   VIPER_CONFORMANCE_EXACT   "1" requires byte-identical pixels (self checks)
+//   ZANNA_CONFORMANCE_A       first PNG (golden; usually the software render)
+//   ZANNA_CONFORMANCE_B       second PNG (backend under test)
+//   ZANNA_CONFORMANCE_EXACT   "1" requires byte-identical pixels (self checks)
 //
 // Prints metric lines and "RESULT: ok" / "RESULT: fail ...".
 // =============================================================================
 module conformance_compare;
 
-bind Viper.Core.Convert as Convert;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Math;
-bind Viper.System.Environment as Env;
-bind Viper.Terminal as Terminal;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Math;
+bind Zanna.System.Environment as Env;
+bind Zanna.Terminal as Terminal;
 
 func intStr(i: Integer) -> String {
     return Convert.ToStringInt(i);
@@ -44,11 +44,11 @@ func colorDiff(a: Integer, b: Integer) -> Integer {
 }
 
 func main() {
-    var pathA = Env.GetVariable("VIPER_CONFORMANCE_A");
-    var pathB = Env.GetVariable("VIPER_CONFORMANCE_B");
-    var exact = Env.GetVariable("VIPER_CONFORMANCE_EXACT") == "1";
+    var pathA = Env.GetVariable("ZANNA_CONFORMANCE_A");
+    var pathB = Env.GetVariable("ZANNA_CONFORMANCE_B");
+    var exact = Env.GetVariable("ZANNA_CONFORMANCE_EXACT") == "1";
     if (pathA == "" || pathB == "") {
-        Terminal.Say("RESULT: fail set VIPER_CONFORMANCE_A and VIPER_CONFORMANCE_B");
+        Terminal.Say("RESULT: fail set ZANNA_CONFORMANCE_A and ZANNA_CONFORMANCE_B");
         return;
     }
 

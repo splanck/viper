@@ -6,10 +6,10 @@
 //          based on user events.
 //
 // KEY-DESIGN-CHOICES:
-//   * STATE MACHINE. Viper.Game.StateMachine drives the app-level
+//   * STATE MACHINE. Zanna.Game.StateMachine drives the app-level
 //     transitions (MENU → PLAYING → RESULTS → MENU) in response to
 //     the FRONTEND_EVENT_* and Session EVENT_* returns.
-//   * DEVICE-AGNOSTIC INPUT. Viper.Input.Action names actions
+//   * DEVICE-AGNOSTIC INPUT. Zanna.Input.Action names actions
 //     independent of keyboard vs gamepad; the main loop queries by
 //     name (Action.Pressed("move_up")) and the runtime dispatches.
 //   * STABLE FRAME PACING. Canvas.BeginFrame + SetMaxDeltaTime cap the
@@ -24,7 +24,7 @@
 // =============================================================================
 // CRACKMAN - Game Controller
 // =============================================================================
-// Uses Viper runtime features:
+// Uses Zanna runtime features:
 // - StateMachine for app-level state transitions
 // - Action for device-agnostic input (keyboard + gamepad)
 // - Canvas.BeginFrame / SetMaxDeltaTime for stable frame pacing
@@ -35,9 +35,9 @@
 
 module game;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Game;
 
 bind "./config";
 bind "./sound";

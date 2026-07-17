@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // File: src/frontends/basic/sem/RuntimePropertyIndex.cpp
 // Purpose: Implements property index built from runtime class catalog.
 //===----------------------------------------------------------------------===//

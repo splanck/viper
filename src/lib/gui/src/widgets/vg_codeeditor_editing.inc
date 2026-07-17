@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -183,7 +183,7 @@ static char *codeeditor_materialize_lines(const vg_codeeditor_t *editor, size_t 
 static void codeeditor_discard_document_buffer_mirror(vg_codeeditor_t *editor) {
     if (!editor || !editor->document_buffer)
         return;
-    viper_text_buffer_free((viper_text_buffer_t *)editor->document_buffer);
+    zanna_text_buffer_free((zanna_text_buffer_t *)editor->document_buffer);
     editor->document_buffer = NULL;
 }
 

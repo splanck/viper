@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,11 +16,11 @@
 /// @file
 /// @brief Implements the lightweight parsing cursor shared by IL parsers.
 
-#include "viper/parse/Cursor.h"
+#include "zanna/parse/Cursor.h"
 
 #include <cctype>
 
-namespace viper::parse {
+namespace zanna::parse {
 
 namespace {
 /// @brief Determine whether @p ch can appear at the start of an identifier.
@@ -208,4 +208,4 @@ void Cursor::seek(std::size_t offset) noexcept {
         advance();
 }
 
-} // namespace viper::parse
+} // namespace zanna::parse

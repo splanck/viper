@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_basic_completion_stub.c
-// Purpose: Weak-symbol stubs for the Viper BASIC IDE language-service bridge.
+// Purpose: Weak-symbol stubs for the Zanna BASIC IDE language-service bridge.
 //          The real implementations live in
 //          src/frontends/basic/rt_basic_completion.cpp (part of fe_basic). When
 //          fe_basic is linked the linker prefers those strong symbols; binaries

@@ -1,18 +1,18 @@
 ' =============================================================================
-' API Audit: Viper.IO.Watcher (BASIC)
+' API Audit: Zanna.IO.Watcher (BASIC)
 ' =============================================================================
 ' Tests: New, Path, IsWatching, Start, Stop, Poll, PollFor,
 '        EventPath, EventType, EventNone, EventCreated, EventModified,
 '        EventDeleted, EventRenamed
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.IO.Watcher ==="
+PRINT "=== API Audit: Zanna.IO.Watcher ==="
 
-DIM tmpDir AS STRING = Viper.IO.TempFile.Dir()
+DIM tmpDir AS STRING = Zanna.IO.TempFile.Dir()
 
 ' --- New ---
 PRINT "--- New ---"
-DIM w AS OBJECT = Viper.IO.Watcher.New(tmpDir)
+DIM w AS OBJECT = Zanna.IO.Watcher.New(tmpDir)
 PRINT "Created watcher for temp dir"
 
 ' --- Path ---
@@ -47,8 +47,8 @@ PRINT "Events: "; evtCount
 
 ' --- Create a file to trigger an event ---
 PRINT "--- Trigger file creation ---"
-DIM testFile AS STRING = Viper.IO.Path.Join(tmpDir, "watcher_test_file_bas.txt")
-Viper.IO.File.WriteAllText(testFile, "hello watcher")
+DIM testFile AS STRING = Zanna.IO.Path.Join(tmpDir, "watcher_test_file_bas.txt")
+Zanna.IO.File.WriteAllText(testFile, "hello watcher")
 PRINT "File created"
 
 ' --- PollFor (should detect creation) ---
@@ -74,7 +74,7 @@ PRINT "--- IsWatching (after stop) ---"
 PRINT w.IsWatching
 
 ' --- Cleanup ---
-Viper.IO.File.Delete(testFile)
+Zanna.IO.File.Delete(testFile)
 
 PRINT "=== Watcher Audit Complete ==="
 END

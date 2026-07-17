@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
-#include "viper/vm/debug/Debug.hpp"
+#include "zanna/vm/debug/Debug.hpp"
 #include "vm/OpHandlerAccess.hpp"
 
 #include <cassert>

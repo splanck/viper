@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTDiagTests.cpp
-// Purpose: Tests for Viper.Diagnostics assert functions.
+// Purpose: Tests for Zanna.Diagnostics assert functions.
 //
 // Note: These tests verify that passing assertions don't trap. The failure
 // cases are tested separately since they terminate the process.
@@ -241,7 +241,7 @@ static void test_basic_assert_passing() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Diagnostics Assert Tests ===\n\n");
+    printf("=== Zanna.Diagnostics Assert Tests ===\n\n");
 
     // Basic assert
     test_basic_assert_passing();

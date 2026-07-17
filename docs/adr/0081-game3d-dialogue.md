@@ -14,7 +14,7 @@ Accepted
 
 ## Context
 
-Adventure games spend much of their runtime in conversations. Viper had no
+Adventure games spend much of their runtime in conversations. Zanna had no
 dialogue primitive: games hand-rolled text reveal, input latching, and choice
 menus per project, and there was no supported way to project a world-space
 point into screen space for speech-bubble anchoring (the math lived only

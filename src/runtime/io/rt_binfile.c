@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_binfile.c
-// Purpose: Implements binary file stream operations for the Viper.IO.BinFile
+// Purpose: Implements binary file stream operations for the Zanna.IO.BinFile
 //          class. Supports random-access read and write of raw bytes, integers,
 //          and floats at 64-bit precision, with multi-byte values in
 //          little-endian byte order.
@@ -142,7 +142,7 @@ static int binfile_prepare_seek(rt_binfile_impl *bf) {
 
 /// @brief Finalizer callback invoked when a BinFile is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// BinFile object becomes unreachable. It ensures that the underlying operating
 /// system file handle is properly closed to prevent resource leaks.
 ///
@@ -173,7 +173,7 @@ static void rt_binfile_finalize(void *obj) {
 ///
 /// Creates a new BinFile object connected to the specified file path. The file
 /// is opened in binary mode (no newline translation) using the specified access
-/// mode. The returned BinFile is managed by Viper's garbage collector and will
+/// mode. The returned BinFile is managed by Zanna's garbage collector and will
 /// automatically close when collected if not explicitly closed.
 ///
 /// **Supported modes:**
@@ -193,9 +193,9 @@ static void rt_binfile_finalize(void *obj) {
 /// bf.Close()
 /// ```
 ///
-/// @param path Viper string containing the file path. Must not be NULL.
+/// @param path Zanna string containing the file path. Must not be NULL.
 ///             Path is interpreted according to the OS (relative or absolute).
-/// @param mode Viper string containing the access mode ("r", "w", "rw", or "a").
+/// @param mode Zanna string containing the access mode ("r", "w", "rw", or "a").
 ///             Must not be NULL.
 ///
 /// @return A pointer to a new BinFile object on success. On failure, traps with
@@ -228,7 +228,7 @@ void *rt_binfile_open(void *path, void *mode) {
     const char *mode_str = rt_string_cstr((rt_string)mode);
     int64_t mode_len = rt_str_len((rt_string)mode);
 
-    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str || !mode_str ||
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &path_str) || !path_str || !mode_str ||
         mode_len < 0 || (size_t)mode_len != strlen(mode_str)) {
         rt_trap("BinFile.Open: invalid path or mode");
         return NULL;

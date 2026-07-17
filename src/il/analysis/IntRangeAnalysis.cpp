@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@
 
 using namespace il::core;
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 using ::il::utils::addRanges;
 using ::il::utils::exactRange;
@@ -715,7 +715,7 @@ IntRangeInfo computeIntRanges(const Function &fn) {
 
             if (mapsEqual(fresh, entry[blockIdx]))
                 continue;
-            if (const char *dbg = std::getenv("VIPER_DEBUG_INTRANGES"); dbg && dbg[0] == '2') {
+            if (const char *dbg = std::getenv("ZANNA_DEBUG_INTRANGES"); dbg && dbg[0] == '2') {
                 std::fprintf(stderr, "  [sweep %s] block %s changed:", widening ? "W" : "N",
                              fn.blocks[blockIdx].label.c_str());
                 for (const auto &[id, range] : fresh)
@@ -780,9 +780,9 @@ IntRangeInfo computeIntRanges(const Function &fn) {
         }
     }
 
-    // Debug observability: VIPER_DEBUG_INTRANGES=1 dumps convergence status and
+    // Debug observability: ZANNA_DEBUG_INTRANGES=1 dumps convergence status and
     // per-block entry facts to stderr.
-    if (std::getenv("VIPER_DEBUG_INTRANGES")) {
+    if (std::getenv("ZANNA_DEBUG_INTRANGES")) {
         std::fprintf(stderr, "[int-ranges] fn=%s converged=%d\n", fn.name.c_str(),
                      converged ? 1 : 0);
         for (size_t i = 0; i < blockCount; ++i) {
@@ -811,4 +811,4 @@ IntRangeInfo computeIntRanges(const Function &fn) {
     return info;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

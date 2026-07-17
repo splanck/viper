@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_pixels.h
-// Purpose: Software image buffer manipulation for Viper.Graphics.Pixels, providing pixel-level
+// Purpose: Software image buffer manipulation for Zanna.Graphics.Pixels, providing pixel-level
 // read/write, drawing primitives, image loading/saving, and blitting operations.
 //
 // Key invariants:
@@ -55,7 +55,7 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 /// @brief Get a pixel color at (x, y) as raw packed RGBA. Explicit alias for Pixels.GetRGBA.
 int64_t rt_pixels_get_rgba(void *pixels, int64_t x, int64_t y);
 
-/// @brief Get a pixel color at (x, y) as a Viper.Graphics.Color-compatible value.
+/// @brief Get a pixel color at (x, y) as a Zanna.Graphics.Color-compatible value.
 int64_t rt_pixels_get_color(void *pixels, int64_t x, int64_t y);
 
 /// @brief Set a raw RGBA pixel at (x, y).
@@ -114,13 +114,13 @@ void rt_pixels_copy(
 void *rt_pixels_clone(void *pixels);
 
 /// @brief Convert Pixels to raw bytes (RGBA, row-major).
-/// @return A Viper.Collections.Bytes object containing the pixel data.
+/// @return A Zanna.Collections.Bytes object containing the pixel data.
 void *rt_pixels_to_bytes(void *pixels);
 
 /// @brief Create Pixels from raw bytes.
 /// @param width Width in pixels.
 /// @param height Height in pixels.
-/// @param bytes Viper.Collections.Bytes object containing RGBA data.
+/// @param bytes Zanna.Collections.Bytes object containing RGBA data.
 /// @return New Pixels object, or NULL if bytes is insufficient.
 void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes);
 

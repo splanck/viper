@@ -1,8 +1,8 @@
 module JsonDemo;
-bind Viper.Terminal;
-bind Viper.Data.Json as Json;
+bind Zanna.Terminal;
+bind Zanna.Data.Json as Json;
 func start() {
-    Say("=== Viper.Data.Json API Audit ===");
+    Say("=== Zanna.Data.Json API Audit ===");
 
     // --- IsValid ---
     Say("--- IsValid ---");

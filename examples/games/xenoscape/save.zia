@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,8 +38,8 @@
 // you re-enter a room, but your permanent progress survives.
 //
 // This file handles that slot-wide progress.  The storage
-// backend is `Viper.IO.SaveData`, a simple key-value persistent
-// store the Viper runtime provides — no need to manage files,
+// backend is `Zanna.IO.SaveData`, a simple key-value persistent
+// store the Zanna runtime provides — no need to manage files,
 // schemas, or serialisers by hand.
 //
 // WHY KEY-VALUE INSTEAD OF A BLOB?
@@ -71,15 +71,15 @@
 //     game.zia   ──►  holds a SaveManager, calls `saveSlot(...)`
 //                     whenever the player touches a save station.
 //
-//     Viper.IO.SaveData  (runtime key-value store)
+//     Zanna.IO.SaveData  (runtime key-value store)
 //
 // =============================================================================
 
 module save;
 
-bind Viper.IO;
-bind Viper.Text.Fmt;
-bind Viper.Time.DateTime as DateTime;
+bind Zanna.IO;
+bind Zanna.Text.Fmt;
+bind Zanna.Time.DateTime as DateTime;
 bind "./config";
 
 /// @brief Maximum concurrent save slots.  Three is a classic

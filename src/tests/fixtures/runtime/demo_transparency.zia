@@ -1,10 +1,10 @@
 // Demo: Alpha blending — transparent glass panels over a lit scene
 module DemoTransparency;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Transparency Demo", 640, 480);

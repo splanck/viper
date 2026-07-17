@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_graphics.h
-// Purpose: Runtime bridge functions for the ViperGFX graphics library, providing canvas
+// Purpose: Runtime bridge functions for the ZannaGFX graphics library, providing canvas
 // creation/destruction, drawing operations, pixel manipulation, image loading, and window
 // management.
 //
@@ -39,7 +39,7 @@ extern "C" {
 //=========================================================================
 
 /// @brief Report whether graphics support is compiled into this runtime.
-/// @return 1 when ViperGFX-backed Canvas support is available, 0 otherwise.
+/// @return 1 when ZannaGFX-backed Canvas support is available, 0 otherwise.
 int8_t rt_canvas_is_available(void);
 
 /// @brief Create a new graphics canvas.

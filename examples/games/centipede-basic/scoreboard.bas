@@ -146,15 +146,15 @@ Class ScoreBoard
         Dim row As Integer
 
         ' Title banner.
-        Viper.Terminal.SetColor(14, 0)
-        Viper.Terminal.SetPosition(startRow, 20)
+        Zanna.Terminal.SetColor(14, 0)
+        Zanna.Terminal.SetPosition(startRow, 20)
         PRINT "=== HIGH SCORES ==="
 
         ' Column headers + separator.
-        Viper.Terminal.SetColor(11, 0)
-        Viper.Terminal.SetPosition(startRow + 2, 15)
+        Zanna.Terminal.SetColor(11, 0)
+        Zanna.Terminal.SetPosition(startRow + 2, 15)
         PRINT "RANK    NAME          SCORE"
-        Viper.Terminal.SetPosition(startRow + 3, 15)
+        Zanna.Terminal.SetPosition(startRow + 3, 15)
         PRINT "---------------------------"
 
         ' One row per entry.
@@ -163,12 +163,12 @@ Class ScoreBoard
 
             ' Podium colouring: top 3 in bright green, rest in gray.
             If i < 3 Then
-                Viper.Terminal.SetColor(10, 0)
+                Zanna.Terminal.SetColor(10, 0)
             Else
-                Viper.Terminal.SetColor(7, 0)
+                Zanna.Terminal.SetColor(7, 0)
             End If
 
-            Viper.Terminal.SetPosition(row, 15)
+            Zanna.Terminal.SetPosition(row, 15)
             ' Leading space pads single-digit ranks so rank 10 lines up.
             If i < 9 Then
                 PRINT " "

@@ -87,7 +87,7 @@ Class Scoreboard
         Me.Scores(1) = 35000
         Me.Levels(1) = 8
 
-        Me.Names(2) = "VIPER"
+        Me.Names(2) = "ZANNA"
         Me.Scores(2) = 25000
         Me.Levels(2) = 6
 

@@ -3,28 +3,28 @@
 // due to mapILToken issues (BUG-009/010) and missing constructors (BUG-011).
 module TestBugfixZiaNew;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Collections — verify `new` succeeds (no crash)
-    var list = new Viper.Collections.List();
-    var map = new Viper.Collections.Map();
-    var seq = new Viper.Collections.Seq();
+    var list = new Zanna.Collections.List();
+    var map = new Zanna.Collections.Map();
+    var seq = new Zanna.Collections.Seq();
 
     // StringBuilder (uses SBNew)
-    var sb = new Viper.Text.StringBuilder();
+    var sb = new Zanna.Text.StringBuilder();
 
     // Random (BUG-011 fix — previously had no constructor)
-    var rng = new Viper.Math.Random(99);
+    var rng = new Zanna.Math.Random(99);
 
     // PerlinNoise (has PerlinNew constructor)
-    var noise = new Viper.Math.PerlinNoise(42);
+    var noise = new Zanna.Math.PerlinNoise(42);
 
     // UnionFind (constructor takes capacity)
-    var uf = new Viper.Collections.UnionFind(10);
+    var uf = new Zanna.Collections.UnionFind(10);
 
     // BitSet (constructor takes size)
-    var bs = new Viper.Collections.BitSet(64);
+    var bs = new Zanna.Collections.BitSet(64);
 
     Say("RESULT: ok");
 }

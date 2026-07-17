@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace viper::tui::syntax {
+namespace zanna::tui::syntax {
 namespace {
 /// @brief Minimal JSON helper for parsing the syntax rule configuration.
 /// @details The parser understands just enough of JSON to process arrays of
@@ -261,4 +261,4 @@ void SyntaxRuleSet::invalidate(std::size_t lineNo) {
     cache_.erase(lineNo);
 }
 
-} // namespace viper::tui::syntax
+} // namespace zanna::tui::syntax

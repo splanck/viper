@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTDatetimeTests.cpp
-// Purpose: Validate rt_datetime_* API (Viper.Time.DateTime).
+// Purpose: Validate rt_datetime_* API (Zanna.Time.DateTime).
 // Key invariants: Year/month/day/hour/minute/second extraction from a known
 //                 Unix timestamp must be correct; ISO 8601 output is parseable.
 // Ownership/Lifetime: Returned rt_string values are released after each test.
@@ -15,7 +15,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_datetime.h"
 #include "rt_option.h"

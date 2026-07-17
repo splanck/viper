@@ -1,0 +1,30 @@
+// Test: Modules & Namespaces
+// Tests: module declaration, imports
+module Test;
+
+// ZannaLang requires module declaration at top
+// Imports would be: import Zanna.Math;
+
+func helper() -> String {
+    return "Helper function works!";
+}
+
+func main() {
+    Zanna.Terminal.Say("=== Modules & Namespaces Test ===");
+
+    // Module functions
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Module Functions ---");
+    Zanna.Terminal.Say(helper());
+
+    // Accessing runtime modules
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Runtime Modules ---");
+    Zanna.Terminal.Say("Zanna.Terminal: works");
+    Zanna.Terminal.Say("Zanna.Math: " + Zanna.Text.Fmt.Num(Zanna.Math.Sqrt(4.0)));
+    Zanna.Terminal.Say("Zanna.String: " + Zanna.String.ToUpper("works"));
+    Zanna.Terminal.Say("Zanna.Text.Fmt: works");
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== Modules & Namespaces test complete ===");
+}

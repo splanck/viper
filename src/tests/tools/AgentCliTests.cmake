@@ -1,10 +1,10 @@
-# Tests for the agent-facing CLI surface: viper check, viper eval,
-# viper explain, --print-error-codes, --dump-runtime-api, --dump-opcodes.
+# Tests for the agent-facing CLI surface: zanna check, zanna eval,
+# zanna explain, --print-error-codes, --dump-runtime-api, --dump-opcodes.
 # Validates exit-code contracts and machine-readable output shapes.
 cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED VIPER_EXE)
-    message(FATAL_ERROR "VIPER_EXE must be provided")
+if (NOT DEFINED ZANNA_EXE)
+    message(FATAL_ERROR "ZANNA_EXE must be provided")
 endif ()
 if (NOT DEFINED TEST_WORK_DIR)
     message(FATAL_ERROR "TEST_WORK_DIR must be provided")
@@ -13,153 +13,153 @@ endif ()
 file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}")
 
-# ===== viper check: clean file exits 0 =====
+# ===== zanna check: clean file exits 0 =====
 set(_ok_zia "${TEST_WORK_DIR}/ok.zia")
-file(WRITE "${_ok_zia}" "module T;\nbind Viper.Terminal;\nfunc start() {\n    Say(\"hi\");\n}\n")
+file(WRITE "${_ok_zia}" "module T;\nbind Zanna.Terminal;\nfunc start() {\n    Say(\"hi\");\n}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" check "${_ok_zia}"
+        COMMAND "${ZANNA_EXE}" check "${_ok_zia}"
         RESULT_VARIABLE _check_ok_rc
         OUTPUT_VARIABLE _check_ok_out
         ERROR_VARIABLE _check_ok_err)
 if (NOT _check_ok_rc EQUAL 0)
-    message(FATAL_ERROR "viper check on a clean file should exit 0, got ${_check_ok_rc}:\n${_check_ok_err}")
+    message(FATAL_ERROR "zanna check on a clean file should exit 0, got ${_check_ok_rc}:\n${_check_ok_err}")
 endif ()
 
-# ===== viper check: compile errors exit 2 with structured JSON =====
+# ===== zanna check: compile errors exit 2 with structured JSON =====
 set(_bad_zia "${TEST_WORK_DIR}/bad.zia")
-file(WRITE "${_bad_zia}" "module T;\nbind Viper.Terminal;\nfunc start() {\n    var count = 1;\n    SayInt(cout + count);\n}\n")
+file(WRITE "${_bad_zia}" "module T;\nbind Zanna.Terminal;\nfunc start() {\n    var count = 1;\n    SayInt(cout + count);\n}\n")
 
 execute_process(
-        COMMAND "${VIPER_EXE}" check "${_bad_zia}" --diagnostic-format=json
+        COMMAND "${ZANNA_EXE}" check "${_bad_zia}" --diagnostic-format=json
         RESULT_VARIABLE _check_bad_rc
         OUTPUT_VARIABLE _check_bad_out
         ERROR_VARIABLE _check_bad_err)
 if (NOT _check_bad_rc EQUAL 2)
-    message(FATAL_ERROR "viper check on a broken file should exit 2, got ${_check_bad_rc}:\n${_check_bad_err}")
+    message(FATAL_ERROR "zanna check on a broken file should exit 2, got ${_check_bad_rc}:\n${_check_bad_err}")
 endif ()
 if (NOT _check_bad_err MATCHES "\"code\":\"V-ZIA-UNDEFINED\"")
-    message(FATAL_ERROR "viper check JSON did not include the V-ZIA-UNDEFINED code:\n${_check_bad_err}")
+    message(FATAL_ERROR "zanna check JSON did not include the V-ZIA-UNDEFINED code:\n${_check_bad_err}")
 endif ()
 if (NOT _check_bad_err MATCHES "\"fixits\"" OR NOT _check_bad_err MATCHES "\"replacement\":\"count\"")
-    message(FATAL_ERROR "viper check JSON did not carry the did-you-mean fix-it:\n${_check_bad_err}")
+    message(FATAL_ERROR "zanna check JSON did not carry the did-you-mean fix-it:\n${_check_bad_err}")
 endif ()
 
-# ===== viper check: unresolvable target exits 1 =====
+# ===== zanna check: unresolvable target exits 1 =====
 execute_process(
-        COMMAND "${VIPER_EXE}" check "${TEST_WORK_DIR}/does-not-exist.zia"
+        COMMAND "${ZANNA_EXE}" check "${TEST_WORK_DIR}/does-not-exist.zia"
         RESULT_VARIABLE _check_missing_rc
         OUTPUT_VARIABLE _check_missing_out
         ERROR_VARIABLE _check_missing_err)
 if (NOT _check_missing_rc EQUAL 1)
-    message(FATAL_ERROR "viper check on a missing target should exit 1, got ${_check_missing_rc}")
+    message(FATAL_ERROR "zanna check on a missing target should exit 1, got ${_check_missing_rc}")
 endif ()
 
-# ===== viper check: rejects run/build-only flags =====
+# ===== zanna check: rejects run/build-only flags =====
 execute_process(
-        COMMAND "${VIPER_EXE}" check "${_ok_zia}" -o out.il
+        COMMAND "${ZANNA_EXE}" check "${_ok_zia}" -o out.il
         RESULT_VARIABLE _check_o_rc
         OUTPUT_VARIABLE _check_o_out
         ERROR_VARIABLE _check_o_err)
 if (_check_o_rc EQUAL 0)
-    message(FATAL_ERROR "viper check should reject -o")
+    message(FATAL_ERROR "zanna check should reject -o")
 endif ()
 
-# ===== viper eval: expression auto-print, exit 0 =====
+# ===== zanna eval: expression auto-print, exit 0 =====
 execute_process(
-        COMMAND "${VIPER_EXE}" eval "2 + 3 * 4"
+        COMMAND "${ZANNA_EXE}" eval "2 + 3 * 4"
         RESULT_VARIABLE _eval_rc
         OUTPUT_VARIABLE _eval_out
         ERROR_VARIABLE _eval_err)
 if (NOT _eval_rc EQUAL 0)
-    message(FATAL_ERROR "viper eval should exit 0, got ${_eval_rc}:\n${_eval_err}")
+    message(FATAL_ERROR "zanna eval should exit 0, got ${_eval_rc}:\n${_eval_err}")
 endif ()
 if (NOT _eval_out MATCHES "14")
-    message(FATAL_ERROR "viper eval '2 + 3 * 4' should print 14, got:\n${_eval_out}")
+    message(FATAL_ERROR "zanna eval '2 + 3 * 4' should print 14, got:\n${_eval_out}")
 endif ()
 
-# ===== viper eval --json --type: structured result =====
+# ===== zanna eval --json --type: structured result =====
 execute_process(
-        COMMAND "${VIPER_EXE}" eval --json --type "1 + 1"
+        COMMAND "${ZANNA_EXE}" eval --json --type "1 + 1"
         RESULT_VARIABLE _eval_json_rc
         OUTPUT_VARIABLE _eval_json_out
         ERROR_VARIABLE _eval_json_err)
 if (NOT _eval_json_rc EQUAL 0)
-    message(FATAL_ERROR "viper eval --json should exit 0, got ${_eval_json_rc}:\n${_eval_json_err}")
+    message(FATAL_ERROR "zanna eval --json should exit 0, got ${_eval_json_rc}:\n${_eval_json_err}")
 endif ()
 if (NOT _eval_json_out MATCHES "\"success\":true" OR NOT _eval_json_out MATCHES "\"resultType\":\"Integer\"")
-    message(FATAL_ERROR "viper eval --json output malformed:\n${_eval_json_out}")
+    message(FATAL_ERROR "zanna eval --json output malformed:\n${_eval_json_out}")
 endif ()
 if (NOT _eval_json_out MATCHES "\"type\":\"Integer\"")
-    message(FATAL_ERROR "viper eval --type did not report the inferred type:\n${_eval_json_out}")
+    message(FATAL_ERROR "zanna eval --type did not report the inferred type:\n${_eval_json_out}")
 endif ()
 
-# ===== viper eval: compile errors exit 2 =====
+# ===== zanna eval: compile errors exit 2 =====
 execute_process(
-        COMMAND "${VIPER_EXE}" eval "thisIsNotDefined + 1"
+        COMMAND "${ZANNA_EXE}" eval "thisIsNotDefined + 1"
         RESULT_VARIABLE _eval_bad_rc
         OUTPUT_VARIABLE _eval_bad_out
         ERROR_VARIABLE _eval_bad_err)
 if (NOT _eval_bad_rc EQUAL 2)
-    message(FATAL_ERROR "viper eval on bad code should exit 2, got ${_eval_bad_rc}")
+    message(FATAL_ERROR "zanna eval on bad code should exit 2, got ${_eval_bad_rc}")
 endif ()
 
-# ===== viper eval: runtime traps exit 3 =====
+# ===== zanna eval: runtime traps exit 3 =====
 execute_process(
-        COMMAND "${VIPER_EXE}" eval "1 / 0"
+        COMMAND "${ZANNA_EXE}" eval "1 / 0"
         RESULT_VARIABLE _eval_trap_rc
         OUTPUT_VARIABLE _eval_trap_out
         ERROR_VARIABLE _eval_trap_err)
 if (NOT _eval_trap_rc EQUAL 3)
-    message(FATAL_ERROR "viper eval on trapping code should exit 3, got ${_eval_trap_rc}")
+    message(FATAL_ERROR "zanna eval on trapping code should exit 3, got ${_eval_trap_rc}")
 endif ()
 
-# ===== viper explain: cataloged code =====
+# ===== zanna explain: cataloged code =====
 execute_process(
-        COMMAND "${VIPER_EXE}" explain V-ZIA-UNDEFINED
+        COMMAND "${ZANNA_EXE}" explain V-ZIA-UNDEFINED
         RESULT_VARIABLE _explain_rc
         OUTPUT_VARIABLE _explain_out
         ERROR_VARIABLE _explain_err)
 if (NOT _explain_rc EQUAL 0)
-    message(FATAL_ERROR "viper explain V-ZIA-UNDEFINED should exit 0, got ${_explain_rc}:\n${_explain_err}")
+    message(FATAL_ERROR "zanna explain V-ZIA-UNDEFINED should exit 0, got ${_explain_rc}:\n${_explain_err}")
 endif ()
 if (NOT _explain_out MATCHES "zia-sema")
-    message(FATAL_ERROR "viper explain output missing subsystem:\n${_explain_out}")
+    message(FATAL_ERROR "zanna explain output missing subsystem:\n${_explain_out}")
 endif ()
 
-# ===== viper explain --json =====
+# ===== zanna explain --json =====
 execute_process(
-        COMMAND "${VIPER_EXE}" explain W001 --json
+        COMMAND "${ZANNA_EXE}" explain W001 --json
         RESULT_VARIABLE _explain_json_rc
         OUTPUT_VARIABLE _explain_json_out
         ERROR_VARIABLE _explain_json_err)
 if (NOT _explain_json_rc EQUAL 0 OR NOT _explain_json_out MATCHES "\"code\":\"W001\"")
-    message(FATAL_ERROR "viper explain W001 --json malformed:\n${_explain_json_out}")
+    message(FATAL_ERROR "zanna explain W001 --json malformed:\n${_explain_json_out}")
 endif ()
 
-# ===== viper explain: uncataloged code with known prefix still resolves =====
+# ===== zanna explain: uncataloged code with known prefix still resolves =====
 execute_process(
-        COMMAND "${VIPER_EXE}" explain B2113
+        COMMAND "${ZANNA_EXE}" explain B2113
         RESULT_VARIABLE _explain_family_rc
         OUTPUT_VARIABLE _explain_family_out
         ERROR_VARIABLE _explain_family_err)
 if (NOT _explain_family_rc EQUAL 0)
-    message(FATAL_ERROR "viper explain on an uncataloged BASIC code should fall back to its family, got ${_explain_family_rc}")
+    message(FATAL_ERROR "zanna explain on an uncataloged BASIC code should fall back to its family, got ${_explain_family_rc}")
 endif ()
 
-# ===== viper explain: unknown code exits 1 =====
+# ===== zanna explain: unknown code exits 1 =====
 execute_process(
-        COMMAND "${VIPER_EXE}" explain TOTALLY-BOGUS
+        COMMAND "${ZANNA_EXE}" explain TOTALLY-BOGUS
         RESULT_VARIABLE _explain_unknown_rc
         OUTPUT_VARIABLE _explain_unknown_out
         ERROR_VARIABLE _explain_unknown_err)
 if (_explain_unknown_rc EQUAL 0)
-    message(FATAL_ERROR "viper explain on an unknown code should exit non-zero")
+    message(FATAL_ERROR "zanna explain on an unknown code should exit non-zero")
 endif ()
 
 # ===== --print-error-codes --json =====
 execute_process(
-        COMMAND "${VIPER_EXE}" --print-error-codes --json
+        COMMAND "${ZANNA_EXE}" --print-error-codes --json
         RESULT_VARIABLE _codes_rc
         OUTPUT_VARIABLE _codes_out
         ERROR_VARIABLE _codes_err)
@@ -172,7 +172,7 @@ endif ()
 
 # ===== --dump-runtime-api =====
 execute_process(
-        COMMAND "${VIPER_EXE}" --dump-runtime-api
+        COMMAND "${ZANNA_EXE}" --dump-runtime-api
         RESULT_VARIABLE _api_rc
         OUTPUT_VARIABLE _api_out
         ERROR_VARIABLE _api_err)
@@ -193,7 +193,7 @@ if (NOT _api_out MATCHES "\"documentation\":\\{\"summary\":" OR
     message(FATAL_ERROR "--dump-runtime-api missing authored class documentation")
 endif ()
 if (NOT _api_out MATCHES "Provides immutable runtime string values" OR
-    NOT _api_out MATCHES "`Viper.String`")
+    NOT _api_out MATCHES "`Zanna.String`")
     message(FATAL_ERROR "--dump-runtime-api did not preserve authored String documentation")
 endif ()
 if (NOT _api_out MATCHES "\"fallibility\":" OR NOT _api_out MATCHES "\"class_kind\":")
@@ -202,21 +202,21 @@ endif ()
 # VDOC-198: IO conversion/allocation entries carry accurate trapping + owned
 # contracts (previously mislabeled infallible / unknown ownership).
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.IO.Stream.AsBinFile\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.IO.Stream.AsBinFile\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api Stream.AsBinFile contract regressed (expected traps/owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.IO.LineWriter.Append\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.IO.LineWriter.Append\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api LineWriter.Append contract regressed (expected traps/owned)")
 endif ()
 # VDOC-209: trapping/allocating Math entries carry accurate traps + owned
 # contracts (were mislabeled infallible / unknown ownership).
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Math.Mat4.Inverse\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.Math.Mat4.Inverse\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api Mat4.Inverse contract regressed (expected traps/owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Math.BigInt.Div\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.Math.BigInt.Div\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api BigInt.Div contract regressed (expected traps/owned)")
 endif ()
 # VDOC-222: System entries surface their hidden nulls, traps, and statuses.
@@ -224,22 +224,22 @@ endif ()
 # Unsafe releases trap on an invalid object, and PtySession.Resize returns a
 # boolean status rather than an infallible void.
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.System.Process.Start\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"infallible\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.System.Process.Start\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"infallible\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api Process.Start contract regressed (expected nullable return / owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Runtime.Unsafe.Release\"[^\n]*\"fallibility\":\"traps\"")
+        "\"name\":\"Zanna.Runtime.Unsafe.Release\"[^\n]*\"fallibility\":\"traps\"")
     message(FATAL_ERROR "--dump-runtime-api Unsafe.Release contract regressed (expected traps)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.System.Pty.PtySession.Resize\"[^\n]*\"fallibility\":\"status\"")
+        "\"name\":\"Zanna.System.Pty.PtySession.Resize\"[^\n]*\"fallibility\":\"status\"")
     message(FATAL_ERROR "--dump-runtime-api PtySession.Resize contract regressed (expected status)")
 endif ()
 # VDOC-228: TimeZone.Find carries its concrete class return type so Zia can chain
 # instance members, and stays "borrowed" because the handle is static, must-not-free
 # data (not an owned allocation).
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Time.TimeZone.Find\"[^\n]*\"class\":\"Viper.Time.TimeZone\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"borrowed\"")
+        "\"name\":\"Zanna.Time.TimeZone.Find\"[^\n]*\"class\":\"Zanna.Time.TimeZone\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"borrowed\"")
     message(FATAL_ERROR "--dump-runtime-api TimeZone.Find contract regressed (expected typed handle / traps / borrowed)")
 endif ()
 # VDOC-232: Time metadata surfaces sentinel parsers, nullable object returns, and
@@ -247,273 +247,273 @@ endif ()
 # trap); DateOnly.FromParts / DateRange.Intersection return NULL on ordinary
 # failure and own their fresh result; Stopwatch.StartNew is an owned allocation.
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Time.DateTime.ParseIso8601\"[^\n]*\"fallibility\":\"sentinel\"")
+        "\"name\":\"Zanna.Time.DateTime.ParseIso8601\"[^\n]*\"fallibility\":\"sentinel\"")
     message(FATAL_ERROR "--dump-runtime-api DateTime.ParseIso8601 contract regressed (expected sentinel)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Time.DateOnly.FromParts\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.Time.DateOnly.FromParts\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api DateOnly.FromParts contract regressed (expected nullable / owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Time.DateRange.Intersection\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.Time.DateRange.Intersection\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api DateRange.Intersection contract regressed (expected nullable / owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Time.Stopwatch.StartNew\"[^\n]*\"ownership\":\"owned\"")
+        "\"name\":\"Zanna.Time.Stopwatch.StartNew\"[^\n]*\"ownership\":\"owned\"")
     message(FATAL_ERROR "--dump-runtime-api Stopwatch.StartNew contract regressed (expected owned)")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"[^\n]*\"fallibility\":\"status\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"three-d-boundary-policy\"")
+        "\"name\":\"Zanna.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"[^\n]*\"fallibility\":\"status\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"three-d-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api missing the allocation-reusing Canvas3D status contract")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.App.New\"[^\n]*\"c_symbol\":\"rt_gui_app_new\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.App.New\"[^\n]*\"c_symbol\":\"rt_gui_app_new\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI App.New contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.App.TryNew\"[^\n]*\"class\":\"Viper.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.App.TryNew\"[^\n]*\"class\":\"Zanna.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI App.TryNew Result contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.App.get_Root\"[^\n]*\"class\":\"Viper.GUI.Widget\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"borrowed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.App.get_Root\"[^\n]*\"class\":\"Zanna.GUI.Widget\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"borrowed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI App.Root borrowed contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.App.RunFrameWithDelta\"[^\n]*\"c_symbol\":\"rt_gui_app_run_frame_with_delta\"[^\n]*\"return_type\":\{\"raw\":\"i1\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.App.RunFrameWithDelta\"[^\n]*\"c_symbol\":\"rt_gui_app_run_frame_with_delta\"[^\n]*\"return_type\":\{\"raw\":\"i1\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI deterministic frame contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"GetNextDeadlineMs\"[^\n]*\"target\":\"Viper.GUI.App.GetNextDeadlineMs\"[^\n]*\"c_symbol\":\"rt_gui_app_get_next_deadline_ms\"")
+        "\"name\":\"GetNextDeadlineMs\"[^\n]*\"target\":\"Zanna.GUI.App.GetNextDeadlineMs\"[^\n]*\"c_symbol\":\"rt_gui_app_get_next_deadline_ms\"")
     message(FATAL_ERROR "--dump-runtime-api GUI deadline method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.CodeEditor.TakeGutterClick\"[^\n]*\"class\":\"Viper.Collections.Map\"[^\n]*\"nullable\":false[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.CodeEditor.TakeGutterClick\"[^\n]*\"class\":\"Zanna.Collections.Map\"[^\n]*\"nullable\":false[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI TakeGutterClick typed-map contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.Theme.GetPalette\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.Theme.GetPalette\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI Theme.GetPalette ownership contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.ThemePalette.FromDark\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.ThemePalette.FromDark\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI ThemePalette factory ownership contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.ThemePalette.Validate\"[^\n]*\"class\":\"Viper.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.ThemePalette.Validate\"[^\n]*\"class\":\"Zanna.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api GUI ThemePalette.Validate Result contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.TreeView.GetLoadRequestedNodeOption\"[^\n]*\"class\":\"Viper.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.TreeView.GetLoadRequestedNodeOption\"[^\n]*\"class\":\"Zanna.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api TreeView lazy-load Option contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.GUI.TreeView.GetActivatedNodeOption\"[^\n]*\"class\":\"Viper.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+        "\"name\":\"Zanna.GUI.TreeView.GetActivatedNodeOption\"[^\n]*\"class\":\"Zanna.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api TreeView activation Option contract regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"MoveTab\"[^\n]*\"target\":\"Viper.GUI.TabBar.MoveTab\"[^\n]*\"c_symbol\":\"rt_tabbar_move_tab\"")
+        "\"name\":\"MoveTab\"[^\n]*\"target\":\"Zanna.GUI.TabBar.MoveTab\"[^\n]*\"c_symbol\":\"rt_tabbar_move_tab\"")
     message(FATAL_ERROR "--dump-runtime-api TabBar reorder method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"GetCollapsedSide\"[^\n]*\"target\":\"Viper.GUI.SplitPane.GetCollapsedSide\"[^\n]*\"c_symbol\":\"rt_splitpane_get_collapsed_side\"")
+        "\"name\":\"GetCollapsedSide\"[^\n]*\"target\":\"Zanna.GUI.SplitPane.GetCollapsedSide\"[^\n]*\"c_symbol\":\"rt_splitpane_get_collapsed_side\"")
     message(FATAL_ERROR "--dump-runtime-api SplitPane collapse method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"SetSelectedIndex\"[^\n]*\"target\":\"Viper.GUI.RadioGroup.SetSelectedIndex\"[^\n]*\"c_symbol\":\"rt_radiogroup_set_selected_index\"")
+        "\"name\":\"SetSelectedIndex\"[^\n]*\"target\":\"Zanna.GUI.RadioGroup.SetSelectedIndex\"[^\n]*\"c_symbol\":\"rt_radiogroup_set_selected_index\"")
     message(FATAL_ERROR "--dump-runtime-api RadioGroup selected-index method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"GetSelectedText\"[^\n]*\"target\":\"Viper.GUI.Label.GetSelectedText\"[^\n]*\"c_symbol\":\"rt_label_get_selected_text\"")
+        "\"name\":\"GetSelectedText\"[^\n]*\"target\":\"Zanna.GUI.Label.GetSelectedText\"[^\n]*\"c_symbol\":\"rt_label_get_selected_text\"")
     message(FATAL_ERROR "--dump-runtime-api selectable Label method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"GetColorAt\"[^\n]*\"target\":\"Viper.GUI.ColorPalette.GetColorAt\"[^\n]*\"c_symbol\":\"rt_colorpalette_get_color_at\"")
+        "\"name\":\"GetColorAt\"[^\n]*\"target\":\"Zanna.GUI.ColorPalette.GetColorAt\"[^\n]*\"c_symbol\":\"rt_colorpalette_get_color_at\"")
     message(FATAL_ERROR "--dump-runtime-api ColorPalette indexed-color method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"SetAlphaEnabled\"[^\n]*\"target\":\"Viper.GUI.ColorPicker.SetAlphaEnabled\"[^\n]*\"c_symbol\":\"rt_colorpicker_set_alpha_enabled\"")
+        "\"name\":\"SetAlphaEnabled\"[^\n]*\"target\":\"Zanna.GUI.ColorPicker.SetAlphaEnabled\"[^\n]*\"c_symbol\":\"rt_colorpicker_set_alpha_enabled\"")
     message(FATAL_ERROR "--dump-runtime-api ColorPicker alpha method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"SetVirtualCell\"[^\n]*\"target\":\"Viper.GUI.Grid.SetVirtualCell\"[^\n]*\"c_symbol\":\"rt_datagrid_set_virtual_cell\"")
+        "\"name\":\"SetVirtualCell\"[^\n]*\"target\":\"Zanna.GUI.Grid.SetVirtualCell\"[^\n]*\"c_symbol\":\"rt_datagrid_set_virtual_cell\"")
     message(FATAL_ERROR "--dump-runtime-api Grid sparse-cell method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"CommitEdit\"[^\n]*\"target\":\"Viper.GUI.Grid.CommitEdit\"[^\n]*\"c_symbol\":\"rt_datagrid_commit_edit\"")
+        "\"name\":\"CommitEdit\"[^\n]*\"target\":\"Zanna.GUI.Grid.CommitEdit\"[^\n]*\"c_symbol\":\"rt_datagrid_commit_edit\"")
     message(FATAL_ERROR "--dump-runtime-api Grid edit method binding regressed")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"Viper.Graphics3D.Canvas3D.Screenshot\"[^\n]*\"c_symbol\":\"rt_canvas3d_screenshot\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"")
+        "\"name\":\"Zanna.Graphics3D.Canvas3D.Screenshot\"[^\n]*\"c_symbol\":\"rt_canvas3d_screenshot\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"")
     message(FATAL_ERROR "--dump-runtime-api missing the Canvas3D screenshot ownership contract")
 endif ()
 if (NOT _api_out MATCHES
-        "\"name\":\"TryCopyScreenshotTo\"[^\n]*\"target\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"")
+        "\"name\":\"TryCopyScreenshotTo\"[^\n]*\"target\":\"Zanna.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"")
     message(FATAL_ERROR "--dump-runtime-api class methods must resolve to backing C symbols")
 endif ()
-if (NOT _api_out MATCHES "Viper.Terminal.Say")
+if (NOT _api_out MATCHES "Zanna.Terminal.Say")
     message(FATAL_ERROR "--dump-runtime-api missing canonical function entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Diagnostics.CurrentTrap" OR
-    NOT _api_out MATCHES "Viper.Diagnostics.TrapInfo")
+if (NOT _api_out MATCHES "Zanna.Diagnostics.CurrentTrap" OR
+    NOT _api_out MATCHES "Zanna.Diagnostics.TrapInfo")
     message(FATAL_ERROR "--dump-runtime-api missing diagnostics trap snapshot entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Runtime.Unsafe.Retain" OR
-    NOT _api_out MATCHES "Viper.Runtime.Unsafe.SetThrowMsg" OR
-    NOT _api_out MATCHES "Viper.Runtime.Unsafe.SetTrapFields" OR
-    NOT _api_out MATCHES "Viper.Runtime.GC.Collect")
+if (NOT _api_out MATCHES "Zanna.Runtime.Unsafe.Retain" OR
+    NOT _api_out MATCHES "Zanna.Runtime.Unsafe.SetThrowMsg" OR
+    NOT _api_out MATCHES "Zanna.Runtime.Unsafe.SetTrapFields" OR
+    NOT _api_out MATCHES "Zanna.Runtime.GC.Collect")
     message(FATAL_ERROR "--dump-runtime-api missing runtime namespace memory entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Core.Parse.TryDouble" OR
-    NOT _api_out MATCHES "Viper.Core.Parse.DoubleOr")
+if (NOT _api_out MATCHES "Zanna.Core.Parse.TryDouble" OR
+    NOT _api_out MATCHES "Zanna.Core.Parse.DoubleOr")
     message(FATAL_ERROR "--dump-runtime-api missing canonical parse double entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Core.Convert.ToStringInt" OR
-    NOT _api_out MATCHES "Viper.Core.Convert.ToStringDouble")
+if (NOT _api_out MATCHES "Zanna.Core.Convert.ToStringInt" OR
+    NOT _api_out MATCHES "Zanna.Core.Convert.ToStringDouble")
     message(FATAL_ERROR "--dump-runtime-api missing canonical convert string entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Collections.Seq.get_Capacity" OR
-    NOT _api_out MATCHES "Viper.Threads.Channel.get_Capacity" OR
-    NOT _api_out MATCHES "Viper.IO.BinaryBuffer.NewCapacity")
+if (NOT _api_out MATCHES "Zanna.Collections.Seq.get_Capacity" OR
+    NOT _api_out MATCHES "Zanna.Threads.Channel.get_Capacity" OR
+    NOT _api_out MATCHES "Zanna.IO.BinaryBuffer.NewCapacity")
     message(FATAL_ERROR "--dump-runtime-api missing canonical capacity entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Collections.BloomFilter.FalsePositiveRate")
+if (NOT _api_out MATCHES "Zanna.Collections.BloomFilter.FalsePositiveRate")
     message(FATAL_ERROR "--dump-runtime-api missing canonical BloomFilter rate entry")
 endif ()
-if (NOT _api_out MATCHES "Viper.Text.Fmt.Scientific" OR
-    NOT _api_out MATCHES "Viper.Text.Fmt.Percent" OR
-    NOT _api_out MATCHES "Viper.Text.Fmt.YesNo")
+if (NOT _api_out MATCHES "Zanna.Text.Fmt.Scientific" OR
+    NOT _api_out MATCHES "Zanna.Text.Fmt.Percent" OR
+    NOT _api_out MATCHES "Zanna.Text.Fmt.YesNo")
     message(FATAL_ERROR "--dump-runtime-api missing canonical formatting entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Collections.LruCache.Set" OR
-    NOT _api_out MATCHES "Viper.Collections.BiMap.Set" OR
-    NOT _api_out MATCHES "Viper.Collections.MultiMap.Add")
+if (NOT _api_out MATCHES "Zanna.Collections.LruCache.Set" OR
+    NOT _api_out MATCHES "Zanna.Collections.BiMap.Set" OR
+    NOT _api_out MATCHES "Zanna.Collections.MultiMap.Add")
     message(FATAL_ERROR "--dump-runtime-api missing canonical collection write entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Graphics3D.Mesh3D.Box" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.Material3D.FromColor" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.Light3D.Directional" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.Collider3D.Capsule" OR
-    NOT _api_out MATCHES "Viper.Game3D.World3D.WithHorizontalCamera")
+if (NOT _api_out MATCHES "Zanna.Graphics3D.Mesh3D.Box" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.Material3D.FromColor" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.Light3D.Directional" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.Collider3D.Capsule" OR
+    NOT _api_out MATCHES "Zanna.Game3D.World3D.WithHorizontalCamera")
     message(FATAL_ERROR "--dump-runtime-api missing canonical factory entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Collections.Queue.TryPop" OR
-    NOT _api_out MATCHES "Viper.Collections.Heap.TryPeek" OR
-    NOT _api_out MATCHES "Viper.Collections.Deque.TryPopBack" OR
-    NOT _api_out MATCHES "Viper.Threads.Promise.GetFuture.*obj<Viper.Threads.Future>" OR
-    NOT _api_out MATCHES "Viper.Threads.Async.Delay.*obj<Viper.Threads.Future>" OR
-    NOT _api_out MATCHES "Viper.Threads.Channel.TryRecv" OR
-    NOT _api_out MATCHES "Viper.Threads.Future.TryGet" OR
-    NOT _api_out MATCHES "Viper.Time.DateTime.TryParse" OR
-    NOT _api_out MATCHES "Viper.Localization.MessageBundle.TryGet" OR
-    NOT _api_out MATCHES "Viper.Localization.MessageBundle.GetOr" OR
-    NOT _api_out MATCHES "Viper.Localization.Locale.TryParse" OR
-    NOT _api_out MATCHES "Viper.Collections.Bytes.Find" OR
-    NOT _api_out MATCHES "Viper.Collections.UnionFind.FindRoot" OR
-    NOT _api_out MATCHES "Viper.Collections.Seq.FindWhereOption" OR
-    NOT _api_out MATCHES "Viper.Text.Pattern.Find" OR
-    NOT _api_out MATCHES "Viper.Data.Xml.Find" OR
-    NOT _api_out MATCHES "Viper.Graphics2D.SceneGraph.Find" OR
-    NOT _api_out MATCHES "Viper.Audio.Mixer.FindGroup" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneGraph.Find" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneNode.Find" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.Skeleton3D.FindBoneOption" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.FindNode" OR
-    NOT _api_out MATCHES "Viper.Game3D.World3D.FindNode" OR
-    NOT _api_out MATCHES "Viper.Game3D.World3D.FindEntity" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.NavMesh3D.FindPathOption" OR
-    NOT _api_out MATCHES "Viper.GUI.FindBar.FindNext" OR
-    NOT _api_out MATCHES "Viper.GUI.TestHarness.FindById" OR
-    NOT _api_out MATCHES "Viper.GUI.CommandRegistry.Find" OR
-    NOT _api_out MATCHES "Viper.Game.UI.HudTableClickResult.RowOption" OR
-    NOT _api_out MATCHES "Viper.Game.UI.HudTableClickResult.ColumnOption")
+if (NOT _api_out MATCHES "Zanna.Collections.Queue.TryPop" OR
+    NOT _api_out MATCHES "Zanna.Collections.Heap.TryPeek" OR
+    NOT _api_out MATCHES "Zanna.Collections.Deque.TryPopBack" OR
+    NOT _api_out MATCHES "Zanna.Threads.Promise.GetFuture.*obj<Zanna.Threads.Future>" OR
+    NOT _api_out MATCHES "Zanna.Threads.Async.Delay.*obj<Zanna.Threads.Future>" OR
+    NOT _api_out MATCHES "Zanna.Threads.Channel.TryRecv" OR
+    NOT _api_out MATCHES "Zanna.Threads.Future.TryGet" OR
+    NOT _api_out MATCHES "Zanna.Time.DateTime.TryParse" OR
+    NOT _api_out MATCHES "Zanna.Localization.MessageBundle.TryGet" OR
+    NOT _api_out MATCHES "Zanna.Localization.MessageBundle.GetOr" OR
+    NOT _api_out MATCHES "Zanna.Localization.Locale.TryParse" OR
+    NOT _api_out MATCHES "Zanna.Collections.Bytes.Find" OR
+    NOT _api_out MATCHES "Zanna.Collections.UnionFind.FindRoot" OR
+    NOT _api_out MATCHES "Zanna.Collections.Seq.FindWhereOption" OR
+    NOT _api_out MATCHES "Zanna.Text.Pattern.Find" OR
+    NOT _api_out MATCHES "Zanna.Data.Xml.Find" OR
+    NOT _api_out MATCHES "Zanna.Graphics2D.SceneGraph.Find" OR
+    NOT _api_out MATCHES "Zanna.Audio.Mixer.FindGroup" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneGraph.Find" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneNode.Find" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.Skeleton3D.FindBoneOption" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.FindNode" OR
+    NOT _api_out MATCHES "Zanna.Game3D.World3D.FindNode" OR
+    NOT _api_out MATCHES "Zanna.Game3D.World3D.FindEntity" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.NavMesh3D.FindPathOption" OR
+    NOT _api_out MATCHES "Zanna.GUI.FindBar.FindNext" OR
+    NOT _api_out MATCHES "Zanna.GUI.TestHarness.FindById" OR
+    NOT _api_out MATCHES "Zanna.GUI.CommandRegistry.Find" OR
+    NOT _api_out MATCHES "Zanna.Game.UI.HudTableClickResult.RowOption" OR
+    NOT _api_out MATCHES "Zanna.Game.UI.HudTableClickResult.ColumnOption")
     message(FATAL_ERROR "--dump-runtime-api missing modern Option-returning failure entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Graphics.Canvas.SetMaxDeltaTime" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.Canvas3D.SetMaxDeltaTime")
+if (NOT _api_out MATCHES "Zanna.Graphics.Canvas.SetMaxDeltaTime" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.Canvas3D.SetMaxDeltaTime")
     message(FATAL_ERROR "--dump-runtime-api missing canonical frame delta entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Input.Key" OR
-    NOT _api_out MATCHES "Viper.Input.Key.get_A" OR
-    NOT _api_out MATCHES "Viper.Input.Key.get_LeftShift" OR
-    NOT _api_out MATCHES "Viper.Input.Key.get_NumpadDecimal")
+if (NOT _api_out MATCHES "Zanna.Input.Key" OR
+    NOT _api_out MATCHES "Zanna.Input.Key.get_A" OR
+    NOT _api_out MATCHES "Zanna.Input.Key.get_LeftShift" OR
+    NOT _api_out MATCHES "Zanna.Input.Key.get_NumpadDecimal")
     message(FATAL_ERROR "--dump-runtime-api missing canonical input key entries")
 endif ()
-if (NOT _api_out MATCHES "\"name\":\"Viper.Math.Random.Chance\"[^\\n]*\"signature\":\"i1\\(f64\\)\"")
+if (NOT _api_out MATCHES "\"name\":\"Zanna.Math.Random.Chance\"[^\\n]*\"signature\":\"i1\\(f64\\)\"")
     message(FATAL_ERROR "--dump-runtime-api missing boolean Random.Chance row")
 endif ()
-if (NOT _api_out MATCHES "Viper.Crypto.Compliance.EnableApprovedModeForProcess" OR
-    NOT _api_out MATCHES "Viper.Crypto.Compliance.DisableApprovedModeForProcess" OR
-    NOT _api_out MATCHES "Viper.Crypto.Compliance.IsApprovedModeForProcess")
+if (NOT _api_out MATCHES "Zanna.Crypto.Compliance.EnableApprovedModeForProcess" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Compliance.DisableApprovedModeForProcess" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Compliance.IsApprovedModeForProcess")
     message(FATAL_ERROR "--dump-runtime-api missing process-scoped Crypto.Compliance policy rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Runtime.Unsafe.ValueType" OR
-    NOT _api_out MATCHES "Viper.Runtime.Unsafe.ValueTypeAddField")
+if (NOT _api_out MATCHES "Zanna.Runtime.Unsafe.ValueType" OR
+    NOT _api_out MATCHES "Zanna.Runtime.Unsafe.ValueTypeAddField")
     message(FATAL_ERROR "--dump-runtime-api missing unsafe boxed value-type rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Game3D.Prefab.Load" OR
-    NOT _api_out MATCHES "Viper.Game3D.Prefab.LoadAsset" OR
-    NOT _api_out MATCHES "Viper.Game3D.AssetHandle3D.GetPrefab")
+if (NOT _api_out MATCHES "Zanna.Game3D.Prefab.Load" OR
+    NOT _api_out MATCHES "Zanna.Game3D.Prefab.LoadAsset" OR
+    NOT _api_out MATCHES "Zanna.Game3D.AssetHandle3D.GetPrefab")
     message(FATAL_ERROR "--dump-runtime-api missing canonical Game3D prefab loading rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Network.HttpReq.SendResult" OR
-    NOT _api_out MATCHES "Viper.Network.RestClient.GetResult" OR
-    NOT _api_out MATCHES "Viper.Network.RestClient.PostResult" OR
-    NOT _api_out MATCHES "Viper.Network.SmtpClient.SendResult" OR
-    NOT _api_out MATCHES "Viper.Network.SmtpClient.SendHtmlResult" OR
-    NOT _api_out MATCHES "Viper.Network.RestClient.HeadResult")
+if (NOT _api_out MATCHES "Zanna.Network.HttpReq.SendResult" OR
+    NOT _api_out MATCHES "Zanna.Network.RestClient.GetResult" OR
+    NOT _api_out MATCHES "Zanna.Network.RestClient.PostResult" OR
+    NOT _api_out MATCHES "Zanna.Network.SmtpClient.SendResult" OR
+    NOT _api_out MATCHES "Zanna.Network.SmtpClient.SendHtmlResult" OR
+    NOT _api_out MATCHES "Zanna.Network.RestClient.HeadResult")
     message(FATAL_ERROR "--dump-runtime-api missing network Result-returning HTTP rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Data.JsonStream.NextResult" OR
-    NOT _api_out MATCHES "Viper.Data.Xml.ParseResult" OR
-    NOT _api_out MATCHES "Viper.Data.Yaml.ParseResult" OR
-    NOT _api_out MATCHES "Viper.Data.Serialize.ParseResult" OR
-    NOT _api_out MATCHES "Viper.Data.Serialize.AutoParseResult")
+if (NOT _api_out MATCHES "Zanna.Data.JsonStream.NextResult" OR
+    NOT _api_out MATCHES "Zanna.Data.Xml.ParseResult" OR
+    NOT _api_out MATCHES "Zanna.Data.Yaml.ParseResult" OR
+    NOT _api_out MATCHES "Zanna.Data.Serialize.ParseResult" OR
+    NOT _api_out MATCHES "Zanna.Data.Serialize.AutoParseResult")
     message(FATAL_ERROR "--dump-runtime-api missing Result-returning data format parse rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectResult" OR
-    NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectForResult" OR
-    NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectOptionsResult" OR
-    NOT _api_out MATCHES "Viper.System.Pty.OpenResult" OR
-    NOT _api_out MATCHES "Viper.Zia.SemanticJob.Error" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadResult" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAssetResult" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAnimationResult" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult" OR
-    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult" OR
-    NOT _api_out MATCHES "Viper.Game2D.SceneDocument.LoadResult" OR
-    NOT _api_out MATCHES "Viper.Game2D.SceneDocument.LoadJsonResult")
+if (NOT _api_out MATCHES "Zanna.Crypto.Tls.ConnectResult" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Tls.ConnectForResult" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Tls.ConnectOptionsResult" OR
+    NOT _api_out MATCHES "Zanna.System.Pty.OpenResult" OR
+    NOT _api_out MATCHES "Zanna.Zia.SemanticJob.Error" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadResult" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadAssetResult" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadAnimationResult" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadAnimationAssetResult" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadNodeAnimationResult" OR
+    NOT _api_out MATCHES "Zanna.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult" OR
+    NOT _api_out MATCHES "Zanna.Game2D.SceneDocument.LoadResult" OR
+    NOT _api_out MATCHES "Zanna.Game2D.SceneDocument.LoadJsonResult")
     message(FATAL_ERROR "--dump-runtime-api missing Result-returning connect/open/load rows")
 endif ()
-if (NOT _api_out MATCHES "Viper.Crypto.Cipher.DecryptResult" OR
-    NOT _api_out MATCHES "Viper.Crypto.Cipher.TryDecryptWithKeyAad" OR
-    NOT _api_out MATCHES "Viper.Crypto.Aes.DecryptAuthResult" OR
-    NOT _api_out MATCHES "Viper.Crypto.Aes.TryDecryptStr" OR
-    NOT _api_out MATCHES "Viper.Network.HttpReq.AllowInsecureCertificatesForTesting" OR
-    NOT _api_out MATCHES "Viper.Crypto.Legacy.Hash.Md5" OR
-    NOT _api_out MATCHES "Viper.Crypto.Legacy.Aes.DecryptCbcResult")
+if (NOT _api_out MATCHES "Zanna.Crypto.Cipher.DecryptResult" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Cipher.TryDecryptWithKeyAad" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Aes.DecryptAuthResult" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Aes.TryDecryptStr" OR
+    NOT _api_out MATCHES "Zanna.Network.HttpReq.AllowInsecureCertificatesForTesting" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Legacy.Hash.Md5" OR
+    NOT _api_out MATCHES "Zanna.Crypto.Legacy.Aes.DecryptCbcResult")
     message(FATAL_ERROR "--dump-runtime-api missing modern crypto failure/legacy entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Math.Bits.CountLeadingZeros" OR
-    NOT _api_out MATCHES "Viper.Math.Bits.RotateLeft" OR
-    NOT _api_out MATCHES "Viper.Math.Bits.ShiftRightLogical")
+if (NOT _api_out MATCHES "Zanna.Math.Bits.CountLeadingZeros" OR
+    NOT _api_out MATCHES "Zanna.Math.Bits.RotateLeft" OR
+    NOT _api_out MATCHES "Zanna.Math.Bits.ShiftRightLogical")
     message(FATAL_ERROR "--dump-runtime-api missing canonical math bit entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Terminal.TryReadLine" OR
-    NOT _api_out MATCHES "Viper.Terminal.ReadLineResult")
+if (NOT _api_out MATCHES "Zanna.Terminal.TryReadLine" OR
+    NOT _api_out MATCHES "Zanna.Terminal.ReadLineResult")
     message(FATAL_ERROR "--dump-runtime-api missing modern terminal input entries")
 endif ()
-if (NOT _api_out MATCHES "Viper.Game.Pathfinder.FindPath" OR
-    NOT _api_out MATCHES "Viper.Game.PathResult.get_Found" OR
-    NOT _api_out MATCHES "Viper.Game.PathResult.get_StepCount" OR
-    NOT _api_out MATCHES "Viper.Game.Quadtree.QueryRect" OR
-    NOT _api_out MATCHES "Viper.Game.QueryResult.GetId" OR
-    NOT _api_out MATCHES "Viper.Game.Quadtree.QueryPairs" OR
-    NOT _api_out MATCHES "Viper.Game.QuadtreePairResult.First" OR
-    NOT _api_out MATCHES "Viper.Game.UI.HudTable.HandleClick" OR
-    NOT _api_out MATCHES "Viper.Game.UI.HudTableClickResult.get_IsHeader" OR
-    NOT _api_out MATCHES "Viper.Game.AnimStateMachine.PollEvents" OR
-    NOT _api_out MATCHES "Viper.Game.AnimationEventBatch.GetId")
+if (NOT _api_out MATCHES "Zanna.Game.Pathfinder.FindPath" OR
+    NOT _api_out MATCHES "Zanna.Game.PathResult.get_Found" OR
+    NOT _api_out MATCHES "Zanna.Game.PathResult.get_StepCount" OR
+    NOT _api_out MATCHES "Zanna.Game.Quadtree.QueryRect" OR
+    NOT _api_out MATCHES "Zanna.Game.QueryResult.GetId" OR
+    NOT _api_out MATCHES "Zanna.Game.Quadtree.QueryPairs" OR
+    NOT _api_out MATCHES "Zanna.Game.QuadtreePairResult.First" OR
+    NOT _api_out MATCHES "Zanna.Game.UI.HudTable.HandleClick" OR
+    NOT _api_out MATCHES "Zanna.Game.UI.HudTableClickResult.get_IsHeader" OR
+    NOT _api_out MATCHES "Zanna.Game.AnimStateMachine.PollEvents" OR
+    NOT _api_out MATCHES "Zanna.Game.AnimationEventBatch.GetId")
     message(FATAL_ERROR "--dump-runtime-api missing game result snapshot entries")
 endif ()
 if (_api_out MATCHES "str\\?")
@@ -526,7 +526,7 @@ endif ()
 
 # ===== --dump-opcodes =====
 execute_process(
-        COMMAND "${VIPER_EXE}" --dump-opcodes
+        COMMAND "${ZANNA_EXE}" --dump-opcodes
         RESULT_VARIABLE _ops_rc
         OUTPUT_VARIABLE _ops_out
         ERROR_VARIABLE _ops_err)

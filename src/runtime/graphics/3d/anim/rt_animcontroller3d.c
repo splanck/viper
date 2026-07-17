@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/anim/rt_animcontroller3d.c
 // Purpose: High-level skeletal animation controller backing
-//          `Viper.Graphics3D.AnimController3D`. Provides named states,
+//          `Zanna.Graphics3D.AnimController3D`. Provides named states,
 //          transitions, events, root-motion extraction, and simple
 //          masked overlay layers on top of the underlying AnimPlayer3D.
 //
@@ -24,11 +24,11 @@
 //
 // Links: src/runtime/graphics/3d/anim/rt_animcontroller3d.h (public API),
 //        src/runtime/graphics/3d/anim/rt_skeleton3d.h (underlying AnimPlayer3D),
-//        docs/viperlib/graphics/animation.md
+//        docs/zannalib/graphics/animation.md
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_animcontroller3d.h"
 

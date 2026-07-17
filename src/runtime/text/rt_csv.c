@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_csv.c
-// Purpose: Implements CSV parsing and formatting for the Viper.Data.Csv class,
+// Purpose: Implements CSV parsing and formatting for the Zanna.Data.Csv class,
 //          following RFC 4180 quoting rules. Handles quoted fields, doubled-quote
 //          escaping, and CRLF/LF/CR line endings. Supports a configurable
 //          single-byte field delimiter. Deviations from strict RFC 4180:

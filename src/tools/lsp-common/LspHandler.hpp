@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <string>
 
-namespace viper::server {
+namespace zanna::server {
 
 class Transport;
 
@@ -116,4 +116,4 @@ class LspHandler {
     static int symbolKindToLsp(const std::string &kind);
 };
 
-} // namespace viper::server
+} // namespace zanna::server

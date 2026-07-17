@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,13 +31,13 @@ namespace {
 /// @brief Return true when @p name is a concrete runtime object namespace.
 /// @details Runtime classes from the catalog are registered in Sema::typeRegistry_. Some
 ///          legacy runtime objects are still represented only by runtime.def functions such as
-///          `Viper.Game.Entity.New` and `Viper.Game.Behavior.Update`. This helper recognizes
-///          those object namespaces without treating broad modules like `Viper.Game` or arbitrary
-///          unknown `Viper.*` names as types.
+///          `Zanna.Game.Entity.New` and `Zanna.Game.Behavior.Update`. This helper recognizes
+///          those object namespaces without treating broad modules like `Zanna.Game` or arbitrary
+///          unknown `Zanna.*` names as types.
 /// @param name Fully-qualified runtime namespace candidate.
 /// @return True if the generated runtime name map has at least one direct member under @p name.
 bool isKnownRuntimeObjectNamespace(std::string_view name) {
-    if (name.rfind("Viper.", 0) != 0)
+    if (name.rfind("Zanna.", 0) != 0)
         return false;
 
     std::string prefix(name);
@@ -55,12 +55,12 @@ bool isKnownRuntimeObjectNamespace(std::string_view name) {
 
 /// @brief Return a canonical runtime type spelling for source-level compatibility aliases.
 /// @details A few Zia examples use older concise names for runtime objects whose catalog name is
-///          now nested. Keep those aliases explicit so unknown `Viper.*` names are still rejected.
+///          now nested. Keep those aliases explicit so unknown `Zanna.*` names are still rejected.
 /// @param name Fully-qualified candidate type name.
 /// @return Canonical runtime type name, or @p name when no alias applies.
 std::string canonicalRuntimeTypeName(std::string_view name) {
-    if (name == "Viper.GUI.TreeNode")
-        return "Viper.GUI.TreeView.Node";
+    if (name == "Zanna.GUI.TreeNode")
+        return "Zanna.GUI.TreeView.Node";
     return std::string(name);
 }
 
@@ -101,7 +101,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         return types::any();
     if (name == "Never" || name == "never")
         return types::never();
-    if (name == "Ptr" || name == "ptr" || name == "Viper.Unsafe.Ptr") {
+    if (name == "Ptr" || name == "ptr" || name == "Zanna.Unsafe.Ptr") {
         const_cast<Sema *>(this)->error(
             useLoc, "Ptr is not part of the Zia source surface; use typed runtime classes or Any");
         return types::unknown();
@@ -117,32 +117,32 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     if (name == "Seq")
         return types::seqOf(types::unknown());
     if (name == "Queue")
-        return types::runtimeClass("Viper.Collections.Queue", {types::unknown()});
+        return types::runtimeClass("Zanna.Collections.Queue", {types::unknown()});
     if (name == "Stack")
-        return types::runtimeClass("Viper.Collections.Stack", {types::unknown()});
+        return types::runtimeClass("Zanna.Collections.Stack", {types::unknown()});
     if (name == "Deque")
-        return types::runtimeClass("Viper.Collections.Deque", {types::unknown()});
+        return types::runtimeClass("Zanna.Collections.Deque", {types::unknown()});
     if (name == "Bytes")
-        return types::runtimeClass("Viper.Collections.Bytes");
-    if (name == "Viper.Collections.List")
-        return types::runtimeClass("Viper.Collections.List", {types::unknown()});
-    if (name == "Viper.Collections.Seq")
+        return types::runtimeClass("Zanna.Collections.Bytes");
+    if (name == "Zanna.Collections.List")
+        return types::runtimeClass("Zanna.Collections.List", {types::unknown()});
+    if (name == "Zanna.Collections.Seq")
         return types::seqOf(types::unknown());
-    if (name == "Viper.Collections.Queue")
-        return types::runtimeClass("Viper.Collections.Queue", {types::unknown()});
-    if (name == "Viper.Collections.Stack")
-        return types::runtimeClass("Viper.Collections.Stack", {types::unknown()});
-    if (name == "Viper.Collections.Deque")
-        return types::runtimeClass("Viper.Collections.Deque", {types::unknown()});
-    if (name == "Viper.Collections.Ring")
-        return types::runtimeClass("Viper.Collections.Ring", {types::unknown()});
-    if (name == "Viper.Collections.Heap")
-        return types::runtimeClass("Viper.Collections.Heap", {types::unknown()});
-    if (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-        name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
-        name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
-        name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
-        name == "Viper.Collections.MultiMap")
+    if (name == "Zanna.Collections.Queue")
+        return types::runtimeClass("Zanna.Collections.Queue", {types::unknown()});
+    if (name == "Zanna.Collections.Stack")
+        return types::runtimeClass("Zanna.Collections.Stack", {types::unknown()});
+    if (name == "Zanna.Collections.Deque")
+        return types::runtimeClass("Zanna.Collections.Deque", {types::unknown()});
+    if (name == "Zanna.Collections.Ring")
+        return types::runtimeClass("Zanna.Collections.Ring", {types::unknown()});
+    if (name == "Zanna.Collections.Heap")
+        return types::runtimeClass("Zanna.Collections.Heap", {types::unknown()});
+    if (name == "Zanna.Collections.Map" || name == "Zanna.Collections.OrderedMap" ||
+        name == "Zanna.Collections.SortedMap" || name == "Zanna.Collections.Trie" ||
+        name == "Zanna.Collections.FrozenMap" || name == "Zanna.Collections.DefaultMap" ||
+        name == "Zanna.Collections.WeakMap" || name == "Zanna.Collections.LruCache" ||
+        name == "Zanna.Collections.MultiMap")
         return types::runtimeClass(name, {types::string(), types::unknown()});
 
     if (name.find('.') == std::string::npos && useLoc.file_id != 0) {
@@ -221,17 +221,17 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     };
 
     // Check if this is an imported type from a bound namespace
-    // e.g., "Canvas" imported from "Viper.Graphics"
+    // e.g., "Canvas" imported from "Zanna.Graphics"
     auto importIt = importedSymbols_.find(name);
     if (importIt != importedSymbols_.end()) {
         const std::string &fullName = importIt->second;
 
         // Check if the imported type is a built-in collection type
-        if (fullName == "Viper.Collections.List")
+        if (fullName == "Zanna.Collections.List")
             return types::list(types::unknown());
-        if (fullName == "Viper.Collections.Set")
+        if (fullName == "Zanna.Collections.Set")
             return types::set(types::unknown());
-        if (fullName == "Viper.Collections.Map")
+        if (fullName == "Zanna.Collections.Map")
             return types::map(types::string(), types::unknown());
 
         // Look up the full qualified name in the registry
@@ -243,7 +243,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         // Runtime classes must be registered in typeRegistry_. Legacy runtime object
         // namespaces backed by runtime.def direct members remain valid object types, but
         // broad namespaces and functions are not valid type names.
-        if (canonicalFullName.rfind("Viper.", 0) == 0) {
+        if (canonicalFullName.rfind("Zanna.", 0) == 0) {
             if (isKnownRuntimeObjectNamespace(canonicalFullName))
                 return types::runtimeClass(canonicalFullName);
             return nullptr;
@@ -289,12 +289,12 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
             boundFileModuleIds_.find(prefix) != boundFileModuleIds_.end() ||
             (fileModuleIdIt != fileBoundModuleIds_.end() &&
              fileModuleIdIt->second.find(prefix) != fileModuleIdIt->second.end());
-        if (visibleFileModule && prefix != "Viper") {
+        if (visibleFileModule && prefix != "Zanna") {
             if (TypeRef resolved = lookupRegisteredType(suffix))
                 return resolved;
         }
 
-        // Check if prefix is a namespace alias (e.g., GUI -> Viper.GUI)
+        // Check if prefix is a namespace alias (e.g., GUI -> Zanna.GUI)
         auto prefixIt = importedSymbols_.find(prefix);
         if (prefixIt != importedSymbols_.end()) {
             std::string fullName = prefixIt->second + "." + suffix;
@@ -302,7 +302,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
             it = typeRegistry_.find(canonicalFullName);
             if (it != typeRegistry_.end())
                 return it->second;
-            if (canonicalFullName.rfind("Viper.", 0) == 0) {
+            if (canonicalFullName.rfind("Zanna.", 0) == 0) {
                 if (isKnownRuntimeObjectNamespace(canonicalFullName))
                     return types::runtimeClass(canonicalFullName);
                 return nullptr;
@@ -314,7 +314,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         it = typeRegistry_.find(canonicalName);
         if (it != typeRegistry_.end())
             return it->second;
-        if (canonicalName.rfind("Viper.", 0) == 0 && isKnownRuntimeObjectNamespace(canonicalName))
+        if (canonicalName.rfind("Zanna.", 0) == 0 && isKnownRuntimeObjectNamespace(canonicalName))
             return types::runtimeClass(canonicalName);
 
         // Backwards-compatible fallback only for spelling the current module prefix explicitly.
@@ -421,19 +421,19 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             if (generic->name == "Queue") {
                 if (!requireArity(1))
                     return types::unknown();
-                return types::runtimeClass("Viper.Collections.Queue",
+                return types::runtimeClass("Zanna.Collections.Queue",
                                            {args.empty() ? types::unknown() : args[0]});
             }
             if (generic->name == "Stack") {
                 if (!requireArity(1))
                     return types::unknown();
-                return types::runtimeClass("Viper.Collections.Stack",
+                return types::runtimeClass("Zanna.Collections.Stack",
                                            {args.empty() ? types::unknown() : args[0]});
             }
             if (generic->name == "Deque") {
                 if (!requireArity(1))
                     return types::unknown();
-                return types::runtimeClass("Viper.Collections.Deque",
+                return types::runtimeClass("Zanna.Collections.Deque",
                                            {args.empty() ? types::unknown() : args[0]});
             }
 
@@ -453,7 +453,7 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             }
 
             // Create type with arguments (for built-in-like types)
-            return std::make_shared<ViperType>(baseType->kind, baseType->name, args);
+            return std::make_shared<ZannaType>(baseType->kind, baseType->name, args);
         }
 
         case TypeKind::Optional: {

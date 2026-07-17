@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_concmap.c
 // Purpose: Implements a thread-safe concurrent hash map for the
-//          Viper.Threads.ConcMap class. Uses FNV-1a hashing with separate
+//          Zanna.Threads.ConcMap class. Uses FNV-1a hashing with separate
 //          chaining and a single global mutex protecting all operations.
 //          Supports Get, Set, Delete, ContainsKey, Keys, Values, and Count.
 //

@@ -3,43 +3,43 @@ module TestTerminal;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// COVER: Viper.Terminal.Say
-// COVER: Viper.Terminal.SayInt
-// COVER: Viper.Terminal.SayNum
-// COVER: Viper.Terminal.SayBool
-// COVER: Viper.Terminal.Print
-// COVER: Viper.Terminal.PrintInt
-// COVER: Viper.Terminal.PrintNum
-// COVER: Viper.Terminal.Clear
-// COVER: Viper.Terminal.SetColor
-// COVER: Viper.Terminal.SetPosition
-// COVER: Viper.Terminal.BeginBatch
-// COVER: Viper.Terminal.EndBatch
-// COVER: Viper.Terminal.Flush
-// COVER: Viper.Terminal.Bell
-// COVER: Viper.Terminal.SetCursorVisible
-// COVER: Viper.Terminal.SetAltScreen
-// COVER: Viper.Terminal.GetKeyTimeout
-// COVER: Viper.Terminal.InKey
+// COVER: Zanna.Terminal.Say
+// COVER: Zanna.Terminal.SayInt
+// COVER: Zanna.Terminal.SayNum
+// COVER: Zanna.Terminal.SayBool
+// COVER: Zanna.Terminal.Print
+// COVER: Zanna.Terminal.PrintInt
+// COVER: Zanna.Terminal.PrintNum
+// COVER: Zanna.Terminal.Clear
+// COVER: Zanna.Terminal.SetColor
+// COVER: Zanna.Terminal.SetPosition
+// COVER: Zanna.Terminal.BeginBatch
+// COVER: Zanna.Terminal.EndBatch
+// COVER: Zanna.Terminal.Flush
+// COVER: Zanna.Terminal.Bell
+// COVER: Zanna.Terminal.SetCursorVisible
+// COVER: Zanna.Terminal.SetAltScreen
+// COVER: Zanna.Terminal.GetKeyTimeout
+// COVER: Zanna.Terminal.InKey
 
 func testBasicOutput() {
     setTest("BasicOutput");
 
     // Test Say (with newline)
-    Viper.Terminal.Say("Testing Say");
+    Zanna.Terminal.Say("Testing Say");
     pass();
 
     // Test SayInt
-    Viper.Terminal.SayInt(42);
+    Zanna.Terminal.SayInt(42);
     pass();
 
     // Test SayNum
-    Viper.Terminal.SayNum(3.14);
+    Zanna.Terminal.SayNum(3.14);
     pass();
 
     // Test SayBool
-    Viper.Terminal.SayBool(true);
-    Viper.Terminal.SayBool(false);
+    Zanna.Terminal.SayBool(true);
+    Zanna.Terminal.SayBool(false);
     pass();
 }
 
@@ -47,19 +47,19 @@ func testPrint() {
     setTest("Print");
 
     // Test Print (no newline)
-    Viper.Terminal.Print("Hello ");
-    Viper.Terminal.Print("World");
-    Viper.Terminal.Say("");  // newline
+    Zanna.Terminal.Print("Hello ");
+    Zanna.Terminal.Print("World");
+    Zanna.Terminal.Say("");  // newline
     pass();
 
     // Test PrintInt
-    Viper.Terminal.PrintInt(123);
-    Viper.Terminal.Say("");
+    Zanna.Terminal.PrintInt(123);
+    Zanna.Terminal.Say("");
     pass();
 
     // Test PrintNum
-    Viper.Terminal.PrintNum(2.718);
-    Viper.Terminal.Say("");
+    Zanna.Terminal.PrintNum(2.718);
+    Zanna.Terminal.Say("");
     pass();
 }
 
@@ -67,10 +67,10 @@ func testBatching() {
     setTest("Batching");
 
     // Batch operations should work without error
-    Viper.Terminal.BeginBatch();
-    Viper.Terminal.Say("Inside batch 1");
-    Viper.Terminal.Say("Inside batch 2");
-    Viper.Terminal.EndBatch();
+    Zanna.Terminal.BeginBatch();
+    Zanna.Terminal.Say("Inside batch 1");
+    Zanna.Terminal.Say("Inside batch 2");
+    Zanna.Terminal.EndBatch();
     pass();
 }
 
@@ -78,33 +78,33 @@ func testScreenControl() {
     setTest("ScreenControl");
 
     // These are visual operations, we just verify they don't crash
-    Viper.Terminal.BeginBatch();
+    Zanna.Terminal.BeginBatch();
 
     // Clear screen
-    Viper.Terminal.Clear();
+    Zanna.Terminal.Clear();
     pass();
 
     // Set color (fg, bg)
-    Viper.Terminal.SetColor(7, 0);  // white on black
+    Zanna.Terminal.SetColor(7, 0);  // white on black
     pass();
 
     // Set cursor position
-    Viper.Terminal.SetPosition(1, 1);
+    Zanna.Terminal.SetPosition(1, 1);
     pass();
 
     // Flush output
-    Viper.Terminal.Flush();
+    Zanna.Terminal.Flush();
     pass();
 
-    Viper.Terminal.EndBatch();
+    Zanna.Terminal.EndBatch();
 }
 
 func testCursorControl() {
     setTest("CursorControl");
 
     // Show/hide cursor (just verify no crash)
-    Viper.Terminal.SetCursorVisible(false);  // hide
-    Viper.Terminal.SetCursorVisible(true);  // show
+    Zanna.Terminal.SetCursorVisible(false);  // hide
+    Zanna.Terminal.SetCursorVisible(true);  // show
     pass();
 }
 
@@ -112,7 +112,7 @@ func testAltScreen() {
     setTest("AltScreen");
 
     // Alt screen (0 = normal, 1 = alternate)
-    Viper.Terminal.SetAltScreen(false);  // ensure normal screen
+    Zanna.Terminal.SetAltScreen(false);  // ensure normal screen
     pass();
 }
 
@@ -120,10 +120,10 @@ func testInputNonBlocking() {
     setTest("InputNonBlocking");
 
     // Non-blocking input test
-    var key1 = Viper.Terminal.ReadKeyFor(0);  // 0ms timeout
+    var key1 = Zanna.Terminal.ReadKeyFor(0);  // 0ms timeout
     assertTrue(key1 == "" || key1 == key1, "GetKeyTimeout returns string");
 
-    var key2 = Viper.Terminal.PollKey();  // returns immediately
+    var key2 = Zanna.Terminal.PollKey();  // returns immediately
     assertTrue(key2 == "" || key2 == key2, "InKey returns string");
 }
 
@@ -131,7 +131,7 @@ func testBell() {
     setTest("Bell");
 
     // Bell (may or may not produce sound)
-    Viper.Terminal.Bell();
+    Zanna.Terminal.Bell();
     pass();
 }
 

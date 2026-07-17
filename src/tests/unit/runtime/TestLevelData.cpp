@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// Tests for Viper.Game2D.LevelDocument JSON loading.
+// Tests for Zanna.Game2D.LevelDocument JSON loading.
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
@@ -31,7 +31,7 @@ static std::string temp_path(const char *name) {
     std::string base(tmp);
     if (!base.empty() && base.back() != '/' && base.back() != '\\')
         base += '/';
-    return base + "viper_rt_leveldata_" + name;
+    return base + "zanna_rt_leveldata_" + name;
 }
 
 static void write_file(const std::string &path, const char *contents) {
@@ -171,5 +171,5 @@ TEST(LevelData, MetadataTruncatesOnUtf8Boundary) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

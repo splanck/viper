@@ -1,0 +1,131 @@
+module var_model;
+
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: var_model  (plan 13 — structured debugger inspection)
+// PURPOSE: Persistent expand/collapse state and a per-stop child cache for the
+//          Variables panel, keyed by stable NAME-PATHS ("local:nums/[0]") rather
+//          than by adapter varRefs. varRefs change every stop (they die on
+//          resume, per plan 25), but a variable's name-path is stable — so
+//          keying on the path is what lets the panel re-open the same expanded
+//          nodes after a step (plan 13's "preserve expansion by name").
+//
+// WHERE-THIS-FITS: DebugSession owns one VarTreeState. debug_commands renders the
+//          tree from it and toggles nodes on click; the session invalidates the
+//          child cache (but keeps the expanded set) on every resume.
+// ============================================================================
+
+/// @brief One expanded child row, cached for its parent's name-path.
+class VarChildRec {
+    expose String name;
+    expose String value;
+    expose String typeName;
+    expose Integer varRef;
+    expose Integer childCount;
+
+    expose func init() {
+        name = "";
+        value = "";
+        typeName = "";
+        varRef = 0;
+        childCount = 0;
+    }
+}
+
+/// @brief A cached child list. Wrapping the List in a concrete class lets callers
+///        retrieve it from an Any-typed cache slot (a bare `as List` cast on the
+///        generic List type is rejected by sema; a concrete-class cast is fine).
+class VarChildList {
+    expose List items; // List<VarChildRec>
+
+    expose func init() {
+        items = new List();
+    }
+}
+
+/// @brief Expand/collapse set + per-stop child cache for the Variables tree.
+class VarTreeState {
+    // Name-paths the user has expanded. Survives resume so expansion is restored
+    // at the next stop.
+    hide List expandedPaths;
+    // Parallel cache of fetched children, keyed by name-path. Cleared on resume
+    // because the underlying varRefs are then dead.
+    hide List cachePaths;    // List<String>
+    hide List cacheChildren; // List<List<VarChildRec>>
+
+    expose func init() {
+        expandedPaths = new List();
+        cachePaths = new List();
+        cacheChildren = new List();
+    }
+
+    hide func indexOfPath(list: List, path: String) -> Integer {
+        var i = 0;
+        while i < list.count() {
+            if (list.get(i) as String) == path { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /// @brief True when @p path is currently expanded.
+    expose func IsExpanded(path: String) -> Boolean {
+        return indexOfPath(expandedPaths, path) >= 0;
+    }
+
+    /// @brief Set the expanded flag for @p path.
+    expose func SetExpanded(path: String, on: Boolean) {
+        var at = indexOfPath(expandedPaths, path);
+        if on {
+            if at < 0 { expandedPaths.add(path); }
+        } else {
+            if at >= 0 { expandedPaths.removeAt(at); }
+        }
+    }
+
+    /// @brief Flip the expanded flag for @p path and return the new state.
+    expose func Toggle(path: String) -> Boolean {
+        var now = IsExpanded(path) == false;
+        SetExpanded(path, now);
+        return now;
+    }
+
+    /// @brief True when children for @p path are cached for this stop.
+    expose func HasCache(path: String) -> Boolean {
+        return indexOfPath(cachePaths, path) >= 0;
+    }
+
+    /// @brief Cached children for @p path as a VarChildList, or null.
+    expose func GetCache(path: String) -> VarChildList {
+        var at = indexOfPath(cachePaths, path);
+        if at < 0 { return null; }
+        return cacheChildren.get(at) as VarChildList;
+    }
+
+    /// @brief Store @p children for @p path, replacing any prior entry.
+    expose func PutCache(path: String, children: VarChildList) {
+        var at = indexOfPath(cachePaths, path);
+        if at >= 0 {
+            cacheChildren.Set(at, children);
+        } else {
+            cachePaths.add(path);
+            cacheChildren.add(children);
+        }
+    }
+
+    /// @brief Drop the child cache but keep the expanded set. Called on every
+    ///        resume/step so the next stop re-fetches fresh values for the same
+    ///        expanded name-paths.
+    expose func InvalidateRefs() {
+        cachePaths.clear();
+        cacheChildren.clear();
+    }
+
+    /// @brief Forget everything (new session / terminate).
+    expose func ClearAll() {
+        expandedPaths.clear();
+        cachePaths.clear();
+        cacheChildren.clear();
+    }
+}

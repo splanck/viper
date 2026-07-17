@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,11 +17,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// polygon.zia - Polygon/polyline tool for Viper Paint
+// polygon.zia - Polygon/polyline tool for Zanna Paint
 module polygon;
 
-bind Viper.Graphics;
-bind Viper.Collections;
+bind Zanna.Graphics;
+bind Zanna.Collections;
 
 bind "../config";
 bind "../canvas";

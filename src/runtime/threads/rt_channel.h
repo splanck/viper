@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_channel.h
@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 //=========================================================================
-// Viper.Threads.Channel
+// Zanna.Threads.Channel
 //=========================================================================
 
 /// @brief Create a new bounded channel with the specified capacity.
@@ -86,7 +86,7 @@ void *rt_channel_try_recv_val(void *channel);
 ///          `Some(value)` when an item is received. A transmitted NULL value is
 ///          represented as `Some(NULL)`, unlike @ref rt_channel_try_recv_val.
 /// @param channel Channel object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_channel_try_recv_option(void *channel);
 
 /// @brief Receive with a timeout.

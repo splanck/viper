@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -203,12 +203,12 @@ il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     {
         auto m = makeLoadModule();
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         bool loadOk = containsAll(
             result.stderrText, "Trap @main:entry#0 line 1: InvalidOperation (code=0)", "null load");
@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
 
     {
         auto m = makeStoreModule();
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         bool storeOk = containsAll(result.stderrText,
                                    "Trap @main:entry#0 line 2: InvalidOperation (code=0)",
@@ -236,7 +236,7 @@ int main(int argc, char *argv[]) {
 
     for (il::core::Type::Kind kind : misalignedKinds) {
         auto m = makeMisalignedLoadModule(kind);
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         bool trapped =
             containsAll(result.stderrText, "InvalidOperation (code=0)", "misaligned load");
@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
 
     for (il::core::Type::Kind kind : misalignedKinds) {
         auto m = makeMisalignedStoreModule(kind);
-        auto result = viper::tests::runModuleIsolated(m);
+        auto result = zanna::tests::runModuleIsolated(m);
         assert(result.trapped());
         bool trapped =
             containsAll(result.stderrText, "InvalidOperation (code=0)", "misaligned store");

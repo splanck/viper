@@ -438,7 +438,7 @@ Last updated: 2026-06-20
 
 | File                       | Purpose                          |
 |----------------------------|----------------------------------|
-| `rt_gui.h`                 | GUI declarations (Viper.GUI.*)   |
+| `rt_gui.h`                 | GUI declarations (Zanna.GUI.*)   |
 | `rt_buttongroup.c`         | Button group widget              |
 | `rt_buttongroup.h`         | Button group declarations        |
 | `rt_gui_app.c`             | GUI application management       |
@@ -513,7 +513,7 @@ Last updated: 2026-06-20
 | `rt_context.h`  | Context declarations                     |
 | `rt_modvar.c`   | Module-level variable storage            |
 | `rt_modvar.h`   | Module variable declarations             |
-| `rt_sb_bridge.c`| StringBuilder bridge for `Viper.Text.StringBuilder` |
+| `rt_sb_bridge.c`| StringBuilder bridge for `Zanna.Text.StringBuilder` |
 | `rt_sb_bridge.h`| StringBuilder bridge declarations        |
 
 ## Threading
@@ -524,7 +524,7 @@ Last updated: 2026-06-20
 | `rt_async.h`               | Async task declarations                             |
 | `rt_monitor.c`             | FIFO-fair, re-entrant monitor backing `Monitor`     |
 | `rt_safe_i64.c`            | FIFO-serialized safe integer backing `SafeI64`      |
-| `rt_threads.c`             | OS thread helpers backing `Viper.Threads.Thread`    |
+| `rt_threads.c`             | OS thread helpers backing `Zanna.Threads.Thread`    |
 | `rt_threads.h`             | Thread declarations                                 |
 | `rt_threads_primitives.cpp`| Low-level threading primitives (C++ implementation) |
 | `rt_cancellation.c`       | Cancellation token support                          |

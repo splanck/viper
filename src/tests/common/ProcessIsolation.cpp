@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -56,16 +56,16 @@
 #include <unistd.h>
 #endif
 
-namespace viper::tests {
+namespace zanna::tests {
 
 // ─── Shared state for Windows child dispatch ────────────────────────────────
 
 static std::function<void()> g_childFunction;
 static std::vector<std::function<void()>> g_registeredChildFunctions;
 static int g_nextRunIsolatedIndex = 0;
-static const char *const kChildRunFlag = "--viper-child-run";
-static const char *const kChildILFlag = "--viper-child-il=";
-static const char *const kChildILInterruptFlag = "--viper-child-il-interrupt=";
+static const char *const kChildRunFlag = "--zanna-child-run";
+static const char *const kChildILFlag = "--zanna-child-il=";
+static const char *const kChildILInterruptFlag = "--zanna-child-il-interrupt=";
 
 void setChildFunction(std::function<void()> fn) {
     g_childFunction = std::move(fn);
@@ -300,7 +300,7 @@ ChildResult runModuleWithPendingInterruptIsolated(il::core::Module &module, unsi
 
 bool dispatchChild(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
-        // Match --viper-child-run or --viper-child-run=N
+        // Match --zanna-child-run or --zanna-child-run=N
         if (std::strncmp(argv[i], kChildRunFlag, std::strlen(kChildRunFlag)) == 0) {
             suppressDialogs();
             const char *rest = argv[i] + std::strlen(kChildRunFlag);
@@ -492,4 +492,4 @@ bool dispatchChild([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
 
 #endif
 
-} // namespace viper::tests
+} // namespace zanna::tests

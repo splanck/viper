@@ -95,7 +95,7 @@ src/runtime/io/rt_path.c 11
 src/runtime/io/rt_path_exe.c 6
 src/runtime/io/rt_savedata.c 10
 src/runtime/io/rt_tempfile.c 7
-src/runtime/io/rt_vpa_reader.c 5
+src/runtime/io/rt_zpak_reader.c 5
 src/runtime/localization/rt_numformat.c 4
 src/runtime/localization/rt_plural_rules.c 1
 src/runtime/network/rt_async_socket.c 3
@@ -225,7 +225,7 @@ src/tests/unit/codegen/test_diff_vm_native_property.cpp 2
 src/tests/unit/codegen/test_x86_backend_regressions.cpp 6
 src/tests/unit/codegen/test_x86_global_ra.cpp 1
 src/tests/unit/runtime/TestPathExeDir.cpp 1
-src/tests/unit/runtime/TestVpaFormat.cpp 2
+src/tests/unit/runtime/TestZpakFormat.cpp 2
 src/tests/unit/test_bytecode_vm.cpp 1
 src/tests/unit/test_cli_run_break_src_line_padding.cpp 1
 src/tests/unit/test_cli_run_break_src_whitespace.cpp 1
@@ -248,9 +248,9 @@ src/tools/common/packaging/PkgUtils.hpp 4
 src/tools/common/packaging/WindowsPackageBuilder.cpp 1
 src/tools/common/packaging/ZipWriter.cpp 1
 src/tools/lsp-common/Transport.cpp 2
-src/tools/viper/cmd_install_package.cpp 4
-src/tools/viper/cmd_package.cpp 4
-src/tools/viper/main.cpp 2
+src/tools/zanna/cmd_install_package.cpp 4
+src/tools/zanna/cmd_package.cpp 4
+src/tools/zanna/main.cpp 2
 src/tui/apps/tui_demo.cpp 2
 src/tui/include/tui/term/session.hpp 3
 src/tui/src/term/session.cpp 2

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTMouseTests.cpp
-// Purpose: Tests for Viper.Input.Mouse static class.
+// Purpose: Tests for Zanna.Input.Mouse static class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,10 +65,10 @@ static void test_initial_state() {
     assert(rt_mouse_delta_y() == 0);
 
     // All buttons should be up initially
-    assert(rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT) == 0);
-    assert(rt_mouse_is_down(VIPER_MOUSE_BUTTON_RIGHT) == 0);
-    assert(rt_mouse_is_down(VIPER_MOUSE_BUTTON_MIDDLE) == 0);
-    assert(rt_mouse_is_up(VIPER_MOUSE_BUTTON_LEFT) == 1);
+    assert(rt_mouse_is_down(ZANNA_MOUSE_BUTTON_LEFT) == 0);
+    assert(rt_mouse_is_down(ZANNA_MOUSE_BUTTON_RIGHT) == 0);
+    assert(rt_mouse_is_down(ZANNA_MOUSE_BUTTON_MIDDLE) == 0);
+    assert(rt_mouse_is_up(ZANNA_MOUSE_BUTTON_LEFT) == 1);
     assert(rt_mouse_left() == 0);
     assert(rt_mouse_right() == 0);
     assert(rt_mouse_middle() == 0);
@@ -162,23 +162,23 @@ static void test_button_state() {
     rt_mouse_begin_frame();
 
     // Press left button
-    rt_mouse_button_down(VIPER_MOUSE_BUTTON_LEFT);
-    assert(rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT) == 1);
-    assert(rt_mouse_is_up(VIPER_MOUSE_BUTTON_LEFT) == 0);
+    rt_mouse_button_down(ZANNA_MOUSE_BUTTON_LEFT);
+    assert(rt_mouse_is_down(ZANNA_MOUSE_BUTTON_LEFT) == 1);
+    assert(rt_mouse_is_up(ZANNA_MOUSE_BUTTON_LEFT) == 0);
     assert(rt_mouse_left() == 1);
-    assert(rt_mouse_was_pressed(VIPER_MOUSE_BUTTON_LEFT) == 1);
+    assert(rt_mouse_was_pressed(ZANNA_MOUSE_BUTTON_LEFT) == 1);
 
     // Release left button
-    rt_mouse_button_up(VIPER_MOUSE_BUTTON_LEFT);
-    assert(rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT) == 0);
-    assert(rt_mouse_is_up(VIPER_MOUSE_BUTTON_LEFT) == 1);
+    rt_mouse_button_up(ZANNA_MOUSE_BUTTON_LEFT);
+    assert(rt_mouse_is_down(ZANNA_MOUSE_BUTTON_LEFT) == 0);
+    assert(rt_mouse_is_up(ZANNA_MOUSE_BUTTON_LEFT) == 1);
     assert(rt_mouse_left() == 0);
-    assert(rt_mouse_was_released(VIPER_MOUSE_BUTTON_LEFT) == 1);
+    assert(rt_mouse_was_released(ZANNA_MOUSE_BUTTON_LEFT) == 1);
 
     // New frame - events should be cleared
     rt_mouse_begin_frame();
-    assert(rt_mouse_was_pressed(VIPER_MOUSE_BUTTON_LEFT) == 0);
-    assert(rt_mouse_was_released(VIPER_MOUSE_BUTTON_LEFT) == 0);
+    assert(rt_mouse_was_pressed(ZANNA_MOUSE_BUTTON_LEFT) == 0);
+    assert(rt_mouse_was_released(ZANNA_MOUSE_BUTTON_LEFT) == 0);
 
     printf("test_button_state: PASSED\n");
 }
@@ -192,13 +192,13 @@ static void test_click_detection() {
     rt_mouse_begin_frame();
 
     // Quick press and release should be a click
-    rt_mouse_button_down(VIPER_MOUSE_BUTTON_LEFT);
-    rt_mouse_button_up(VIPER_MOUSE_BUTTON_LEFT);
-    assert(rt_mouse_was_clicked(VIPER_MOUSE_BUTTON_LEFT) == 1);
+    rt_mouse_button_down(ZANNA_MOUSE_BUTTON_LEFT);
+    rt_mouse_button_up(ZANNA_MOUSE_BUTTON_LEFT);
+    assert(rt_mouse_was_clicked(ZANNA_MOUSE_BUTTON_LEFT) == 1);
 
     // New frame - click should be cleared
     rt_mouse_begin_frame();
-    assert(rt_mouse_was_clicked(VIPER_MOUSE_BUTTON_LEFT) == 0);
+    assert(rt_mouse_was_clicked(ZANNA_MOUSE_BUTTON_LEFT) == 0);
 
     printf("test_click_detection: PASSED\n");
 }
@@ -357,7 +357,7 @@ static void test_boundary_cases() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Input.Mouse Tests ===\n\n");
+    printf("=== Zanna.Input.Mouse Tests ===\n\n");
 
     test_button_constants();
     test_initial_state();

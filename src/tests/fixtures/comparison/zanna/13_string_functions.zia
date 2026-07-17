@@ -1,0 +1,47 @@
+// Test: String Functions
+// Tests: Zanna.String.* functions
+module Test;
+
+func main() {
+    Zanna.Terminal.Say("=== String Functions Test ===");
+    var s = "Hello, World!";
+
+    // Length
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Length ---");
+    Zanna.Terminal.Print("Length of '" + s + "': ");
+    Zanna.Terminal.SayInt(Zanna.String.get_Length(s));
+
+    // Substring
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Substring ---");
+    Zanna.Terminal.Say("Substring(0, 5): " + Zanna.String.Substring(s, 0, 5));
+
+    // Case conversion
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Case Conversion ---");
+    Zanna.Terminal.Say("ToUpper: " + Zanna.String.ToUpper(s));
+    Zanna.Terminal.Say("ToLower: " + Zanna.String.ToLower(s));
+
+    // Trim
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Trim ---");
+    var padded = "  spaces  ";
+    Zanna.Terminal.Say("Trim '  spaces  ': '" + Zanna.String.Trim(padded) + "'");
+
+    // IndexOf
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- IndexOf ---");
+    Zanna.Terminal.Print("IndexOf 'World': ");
+    Zanna.Terminal.SayInt(Zanna.String.IndexOf(s, "World"));
+
+    // Char/Asc
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Char/Asc ---");
+    Zanna.Terminal.Say("Chr(65): " + Zanna.String.Chr(65));
+    Zanna.Terminal.Print("Asc('A'): ");
+    Zanna.Terminal.SayInt(Zanna.String.Asc("A"));
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== String Functions test complete ===");
+}

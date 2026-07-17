@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -69,7 +69,7 @@ class Person {
 
 func start() {    var p: Person = new Person(30);
     var age: Integer = p.age;
-    Viper.Terminal.SayInt(age);
+    Zanna.Terminal.SayInt(age);
 }
 )";
     CompilerInput input{.source = source, .path = "visibility_exposed.zia"};
@@ -100,7 +100,7 @@ class SecretBox {
 
 func start() {
     var b = new SecretBox(secret: 42, visible: 7);
-    Viper.Terminal.SayInt(b.visible);
+    Zanna.Terminal.SayInt(b.visible);
 }
 )";
     CompilerInput input{.source = source, .path = "private_constructor_field.zia"};
@@ -130,7 +130,7 @@ struct SecretPoint {
 
 func start() {
     var p: SecretPoint = SecretPoint { x = 1, y = 2 };
-    Viper.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(p.y);
 }
 )";
     CompilerInput input{.source = source, .path = "private_struct_literal_field.zia"};
@@ -185,5 +185,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

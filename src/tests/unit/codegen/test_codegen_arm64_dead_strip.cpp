@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_dead_strip.cpp
 // Purpose: Verify native linking dead-strips unused runtime symbols.
@@ -24,12 +24,12 @@ static void writeFile(const std::string &path, const std::string &text) {
     ofs << text;
 }
 
-static std::filesystem::path findViperTool() {
+static std::filesystem::path findZannaTool() {
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::path cur = fs::current_path(ec);
     for (int depth = 0; !ec && depth < 8 && !cur.empty(); ++depth) {
-        fs::path candidate = cur / "src" / "tools" / "viper" / "viper";
+        fs::path candidate = cur / "src" / "tools" / "zanna" / "zanna";
         if (fs::exists(candidate, ec))
             return candidate;
         fs::path parent = cur.parent_path();
@@ -53,11 +53,11 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols) {
                            "}\n";
     writeFile(in, il);
 
-    const fs::path viper = findViperTool();
-    ASSERT_FALSE(viper.empty());
+    const fs::path zanna = findZannaTool();
+    ASSERT_FALSE(zanna.empty());
 
     const RunResult link = run_process(
-        {viper.string(), "codegen", "arm64", in, "-o", exeOut, "--system-asm", "--system-link"});
+        {zanna.string(), "codegen", "arm64", in, "-o", exeOut, "--system-asm", "--system-link"});
     ASSERT_EQ(link.exit_code, 0);
     ASSERT_TRUE(fs::exists(exeOut));
     EXPECT_NE(link.err.find("warning: --system-link is deprecated; using the native linker"),
@@ -70,6 +70,6 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

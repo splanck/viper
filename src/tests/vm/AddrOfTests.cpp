@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -73,7 +73,7 @@ void buildAddrOfModule(Module &module, int64_t value) {
 int64_t runAddrOf(int64_t value) {
     Module module;
     buildAddrOfModule(module, value);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

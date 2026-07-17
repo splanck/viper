@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 ///          instruction parser, translating canonical textual spellings into
 ///          il::core::Type values and attaching them to the active instruction.
 
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
@@ -32,7 +32,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 
 /// @brief Parse a type literal operand and attach it to the active instruction.
 /// @details Consumes the next non-whitespace token, normalises trailing commas
@@ -44,7 +44,7 @@ namespace viper::il::io {
 /// @param cur Cursor positioned at the start of the type token.
 /// @param ctx Parser context providing access to instruction state and diagnostics.
 /// @return Parse result signalling success or failure.
-ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx) {
+ParseResult parseTypeOperand(zanna::parse::Cursor &cur, Context &ctx) {
     cur.skipWs();
     const std::size_t beginOffset = cur.offset();
     const std::string_view rawToken =
@@ -80,4 +80,4 @@ ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx) {
     return result;
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

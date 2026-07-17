@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/gui/rt_gui_image.c
-// Purpose: Image and FloatingPanel GUI widgets for the Viper runtime. Split out
+// Purpose: Image and FloatingPanel GUI widgets for the Zanna runtime. Split out
 //          of rt_gui_widgets_complex.c; shares GUI types via rt_gui_internal.h.
 //
 // Key invariants:
-//   - Mirrors rt_gui_widgets_complex.c's VIPER_ENABLE_GRAPHICS guard: real
+//   - Mirrors rt_gui_widgets_complex.c's ZANNA_ENABLE_GRAPHICS guard: real
 //     widgets when graphics is enabled, no-op stubs otherwise.
 //   - Image handles are validated via rt_image_checked before use.
 //
@@ -26,7 +26,7 @@
 #include "rt_pixels.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Resolve a parent-container handle to its widget (file-local copy).
 /// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
@@ -71,13 +71,13 @@ void *rt_image_new(void *parent) {
     return vg_image_create(parent_widget);
 }
 
-/// @brief Convert a Viper Pixels object to byte-order RGBA and upload to an image widget.
-/// @details Viper stores pixels as packed 0xRRGGBBAA 32-bit integers; the lower image expects
+/// @brief Convert a Zanna Pixels object to byte-order RGBA and upload to an image widget.
+/// @details Zanna stores pixels as packed 0xRRGGBBAA 32-bit integers; the lower image expects
 ///          interleaved [R, G, B, A] bytes. This function allocates a temporary conversion buffer,
 ///          shuffles channels, performs an atomic lower upload, and then frees the buffer.
 ///          Width/height zero defaults to the Pixels object dimensions.
 /// @param image  Image widget to update (may be NULL — no-op).
-/// @param pixels Viper Pixels object providing source pixel data (NULL clears the image).
+/// @param pixels Zanna Pixels object providing source pixel data (NULL clears the image).
 /// @param width  Crop width (0 = full Pixels width).
 /// @param height Crop height (0 = full Pixels height).
 /// @return 1 on success, 0 on failure (NULL image, zero dimensions, or OOM).
@@ -429,7 +429,7 @@ void rt_groupbox_add_child(void *gb, void *child) {
     }
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — no internal RGBA upload can succeed.
 int rt_gui_image_try_set_rgba_bytes(void *image,
@@ -588,4 +588,4 @@ void rt_groupbox_add_child(void *gb, void *child) {
     (void)child;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

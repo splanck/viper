@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Blend-mode/limit constants must stay consistent with the GLSL shaders
 //     and the D3D11/Metal shared layouts.
-//   - Internal to the OpenGL backend; not part of the public Viper API.
+//   - Internal to the OpenGL backend; not part of the public Zanna API.
 //
 // Ownership/Lifetime:
 //   - Declarations only; no allocation or ownership semantics here.

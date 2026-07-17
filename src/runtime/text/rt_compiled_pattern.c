@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_compiled_pattern.c
-// Purpose: Implements pre-compiled regex patterns for the Viper.Text.Pattern
+// Purpose: Implements pre-compiled regex patterns for the Zanna.Text.Pattern
 //          class. Compiles a regex string once into an internal representation
 //          and supports IsMatch, Find, FindAll, Replace, and Split operations
 //          with better performance for repeated use on the same pattern.
@@ -106,7 +106,7 @@ typedef struct {
 
 /// @brief GC finalizer — free the underlying compiled regex automaton.
 /// @details `re_compile` allocates a private NFA/DFA structure that
-///          isn't part of Viper's GC heap. This finalizer hands that
+///          isn't part of Zanna's GC heap. This finalizer hands that
 ///          allocation back to the regex engine when the wrapping
 ///          GC object is collected. Nulled afterwards so a double
 ///          finalize (rare but possible during shutdown) is safe.
@@ -201,7 +201,7 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text) {
 ///          matches, and `None` when no match exists.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_compiled_pattern_find_option(void *obj, rt_string text) {
     if (!obj) {
         rt_trap("CompiledPattern: null pattern object");
@@ -249,7 +249,7 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
 /// @param start Starting byte offset.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_compiled_pattern_find_from_option(void *obj, rt_string text, int64_t start) {
     if (!obj) {
         rt_trap("CompiledPattern: null pattern object");
@@ -296,7 +296,7 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
 /// @brief Find the byte position of the first compiled-pattern match as an Option index.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
-/// @return Opaque Viper.Option containing the first position, or None.
+/// @return Opaque Zanna.Option containing the first position, or None.
 void *rt_compiled_pattern_find_pos_option(void *obj, rt_string text) {
     if (!obj) {
         rt_trap("CompiledPattern: null pattern object");

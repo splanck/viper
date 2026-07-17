@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -747,8 +747,8 @@ TypeRef CompletionEngine::resolveExprType(
 
     if (!current) {
         // parts[0] not found as a Zia symbol. Try alias expansion:
-        // e.g. "GUI.Canvas" → alias "GUI" resolves to "Viper.GUI"
-        //      → reconstruct qname "Viper.GUI.Canvas"
+        // e.g. "GUI.Canvas" → alias "GUI" resolves to "Zanna.GUI"
+        //      → reconstruct qname "Zanna.GUI.Canvas"
         std::string ns = sema.resolveModuleAlias(parts[0]);
         if (!ns.empty() && parts.size() > 1) {
             std::string fullQname = ns;
@@ -759,7 +759,7 @@ TypeRef CompletionEngine::resolveExprType(
                 return types::runtimeClass(fullQname);
         }
         // Last resort: treat the entire expr as a literal runtime class qname
-        // (e.g. "Viper.GUI.Canvas" typed without a binding alias).
+        // (e.g. "Zanna.GUI.Canvas" typed without a binding alias).
         if (!sema.getRuntimeMembers(expr).empty())
             return types::runtimeClass(expr);
         return nullptr;
@@ -767,7 +767,7 @@ TypeRef CompletionEngine::resolveExprType(
 
     // Walk remaining parts.
     for (size_t i = 1; i < parts.size(); ++i) {
-        // When current is a Module type (from a namespace alias like "bind Viper.GUI as GUI"),
+        // When current is a Module type (from a namespace alias like "bind Zanna.GUI as GUI"),
         // getMembersOf returns nothing useful.  Instead, reconstruct the full class qname by
         // appending the remaining parts to the module's namespace name.
         if (current->kind == TypeKindSem::Module && !current->name.empty()) {
@@ -911,17 +911,17 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     }
 
     // ── Step 2: check whether the first part is a bound namespace alias ──────
-    // e.g. "GUI"        → resolves to "Viper.GUI"
-    //      "GUI.Canvas" → parts[0]="GUI" → alias → reconstruct "Viper.GUI.Canvas"
+    // e.g. "GUI"        → resolves to "Zanna.GUI"
+    //      "GUI.Canvas" → parts[0]="GUI" → alias → reconstruct "Zanna.GUI.Canvas"
     std::string resolved = sema.resolveModuleAlias(parts[0]);
     if (!resolved.empty()) {
         if (parts.size() == 1) {
             // User typed e.g. "Math." or "GUI." after a namespace alias.
-            // Case A: the resolved path IS a class (e.g. "Viper.Math" with Sqrt/Abs/…).
+            // Case A: the resolved path IS a class (e.g. "Zanna.Math" with Sqrt/Abs/…).
             auto rtMembers = provideRuntimeMembers(sema, resolved, ctx.prefix);
             if (!rtMembers.empty())
                 return rtMembers;
-            // Case B: the resolved path is a namespace containing classes (e.g. "Viper.GUI").
+            // Case B: the resolved path is a namespace containing classes (e.g. "Zanna.GUI").
             return provideNamespaceMembers(sema, resolved, ctx.prefix);
         }
 
@@ -940,7 +940,7 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     }
 
     // ── Step 3: try the entire triggerExpr as a literal runtime qname ────────
-    // This handles bare "Viper.GUI.Canvas." typed without a binding alias.
+    // This handles bare "Zanna.GUI.Canvas." typed without a binding alias.
     {
         auto rtMembers = provideRuntimeMembers(sema, ctx.triggerExpr, ctx.prefix);
         if (!rtMembers.empty())
@@ -1188,7 +1188,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
             const Sema &sema = *analysis->sema;
             // Member access: enumerate members of the LHS type.
             // Also check if triggerExpr is a bound module alias with dot
-            // (e.g. "Viper.Math.Pi" — triggerExpr="Viper.Math", prefix="Pi").
+            // (e.g. "Zanna.Math.Pi" — triggerExpr="Zanna.Math", prefix="Pi").
             auto members = provideMemberCompletions(sema, ctx);
             items.insert(items.end(), members.begin(), members.end());
             break;

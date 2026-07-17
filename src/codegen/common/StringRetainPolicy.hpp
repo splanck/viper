@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <cstdlib>
 #include <string_view>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 /// @brief True when the backend may skip the defensive retain on the string
 ///        result of a call to @p callee.
@@ -37,11 +37,11 @@ namespace viper::codegen {
 ///          is classified as transferring ownership of its result, the
 ///          transferred reference already keeps the value alive until the
 ///          frontend's release/consume, and the retain can be dropped.
-///          `VIPER_NO_RETAIN_ELIDE=1` restores the unconditional retain.
+///          `ZANNA_NO_RETAIN_ELIDE=1` restores the unconditional retain.
 [[nodiscard]] inline bool shouldElideStringResultRetain(std::string_view callee) {
     if (callee.empty())
         return false;
-    if (std::getenv("VIPER_NO_RETAIN_ELIDE") != nullptr)
+    if (std::getenv("ZANNA_NO_RETAIN_ELIDE") != nullptr)
         return false;
     // Registered runtime helpers transfer when classified returnsOwned.
     // Everything else is an IL-defined function (module or cross-module),
@@ -57,8 +57,8 @@ namespace viper::codegen {
 /// @brief True when @p callee is an explicit string release entry point.
 [[nodiscard]] inline bool isStringReleaseCallee(std::string_view callee) {
     return callee == "rt_str_release_maybe" || callee == "rt_str_release" ||
-           callee == "rt_memory_release_str" || callee == "Viper.String.ReleaseMaybe" ||
-           callee == "Viper.Memory.ReleaseStr" || callee == "Viper.Runtime.Unsafe.ReleaseStr";
+           callee == "rt_memory_release_str" || callee == "Zanna.String.ReleaseMaybe" ||
+           callee == "Zanna.Memory.ReleaseStr" || callee == "Zanna.Runtime.Unsafe.ReleaseStr";
 }
 
 /// @brief True when the load-path retain for a string load may be skipped.
@@ -70,7 +70,7 @@ namespace viper::codegen {
 ///          retain lets the frontend's release actually free it. Any other
 ///          use keeps the retain.
 [[nodiscard]] inline bool shouldElideLoadRetainForRelease() {
-    return std::getenv("VIPER_NO_RETAIN_ELIDE") == nullptr;
+    return std::getenv("ZANNA_NO_RETAIN_ELIDE") == nullptr;
 }
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

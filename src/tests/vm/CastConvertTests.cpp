@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -148,28 +148,28 @@ void buildCastFpToUiRteChkFunction(Module &module, double val) {
 double runCastSiToFp(int64_t val) {
     Module module;
     buildCastSiToFpFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
 double runCastUiToFp(int64_t val) {
     Module module;
     buildCastUiToFpFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
 int64_t runCastFpToSiRteChk(double val) {
     Module module;
     buildCastFpToSiRteChkFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 int64_t runCastFpToUiRteChk(double val) {
     Module module;
     buildCastFpToUiRteChkFunction(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
@@ -180,7 +180,7 @@ void expectInvalidCastTrap(double val, bool isSigned) {
     } else {
         buildCastFpToUiRteChkFunction(module, val);
     }
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find("InvalidCast") != std::string::npos);
 }
@@ -188,7 +188,7 @@ void expectInvalidCastTrap(double val, bool isSigned) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     const int64_t maxVal = std::numeric_limits<int64_t>::max();

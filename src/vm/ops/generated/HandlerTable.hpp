@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -122,7 +122,7 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers() {
 
     // Compile-time verification that handler table covers all opcodes.
     // If this fails, an opcode was added to Opcode.def without updating this table.
-    VIPER_ASSERT_HANDLER_TABLE_SIZE(table);
+    ZANNA_ASSERT_HANDLER_TABLE_SIZE(table);
 
     return table;
 }

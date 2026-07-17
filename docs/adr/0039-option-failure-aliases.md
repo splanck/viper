@@ -50,7 +50,7 @@ Option-returning aliases for new code:
 
 Add `MessageBundle.GetOr(key, default)` for the common fallback-value case.
 Correct `NumberFormat.TryParseDecimal`, `TryParseInteger`, and
-`TryParseCurrency` signatures to `obj<Viper.Option>` because their
+`TryParseCurrency` signatures to `obj<Zanna.Option>` because their
 implementations already returned `Option`.
 
 The Option aliases distinguish absence from a present null or empty value. For
@@ -58,7 +58,7 @@ example, `TryPopOption` returns `None` only when no collection element exists;
 if a collection stores a null object, it returns `Some(NULL)`.
 
 Also type Future-producing registry signatures as
-`obj<Viper.Threads.Future>` (`Promise.GetFuture` and `Async.*`) so code can
+`obj<Zanna.Threads.Future>` (`Promise.GetFuture` and `Async.*`) so code can
 call `Future` methods such as `TryGetOption` without explicit annotations.
 
 ## Consequences

@@ -1,7 +1,7 @@
 module RuntimeTest41;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Network.Url as Url;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Network.Url as Url;
 
 func start() {
     var parsed: Url = null;

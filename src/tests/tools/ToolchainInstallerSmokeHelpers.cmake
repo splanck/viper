@@ -1,7 +1,7 @@
-function(viper_installer_smoke_host_codegen_arch out_var)
+function(zanna_installer_smoke_host_codegen_arch out_var)
     set(_host_arch "")
-    if (DEFINED VIPER_HOST_ARCH AND NOT "${VIPER_HOST_ARCH}" STREQUAL "")
-        set(_host_arch "${VIPER_HOST_ARCH}")
+    if (DEFINED ZANNA_HOST_ARCH AND NOT "${ZANNA_HOST_ARCH}" STREQUAL "")
+        set(_host_arch "${ZANNA_HOST_ARCH}")
     elseif (DEFINED ENV{PROCESSOR_ARCHITECTURE} AND NOT "$ENV{PROCESSOR_ARCHITECTURE}" STREQUAL "")
         set(_host_arch "$ENV{PROCESSOR_ARCHITECTURE}")
     else ()
@@ -13,7 +13,7 @@ function(viper_installer_smoke_host_codegen_arch out_var)
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
         if (NOT _uname_rv EQUAL 0)
             message(FATAL_ERROR
-                    "unable to determine host architecture for installed viper smoke\nstderr:\n${_uname_err}")
+                    "unable to determine host architecture for installed zanna smoke\nstderr:\n${_uname_err}")
         endif ()
     endif ()
 
@@ -24,9 +24,9 @@ function(viper_installer_smoke_host_codegen_arch out_var)
     endif ()
 endfunction()
 
-function(viper_installer_smoke_required_tool_names out_var)
+function(zanna_installer_smoke_required_tool_names out_var)
     set(${out_var}
-            viper
+            zanna
             zia
             vbasic
             ilrun
@@ -36,11 +36,11 @@ function(viper_installer_smoke_required_tool_names out_var)
             vbasic-server
             basic-ast-dump
             basic-lex-dump
-            viperide
+            zannaide
             PARENT_SCOPE)
 endfunction()
 
-function(viper_installer_smoke_require_listing_paths listing label)
+function(zanna_installer_smoke_require_listing_paths listing label)
     foreach (_path IN LISTS ARGN)
         string(FIND "${listing}" "${_path}" _path_index)
         if (_path_index EQUAL -1)
@@ -49,8 +49,8 @@ function(viper_installer_smoke_require_listing_paths listing label)
     endforeach ()
 endfunction()
 
-function(viper_installer_smoke_verify_installed_tools bin_dir exe_suffix label)
-    viper_installer_smoke_required_tool_names(_required_tools)
+function(zanna_installer_smoke_verify_installed_tools bin_dir exe_suffix label)
+    zanna_installer_smoke_required_tool_names(_required_tools)
     foreach (_tool IN LISTS _required_tools)
         set(_tool_path "${bin_dir}/${_tool}${exe_suffix}")
         if (NOT EXISTS "${_tool_path}")
@@ -59,61 +59,61 @@ function(viper_installer_smoke_verify_installed_tools bin_dir exe_suffix label)
     endforeach ()
 
     execute_process(
-            COMMAND "${bin_dir}/viper${exe_suffix}" --version
-            RESULT_VARIABLE _viper_version_rv
-            OUTPUT_VARIABLE _viper_version_out
-            ERROR_VARIABLE _viper_version_err)
-    if (NOT _viper_version_rv EQUAL 0)
+            COMMAND "${bin_dir}/zanna${exe_suffix}" --version
+            RESULT_VARIABLE _zanna_version_rv
+            OUTPUT_VARIABLE _zanna_version_out
+            ERROR_VARIABLE _zanna_version_err)
+    if (NOT _zanna_version_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed viper --version failed\nstdout:\n${_viper_version_out}\nstderr:\n${_viper_version_err}")
+                "${label}: installed zanna --version failed\nstdout:\n${_zanna_version_out}\nstderr:\n${_zanna_version_err}")
     endif ()
 
     execute_process(
-            COMMAND "${bin_dir}/viperide${exe_suffix}" --version
-            RESULT_VARIABLE _viperide_version_rv
-            OUTPUT_VARIABLE _viperide_version_out
-            ERROR_VARIABLE _viperide_version_err)
-    if (NOT _viperide_version_rv EQUAL 0)
+            COMMAND "${bin_dir}/zannaide${exe_suffix}" --version
+            RESULT_VARIABLE _zannaide_version_rv
+            OUTPUT_VARIABLE _zannaide_version_out
+            ERROR_VARIABLE _zannaide_version_err)
+    if (NOT _zannaide_version_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed viperide --version failed\nstdout:\n${_viperide_version_out}\nstderr:\n${_viperide_version_err}")
+                "${label}: installed zannaide --version failed\nstdout:\n${_zannaide_version_out}\nstderr:\n${_zannaide_version_err}")
     endif ()
 endfunction()
 
-function(viper_installer_smoke_verify_cmake_consumer cmake_bin src_dir build_dir config_name label)
+function(zanna_installer_smoke_verify_cmake_consumer cmake_bin src_dir build_dir config_name label)
     file(REMOVE_RECURSE "${src_dir}" "${build_dir}")
     file(MAKE_DIRECTORY "${src_dir}")
     file(WRITE "${src_dir}/CMakeLists.txt" [=[
 cmake_minimum_required(VERSION 3.20)
-project(viper_installed_package_consumer LANGUAGES CXX)
+project(zanna_installed_package_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package(Viper CONFIG REQUIRED)
+find_package(Zanna CONFIG REQUIRED)
 foreach(_required_target IN ITEMS
-    viper::runtime
-    viper::rt_base
-    viper::rt_arrays
-    viper::rt_oop
-    viper::rt_collections
-    viper::rt_game
-    viper::rt_text
-    viper::rt_io_fs
-    viper::rt_exec
-    viper::rt_threads
-    viper::rt_graphics
-    viper::rt_audio
-    viper::rt_network)
+    zanna::runtime
+    zanna::rt_base
+    zanna::rt_arrays
+    zanna::rt_oop
+    zanna::rt_collections
+    zanna::rt_game
+    zanna::rt_text
+    zanna::rt_io_fs
+    zanna::rt_exec
+    zanna::rt_threads
+    zanna::rt_graphics
+    zanna::rt_audio
+    zanna::rt_network)
   if (NOT TARGET ${_required_target})
-    message(FATAL_ERROR "Installed Viper config is missing imported target ${_required_target}")
+    message(FATAL_ERROR "Installed Zanna config is missing imported target ${_required_target}")
   endif ()
 endforeach()
-add_executable(viper_installed_package_consumer main.cpp)
-target_link_libraries(viper_installed_package_consumer PRIVATE viper::il_core viper::il_io)
+add_executable(zanna_installed_package_consumer main.cpp)
+target_link_libraries(zanna_installed_package_consumer PRIVATE zanna::il_core zanna::il_io)
 ]=])
 
     file(WRITE "${src_dir}/main.cpp" [=[
 #include <sstream>
-#include <viper/il/core/Module.hpp>
-#include <viper/il/io/Serializer.hpp>
+#include <zanna/il/core/Module.hpp>
+#include <zanna/il/io/Serializer.hpp>
 
 int main() {
     il::core::Module module;
@@ -130,7 +130,7 @@ int main() {
             ERROR_VARIABLE _cfg_err)
     if (NOT _cfg_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed Viper config was not discoverable by CMake\nstdout:\n${_cfg_out}\nstderr:\n${_cfg_err}")
+                "${label}: installed Zanna config was not discoverable by CMake\nstdout:\n${_cfg_out}\nstderr:\n${_cfg_err}")
     endif ()
 
     set(_consumer_build_cmd "${cmake_bin}" --build "${build_dir}")
@@ -144,7 +144,7 @@ int main() {
             ERROR_VARIABLE _build_err)
     if (NOT _build_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed Viper consumer build failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
+                "${label}: installed Zanna consumer build failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
     endif ()
 
     if (WIN32)
@@ -152,9 +152,9 @@ int main() {
     else ()
         set(_exe_suffix "")
     endif ()
-    set(_exe_path "${build_dir}/viper_installed_package_consumer${_exe_suffix}")
-    if (NOT "${config_name}" STREQUAL "" AND EXISTS "${build_dir}/${config_name}/viper_installed_package_consumer${_exe_suffix}")
-        set(_exe_path "${build_dir}/${config_name}/viper_installed_package_consumer${_exe_suffix}")
+    set(_exe_path "${build_dir}/zanna_installed_package_consumer${_exe_suffix}")
+    if (NOT "${config_name}" STREQUAL "" AND EXISTS "${build_dir}/${config_name}/zanna_installed_package_consumer${_exe_suffix}")
+        set(_exe_path "${build_dir}/${config_name}/zanna_installed_package_consumer${_exe_suffix}")
     endif ()
     if (NOT EXISTS "${_exe_path}")
         message(FATAL_ERROR "${label}: consumer build did not produce ${_exe_path}")
@@ -167,17 +167,17 @@ int main() {
             ERROR_VARIABLE _run_err)
     if (NOT _run_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed Viper consumer executable failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+                "${label}: installed Zanna consumer executable failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
     endif ()
 endfunction()
 
-function(viper_installer_smoke_verify_native_codegen cmake_bin viper_bin tmp_root label)
-    if (DEFINED VIPER_RUN_NATIVE_CODEGEN AND NOT VIPER_RUN_NATIVE_CODEGEN)
+function(zanna_installer_smoke_verify_native_codegen cmake_bin zanna_bin tmp_root label)
+    if (DEFINED ZANNA_RUN_NATIVE_CODEGEN AND NOT ZANNA_RUN_NATIVE_CODEGEN)
         message(STATUS "Skipping installed native codegen smoke; native link is disabled")
         return()
     endif ()
 
-    viper_installer_smoke_host_codegen_arch(_installed_codegen_arch)
+    zanna_installer_smoke_host_codegen_arch(_installed_codegen_arch)
     if (WIN32)
         set(_exe_suffix ".exe")
     else ()
@@ -189,29 +189,29 @@ function(viper_installer_smoke_verify_native_codegen cmake_bin viper_bin tmp_roo
     file(WRITE "${_installed_il}" [=[
 il 0.3.0
 
-extern @Viper.Terminal.PrintStr(str) -> void
-global const str @.msg = "Hello, installed Viper!"
+extern @Zanna.Terminal.PrintStr(str) -> void
+global const str @.msg = "Hello, installed Zanna!"
 
 func @main() -> i64 {
 entry:
   %msg = const_str @.msg
-  call @Viper.Terminal.PrintStr(%msg)
+  call @Zanna.Terminal.PrintStr(%msg)
   ret 0
 }
 ]=])
 
     execute_process(
-            COMMAND "${cmake_bin}" -E env --unset=VIPER_LIB_PATH "${viper_bin}" codegen "${_installed_codegen_arch}" "${_installed_il}" -o "${_installed_exe}"
+            COMMAND "${cmake_bin}" -E env --unset=ZANNA_LIB_PATH "${zanna_bin}" codegen "${_installed_codegen_arch}" "${_installed_il}" -o "${_installed_exe}"
             WORKING_DIRECTORY "${tmp_root}"
             RESULT_VARIABLE _codegen_rv
             OUTPUT_VARIABLE _codegen_out
             ERROR_VARIABLE _codegen_err)
     if (NOT _codegen_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed viper failed to compile native executable outside the build tree\nstdout:\n${_codegen_out}\nstderr:\n${_codegen_err}")
+                "${label}: installed zanna failed to compile native executable outside the build tree\nstdout:\n${_codegen_out}\nstderr:\n${_codegen_err}")
     endif ()
     if (NOT EXISTS "${_installed_exe}")
-        message(FATAL_ERROR "${label}: installed viper did not produce native smoke executable: ${_installed_exe}")
+        message(FATAL_ERROR "${label}: installed zanna did not produce native smoke executable: ${_installed_exe}")
     endif ()
 
     execute_process(
@@ -222,10 +222,10 @@ entry:
             ERROR_VARIABLE _run_err)
     if (NOT _run_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: native executable built by installed viper failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+                "${label}: native executable built by installed zanna failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
     endif ()
-    if (NOT _run_out MATCHES "Hello, installed Viper!")
+    if (NOT _run_out MATCHES "Hello, installed Zanna!")
         message(FATAL_ERROR
-                "${label}: native executable built by installed viper produced unexpected output\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+                "${label}: native executable built by installed zanna produced unexpected output\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
     endif ()
 endfunction()

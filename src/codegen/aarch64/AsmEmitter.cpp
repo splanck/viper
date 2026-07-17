@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,9 +43,9 @@
 
 namespace {
 
-using viper::codegen::aarch64::isFPR;
-using viper::codegen::aarch64::PhysReg;
-using viper::codegen::aarch64::regName;
+using zanna::codegen::aarch64::isFPR;
+using zanna::codegen::aarch64::PhysReg;
+using zanna::codegen::aarch64::regName;
 
 /// @brief Print a floating-point register as dN (64-bit scalar).
 /// @details This helper is used by scalar F64 emission paths. Passing a GPR is
@@ -109,10 +109,10 @@ inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Map IL extern names to C runtime symbol names.
-/// The IL uses namespaced names like "Viper.Console.PrintI64" but the runtime
+/// The IL uses namespaced names like "Zanna.Console.PrintI64" but the runtime
 /// exports C-style names like "rt_print_i64".
 static std::string mapRuntimeSymbol(const std::string &name) {
     if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
@@ -144,7 +144,7 @@ static bool isDarwinLocalSymbolName(std::string_view name) {
 /// @return Assembly-safe symbol spelling for directives and operands.
 static std::string mangleSymbolImpl(const std::string &name, bool isDarwin) {
     const std::string normalized =
-        (name == "@main") ? std::string{"main"} : viper::codegen::common::sanitizeLabel(name);
+        (name == "@main") ? std::string{"main"} : zanna::codegen::common::sanitizeLabel(name);
     if (isDarwin) {
         if (isDarwinLocalSymbolName(name))
             return name;
@@ -165,7 +165,7 @@ static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin) 
 /// @param name Original label identifier.
 /// @return Sanitized copy suitable for assembly.
 static std::string sanitizeLabel(const std::string &name) {
-    std::string sanitized = viper::codegen::common::sanitizeLabel(name);
+    std::string sanitized = zanna::codegen::common::sanitizeLabel(name);
     if (sanitized.rfind(".L", 0) == 0)
         sanitized.insert(sanitized.begin(), 'L');
     return sanitized;
@@ -1172,15 +1172,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
     // avoid duplicate emission when present in the generated switch.
     auto getReg = [](const MOperand &op) -> PhysReg {
         if (op.kind != MOperand::Kind::Reg)
-            VIPER_ICE("expected register operand in AArch64 asm emitter");
+            ZANNA_ICE("expected register operand in AArch64 asm emitter");
         if (!op.reg.isPhys)
-            VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
+            ZANNA_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
                       " reached AArch64 asm emitter (register allocation bug)");
         return static_cast<PhysReg>(op.reg.idOrPhys);
     };
     auto getImm = [](const MOperand &op) -> long long {
         if (op.kind != MOperand::Kind::Imm)
-            VIPER_ICE("expected immediate operand in AArch64 asm emitter");
+            ZANNA_ICE("expected immediate operand in AArch64 asm emitter");
         return op.imm;
     };
     const auto emitAdrPage = [&](PhysReg dst, const std::string &label) {
@@ -1490,4 +1490,4 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
 #include "generated/OpcodeDispatch.inc"
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

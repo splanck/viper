@@ -1,13 +1,13 @@
 @echo off
 rem ===----------------------------------------------------------------------===
 rem
-rem Part of the Viper project, under the GNU GPL v3.
+rem Part of the Zanna project, under the GNU GPL v3.
 rem See LICENSE for license information.
 rem
 rem ===----------------------------------------------------------------------===
 rem
 rem File: examples/games/3dbowling/run_probes.cmd
-rem Purpose: Run every 3dbowling release gate with an existing Viper binary.
+rem Purpose: Run every 3dbowling release gate with an existing Zanna binary.
 rem Key invariants:
 rem   - The script never configures, builds, or invokes CTest.
 rem   - A probe passes only when it exits cleanly and prints exactly RESULT: ok.
@@ -20,15 +20,15 @@ rem ===----------------------------------------------------------------------===
 setlocal EnableExtensions EnableDelayedExpansion
 set "DEMO_DIR=%~dp0"
 for %%I in ("%DEMO_DIR%\..\..\..") do set "REPO_ROOT=%%~fI"
-if not defined VIPER_BIN set "VIPER_BIN=viper"
+if not defined ZANNA_BIN set "ZANNA_BIN=zanna"
 set "OUTPUT=%TEMP%\3dbowling-probe-%RANDOM%-%RANDOM%.txt"
 set /a PASSED=0
 set /a FAILED=0
 
-where "%VIPER_BIN%" >nul 2>nul
-if errorlevel 1 if not exist "%VIPER_BIN%" (
-    echo 3dbowling probes: Viper binary not found: %VIPER_BIN% 1>&2
-    echo Set VIPER_BIN to an existing viper executable; this runner never builds it. 1>&2
+where "%ZANNA_BIN%" >nul 2>nul
+if errorlevel 1 if not exist "%ZANNA_BIN%" (
+    echo 3dbowling probes: Zanna binary not found: %ZANNA_BIN% 1>&2
+    echo Set ZANNA_BIN to an existing zanna executable; this runner never builds it. 1>&2
     exit /b 1
 )
 
@@ -51,7 +51,7 @@ exit /b 0
 
 :run_probe
 echo ==^> %1
-"%VIPER_BIN%" run "%DEMO_DIR%%1.zia" >"%OUTPUT%" 2>&1
+"%ZANNA_BIN%" run "%DEMO_DIR%%1.zia" >"%OUTPUT%" 2>&1
 set "PROBE_STATUS=%ERRORLEVEL%"
 type "%OUTPUT%"
 if not "%PROBE_STATUS%"=="0" goto :probe_failed

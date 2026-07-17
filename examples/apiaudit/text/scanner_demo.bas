@@ -1,4 +1,4 @@
-' scanner_demo.bas - Comprehensive API audit for Viper.Text.Scanner
+' scanner_demo.bas - Comprehensive API audit for Zanna.Text.Scanner
 ' Tests: New, Pos, IsEnd, Remaining, Len, Reset, Peek, PeekAt, PeekStr,
 '        Read, ReadStr, ReadUntil, ReadUntilAny, Match, MatchStr,
 '        Accept, AcceptStr, AcceptAny, Skip, SkipWhitespace,
@@ -8,8 +8,8 @@ PRINT "=== Scanner API Audit ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM sc AS Viper.Text.Scanner
-sc = Viper.Text.Scanner.New("Hello, World! 42 3.14 ""quoted""")
+DIM sc AS Zanna.Text.Scanner
+sc = Zanna.Text.Scanner.New("Hello, World! 42 3.14 ""quoted""")
 PRINT sc.Pos         ' 0
 PRINT sc.IsEnd       ' 0
 PRINT sc.Length         ' string length
@@ -120,14 +120,14 @@ PRINT sc.ReadUntilAny(",!")  ' Hello
 
 ' --- ReadIdent ---
 PRINT "--- ReadIdent ---"
-DIM sc2 AS Viper.Text.Scanner
-sc2 = Viper.Text.Scanner.New("myVar123 + other")
+DIM sc2 AS Zanna.Text.Scanner
+sc2 = Zanna.Text.Scanner.New("myVar123 + other")
 PRINT sc2.ReadIdent()  ' myVar123
 
 ' --- ReadLine ---
 PRINT "--- ReadLine ---"
-DIM sc3 AS Viper.Text.Scanner
-sc3 = Viper.Text.Scanner.New("line one" + CHR$(10) + "line two" + CHR$(10) + "line three")
+DIM sc3 AS Zanna.Text.Scanner
+sc3 = Zanna.Text.Scanner.New("line one" + CHR$(10) + "line two" + CHR$(10) + "line three")
 PRINT sc3.ReadLine()   ' line one
 PRINT sc3.ReadLine()   ' line two
 

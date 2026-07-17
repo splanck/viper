@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@
 #include <set>
 #include <sstream>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -1245,7 +1245,7 @@ bool extractXarFiles(const std::vector<uint8_t> &data, std::ostream &err, XarFil
 /// @brief Verify a macOS flat package (component or product) and its payloads.
 /// @details Extracts the XAR, then handles either a component package (top-level
 ///          Payload) or a product package (Distribution referencing a nested
-///          ViperToolchain.pkg, into which it recurses). Requires the Bom,
+///          ZannaToolchain.pkg, into which it recurses). Requires the Bom,
 ///          PackageInfo, and Scripts root files, gunzips and CPIO-verifies the
 ///          Payload and Scripts, and requires preinstall/postinstall scripts.
 /// @param data Flat `.pkg` (XAR) bytes.
@@ -1265,12 +1265,12 @@ bool verifyMacOSPkgInternal(const std::vector<uint8_t> &data,
         const auto distributionIt = xar.files.find("Distribution");
         if (distributionIt == xar.files.end()) {
             err << "macOS pkg: expected either component Payload or product Distribution with "
-                   "ViperToolchain.pkg\n";
+                   "ZannaToolchain.pkg\n";
             return false;
         }
         const std::string distribution(distributionIt->second.begin(),
                                        distributionIt->second.end());
-        if (distribution.find("#ViperToolchain.pkg") == std::string::npos ||
+        if (distribution.find("#ZannaToolchain.pkg") == std::string::npos ||
             distribution.find("installKBytes=\"") == std::string::npos ||
             distribution.find("updateKBytes=\"") == std::string::npos ||
             distribution.find("<product ") == std::string::npos) {
@@ -1306,13 +1306,13 @@ bool verifyMacOSPkgInternal(const std::vector<uint8_t> &data,
                 return false;
             }
         }
-        componentPrefix = "ViperToolchain.pkg/";
+        componentPrefix = "ZannaToolchain.pkg/";
         payloadIt = xar.files.find(componentPrefix + "Payload");
         if (payloadIt == xar.files.end()) {
-            const auto nestedComponentIt = xar.files.find("ViperToolchain.pkg");
+            const auto nestedComponentIt = xar.files.find("ZannaToolchain.pkg");
             if (nestedComponentIt != xar.files.end())
                 return verifyMacOSPkgInternal(nestedComponentIt->second, err, outPayloadNames);
-            err << "macOS pkg: product is missing ViperToolchain.pkg/Payload\n";
+            err << "macOS pkg: product is missing ZannaToolchain.pkg/Payload\n";
             return false;
         }
     }
@@ -2391,4 +2391,4 @@ bool verifyRpm(const std::vector<uint8_t> &data, std::ostream &err) {
     return true;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

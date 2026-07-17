@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@ constexpr std::size_t kExpectedPropertyCount = 645;
 constexpr std::size_t kExpectedMethodCount = 1099;
 
 bool is3DName(std::string_view name) {
-    return name.starts_with("Viper.Graphics3D.") || name.starts_with("Viper.Game3D.");
+    return name.starts_with("Zanna.Graphics3D.") || name.starts_with("Zanna.Game3D.");
 }
 
 class ManifestHash {
@@ -89,7 +89,7 @@ bool checkTarget(std::string_view target) {
 
 int main() {
     ManifestHash hash;
-    hash.addString("viper-graphics3d-abi-manifest-v1");
+    hash.addString("zanna-graphics3d-abi-manifest-v1");
 
     std::size_t functionCount = 0;
     std::unordered_set<std::string_view> functionNames;
@@ -178,7 +178,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x3c153691115a043d);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x49a07c6dca40192d);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

@@ -6,12 +6,12 @@ DIM num AS INTEGER
 ' === Seq edge cases ===
 PRINT "=== Seq Edge Cases ==="
 
-DIM seq AS Viper.Collections.Seq
-seq = Viper.Collections.Seq.New()
+DIM seq AS Zanna.Collections.Seq
+seq = Zanna.Collections.Seq.New()
 
 ' Operations on empty seq
 PRINT "Empty seq Len: "; seq.Count
-PRINT "Empty seq Find('x') IsSome: "; Viper.Option.get_IsSome(seq.FindOption("x"))
+PRINT "Empty seq Find('x') IsSome: "; Zanna.Option.get_IsSome(seq.FindOption("x"))
 PRINT "Empty seq Has('x'): "; seq.Has("x")
 
 ' Pop from empty - should this crash?
@@ -54,8 +54,8 @@ PRINT ""
 ' === Map edge cases ===
 PRINT "=== Map Edge Cases ==="
 
-DIM map AS Viper.Collections.Map
-map = Viper.Collections.Map.New()
+DIM map AS Zanna.Collections.Map
+map = Zanna.Collections.Map.New()
 
 ' Operations on empty map
 PRINT "Empty map Len: "; map.Count
@@ -75,7 +75,7 @@ PRINT "Set empty key, Has(''): "; map.Has("")
 
 ' Set with very long key
 DIM longKey AS STRING
-longKey = Viper.String.Repeat("x", 10000)
+longKey = Zanna.String.Repeat("x", 10000)
 map.Set(longKey, "long key value")
 PRINT "Set 10000-char key, Has: "; map.Has(longKey)
 
@@ -84,8 +84,8 @@ PRINT ""
 ' === Stack edge cases ===
 PRINT "=== Stack Edge Cases ==="
 
-DIM stack AS Viper.Collections.Stack
-stack = Viper.Collections.Stack.New()
+DIM stack AS Zanna.Collections.Stack
+stack = Zanna.Collections.Stack.New()
 
 PRINT "Empty stack Len: "; stack.Count
 
@@ -103,8 +103,8 @@ PRINT ""
 ' === Queue edge cases ===
 PRINT "=== Queue Edge Cases ==="
 
-DIM queue AS Viper.Collections.Queue
-queue = Viper.Collections.Queue.New()
+DIM queue AS Zanna.Collections.Queue
+queue = Zanna.Collections.Queue.New()
 
 PRINT "Empty queue Len: "; queue.Count
 
@@ -122,8 +122,8 @@ PRINT ""
 ' === Heap edge cases ===
 PRINT "=== Heap Edge Cases ==="
 
-DIM heap AS Viper.Collections.Heap
-heap = Viper.Collections.Heap.New()
+DIM heap AS Zanna.Collections.Heap
+heap = Zanna.Collections.Heap.New()
 
 PRINT "Empty heap Len: "; heap.Count
 
@@ -147,8 +147,8 @@ PRINT ""
 ' === Bytes edge cases ===
 PRINT "=== Bytes Edge Cases ==="
 
-DIM bytes AS Viper.IO.BinaryBuffer
-bytes = Viper.IO.BinaryBuffer.NewCapacity(0)
+DIM bytes AS Zanna.IO.BinaryBuffer
+bytes = Zanna.IO.BinaryBuffer.NewCapacity(0)
 PRINT "Bytes.New(0) Len: "; bytes.Length
 
 ' Get from empty
@@ -161,12 +161,12 @@ PRINT "Calling Set(0, 65) on empty bytes..."
 
 ' Create with negative size
 PRINT "Calling Bytes.New(-1)..."
-' bytes = Viper.IO.BinaryBuffer.NewCapacity(-1)  ' May crash
+' bytes = Zanna.IO.BinaryBuffer.NewCapacity(-1)  ' May crash
 
 ' Create with very large size
 PRINT "Calling Bytes.New(1000000)..."
-DIM bigBytes AS Viper.IO.BinaryBuffer
-bigBytes = Viper.IO.BinaryBuffer.NewCapacity(1000000)
+DIM bigBytes AS Zanna.IO.BinaryBuffer
+bigBytes = Zanna.IO.BinaryBuffer.NewCapacity(1000000)
 PRINT "Created 1MB bytes, Len: "; bigBytes.Length
 
 PRINT ""
@@ -174,8 +174,8 @@ PRINT ""
 ' === Ring edge cases ===
 PRINT "=== Ring Edge Cases ==="
 
-DIM ring AS Viper.Collections.Ring
-ring = Viper.Collections.Ring.New(0)
+DIM ring AS Zanna.Collections.Ring
+ring = Zanna.Collections.Ring.New(0)
 PRINT "Ring.New(0) Cap: "; ring.Capacity
 PRINT "Ring.New(0) Len: "; ring.Count
 
@@ -186,15 +186,15 @@ PRINT "After push, Len: "; ring.Count
 
 ' Create with negative capacity
 PRINT "Calling Ring.New(-1)..."
-' ring = Viper.Collections.Ring.New(-1)  ' May crash
+' ring = Zanna.Collections.Ring.New(-1)  ' May crash
 
 PRINT ""
 
 ' === Bag edge cases ===
 PRINT "=== Bag Edge Cases ==="
 
-DIM bag AS Viper.Collections.StringSet
-bag = Viper.Collections.StringSet.New()
+DIM bag AS Zanna.Collections.StringSet
+bag = Zanna.Collections.StringSet.New()
 
 PRINT "Empty bag Len: "; bag.Count
 PRINT "Empty bag Has('x'): "; bag.Has("x")

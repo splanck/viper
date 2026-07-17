@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 #include "tools/common/frontend_tool.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/project_loader.hpp"
-#include "tools/viper/cmd_codegen_x64.hpp"
+#include "tools/zanna/cmd_codegen_x64.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -34,7 +34,7 @@ int noopFrontend(int, char **) {
 }
 
 void testFrontendDoubleDashSeparatesProgramArgs() {
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     FrontendToolCallbacks callbacks{
         ".bas",
@@ -61,7 +61,7 @@ void testFrontendDoubleDashSeparatesProgramArgs() {
 }
 
 void testNativeCompilerTempPathsAreUnique() {
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     const std::string ilA = generateTempIlPath();
     const std::string ilB = generateTempIlPath();
@@ -71,7 +71,7 @@ void testNativeCompilerTempPathsAreUnique() {
     assert(ilA != ilB);
     assert(assetA != assetB);
     assert(std::filesystem::path(ilA).extension() == ".il");
-    assert(std::filesystem::path(assetA).extension() == ".vpa");
+    assert(std::filesystem::path(assetA).extension() == ".zpak");
 }
 
 /// @brief Verify IL output detection is case-insensitive.
@@ -79,7 +79,7 @@ void testNativeCompilerTempPathsAreUnique() {
 ///          extensions. The frontends should treat `-o OUT.IL` the same as
 ///          `-o out.il` and avoid accidentally invoking native code generation.
 void testNativeCompilerIlExtensionIsCaseInsensitive() {
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     assert(!isNativeOutputPath("out.il"));
     assert(!isNativeOutputPath("OUT.IL"));
@@ -91,14 +91,14 @@ void testNativeCompilerIlExtensionIsCaseInsensitive() {
 void testX64CodegenAcceptsAssetBlobAndExtraObjectFlags() {
     char input[] = "missing.il";
     char assetFlag[] = "--asset-blob";
-    char assetPath[] = "assets.vpa";
+    char assetPath[] = "assets.zpak";
     char objFlag[] = "--extra-obj";
     char objPath[] = "assets.o";
     char *argv[] = {input, assetFlag, assetPath, objFlag, objPath};
 
     std::ostringstream errCapture;
     auto *oldErr = std::cerr.rdbuf(errCapture.rdbuf());
-    const int rc = viper::tools::ilc::cmd_codegen_x64(5, argv);
+    const int rc = zanna::tools::ilc::cmd_codegen_x64(5, argv);
     std::cerr.rdbuf(oldErr);
 
     const std::string diagnostics = errCapture.str();
@@ -116,7 +116,7 @@ void testX64CodegenAcceptsDebugLineFlags() {
 
     std::ostringstream errCapture;
     auto *oldErr = std::cerr.rdbuf(errCapture.rdbuf());
-    const int rc = viper::tools::ilc::cmd_codegen_x64(3, argv);
+    const int rc = zanna::tools::ilc::cmd_codegen_x64(3, argv);
     std::cerr.rdbuf(oldErr);
 
     const std::string diagnostics = errCapture.str();
@@ -132,7 +132,7 @@ void writeText(const std::filesystem::path &path, const std::string &text) {
 
 void testProjectDefaultsUseBalancedOptimization() {
     using namespace il::tools::common;
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
     std::filesystem::create_directories(dir);
@@ -150,12 +150,12 @@ void testProjectDefaultsUseBalancedOptimization() {
 
 void testProjectProfilesMapToOptimizationLevels() {
     using namespace il::tools::common;
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
-    writeText(dir / "viper.project",
+    writeText(dir / "zanna.project",
               "project perf\n"
               "version 0.1.0\n"
               "lang zia\n"
@@ -169,7 +169,7 @@ void testProjectProfilesMapToOptimizationLevels() {
     assert(resolved.value().buildProfileExplicit);
     assert(!resolved.value().optimizeLevelExplicit);
 
-    writeText(dir / "viper.project",
+    writeText(dir / "zanna.project",
               "project perf\n"
               "version 0.1.0\n"
               "lang zia\n"
@@ -192,12 +192,12 @@ void testProjectProfilesMapToOptimizationLevels() {
 ///          users do not hit inconsistent configuration grammars.
 void testProjectManifestBooleanNumericForms() {
     using namespace il::tools::common;
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
-    writeText(dir / "viper.project",
+    writeText(dir / "zanna.project",
               "project boolproj\n"
               "version 0.1.0\n"
               "lang zia\n"
@@ -221,12 +221,12 @@ void testProjectManifestBooleanNumericForms() {
 
 void testProjectManifestAcceptsUtf8Bom() {
     using namespace il::tools::common;
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
-    writeText(dir / "viper.project",
+    writeText(dir / "zanna.project",
               "\xEF\xBB\xBF"
               "project bomproj\n"
               "version 0.1.0\n"
@@ -242,7 +242,7 @@ void testProjectManifestAcceptsUtf8Bom() {
 
 void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
     using namespace il::tools::common;
-    using namespace viper::tools;
+    using namespace zanna::tools;
 
     std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
     std::filesystem::create_directories(dir / "build");

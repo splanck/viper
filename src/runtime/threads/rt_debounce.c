@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_debounce.c
 // Purpose: Implements signal-and-poll rate-limiting primitives for Zia code:
-//          `Viper.Threads.Debouncer` (becomes ready only after a quiet period
-//          since the last `Signal`) and `Viper.Threads.Throttler` (allows at
+//          `Zanna.Threads.Debouncer` (becomes ready only after a quiet period
+//          since the last `Signal`) and `Zanna.Threads.Throttler` (allows at
 //          most one `Try` to succeed per fixed interval). These are passive
 //          state objects — they do *not* hold a stored callback or fire any
 //          deferred work; the calling Zia loop polls `IsReady`/`Try` and

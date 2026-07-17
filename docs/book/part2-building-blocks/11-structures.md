@@ -84,8 +84,8 @@ Nothing enforces that points have exactly two coordinates, or that `pointX` and 
 Every function that works with a point needs two parameters:
 
 ```rust
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
@@ -159,7 +159,7 @@ struct Point {
 }
 ```
 
-This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `struct` keyword tells Viper we're defining a structure. The `expose` keyword makes each field accessible from outside the struct.
+This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `struct` keyword tells Zanna we're defining a structure. The `expose` keyword makes each field accessible from outside the struct.
 
 Now we can create points:
 
@@ -171,7 +171,7 @@ var position = new Point(10.5, 20.3);
 Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(position.x);  // 10.5
 Say(position.y);  // 20.3
@@ -327,7 +327,7 @@ To create a value of your structure type, use `new` and pass the field values in
 
 ```rust
 var myBook = new Book(
-    "The Viper Programming Guide",
+    "The Zanna Programming Guide",
     "Jane Developer",
     450,
     29.99
@@ -345,9 +345,9 @@ var book1 = new Book("A", "B", 100, 9.99);
 Use dot notation to read field values:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-Say(myBook.title);      // "The Viper Programming Guide"
+Say(myBook.title);      // "The Zanna Programming Guide"
 Say(myBook.author);     // "Jane Developer"
 Say(myBook.pageCount);  // 450
 Say(myBook.price);      // 29.99
@@ -381,7 +381,7 @@ var p2 = p1;  // p2 is a COPY of p1
 
 p2.x = 99.0;  // Modify p2
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(p1.x);  // 10.0 - p1 is unchanged!
 Say(p2.x);  // 99.0 - only p2 changed
@@ -410,7 +410,7 @@ Original p1:          After p2 = p1:           After p2.x = 99:
 When you pass a structure to a function, the function receives a copy:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func tryToModify(point: Point) {
     point.x = 999.0;  // Modifies the local copy
@@ -429,7 +429,7 @@ The function can modify its copy all it wants, but the original in the calling c
 If a function needs to modify a structure and have the caller see the changes, return the modified version:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func moveRight(point: Point, amount: Number) -> Point {
     point.x = point.x + amount;
@@ -483,7 +483,7 @@ struct Rectangle {
 Now you can call these methods on any `Rectangle`:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var rect = new Rectangle(10.0, 5.0);
 Say(rect.area());       // 50.0
@@ -535,8 +535,8 @@ Methods have advantages:
 Methods can have parameters in addition to the implicit `self`:
 
 ```rust
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     expose Number x;
@@ -584,7 +584,7 @@ struct Counter {
     }
 }
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var c = new Counter(0);
 c.increment();
@@ -620,7 +620,7 @@ struct Point {
 var p = new Point(2.0, 3.0);
 var v = new Point(1.0, 1.0);
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var moved = p.add(v);  // New point at (3.0, 4.0)
 var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
@@ -665,7 +665,7 @@ var alice = new Person("Alice", 30, new Address("123 Main St", "Springfield", "I
 Access nested fields with chained dots:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(alice.name);           // "Alice"
 Say(alice.home.city);      // "Springfield"
@@ -687,7 +687,7 @@ Nesting provides several benefits:
 Let's model a game with nested structures:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 struct Vec2 {
     expose Number x;
@@ -757,7 +757,7 @@ struct Player {
 Now creating a player is clean and structured:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hero = new Player("Hero", new Vec2(0.0, 0.0), new Health(100, 100), 0);
 
@@ -970,7 +970,7 @@ Let's see structures in action with several complete examples.
 ### Example: Playing Cards
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Card {
     expose Integer suit;    // 0=Hearts, 1=Diamonds, 2=Clubs, 3=Spades
@@ -1031,8 +1031,8 @@ func start() {
 ### Example: 2D Geometry
 
 ```rust
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     expose Number x;
@@ -1098,7 +1098,7 @@ func start() {
 ### Example: Student Grades
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Student {
     expose String name;
@@ -1188,7 +1188,7 @@ func start() {
 ### Example: Simple Inventory System
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Item {
     expose Integer id;
@@ -1287,8 +1287,8 @@ Let's put everything together in a more complex game example:
 ```rust
 module GameDemo;
 
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Vec2 {
     expose Number x;
@@ -1510,8 +1510,8 @@ This example demonstrates:
 
 **Zia**
 ```rust
-bind Viper.Math as Math;
-bind Viper.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
 
 struct Point {
     expose Number x;
@@ -1568,7 +1568,7 @@ For now, structures handle most cases beautifully. They're simpler, safer, and s
 Create instances with validated or computed values:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func createPoint(x: Number, y: Number) -> Point {
     return new Point(x, y);
@@ -1642,7 +1642,7 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
 ### Converting to String
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 struct Person {
     expose String name;
@@ -1683,7 +1683,7 @@ p.x = 5.0;  // Now you can access fields
 ### Expecting Changes to Persist Through Functions
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func birthday(person: Person) {
     person.age = person.age + 1;  // Modifies a copy!
@@ -1697,7 +1697,7 @@ Say(alice.age);  // Still 30!
 Remember value semantics: the function gets a copy. To actually update:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func birthday(person: Person) -> Person {
     person.age = person.age + 1;
@@ -1774,7 +1774,7 @@ Structures are fundamental to organizing data in programs. Here's what you've le
 
 ## See Also
 
-Structures define custom types by grouping fields together. Viper also supports **enumerations** — custom types that represent a fixed set of named integer constants. While structures are ideal when your data has multiple fields, enums are the right choice when a value can only be one of a small, known set of options (like directions, colors, or game states). See the canonical [Zia reference](../../languages/zia-reference.md#enums) and [BASIC reference](../../languages/basic-reference.md#enum) for full details.
+Structures define custom types by grouping fields together. Zanna also supports **enumerations** — custom types that represent a fixed set of named integer constants. While structures are ideal when your data has multiple fields, enums are the right choice when a value can only be one of a small, known set of options (like directions, colors, or game states). See the canonical [Zia reference](../../languages/zia-reference.md#enums) and [BASIC reference](../../languages/basic-reference.md#enum) for full details.
 
 ---
 

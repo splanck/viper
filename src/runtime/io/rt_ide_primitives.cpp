@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/io/rt_ide_primitives.cpp
 // Purpose: Workspace, asset, manifest, and transactional edit helpers used by
-//          ViperIDE and editor-style tooling.
+//          ZannaIDE and editor-style tooling.
 // Key invariants:
 //   - Workspace edit targets are validated before any disk mutation is attempted.
 //   - Workspace/file-index helpers never depend on compiler-layer services.
@@ -650,8 +650,8 @@ bool shouldIgnorePathWithPatterns(const std::string &relativePath,
                                          ".git/",
                                          ".hg/",
                                          ".svn/",
-                                         ".viper/",
-                                         ".viper-cache/",
+                                         ".zanna/",
+                                         ".zanna-cache/",
                                          "build/",
                                          "cmake-build-*/",
                                          "node_modules/",
@@ -1890,7 +1890,7 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
 
         rt_map_set_bool(manifest, rt_const_cstr("valid"), rt_seq_len(diagnostics) == 0 ? 1 : 0);
         if (mapGetString(manifest, "name").empty())
-            mapSetStr(manifest, "name", "ViperProject");
+            mapSetStr(manifest, "name", "ZannaProject");
         return manifest;
     } catch (...) {
         void *manifest = newManifestMap();
@@ -1917,7 +1917,7 @@ void *rt_project_manifest_parse_file(rt_string path_s) {
         rt_string text = makeString(buffer.str());
         void *manifest = rt_project_manifest_parse_text(text);
         rt_string_unref(text);
-        if (mapGetString(manifest, "name") == "ViperProject") {
+        if (mapGetString(manifest, "name") == "ZannaProject") {
             fs::path p(path);
             if (!p.parent_path().empty())
                 mapSetStr(manifest, "name", p.parent_path().filename().generic_string());
@@ -2013,7 +2013,7 @@ static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) 
     std::snprintf(nonce, sizeof(nonce), "%016llx",
                   static_cast<unsigned long long>(workspaceEditNonce()));
     std::string leaf =
-        "." + file.filename().generic_string() + ".viper-edit-" + nonce + suffix;
+        "." + file.filename().generic_string() + ".zanna-edit-" + nonce + suffix;
     return dir / leaf;
 }
 

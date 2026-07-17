@@ -11,7 +11,7 @@
 // =============================================================================
 module targets;
 
-bind Viper.Graphics3D as G3D;
+bind Zanna.Graphics3D as G3D;
 bind "../config" as config;
 
 class TargetRegistry {

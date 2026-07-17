@@ -12,14 +12,14 @@ Accepted
 
 ## Context
 
-`Viper.Terminal.ReadLine` and `Viper.Terminal.Ask` historically returned
+`Zanna.Terminal.ReadLine` and `Zanna.Terminal.Ask` historically returned
 nullable strings. That shape preserves compatibility with earlier Zia, BASIC,
 and IL examples, but it is not the clearest public API for robust applications:
 EOF is an expected outcome, while allocation failures and overlong input are
 runtime failures. New user-facing APIs need to communicate that distinction
 without deleting the existing nullable functions.
 
-The runtime already exposes `Viper.Option` and `Viper.Result`, so terminal input
+The runtime already exposes `Zanna.Option` and `Zanna.Result`, so terminal input
 can use the same explicit success/failure vocabulary as parsing and other
 modern runtime surfaces.
 
@@ -27,10 +27,10 @@ modern runtime surfaces.
 
 Add four terminal input functions while preserving all existing functions:
 
-- `Viper.Terminal.TryReadLine() -> Option<String>`
-- `Viper.Terminal.TryAsk(prompt: String) -> Option<String>`
-- `Viper.Terminal.ReadLineResult() -> Result<String, String>`
-- `Viper.Terminal.AskResult(prompt: String) -> Result<String, String>`
+- `Zanna.Terminal.TryReadLine() -> Option<String>`
+- `Zanna.Terminal.TryAsk(prompt: String) -> Option<String>`
+- `Zanna.Terminal.ReadLineResult() -> Result<String, String>`
+- `Zanna.Terminal.AskResult(prompt: String) -> Result<String, String>`
 
 EOF before any bytes are read is represented as `None` for the `Try*` APIs and
 as `Err(String)` for the `*Result` APIs. Input allocation failures, overlong

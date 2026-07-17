@@ -2,7 +2,7 @@
 <!--
 ===============================================================================
 
-Part of the Viper project, under the GNU GPL v3.
+Part of the Zanna project, under the GNU GPL v3.
 See LICENSE for license information.
 
 File: src/tools/windows_installer/WindowsInstallerCleanup.manifest.in
@@ -14,8 +14,8 @@ Links: WindowsInstallerCleanup.cpp, src/CMakeLists.txt
 ===============================================================================
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="1.0.0.0" processorArchitecture="@VIPER_INSTALLER_PROCESSOR_ARCH@" name="Viper.WindowsInstallerCleanup" type="win32"/>
-  <description>Viper Installer Detached Cleanup</description>
+  <assemblyIdentity version="1.0.0.0" processorArchitecture="@ZANNA_INSTALLER_PROCESSOR_ARCH@" name="Zanna.WindowsInstallerCleanup" type="win32"/>
+  <description>Zanna Installer Detached Cleanup</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>

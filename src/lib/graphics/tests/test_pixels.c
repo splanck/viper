@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Pixel Tests (T4-T6, T14)
+ * ZannaGFX - Pixel Tests (T4-T6, T14)
  * Tests pixel operations and framebuffer access
  */
 
@@ -244,7 +244,7 @@ void test_framebuffer_access(void) {
 /// How:  Exercises conversion functions and blitters with known-good cases.
 int main(void) {
     printf("========================================\n");
-    printf("ViperGFX Pixel Tests (T4-T6, T14)\n");
+    printf("ZannaGFX Pixel Tests (T4-T6, T14)\n");
     printf("========================================\n");
 
     test_pixel_set_get();
@@ -261,7 +261,7 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//

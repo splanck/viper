@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@ namespace il::frontends::zia {
 class CompletionEngine;
 }
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Protocol-agnostic facade wrapping Zia compiler APIs.
 ///
@@ -121,4 +121,4 @@ class CompilerBridge : public ICompilerBridge {
     bool workspaceSymbolCacheDirty_{true};
 };
 
-} // namespace viper::server
+} // namespace zanna::server

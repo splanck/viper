@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Declares the BasicBlock struct -- a maximal sequence of IL
 //          instructions with a single entry point, optional block parameters
 //          (phi-node equivalents), and a single exit terminator. Basic blocks
-//          are the fundamental units of control flow in Viper IL functions.
+//          are the fundamental units of control flow in Zanna IL functions.
 // Key invariants:
 //   - Labels must be non-empty and unique within the parent function.
 //   - Parameter count and types must match incoming branch arguments.

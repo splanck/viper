@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 namespace {
 
@@ -336,7 +336,7 @@ size_t countLoadSegments(const LinkLayout &layout, const std::vector<size_t> &lo
     return count;
 }
 
-using viper::codegen::objfile::putLE32;
+using zanna::codegen::objfile::putLE32;
 
 /// @brief Compute the SVR4 ELF hash (`DT_HASH`) of a symbol name.
 /// @details The original Bourne-shell-era PJW hash, specified by the System V
@@ -1289,4 +1289,4 @@ bool writeElfExe(const std::string &path,
     return writeBinaryFileAtomically(path, fileData, true, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

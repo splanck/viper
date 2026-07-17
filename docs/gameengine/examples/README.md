@@ -6,9 +6,9 @@ last-verified: 2026-04-09
 
 # Example Games Gallery
 
-> 15 complete games demonstrating the Viper Game Engine at every scale.
+> 15 complete games demonstrating the Zanna Game Engine at every scale.
 
-**Part of [Viper Game Engine](../README.md)**
+**Part of [Zanna Game Engine](../README.md)**
 
 ---
 
@@ -24,7 +24,7 @@ All examples are in [`examples/games/`](../../../examples/games/). Each game is 
 
 **Genre:** Metroidvania sidescroller | **Language:** Zia | **LOC:** 17,005 across 26 files
 
-The flagship game demo showcasing the full Viper game engine. Features 25+ enemy types, 10 JSON-based levels, parallax scrolling, particle effects, lighting, abilities (dash, charge, ground pound), world map, save system, achievement tracking, and 11 WAV sound files.
+The flagship game demo showcasing the full Zanna game engine. Features 25+ enemy types, 10 JSON-based levels, parallax scrolling, particle effects, lighting, abilities (dash, charge, ground pound), world map, save system, achievement tracking, and 11 WAV sound files.
 
 **Engine features demonstrated:**
 Canvas, Entity, Behavior, AnimStateMachine, PlatformerController, Camera (smooth follow + parallax), Tilemap, SpriteBatch, SoundBank + Synth, ScreenFX (shake, fade, transitions), ParticleEmitter, Lighting2D, StateMachine, SceneManager, LevelDocument, Config, GameUI, Dialogue, Timer, ObjectPool, AchievementTracker, DebugOverlay
@@ -111,7 +111,7 @@ Minimal test for ScreenFX fade and full-screen canvas coverage. Useful as a refe
 
 ### BASIC Games — Terminal-Based
 
-These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). They demonstrate OOP patterns and game logic without the graphics engine.
+These games use Zanna BASIC and render with ANSI terminal graphics (no Canvas). They demonstrate OOP patterns and game logic without the graphics engine.
 
 | Game | LOC | Files | Description |
 |------|-----|-------|-------------|
@@ -164,7 +164,7 @@ Two guided walkthroughs are planned but are not yet part of the documentation se
 - **Arcade Shooter** — Centipede-style ObjectPool + Particles
 
 Until those are written, use the linked complete examples above and the
-[game-library guides](../../viperlib/game/README.md).
+[game-library guides](../../zannalib/game/README.md).
 ---
 
 ## See Also

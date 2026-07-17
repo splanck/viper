@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //                 and maintains consistent selection anchors.
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances; this
 //                     translation unit mutates only TextView state.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,9 +28,9 @@
 #include <algorithm>
 #include <string>
 
-using viper::tui::util::char_width;
+using zanna::tui::util::char_width;
 
-namespace viper::tui::views {
+namespace zanna::tui::views {
 
 /// @brief Handle a terminal input event and update cursor/selection state.
 /// @details The dispatcher recognises navigation keys and translates them into
@@ -147,4 +147,4 @@ bool TextView::onEvent(const ui::Event &ev) {
     }
 }
 
-} // namespace viper::tui::views
+} // namespace zanna::tui::views

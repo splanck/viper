@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Encoding parameters for an ADD/SUB 12-bit immediate instruction.
 /// @details AArch64 ADD/SUB accept a 12-bit unsigned immediate with an optional
@@ -196,4 +196,4 @@ inline void emitLegalizedSignedImmArith(MBasicBlock &out,
         MInstr{kind == SignedImmArithKind::Add ? addRegOpc : subRegOpc, {dst, lhs, tmp}});
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

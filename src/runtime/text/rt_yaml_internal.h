@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,14 +36,14 @@ static inline bool yaml_is_boxed(void *obj) {
     return obj && !rt_string_is_handle(obj) && rt_box_type(obj) >= 0;
 }
 
-/// @brief True if `obj` is a Viper Sequence (`Seq`) container.
+/// @brief True if `obj` is a Zanna Sequence (`Seq`) container.
 static inline bool yaml_is_sequence(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;
     return rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, YAML_SEQ_MIN_PAYLOAD);
 }
 
-/// @brief True if `obj` is a Viper Mapping (`Map`) container.
+/// @brief True if `obj` is a Zanna Mapping (`Map`) container.
 static inline bool yaml_is_mapping(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;

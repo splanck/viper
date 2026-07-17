@@ -1,7 +1,7 @@
 module TilemapDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Graphics2D.Tilemap ===");
+    Say("=== API Audit: Zanna.Graphics2D.Tilemap ===");
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New(width, height, tileW, tileH)");
     Say("Properties: get_Width, get_Height, get_TileWidth, get_TileHeight");

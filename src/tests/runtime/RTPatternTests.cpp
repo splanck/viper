@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTPatternTests.cpp
-// Purpose: Validate Viper.Text.Pattern regex functions.
+// Purpose: Validate Zanna.Text.Pattern regex functions.
 // Key invariants: Pattern matching follows documented regex syntax.
-// Links: docs/viperlib/text.md
+// Links: docs/zannalib/text.md
 //
 //===----------------------------------------------------------------------===//
 

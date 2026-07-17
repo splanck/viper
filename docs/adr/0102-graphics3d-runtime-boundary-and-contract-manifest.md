@@ -38,10 +38,10 @@ required by the repository policy.
   ownership contracts, and failure contracts define the public Graphics3D and
   Game3D API.
 - The `rt_*` C functions form an internal embedding ABI used by generated code,
-  the VM bridge, tests, and Viper-owned adapters. They are not a separately
+  the VM bridge, tests, and Zanna-owned adapters. They are not a separately
   versioned C SDK. Runtime object pointers remain opaque handles; private object
   layouts are not part of that ABI.
-- `viper --dump-runtime-api` schema version 4 declares
+- `zanna --dump-runtime-api` schema version 4 declares
   `public_boundary: "registry"` and
   `c_abi_status: "internal-embedding"`. Every registry function reports its
   backing `c_symbol`. Non-empty constructors, property accessors, and methods
@@ -102,7 +102,7 @@ and calling conventions do not change.
   required, and the reviewed manifest fingerprint together.
 - The manifest hash is intentionally sensitive to order and spelling. This
   creates a small maintenance cost in exchange for complete drift detection.
-- C embedders may continue using Viper-owned `rt_*` declarations, but cannot
+- C embedders may continue using Zanna-owned `rt_*` declarations, but cannot
   rely on private struct layouts or independent semantic-version guarantees.
 
 ## Alternatives

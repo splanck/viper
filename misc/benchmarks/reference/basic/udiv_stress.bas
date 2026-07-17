@@ -18,5 +18,5 @@ DO WHILE i < 50000001
     sum = (sum + s) MOD 268435456
     i = i + 1
 LOOP
-Viper.System.Environment.Exit(sum)
+Zanna.System.Environment.Exit(sum)
 END

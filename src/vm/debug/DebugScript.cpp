@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 /// @details Keeps I/O and parsing logic out of the header so the debugger can
 ///          include lightweight declarations while the implementation handles
 ///          error messaging and command expansion.
-#include "viper/vm/debug/Debug.hpp"
+#include "zanna/vm/debug/Debug.hpp"
 
 #include <algorithm>
 #include <cctype>

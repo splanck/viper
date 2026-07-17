@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -168,4 +168,4 @@ void ArWriter::finishToFile(const std::string &path) const {
     writeFileAtomic(path, data);
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

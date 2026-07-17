@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math.Mat4 - 4x4 Matrix Operations
+// API Audit: Zanna.Math.Mat4 - 4x4 Matrix Operations
 // =============================================================================
 // Tests: Identity, Zero, Translate, Scale, RotateX, RotateY, RotateZ, Get,
 //        Add, Sub, Mul, MulScalar, TransformPoint, TransformVec, Transpose,
@@ -7,11 +7,11 @@
 // =============================================================================
 
 module Mat4Demo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Mat4 ===");
+    Say("=== API Audit: Zanna.Math.Mat4 ===");
 
     // --- Identity ---
     Say("--- Identity ---");

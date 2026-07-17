@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_animtimeline.h
-// Purpose: Runtime bridge for Viper.Game.AnimTimeline — a passive frame-based
+// Purpose: Runtime bridge for Zanna.Game.AnimTimeline — a passive frame-based
 //   scheduler that stores animation-state/tween payload spans plus discrete
 //   markers, with play/pause/stop, looping, and event reporting.
 //
@@ -80,12 +80,12 @@ int64_t rt_animtimeline_events_fired_count(void *tl);
 /// @brief Marker id of the @p index-th event fired during the last advance().
 int64_t rt_animtimeline_event_fired_id(void *tl, int64_t index);
 /// @brief Snapshot marker IDs fired by the most recent advance().
-/// @details Returns an immutable Viper.Game.AnimationEventBatch whose contents
+/// @details Returns an immutable Zanna.Game.AnimationEventBatch whose contents
 ///          are independent from later Advance(), Play(), Stop(), or looping
 ///          state changes. This is the composable replacement for reading
 ///          EventsFiredCount and EventFiredId from mutable state.
 /// @param tl AnimTimeline object.
-/// @return New Viper.Game.AnimationEventBatch object, or NULL on allocation failure.
+/// @return New Zanna.Game.AnimationEventBatch object, or NULL on allocation failure.
 void *rt_animtimeline_poll_events(void *tl);
 /// @brief True if the track at @p track_index is active at the current frame.
 int8_t rt_animtimeline_track_is_active(void *tl, int64_t track_index);

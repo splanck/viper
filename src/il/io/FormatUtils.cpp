@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 ///          functions return owning std::string instances so callers can persist
 ///          the text without tracking additional lifetimes.
 
-#include "viper/il/io/FormatUtils.hpp"
+#include "zanna/il/io/FormatUtils.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -30,7 +30,7 @@
 #include <sstream>
 #include <string>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 
 /// @brief Convert a signed integer into its canonical string representation.
 /// @details Delegates to @c std::to_string because the helper already emits
@@ -68,4 +68,4 @@ std::string format_float(double value) {
     return stream.str();
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

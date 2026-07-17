@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - MSL expects column-major matrices, so all model/normal/prev_model
-//     payloads are transposed from Viper's row-major form before upload.
+//     payloads are transposed from Zanna's row-major form before upload.
 //
 // Links: vgfx3d_backend_metal_shared.h, vgfx3d_backend_metal.c
 //

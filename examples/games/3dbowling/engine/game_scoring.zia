@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,10 +24,10 @@
 // game_scoring.zia — Score and match-flow state transitions.
 module game_scoring;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
 bind "../config";
 bind "./camera";
 bind "./game_flow";

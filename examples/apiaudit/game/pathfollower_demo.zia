@@ -1,11 +1,11 @@
-// pathfollower_demo.zia - Comprehensive API audit for Viper.Game.PathFollower
+// pathfollower_demo.zia - Comprehensive API audit for Zanna.Game.PathFollower
 // Tests: New, AddPoint, PointCount, Mode, Speed, Start, Pause, Stop,
 //        IsActive, IsFinished, Update, X, Y, Progress, Segment, Angle, Clear
 
 module PathFollowerDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== PathFollower API Audit ===");

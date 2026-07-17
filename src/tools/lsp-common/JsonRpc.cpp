@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 
 #include "tools/lsp-common/JsonRpc.hpp"
 
-namespace viper::server {
+namespace zanna::server {
 
 bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
     out = JsonRpcRequest{};
@@ -89,4 +89,4 @@ std::string buildNotification(const std::string &method, const JsonValue &params
     return notification.toCompactString();
 }
 
-} // namespace viper::server
+} // namespace zanna::server

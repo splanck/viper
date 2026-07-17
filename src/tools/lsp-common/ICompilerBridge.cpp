@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Return an ASCII-lowercased copy of @p s (used for case-insensitive search).
 static std::string toLowerStr(const std::string &s) {
@@ -161,4 +161,4 @@ std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeSearch(const std::string 
     return result;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

@@ -1,5 +1,5 @@
-' API Audit: Viper.Network.Udp (BASIC)
-PRINT "=== API Audit: Viper.Network.Udp ==="
+' API Audit: Zanna.Network.Udp (BASIC)
+PRINT "=== API Audit: Zanna.Network.Udp ==="
 PRINT "NOTE: UDP requires socket binding. API surface test only."
 PRINT "Constructor: New(), Bind(port), BindAt(address,port)"
 PRINT "Properties: Port() -> i64, Address() -> str, IsBound() -> bool"

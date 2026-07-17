@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_dateonly.c
-// Purpose: Implements the DateOnly type for the Viper runtime, representing a
+// Purpose: Implements the DateOnly type for the Zanna runtime, representing a
 //          calendar date (year, month, day) without a time component. Provides
 //          construction from components or Unix day offsets, arithmetic
 //          (AddDays, DiffDays), comparison, formatting, and leap-year handling.

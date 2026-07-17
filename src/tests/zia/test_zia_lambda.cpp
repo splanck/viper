@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,7 +53,7 @@ TEST(ZiaLambda, LambdaWithBlockBody) {
 module Test;
 
 func start() {    var greet = () => {
-        Viper.Terminal.Say("Hello");
+        Zanna.Terminal.Say("Hello");
     };
 }
 )";
@@ -93,7 +93,7 @@ func start() {    var b: Byte = 1;
     var ready: Boolean = true;
     var f = () => {
         if ready {
-            Viper.Terminal.SayInt(i);
+            Zanna.Terminal.SayInt(i);
         }
         var copy = b;
     };
@@ -126,7 +126,7 @@ module Test;
 func start() {
     var add = (a: Integer, b: Integer) => a + b;
     var value = add(10, 32);
-    Viper.Terminal.SayInt(value);
+    Zanna.Terminal.SayInt(value);
 }
 )";
     CompilerInput input{.source = source, .path = "lambda_multi_typed.zia"};
@@ -141,5 +141,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

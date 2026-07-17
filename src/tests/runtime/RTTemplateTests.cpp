@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTTemplateTests.cpp
-// Purpose: Validate Viper.Text.Template string templating functions.
+// Purpose: Validate Zanna.Text.Template string templating functions.
 // Key invariants: Placeholders are correctly replaced; missing keys left as-is.
-// Links: docs/viperlib/text.md
+// Links: docs/zannalib/text.md
 //
 //===----------------------------------------------------------------------===//
 

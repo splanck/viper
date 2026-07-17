@@ -3,10 +3,10 @@
 // Uses software backend to support Pixels-based texture mapping.
 module DemoRenderToTexture;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Render to Texture", 640, 480);

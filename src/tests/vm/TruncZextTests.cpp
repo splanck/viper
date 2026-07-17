@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -90,14 +90,14 @@ void buildZext1DirectFunction(Module &module, int64_t boolVal) {
 int64_t runTrunc1(int64_t val) {
     Module module;
     buildTrunc1Function(module, val);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 int64_t runZext1Direct(int64_t boolVal) {
     Module module;
     buildZext1DirectFunction(module, boolVal);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

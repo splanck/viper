@@ -1,8 +1,8 @@
 module TestScene;
 
-bind Viper.Terminal;
-bind Viper.Game2D.SceneDocument as SceneDocument;
-bind Viper.String as String;
+bind Zanna.Terminal;
+bind Zanna.Game2D.SceneDocument as SceneDocument;
+bind Zanna.String as String;
 
 func start() {
     var scene = SceneDocument.New(3, 2, 16, 16);

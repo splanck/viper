@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements viper.project manifest parsing and convention-based project
+/// @brief Implements zanna.project manifest parsing and convention-based project
 ///        discovery shared by the Zia and BASIC frontends.
 /// @details Provides two entry points: resolveProject() classifies a CLI target
 ///          (file, directory, or manifest) and either discovers sources by
@@ -135,7 +135,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
                               "cmake-build",
                               "node_modules",
                               "vendor",
-                              ".viper-cache"});
+                              ".zanna-cache"});
 
     auto it = fs::recursive_directory_iterator(dir, ec);
     if (ec) {
@@ -181,7 +181,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
                            entryEc.message();
                 return {};
             }
-            if (!viper::pkg::isPathWithin(canonicalRoot, canonical)) {
+            if (!zanna::pkg::isPathWithin(canonicalRoot, canonical)) {
                 if (err)
                     *err = "source file escapes project root through a symlink: " +
                            it->path().string();
@@ -490,7 +490,7 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
         std::string msg = "multiple entry points found:";
         for (const auto &c : candidates)
             msg += " " + fs::path(c).filename().string();
-        msg += "; specify entry in viper.project";
+        msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
 
@@ -527,7 +527,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
         std::string msg = "multiple root files found:";
         for (const auto &r : roots)
             msg += " " + fs::path(r).filename().string();
-        msg += "; specify entry in viper.project";
+        msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
 
@@ -544,7 +544,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
         std::string msg = "multiple BASIC files contain top-level statements:";
         for (const auto &f : execFiles)
             msg += " " + fs::path(f).filename().string();
-        msg += "; specify entry in viper.project";
+        msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
 
@@ -573,10 +573,10 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
         return makeErr("no source files found in " + dir.string());
 
     if (!ziaFiles.empty() && !basFiles.empty()) {
-        // Mixed project detected — require a viper.project manifest to
+        // Mixed project detected — require a zanna.project manifest to
         // specify the entry point and 'lang mixed'.
         return makeErr("mixed .zia and .bas files in " + dir.string() +
-                       "; create viper.project with 'lang mixed' and 'entry <file>'");
+                       "; create zanna.project with 'lang mixed' and 'entry <file>'");
     }
 
     ProjectConfig config;
@@ -801,7 +801,7 @@ il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &mani
                                                             const std::string &directive,
                                                             bool allowProjectRoot) {
     try {
-        std::string clean = viper::pkg::sanitizePackageRelativePath(raw, directive.c_str());
+        std::string clean = zanna::pkg::sanitizePackageRelativePath(raw, directive.c_str());
         if (clean.empty()) {
             if (allowProjectRoot)
                 return manifestDir;
@@ -814,7 +814,7 @@ il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &mani
         if (ec)
             return makeManifestErr(
                 manifestPath, line, "cannot resolve " + directive + " path: '" + raw + "'");
-        if (!viper::pkg::isPathWithin(manifestDir, resolved)) {
+        if (!zanna::pkg::isPathWithin(manifestDir, resolved)) {
             return makeManifestErr(
                 manifestPath, line, directive + " path escapes the project root: '" + raw + "'");
         }
@@ -848,7 +848,7 @@ il::support::Expected<std::string> parseManifestRelativeToken(const fs::path &ma
 /// @details Used by the post-install / pre-uninstall directives. The value must
 ///          tokenize to exactly one project-relative path, which is resolved
 ///          against @p manifestDir (rejecting path escapes via
-///          viper::pkg::resolvePackageSourcePath), required to be a regular
+///          zanna::pkg::resolvePackageSourcePath), required to be a regular
 ///          file, and slurped into a string. Any failure produces a manifest
 ///          diagnostic with file:line context.
 /// @param manifestDir Directory the manifest lives in; the resolution root.
@@ -872,7 +872,7 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
     fs::path scriptPath;
     try {
         scriptPath =
-            viper::pkg::resolvePackageSourcePath(manifestDir, tokens.value()[0], directive.c_str());
+            zanna::pkg::resolvePackageSourcePath(manifestDir, tokens.value()[0], directive.c_str());
     } catch (const std::exception &ex) {
         return makeManifestErr(manifestPath, line, ex.what());
     }
@@ -978,7 +978,7 @@ il::support::Expected<std::string> parsePackageRelativePathScalar(std::set<std::
     if (!scalar)
         return scalar;
     try {
-        return viper::pkg::sanitizePackageRelativePath(scalar.value(), name.c_str());
+        return zanna::pkg::sanitizePackageRelativePath(scalar.value(), name.c_str());
     } catch (const std::exception &ex) {
         return makeManifestErr(manifestPath, line, ex.what());
     }
@@ -1212,7 +1212,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             return il::support::Expected<bool>(tokens.error());
         try {
             std::string dllPath =
-                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "windows-dll path");
+                zanna::pkg::sanitizePackageRelativePath(tokens.value()[0], "windows-dll path");
             if (dllPath.empty())
                 return makeManifestErr(manifestPath, lineNum, "windows-dll path must not be empty");
             if (std::find(config.packageConfig.windowsDlls.begin(),
@@ -1276,12 +1276,12 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
                 manifestPath, lineNum, "asset requires <source> <target>; got '" + value + "'");
         try {
             std::string source =
-                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "asset source path");
+                zanna::pkg::sanitizePackageRelativePath(tokens.value()[0], "asset source path");
             if (source.empty())
                 return makeManifestErr(
                     manifestPath, lineNum, "asset source path must not be empty");
             std::string target =
-                viper::pkg::sanitizePackageRelativePath(tokens.value()[1], "asset target path");
+                zanna::pkg::sanitizePackageRelativePath(tokens.value()[1], "asset target path");
             config.packageConfig.assets.push_back({std::move(source), std::move(target)});
         } catch (const std::exception &ex) {
             return makeManifestErr(manifestPath, lineNum, ex.what());
@@ -1293,7 +1293,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             return il::support::Expected<bool>(tokens.error());
         try {
             std::string embedSrc =
-                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "embed");
+                zanna::pkg::sanitizePackageRelativePath(tokens.value()[0], "embed");
             if (embedSrc.empty())
                 return makeManifestErr(manifestPath, lineNum, "embed path must not be empty");
             config.embedAssets.push_back({std::move(embedSrc)});
@@ -1309,7 +1309,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         std::string packName = tokens.value()[0];
         std::string packSrc;
         try {
-            packSrc = viper::pkg::sanitizePackageRelativePath(tokens.value()[1], directive.c_str());
+            packSrc = zanna::pkg::sanitizePackageRelativePath(tokens.value()[1], directive.c_str());
             if (packSrc.empty())
                 return makeManifestErr(
                     manifestPath, lineNum, std::string(directive) + " path must not be empty");
@@ -1410,7 +1410,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
                                                              manifestPath,
                                                              lineNum,
                                                              directive,
-                                                             viper::pkg::validateDebDependency);
+                                                             zanna::pkg::validateDebDependency);
         if (!added)
             return il::support::Expected<bool>(added.error());
     } else if (directive == "package-rpm-depends") {
@@ -1420,7 +1420,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             manifestPath,
             lineNum,
             directive,
-            [](const std::string &dep) { viper::pkg::validateRpmDependency(dep); });
+            [](const std::string &dep) { zanna::pkg::validateRpmDependency(dep); });
         if (!added)
             return il::support::Expected<bool>(added.error());
     } else if (directive == "linux-startup-wm-class") {
@@ -1473,7 +1473,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
 
 } // anonymous namespace
 
-/// @brief Parse a viper.project manifest file into a ProjectConfig.
+/// @brief Parse a zanna.project manifest file into a ProjectConfig.
 /// @details Reads the manifest line by line (stripping a leading UTF-8 BOM,
 ///          blank lines, and '#' comments), splitting each into a directive and
 ///          value. Core directives (project/version/lang/entry/sources/exclude/
@@ -1609,7 +1609,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 return il::support::Expected<ProjectConfig>(tokens.error());
             try {
                 std::string clean =
-                    viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "exclude");
+                    zanna::pkg::sanitizePackageRelativePath(tokens.value()[0], "exclude");
                 if (clean.empty())
                     return makeManifestErr(manifestPath, lineNum, "exclude path must not be empty");
                 excludes.push_back(std::move(clean));
@@ -1792,7 +1792,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     // Entry point resolution
     if (!hasEntry) {
         if (config.lang == ProjectLang::Mixed)
-            return makeErr("mixed-language projects require an 'entry' directive in viper.project");
+            return makeErr("mixed-language projects require an 'entry' directive in zanna.project");
 
         il::support::Expected<std::string> entry = (config.lang == ProjectLang::Zia)
                                                        ? findZiaEntry(config.sourceFiles)
@@ -1816,9 +1816,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 
 /// @brief Resolve a CLI target path into a ProjectConfig.
 /// @details Normalises @p target to an absolute path and classifies it: a single
-///          .zia or .bas file becomes a one-file project; a viper.project (or
+///          .zia or .bas file becomes a one-file project; a zanna.project (or
 ///          *.project) file is parsed via parseManifest(); a directory either
-///          parses a contained viper.project or falls back to convention-based
+///          parses a contained zanna.project or falls back to convention-based
 ///          discovery (discoverConvention()). Anything else yields a diagnostic.
 ///          See the header for the full parameter and return contract.
 il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
@@ -1878,13 +1878,13 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     // Case 3: Explicit manifest file
     if (targetIsRegularFile) {
         auto filename = targetPath.filename().string();
-        if (filename == "viper.project" || targetPath.extension() == ".project") {
+        if (filename == "zanna.project" || targetPath.extension() == ".project") {
             auto canonical = fs::canonical(targetPath, ec);
             if (ec)
                 return makeErr("cannot resolve manifest: " + target);
             return parseManifest(canonical.string());
         }
-        return makeErr(target + " is not a .zia, .bas, or viper.project file");
+        return makeErr(target + " is not a .zia, .bas, or zanna.project file");
     }
 
     // Case 4: Directory
@@ -1897,8 +1897,8 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         if (ec)
             return makeErr("cannot resolve project directory: " + target);
 
-        // Check for viper.project in directory
-        auto manifestPath = canonical / "viper.project";
+        // Check for zanna.project in directory
+        auto manifestPath = canonical / "zanna.project";
         if (fs::exists(manifestPath, ec))
             return parseManifest(manifestPath.string());
         if (ec)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <variant>
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
 // Helper to count instructions with a given opcode
 static int countOpcode(const MFunction &func, MOpcode opc) {
@@ -354,10 +354,10 @@ TEST(X64FrameLowering, MixedAllocaSizesDoNotOverlap) {
 // ---------------------------------------------------------------------------
 
 TEST(X64FrameLowering, GprAndXmmSpillPlaceholdersAreDisjoint) {
-    viper::codegen::x64::ra::Spiller spiller;
+    zanna::codegen::x64::ra::Spiller spiller;
 
-    viper::codegen::x64::ra::SpillPlan gprPlan{true, 0};
-    viper::codegen::x64::ra::SpillPlan xmmPlan{true, 0};
+    zanna::codegen::x64::ra::SpillPlan gprPlan{true, 0};
+    zanna::codegen::x64::ra::SpillPlan xmmPlan{true, 0};
 
     const MInstr gprStore = spiller.makeStore(RegClass::GPR, gprPlan, PhysReg::RAX);
     const MInstr xmmStore = spiller.makeStore(RegClass::XMM, xmmPlan, PhysReg::XMM0);
@@ -397,6 +397,6 @@ TEST(X64FrameLowering, GprAndXmmSpillPlaceholdersAreDisjoint) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

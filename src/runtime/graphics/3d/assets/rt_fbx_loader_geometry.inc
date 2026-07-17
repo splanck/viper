@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_geometry.inc  (#included from rt_fbx_loader.c;
 // not a standalone translation unit) Purpose: FBX coordinate-system correction, geometry
 // extraction, and material extraction
@@ -12,7 +12,7 @@
 ///
 /// Most FBX exporters use Y-up but Maya / Blender / 3ds Max can
 /// emit Z-up scenes. The extractors apply a coordinate-system swap
-/// when this returns 1 so the scene is normalised to Viper's Y-up convention.
+/// when this returns 1 so the scene is normalised to Zanna's Y-up convention.
 static int fbx_is_z_up(fbx_node_t *root) {
     fbx_node_t *gs = fbx_find_child(root, "GlobalSettings");
     if (!gs)
@@ -459,7 +459,7 @@ static void fbx_parse_geometry_layers(fbx_node_t *geom_node,
     fbx_parse_material_layer(geom_node, mat);
 }
 
-/// @brief Convert an FBX `Geometry` node into a Viper `rt_mesh3d_t`.
+/// @brief Convert an FBX `Geometry` node into a Zanna `rt_mesh3d_t`.
 ///
 /// Decodes the `Vertices` (positions), `PolygonVertexIndex`
 /// (vertex indices, with the last index of each polygon negated
@@ -689,7 +689,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
  * Material extraction
  *=========================================================================*/
 
-/// @brief Convert an FBX `Material` node into a Viper `rt_material3d_t`.
+/// @brief Convert an FBX `Material` node into a Zanna `rt_material3d_t`.
 ///
 /// Reads `DiffuseColor` and `Shininess` from the property table.
 /// Other PBR attributes (metallic, roughness, normal/AO maps) are

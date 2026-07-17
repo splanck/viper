@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -155,7 +155,7 @@ static void clear_error(rt_smtp_impl *s) {
 /// @param ok Legacy Boolean outcome from rt_smtp_send() or rt_smtp_send_html().
 /// @param obj SmtpClient receiver used to read LastError.
 /// @param fallback Message used when LastError is empty.
-/// @return Opaque Viper.Result containing OkI64(1) or ErrStr(message).
+/// @return Opaque Zanna.Result containing OkI64(1) or ErrStr(message).
 static void *smtp_send_result_from_bool(int8_t ok, void *obj, const char *fallback) {
     if (ok)
         return rt_result_ok_i64(1);
@@ -971,12 +971,12 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
 }
 
 /// @brief Send a plain-text SMTP message and return Result instead of LastError state.
-/// @param obj Opaque Viper.Network.SmtpClient object.
+/// @param obj Opaque Zanna.Network.SmtpClient object.
 /// @param from Sender mailbox path.
 /// @param to Recipient mailbox path.
 /// @param subject Message subject.
 /// @param body Plain-text message body.
-/// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
+/// @return Zanna.Result.OkI64(1) on success or Zanna.Result.ErrStr(message) on failure.
 void *rt_smtp_send_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
     // Transport setup (connect/TLS) can trap before the Boolean path returns;
@@ -1033,12 +1033,12 @@ int8_t rt_smtp_send_html(
 }
 
 /// @brief Send an HTML SMTP message and return Result instead of LastError state.
-/// @param obj Opaque Viper.Network.SmtpClient object.
+/// @param obj Opaque Zanna.Network.SmtpClient object.
 /// @param from Sender mailbox path.
 /// @param to Recipient mailbox path.
 /// @param subject Message subject.
 /// @param html_body HTML message body.
-/// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
+/// @return Zanna.Result.OkI64(1) on success or Zanna.Result.ErrStr(message) on failure.
 void *rt_smtp_send_html_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
     jmp_buf recovery;

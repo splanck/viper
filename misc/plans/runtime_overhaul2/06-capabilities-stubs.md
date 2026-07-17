@@ -1,6 +1,6 @@
 # Capabilities And Stub Policy
 
-Viper supports builds where some subsystems are absent or stubbed. That is
+Zanna supports builds where some subsystems are absent or stubbed. That is
 reasonable, but the public API must describe the behavior.
 
 ## Current Risks
@@ -24,7 +24,7 @@ Graphics-disabled builds compile many public stubs:
 The behavior is mixed:
 
 - some functions trap;
-- some optionally trap if `VIPER_GRAPHICS_STUBS_STRICT` is set;
+- some optionally trap if `ZANNA_GRAPHICS_STUBS_STRICT` is set;
 - some return `NULL`;
 - some return empty strings or empty collections;
 - some no-op;
@@ -49,7 +49,7 @@ Example metadata:
   "capabilities": ["graphics3d"],
   "availability": "build-dependent",
   "unavailable_behavior": "trap",
-  "probe": "Viper.Graphics3D.Canvas3D.IsAvailable"
+  "probe": "Zanna.Graphics3D.Canvas3D.IsAvailable"
 }
 ```
 
@@ -100,7 +100,7 @@ Decision: no-op setters in disabled builds must either:
 ## Work Items
 
 1. Add capability metadata to runtime definitions.
-2. Add a generated `viper runtime capabilities --json` or include current
+2. Add a generated `zanna runtime capabilities --json` or include current
    availability in `--dump-runtime-api`.
 3. Normalize graphics-disabled constructors.
 4. Normalize language-service unavailable payloads around `Result` or explicit

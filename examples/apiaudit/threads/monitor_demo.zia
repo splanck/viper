@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Threads.Monitor
+// API Audit: Zanna.Threads.Monitor
 // =============================================================================
 // Tests: Enter, TryEnter, Exit (basic single-thread usage)
 // Note: Monitor operates on any object. Multi-thread Wait/Pause/PauseAll
@@ -7,13 +7,13 @@
 // =============================================================================
 
 module MonitorDemo;
-bind Viper.Threads.Monitor as Monitor;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Monitor as Monitor;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Monitor ===");
+    Say("=== API Audit: Zanna.Threads.Monitor ===");
 
     // Create a simple object to use as monitor target
     var obj = Seq.New();

@@ -1,25 +1,25 @@
 // =============================================================================
-// API Audit: Viper.IO.Archive
+// API Audit: Zanna.IO.Archive
 // =============================================================================
 // Tests: Create, Open, Path, Count, Names, Has, AddStr, ReadStr,
 //        AddFile, Extract, ExtractAll, Info, Finish, IsZip
 // =============================================================================
 
 module ArchiveDemo;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.IO.Archive as Archive;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Box as Box;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.IO.Archive as Archive;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.IO.Archive ===");
+    Say("=== API Audit: Zanna.IO.Archive ===");
 
     var tmpDir = TempFile.Dir();
-    var zipPath = Path.Join(tmpDir, "viper_archive_audit.zip");
-    var extractDir = Path.Join(tmpDir, "viper_archive_extract");
+    var zipPath = Path.Join(tmpDir, "zanna_archive_audit.zip");
+    var extractDir = Path.Join(tmpDir, "zanna_archive_extract");
 
     // --- Create ---
     Say("--- Create ---");
@@ -32,7 +32,7 @@ func start() {
 
     // --- AddStr ---
     Say("--- AddStr ---");
-    arc.AddStr("hello.txt", "Hello from Viper!");
+    arc.AddStr("hello.txt", "Hello from Zanna!");
     arc.AddStr("data/info.txt", "Some nested data");
     arc.AddStr("numbers.txt", "1 2 3 4 5");
     Say("Added 3 entries with AddStr");

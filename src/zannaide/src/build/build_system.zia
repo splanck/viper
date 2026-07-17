@@ -1,0 +1,352 @@
+module build_system;
+
+bind "bounded_output";
+bind "diagnostic";
+bind "diagnostic_parser";
+bind "run_config";
+bind Zanna.String as Str;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Collections.Map as Map;
+bind Zanna.Core.Object as Obj;
+bind Zanna.System.Process as Process;
+bind Zanna.System.Environment as Env;
+bind Zanna.System.Machine as Machine;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO as IO;
+
+// ============================================================================
+// MODULE: build_system
+// PURPOSE: Compile and run Zia/BASIC programs from the IDE.
+//
+// WHERE-THIS-FITS: Build and debug command handlers create jobs here; main.zia
+//          pumps UpdateJob every frame and AppShell renders the streamed output.
+//
+// TEACHING-NOTE: Build/run processes are long-lived external state. Keep process
+//          handles, output deltas, cancellation, and elapsed time together so
+//          command handlers remain thin request initiators. Pure parsing and
+//          buffer policies live in sibling leaf modules.
+// ============================================================================
+
+final MAX_BUILD_OUTPUT_CHARS = 250000;
+final MAX_BUILD_OUTPUT_DELTA_CHARS = 65536;
+
+class BuildSystem {
+    // Build state
+    expose Boolean isBuilding;
+    expose Boolean isRunning;
+    expose Boolean lastBuildSuccess;
+
+    // Build output
+    expose String buildOutput;
+    expose String outputDelta;
+    expose String compilerPath;
+
+    // Build timing ("1.2s" after last build)
+    expose String lastBuildTime;
+    expose Integer startMs;
+    expose Integer exitCode;
+    expose String activeAction;
+    expose String activeName;
+    expose run_config.RunConfig activeConfig;
+    expose Process.ProcessHandle processHandle;
+
+    // Parsed diagnostics
+    expose List[diagnostic.Diagnostic] diagnostics;
+
+    expose func init() {
+        isBuilding = false;
+        isRunning = false;
+        lastBuildSuccess = false;
+        buildOutput = "";
+        outputDelta = "";
+        compilerPath = "zanna";
+        lastBuildTime = "";
+        startMs = 0;
+        exitCode = -1;
+        activeAction = "";
+        activeName = "";
+        activeConfig = null;
+        processHandle = null;
+        diagnostics = [];
+    }
+
+    expose func IsActive() -> Boolean {
+        return isBuilding or isRunning;
+    }
+
+    expose func StartConfig(cfg: run_config.RunConfig) -> Boolean {
+        if cfg == null { return false; }
+        if IsActive() { return false; }
+
+        activeConfig = cfg;
+        activeAction = cfg.action;
+        activeName = cfg.name;
+        buildOutput = "";
+        outputDelta = "";
+        diagnostics = [];
+        exitCode = -1;
+        lastBuildSuccess = false;
+        lastBuildTime = "";
+        startMs = Zanna.Time.Clock.NowMs();
+
+        // The Process runtime spawns via execve(), which neither searches PATH nor
+        // resolves a bare name against anything except the child's working directory
+        // (the edited file's folder). Resolve an absolute path up front so a build
+        // actually starts, and report a precise error instead of a silent exit 127.
+        var resolved = ResolveCompiler(cfg.program);
+        if resolved == "" {
+            buildOutput = CompilerNotFoundMessage(cfg.program);
+            Finish(-1);
+            return false;
+        }
+        compilerPath = resolved;
+
+        if cfg.action == run_config.ACTION_BUILD {
+            isBuilding = true;
+            isRunning = false;
+        } else {
+            isBuilding = false;
+            isRunning = true;
+        }
+
+        processHandle = Process.StartWithEnv(resolved, cfg.args, cfg.workingDirectory, cfg.env);
+        if processHandle == null or processHandle.IsValid() == false {
+            buildOutput = "Could not start process: " + cfg.program;
+            Finish(-1);
+            return false;
+        }
+        return true;
+    }
+
+    // ----------------------------------------------------------------------
+    // Compiler resolution
+    // ----------------------------------------------------------------------
+
+    /// @brief Resolve a runnable absolute path for the requested program.
+    /// @details For the default "zanna" compiler, searches an explicit override,
+    ///          the IDE's own folder (installed layout), the developer build tree,
+    ///          and finally PATH. Returns "" when nothing is found. Custom
+    ///          project-supplied programs are resolved on their own merits and are
+    ///          never silently replaced by zanna.
+    expose func ResolveCompiler(preferred: String) -> String {
+        var name = preferred;
+        if name == "" { name = "zanna"; }
+
+        if name != "zanna" {
+            return ResolveBinary(name);
+        }
+
+        var exe = ExeName();
+
+        // 1. Explicit override wins. Absolutise it: execve resolves a relative
+        //    path against the child's working directory (the edited file's folder),
+        //    not the IDE's, so a relative override would point at the wrong place.
+        var envBin = EnvValue("ZANNA_BINARY");
+        if envBin != "" and IO.File.Exists(envBin) {
+            return Path.Absolute(envBin);
+        }
+
+        // 2. Installed layout: zanna ships next to the IDE binary.
+        var exeDir = Path.ExeDir();
+        if exeDir != "" {
+            var colocated = Path.Join(exeDir, exe);
+            if IO.File.Exists(colocated) {
+                return colocated;
+            }
+            // 3. Developer build tree (zannaide/bin -> build/src/tools/zanna).
+            var devA = Path.Normalize(Path.Join(exeDir, Path.Join("../../build/src/tools/zanna", exe)));
+            if IO.File.Exists(devA) {
+                return devA;
+            }
+            var devB = Path.Normalize(Path.Join(exeDir, Path.Join("../build/src/tools/zanna", exe)));
+            if IO.File.Exists(devB) {
+                return devB;
+            }
+        }
+
+        // 4. Explicit build directory (honours the build scripts' ZANNA_BUILD_DIR).
+        var buildDir = EnvValue("ZANNA_BUILD_DIR");
+        if buildDir != "" {
+            var fromBuild = Path.Normalize(Path.Join(buildDir, Path.Join("src/tools/zanna", exe)));
+            if IO.File.Exists(fromBuild) {
+                return fromBuild;
+            }
+        }
+
+        // 5. Manual PATH scan (execve won't do it for us).
+        return ResolveBinary(exe);
+    }
+
+    /// @brief Resolve a single binary name to an absolute path: an absolute path is
+    ///        used as-is when it exists; a bare name is searched on PATH.
+    func ResolveBinary(name: String) -> String {
+        if name == "" { return ""; }
+        if Path.IsAbsolute(name) {
+            if IO.File.Exists(name) { return name; }
+            return "";
+        }
+        var pathVar = EnvValue("PATH");
+        if pathVar == "" { return ""; }
+        var entries = Str.Split(pathVar, ListSep());
+        var i = 0;
+        while i < Seq.get_Count(entries) {
+            var entry = Obj.ToString(Seq.Get(entries, i));
+            if entry != "" {
+                var cand = Path.Join(entry, name);
+                if IO.File.Exists(cand) { return Path.Absolute(cand); }
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    func EnvValue(key: String) -> String {
+        if Env.HasVariable(key) == false { return ""; }
+        return Env.GetVariable(key);
+    }
+
+    func ExeName() -> String {
+        if Machine.Os == "windows" { return "zanna.exe"; }
+        return "zanna";
+    }
+
+    func ListSep() -> String {
+        if Machine.Os == "windows" { return ";"; }
+        return ":";
+    }
+
+    func CompilerNotFoundMessage(requested: String) -> String {
+        var name = requested;
+        if name == "" { name = "zanna"; }
+        return "Could not find the '" + name + "' compiler.\n"
+            + "Searched ZANNA_BINARY, the IDE folder, the build tree, and PATH.\n"
+            + "Fix: add zanna to your PATH, or set ZANNA_BINARY=/full/path/to/zanna.";
+    }
+
+    expose func Update() -> Boolean {
+        if processHandle == null { return false; }
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
+
+        if processHandle.IsRunning() {
+            return true;
+        }
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
+        Finish(processHandle.ExitCode());
+        processHandle.Destroy();
+        processHandle = null;
+        return false;
+    }
+
+    expose func Stop() -> Boolean {
+        if processHandle == null { return false; }
+        var killed = processHandle.Kill();
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
+        Finish(-1);
+        processHandle.Destroy();
+        processHandle = null;
+        AppendOutput("\n[stopped]\n");
+        return killed;
+    }
+
+    func AppendReadResult(result: Any,
+                          streamName: String) {
+        if result == null { return; }
+        AppendOutput(Map.GetStr(result, "text"));
+        if Map.GetBool(result, "truncated") {
+            AppendOutput("\n[" + streamName + " output truncated by runtime]\n");
+        }
+    }
+
+    func AppendOutput(text: String) {
+        if text == "" { return; }
+        buildOutput = bounded_output.Append(buildOutput, text,
+                                            "[output truncated]\n",
+                                            MAX_BUILD_OUTPUT_CHARS);
+        outputDelta = bounded_output.Append(outputDelta, text,
+                                            "[output delta truncated]\n",
+                                            MAX_BUILD_OUTPUT_DELTA_CHARS);
+    }
+
+    func Finish(code: Integer) {
+        exitCode = code;
+        isBuilding = false;
+        isRunning = false;
+        lastBuildSuccess = code == 0;
+        lastBuildTime = FormatDuration(Zanna.Time.Clock.NowMs() - startMs);
+        ParseBuildOutput();
+    }
+
+    /// @brief Format an elapsed millisecond count as a readable duration: "850ms"
+    ///        under a second, "1.2s" at or above one second (rounded to a tenth).
+    expose func FormatDuration(ms: Integer) -> String {
+        var millis = ms;
+        if millis < 0 { millis = 0; }
+        if millis < 1000 { return "" + millis + "ms"; }
+        var tenths = (millis + 50) / 100;
+        var whole = tenths / 10;
+        var frac = tenths - whole * 10;
+        return "" + whole + "." + frac + "s";
+    }
+
+    // Parse build output for diagnostics (error/warning lines).
+    // Populates `diagnostics` list. Success is determined by exit code in callers.
+    func ParseBuildOutput() {
+        diagnostics = diagnostic_parser.ParseDiagnostics(buildOutput);
+    }
+
+    expose func ParseDiagnosticLine(line: String) -> diagnostic.Diagnostic? {
+        return diagnostic_parser.ParseDiagnosticLine(line);
+    }
+
+    // Get the number of errors.
+    expose func GetErrorCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < diagnostics.count() {
+            var diag = diagnostics.get(i);
+            if diag.severity == 0 {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    // Get the number of warnings.
+    expose func GetWarningCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < diagnostics.count() {
+            var diag = diagnostics.get(i);
+            if diag.severity == 1 {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    // Get the build output text.
+    expose func GetOutput() -> String {
+        return buildOutput;
+    }
+
+    expose func TakeOutputDelta() -> String {
+        var delta = outputDelta;
+        outputDelta = "";
+        return delta;
+    }
+
+    // Get the elapsed time of the last build ("1.2s").
+    expose func GetBuildTime() -> String {
+        return lastBuildTime;
+    }
+
+    // Clear diagnostics.
+    expose func ClearDiagnostics() {
+        diagnostics = [];
+    }
+}

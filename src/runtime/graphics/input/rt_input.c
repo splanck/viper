@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_input.c
-// Purpose: Keyboard and mouse input state manager for Viper games. Buffers the
+// Purpose: Keyboard and mouse input state manager for Zanna games. Buffers the
 //   platform window's raw key/mouse events between frames and exposes a
 //   snapshot API (IsDown, WasPressed, WasReleased, WasClicked) that is stable
 //   for the entire duration of a frame update. Callers poll state once per
@@ -17,10 +17,10 @@
 //     event queue into the "current frame" snapshot. WasPressed/WasReleased
 //     compare current and previous snapshots (edge detection). IsDown reflects
 //     the current snapshot (level detection).
-//   - Key state uses the public VIPER_KEY_* constants. Windowing backends that
+//   - Key state uses the public ZANNA_KEY_* constants. Windowing backends that
 //     emit vgfx key codes must route through rt_keyboard_on_vgfx_key_down/up so
 //     ambiguous special-key values are normalized before they enter state.
-//   - Mouse button indices use the public VIPER_MOUSE_BUTTON_* constants:
+//   - Mouse button indices use the public ZANNA_MOUSE_BUTTON_* constants:
 //     0 = left, 1 = right, 2 = middle, 3/4 = X1/X2. WasClicked is a shorthand
 //     for WasPressed && WasReleased
 //     in the same frame (single-frame tap detection for quick presses).
@@ -51,7 +51,7 @@
 #include <windows.h>
 #elif RT_PLATFORM_MACOS
 #include <ApplicationServices/ApplicationServices.h>
-#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS) && !defined(VIPER_GRAPHICS_HEADLESS)
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS)
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #endif
@@ -95,36 +95,36 @@ static int64_t vgfx_to_glfw(int64_t vgfx_key) {
     if (vgfx_key >= '0' && vgfx_key <= '9')
         return vgfx_key;
     if (vgfx_key == VGFX_KEY_SPACE)
-        return VIPER_KEY_SPACE;
+        return ZANNA_KEY_SPACE;
 
     // Map special keys from vgfx to GLFW
     switch (vgfx_key) {
         case VGFX_KEY_ESCAPE_VG:
-            return VIPER_KEY_ESCAPE;
+            return ZANNA_KEY_ESCAPE;
         case VGFX_KEY_ENTER_VG:
-            return VIPER_KEY_ENTER;
+            return ZANNA_KEY_ENTER;
         case VGFX_KEY_LEFT_VG:
-            return VIPER_KEY_LEFT;
+            return ZANNA_KEY_LEFT;
         case VGFX_KEY_RIGHT_VG:
-            return VIPER_KEY_RIGHT;
+            return ZANNA_KEY_RIGHT;
         case VGFX_KEY_UP_VG:
-            return VIPER_KEY_UP;
+            return ZANNA_KEY_UP;
         case VGFX_KEY_DOWN_VG:
-            return VIPER_KEY_DOWN;
+            return ZANNA_KEY_DOWN;
         case VGFX_KEY_BACKSPACE_VG:
-            return VIPER_KEY_BACKSPACE;
+            return ZANNA_KEY_BACKSPACE;
         case VGFX_KEY_DELETE_VG:
-            return VIPER_KEY_DELETE;
+            return ZANNA_KEY_DELETE;
         case VGFX_KEY_TAB_VG:
-            return VIPER_KEY_TAB;
+            return ZANNA_KEY_TAB;
         case VGFX_KEY_HOME_VG:
-            return VIPER_KEY_HOME;
+            return ZANNA_KEY_HOME;
         case VGFX_KEY_END_VG:
-            return VIPER_KEY_END;
+            return ZANNA_KEY_END;
         case VGFX_KEY_PAGE_UP_VG:
-            return VIPER_KEY_PAGEUP;
+            return ZANNA_KEY_PAGEUP;
         case VGFX_KEY_PAGE_DOWN_VG:
-            return VIPER_KEY_PAGEDOWN;
+            return ZANNA_KEY_PAGEDOWN;
         default:
             return vgfx_key;
     }
@@ -148,13 +148,13 @@ static bool rt_keyboard_codepoint_is_text(int32_t ch) {
 //=============================================================================
 
 // Current key state (true = pressed)
-static bool g_key_state[VIPER_KEY_MAX];
+static bool g_key_state[ZANNA_KEY_MAX];
 /// Per-frame edge bitsets mirroring g_pressed_keys / g_released_keys, indexed by key code, so
 /// rt_keyboard_was_pressed / _was_released are O(1) instead of a linear scan of the event lists
 /// (which matters when a game polls many keys per frame). Cleared whenever the per-frame event
 /// counts reset (rt_keyboard_init / rt_keyboard_begin_frame).
-static bool g_pressed_this_frame[VIPER_KEY_MAX];
-static bool g_released_this_frame[VIPER_KEY_MAX];
+static bool g_pressed_this_frame[ZANNA_KEY_MAX];
+static bool g_released_this_frame[ZANNA_KEY_MAX];
 
 // Keys pressed this frame
 static int64_t *g_pressed_keys;
@@ -214,7 +214,7 @@ static bool rt_keyboard_reserve_key_events(int64_t **keys, int *capacity, int ne
 ///          keep the actual append operation allocation-free and therefore non-trapping.
 /// @param keys Edge-buffer pointer with capacity for one additional entry.
 /// @param count Pointer to the active entry count.
-/// @param key Public VIPER_KEY_* code to append.
+/// @param key Public ZANNA_KEY_* code to append.
 static void rt_keyboard_append_reserved_key_event(int64_t *keys, int *count, int64_t key) {
     if (!keys || !count || *count < 0)
         return;
@@ -224,7 +224,7 @@ static void rt_keyboard_append_reserved_key_event(int64_t *keys, int *count, int
 /// @brief Clamp a runtime int64 coordinate to the platform cursor-warp int32 range.
 /// @param value Runtime coordinate in canvas pixels.
 /// @return @p value saturated to the signed 32-bit range accepted by graphics backends.
-#if defined(VIPER_ENABLE_GRAPHICS)
+#if defined(ZANNA_ENABLE_GRAPHICS)
 static int32_t rt_input_clamp_i64_to_i32(int64_t value) {
     if (value < (int64_t)INT32_MIN)
         return INT32_MIN;
@@ -336,7 +336,7 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #elif RT_PLATFORM_MACOS
     CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
     return (flags & kCGEventFlagMaskAlphaShift) ? 1 : 0;
-#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS) && !defined(VIPER_GRAPHICS_HEADLESS)
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS)
     extern void *vgfx_get_native_display(void *window);
 
     Display *display = NULL;
@@ -362,7 +362,7 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #endif
 }
 
-#if defined(VIPER_ENABLE_GRAPHICS)
+#if defined(ZANNA_ENABLE_GRAPHICS)
 extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
 #endif
 
@@ -388,7 +388,7 @@ static void rt_input_warp_mouse_platform(int64_t x, int64_t y) {
         return;
     }
 
-#if defined(VIPER_ENABLE_GRAPHICS)
+#if defined(ZANNA_ENABLE_GRAPHICS)
     vgfx_warp_cursor(g_mouse_canvas, rt_input_clamp_i64_to_i32(x), rt_input_clamp_i64_to_i32(y));
 #else
     (void)x;
@@ -406,7 +406,7 @@ void rt_keyboard_init(void) {
     if (g_initialized)
         return;
 
-    for (int key = 0; key < VIPER_KEY_MAX; ++key) {
+    for (int key = 0; key < ZANNA_KEY_MAX; ++key) {
         g_key_state[key] = false;
         g_pressed_this_frame[key] = false;
         g_released_this_frame[key] = false;
@@ -433,7 +433,7 @@ void rt_keyboard_begin_frame(void) {
 
 static void rt_keyboard_record_key_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return;
 
     // Only record press if key wasn't already down
@@ -454,7 +454,7 @@ static void rt_keyboard_record_key_down(int64_t key) {
 
 static void rt_keyboard_record_key_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return;
 
     if (g_key_state[key]) {
@@ -470,12 +470,12 @@ static void rt_keyboard_record_key_up(int64_t key) {
     }
 }
 
-/// @brief Record a key-down event using public VIPER_KEY_* constants.
+/// @brief Record a key-down event using public ZANNA_KEY_* constants.
 void rt_keyboard_on_key_down(int64_t key) {
     rt_keyboard_record_key_down(key);
 }
 
-/// @brief Record a key-up event using public VIPER_KEY_* constants.
+/// @brief Record a key-up event using public ZANNA_KEY_* constants.
 void rt_keyboard_on_key_up(int64_t key) {
     rt_keyboard_record_key_up(key);
 }
@@ -568,7 +568,7 @@ void rt_keyboard_clear_canvas_if_matches(void *canvas) {
 /// @brief Check whether a key is currently held down (continuous — true every frame while held).
 int8_t rt_keyboard_is_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return 0;
 
     return g_key_state[key] ? 1 : 0;
@@ -577,7 +577,7 @@ int8_t rt_keyboard_is_down(int64_t key) {
 /// @brief Check whether a key is currently not held down.
 int8_t rt_keyboard_is_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return 1;
 
     return g_key_state[key] ? 0 : 1;
@@ -586,7 +586,7 @@ int8_t rt_keyboard_is_up(int64_t key) {
 /// @brief Check whether any key at all is currently held down.
 int8_t rt_keyboard_any_down(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < VIPER_KEY_MAX; i++) {
+    for (int i = 0; i < ZANNA_KEY_MAX; i++) {
         if (g_key_state[i])
             return 1;
     }
@@ -596,7 +596,7 @@ int8_t rt_keyboard_any_down(void) {
 /// @brief Get the key code of the first key currently held down (0 if none).
 int64_t rt_keyboard_get_down(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < VIPER_KEY_MAX; i++) {
+    for (int i = 0; i < ZANNA_KEY_MAX; i++) {
         if (g_key_state[i])
             return (int64_t)i;
     }
@@ -610,7 +610,7 @@ int64_t rt_keyboard_get_down(void) {
 /// @brief Check whether a key was pressed this frame (edge-triggered — true once on key-down).
 int8_t rt_keyboard_was_pressed(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return 0; /* out-of-range keys are never recorded, so they were not pressed */
     return g_pressed_this_frame[key] ? 1 : 0;
 }
@@ -618,7 +618,7 @@ int8_t rt_keyboard_was_pressed(int64_t key) {
 /// @brief Check whether a key was released this frame (edge-triggered — true once on key-up).
 int8_t rt_keyboard_was_released(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    if (key <= 0 || key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= ZANNA_KEY_MAX)
         return 0; /* out-of-range keys are never recorded, so they were not released */
     return g_released_this_frame[key] ? 1 : 0;
 }
@@ -675,19 +675,19 @@ void rt_keyboard_disable_text_input(void) {
 /// @brief Check whether either Shift key is currently held.
 int8_t rt_keyboard_shift(void) {
     RT_ASSERT_MAIN_THREAD();
-    return (g_key_state[VIPER_KEY_LSHIFT] || g_key_state[VIPER_KEY_RSHIFT]) ? 1 : 0;
+    return (g_key_state[ZANNA_KEY_LSHIFT] || g_key_state[ZANNA_KEY_RSHIFT]) ? 1 : 0;
 }
 
 /// @brief Check whether either Ctrl key is currently held.
 int8_t rt_keyboard_ctrl(void) {
     RT_ASSERT_MAIN_THREAD();
-    return (g_key_state[VIPER_KEY_LCTRL] || g_key_state[VIPER_KEY_RCTRL]) ? 1 : 0;
+    return (g_key_state[ZANNA_KEY_LCTRL] || g_key_state[ZANNA_KEY_RCTRL]) ? 1 : 0;
 }
 
 /// @brief Check whether either Alt key is currently held.
 int8_t rt_keyboard_alt(void) {
     RT_ASSERT_MAIN_THREAD();
-    return (g_key_state[VIPER_KEY_LALT] || g_key_state[VIPER_KEY_RALT]) ? 1 : 0;
+    return (g_key_state[ZANNA_KEY_LALT] || g_key_state[ZANNA_KEY_RALT]) ? 1 : 0;
 }
 
 /// @brief Check whether Caps Lock is active.
@@ -708,82 +708,82 @@ rt_string rt_keyboard_key_name(int64_t key) {
     // Letters A-Z and digits 0-9 map directly to their ASCII character. The
     // single byte lives on the stack; rt_string_from_bytes copies exactly the
     // requested length, so no null terminator (or shared static buffer) is needed.
-    if (key >= VIPER_KEY_A && key <= VIPER_KEY_Z) {
+    if (key >= ZANNA_KEY_A && key <= ZANNA_KEY_Z) {
         char letter = (char)key;
         return rt_string_from_bytes(&letter, 1);
     }
-    if (key >= VIPER_KEY_0 && key <= VIPER_KEY_9) {
+    if (key >= ZANNA_KEY_0 && key <= ZANNA_KEY_9) {
         char digit = (char)key;
         return rt_string_from_bytes(&digit, 1);
     }
 
     // Named keys: a declarative table keeps the keycode->label mapping auditable
-    // and diffable. VIPER_KEY_UNKNOWN and any unlisted code fall through to the
+    // and diffable. ZANNA_KEY_UNKNOWN and any unlisted code fall through to the
     // "Unknown" default below.
     static const struct {
         int64_t key;
         const char *name;
     } kKeyNames[] = {
-        {VIPER_KEY_SPACE, "Space"},
-        {VIPER_KEY_ESCAPE, "Escape"},
-        {VIPER_KEY_ENTER, "Enter"},
-        {VIPER_KEY_TAB, "Tab"},
-        {VIPER_KEY_BACKSPACE, "Backspace"},
-        {VIPER_KEY_INSERT, "Insert"},
-        {VIPER_KEY_DELETE, "Delete"},
-        {VIPER_KEY_RIGHT, "Right"},
-        {VIPER_KEY_LEFT, "Left"},
-        {VIPER_KEY_DOWN, "Down"},
-        {VIPER_KEY_UP, "Up"},
-        {VIPER_KEY_PAGEUP, "PageUp"},
-        {VIPER_KEY_PAGEDOWN, "PageDown"},
-        {VIPER_KEY_HOME, "Home"},
-        {VIPER_KEY_END, "End"},
-        {VIPER_KEY_F1, "F1"},
-        {VIPER_KEY_F2, "F2"},
-        {VIPER_KEY_F3, "F3"},
-        {VIPER_KEY_F4, "F4"},
-        {VIPER_KEY_F5, "F5"},
-        {VIPER_KEY_F6, "F6"},
-        {VIPER_KEY_F7, "F7"},
-        {VIPER_KEY_F8, "F8"},
-        {VIPER_KEY_F9, "F9"},
-        {VIPER_KEY_F10, "F10"},
-        {VIPER_KEY_F11, "F11"},
-        {VIPER_KEY_F12, "F12"},
-        {VIPER_KEY_LSHIFT, "Left Shift"},
-        {VIPER_KEY_RSHIFT, "Right Shift"},
-        {VIPER_KEY_LCTRL, "Left Ctrl"},
-        {VIPER_KEY_RCTRL, "Right Ctrl"},
-        {VIPER_KEY_LALT, "Left Alt"},
-        {VIPER_KEY_RALT, "Right Alt"},
-        {VIPER_KEY_MINUS, "Minus"},
-        {VIPER_KEY_EQUALS, "Equals"},
-        {VIPER_KEY_LBRACKET, "Left Bracket"},
-        {VIPER_KEY_RBRACKET, "Right Bracket"},
-        {VIPER_KEY_BACKSLASH, "Backslash"},
-        {VIPER_KEY_SEMICOLON, "Semicolon"},
-        {VIPER_KEY_QUOTE, "Quote"},
-        {VIPER_KEY_GRAVE, "Grave"},
-        {VIPER_KEY_COMMA, "Comma"},
-        {VIPER_KEY_PERIOD, "Period"},
-        {VIPER_KEY_SLASH, "Slash"},
-        {VIPER_KEY_NUM0, "Numpad 0"},
-        {VIPER_KEY_NUM1, "Numpad 1"},
-        {VIPER_KEY_NUM2, "Numpad 2"},
-        {VIPER_KEY_NUM3, "Numpad 3"},
-        {VIPER_KEY_NUM4, "Numpad 4"},
-        {VIPER_KEY_NUM5, "Numpad 5"},
-        {VIPER_KEY_NUM6, "Numpad 6"},
-        {VIPER_KEY_NUM7, "Numpad 7"},
-        {VIPER_KEY_NUM8, "Numpad 8"},
-        {VIPER_KEY_NUM9, "Numpad 9"},
-        {VIPER_KEY_NUMADD, "Numpad Add"},
-        {VIPER_KEY_NUMSUB, "Numpad Subtract"},
-        {VIPER_KEY_NUMMUL, "Numpad Multiply"},
-        {VIPER_KEY_NUMDIV, "Numpad Divide"},
-        {VIPER_KEY_NUMENTER, "Numpad Enter"},
-        {VIPER_KEY_NUMDOT, "Numpad Decimal"},
+        {ZANNA_KEY_SPACE, "Space"},
+        {ZANNA_KEY_ESCAPE, "Escape"},
+        {ZANNA_KEY_ENTER, "Enter"},
+        {ZANNA_KEY_TAB, "Tab"},
+        {ZANNA_KEY_BACKSPACE, "Backspace"},
+        {ZANNA_KEY_INSERT, "Insert"},
+        {ZANNA_KEY_DELETE, "Delete"},
+        {ZANNA_KEY_RIGHT, "Right"},
+        {ZANNA_KEY_LEFT, "Left"},
+        {ZANNA_KEY_DOWN, "Down"},
+        {ZANNA_KEY_UP, "Up"},
+        {ZANNA_KEY_PAGEUP, "PageUp"},
+        {ZANNA_KEY_PAGEDOWN, "PageDown"},
+        {ZANNA_KEY_HOME, "Home"},
+        {ZANNA_KEY_END, "End"},
+        {ZANNA_KEY_F1, "F1"},
+        {ZANNA_KEY_F2, "F2"},
+        {ZANNA_KEY_F3, "F3"},
+        {ZANNA_KEY_F4, "F4"},
+        {ZANNA_KEY_F5, "F5"},
+        {ZANNA_KEY_F6, "F6"},
+        {ZANNA_KEY_F7, "F7"},
+        {ZANNA_KEY_F8, "F8"},
+        {ZANNA_KEY_F9, "F9"},
+        {ZANNA_KEY_F10, "F10"},
+        {ZANNA_KEY_F11, "F11"},
+        {ZANNA_KEY_F12, "F12"},
+        {ZANNA_KEY_LSHIFT, "Left Shift"},
+        {ZANNA_KEY_RSHIFT, "Right Shift"},
+        {ZANNA_KEY_LCTRL, "Left Ctrl"},
+        {ZANNA_KEY_RCTRL, "Right Ctrl"},
+        {ZANNA_KEY_LALT, "Left Alt"},
+        {ZANNA_KEY_RALT, "Right Alt"},
+        {ZANNA_KEY_MINUS, "Minus"},
+        {ZANNA_KEY_EQUALS, "Equals"},
+        {ZANNA_KEY_LBRACKET, "Left Bracket"},
+        {ZANNA_KEY_RBRACKET, "Right Bracket"},
+        {ZANNA_KEY_BACKSLASH, "Backslash"},
+        {ZANNA_KEY_SEMICOLON, "Semicolon"},
+        {ZANNA_KEY_QUOTE, "Quote"},
+        {ZANNA_KEY_GRAVE, "Grave"},
+        {ZANNA_KEY_COMMA, "Comma"},
+        {ZANNA_KEY_PERIOD, "Period"},
+        {ZANNA_KEY_SLASH, "Slash"},
+        {ZANNA_KEY_NUM0, "Numpad 0"},
+        {ZANNA_KEY_NUM1, "Numpad 1"},
+        {ZANNA_KEY_NUM2, "Numpad 2"},
+        {ZANNA_KEY_NUM3, "Numpad 3"},
+        {ZANNA_KEY_NUM4, "Numpad 4"},
+        {ZANNA_KEY_NUM5, "Numpad 5"},
+        {ZANNA_KEY_NUM6, "Numpad 6"},
+        {ZANNA_KEY_NUM7, "Numpad 7"},
+        {ZANNA_KEY_NUM8, "Numpad 8"},
+        {ZANNA_KEY_NUM9, "Numpad 9"},
+        {ZANNA_KEY_NUMADD, "Numpad Add"},
+        {ZANNA_KEY_NUMSUB, "Numpad Subtract"},
+        {ZANNA_KEY_NUMMUL, "Numpad Multiply"},
+        {ZANNA_KEY_NUMDIV, "Numpad Divide"},
+        {ZANNA_KEY_NUMENTER, "Numpad Enter"},
+        {ZANNA_KEY_NUMDOT, "Numpad Decimal"},
     };
 
     const char *name = "Unknown";
@@ -800,7 +800,7 @@ rt_string rt_keyboard_key_name(int64_t key) {
 //=============================================================================
 // Key Code Constant Getters
 //
-// Each accessor below returns one of the platform-independent VIPER_KEY_*
+// Each accessor below returns one of the platform-independent ZANNA_KEY_*
 // integer constants defined in rt_input.h. These wrappers exist so Zia
 // and BASIC programs can refer to keys by name (e.g. `Keyboard.IsDown(
 // Keyboard.Key.A)`) rather than hard-coding magic integers, which would
@@ -814,491 +814,491 @@ rt_string rt_keyboard_key_name(int64_t key) {
 
 /// @brief Key-code constant for the unknown / unmapped key sentinel.
 int64_t rt_keyboard_key_unknown(void) {
-    return VIPER_KEY_UNKNOWN;
+    return ZANNA_KEY_UNKNOWN;
 }
 
 /// @brief Key-code constant for the A key.
 int64_t rt_keyboard_key_a(void) {
-    return VIPER_KEY_A;
+    return ZANNA_KEY_A;
 }
 
 /// @brief Key-code constant for the B key.
 int64_t rt_keyboard_key_b(void) {
-    return VIPER_KEY_B;
+    return ZANNA_KEY_B;
 }
 
 /// @brief Key-code constant for the C key.
 int64_t rt_keyboard_key_c(void) {
-    return VIPER_KEY_C;
+    return ZANNA_KEY_C;
 }
 
 /// @brief Key-code constant for the D key.
 int64_t rt_keyboard_key_d(void) {
-    return VIPER_KEY_D;
+    return ZANNA_KEY_D;
 }
 
 /// @brief Key-code constant for the E key.
 int64_t rt_keyboard_key_e(void) {
-    return VIPER_KEY_E;
+    return ZANNA_KEY_E;
 }
 
 /// @brief Key-code constant for the F key.
 int64_t rt_keyboard_key_f(void) {
-    return VIPER_KEY_F;
+    return ZANNA_KEY_F;
 }
 
 /// @brief Key-code constant for the G key.
 int64_t rt_keyboard_key_g(void) {
-    return VIPER_KEY_G;
+    return ZANNA_KEY_G;
 }
 
 /// @brief Key-code constant for the H key.
 int64_t rt_keyboard_key_h(void) {
-    return VIPER_KEY_H;
+    return ZANNA_KEY_H;
 }
 
 /// @brief Key-code constant for the I key.
 int64_t rt_keyboard_key_i(void) {
-    return VIPER_KEY_I;
+    return ZANNA_KEY_I;
 }
 
 /// @brief Key-code constant for the J key.
 int64_t rt_keyboard_key_j(void) {
-    return VIPER_KEY_J;
+    return ZANNA_KEY_J;
 }
 
 /// @brief Key-code constant for the K key.
 int64_t rt_keyboard_key_k(void) {
-    return VIPER_KEY_K;
+    return ZANNA_KEY_K;
 }
 
 /// @brief Key-code constant for the L key.
 int64_t rt_keyboard_key_l(void) {
-    return VIPER_KEY_L;
+    return ZANNA_KEY_L;
 }
 
 /// @brief Key-code constant for the M key.
 int64_t rt_keyboard_key_m(void) {
-    return VIPER_KEY_M;
+    return ZANNA_KEY_M;
 }
 
 /// @brief Key-code constant for the N key.
 int64_t rt_keyboard_key_n(void) {
-    return VIPER_KEY_N;
+    return ZANNA_KEY_N;
 }
 
 /// @brief Key-code constant for the O key.
 int64_t rt_keyboard_key_o(void) {
-    return VIPER_KEY_O;
+    return ZANNA_KEY_O;
 }
 
 /// @brief Key-code constant for the P key.
 int64_t rt_keyboard_key_p(void) {
-    return VIPER_KEY_P;
+    return ZANNA_KEY_P;
 }
 
 /// @brief Key-code constant for the Q key.
 int64_t rt_keyboard_key_q(void) {
-    return VIPER_KEY_Q;
+    return ZANNA_KEY_Q;
 }
 
 /// @brief Key-code constant for the R key.
 int64_t rt_keyboard_key_r(void) {
-    return VIPER_KEY_R;
+    return ZANNA_KEY_R;
 }
 
 /// @brief Key-code constant for the S key.
 int64_t rt_keyboard_key_s(void) {
-    return VIPER_KEY_S;
+    return ZANNA_KEY_S;
 }
 
 /// @brief Key-code constant for the T key.
 int64_t rt_keyboard_key_t(void) {
-    return VIPER_KEY_T;
+    return ZANNA_KEY_T;
 }
 
 /// @brief Key-code constant for the U key.
 int64_t rt_keyboard_key_u(void) {
-    return VIPER_KEY_U;
+    return ZANNA_KEY_U;
 }
 
 /// @brief Key-code constant for the V key.
 int64_t rt_keyboard_key_v(void) {
-    return VIPER_KEY_V;
+    return ZANNA_KEY_V;
 }
 
 /// @brief Key-code constant for the W key.
 int64_t rt_keyboard_key_w(void) {
-    return VIPER_KEY_W;
+    return ZANNA_KEY_W;
 }
 
 /// @brief Key-code constant for the X key.
 int64_t rt_keyboard_key_x(void) {
-    return VIPER_KEY_X;
+    return ZANNA_KEY_X;
 }
 
 /// @brief Key-code constant for the Y key.
 int64_t rt_keyboard_key_y(void) {
-    return VIPER_KEY_Y;
+    return ZANNA_KEY_Y;
 }
 
 /// @brief Key-code constant for the Z key.
 int64_t rt_keyboard_key_z(void) {
-    return VIPER_KEY_Z;
+    return ZANNA_KEY_Z;
 }
 
 /// @brief Key-code constant for the 0 (zero) row-digit key.
 int64_t rt_keyboard_key_0(void) {
-    return VIPER_KEY_0;
+    return ZANNA_KEY_0;
 }
 
 /// @brief Key-code constant for the 1 row-digit key.
 int64_t rt_keyboard_key_1(void) {
-    return VIPER_KEY_1;
+    return ZANNA_KEY_1;
 }
 
 /// @brief Key-code constant for the 2 row-digit key.
 int64_t rt_keyboard_key_2(void) {
-    return VIPER_KEY_2;
+    return ZANNA_KEY_2;
 }
 
 /// @brief Key-code constant for the 3 row-digit key.
 int64_t rt_keyboard_key_3(void) {
-    return VIPER_KEY_3;
+    return ZANNA_KEY_3;
 }
 
 /// @brief Key-code constant for the 4 row-digit key.
 int64_t rt_keyboard_key_4(void) {
-    return VIPER_KEY_4;
+    return ZANNA_KEY_4;
 }
 
 /// @brief Key-code constant for the 5 row-digit key.
 int64_t rt_keyboard_key_5(void) {
-    return VIPER_KEY_5;
+    return ZANNA_KEY_5;
 }
 
 /// @brief Key-code constant for the 6 row-digit key.
 int64_t rt_keyboard_key_6(void) {
-    return VIPER_KEY_6;
+    return ZANNA_KEY_6;
 }
 
 /// @brief Key-code constant for the 7 row-digit key.
 int64_t rt_keyboard_key_7(void) {
-    return VIPER_KEY_7;
+    return ZANNA_KEY_7;
 }
 
 /// @brief Key-code constant for the 8 row-digit key.
 int64_t rt_keyboard_key_8(void) {
-    return VIPER_KEY_8;
+    return ZANNA_KEY_8;
 }
 
 /// @brief Key-code constant for the 9 row-digit key.
 int64_t rt_keyboard_key_9(void) {
-    return VIPER_KEY_9;
+    return ZANNA_KEY_9;
 }
 
 /// @brief Key-code constant for the F1 function key.
 int64_t rt_keyboard_key_f1(void) {
-    return VIPER_KEY_F1;
+    return ZANNA_KEY_F1;
 }
 
 /// @brief Key-code constant for the F2 function key.
 int64_t rt_keyboard_key_f2(void) {
-    return VIPER_KEY_F2;
+    return ZANNA_KEY_F2;
 }
 
 /// @brief Key-code constant for the F3 function key.
 int64_t rt_keyboard_key_f3(void) {
-    return VIPER_KEY_F3;
+    return ZANNA_KEY_F3;
 }
 
 /// @brief Key-code constant for the F4 function key.
 int64_t rt_keyboard_key_f4(void) {
-    return VIPER_KEY_F4;
+    return ZANNA_KEY_F4;
 }
 
 /// @brief Key-code constant for the F5 function key.
 int64_t rt_keyboard_key_f5(void) {
-    return VIPER_KEY_F5;
+    return ZANNA_KEY_F5;
 }
 
 /// @brief Key-code constant for the F6 function key.
 int64_t rt_keyboard_key_f6(void) {
-    return VIPER_KEY_F6;
+    return ZANNA_KEY_F6;
 }
 
 /// @brief Key-code constant for the F7 function key.
 int64_t rt_keyboard_key_f7(void) {
-    return VIPER_KEY_F7;
+    return ZANNA_KEY_F7;
 }
 
 /// @brief Key-code constant for the F8 function key.
 int64_t rt_keyboard_key_f8(void) {
-    return VIPER_KEY_F8;
+    return ZANNA_KEY_F8;
 }
 
 /// @brief Key-code constant for the F9 function key.
 int64_t rt_keyboard_key_f9(void) {
-    return VIPER_KEY_F9;
+    return ZANNA_KEY_F9;
 }
 
 /// @brief Key-code constant for the F10 function key.
 int64_t rt_keyboard_key_f10(void) {
-    return VIPER_KEY_F10;
+    return ZANNA_KEY_F10;
 }
 
 /// @brief Key-code constant for the F11 function key.
 int64_t rt_keyboard_key_f11(void) {
-    return VIPER_KEY_F11;
+    return ZANNA_KEY_F11;
 }
 
 /// @brief Key-code constant for the F12 function key.
 int64_t rt_keyboard_key_f12(void) {
-    return VIPER_KEY_F12;
+    return ZANNA_KEY_F12;
 }
 
 /// @brief Key-code constant for the Up arrow key.
 int64_t rt_keyboard_key_up(void) {
-    return VIPER_KEY_UP;
+    return ZANNA_KEY_UP;
 }
 
 /// @brief Key-code constant for the Down arrow key.
 int64_t rt_keyboard_key_down(void) {
-    return VIPER_KEY_DOWN;
+    return ZANNA_KEY_DOWN;
 }
 
 /// @brief Key-code constant for the Left arrow key.
 int64_t rt_keyboard_key_left(void) {
-    return VIPER_KEY_LEFT;
+    return ZANNA_KEY_LEFT;
 }
 
 /// @brief Key-code constant for the Right arrow key.
 int64_t rt_keyboard_key_right(void) {
-    return VIPER_KEY_RIGHT;
+    return ZANNA_KEY_RIGHT;
 }
 
 /// @brief Key-code constant for the Home navigation key.
 int64_t rt_keyboard_key_home(void) {
-    return VIPER_KEY_HOME;
+    return ZANNA_KEY_HOME;
 }
 
 /// @brief Key-code constant for the End navigation key.
 int64_t rt_keyboard_key_end(void) {
-    return VIPER_KEY_END;
+    return ZANNA_KEY_END;
 }
 
 /// @brief Key-code constant for the Page Up navigation key.
 int64_t rt_keyboard_key_pageup(void) {
-    return VIPER_KEY_PAGEUP;
+    return ZANNA_KEY_PAGEUP;
 }
 
 /// @brief Key-code constant for the Page Down navigation key.
 int64_t rt_keyboard_key_pagedown(void) {
-    return VIPER_KEY_PAGEDOWN;
+    return ZANNA_KEY_PAGEDOWN;
 }
 
 /// @brief Key-code constant for the Insert editing key.
 int64_t rt_keyboard_key_insert(void) {
-    return VIPER_KEY_INSERT;
+    return ZANNA_KEY_INSERT;
 }
 
 /// @brief Key-code constant for the Delete editing key (forward delete).
 int64_t rt_keyboard_key_delete(void) {
-    return VIPER_KEY_DELETE;
+    return ZANNA_KEY_DELETE;
 }
 
 /// @brief Key-code constant for the Backspace editing key (backward delete).
 int64_t rt_keyboard_key_backspace(void) {
-    return VIPER_KEY_BACKSPACE;
+    return ZANNA_KEY_BACKSPACE;
 }
 
 /// @brief Key-code constant for the Tab key.
 int64_t rt_keyboard_key_tab(void) {
-    return VIPER_KEY_TAB;
+    return ZANNA_KEY_TAB;
 }
 
 /// @brief Key-code constant for the main Enter / Return key (numpad enter
 ///        is `Key.NumEnter`).
 int64_t rt_keyboard_key_enter(void) {
-    return VIPER_KEY_ENTER;
+    return ZANNA_KEY_ENTER;
 }
 
 /// @brief Key-code constant for the Space bar.
 int64_t rt_keyboard_key_space(void) {
-    return VIPER_KEY_SPACE;
+    return ZANNA_KEY_SPACE;
 }
 
 /// @brief Key-code constant for the Escape key.
 int64_t rt_keyboard_key_escape(void) {
-    return VIPER_KEY_ESCAPE;
+    return ZANNA_KEY_ESCAPE;
 }
 
 /// @brief Key-code constant for the Left Shift modifier specifically.
 int64_t rt_keyboard_key_lshift(void) {
-    return VIPER_KEY_LSHIFT;
+    return ZANNA_KEY_LSHIFT;
 }
 
 /// @brief Key-code constant for the Right Shift modifier specifically.
 int64_t rt_keyboard_key_rshift(void) {
-    return VIPER_KEY_RSHIFT;
+    return ZANNA_KEY_RSHIFT;
 }
 
 /// @brief Key-code constant for the Left Ctrl modifier specifically.
 int64_t rt_keyboard_key_lctrl(void) {
-    return VIPER_KEY_LCTRL;
+    return ZANNA_KEY_LCTRL;
 }
 
 /// @brief Key-code constant for the Right Ctrl modifier specifically.
 int64_t rt_keyboard_key_rctrl(void) {
-    return VIPER_KEY_RCTRL;
+    return ZANNA_KEY_RCTRL;
 }
 
 /// @brief Key-code constant for the Left Alt modifier specifically.
 int64_t rt_keyboard_key_lalt(void) {
-    return VIPER_KEY_LALT;
+    return ZANNA_KEY_LALT;
 }
 
 /// @brief Key-code constant for the Right Alt modifier specifically (AltGr
 ///        on European layouts).
 int64_t rt_keyboard_key_ralt(void) {
-    return VIPER_KEY_RALT;
+    return ZANNA_KEY_RALT;
 }
 
 /// @brief Key-code constant for the Minus / Hyphen punctuation key.
 int64_t rt_keyboard_key_minus(void) {
-    return VIPER_KEY_MINUS;
+    return ZANNA_KEY_MINUS;
 }
 
 /// @brief Key-code constant for the Equals / Plus punctuation key.
 int64_t rt_keyboard_key_equals(void) {
-    return VIPER_KEY_EQUALS;
+    return ZANNA_KEY_EQUALS;
 }
 
 /// @brief Key-code constant for the Left Bracket `[` punctuation key.
 int64_t rt_keyboard_key_lbracket(void) {
-    return VIPER_KEY_LBRACKET;
+    return ZANNA_KEY_LBRACKET;
 }
 
 /// @brief Key-code constant for the Right Bracket `]` punctuation key.
 int64_t rt_keyboard_key_rbracket(void) {
-    return VIPER_KEY_RBRACKET;
+    return ZANNA_KEY_RBRACKET;
 }
 
 /// @brief Key-code constant for the Backslash `\\` punctuation key.
 int64_t rt_keyboard_key_backslash(void) {
-    return VIPER_KEY_BACKSLASH;
+    return ZANNA_KEY_BACKSLASH;
 }
 
 /// @brief Key-code constant for the Semicolon `;` punctuation key.
 int64_t rt_keyboard_key_semicolon(void) {
-    return VIPER_KEY_SEMICOLON;
+    return ZANNA_KEY_SEMICOLON;
 }
 
 /// @brief Key-code constant for the Quote / Apostrophe `'` punctuation key.
 int64_t rt_keyboard_key_quote(void) {
-    return VIPER_KEY_QUOTE;
+    return ZANNA_KEY_QUOTE;
 }
 
 /// @brief Key-code constant for the Grave / Backtick `` ` `` punctuation key
 ///        (typically below Esc on US keyboards).
 int64_t rt_keyboard_key_grave(void) {
-    return VIPER_KEY_GRAVE;
+    return ZANNA_KEY_GRAVE;
 }
 
 /// @brief Key-code constant for the Comma `,` punctuation key.
 int64_t rt_keyboard_key_comma(void) {
-    return VIPER_KEY_COMMA;
+    return ZANNA_KEY_COMMA;
 }
 
 /// @brief Key-code constant for the Period `.` punctuation key.
 int64_t rt_keyboard_key_period(void) {
-    return VIPER_KEY_PERIOD;
+    return ZANNA_KEY_PERIOD;
 }
 
 /// @brief Key-code constant for the Slash `/` punctuation key.
 int64_t rt_keyboard_key_slash(void) {
-    return VIPER_KEY_SLASH;
+    return ZANNA_KEY_SLASH;
 }
 
 /// @brief Key-code constant for the numpad 0 key.
 int64_t rt_keyboard_key_num0(void) {
-    return VIPER_KEY_NUM0;
+    return ZANNA_KEY_NUM0;
 }
 
 /// @brief Key-code constant for the numpad 1 key.
 int64_t rt_keyboard_key_num1(void) {
-    return VIPER_KEY_NUM1;
+    return ZANNA_KEY_NUM1;
 }
 
 /// @brief Key-code constant for the numpad 2 key.
 int64_t rt_keyboard_key_num2(void) {
-    return VIPER_KEY_NUM2;
+    return ZANNA_KEY_NUM2;
 }
 
 /// @brief Key-code constant for the numpad 3 key.
 int64_t rt_keyboard_key_num3(void) {
-    return VIPER_KEY_NUM3;
+    return ZANNA_KEY_NUM3;
 }
 
 /// @brief Key-code constant for the numpad 4 key.
 int64_t rt_keyboard_key_num4(void) {
-    return VIPER_KEY_NUM4;
+    return ZANNA_KEY_NUM4;
 }
 
 /// @brief Key-code constant for the numpad 5 key.
 int64_t rt_keyboard_key_num5(void) {
-    return VIPER_KEY_NUM5;
+    return ZANNA_KEY_NUM5;
 }
 
 /// @brief Key-code constant for the numpad 6 key.
 int64_t rt_keyboard_key_num6(void) {
-    return VIPER_KEY_NUM6;
+    return ZANNA_KEY_NUM6;
 }
 
 /// @brief Key-code constant for the numpad 7 key.
 int64_t rt_keyboard_key_num7(void) {
-    return VIPER_KEY_NUM7;
+    return ZANNA_KEY_NUM7;
 }
 
 /// @brief Key-code constant for the numpad 8 key.
 int64_t rt_keyboard_key_num8(void) {
-    return VIPER_KEY_NUM8;
+    return ZANNA_KEY_NUM8;
 }
 
 /// @brief Key-code constant for the numpad 9 key.
 int64_t rt_keyboard_key_num9(void) {
-    return VIPER_KEY_NUM9;
+    return ZANNA_KEY_NUM9;
 }
 
 /// @brief Key-code constant for the numpad Add `+` key.
 int64_t rt_keyboard_key_numadd(void) {
-    return VIPER_KEY_NUMADD;
+    return ZANNA_KEY_NUMADD;
 }
 
 /// @brief Key-code constant for the numpad Subtract `-` key.
 int64_t rt_keyboard_key_numsub(void) {
-    return VIPER_KEY_NUMSUB;
+    return ZANNA_KEY_NUMSUB;
 }
 
 /// @brief Key-code constant for the numpad Multiply `*` key.
 int64_t rt_keyboard_key_nummul(void) {
-    return VIPER_KEY_NUMMUL;
+    return ZANNA_KEY_NUMMUL;
 }
 
 /// @brief Key-code constant for the numpad Divide `/` key.
 int64_t rt_keyboard_key_numdiv(void) {
-    return VIPER_KEY_NUMDIV;
+    return ZANNA_KEY_NUMDIV;
 }
 
 /// @brief Key-code constant for the numpad Enter key (distinct from the
 ///        main Enter key).
 int64_t rt_keyboard_key_numenter(void) {
-    return VIPER_KEY_NUMENTER;
+    return ZANNA_KEY_NUMENTER;
 }
 
 /// @brief Key-code constant for the numpad Decimal `.` key.
 int64_t rt_keyboard_key_numdot(void) {
-    return VIPER_KEY_NUMDOT;
+    return ZANNA_KEY_NUMDOT;
 }
 
 //=============================================================================
@@ -1316,15 +1316,15 @@ static double g_mouse_wheel_x = 0.0;
 static double g_mouse_wheel_y = 0.0;
 
 // Button state arrays
-static bool g_mouse_button_state[VIPER_MOUSE_BUTTON_MAX];
-static bool g_mouse_button_pressed[VIPER_MOUSE_BUTTON_MAX];
-static bool g_mouse_button_released[VIPER_MOUSE_BUTTON_MAX];
+static bool g_mouse_button_state[ZANNA_MOUSE_BUTTON_MAX];
+static bool g_mouse_button_pressed[ZANNA_MOUSE_BUTTON_MAX];
+static bool g_mouse_button_released[ZANNA_MOUSE_BUTTON_MAX];
 
 // Click detection - track press times for each button
-static int64_t g_mouse_press_time[VIPER_MOUSE_BUTTON_MAX];
-static int64_t g_mouse_last_click_time[VIPER_MOUSE_BUTTON_MAX];
-static bool g_mouse_clicked[VIPER_MOUSE_BUTTON_MAX];
-static bool g_mouse_double_clicked[VIPER_MOUSE_BUTTON_MAX];
+static int64_t g_mouse_press_time[ZANNA_MOUSE_BUTTON_MAX];
+static int64_t g_mouse_last_click_time[ZANNA_MOUSE_BUTTON_MAX];
+static bool g_mouse_clicked[ZANNA_MOUSE_BUTTON_MAX];
+static bool g_mouse_double_clicked[ZANNA_MOUSE_BUTTON_MAX];
 
 // Click detection constants (in milliseconds)
 #define CLICK_MAX_DURATION_MS 300
@@ -1386,7 +1386,7 @@ void rt_mouse_init(void) {
     g_mouse_delta_fy = 0.0;
     g_mouse_canvas = NULL;
 
-    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+    for (int i = 0; i < ZANNA_MOUSE_BUTTON_MAX; i++) {
         g_mouse_button_state[i] = false;
         g_mouse_button_pressed[i] = false;
         g_mouse_button_released[i] = false;
@@ -1420,7 +1420,7 @@ void rt_mouse_begin_frame(void) {
     g_mouse_delta_fy = (double)g_mouse_delta_y;
 
     // Reset per-frame event arrays
-    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+    for (int i = 0; i < ZANNA_MOUSE_BUTTON_MAX; i++) {
         g_mouse_button_pressed[i] = false;
         g_mouse_button_released[i] = false;
         g_mouse_clicked[i] = false;
@@ -1508,10 +1508,10 @@ void rt_mouse_force_delta_f(double dx, double dy) {
 /// Out-of-range button indices are silently ignored.
 ///
 /// @param button Mouse button index (`0`=left, `1`=right, `2`=middle,
-///               `3`/`4`=X1/X2). Range `0..VIPER_MOUSE_BUTTON_MAX-1`.
+///               `3`/`4`=X1/X2). Range `0..ZANNA_MOUSE_BUTTON_MAX-1`.
 void rt_mouse_button_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return;
 
     if (!g_mouse_button_state[button]) {
@@ -1535,7 +1535,7 @@ void rt_mouse_button_down(int64_t button) {
 /// @param button Mouse button index that was released.
 void rt_mouse_button_up(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return;
 
     if (g_mouse_button_state[button]) {
@@ -1662,7 +1662,7 @@ int64_t rt_mouse_delta_y(void) {
 /// @return `1` if the button is currently held, `0` otherwise.
 int8_t rt_mouse_is_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_state[button] ? 1 : 0;
 }
@@ -1677,7 +1677,7 @@ int8_t rt_mouse_is_down(int64_t button) {
 /// @return `1` if the button is currently up, `0` if down.
 int8_t rt_mouse_is_up(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 1;
     return g_mouse_button_state[button] ? 0 : 1;
 }
@@ -1686,21 +1686,21 @@ int8_t rt_mouse_is_up(int64_t button) {
 /// @return `1` if the left mouse button is held, `0` otherwise.
 int8_t rt_mouse_left(void) {
     RT_ASSERT_MAIN_THREAD();
-    return rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT);
+    return rt_mouse_is_down(ZANNA_MOUSE_BUTTON_LEFT);
 }
 
 /// @brief Convenience query for `IsDown(right)`.
 /// @return `1` if the right mouse button is held, `0` otherwise.
 int8_t rt_mouse_right(void) {
     RT_ASSERT_MAIN_THREAD();
-    return rt_mouse_is_down(VIPER_MOUSE_BUTTON_RIGHT);
+    return rt_mouse_is_down(ZANNA_MOUSE_BUTTON_RIGHT);
 }
 
 /// @brief Convenience query for `IsDown(middle)`.
 /// @return `1` if the middle mouse button is held, `0` otherwise.
 int8_t rt_mouse_middle(void) {
     RT_ASSERT_MAIN_THREAD();
-    return rt_mouse_is_down(VIPER_MOUSE_BUTTON_MIDDLE);
+    return rt_mouse_is_down(ZANNA_MOUSE_BUTTON_MIDDLE);
 }
 
 //=============================================================================
@@ -1719,7 +1719,7 @@ int8_t rt_mouse_middle(void) {
 /// @return `1` if the button was pressed this frame, `0` otherwise.
 int8_t rt_mouse_was_pressed(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_pressed[button] ? 1 : 0;
 }
@@ -1734,7 +1734,7 @@ int8_t rt_mouse_was_pressed(int64_t button) {
 /// @return `1` if the button was released this frame, `0` otherwise.
 int8_t rt_mouse_was_released(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_released[button] ? 1 : 0;
 }
@@ -1750,7 +1750,7 @@ int8_t rt_mouse_was_released(int64_t button) {
 /// @return `1` if a click was registered this frame, `0` otherwise.
 int8_t rt_mouse_was_clicked(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_clicked[button] ? 1 : 0;
 }
@@ -1767,7 +1767,7 @@ int8_t rt_mouse_was_clicked(int64_t button) {
 /// @return `1` if a double-click was registered this frame, `0` otherwise.
 int8_t rt_mouse_was_double_clicked(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_double_clicked[button] ? 1 : 0;
 }
@@ -1964,32 +1964,32 @@ void rt_mouse_set_pos(int64_t x, int64_t y) {
 // Button Constant Getters
 //
 // Match the keyboard constant getters in style — return the canonical
-// VIPER_MOUSE_BUTTON_* int64 code so Zia/BASIC programs can write
+// ZANNA_MOUSE_BUTTON_* int64 code so Zia/BASIC programs can write
 // `Mouse.IsDown(Mouse.Button.Left)` instead of magic integers.
 //=============================================================================
 
 /// @brief Button-code constant for the left mouse button.
 int64_t rt_mouse_button_left(void) {
-    return VIPER_MOUSE_BUTTON_LEFT;
+    return ZANNA_MOUSE_BUTTON_LEFT;
 }
 
 /// @brief Button-code constant for the right mouse button.
 int64_t rt_mouse_button_right(void) {
-    return VIPER_MOUSE_BUTTON_RIGHT;
+    return ZANNA_MOUSE_BUTTON_RIGHT;
 }
 
 /// @brief Button-code constant for the middle (wheel-click) mouse button.
 int64_t rt_mouse_button_middle(void) {
-    return VIPER_MOUSE_BUTTON_MIDDLE;
+    return ZANNA_MOUSE_BUTTON_MIDDLE;
 }
 
 /// @brief Button-code constant for the X1 / "back" extended mouse button
 ///        (commonly the lower thumb button on 5-button mice).
 int64_t rt_mouse_button_x1(void) {
-    return VIPER_MOUSE_BUTTON_X1;
+    return ZANNA_MOUSE_BUTTON_X1;
 }
 
 /// @brief Button-code constant for the X2 / "forward" extended mouse button.
 int64_t rt_mouse_button_x2(void) {
-    return VIPER_MOUSE_BUTTON_X2;
+    return ZANNA_MOUSE_BUTTON_X2;
 }

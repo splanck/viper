@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,12 +18,12 @@
 
 module traversal_probe;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Input.Key as Key;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Input.Key as Key;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./config";
 bind "./game";
 

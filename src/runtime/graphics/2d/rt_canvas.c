@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,14 +21,14 @@
 //     released in rt_canvas_finalize when the GC collects the canvas.
 //
 // Links: rt_graphics_internal.h, rt_graphics.h (public API),
-//        vgfx.h (ViperGFX C API)
+//        vgfx.h (ZannaGFX C API)
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_internal.h"
 #include "rt_time.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Validate that an int64 canvas dimension is positive and fits in int32; traps otherwise.
 static int32_t rt_canvas_dimension_to_i32(int64_t value, const char *op) {
@@ -116,7 +116,7 @@ int8_t rt_canvas_is_available(void) {
 }
 
 /// @brief Create a new Canvas window with the given title and dimensions.
-/// @details Allocates a GC-managed rt_canvas struct, initializes the ViperGFX
+/// @details Allocates a GC-managed rt_canvas struct, initializes the ZannaGFX
 ///   window backend, sets up HiDPI coordinate scaling, and initializes keyboard,
 ///   mouse, and gamepad input subsystems. The canvas is ready for drawing after
 ///   this call returns.
@@ -214,7 +214,7 @@ int8_t rt_canvas_is_handle(void *canvas_ptr) {
 
 /// @brief Destroy a Canvas, releasing the window and associated resources.
 /// @details Decrements the GC refcount. If the count reaches zero, the
-///   finalizer frees the title string and destroys the ViperGFX window.
+///   finalizer frees the title string and destroys the ZannaGFX window.
 /// @param canvas_ptr Opaque canvas handle from rt_canvas_new(). NULL-safe.
 void rt_canvas_destroy(void *canvas_ptr) {
     if (!canvas_ptr)
@@ -295,7 +295,7 @@ int64_t rt_canvas_should_close(void *canvas_ptr) {
 ///   OS has requested window closure. This function must be called once per frame
 ///   after all drawing is complete.
 ///
-///   If SetFps() was called, the ViperGFX backend rate-limits Flip() to the
+///   If SetFps() was called, the ZannaGFX backend rate-limits Flip() to the
 ///   target frame rate — no additional sleep is needed.
 ///
 ///   Delta time is computed from monotonic microsecond timestamps and rounded
@@ -527,9 +527,9 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
 
 /// @brief Check if a key is currently held down (raw vgfx key query).
 /// @details This is a low-level function; most games use Action.Held() instead.
-///   Queries the ViperGFX backend directly for the current key state.
+///   Queries the ZannaGFX backend directly for the current key state.
 /// @param canvas_ptr Canvas handle. Returns 0 if NULL.
-/// @param key ViperGFX key code (from vgfx.h constants).
+/// @param key ZannaGFX key code (from vgfx.h constants).
 /// @return 1 if the key is currently pressed, 0 if released or invalid.
 int64_t rt_canvas_key_held(void *canvas_ptr, int64_t key) {
     if (!canvas_ptr)
@@ -635,7 +635,7 @@ void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
 }
 
 /// @brief Programmatically close the canvas window.
-/// @details Destroys the ViperGFX window and sets should_close=1. After this
+/// @details Destroys the ZannaGFX window and sets should_close=1. After this
 ///   call, all drawing operations become no-ops and ShouldClose returns true.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_close(void *canvas_ptr) {
@@ -686,7 +686,7 @@ void rt_canvas_windowed(void *canvas_ptr) {
 }
 
 /// @brief Set the target frame rate for the canvas.
-/// @details The ViperGFX backend rate-limits Flip() to this target. Pass -1 to
+/// @details The ZannaGFX backend rate-limits Flip() to this target. Pass -1 to
 ///   disable rate limiting (unlimited FPS). Default is unlimited.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 /// @param fps Target frames per second (-1 for unlimited).
@@ -927,4 +927,4 @@ int64_t rt_canvas_get_monitor_height(void *canvas_ptr) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

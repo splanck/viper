@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,12 +17,12 @@
 //   - Diagnostics counters are reset between cases to isolate assertions.
 //
 // Links: src/runtime/graphics/3d/rt_game3d_diagnostics.h,
-//   src/il/runtime/runtime.def, docs/viperlib/graphics/game3d.md
+//   src/il/runtime/runtime.def, docs/zannalib/graphics/game3d.md
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_animcontroller3d.h"

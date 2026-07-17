@@ -24,7 +24,7 @@
 //
 // This file is where the code does that.  At boot,
 // `TextureSet.init(palette)` calls roughly a dozen builders
-// that bake `Viper.Graphics.Pixels` objects for each
+// that bake `Zanna.Graphics.Pixels` objects for each
 // surface: grass, dirt, stone, brick, metal, crystal, ice,
 // lava glow, etc.  The result is cached on the TextureSet
 // and re-blitted onto tiles at draw time — one generation
@@ -86,7 +86,7 @@
 
 module texture;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 bind "./config";
 bind "./palette";
 

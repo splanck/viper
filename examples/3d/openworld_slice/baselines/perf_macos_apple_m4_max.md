@@ -25,8 +25,8 @@ Measured results:
 
 | Backend | Command | Setup ms | Frames | Elapsed ms | Avg ms | FPS | Draw count | Visible nodes | Entities | Bodies | Stream bytes | Resident cells | Resident tiles |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| software | `VIPER_3D_BACKEND=software ../../../build_release_perf/src/tools/viper/viper run perf_probe.zia` | 177.346 | 120 | 2000.485 | 16.671 | 59.985 | 14 | 7 | 15 | 5 | 327730 | 1 | 1 |
-| metal | `VIPER_3D_BACKEND=metal ../../../build_release_perf/src/tools/viper/viper run perf_probe.zia` | 180.672 | 120 | 2000.443 | 16.670 | 59.987 | 14 | 7 | 15 | 5 | 327730 | 1 | 1 |
+| software | `ZANNA_3D_BACKEND=software ../../../build_release_perf/src/tools/zanna/zanna run perf_probe.zia` | 177.346 | 120 | 2000.485 | 16.671 | 59.985 | 14 | 7 | 15 | 5 | 327730 | 1 | 1 |
+| metal | `ZANNA_3D_BACKEND=metal ../../../build_release_perf/src/tools/zanna/zanna run perf_probe.zia` | 180.672 | 120 | 2000.443 | 16.670 | 59.987 | 14 | 7 | 15 | 5 | 327730 | 1 | 1 |
 
 These numbers are a named local baseline, not a portable pass/fail threshold.
 CTest verifies that the perf probe runs and reports valid counters; platform
@@ -40,8 +40,8 @@ Recorded on: 2026-05-31
 Commands:
 
 - `ctest --test-dir build_release_perf -R '^g3d_openworld_slice_(perf_probe|long_traversal)$' --output-on-failure -V`
-- `VIPER_3D_BACKEND=metal ../../../build_release_perf/src/tools/viper/viper run long_traversal.zia`
-- `VIPER_3D_BACKEND=metal ../../../build_release_perf/src/tools/viper/viper run perf_probe.zia`
+- `ZANNA_3D_BACKEND=metal ../../../build_release_perf/src/tools/zanna/zanna run long_traversal.zia`
+- `ZANNA_3D_BACKEND=metal ../../../build_release_perf/src/tools/zanna/zanna run perf_probe.zia`
 
 The traversal visits all four streamed terrain/cell quadrants for eight rounds,
 then repeats the same route and compares the replay checksum. Each visit settles
@@ -68,7 +68,7 @@ Recorded on: 2026-05-31
 
 Command:
 
-- `VIPER_3D_BACKEND=software ../../../build_release_perf/src/tools/viper/viper run visibility_dense_probe.zia`
+- `ZANNA_3D_BACKEND=software ../../../build_release_perf/src/tools/zanna/zanna run visibility_dense_probe.zia`
 
 The dense visibility probe authors a deterministic city/forest occlusion scene:
 front city blocks plus a reachable portal alley remain visible, and dense forest
@@ -87,7 +87,7 @@ Recorded on: 2026-05-31
 
 Commands:
 
-- `VIPER_3D_BACKEND=metal ../../../build_release_perf/src/tools/viper/viper run gpu_smoke.zia`
+- `ZANNA_3D_BACKEND=metal ../../../build_release_perf/src/tools/zanna/zanna run gpu_smoke.zia`
 - `ctest --test-dir build_release_perf -R '^g3d_openworld_slice_gpu_smoke$' --output-on-failure -V`
 
 The GPU smoke now exercises the platform backend's many-light path after the
@@ -106,7 +106,7 @@ Recorded on: 2026-05-31
 
 Commands:
 
-- `VIPER_3D_BACKEND=metal ../../../build_release_perf/src/tools/viper/viper run gpu_smoke.zia`
+- `ZANNA_3D_BACKEND=metal ../../../build_release_perf/src/tools/zanna/zanna run gpu_smoke.zia`
 - `ctest --test-dir build_release_perf -R '^g3d_openworld_slice_gpu_smoke$' --output-on-failure -V`
 
 The GPU smoke now follows the clustered-lighting probe with an authored primary

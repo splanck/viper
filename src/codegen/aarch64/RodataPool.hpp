@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@ namespace il::core {
 struct Module;
 }
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Manages a pool of deduplicated read-only string data for AArch64 assembly emission.
 /// @details Collects string literals from IL global constants, deduplicates by content,
@@ -114,4 +114,4 @@ class RodataPool {
     void addString(const std::string &ilName, const std::string &bytes);
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

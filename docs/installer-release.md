@@ -6,7 +6,7 @@ last-verified: 2026-07-16
 
 # Installer and Package Release Guide
 
-Viper produces native toolchain installers for Windows, macOS, and Linux from
+Zanna produces native toolchain installers for Windows, macOS, and Linux from
 one validated `cmake --install` stage. This guide defines the supported
 developer and release paths, the trust gates, generated metadata, lifecycle
 guarantees, and native-host validation commands. ADR 0073 records the release
@@ -18,13 +18,13 @@ Use the platform build script for the full build. Do not invoke raw CMake as a
 replacement for the canonical build:
 
 ```text
-scripts\build_viper_win.cmd
-./scripts/build_viper_mac.sh
-./scripts/build_viper_linux.sh
+scripts\build_zanna_win.cmd
+./scripts/build_zanna_mac.sh
+./scripts/build_zanna_linux.sh
 ```
 
 The installer wrappers run the same build path and then call
-`viper install-package`:
+`zanna install-package`:
 
 ```text
 scripts\build_installer.cmd --target windows --output-dir artifacts
@@ -36,11 +36,11 @@ For repeatable package work, stage once and package that immutable tree:
 
 ```bash
 cmake --install build --prefix "$PWD/build/release-stage"
-build/src/tools/viper/viper install-package \
+build/src/tools/zanna/zanna install-package \
   --stage-dir build/release-stage --target all --output-dir artifacts
 ```
 
-`install-package` inspects the staged `viper` executable and rejects a target or
+`install-package` inspects the staged `zanna` executable and rejects a target or
 architecture that conflicts with its PE, Mach-O, or ELF header. A macOS
 universal stage must contain valid, in-bounds Mach-O slices; a single-slice
 binary is never relabeled as universal.
@@ -57,7 +57,7 @@ Every successful invocation writes:
 
 - one `<artifact>.sha256` sidecar per artifact;
 - `SHA256SUMS` for a directory or multi-artifact output; and
-- a schema-versioned JSON inventory, normally `viper-artifacts.json`, containing
+- a schema-versioned JSON inventory, normally `zanna-artifacts.json`, containing
   file name, format, platform, architecture, version, byte size, SHA-256,
   verification state, trust state, and `SOURCE_DATE_EPOCH`.
 
@@ -69,7 +69,7 @@ set, and removes partial outputs on failure.
 Verify an artifact and its sidecar together:
 
 ```bash
-viper install-package --verify-only artifacts/viper-toolchain.run --require-checksum
+zanna install-package --verify-only artifacts/zanna-toolchain.run --require-checksum
 ```
 
 The Linux self-extracting toolchain is a `.run` bundle selected by
@@ -90,7 +90,7 @@ Release mode rejects `--no-verify`, `--windows-sign-no-verify`, debug Windows
 toolchains, missing trust credentials, dirty or unknown source state, missing
 immutable source commit metadata, and an invalid or absent
 `SOURCE_DATE_EPOCH`. Source archives must configure both
-`VIPER_SOURCE_COMMIT=<lowercase-hex>` and `VIPER_SOURCE_STATE=clean`. Its trust
+`ZANNA_SOURCE_COMMIT=<lowercase-hex>` and `ZANNA_SOURCE_STATE=clean`. Its trust
 requirements are platform-specific:
 
 ### Windows
@@ -104,37 +104,37 @@ Provision the update-signing public key before packaging. This key is separate
 from Authenticode and may be exported without creating a placeholder manifest:
 
 ```powershell
-$env:VIPER_WINDOWS_UPDATE_SIGN_PASSWORD = '<secret>'
+$env:ZANNA_WINDOWS_UPDATE_SIGN_PASSWORD = '<secret>'
 .\scripts\new-windows-update-manifest.ps1 -PublicKeyOnly `
-  -PfxPath .\private\viper-update-signing.pfx `
-  -PublicKeyOutput .\build\viper-update-public-key.json
-$updateKey = Get-Content .\build\viper-update-public-key.json -Raw | ConvertFrom-Json
+  -PfxPath .\private\zanna-update-signing.pfx `
+  -PublicKeyOutput .\build\zanna-update-public-key.json
+$updateKey = Get-Content .\build\zanna-update-public-key.json -Raw | ConvertFrom-Json
 ```
 
 Build the signed installer with the pinned public key and the canonical stable
 identity:
 
 ```powershell
-$env:VIPER_WINDOWS_SIGN_THUMBPRINT = '<SHA-1 thumbprint>'
-$env:VIPER_WINDOWS_TIMESTAMP_URL = "https://timestamp.digicert.com"
-viper install-package --stage-dir build\release-stage --target windows `
-  --output-file artifacts\viper-toolchain-windows-x64.exe `
+$env:ZANNA_WINDOWS_SIGN_THUMBPRINT = '<SHA-1 thumbprint>'
+$env:ZANNA_WINDOWS_TIMESTAMP_URL = "https://timestamp.digicert.com"
+zanna install-package --stage-dir build\release-stage --target windows `
+  --output-file artifacts\zanna-toolchain-windows-x64.exe `
   --windows-channel stable `
-  --windows-documentation-url https://docs.example.test/viper/windows `
-  --windows-update-manifest-url https://updates.example.test/viper/stable/x64.txt `
+  --windows-documentation-url https://docs.example.test/zanna/windows `
+  --windows-update-manifest-url https://updates.example.test/zanna/stable/x64.txt `
   --windows-update-rsa-modulus $updateKey.modulus `
   --windows-update-rsa-exponent $updateKey.exponent `
   --windows-sign --release
 ```
 
-A PFX can instead be supplied with `VIPER_WINDOWS_SIGN_PFX` and
-`VIPER_WINDOWS_SIGN_PASSWORD`. That path passes the password to `signtool` and
-therefore also requires `VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1`; importing the
+A PFX can instead be supplied with `ZANNA_WINDOWS_SIGN_PFX` and
+`ZANNA_WINDOWS_SIGN_PASSWORD`. That path passes the password to `signtool` and
+therefore also requires `ZANNA_WINDOWS_SIGN_PASSWORD_ARGV_OK=1`; importing the
 PFX into the ephemeral user certificate store avoids that exposure. Timestamp
 URLs must use HTTPS. Signing is followed by `signtool verify /pa /all /tw /v`.
 
 Nested signing is deliberate: the packager signs and verifies every
-Viper-owned staged PE, the embedded maintenance host, and detached cleanup
+Zanna-owned staged PE, the embedded maintenance host, and detached cleanup
 helper before hashing and compressing them. Microsoft runtime DLLs retain their
 Microsoft signatures. The outer setup is signed last, then recursive
 verification checks both signatures and structure through every overlay layer.
@@ -144,15 +144,15 @@ canonical update manifest. The download and release-notes URLs must use the
 same scheme, host, and port as the manifest URL:
 
 ```powershell
-$artifact = Resolve-Path artifacts\viper-toolchain-windows-x64.exe
+$artifact = Resolve-Path artifacts\zanna-toolchain-windows-x64.exe
 .\scripts\new-windows-update-manifest.ps1 `
   -OutputPath artifacts\stable-x64.txt `
-  -ManifestUrl https://updates.example.test/viper/stable/x64.txt `
+  -ManifestUrl https://updates.example.test/zanna/stable/x64.txt `
   -Channel stable -Architecture x64 -Version 1.2.3 `
-  -DownloadUrl https://updates.example.test/viper/viper-1.2.3-x64.exe `
+  -DownloadUrl https://updates.example.test/zanna/zanna-1.2.3-x64.exe `
   -DownloadSha256 (Get-FileHash $artifact -Algorithm SHA256).Hash `
-  -ReleaseNotesUrl https://updates.example.test/viper/1.2.3.html `
-  -PfxPath .\private\viper-update-signing.pfx
+  -ReleaseNotesUrl https://updates.example.test/zanna/1.2.3.html `
+  -PfxPath .\private\zanna-update-signing.pfx
 ```
 
 The script rejects non-canonical or overflowing versions, HTTP, credentials,
@@ -165,14 +165,14 @@ record used during package generation.
 
 macOS release output requires all four gates:
 
-- `VIPER_MACOS_APP_SIGN_IDENTITY` for every nested Mach-O executable and helper
+- `ZANNA_MACOS_APP_SIGN_IDENTITY` for every nested Mach-O executable and helper
   app;
-- `VIPER_MACOS_SIGN_IDENTITY` for the product package;
-- `VIPER_MACOS_NOTARY_PROFILE` for `notarytool`; and
+- `ZANNA_MACOS_SIGN_IDENTITY` for the product package;
+- `ZANNA_MACOS_NOTARY_PROFILE` for `notarytool`; and
 - `--macos-staple` for both the package and optional disk image.
 
 ```bash
-viper install-package --stage-dir build/release-stage --target macos \
+zanna install-package --stage-dir build/release-stage --target macos \
   --macos-dmg --output-dir artifacts --macos-staple --release
 ```
 
@@ -186,8 +186,8 @@ Use `--macos-min-version` to override the architecture-based deployment floor.
 Linux release output requires an OpenPGP key for `.deb` and `.rpm` artifacts:
 
 ```bash
-export VIPER_LINUX_SIGN_KEY="<GPG key id>"
-viper install-package --stage-dir build/release-stage --target all \
+export ZANNA_LINUX_SIGN_KEY="<GPG key id>"
+zanna install-package --stage-dir build/release-stage --target all \
   --output-dir artifacts --release
 ```
 
@@ -207,7 +207,7 @@ selects current-user or all-users scope, a validated Unicode/long-path
 destination, components with accurate byte estimates, PATH, safe Open With
 associations, and Start Menu shortcuts. Native Task Dialogs and a scrollable
 customization window use system colors, high-contrast behavior, keyboard
-navigation, UI Automation names, per-monitor DPI awareness, Viper branding,
+navigation, UI Automation names, per-monitor DPI awareness, Zanna branding,
 and a usable small-work-area layout.
 
 Before mutation, the host validates the complete schema-3 overlay inventory,
@@ -233,7 +233,7 @@ tools and setup never downloads a redistributable. PATH, associations,
 shortcuts, and Add/Remove Programs values carry ownership markers; uninstall
 removes only exact owned values. File associations add Open With entries and do
 not replace an existing default handler or execute source on open. The finish
-page offers ViperIDE, the Developer Prompt, quickstart, samples, and a copyable
+page offers ZannaIDE, the Developer Prompt, quickstart, samples, and a copyable
 verification command after post-install self-checks.
 
 `/inspect` emits verified package identity as JSON without mutation.
@@ -307,20 +307,20 @@ No workflow writes private keys into an artifact.
 Build and package in a Developer Command Prompt:
 
 ```bat
-set VIPER_BUILD_TYPE=Release
-set VIPER_SKIP_INSTALL=1
-set VIPER_EXTRA_CMAKE_ARGS=-DVIPER_INSTALL_VIPERIDE=ON
-scripts\build_viper_win.cmd
+set ZANNA_BUILD_TYPE=Release
+set ZANNA_SKIP_INSTALL=1
+set ZANNA_EXTRA_CMAKE_ARGS=-DZANNA_INSTALL_ZANNAIDE=ON
+scripts\build_zanna_win.cmd
 cmake --install build --prefix "%CD%\build\release-stage" --config Release
-build\src\tools\viper\Release\viper.exe install-package --stage-dir build\release-stage --target windows --output-file build\viper-toolchain.exe
-build\src\tools\viper\Release\viper.exe install-package --verify-only build\viper-toolchain.exe --require-checksum
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\validate-windows-toolchain-installer.ps1 -Installer build\viper-toolchain.exe
+build\src\tools\zanna\Release\zanna.exe install-package --stage-dir build\release-stage --target windows --output-file build\zanna-toolchain.exe
+build\src\tools\zanna\Release\zanna.exe install-package --verify-only build\zanna-toolchain.exe --require-checksum
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\validate-windows-toolchain-installer.ps1 -Installer build\zanna-toolchain.exe
 ```
 
 To exercise the upgrade path, package a baseline stage containing
-`share\viper\installer-upgrade-stale.txt`, remove that file before generating
+`share\zanna\installer-upgrade-stale.txt`, remove that file before generating
 the final installer, then add
-`-BaselineInstaller build\viper-toolchain-baseline.exe` to the validation
+`-BaselineInstaller build\zanna-toolchain-baseline.exe` to the validation
 script. Add `-RequireSignature` for a signed release candidate.
 
 The repository's opt-in `installer_windows_toolchain_e2e` test is the stronger
@@ -330,9 +330,9 @@ recovery, Typical/Minimal/Complete modification, PATH/association/shortcut
 ownership, exact-hash repair, concurrent setup, Restart Manager, installed Zia
 and BASIC execution, native codegen, an external CMake SDK consumer, direct
 root uninstall, and residue checks. Configure
-`VIPER_ENABLE_WINDOWS_INSTALLER_E2E=ON` and run it serially.
+`ZANNA_ENABLE_WINDOWS_INSTALLER_E2E=ON` and run it serially.
 
-Configure a separate build with `VIPER_INSTALLER_ENABLE_TEST_HOOKS=ON` to run
+Configure a separate build with `ZANNA_INSTALLER_ENABLE_TEST_HOOKS=ON` to run
 the same test's destructive fault matrix. Test hooks are compile-time disabled
 in production hosts. The matrix proves no-mutation Windows-version and disk
 preflight, cancellation, registry rollback, and recovery after forced
@@ -349,23 +349,23 @@ the minimum Windows 10 floor plus current Windows 11 before publication.
 ### Linux disposable host or VM
 
 ```bash
-export VIPER_BUILD_TYPE=Release VIPER_SKIP_INSTALL=1
-export VIPER_EXTRA_CMAKE_ARGS=-DVIPER_INSTALL_VIPERIDE=ON
-./scripts/build_viper_linux.sh
+export ZANNA_BUILD_TYPE=Release ZANNA_SKIP_INSTALL=1
+export ZANNA_EXTRA_CMAKE_ARGS=-DZANNA_INSTALL_ZANNAIDE=ON
+./scripts/build_zanna_linux.sh
 cmake --install build --prefix "$PWD/build/release-stage"
-build/src/tools/viper/viper install-package --stage-dir build/release-stage \
+build/src/tools/zanna/zanna install-package --stage-dir build/release-stage \
   --target all --output-dir build/installers
 for artifact in build/installers/*.deb build/installers/*.rpm \
                 build/installers/*.run build/installers/*.tar.gz; do
-  build/src/tools/viper/viper install-package --verify-only "$artifact" --require-checksum
+  build/src/tools/zanna/zanna install-package --verify-only "$artifact" --require-checksum
 done
 ctest --test-dir build --output-on-failure -R '^linux_toolchain_bundle_smoke$'
-sudo env VIPER_RUN_LINUX_INSTALLER_SMOKE=1 \
+sudo env ZANNA_RUN_LINUX_INSTALLER_SMOKE=1 \
   ctest --test-dir "$PWD/build" --output-on-failure \
   -R '^linux_toolchain_(deb|rpm)_installer_smoke$'
 ```
 
-The privileged package-manager tests refuse to run when a Viper package is
+The privileged package-manager tests refuse to run when a Zanna package is
 already installed. Use only a disposable machine: they intentionally install
 under `/usr`, perform a same-version baseline-to-current upgrade, build and run
 an installed CMake/native-codegen consumer, remove the package, and check that
@@ -374,17 +374,17 @@ unrelated content survives.
 ### macOS disposable host
 
 ```bash
-export VIPER_BUILD_TYPE=Release VIPER_SKIP_INSTALL=1
-./scripts/build_viper_mac.sh
+export ZANNA_BUILD_TYPE=Release ZANNA_SKIP_INSTALL=1
+./scripts/build_zanna_mac.sh
 ctest --test-dir build --output-on-failure -R '^macos_toolchain_installer_smoke$'
-sudo env VIPER_RUN_MACOS_INSTALLER_SMOKE=1 \
+sudo env ZANNA_RUN_MACOS_INSTALLER_SMOKE=1 \
   ctest --test-dir "$PWD/build" --output-on-failure \
   -R '^macos_toolchain_installer_smoke$'
 ```
 
 The privileged macOS test refuses a host with an existing installation, asks
 Installer.app to evaluate the Distribution choices, installs into `/usr/local`,
-upgrades from a baseline package when `VIPER_BASELINE_PACKAGE` is supplied,
+upgrades from a baseline package when `ZANNA_BASELINE_PACKAGE` is supplied,
 proves stale-owned cleanup and unrelated-file preservation, checks all commands,
 CMake discovery and native codegen, runs the installed uninstaller, and verifies
 package receipt removal.

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_parse.c
 // Purpose: Implements safe integer, double, Boolean, validation, default-value,
-//          radix, and Option parsing helpers for the Viper.Core.Parse namespace.
+//          radix, and Option parsing helpers for the Zanna.Core.Parse namespace.
 //          Ordinary invalid input returns false/None/a caller-supplied default
 //          instead of trapping.
 //

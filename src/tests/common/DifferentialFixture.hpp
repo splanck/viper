@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include <string>
 
-namespace viper::tests {
+namespace zanna::tests {
 
 /// @brief Result of a differential comparison between VM and native execution.
 struct DiffResult {
@@ -47,7 +47,7 @@ struct DiffResult {
 /// Usage:
 /// ```cpp
 /// il::core::Module mod = buildTestModule();
-/// auto result = viper::tests::diffVmNative(mod);
+/// auto result = zanna::tests::diffVmNative(mod);
 /// EXPECT_TRUE(result.matched);
 /// ```
 inline DiffResult diffVmNative(il::core::Module &module) {
@@ -65,4 +65,4 @@ inline DiffResult diffVmNative(il::core::Module &module) {
     return result;
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

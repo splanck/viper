@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements the status bar widget used in the Viper TUI.
+/// @brief Implements the status bar widget used in the Zanna TUI.
 /// @details The widget paints a horizontal strip using the active theme and
 ///          displays independent left and right strings.  It clears the row
 ///          before drawing text so previous frames do not leak visual artefacts.
@@ -23,7 +23,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 /// @brief Construct a status bar with initial left and right text segments.
 /// @details Stores references to the immutable theme while taking ownership of
 ///          the text strings.  The constructor does not perform any rendering;
@@ -60,4 +60,4 @@ void StatusBar::paint(render::ScreenBuffer &sb) {
     render::renderTextRight(sb, y, rect_.x, rect_.w, right_, st);
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

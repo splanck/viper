@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTRestClientTests.cpp
-// Purpose: Validate Viper.Network.RestClient behavior.
+// Purpose: Validate Zanna.Network.RestClient behavior.
 // Key invariants:
 //   - Local HTTP fixtures bind only to loopback addresses.
 //   - Redirect and keep-alive state is captured deterministically.
@@ -143,7 +143,7 @@ static int get_bindable_local_port() {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
+    addr.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0;
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         LOCAL_SOCK_CLOSE(fd);

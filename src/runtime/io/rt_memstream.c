@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_memstream.c
-// Purpose: Implements an in-memory binary stream for the Viper.IO.MemStream
+// Purpose: Implements an in-memory binary stream for the Zanna.IO.MemStream
 //          class. The buffer grows automatically on write, supports random
 //          seek/tell, and encodes multi-byte integers in little-endian order
 //          and floats in IEEE 754 format.
@@ -794,7 +794,7 @@ void rt_memstream_write_str(void *obj, rt_string text) {
     if (!ms)
         return;
 
-    // IO-C-1: use rt_str_len() not strlen() — Viper strings can contain embedded null bytes
+    // IO-C-1: use rt_str_len() not strlen() — Zanna strings can contain embedded null bytes
     int64_t len = rt_str_len(text);
     const char *cstr = rt_string_cstr(text);
     if (!cstr || len < 0) {

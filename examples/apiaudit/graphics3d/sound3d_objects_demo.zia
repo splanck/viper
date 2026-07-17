@@ -1,9 +1,9 @@
 module Sound3DObjectsDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Audio;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Audio;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Sound3D Objects Demo ===");

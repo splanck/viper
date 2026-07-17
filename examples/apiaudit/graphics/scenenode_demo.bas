@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics2D.SceneNode ==="
+PRINT "=== API Audit: Zanna.Graphics2D.SceneNode ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New(name)"
 PRINT "Properties: get_X, get_Y, get_Visible, get_Tag"

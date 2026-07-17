@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: tests/runtime/RTSeqFunctionalTests.cpp
 // Purpose: Validate Seq functional operations (Keep, Reject, Apply, Fold, etc.)
 // Key invariants: Function pointers work correctly as predicates/transforms.
-// Links: docs/viperlib/collections.md
+// Links: docs/zannalib/collections.md
 //
 //===----------------------------------------------------------------------===//
 

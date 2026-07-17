@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Apply the Darwin/Mach-O underscore convention to a symbol name.
 /// Local labels (starting with 'L' or '.') and empty names are returned as-is.
@@ -66,4 +66,4 @@ auto findWithPlatformFallback(MapT &map, const std::string &name, LinkPlatform p
     return map.find(name);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

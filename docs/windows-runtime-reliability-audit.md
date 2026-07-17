@@ -25,7 +25,7 @@ dependency changed.
 | WR-08 | WinSock readiness | Invalid readiness arguments returned `-1` without a deterministic last-error value. They now set `WSAEINVAL` or `WSAENOTSOCK`. |
 | WR-09 | OS entropy | A chunked `BCryptGenRandom` failure could leave a fresh prefix followed by stale caller bytes. The complete destination is now securely erased on failure. |
 | WR-10 | OS entropy | The 64-bit entropy helper could preserve an old scalar after failure. It now clears the output before requesting entropy. |
-| WR-11 | `Viper.Text.Rand` | Its independent BCrypt path had the same partial-output exposure. It now securely erases the entire destination on failure. |
+| WR-11 | `Zanna.Text.Rand` | Its independent BCrypt path had the same partial-output exposure. It now securely erases the entire destination on failure. |
 | WR-12 | hash seeding | The BCrypt byte count narrowed `size_t` to `ULONG` in one call. Requests are now chunked to the native 32-bit limit. |
 | WR-13 | hash seeding | A later hash-seed entropy chunk could fail after earlier chunks had populated the buffer. Failure now securely clears the whole buffer. |
 | WR-14 | locale detection | POSIX-style fallback precedence was `LC_ALL`, `LANG`, `LC_MESSAGES`; category-specific `LC_MESSAGES` must precede `LANG`. All adapters now share the corrected order. |
@@ -66,6 +66,6 @@ dependency changed.
 - `test_vgfx3d_backend_d3d11_shared`, `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound D3D11 smoke exercise the backend.
 
-The required end-to-end gates are `scripts/build_viper_win.cmd` and
+The required end-to-end gates are `scripts/build_zanna_win.cmd` and
 `scripts/build_demos_win.cmd`; the platform-policy lint remains mandatory for future changes in
 these adapters.

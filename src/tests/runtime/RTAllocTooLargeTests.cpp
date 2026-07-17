@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,10 +26,10 @@ static void call_alloc_too_large() {
 }
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(call_alloc_too_large);
+    auto result = zanna::tests::runIsolated(call_alloc_too_large);
     bool ok = result.stderrText.find("allocation too large") != std::string::npos;
     assert(ok);
     return 0;

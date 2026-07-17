@@ -4,13 +4,13 @@ audience: public
 last-verified: 2026-05-31
 ---
 
-# Viper BASIC — Tutorial
+# Zanna BASIC — Tutorial
 
-Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](../languages/basic-reference.md)**.
+Learn Zanna BASIC by example. For a complete reference, see **[BASIC Reference](../languages/basic-reference.md)**.
 
-> **What is Viper BASIC?**
+> **What is Zanna BASIC?**
 > A compact, modernized BASIC designed for clarity: `LET` for assignment, clean arrays, short-circuit booleans,
-> lightweight objects, and straightforward console/file I/O. It runs on Viper's VM and can be lowered to native code.
+> lightweight objects, and straightforward console/file I/O. It runs on Zanna's VM and can be lowered to native code.
 
 ---
 
@@ -246,7 +246,7 @@ For full details on mixed-language projects, see the
 
 ## 5. Objects
 
-Viper BASIC supports lightweight object-oriented programming with classes, methods, constructors, and destructors.
+Zanna BASIC supports lightweight object-oriented programming with classes, methods, constructors, and destructors.
 
 Array fields in classes
 -----------------------
@@ -502,7 +502,7 @@ END
 - `RESUME NEXT` — Continue with the next statement
 - `RESUME <label>` — Resume execution at a specific line label
 
-To stop execution from a handler use `END` (or fall through). Viper BASIC does **not** treat
+To stop execution from a handler use `END` (or fall through). Zanna BASIC does **not** treat
 `RESUME 0` as "end the program"; it parses as a `RESUME <label>` jump to label `0`, which simply
 fails to lower if no such label exists.
 

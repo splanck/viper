@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 namespace {
 
 /// @brief One row in the baked-in symbol-to-dylib table.
@@ -359,4 +359,4 @@ bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

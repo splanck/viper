@@ -25,7 +25,7 @@ rewritten as multi-platform evidence.
 
 | # | Upgrade | Implemented outcome | Primary evidence |
 |---:|---|---|---|
-| 1 | Retract false 1.0 | Metadata and docs say 0.3.0 development preview | `viper.project`, README, development notes |
+| 1 | Retract false 1.0 | Metadata and docs say 0.3.0 development preview | `zanna.project`, README, development notes |
 | 2 | Restore Double Jump | Wall Jump + Double Jump are baseline in new, default, and migrated profiles | `abilities.zia`, `player.zia`, `save.zia` |
 | 3 | Physics-aware traversal validation | Stand-cell flood uses shipped movement/ability envelopes | `level_validation.zia` |
 | 4 | Real vertical-slice gate | Crash/Fungal reachability, gateways, first reward, and next gate are proved | `playthrough_probe.zia` |
@@ -49,7 +49,7 @@ rewritten as multi-platform evidence.
 | 22 | Accessibility/input parity | Twenty settings, HUD/aim choices, map/text scaling, named pad bindings | `settings.zia`, `worldmap.zia`, `game.zia` |
 | 23 | Save hardening | Schema-v4 checksum, full staging, migration, selective recovery, backup | `save.zia`, `progression_probe.zia` |
 | 24 | Release QA matrix | Playthrough/UI/cadence/render/reachability/performance/soak gates | project probes, `src/tests/CMakeLists.txt` |
-| 25 | Reproducible packaging | Truthful versioned tarball plan, inventory, extracted smoke mode | `viper.project`, `main.zia`, `package_probe.zia` |
+| 25 | Reproducible packaging | Truthful versioned tarball plan, inventory, extracted smoke mode | `zanna.project`, `main.zia`, `package_probe.zia` |
 
 The detailed player-facing change report is
 `examples/games/xenoscape/docs/release-notes.md`.
@@ -105,7 +105,7 @@ backed up before the damaged slot/store is made unavailable.
 ## Verification record
 
 The following project-scoped evidence passed on 2026-07-10 using the existing
-Viper binary, without rebuilding Viper and without running Viper ctests:
+Zanna binary, without rebuilding Zanna and without running Zanna ctests:
 
 - whole-directory JSON diagnostic check;
 - mechanics, world, meta, settings, campaign, progression, action-name, UI-flow,

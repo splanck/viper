@@ -1,14 +1,14 @@
-// treemap_demo.zia - Comprehensive API audit for Viper.Collections.SortedMap
+// treemap_demo.zia - Comprehensive API audit for Zanna.Collections.SortedMap
 // Tests: New, Set, Get, Has, Drop, Clear, Len, IsEmpty,
 //        Keys, Values, First, Last, Floor, Ceil
 
 module TreeMapDemo;
 
-bind Viper.Collections;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== TreeMap API Audit ===");

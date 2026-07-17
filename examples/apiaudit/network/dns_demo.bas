@@ -1,26 +1,26 @@
-' API Audit: Viper.Network.Dns (BASIC)
-PRINT "=== API Audit: Viper.Network.Dns ==="
+' API Audit: Zanna.Network.Dns (BASIC)
+PRINT "=== API Audit: Zanna.Network.Dns ==="
 
 PRINT "--- IsIPv4 ---"
-PRINT Viper.Network.Dns.IsIpv4("192.168.1.1")
-PRINT Viper.Network.Dns.IsIpv4("not-an-ip")
-PRINT Viper.Network.Dns.IsIpv4("::1")
+PRINT Zanna.Network.Dns.IsIpv4("192.168.1.1")
+PRINT Zanna.Network.Dns.IsIpv4("not-an-ip")
+PRINT Zanna.Network.Dns.IsIpv4("::1")
 
 PRINT "--- IsIPv6 ---"
-PRINT Viper.Network.Dns.IsIpv6("::1")
-PRINT Viper.Network.Dns.IsIpv6("fe80::1")
-PRINT Viper.Network.Dns.IsIpv6("192.168.1.1")
+PRINT Zanna.Network.Dns.IsIpv6("::1")
+PRINT Zanna.Network.Dns.IsIpv6("fe80::1")
+PRINT Zanna.Network.Dns.IsIpv6("192.168.1.1")
 
 PRINT "--- IsIP ---"
-PRINT Viper.Network.Dns.IsIP("192.168.1.1")
-PRINT Viper.Network.Dns.IsIP("::1")
-PRINT Viper.Network.Dns.IsIP("not-an-ip")
+PRINT Zanna.Network.Dns.IsIP("192.168.1.1")
+PRINT Zanna.Network.Dns.IsIP("::1")
+PRINT Zanna.Network.Dns.IsIP("not-an-ip")
 
 PRINT "--- LocalHost ---"
-PRINT Viper.Network.Dns.LocalHost()
+PRINT Zanna.Network.Dns.LocalHost()
 
 PRINT "--- Resolve (localhost) ---"
-PRINT Viper.Network.Dns.Resolve("localhost")
+PRINT Zanna.Network.Dns.Resolve("localhost")
 
 PRINT "=== Dns Audit Complete ==="
 END

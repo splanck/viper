@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Game3D.CharacterController3D` exposes a `gravity` property alongside a
+`Zanna.Game3D.CharacterController3D` exposes a `gravity` property alongside a
 positive `jumpSpeed`. The public documentation describes gravity as a downward
 acceleration, but the default runtime value was negative while sample code often
 treated the property as a positive downward magnitude. That mismatch made a

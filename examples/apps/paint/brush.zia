@@ -17,7 +17,7 @@
 //     for square) so the ±1 resize helpers work uniformly.
 // ============================================================================
 
-// brush.viper - Brush settings for Viper Paint
+// brush.zanna - Brush settings for Zanna Paint
 module brush;
 
 bind "./config";

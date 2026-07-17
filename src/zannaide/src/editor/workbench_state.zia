@@ -1,0 +1,96 @@
+module workbench_state;
+
+bind "../core/document";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "language_service";
+
+// ============================================================================
+// MODULE: workbench_state
+// PURPOSE: Captures the active editor/workspace facts that many ZannaIDE
+//          controllers need each frame: active document, active path, active
+//          project name, and current language-service capability set.
+//
+// WHERE-THIS-FITS: Small orchestration helper used by main.zia. It does not own
+//          documents, projects, or language services; it only snapshots their
+//          current state so command routing, toolbars, and controller capability
+//          gates read a consistent view during a frame.
+//
+// KEY-DESIGN-CHOICES:
+//   * NULL-TOLERANT SNAPSHOT. The IDE constructs managers in phases and can run
+//     with no active document or no open project. Refresh therefore resets to
+//     empty values first, then fills only the managers that are available.
+//   * SERVICE-CHANGE SIGNAL. Refresh returns true only when the active language
+//     service name changes, letting main.zia update command capabilities without
+//     reapplying the same menu/toolbar state every frame.
+//   * NO OWNERSHIP. All exposed fields point at manager-owned objects or hold
+//     primitive/string snapshots. This keeps the class cheap to refresh and
+//     avoids lifetime ambiguity.
+// ============================================================================
+
+/// @brief Per-frame active document, language-service, and project snapshot.
+/// @details ZannaIDE's main loop has many controllers that need the same small
+///          set of facts: active document, active file path, active project name,
+///          and language-service capabilities. Centralizing that snapshot keeps
+///          those facts consistent and creates a seam for moving more frame
+///          orchestration out of main.zia without changing controller behavior.
+class ActiveWorkbenchState {
+    /// Active document for the current frame, or null when no tab is open.
+    expose document.Document activeDocument;
+    /// Absolute path for activeDocument, or empty for untitled/no document.
+    expose String activePath;
+    /// Display name of the open project, or empty when no project is open.
+    expose String activeProjectName;
+    /// Language service selected for activeDocument.
+    expose language_service.LanguageService activeService;
+    /// Name of the language service selected during the previous Refresh call.
+    expose String lastServiceName;
+
+    /// @brief Initialize to an empty text-workbench state.
+    expose func init() {
+        activeDocument = null;
+        activePath = "";
+        activeProjectName = "";
+        activeService = null;
+        lastServiceName = "";
+    }
+
+    /// @brief Recompute the active frame state from document and project managers.
+    /// @param docMgr Open document manager.
+    /// @param projMgr Current project manager.
+    /// @param services Language-service capability router.
+    /// @return True when the active language service changed since the last frame.
+    expose func Refresh(docMgr: document_manager.DocumentManager,
+                        projMgr: project_manager.ProjectManager,
+                        services: language_service.LanguageServiceManager) -> Boolean {
+        activeDocument = null;
+        activePath = "";
+        activeProjectName = "";
+        if services != null {
+            activeService = services.textService;
+        }
+
+        if docMgr != null {
+            var maybeDoc = docMgr.GetActive();
+            if maybeDoc != null {
+                activeDocument = maybeDoc!;
+                activePath = activeDocument.filePath;
+                if services != null {
+                    activeService = services.ForDocument(activeDocument);
+                }
+            }
+        }
+
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            activeProjectName = projMgr.project.name;
+        }
+
+        var serviceName = "";
+        if activeService != null {
+            serviceName = activeService.name;
+        }
+        var changed = serviceName != lastServiceName;
+        lastServiceName = serviceName;
+        return changed;
+    }
+}

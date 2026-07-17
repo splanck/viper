@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_platform.h
-// Purpose: Cross-platform preprocessor abstractions for the Viper runtime, providing portable
+// Purpose: Cross-platform preprocessor abstractions for the Zanna runtime, providing portable
 // macros for thread-local storage, atomic operations, weak symbol linkage, and platform detection.
 //
 // Key invariants:

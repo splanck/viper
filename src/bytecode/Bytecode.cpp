@@ -1,12 +1,12 @@
- // Part of the Viper project, under the GNU GPL v3.
+ // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Bytecode opcode name table and encoding utilities for the Viper
+// Purpose: Bytecode opcode name table and encoding utilities for the Zanna
 //   bytecode VM. Maps BCOpcode enum values to human-readable strings.
 
 #include "bytecode/Bytecode.hpp"
 
-namespace viper::bytecode {
+namespace zanna::bytecode {
 
 /// @brief Return a stable, human-readable mnemonic for a bytecode opcode.
 /// @param op The opcode to name.
@@ -24,4 +24,4 @@ const char *opcodeName(BCOpcode op) {
     return "UNKNOWN";
 }
 
-} // namespace viper::bytecode
+} // namespace zanna::bytecode

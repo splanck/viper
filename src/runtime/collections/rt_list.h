@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_list.h
-// Purpose: Runtime-backed dynamic list of object references for Viper.Collections.List, providing
+// Purpose: Runtime-backed dynamic list of object references for Zanna.Collections.List, providing
 // append, insert, remove, sort, and indexed access with automatic growth.
 //
 // Key invariants:
@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 /// @brief Allocate a new List instance (opaque object pointer with vptr at offset 0).
-/// @details Provides the concrete runtime backing for Viper.Collections.List.
+/// @details Provides the concrete runtime backing for Zanna.Collections.List.
 ///          Allocates internal storage (initial capacity may be > 0) and initializes
 ///          bookkeeping fields. The returned object is heap-managed and subject to
 ///          reference counting.
@@ -96,7 +96,7 @@ void rt_list_set(void *list, int64_t index, void *elem);
 /// @brief Check whether the list contains a specific element.
 /// @details Scans the list and compares elements using reference equality
 ///          (same semantics as Seq.Has/Seq.Find). Provides a common membership
-///          query for Viper.Collections.List.
+///          query for Zanna.Collections.List.
 /// @param list Opaque List object pointer.
 /// @param elem Element to look for (may be NULL).
 /// @return 1 if present, 0 otherwise.
@@ -115,7 +115,7 @@ int64_t rt_list_find(void *list, void *elem);
 ///          when it is absent or @p list is NULL.
 /// @param list Opaque List object pointer, or NULL.
 /// @param elem Element to look for (may be NULL).
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_list_find_option(void *list, void *elem);
 
 /// @brief Insert an element at a specific index, shifting elements right.

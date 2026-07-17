@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <mutex>
 #include <string>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 //=============================================================================
 // Constants
@@ -970,4 +970,4 @@ std::vector<uint8_t> inflate(const uint8_t *data, size_t len, size_t maxOutputBy
     return inflateData(data, len, maxOutputBytes);
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

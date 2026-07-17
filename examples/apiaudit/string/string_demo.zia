@@ -1,9 +1,9 @@
 module StringDemo;
-bind Viper.Terminal;
-bind Viper.String;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.String;
+bind Zanna.Collections.Seq as Seq;
 func start() {
-    Say("=== Viper.String API Audit ===");
+    Say("=== Zanna.String API Audit ===");
 
     // --- get_Length ---
     Say("--- get_Length ---");
@@ -56,7 +56,7 @@ func start() {
 
     // --- Replace ---
     Say("--- Replace ---");
-    Say(Replace("hello world", "world", "viper"));
+    Say(Replace("hello world", "world", "zanna"));
     Say(Replace("aaa", "a", "bb"));
 
     // --- Split / Join ---

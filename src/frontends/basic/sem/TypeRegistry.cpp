@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@ namespace {
 static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string &qualifiedNs) {
     if (qualifiedNs.empty())
         return;
-    // Register each prefix namespace: Viper -> Viper.System -> Viper.System.Text
+    // Register each prefix namespace: Zanna -> Zanna.System -> Zanna.System.Text
     std::vector<std::string> segs;
     std::string cur;
     for (char c : qualifiedNs) {
@@ -64,38 +64,38 @@ std::string TypeRegistry::toLower(std::string_view s) {
 
 /// @brief Classify the runtime class catalog into the registry's type-kind map.
 /// @param classes Runtime class catalog entries.
-/// @details Defaults each class to BuiltinExternalType; promotes `Viper.System.String` to
-///          BuiltinExternalClass and registers the BASIC `Viper.String` compatibility alias.
+/// @details Defaults each class to BuiltinExternalType; promotes `Zanna.System.String` to
+///          BuiltinExternalClass and registers the BASIC `Zanna.String` compatibility alias.
 void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes) {
     for (const auto &cls : classes) {
         std::string key = toLower(cls.qname);
         kinds_[key] = TypeKind::BuiltinExternalType; // default classification for compatibility
     }
-    // Prefer the newer BuiltinExternalClass tag for Viper.System.String specifically.
-    // Keep Viper.String under BuiltinExternalType for backward compatibility.
-    auto itSysStr = kinds_.find("viper.system.string");
+    // Prefer the newer BuiltinExternalClass tag for Zanna.System.String specifically.
+    // Keep Zanna.String under BuiltinExternalType for backward compatibility.
+    auto itSysStr = kinds_.find("zanna.system.string");
     if (itSysStr != kinds_.end())
         itSysStr->second = TypeKind::BuiltinExternalClass;
 
-    // Add BASIC alias: STRING → Viper.String (compat choice). Both names refer to
+    // Add BASIC alias: STRING → Zanna.String (compat choice). Both names refer to
     // the same nominal runtime class surface in practice.
-    kinds_[toLower("Viper.String")] = TypeKind::BuiltinExternalType;
+    kinds_[toLower("Zanna.String")] = TypeKind::BuiltinExternalType;
 }
 
 /// @brief Return the registered kind of a qualified type name.
-/// @param qualifiedName Type name (the BASIC alias `string` resolves to `Viper.String`, or
-///        `Viper.System.String` as a fallback).
+/// @param qualifiedName Type name (the BASIC alias `string` resolves to `Zanna.String`, or
+///        `Zanna.System.String` as a fallback).
 /// @return The type kind, or TypeKind::Unknown if not registered.
 TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const {
     std::string key = toLower(qualifiedName);
     if (key == "string") {
-        // BASIC alias resolves to Viper.String for compatibility; callers that
-        // want the System-qualified name can ask for "Viper.System.String".
-        auto it = kinds_.find("viper.string");
+        // BASIC alias resolves to Zanna.String for compatibility; callers that
+        // want the System-qualified name can ask for "Zanna.System.String".
+        auto it = kinds_.find("zanna.string");
         if (it != kinds_.end())
             return it->second;
-        // Fallback: try Viper.System.String when present
-        auto it2 = kinds_.find("viper.system.string");
+        // Fallback: try Zanna.System.String when present
+        auto it2 = kinds_.find("zanna.system.string");
         if (it2 != kinds_.end())
             return it2->second;
     }
@@ -114,21 +114,21 @@ TypeRegistry &runtimeTypeRegistry() {
 /// @brief Seed a namespace registry with the canonical built-in runtime types.
 /// @param registry Namespace registry to populate.
 /// @details Registers a minimal catalog (Object, String, StringBuilder, File, List) into their
-///          namespaces (creating the namespace chain first), plus the `Viper`/`Viper.Console`
+///          namespaces (creating the namespace chain first), plus the `Zanna`/`Zanna.Console`
 ///          namespaces so `USING` of builtin procedure groups resolves.
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry) {
     // Seed a minimal catalog of built-in runtime types. Canonical names live
-    // under Viper.* and are defined by the runtime class catalog
+    // under Zanna.* and are defined by the runtime class catalog
     // (src/il/runtime/classes/RuntimeClasses.inc).
     static const BuiltinExternalType kTypes[] = {
         // Canonical forms (from RuntimeClassNames.hpp constants)
-        {il::runtime::RTCLASS_OBJECT.data(), ExternalTypeCategory::Class, "viper:Object"},
-        {il::runtime::RTCLASS_STRING.data(), ExternalTypeCategory::Class, "viper:String"},
+        {il::runtime::RTCLASS_OBJECT.data(), ExternalTypeCategory::Class, "zanna:Object"},
+        {il::runtime::RTCLASS_STRING.data(), ExternalTypeCategory::Class, "zanna:String"},
         {il::runtime::RTCLASS_STRINGBUILDER.data(),
          ExternalTypeCategory::Class,
-         "viper.text:StringBuilder"},
-        {il::runtime::RTCLASS_FILE.data(), ExternalTypeCategory::Class, "viper.io:File"},
-        {il::runtime::RTCLASS_LIST.data(), ExternalTypeCategory::Class, "viper.coll:List"},
+         "zanna.text:StringBuilder"},
+        {il::runtime::RTCLASS_FILE.data(), ExternalTypeCategory::Class, "zanna.io:File"},
+        {il::runtime::RTCLASS_LIST.data(), ExternalTypeCategory::Class, "zanna.coll:List"},
     };
 
     for (const auto &entry : kTypes) {
@@ -155,9 +155,9 @@ void seedRuntimeTypeCatalog(NamespaceRegistry &registry) {
     }
 
     // Also register namespaces for builtin extern procedure groups so USING works:
-    // e.g., USING Viper.Console -> enables unqualified PrintI64 resolution.
-    ensureNamespaceChain(registry, std::string("Viper"));
-    ensureNamespaceChain(registry, std::string("Viper.Console"));
+    // e.g., USING Zanna.Console -> enables unqualified PrintI64 resolution.
+    ensureNamespaceChain(registry, std::string("Zanna"));
+    ensureNamespaceChain(registry, std::string("Zanna.Console"));
 }
 
 } // namespace il::frontends::basic

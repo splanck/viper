@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/LowererTypes.hpp"
 #include "frontends/basic/OopIndex.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <cstddef>
 #include <string>

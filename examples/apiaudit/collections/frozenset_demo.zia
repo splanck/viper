@@ -1,13 +1,13 @@
-// frozenset_demo.zia - Comprehensive API audit for Viper.Collections.FrozenSet
+// frozenset_demo.zia - Comprehensive API audit for Zanna.Collections.FrozenSet
 // Tests: Empty, FromSeq, Len, IsEmpty, Has, Items, Union, Intersect,
 //        Diff, IsSubset, Equals
 
 module FrozenSetDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== FrozenSet API Audit ===");

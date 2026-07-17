@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Part 1: Foundations — Viper</title>
-  <meta name="description" content="Viper documentation: Part 1: Foundations">
+  <title>Part 1: Foundations — Zanna</title>
+  <meta name="description" content="Zanna documentation: Part 1: Foundations">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/" class="active">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -36,7 +36,7 @@
         <li><a href="#what-you-need">What You Need</a></li>
         <li><a href="#installing-a-text-editor">Installing a Text Editor</a></li>
         <li><a href="#understanding-the-terminal">Understanding the Terminal</a></li>
-        <li><a href="#installing-viper">Installing Viper</a></li>
+        <li><a href="#installing-zanna">Installing Zanna</a></li>
         <li><a href="#testing-your-setup">Testing Your Setup</a></li>
         <li><a href="#troubleshooting-common-problems">Troubleshooting Common Problems</a></li>
         <li><a href="#the-development-workflow">The Development Workflow</a></li>
@@ -187,7 +187,7 @@
 <p><strong>Visual Studio Code (VS Code)</strong> — This is the most popular code editor in the world. It&#x27;s free, works on Windows, macOS, and Linux, and has thousands of extensions to add new features. If you&#x27;re unsure what to choose, choose this.</p>
 <ul>
 <li>Download from: https://code.visualstudio.com</li>
-<li>After installing, you can optionally install the &quot;Viper&quot; extension for better syntax highlighting</li>
+<li>After installing, you can optionally install the &quot;Zanna&quot; extension for better syntax highlighting</li>
 </ul>
 <p><strong>Sublime Text</strong> — A fast, elegant editor that many programmers love. It&#x27;s technically paid software, but the free trial never expires.</p>
 <ul>
@@ -214,19 +214,19 @@
 <li><strong>On Linux</strong>: Press Ctrl+Alt+T, or find &quot;Terminal&quot; in your applications menu.</li>
 </ul>
 <p>Don&#x27;t worry if the terminal looks intimidating. You&#x27;ll only need a few basic commands, and I&#x27;ll explain each one as we go.</p>
-<h3 id="the-viper-toolchain">The Viper Toolchain</h3>
-<p>Finally, you need <em>Viper</em> itself — the programming language you&#x27;ll be learning.</p>
+<h3 id="the-zanna-toolchain">The Zanna Toolchain</h3>
+<p>Finally, you need <em>Zanna</em> itself — the programming language you&#x27;ll be learning.</p>
 <p><strong>What is a toolchain?</strong> A &quot;toolchain&quot; is a collection of programs that work together to turn your code into something the computer can run. The most important part is the <em>compiler</em>.</p>
 <p><strong>What is a compiler?</strong> Remember how I said computers only understand numbers? A compiler is a program that translates the code you write (in a human-readable programming language) into the numerical instructions your computer&#x27;s processor can execute.</p>
 <p>Here&#x27;s the flow:</p>
 <ol>
 <li>You write code in a text file (like <code>hello.zia</code>)</li>
-<li>You run the Viper compiler on that file</li>
+<li>You run the Zanna compiler on that file</li>
 <li>The compiler translates your code into machine instructions</li>
 <li>The computer runs those instructions</li>
 <li>You see the result</li>
 </ul>
-<p>The Viper toolchain handles all of this. Let&#x27;s install it.</p>
+<p>The Zanna toolchain handles all of this. Let&#x27;s install it.</p>
 <p>---</p>
 <h2 id="installing-a-text-editor">Installing a Text Editor</h2>
 <p>Let&#x27;s start with the easiest part: installing your text editor. I&#x27;ll walk you through installing VS Code since it&#x27;s the most popular choice, but the process is similar for other editors.</p>
@@ -320,7 +320,7 @@
 <p>After installation, you can open VS Code by typing <code>code</code> in your terminal or finding it in your applications menu.</p>
 <p>---</p>
 <h2 id="understanding-the-terminal">Understanding the Terminal</h2>
-<p>Before we install Viper, let&#x27;s get comfortable with the terminal. This is often the scariest part for beginners, but I promise it&#x27;s not as complicated as it looks.</p>
+<p>Before we install Zanna, let&#x27;s get comfortable with the terminal. This is often the scariest part for beginners, but I promise it&#x27;s not as complicated as it looks.</p>
 <h3 id="opening-the-terminal">Opening the Terminal</h3>
 <p><strong>On Windows:</strong></p>
 <ol>
@@ -386,10 +386,10 @@ cd ~
 <p>If you type a command wrong, the terminal will show an error message. This is fine! Nothing bad has happened. Read the error, figure out what went wrong (usually a typo), and try again.</p>
 <p>If you ever feel stuck or want to cancel what you&#x27;re doing, press Ctrl+C. This is the universal &quot;stop&quot; command.</p>
 <p>---</p>
-<h2 id="installing-viper">Installing Viper</h2>
-<p>Now for the main event: installing the Viper toolchain. This is more involved than installing a regular application, but I&#x27;ll guide you through every step.</p>
+<h2 id="installing-zanna">Installing Zanna</h2>
+<p>Now for the main event: installing the Zanna toolchain. This is more involved than installing a regular application, but I&#x27;ll guide you through every step.</p>
 <h3 id="prerequisites-what-you-need-first">Prerequisites: What You Need First</h3>
-<p>Before installing Viper, you need a few other tools installed on your system. These are common development tools that many programming languages require.</p>
+<p>Before installing Zanna, you need a few other tools installed on your system. These are common development tools that many programming languages require.</p>
 <p><strong>On macOS:</strong></p>
 <p>You need the Xcode Command Line Tools. Open Terminal and type:</p>
 <pre><code data-lang="bash">
@@ -419,8 +419,8 @@ sudo dnf install git cmake
 <li>Open &quot;Ubuntu&quot; from your Start menu</li>
 <li>Follow the Linux installation instructions below</li>
 </ul>
-<h3 id="downloading-viper">Downloading Viper</h3>
-<p>Open your terminal and navigate to a folder where you want to keep the Viper source code. I recommend creating a folder for development tools:</p>
+<h3 id="downloading-zanna">Downloading Zanna</h3>
+<p>Open your terminal and navigate to a folder where you want to keep the Zanna source code. I recommend creating a folder for development tools:</p>
 <p><strong>On macOS/Linux:</strong></p>
 <pre><code data-lang="bash">
 cd ~
@@ -433,9 +433,9 @@ cd dev
 <li>Create a folder called &quot;dev&quot; if it doesn&#x27;t exist (the <code>-p</code> flag prevents an error if it already exists)</li>
 <li>Move into that folder</li>
 </ul>
-<p>Now, download Viper using Git:</p>
+<p>Now, download Zanna using Git:</p>
 <pre><code data-lang="bash">
-git clone https://github.com/example/viper.git
+git clone https://github.com/example/zanna.git
 </code></pre>
 <p><strong>What is Git?</strong> Git is a version control system — it tracks changes to code over time and lets multiple people collaborate on the same project. The <code>git clone</code> command downloads a copy of a project from the internet. Almost all open-source software is distributed this way.</p>
 <p>You&#x27;ll see output showing the download progress. Wait for it to complete.</p>
@@ -447,19 +447,19 @@ git clone https://github.com/example/viper.git
 <li><strong>Windows</strong>: Download from https://git-scm.com and install it</li>
 </ul>
 <p>After installing Git, try the <code>git clone</code> command again.</p>
-<h3 id="building-viper">Building Viper</h3>
-<p>Once the download completes, you need to <em>build</em> Viper — compile its source code into runnable programs.</p>
-<p>Enter the Viper directory:</p>
+<h3 id="building-zanna">Building Zanna</h3>
+<p>Once the download completes, you need to <em>build</em> Zanna — compile its source code into runnable programs.</p>
+<p>Enter the Zanna directory:</p>
 <pre><code data-lang="bash">
-cd viper
+cd zanna
 </code></pre>
 <p>Now run the build script:</p>
 <pre><code data-lang="bash">
 # macOS / Linux
-./scripts/build_viper_unix.sh
+./scripts/build_zanna_unix.sh
 
 # Windows
-scripts\build_viper.cmd
+scripts\build_zanna.cmd
 </code></pre>
 <p><strong>What does this do?</strong></p>
 <p>The build script:</p>
@@ -486,42 +486,42 @@ scripts\build_viper.cmd
 <li><strong>Errors about missing packages</strong>: Some dependency is missing. Read the error message — it usually tells you what&#x27;s needed.</li>
 </ul>
 <p>If you get stuck, try searching the error message online. Chances are someone else has encountered the same problem.</p>
-<h3 id="making-viper-available-everywhere">Making Viper Available Everywhere</h3>
-<p>Right now, Viper is built, but your terminal doesn&#x27;t know where to find it. We need to add it to your PATH.</p>
-<p><strong>What is PATH?</strong> When you type a command like <code>viper</code>, your computer searches through a list of folders to find a program with that name. This list is called the PATH. We need to add Viper&#x27;s location to this list.</p>
+<h3 id="making-zanna-available-everywhere">Making Zanna Available Everywhere</h3>
+<p>Right now, Zanna is built, but your terminal doesn&#x27;t know where to find it. We need to add it to your PATH.</p>
+<p><strong>What is PATH?</strong> When you type a command like <code>zanna</code>, your computer searches through a list of folders to find a program with that name. This list is called the PATH. We need to add Zanna&#x27;s location to this list.</p>
 <p><strong>Temporary method (works until you close the terminal):</strong></p>
-<p>While still in the viper directory, run:</p>
+<p>While still in the zanna directory, run:</p>
 <pre><code data-lang="bash">
-export PATH=&quot;$PATH:$(pwd)/build/src/tools/zia:$(pwd)/build/src/tools/vbasic:$(pwd)/build/src/tools/viper&quot;
+export PATH=&quot;$PATH:$(pwd)/build/src/tools/zia:$(pwd)/build/src/tools/vbasic:$(pwd)/build/src/tools/zanna&quot;
 </code></pre>
-<p>This adds Viper to your PATH for the current terminal session. If you close the terminal and open a new one, you&#x27;ll need to run this command again.</p>
+<p>This adds Zanna to your PATH for the current terminal session. If you close the terminal and open a new one, you&#x27;ll need to run this command again.</p>
 <p><strong>Permanent method (recommended):</strong></p>
 <p>To make this permanent, you need to add the export command to your shell&#x27;s configuration file.</p>
 <p><strong>On macOS (using zsh, the default on newer Macs):</strong></p>
 <pre><code data-lang="bash">
-echo &#x27;export PATH=&quot;$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/viper&quot;&#x27; &gt;&gt; ~/.zshrc
+echo &#x27;export PATH=&quot;$PATH:$HOME/dev/zanna/build/src/tools/zia:$HOME/dev/zanna/build/src/tools/vbasic:$HOME/dev/zanna/build/src/tools/zanna&quot;&#x27; &gt;&gt; ~/.zshrc
 </code></pre>
 <p><strong>On macOS (using bash, on older Macs) or Linux:</strong></p>
 <pre><code data-lang="bash">
-echo &#x27;export PATH=&quot;$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/viper&quot;&#x27; &gt;&gt; ~/.bashrc
+echo &#x27;export PATH=&quot;$PATH:$HOME/dev/zanna/build/src/tools/zia:$HOME/dev/zanna/build/src/tools/vbasic:$HOME/dev/zanna/build/src/tools/zanna&quot;&#x27; &gt;&gt; ~/.bashrc
 </code></pre>
 <p>Then reload your configuration:</p>
 <pre><code data-lang="bash">
 source ~/.zshrc   # or ~/.bashrc
 </code></pre>
 <p><strong>On Windows (WSL):</strong> Follow the Linux instructions above.</p>
-<p><strong>What this does:</strong> It adds a line to a hidden configuration file that runs every time you open a new terminal. That line adds Viper to your PATH automatically.</p>
+<p><strong>What this does:</strong> It adds a line to a hidden configuration file that runs every time you open a new terminal. That line adds Zanna to your PATH automatically.</p>
 <p>---</p>
 <h2 id="testing-your-setup">Testing Your Setup</h2>
 <p>Let&#x27;s verify everything works. This is an important step — don&#x27;t skip it!</p>
-<h3 id="test-1-check-viper-version">Test 1: Check Viper Version</h3>
+<h3 id="test-1-check-zanna-version">Test 1: Check Zanna Version</h3>
 <p>Open a new terminal window (important: new window, to make sure your PATH changes took effect), and type:</p>
 <pre><code data-lang="bash">
 zia --version
 </code></pre>
 <p><strong>What you should see:</strong></p>
 <pre><code data-lang="text">
-Viper 0.1.3
+Zanna 0.1.3
 </code></pre>
 <p>(The version number might be different.)</p>
 <p><strong>If you see &quot;command not found&quot;:</strong></p>
@@ -529,7 +529,7 @@ Viper 0.1.3
 <ol>
 <li>First, check if the zia executable exists:</li>
 <pre><code data-lang="bash">
-   ls ~/dev/viper/build/src/tools/zia/zia
+   ls ~/dev/zanna/build/src/tools/zia/zia
 </code></pre>
 </ul>
 <p>If this says &quot;No such file or directory&quot;, the build didn&#x27;t complete successfully. Go back to the building step.</p>
@@ -539,19 +539,19 @@ Viper 0.1.3
    echo $PATH
 </code></pre>
 </ul>
-<p>Look for <code>/Users/yourname/dev/viper/build/src/tools/zia</code> (or similar) in the output. If it&#x27;s not there, the PATH configuration didn&#x27;t work.</p>
+<p>Look for <code>/Users/yourname/dev/zanna/build/src/tools/zia</code> (or similar) in the output. If it&#x27;s not there, the PATH configuration didn&#x27;t work.</p>
 <ol>
-<li>As a workaround, you can always run Viper with the full path:</li>
+<li>As a workaround, you can always run Zanna with the full path:</li>
 <pre><code data-lang="bash">
-   ~/dev/viper/build/src/tools/zia/zia --version
+   ~/dev/zanna/build/src/tools/zia/zia --version
 </code></pre>
 </ul>
 <h3 id="test-2-create-and-run-a-test-program">Test 2: Create and Run a Test Program</h3>
 <p>Let&#x27;s write a tiny program to make sure the full workflow works.</p>
 <p><strong>Create a test folder:</strong></p>
 <pre><code data-lang="bash">
-mkdir -p ~/viper-projects
-cd ~/viper-projects
+mkdir -p ~/zanna-projects
+cd ~/zanna-projects
 </code></pre>
 <p><strong>Create a test file:</strong></p>
 <p>Open your text editor (VS Code or whichever you installed). Create a new file and type:</p>
@@ -559,17 +559,17 @@ cd ~/viper-projects
 module Test;
 
 func start() {
-    Viper.Terminal.Say(&quot;Setup complete!&quot;);
+    Zanna.Terminal.Say(&quot;Setup complete!&quot;);
 }
 </code></pre>
-<p>Save this file as <code>test.zia</code> in your <code>viper-projects</code> folder.</p>
+<p>Save this file as <code>test.zia</code> in your <code>zanna-projects</code> folder.</p>
 <p><strong>How to save the file:</strong></p>
 <ul>
-<li>In VS Code: File &gt; Save (or Ctrl+S / Cmd+S), navigate to your <code>viper-projects</code> folder, name the file <code>test.zia</code>, and click Save</li>
+<li>In VS Code: File &gt; Save (or Ctrl+S / Cmd+S), navigate to your <code>zanna-projects</code> folder, name the file <code>test.zia</code>, and click Save</li>
 <li>Make sure the filename ends with <code>.zia</code>, not <code>.zia.txt</code></li>
 </ul>
 <p><strong>Run the program:</strong></p>
-<p>In your terminal (make sure you&#x27;re in the viper-projects folder):</p>
+<p>In your terminal (make sure you&#x27;re in the zanna-projects folder):</p>
 <pre><code data-lang="bash">
 zia test.zia
 </code></pre>
@@ -590,15 +590,15 @@ Setup complete!
 <h2 id="troubleshooting-common-problems">Troubleshooting Common Problems</h2>
 <p>Here are solutions to problems that commonly trip up beginners:</p>
 <h3 id="command-not-found-for-zia">&quot;command not found&quot; (for zia)</h3>
-<p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Viper program.</p>
+<p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Zanna program.</p>
 <p><strong>Solutions:</strong></p>
 <ol>
-<li>**Did you complete the build?** Make sure <code>./scripts/build_viper_unix.sh</code> (macOS/Linux) or <code>scripts\build_viper.cmd</code> (Windows) finished without errors.</li>
+<li>**Did you complete the build?** Make sure <code>./scripts/build_zanna_unix.sh</code> (macOS/Linux) or <code>scripts\build_zanna.cmd</code> (Windows) finished without errors.</li>
 </ul>
 <ol>
 <li>**Did you set up your PATH?** Run the export command again:</li>
 <pre><code data-lang="bash">
-   export PATH=&quot;$PATH:$HOME/dev/viper/build/src/tools/zia&quot;
+   export PATH=&quot;$PATH:$HOME/dev/zanna/build/src/tools/zia&quot;
 </code></pre>
 </ul>
 <ol>
@@ -607,11 +607,11 @@ Setup complete!
 <ol>
 <li>**Use the full path:** If all else fails, you can always use the full path:</li>
 <pre><code data-lang="bash">
-   ~/dev/viper/build/src/tools/zia/zia yourprogram.zia
+   ~/dev/zanna/build/src/tools/zia/zia yourprogram.zia
 </code></pre>
 </ul>
 <h3 id="no-such-file-or-directory-for-your-code-file">&quot;No such file or directory&quot; (for your code file)</h3>
-<p><strong>What it means:</strong> Viper can&#x27;t find the file you&#x27;re trying to run.</p>
+<p><strong>What it means:</strong> Zanna can&#x27;t find the file you&#x27;re trying to run.</p>
 <p><strong>Solutions:</strong></p>
 <ol>
 <li>**Check your current directory:** Type <code>pwd</code> to see where you are, and <code>ls</code> to see what files are in that folder. Is your file there?</li>
@@ -619,7 +619,7 @@ Setup complete!
 <ol>
 <li>**Navigate to the right folder:** Use <code>cd</code> to move to the folder containing your file:</li>
 <pre><code data-lang="bash">
-   cd ~/viper-projects
+   cd ~/zanna-projects
 </code></pre>
 </ul>
 <ol>
@@ -628,7 +628,7 @@ Setup complete!
 <ol>
 <li>**Use the full path to the file:**</li>
 <pre><code data-lang="bash">
-   zia ~/viper-projects/test.zia
+   zia ~/zanna-projects/test.zia
 </code></pre>
 </ul>
 <h3 id="permission-denied">&quot;Permission denied&quot;</h3>
@@ -637,14 +637,14 @@ Setup complete!
 <ol>
 <li>**On macOS/Linux**, if the zia executable doesn&#x27;t have execute permission:</li>
 <pre><code data-lang="bash">
-   chmod +x ~/dev/viper/build/src/tools/zia/zia
+   chmod +x ~/dev/zanna/build/src/tools/zia/zia
 </code></pre>
 </ul>
 <ol>
 <li>**On macOS**, if you see a security warning about an unidentified developer, go to System Preferences &gt; Security &amp; Privacy and click &quot;Allow Anyway&quot;.</li>
 </ul>
 <ol>
-<li>**Don&#x27;t use sudo with viper.** You shouldn&#x27;t need administrator privileges to run your programs.</li>
+<li>**Don&#x27;t use sudo with zanna.** You shouldn&#x27;t need administrator privileges to run your programs.</li>
 </ul>
 <h3 id="syntax-error-when-running-your-code">&quot;Syntax error&quot; when running your code</h3>
 <p><strong>What it means:</strong> There&#x27;s a mistake in your code.</p>
@@ -660,7 +660,7 @@ Setup complete!
 <li>**Check the error message.** It usually tells you the line number where the problem was detected. Look at that line and the line before it.</li>
 </ul>
 <h3 id="build-errors-during-cmake-build">Build errors (during cmake --build)</h3>
-<p><strong>What it means:</strong> Something went wrong while compiling Viper.</p>
+<p><strong>What it means:</strong> Something went wrong while compiling Zanna.</p>
 <p><strong>Solutions:</strong></p>
 <ol>
 <li>**Make sure prerequisites are installed.** On macOS, run <code>xcode-select --install</code>. On Linux, make sure you have build-essential/Development Tools installed.</li>
@@ -671,9 +671,9 @@ Setup complete!
 <ol>
 <li>**Try a clean build:**</li>
 <pre><code data-lang="bash">
-   cd ~/dev/viper
+   cd ~/dev/zanna
    rm -rf build
-   ./scripts/build_viper_unix.sh   # or scripts\build_viper.cmd on Windows
+   ./scripts/build_zanna_unix.sh   # or scripts\build_zanna.cmd on Windows
 </code></pre>
 </ul>
 <ol>
@@ -708,7 +708,7 @@ Setup complete!
 <h3 id="organizing-your-files">Organizing Your Files</h3>
 <p>As you work through this book, you&#x27;ll create many programs. Keep them organized:</p>
 <pre><code data-lang="text">
-viper-projects/
+zanna-projects/
     chapter02/
         hello.zia
         greeting.zia
@@ -740,22 +740,22 @@ viper-projects/
 <tr>
 <td>**Git**</td>
 <td>Downloads code from the internet and tracks changes</td>
-<td>To download Viper (and later, to manage your own projects)</td>
+<td>To download Zanna (and later, to manage your own projects)</td>
 </tr>
 <tr>
 <td>**CMake**</td>
 <td>Prepares software projects for building</td>
-<td>Part of the Viper installation process</td>
+<td>Part of the Zanna installation process</td>
 </tr>
 <tr>
-<td>**Compiler** (inside Viper)</td>
+<td>**Compiler** (inside Zanna)</td>
 <td>Translates your code into instructions the computer can execute</td>
 <td>Every time you run `zia yourfile.zia`</td>
 </tr>
 <tr>
-<td>**Viper**</td>
+<td>**Zanna**</td>
 <td>The programming language and its toolchain</td>
-<td>To run your Viper programs</td>
+<td>To run your Zanna programs</td>
 </tr>
 </tbody></table>
 <p>The flow looks like this:</p>
@@ -790,16 +790,16 @@ in your editor           to a .zia file        and translates it        machine 
 module Hello;
 
 func start() {
-    Viper.Terminal.Say(&quot;Hello, World!&quot;);
+    Zanna.Terminal.Say(&quot;Hello, World!&quot;);
 }
 </code></pre>
 <ol>
-<li>Save it as <code>hello.zia</code> in your <code>viper-projects</code> folder</li>
+<li>Save it as <code>hello.zia</code> in your <code>zanna-projects</code> folder</li>
 </ul>
 <ol>
 <li>Open your terminal and navigate to the folder:</li>
 <pre><code data-lang="bash">
-cd ~/viper-projects
+cd ~/zanna-projects
 </code></pre>
 </ul>
 <ol>
@@ -812,10 +812,10 @@ zia hello.zia
 <pre><code data-lang="text">
 Hello, World!
 </code></pre>
-<p>If you do — congratulations! You&#x27;re ready to begin. Your development environment is set up, your tools are working, and you&#x27;ve just run your first real Viper program.</p>
+<p>If you do — congratulations! You&#x27;re ready to begin. Your development environment is set up, your tools are working, and you&#x27;ve just run your first real Zanna program.</p>
 <p>If something went wrong, go back through the troubleshooting section above. The most common issues are:</p>
 <ul>
-<li>Viper not in your PATH (see &quot;command not found&quot; section)</li>
+<li>Zanna not in your PATH (see &quot;command not found&quot; section)</li>
 <li>Not being in the right directory (see &quot;No such file or directory&quot; section)</li>
 <li>Typos in the code (compare character by character)</li>
 </ul>
@@ -825,8 +825,8 @@ Hello, World!
 <ul>
 <li><strong>Installed a text editor</strong> where you&#x27;ll write your code</li>
 <li><strong>Learned to use the terminal</strong> to navigate folders and run commands</li>
-<li><strong>Installed the Viper toolchain</strong> including all its prerequisites</li>
-<li><strong>Configured your PATH</strong> so you can run Viper from anywhere</li>
+<li><strong>Installed the Zanna toolchain</strong> including all its prerequisites</li>
+<li><strong>Configured your PATH</strong> so you can run Zanna from anywhere</li>
 <li><strong>Tested your setup</strong> with a working program</li>
 <li><strong>Learned the edit-save-run workflow</strong> you&#x27;ll use for every program</li>
 <li><strong>Understood what each tool does</strong> and how they work together</li>
@@ -913,7 +913,7 @@ var x = 0;
 <p><strong>Why This Matters</strong>: You&#x27;ll sometimes hear people debate which programming language is &quot;best.&quot; Understanding what languages actually are — translation layers between human thought and machine code — helps you see why this debate is somewhat silly. Languages are tools, each with strengths and weaknesses. The concepts you learn transcend any particular language.</p>
 <p>---</p>
 <h2 id="why-two-languages">Why Two Languages?</h2>
-<p>Viper gives you two languages: Zia and BASIC. Why?</p>
+<p>Zanna gives you two languages: Zia and BASIC. Why?</p>
 <p>They&#x27;re different ways to express the same ideas. Like how you can give directions by listing turns (&quot;left, right, straight, left&quot;) or by giving landmarks (&quot;past the church, toward the lake&quot;). Same destination, different paths.</p>
 <p>Each language has its own personality:</p>
 <ul>
@@ -1049,13 +1049,13 @@ Hello, Alice!
 <h3 id="creating-a-project-folder">Creating a Project Folder</h3>
 <p>Every programmer needs a home for their code. Let&#x27;s create one:</p>
 <ol>
-<li>**On Windows**: Open File Explorer, navigate to your Documents folder, and create a new folder called <code>viper-projects</code></li>
+<li>**On Windows**: Open File Explorer, navigate to your Documents folder, and create a new folder called <code>zanna-projects</code></li>
 </ul>
 <ol>
-<li>**On macOS**: Open Finder, go to your home folder, and create a new folder called <code>viper-projects</code></li>
+<li>**On macOS**: Open Finder, go to your home folder, and create a new folder called <code>zanna-projects</code></li>
 </ul>
 <ol>
-<li>**On Linux**: Open your file manager or use <code>mkdir ~/viper-projects</code> in the terminal</li>
+<li>**On Linux**: Open your file manager or use <code>mkdir ~/zanna-projects</code> in the terminal</li>
 </ul>
 <p>This will be where all your programs live as you work through this book. Keeping your code organized from the start is a habit that will serve you well.</p>
 <h3 id="setting-up-your-text-editor">Setting Up Your Text Editor</h3>
@@ -1089,36 +1089,36 @@ Hello, Alice!
 </ul>
 <p>Once the terminal is open, navigate to your project folder:</p>
 <pre><code data-lang="bash">
-cd ~/viper-projects
+cd ~/zanna-projects
 </code></pre>
 <p>On Windows, the path might look like:</p>
 <pre><code data-lang="bash">
-cd C:\Users\YourName\Documents\viper-projects
+cd C:\Users\YourName\Documents\zanna-projects
 </code></pre>
 <p>If you see your project folder name in the terminal prompt, you&#x27;re in the right place.</p>
-<h3 id="verifying-viper-is-ready">Verifying Viper Is Ready</h3>
-<p>Let&#x27;s make sure Viper is properly installed. In your terminal, type:</p>
+<h3 id="verifying-zanna-is-ready">Verifying Zanna Is Ready</h3>
+<p>Let&#x27;s make sure Zanna is properly installed. In your terminal, type:</p>
 <pre><code data-lang="bash">
 zia --version
 </code></pre>
 <p>You should see something like:</p>
 <pre><code data-lang="text">
-Viper 0.1.3
+Zanna 0.1.3
 </code></pre>
-<p>If you see &quot;command not found&quot; or a similar error, go back to the Getting Started chapter and make sure you followed all the installation steps. The most common issue is that Viper isn&#x27;t in your PATH — the list of places your computer looks for programs.</p>
+<p>If you see &quot;command not found&quot; or a similar error, go back to the Getting Started chapter and make sure you followed all the installation steps. The most common issue is that Zanna isn&#x27;t in your PATH — the list of places your computer looks for programs.</p>
 <p><strong>Troubleshooting &quot;command not found&quot;:</strong></p>
 <ol>
-<li>**Did you run the export command?** After building Viper, you need to add it to your PATH. Run:</li>
+<li>**Did you run the export command?** After building Zanna, you need to add it to your PATH. Run:</li>
 <pre><code data-lang="bash">
-   export PATH=&quot;$PATH:/path/to/viper/build/src/tools/zia&quot;
+   export PATH=&quot;$PATH:/path/to/zanna/build/src/tools/zia&quot;
 </code></pre>
 </ul>
-<p>Replace <code>/path/to/viper</code> with wherever you cloned the Viper repository.</p>
+<p>Replace <code>/path/to/zanna</code> with wherever you cloned the Zanna repository.</p>
 <ol>
 <li>**Are you in a new terminal window?** The <code>export</code> command only affects the current terminal session. You&#x27;ll need to either run it again, or add it to your shell&#x27;s startup file (like <code>.bashrc</code> or <code>.zshrc</code>).</li>
 </ul>
 <ol>
-<li>**On Windows**, make sure you&#x27;ve added Viper to your system PATH through the Environment Variables settings.</li>
+<li>**On Windows**, make sure you&#x27;ve added Zanna to your system PATH through the Environment Variables settings.</li>
 </ul>
 <p>---</p>
 <h2 id="the-hello-world-tradition">The &quot;Hello, World!&quot; Tradition</h2>
@@ -1143,7 +1143,7 @@ Viper 0.1.3
 <pre><code data-lang="rust">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;Hello, World!&quot;);
@@ -1154,7 +1154,7 @@ func start() {
 <ul>
 <li>Make sure the file extension is <code>.zia</code>, not <code>.zia.txt</code> or anything else</li>
 <li>Use exactly lowercase <code>hello.zia</code> — consistency matters</li>
-<li>Save it in your <code>viper-projects</code> folder so you can find it easily</li>
+<li>Save it in your <code>zanna-projects</code> folder so you can find it easily</li>
 </ul>
 <h3 id="what-if-you-re-not-sure-you-typed-it-right">What If You&#x27;re Not Sure You Typed It Right?</h3>
 <p>Here&#x27;s the code again, character by character, with every piece called out:</p>
@@ -1163,9 +1163,9 @@ m o d u l e   H e l l o ;
 </code></pre>
 <p>That&#x27;s the word &quot;module&quot;, a space, the word &quot;Hello&quot;, and a semicolon.</p>
 <pre><code data-lang="text">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 </code></pre>
-<p>That&#x27;s &quot;bind&quot;, a space, &quot;Viper.Terminal&quot;, and a semicolon. This imports the terminal functions.</p>
+<p>That&#x27;s &quot;bind&quot;, a space, &quot;Zanna.Terminal&quot;, and a semicolon. This imports the terminal functions.</p>
 <pre><code data-lang="text">
 func start() {
 </code></pre>
@@ -1182,7 +1182,7 @@ func start() {
 <ul>
 <li>Forgetting the semicolons</li>
 <li>Using the wrong kind of quotes (use straight quotes &quot;, not curly quotes &quot; &quot;)</li>
-<li>Misspelling &quot;module&quot;, &quot;func&quot;, &quot;start&quot;, &quot;Viper&quot;, &quot;Terminal&quot;, or &quot;Say&quot;</li>
+<li>Misspelling &quot;module&quot;, &quot;func&quot;, &quot;start&quot;, &quot;Zanna&quot;, &quot;Terminal&quot;, or &quot;Say&quot;</li>
 <li>Forgetting the bind line</li>
 </ul>
 <p>---</p>
@@ -1203,7 +1203,7 @@ Hello, World!
 <h2 id="what-s-really-happening-behind-the-scenes">What&#x27;s Really Happening: Behind the Scenes</h2>
 <p>When you typed <code>zia hello.zia</code>, a remarkable chain of events unfolded in milliseconds. Understanding this process will help you understand programming more deeply.</p>
 <h3 id="step-1-reading-your-code">Step 1: Reading Your Code</h3>
-<p>The Viper compiler opened your <code>hello.zia</code> file and read its contents — the exact characters you typed. At this point, it&#x27;s just text, like this document you&#x27;re reading.</p>
+<p>The Zanna compiler opened your <code>hello.zia</code> file and read its contents — the exact characters you typed. At this point, it&#x27;s just text, like this document you&#x27;re reading.</p>
 <h3 id="step-2-lexical-analysis-tokenizing">Step 2: Lexical Analysis (Tokenizing)</h3>
 <p>The compiler broke your text into meaningful pieces called <em>tokens</em>. It recognized:</p>
 <ul>
@@ -1223,7 +1223,7 @@ Hello, World!
 </ul>
 <p>If anything was wrong (missing semicolon, misspelled keyword), this is where you&#x27;d get an error message.</p>
 <h3 id="step-4-compilation-translation">Step 4: Compilation (Translation)</h3>
-<p>The compiler translated your Zia code into machine code — the raw numbers that your computer&#x27;s processor can execute. The friendly <code>Viper.Terminal.Say(&quot;Hello, World!&quot;)</code> became something more like &quot;load this text into memory, call the operating system&#x27;s output function, pass it the memory address...&quot;</p>
+<p>The compiler translated your Zia code into machine code — the raw numbers that your computer&#x27;s processor can execute. The friendly <code>Zanna.Terminal.Say(&quot;Hello, World!&quot;)</code> became something more like &quot;load this text into memory, call the operating system&#x27;s output function, pass it the memory address...&quot;</p>
 <h3 id="step-5-execution-running">Step 5: Execution (Running)</h3>
 <p>Finally, your computer&#x27;s processor executed the machine code instructions, one by one, billions of operations per second. The processor sent signals to your terminal program, which drew the characters &quot;Hello, World!&quot; on your screen.</p>
 <p>All of this — every step — happened in a fraction of a second. You typed a command, and the output appeared instantly. But underneath that instant, an incredible amount of work happened. Your program is a message that passed through multiple layers of translation before reaching the hardware that made pixels light up on your screen.</p>
@@ -1242,7 +1242,7 @@ module Hello;
 <p><strong>What happens without this line?</strong> Try removing it and running your program:</p>
 <pre><code data-lang="rust">
 func start() {
-    Viper.Terminal.Say(&quot;Hello, World!&quot;);
+    Zanna.Terminal.Say(&quot;Hello, World!&quot;);
 }
 </code></pre>
 <p>You&#x27;ll get an error like:</p>
@@ -1250,13 +1250,13 @@ func start() {
 hello.zia:1:1: error: expected &#x27;module&#x27; declaration
 </code></pre>
 <p>Every Zia file must start by declaring what module it belongs to. There&#x27;s no way around this — it&#x27;s a fundamental requirement of the language.</p>
-<h3 id="line-2-bind-viper-terminal">Line 2: `bind Viper.Terminal;`</h3>
+<h3 id="line-2-bind-zanna-terminal">Line 2: `bind Zanna.Terminal;`</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 </code></pre>
-<p>This line imports the Terminal module from Viper&#x27;s standard library. The <em>standard library</em> is a collection of pre-written code that comes with Zia. You don&#x27;t have to write code to display text on the screen — the standard library provides these capabilities ready-made.</p>
-<p><strong>What does <code>bind</code> do?</strong> It makes the functions from <code>Viper.Terminal</code> available directly. Without this line, you&#x27;d have to write <code>Viper.Terminal.Say(&quot;Hello, World!&quot;)</code> — the full path to the function. With <code>bind</code>, you can just write <code>Say(&quot;Hello, World!&quot;)</code>.</p>
-<p><strong>Why <code>Viper.Terminal</code>?</strong> The dots (<code>.</code>) navigate through namespaces. <code>Viper</code> is the overall namespace for the standard library. <code>Terminal</code> is the specific module for terminal/console operations (displaying text, getting keyboard input, etc.).</p>
+<p>This line imports the Terminal module from Zanna&#x27;s standard library. The <em>standard library</em> is a collection of pre-written code that comes with Zia. You don&#x27;t have to write code to display text on the screen — the standard library provides these capabilities ready-made.</p>
+<p><strong>What does <code>bind</code> do?</strong> It makes the functions from <code>Zanna.Terminal</code> available directly. Without this line, you&#x27;d have to write <code>Zanna.Terminal.Say(&quot;Hello, World!&quot;)</code> — the full path to the function. With <code>bind</code>, you can just write <code>Say(&quot;Hello, World!&quot;)</code>.</p>
+<p><strong>Why <code>Zanna.Terminal</code>?</strong> The dots (<code>.</code>) navigate through namespaces. <code>Zanna</code> is the overall namespace for the standard library. <code>Terminal</code> is the specific module for terminal/console operations (displaying text, getting keyboard input, etc.).</p>
 <p><strong>What happens without this line?</strong></p>
 <pre><code data-lang="rust">
 module Hello;
@@ -1288,7 +1288,7 @@ func start() {
 <pre><code data-lang="rust">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func begin() {
     Say(&quot;Hello, World!&quot;);
@@ -1305,13 +1305,13 @@ hello.zia: error: no entry point found (missing &#x27;start&#x27; function)
 </code></pre>
 <p>This is the line that actually makes something happen. Let&#x27;s examine each piece:</p>
 <p><strong>The indentation</strong> — those four spaces at the beginning — isn&#x27;t required by Zia. The program would work exactly the same without them. But they&#x27;re <em>crucial</em> for humans. The indentation shows visually that this line is <em>inside</em> the function, subordinate to it. When you see indented code, you know it&#x27;s part of something. Consistent indentation makes code readable. Most programmers use either 2 or 4 spaces for each level of indentation.</p>
-<p><strong><code>Say</code></strong> is a function from the Terminal module that displays text followed by a newline (moving to the next line afterward). We can call it directly because we imported it with <code>bind Viper.Terminal;</code> at the top of the file.</p>
+<p><strong><code>Say</code></strong> is a function from the Terminal module that displays text followed by a newline (moving to the next line afterward). We can call it directly because we imported it with <code>bind Zanna.Terminal;</code> at the top of the file.</p>
 <p><strong><code>(&quot;Hello, World!&quot;)</code></strong> — the parentheses contain what we&#x27;re passing to the <code>Say</code> function. This is called an <em>argument</em>. We&#x27;re telling <code>Say</code> <em>what</em> to say. The double quotes indicate that <code>Hello, World!</code> is a <em>string</em> — a piece of text. Without the quotes, the compiler would try to interpret <code>Hello</code> as a variable name and get confused.</p>
 <p><strong>The semicolon</strong> ends this statement.</p>
-<blockquote><p>**Note:** Without <code>bind Viper.Terminal;</code>, you&#x27;d have to write <code>Viper.Terminal.Say(&quot;Hello, World!&quot;);</code> — the full path to the function. Both approaches work, but <code>bind</code> makes code cleaner.</p></blockquote>
+<blockquote><p>**Note:** Without <code>bind Zanna.Terminal;</code>, you&#x27;d have to write <code>Zanna.Terminal.Say(&quot;Hello, World!&quot;);</code> — the full path to the function. Both approaches work, but <code>bind</code> makes code cleaner.</p></blockquote>
 <p><strong>What if you forget the semicolon?</strong></p>
 <pre><code data-lang="rust">
-    Viper.Terminal.Say(&quot;Hello, World!&quot;)
+    Zanna.Terminal.Say(&quot;Hello, World!&quot;)
 </code></pre>
 <p>Error:</p>
 <pre><code data-lang="text">
@@ -1320,16 +1320,16 @@ hello.zia:5:1: error: expected &#x27;;&#x27; before &#x27;}&#x27;
 <p>The compiler reached the closing brace and realized the previous statement was never properly terminated.</p>
 <p><strong>What if you misspell <code>Say</code>?</strong></p>
 <pre><code data-lang="rust">
-    Viper.Terminal.say(&quot;Hello, World!&quot;);  // lowercase &#x27;s&#x27;
+    Zanna.Terminal.say(&quot;Hello, World!&quot;);  // lowercase &#x27;s&#x27;
 </code></pre>
 <p>Error:</p>
 <pre><code data-lang="text">
-hello.zia:4:5: error: &#x27;say&#x27; is not a member of &#x27;Viper.Terminal&#x27;
+hello.zia:4:5: error: &#x27;say&#x27; is not a member of &#x27;Zanna.Terminal&#x27;
 </code></pre>
 <p>Zia is case-sensitive. <code>Say</code> and <code>say</code> are completely different names. Most of the standard library uses <code>PascalCase</code> for function names (capital letter at the start of each word).</p>
 <p><strong>What if you forget the quotes around the text?</strong></p>
 <pre><code data-lang="rust">
-    Viper.Terminal.Say(Hello, World!);
+    Zanna.Terminal.Say(Hello, World!);
 </code></pre>
 <p>Error:</p>
 <pre><code data-lang="text">
@@ -1347,7 +1347,7 @@ hello.zia:4:28: error: unexpected token &#x27;!&#x27;
 module Hello;
 
 func start() {
-    Viper.Terminal.Say(&quot;Hello, World!&quot;);
+    Zanna.Terminal.Say(&quot;Hello, World!&quot;);
 
 </code></pre>
 <p>Error:</p>
@@ -1357,7 +1357,7 @@ hello.zia:5:1: error: unexpected end of file, expected &#x27;}&#x27;
 <p>The compiler reached the end of the file still expecting to find the closing brace. Braces must always be balanced — every <code>{</code> needs a matching <code>}</code>.</p>
 <p>---</p>
 <h2 id="the-same-program-in-basic">The Same Program in BASIC</h2>
-<p>Viper supports two languages that express the same concepts differently. Seeing the same program in a different language helps you understand what&#x27;s fundamental (the ideas) versus what&#x27;s surface-level (the syntax).</p>
+<p>Zanna supports two languages that express the same concepts differently. Seeing the same program in a different language helps you understand what&#x27;s fundamental (the ideas) versus what&#x27;s surface-level (the syntax).</p>
 <h3 id="basic">BASIC</h3>
 <pre><code data-lang="basic">
 PRINT &quot;Hello, World!&quot;
@@ -1386,17 +1386,17 @@ vbasic hello.bas
 <p>---</p>
 <h2 id="troubleshooting-guide">Troubleshooting Guide</h2>
 <p>When things go wrong (and they will — that&#x27;s normal!), error messages are your guide. Here are the most common problems beginners encounter:</p>
-<h3 id="command-not-found-or-viper-is-not-recognized">&quot;command not found&quot; or &quot;viper is not recognized&quot;</h3>
-<p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Viper program.</p>
+<h3 id="command-not-found-or-zanna-is-not-recognized">&quot;command not found&quot; or &quot;zanna is not recognized&quot;</h3>
+<p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Zanna program.</p>
 <p><strong>How to fix it:</strong></p>
 <ol>
 <li>Make sure you completed the installation in Chapter 0</li>
-<li>If on macOS/Linux, run the export command again: <code>export PATH=&quot;$PATH:/path/to/viper/build/src/tools/zia&quot;</code></li>
-<li>If on Windows, check that Viper is in your system PATH</li>
-<li>Try using the full path: <code>/full/path/to/viper/build/src/tools/zia/zia hello.zia</code></li>
+<li>If on macOS/Linux, run the export command again: <code>export PATH=&quot;$PATH:/path/to/zanna/build/src/tools/zia&quot;</code></li>
+<li>If on Windows, check that Zanna is in your system PATH</li>
+<li>Try using the full path: <code>/full/path/to/zanna/build/src/tools/zia/zia hello.zia</code></li>
 </ul>
 <h3 id="file-not-found-or-no-such-file-or-directory">&quot;file not found&quot; or &quot;No such file or directory&quot;</h3>
-<p><strong>What it means:</strong> Viper can&#x27;t find your <code>hello.zia</code> file.</p>
+<p><strong>What it means:</strong> Zanna can&#x27;t find your <code>hello.zia</code> file.</p>
 <p><strong>How to fix it:</strong></p>
 <ol>
 <li>Make sure you&#x27;re in the same folder as your file. Type <code>ls</code> (or <code>dir</code> on Windows) to see what files are in your current folder.</li>
@@ -1407,14 +1407,14 @@ vbasic hello.bas
 <p><strong>What it means:</strong> You started a string with a quote but never closed it.</p>
 <p><strong>What the code probably looks like:</strong></p>
 <pre><code data-lang="rust">
-Viper.Terminal.Say(&quot;Hello, World!);  // Missing closing quote
+Zanna.Terminal.Say(&quot;Hello, World!);  // Missing closing quote
 </code></pre>
 <p><strong>How to fix it:</strong> Make sure every opening <code>&quot;</code> has a matching closing <code>&quot;</code>.</p>
 <h3 id="expected">&quot;expected &#x27;;&#x27;&quot;</h3>
 <p><strong>What it means:</strong> The compiler expected a semicolon to end a statement.</p>
 <p><strong>What the code probably looks like:</strong></p>
 <pre><code data-lang="rust">
-Viper.Terminal.Say(&quot;Hello, World!&quot;)  // Missing semicolon
+Zanna.Terminal.Say(&quot;Hello, World!&quot;)  // Missing semicolon
 </code></pre>
 <p><strong>How to fix it:</strong> Add a semicolon at the end of the line.</p>
 <h3 id="expected">&quot;expected &#x27;}&#x27;&quot;</h3>
@@ -1423,12 +1423,12 @@ Viper.Terminal.Say(&quot;Hello, World!&quot;)  // Missing semicolon
 <h3 id="no-entry-point-found">&quot;no entry point found&quot;</h3>
 <p><strong>What it means:</strong> Your program doesn&#x27;t have a <code>start</code> function, so the computer doesn&#x27;t know where to begin.</p>
 <p><strong>How to fix it:</strong> Make sure you have <code>func start() { ... }</code> and that you spelled <code>start</code> correctly.</p>
-<h3 id="xxx-is-not-a-member-of-viper-terminal">&quot;&#x27;xxx&#x27; is not a member of &#x27;Viper.Terminal&#x27;&quot;</h3>
+<h3 id="xxx-is-not-a-member-of-zanna-terminal">&quot;&#x27;xxx&#x27; is not a member of &#x27;Zanna.Terminal&#x27;&quot;</h3>
 <p><strong>What it means:</strong> You tried to use a function that doesn&#x27;t exist in the Terminal module.</p>
 <p><strong>What the code probably looks like:</strong></p>
 <pre><code data-lang="rust">
-Viper.Terminal.say(&quot;Hello&quot;);  // Should be Say, not say
-Viper.Terminal.Print(&quot;Hello&quot;);  // Print exists, but it doesn&#x27;t add a newline
+Zanna.Terminal.say(&quot;Hello&quot;);  // Should be Say, not say
+Zanna.Terminal.Print(&quot;Hello&quot;);  // Print exists, but it doesn&#x27;t add a newline
 </code></pre>
 <p><strong>How to fix it:</strong> Check the spelling and capitalization. <code>Say</code>, <code>Print</code>, and other standard library functions use PascalCase.</p>
 <h3 id="the-general-approach-to-errors">The general approach to errors</h3>
@@ -1447,7 +1447,7 @@ Viper.Terminal.Print(&quot;Hello&quot;);  // Print exists, but it doesn&#x27;t a
 <pre><code data-lang="rust">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;I wrote my first program!&quot;);
@@ -1466,7 +1466,7 @@ func start() {
 <pre><code data-lang="rust">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;Line one.&quot;);
@@ -1486,7 +1486,7 @@ Line three.
 <pre><code data-lang="rust">
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print(&quot;One &quot;);
@@ -1509,7 +1509,7 @@ One Two Three
 <pre><code data-lang="rust">
 module Art;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;  *  &quot;);
@@ -1536,13 +1536,13 @@ func start() {
 module Hello;
 
 func start() {
-    Viper.Terminal.Say(&quot;Hello, World!);
+    Zanna.Terminal.Say(&quot;Hello, World!);
 }
 </code></pre>
 <p>Run it:</p>
 <pre><code data-lang="text">
 hello.zia:4:31: error: unterminated string literal
-    Viper.Terminal.Say(&quot;Hello, World!);
+    Zanna.Terminal.Say(&quot;Hello, World!);
                               ^
 </code></pre>
 <p>The error message tells us:</p>
@@ -1559,7 +1559,7 @@ hello.zia:4:31: error: unterminated string literal
 module Hello;
 
 func start() {
-    Viper.Terminal.Say(&quot;Hello, World!&quot;)
+    Zanna.Terminal.Say(&quot;Hello, World!&quot;)
 }
 </code></pre>
 <p>Run it:</p>
@@ -1575,13 +1575,13 @@ hello.zia:5:1: error: expected &#x27;;&#x27; before &#x27;}&#x27;
 module Hello;
 
 func start() {
-    Viper.Terminal.Sya(&quot;Hello, World!&quot;);
+    Zanna.Terminal.Sya(&quot;Hello, World!&quot;);
 }
 </code></pre>
 <p>Run it:</p>
 <pre><code data-lang="text">
-hello.zia:4:5: error: &#x27;Sya&#x27; is not a member of &#x27;Viper.Terminal&#x27;
-    Viper.Terminal.Sya(&quot;Hello, World!&quot;);
+hello.zia:4:5: error: &#x27;Sya&#x27; is not a member of &#x27;Zanna.Terminal&#x27;
+    Zanna.Terminal.Sya(&quot;Hello, World!&quot;);
                    ^~~
 </code></pre>
 <p>The compiler knows <code>Terminal</code> exists but doesn&#x27;t recognize <code>Sya</code>. This kind of error often comes from typos. The squiggles (<code>^~~</code>) highlight the problematic part.</p>
@@ -1648,7 +1648,7 @@ hello.zia:4:5: error: &#x27;Sya&#x27; is not a member of &#x27;Viper.Terminal&#x
 <p><strong>Values are not the same as text on screen</strong></p>
 <p>This is an important distinction. When we write:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(42);
 </code></pre>
@@ -1672,8 +1672,8 @@ Say(42);
 <li>You can ask &quot;is 5 less than 10?&quot; and get a yes/no answer. Can you ask &quot;is &#x27;cat&#x27; less than &#x27;dog&#x27;&quot;? Well, actually you can (alphabetically), but the answer means something different than numerical comparison.</li>
 </ul>
 <p>Types tell the computer what operations make sense for each value. They prevent nonsensical operations and enable meaningful ones.</p>
-<p><strong>Viper&#x27;s basic types</strong></p>
-<p>Viper has three fundamental types:</p>
+<p><strong>Zanna&#x27;s basic types</strong></p>
+<p>Zanna has three fundamental types:</p>
 <p><strong>Numbers</strong> are for math, counting, measuring, and anything quantitative.</p>
 <pre><code data-lang="rust">
 42        // a whole number
@@ -1702,12 +1702,12 @@ false   // no, incorrect, off, 0
 var price = &quot;100&quot;;    // Oops, used quotes - this is text, not a number!
 var tax = price * 0.08;
 </code></pre>
-<p>In some languages, this might fail silently or produce bizarre results. In Viper, the type system catches the error: you can&#x27;t multiply text by a number. This forces you to fix the bug before your program even runs.</p>
+<p>In some languages, this might fail silently or produce bizarre results. In Zanna, the type system catches the error: you can&#x27;t multiply text by a number. This forces you to fix the bug before your program even runs.</p>
 <p>Types also make code clearer. When you see <code>var age = 25</code>, you know <code>age</code> is a number. When you see <code>var name = &quot;Alice&quot;</code>, you know <code>name</code> is text. The types communicate meaning.</p>
 <p><strong>What happens if you use the wrong type?</strong></p>
 <p>Depending on the situation:</p>
 <ol>
-<li>**Compile-time error**: Viper refuses to run your program and tells you what&#x27;s wrong. This is the best case -- you catch the bug immediately.</li>
+<li>**Compile-time error**: Zanna refuses to run your program and tells you what&#x27;s wrong. This is the best case -- you catch the bug immediately.</li>
 </ul>
 <ol>
 <li>**Unexpected behavior**: Some operations work on multiple types but do different things. <code>5 + 3</code> gives <code>8</code> (addition), but <code>&quot;5&quot; + &quot;3&quot;</code> gives <code>&quot;53&quot;</code> (concatenation). If you meant to add numbers but accidentally used strings, you get the wrong answer.</li>
@@ -1735,7 +1735,7 @@ var age = 25;
 <p>This instruction says: &quot;Get a box, put the value <code>25</code> inside it, and stick a label that says <code>age</code> on the front.&quot;</p>
 <p>Now, whenever your program mentions <code>age</code>, the computer knows to go find the box labeled <code>age</code> and look inside to see what value is there.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(age);  // Goes to the &#x27;age&#x27; box, finds 25, displays it
 </code></pre>
@@ -1752,7 +1752,7 @@ var pi = 3.14159265358979;
 <p>Variables serve several crucial purposes:</p>
 <p><strong>1. Memory</strong>: Programs need to remember things for later use.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = InputLine();  // remember what the user typed
 // ... 50 lines of code later ...
@@ -1760,7 +1760,7 @@ Say(&quot;Goodbye, &quot; + name);  // Still remember their name!
 </code></pre>
 <p><strong>2. Clarity</strong>: Names make code readable.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // What does this mean?
 Say(100 * 0.08);
@@ -1772,9 +1772,9 @@ Say(price * taxRate);
 </code></pre>
 <p><strong>3. Reusability</strong>: Use the same value in multiple places without retyping it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var greeting = &quot;Welcome to Viper Programming!&quot;;
+var greeting = &quot;Welcome to Zanna Programming!&quot;;
 Say(greeting);
 // ... later ...
 Say(greeting);  // Same message, no retyping
@@ -1790,7 +1790,7 @@ score = score + 10;
 <p>Let&#x27;s see variables at work:</p>
 <pre><code data-lang="rust">
 module Variables;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var name = &quot;Alice&quot;;
@@ -1834,7 +1834,7 @@ var totalCost = pricePerUnit * quantity;
 </code></pre>
 <p>Immediately clear! You understand not just <em>what</em> the program does, but <em>why</em> -- it&#x27;s calculating a total cost from a unit price and quantity.</p>
 <p>Good naming is not about following rules -- it&#x27;s about communicating with the next person who reads your code. That person might be a colleague, might be you six months from now, might be you tomorrow morning after a good night&#x27;s sleep has made you forget what you were thinking.</p>
-<p><strong>Rules for names</strong> (what Viper allows):</p>
+<p><strong>Rules for names</strong> (what Zanna allows):</p>
 <ul>
 <li>Must start with a letter or underscore (<code>_</code>)</li>
 <li>Can contain letters, numbers, underscores</li>
@@ -1855,7 +1855,7 @@ var totalCost = pricePerUnit * quantity;
 <h2 id="numbers-in-detail">Numbers in Detail</h2>
 <p>Numbers are probably the most intuitive type -- we all learned to count and do arithmetic long before we started programming. But computers handle numbers in ways that can surprise beginners.</p>
 <h3 id="two-kinds-of-numbers">Two Kinds of Numbers</h3>
-<p>Viper has two kinds of numbers:</p>
+<p>Zanna has two kinds of numbers:</p>
 <p><strong>Integers</strong> are whole numbers: <code>1</code>, <code>42</code>, <code>-7</code>, <code>1000000</code>, <code>0</code>. No decimal point. The word comes from Latin <em>integer</em>, meaning &quot;whole&quot; or &quot;untouched.&quot;</p>
 <p><strong>Floating-point numbers</strong> (or &quot;floats&quot;) have decimal points: <code>3.14</code>, <code>0.5</code>, <code>-273.15</code>, <code>2.0</code>. The name &quot;floating-point&quot; refers to how computers store these numbers internally (the decimal point can &quot;float&quot; to different positions).</p>
 <pre><code data-lang="rust">
@@ -1883,7 +1883,7 @@ var zeroFloat = 0.0;   // float (the .0 makes it a float)
 <h3 id="arithmetic-operations">Arithmetic Operations</h3>
 <p>You can do math with numbers using operators:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = 10;
 var b = 3;
@@ -1956,12 +1956,12 @@ var isDivisibleBy4 = year % 4 == 0;  // true (for leap year checking)
 <h3 id="integer-division-a-common-source-of-confusion">Integer Division: A Common Source of Confusion</h3>
 <p>Here&#x27;s something that surprises almost every beginner:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = 10 / 3;
 Say(result);  // Prints: 3
 </code></pre>
-<p>Wait -- 10 divided by 3 is 3.333..., isn&#x27;t it? Why does Viper say 3?</p>
+<p>Wait -- 10 divided by 3 is 3.333..., isn&#x27;t it? Why does Zanna say 3?</p>
 <p><strong>The rule: when you divide two integers, you get an integer result.</strong> The fractional part is simply discarded (not rounded -- truncated toward zero).</p>
 <p>Think of it like this: if you have 10 cookies and 3 people, each person gets 3 cookies (integer division), with 1 cookie left over (that&#x27;s where the remainder operator becomes useful).</p>
 <p>More examples:</p>
@@ -2016,10 +2016,10 @@ var mixed = &quot;The answer is 42.&quot;;   // Strings can contain digits
 <h3 id="escape-characters-when-quotes-aren-t-enough">Escape Characters: When Quotes Aren&#x27;t Enough</h3>
 <p>What if you want to include a quote mark <em>inside</em> your string? This won&#x27;t work:</p>
 <pre><code data-lang="rust">
-var quote = &quot;She said &quot;Hello&quot;&quot;;  // Error! Viper thinks the string ends at said &quot;
+var quote = &quot;She said &quot;Hello&quot;&quot;;  // Error! Zanna thinks the string ends at said &quot;
 </code></pre>
 <p>The computer sees the first <code>&quot;</code>, starts the string, sees the second <code>&quot;</code>, thinks the string ended, and then is confused by the remaining text.</p>
-<p>The solution is the <em>escape character</em>: backslash (<code>\</code>). It tells Viper &quot;the next character is special -- don&#x27;t interpret it normally.&quot;</p>
+<p>The solution is the <em>escape character</em>: backslash (<code>\</code>). It tells Zanna &quot;the next character is special -- don&#x27;t interpret it normally.&quot;</p>
 <pre><code data-lang="rust">
 var quote = &quot;She said \&quot;Hello\&quot;&quot;;  // Works! \&quot; means a literal quote
 </code></pre>
@@ -2058,7 +2058,7 @@ var quote = &quot;She said \&quot;Hello\&quot;&quot;;  // Works! \&quot; means a
 </tbody></table>
 <p><strong>Examples in action:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Newlines
 Say(&quot;Line one\nLine two\nLine three&quot;);
@@ -2070,7 +2070,7 @@ Line two
 Line three
 </code></pre>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Tabs (for alignment)
 Say(&quot;Name\tAge\tCity&quot;);
@@ -2084,7 +2084,7 @@ Alice   30      New York
 Bob     25      Chicago
 </code></pre>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Including backslashes (need to escape them)
 Say(&quot;Path: C:\\Users\\Alice\\Documents&quot;);
@@ -2094,7 +2094,7 @@ Say(&quot;Path: C:\\Users\\Alice\\Documents&quot;);
 Path: C:\Users\Alice\Documents
 </code></pre>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Quotes in dialogue
 Say(&quot;\&quot;To be or not to be,\&quot; he pondered.&quot;);
@@ -2113,7 +2113,7 @@ var message = first + &quot;, &quot; + second + &quot;!&quot;;  // &quot;Hello, 
 <p>Think of it like gluing words together. <code>&quot;Hello&quot;</code> + <code>&quot;, &quot;</code> + <code>&quot;World&quot;</code> + <code>&quot;!&quot;</code> becomes one long string: <code>&quot;Hello, World!&quot;</code>.</p>
 <p><strong>Concatenating strings with numbers:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 var age = 30;
@@ -2123,7 +2123,7 @@ Say(name + &quot; is &quot; + age + &quot; years old.&quot;);
 <pre><code data-lang="text">
 Alice is 30 years old.
 </code></pre>
-<p>When you concatenate a string with a number, Viper automatically converts the number to its text representation. This is convenient but can lead to surprises:</p>
+<p>When you concatenate a string with a number, Zanna automatically converts the number to its text representation. This is convenient but can lead to surprises:</p>
 <pre><code data-lang="rust">
 var result = &quot;5&quot; + 3;  // &quot;53&quot; (concatenation, not addition!)
 var math = 5 + 3;      // 8 (addition)
@@ -2144,11 +2144,11 @@ var math = 5 + 3;      // 8 (addition)
 var userInput = &quot;25&quot;;      // This is TEXT from user input
 var nextYear = userInput + 1;  // Doesn&#x27;t give 26!
 </code></pre>
-<p>The variable <code>userInput</code> contains the string <code>&quot;25&quot;</code> -- two characters that look like the number twenty-five but aren&#x27;t. When you try to add <code>1</code>, Viper converts <code>1</code> to <code>&quot;1&quot;</code> and concatenates, giving <code>&quot;251&quot;</code>.</p>
+<p>The variable <code>userInput</code> contains the string <code>&quot;25&quot;</code> -- two characters that look like the number twenty-five but aren&#x27;t. When you try to add <code>1</code>, Zanna converts <code>1</code> to <code>&quot;1&quot;</code> and concatenates, giving <code>&quot;251&quot;</code>.</p>
 <p>To do math with user input, you must convert it first:</p>
 <pre><code data-lang="rust">
 var userInput = &quot;25&quot;;
-var age = Viper.Core.Convert.ToInt64(userInput);  // Convert to number
+var age = Zanna.Core.Convert.ToInt64(userInput);  // Convert to number
 var nextYear = age + 1;  // Now this is 26
 </code></pre>
 <p>---</p>
@@ -2257,7 +2257,7 @@ if (x == 5)
 <li>Single <code>=</code> means &quot;assignment&quot; -- put this value into this variable</li>
 <li>Double <code>==</code> means &quot;comparison&quot; -- are these two values equal?</li>
 </ul>
-<p>Some languages actually allow <code>x = 5</code> in conditions (with unintended results). Viper tries to catch this as an error, but it&#x27;s still a habit worth developing: always use <code>==</code> for comparison.</p>
+<p>Some languages actually allow <code>x = 5</code> in conditions (with unintended results). Zanna tries to catch this as an error, but it&#x27;s still a habit worth developing: always use <code>==</code> for comparison.</p>
 <p>A memory trick: &quot;One equals for setting, two equals for checking.&quot;</p>
 <h3 id="logical-operators-combining-booleans">Logical Operators: Combining Booleans</h3>
 <p>Often you need to combine multiple conditions. That&#x27;s where logical operators come in.</p>
@@ -2389,7 +2389,7 @@ var canWatch = isAdult || (isTeenager &amp;&amp; hasParentPermission);  // true
 <h2 id="changing-values">Changing Values</h2>
 <p>Variables can change. That&#x27;s why they&#x27;re called &quot;variables&quot; -- they vary.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 0;
 Say(score);  // 0
@@ -2438,7 +2438,7 @@ final MAX_PLAYERS = 4;
 final DAYS_IN_WEEK = 7;
 final TAX_RATE = 0.08;
 </code></pre>
-<p>If you try to change a <code>final</code> variable later, Viper will give you an error:</p>
+<p>If you try to change a <code>final</code> variable later, Zanna will give you an error:</p>
 <pre><code data-lang="rust">
 final PI = 3.14159;
 PI = 3.0;  // Error! Cannot reassign a constant
@@ -2462,7 +2462,7 @@ PI = 3.0;  // Error! Cannot reassign a constant
 <p>So far, our variables have been set by us in the code. But programs become interesting when users can provide input.</p>
 <pre><code data-lang="rust">
 module Greeting;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print(&quot;What is your name? &quot;);
@@ -2487,37 +2487,37 @@ Hello, Alice!
 <p><code>InputLine()</code> always returns a string. But what if you need a number? You must convert it:</p>
 <pre><code data-lang="rust">
 module Age;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print(&quot;How old are you? &quot;);
     var ageText = InputLine();
-    var age = Viper.Core.Convert.ToInt64(ageText);        // Convert to integer
+    var age = Zanna.Core.Convert.ToInt64(ageText);        // Convert to integer
 
     var nextYear = age + 1;
     Say(&quot;Next year you&#x27;ll be &quot; + nextYear);
 }
 </code></pre>
-<p><code>Viper.Core.Convert.ToInt64()</code> converts a string like <code>&quot;25&quot;</code> into the number <code>25</code>.</p>
-<p><code>Viper.Core.Convert.ToDouble()</code> converts a string like <code>&quot;3.14&quot;</code> into the float <code>3.14</code>.</p>
+<p><code>Zanna.Core.Convert.ToInt64()</code> converts a string like <code>&quot;25&quot;</code> into the number <code>25</code>.</p>
+<p><code>Zanna.Core.Convert.ToDouble()</code> converts a string like <code>&quot;3.14&quot;</code> into the float <code>3.14</code>.</p>
 <p><strong>What if the user types something that isn&#x27;t a number?</strong></p>
 <p>If you try to parse <code>&quot;hello&quot;</code> as a number, you&#x27;ll get an error. In Chapter 7, we&#x27;ll learn how to handle such errors gracefully. For now, we&#x27;ll assume users type valid input.</p>
 <h3 id="common-confusion-input-is-always-a-string">Common Confusion: Input Is Always a String</h3>
 <p>A very common beginner mistake:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Print(&quot;Enter a number: &quot;);
 var number = InputLine();
 var doubled = number * 2;  // Error! Can&#x27;t multiply a string
 </code></pre>
-<p>Always remember: <code>InputLine()</code> returns a string, not a number. You must convert it with <code>Viper.Core.Convert.ToInt64()</code> if you want to do math.</p>
+<p>Always remember: <code>InputLine()</code> returns a string, not a number. You must convert it with <code>Zanna.Core.Convert.ToInt64()</code> if you want to do math.</p>
 <p>---</p>
 <h2 id="the-two-languages">The Two Languages</h2>
-<p>Viper supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.</p>
+<p>Zanna supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.</p>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = &quot;Alice&quot;;
 var age = 30;
@@ -2562,7 +2562,7 @@ var count = 0;      // Good: starts at 0
 <p>Variables must be given a value when created.</p>
 <h3 id="2-using-a-variable-before-creating-it">2. Using a variable before creating it</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(score);  // Error: score doesn&#x27;t exist yet!
 var score = 100;
@@ -2587,12 +2587,12 @@ var halfF = 1.0 / 2.0; // Result is 0.5
 <p>Integer divided by integer gives integer. Use floats for fractional results.</p>
 <h3 id="6-forgetting-to-convert-user-input">6. Forgetting to convert user input</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = InputLine();  // This is a string, not a number!
 var nextYear = age + 1;  // Error or wrong result!
 </code></pre>
-<p><code>InputLine()</code> returns a string. Use <code>Viper.Core.Convert.ToInt64()</code> or <code>Viper.Core.Convert.ToDouble()</code> to convert it to a number.</p>
+<p><code>InputLine()</code> returns a string. Use <code>Zanna.Core.Convert.ToInt64()</code> or <code>Zanna.Core.Convert.ToDouble()</code> to convert it to a number.</p>
 <h3 id="7-using-var-twice-for-the-same-variable">7. Using var twice for the same variable</h3>
 <pre><code data-lang="rust">
 var score = 0;
@@ -2612,17 +2612,17 @@ a = 10;     // a is now 10, but b is still 5!
 <p>Here&#x27;s a small program that uses everything we&#x27;ve learned:</p>
 <pre><code data-lang="rust">
 module Calculator;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;Simple Calculator&quot;);
     Say(&quot;================&quot;);
 
     Print(&quot;Enter first number: &quot;);
-    var first = Viper.Core.Convert.ToDouble(InputLine());
+    var first = Zanna.Core.Convert.ToDouble(InputLine());
 
     Print(&quot;Enter second number: &quot;);
-    var second = Viper.Core.Convert.ToDouble(InputLine());
+    var second = Zanna.Core.Convert.ToDouble(InputLine());
 
     var sum = first + second;
     var difference = first - second;
@@ -2692,7 +2692,7 @@ Results:
 <li>Variables can change (that&#x27;s why they&#x27;re called variables). Use <code>=</code> to assign new values.</li>
 </ul>
 <ul>
-<li>Use <code>InputLine()</code> to get text input from users. It returns a string. Use <code>Viper.Core.Convert.ToInt64()</code> or <code>Viper.Core.Convert.ToDouble()</code> to convert text to numbers.</li>
+<li>Use <code>InputLine()</code> to get text input from users. It returns a string. Use <code>Zanna.Core.Convert.ToInt64()</code> or <code>Zanna.Core.Convert.ToDouble()</code> to convert text to numbers.</li>
 </ul>
 <ul>
 <li>Choose descriptive variable names to make your code readable.</li>
@@ -2777,7 +2777,7 @@ Results:
 <p>Here&#x27;s the mental picture you should hold in your mind: You&#x27;re walking down a path, and suddenly it splits in two. One path goes left, one goes right. There&#x27;s a signpost with a question on it. Based on your answer to that question, you&#x27;ll take one path or the other.</p>
 <p>You can&#x27;t take both paths. You can&#x27;t take neither. You must choose one.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var gateOpen = true;
 
@@ -2794,7 +2794,7 @@ if gateOpen {
 <h3 id="the-simplest-form">The Simplest Form</h3>
 <p>The simplest form has no <code>else</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var temperature = 35;
 
@@ -2854,7 +2854,7 @@ if password == secret { ... }  // do passwords match?
 <h3 id="thinking-like-the-computer">Thinking Like the Computer</h3>
 <p>Here&#x27;s a crucial skill for programmers: you need to be able to &quot;run&quot; code in your head, step by step, just like a computer would. Let&#x27;s practice with another example:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var balance = 50;
 var price = 75;
@@ -2889,7 +2889,7 @@ Say(&quot;Your balance is: &quot; + balance);
 <h2 id="if-else-two-paths-always-one-choice">if-else: Two Paths, Always One Choice</h2>
 <p>When you need to do one thing OR another (but never both, and never neither), use <code>else</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hour = 14;
 
@@ -2919,7 +2919,7 @@ if switchIsOn {
 <h3 id="the-bouncer-analogy">The Bouncer Analogy</h3>
 <p>Imagine a bouncer at a club checking IDs:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 17;
 
@@ -2934,7 +2934,7 @@ if age &gt;= 21 {
 <h2 id="if-else-if-else-multiple-paths">if-else if-else: Multiple Paths</h2>
 <p>Sometimes there are more than two possibilities:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hour = 20;
 
@@ -2961,7 +2961,7 @@ if hour &lt; 12 {
 <p><strong>Once a condition matches, the rest are skipped.</strong> This is crucial to understand.</p>
 <p>Consider this buggy code:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 95;
 
@@ -2975,7 +2975,7 @@ if score &gt;= 60 {
 <p>Wait — 95 is also &gt;= 90. Shouldn&#x27;t it print &quot;Excellent work!&quot;? Nope. We already found a matching condition and stopped looking.</p>
 <p>The fix: Put more specific conditions first.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 95;
 
@@ -3081,7 +3081,7 @@ if score == 100 {
 <h3 id="boolean-variables">Boolean Variables</h3>
 <p>You can store boolean values in variables:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var isRaining = true;
 var hasUmbrella = false;
@@ -3107,7 +3107,7 @@ if !isRaining { ... }          // This is cleaner (we&#x27;ll learn ! soon)
 <h3 id="storing-comparison-results">Storing Comparison Results</h3>
 <p>You can store the result of a comparison:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 25;
 var canVote = age &gt;= 18;    // canVote is now true
@@ -3125,7 +3125,7 @@ if canVote {
 <h3 id="and-both-must-be-true">AND: Both Must Be True (`&amp;&amp;`)</h3>
 <p>The AND operator (<code>&amp;&amp;</code>) returns <code>true</code> only when BOTH sides are true.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if age &gt;= 18 &amp;&amp; hasTicket {
     Say(&quot;Welcome to the show!&quot;);
@@ -3176,7 +3176,7 @@ age &lt; 18 &amp;&amp; hasCar               // false &amp;&amp; false = false
 <h4 id="multiple-ands">Multiple ANDs</h4>
 <p>You can chain multiple conditions:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if hasTicket &amp;&amp; age &gt;= 18 &amp;&amp; !isBanned {
     Say(&quot;You may enter&quot;);
@@ -3186,7 +3186,7 @@ if hasTicket &amp;&amp; age &gt;= 18 &amp;&amp; !isBanned {
 <h3 id="or-at-least-one-must-be-true">OR: At Least One Must Be True (`||`)</h3>
 <p>The OR operator (<code>||</code>) returns <code>true</code> when AT LEAST ONE side is true.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if day == &quot;Saturday&quot; || day == &quot;Sunday&quot; {
     Say(&quot;It&#x27;s the weekend!&quot;);
@@ -3234,7 +3234,7 @@ hasCash || hasCard || hasCoupon // false || true || false = true
 </code></pre>
 <h4 id="real-example-multiple-payment-methods">Real Example: Multiple Payment Methods</h4>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if hasCash || hasCard || hasDigitalWallet {
     Say(&quot;Payment accepted!&quot;);
@@ -3246,7 +3246,7 @@ if hasCash || hasCard || hasDigitalWallet {
 <h3 id="not-flip-the-boolean">NOT: Flip the Boolean (`!`)</h3>
 <p>The NOT operator (<code>!</code>) reverses a boolean. True becomes false, false becomes true.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var gameOver = false;
 
@@ -3272,7 +3272,7 @@ if !gameOver {
 <p>Simple as that. NOT just flips the value.</p>
 <h4 id="common-uses-of-not">Common Uses of NOT</h4>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Check if something is NOT the case
 if !isLoggedIn {
@@ -3292,7 +3292,7 @@ if !agreedToTerms {
 <h3 id="combining-and-or-and-not">Combining AND, OR, and NOT</h3>
 <p>You can build complex conditions:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if (age &gt;= 18 &amp;&amp; age &lt;= 65) || hasSpecialPass {
     Say(&quot;You qualify for the program.&quot;);
@@ -3320,7 +3320,7 @@ if (a || b) &amp;&amp; c { ... }    // Clear: either a or b, AND c
 </code></pre>
 <h4 id="complex-example-movie-theater">Complex Example: Movie Theater</h4>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 15;
 var hasParent = true;
@@ -3371,7 +3371,7 @@ if name != null &amp;&amp; name.Length &gt; 0 {
 <h2 id="nesting-decisions-within-decisions">Nesting: Decisions Within Decisions</h2>
 <p>You can put <code>if</code> statements inside other <code>if</code> statements:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var hasAccount = true;
 var password = &quot;secret123&quot;;
@@ -3412,7 +3412,7 @@ if hasAccount {
 <h3 id="when-nesting-gets-out-of-hand">When Nesting Gets Out of Hand</h3>
 <p>Nesting works, but deep nesting gets hard to read:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if hasAccount {
     if isVerified {
@@ -3440,7 +3440,7 @@ if hasAccount {
 <h3 id="the-guard-clause-pattern">The Guard Clause Pattern</h3>
 <p>Often you can flatten nested code using &quot;guard clauses&quot; — checking for problems first and handling the happy path at the end:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if !hasAccount {
     Say(&quot;Please create an account.&quot;);
@@ -3477,11 +3477,11 @@ Say(&quot;Login successful!&quot;);
 <h3 id="example-1-grade-calculator">Example 1: Grade Calculator</h3>
 <pre><code data-lang="rust">
 module Grader;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print(&quot;Enter the score (0-100): &quot;);
-    var score = Viper.Core.Convert.ToInt64(InputLine());
+    var score = Zanna.Core.Convert.ToInt64(InputLine());
 
     // First, validate the input
     if score &lt; 0 || score &gt; 100 {
@@ -3529,11 +3529,11 @@ func start() {
 <h3 id="example-2-age-based-access-control">Example 2: Age-Based Access Control</h3>
 <pre><code data-lang="rust">
 module AgeChecker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print(&quot;Enter your age: &quot;);
-    var age = Viper.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(InputLine());
 
     Say(&quot;&quot;);  // Blank line for readability
 
@@ -3576,7 +3576,7 @@ func start() {
 <h3 id="example-3-simple-game-logic">Example 3: Simple Game Logic</h3>
 <pre><code data-lang="rust">
 module BattleGame;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Player stats
@@ -3605,7 +3605,7 @@ func start() {
     Say(&quot;3. Defend (reduce incoming damage by half)&quot;);
 
     Print(&quot;Your choice: &quot;);
-    var choice = Viper.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
     var damage = 0;
     var defended = false;
@@ -3663,7 +3663,7 @@ func start() {
 <h3 id="example-4-input-validation">Example 4: Input Validation</h3>
 <pre><code data-lang="rust">
 module FormValidator;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;=== Account Registration ===&quot;);
@@ -3679,7 +3679,7 @@ func start() {
 
     // Get age
     Print(&quot;Age: &quot;);
-    var age = Viper.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(InputLine());
 
     // Validation
     var isValid = true;
@@ -3687,7 +3687,7 @@ func start() {
     Say(&quot;Validation results:&quot;);
 
     // Check username length
-    var usernameLength = Viper.String.get_Length(username);
+    var usernameLength = Zanna.String.get_Length(username);
     if usernameLength &lt; 4 {
         Say(&quot;[FAIL] Username too short (minimum 4 characters)&quot;);
         isValid = false;
@@ -3699,7 +3699,7 @@ func start() {
     }
 
     // Check email contains @
-    if Viper.String.Has(email, &quot;@&quot;) &amp;&amp; Viper.String.Has(email, &quot;.&quot;) {
+    if Zanna.String.Has(email, &quot;@&quot;) &amp;&amp; Zanna.String.Has(email, &quot;.&quot;) {
         Say(&quot;[ OK ] Email format appears valid&quot;);
     } else {
         Say(&quot;[FAIL] Email must contain @ and .&quot;);
@@ -3730,7 +3730,7 @@ func start() {
 <h2 id="the-match-statement">The match Statement</h2>
 <p>When you&#x27;re comparing one value against many specific possibilities, <code>match</code> can be cleaner than a long <code>if-else if</code> chain:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = 3;
 
@@ -3768,7 +3768,7 @@ match day {
 <li>Your conditions involve complex boolean expressions</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // GOOD use of match: checking one value against specific options
 match menuChoice {
@@ -3794,7 +3794,7 @@ if score &gt;= 90 {
 <h3 id="match-with-multiple-values">Match with Multiple Values</h3>
 <p>You can match multiple values with <code>|</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 match day {
     1 | 2 | 3 | 4 | 5 =&gt; Say(&quot;Weekday&quot;),
@@ -3807,7 +3807,7 @@ match day {
 <p>Match shines in menu-driven programs:</p>
 <pre><code data-lang="rust">
 module MenuDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(&quot;=== MAIN MENU ===&quot;);
@@ -3818,7 +3818,7 @@ func start() {
     Say(&quot;5. Quit&quot;);
     Print(&quot;Choose an option: &quot;);
 
-    var choice = Viper.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
     match choice {
         1 =&gt; {
@@ -3852,7 +3852,7 @@ func start() {
 <h3 id="match-returning-values">Match Returning Values</h3>
 <p>Match can be used as an expression that returns a value:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var day = 3;
 
@@ -3874,7 +3874,7 @@ Say(&quot;Today is &quot; + dayName);
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 85;
 
@@ -3946,7 +3946,7 @@ if name { ... }       // Does this run? Is &quot;&quot; truthy or falsy?
 <p>Different languages disagree on whether empty strings are truthy or falsy. Zia avoids this confusion by requiring:</p>
 <pre><code data-lang="rust">
 if name != &quot;&quot; { ... }       // Explicit: &quot;if name is not empty&quot;
-if Viper.String.get_Length(name) &gt; 0 { ... }  // Also explicit
+if Zanna.String.get_Length(name) &gt; 0 { ... }  // Also explicit
 </code></pre>
 <p>---</p>
 <h2 id="debugging-conditions-when-things-go-wrong">Debugging Conditions: When Things Go Wrong</h2>
@@ -3957,7 +3957,7 @@ if Viper.String.get_Length(name) &gt; 0 { ... }  // Also explicit
 <ol>
 <li>**Print the actual values** before the condition:</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;DEBUG: score = &quot; + score);
 Say(&quot;DEBUG: score &gt;= 90 is &quot; + (score &gt;= 90));
@@ -3988,7 +3988,7 @@ if input == 42 {     // Comparing string to number - might not work as expected
 <ol>
 <li>**Print the condition result**:</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = age &gt;= 18;
 Say(&quot;DEBUG: age &gt;= 18 evaluates to: &quot; + result);
@@ -3997,7 +3997,7 @@ Say(&quot;DEBUG: age &gt;= 18 evaluates to: &quot; + result);
 <ol>
 <li>**Simplify complex conditions**. Break them into parts:</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Instead of:
 if age &gt;= 18 &amp;&amp; hasID &amp;&amp; !isBanned { ... }
@@ -4027,7 +4027,7 @@ if (a || b) &amp;&amp; c    // Different meaning!
 <p>You expected only one action, but multiple things happened.</p>
 <p><strong>Diagnosis:</strong> You probably used multiple <code>if</code> statements instead of <code>if-else if</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // BUG: Both messages might print!
 if score &gt;= 60 {
@@ -4047,7 +4047,7 @@ if score &gt;= 90 {
 <h3 id="symptom-condition-order-problems">Symptom: Condition Order Problems</h3>
 <p>Your conditions are in the wrong order, and an earlier condition catches cases meant for later ones.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // BUG: score = 95 prints &quot;You passed&quot; instead of &quot;Excellent&quot;
 if score &gt;= 60 {
@@ -4067,7 +4067,7 @@ if score &gt;= 90 {
 <h3 id="the-print-debugging-technique">The Print Debugging Technique</h3>
 <p>When in doubt, print everything:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;=== DEBUG START ===&quot;);
 Say(&quot;age = &quot; + age);
@@ -4087,7 +4087,7 @@ if hasAccount &amp;&amp; password == inputPassword {
 <h3 id="common-logic-errors">Common Logic Errors</h3>
 <p><strong>Off-by-one errors:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // User enters 18, expecting to pass, but fails
 if age &gt; 18 {    // Should be &gt;= 18
@@ -4117,7 +4117,7 @@ if username == &quot;admin&quot; &amp;&amp; password == &quot;secret&quot; {
 <h2 id="common-mistakes">Common Mistakes</h2>
 <p><strong>Forgetting braces:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if score &gt; 100
     Say(&quot;High score!&quot;);  // Error: missing braces
@@ -4144,7 +4144,7 @@ if score &gt;= 90 {
 </code></pre>
 <p><strong>Overlapping conditions with separate ifs:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Both could be true for score = 85
 if score &gt;= 80 {
@@ -4156,7 +4156,7 @@ if score &gt;= 70 {
 </code></pre>
 <p>If you want only one to run, use <code>else if</code>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if score &gt;= 80 {
     Say(&quot;B or better&quot;);
@@ -4166,7 +4166,7 @@ if score &gt;= 80 {
 </code></pre>
 <p><strong>Confusing &amp;&amp; and ||:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Wrong: This is never true (nothing is both &lt; 0 AND &gt; 100)
 if score &lt; 0 &amp;&amp; score &gt; 100 {
@@ -4183,7 +4183,7 @@ if score &lt; 0 || score &gt; 100 {
 <p>Here&#x27;s a number guessing game that uses everything we&#x27;ve learned:</p>
 <pre><code data-lang="rust">
 module GuessGame;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     final SECRET = 7;
@@ -4195,7 +4195,7 @@ func start() {
     Say(&quot;&quot;);
 
     Print(&quot;Your guess: &quot;);
-    var guess = Viper.Core.Convert.ToInt64(InputLine());
+    var guess = Zanna.Core.Convert.ToInt64(InputLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input
@@ -4272,7 +4272,7 @@ func start() {
 <p>Close your eyes and imagine this task: print every number from 1 to 1000 on the screen.</p>
 <p>With what we know so far, you might start writing:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(1);
 Say(2);
@@ -4292,7 +4292,7 @@ Say(1000);
 <p><strong>Problem 1</strong>: Print &quot;Hello&quot; five times.</p>
 <p>Without loops:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;Hello&quot;);
 Say(&quot;Hello&quot;);
@@ -4302,7 +4302,7 @@ Say(&quot;Hello&quot;);
 </code></pre>
 <p>With loops:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..=5 {
     Say(&quot;Hello&quot;);
@@ -4319,7 +4319,7 @@ var sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 +
 </code></pre>
 <p>With loops:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var sum = 0;
 for i in 1..=100 {
@@ -4351,7 +4351,7 @@ Say(sum);  // 5050
 <h2 id="the-while-loop">The while Loop</h2>
 <p>The simplest loop repeats as long as a condition is true. We call it <code>while</code> because it loops <em>while</em> something remains true.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var count = 1;
 
@@ -4428,7 +4428,7 @@ while condition {
 <h3 id="the-condition-comes-first">The Condition Comes First</h3>
 <p>Notice that <code>while</code> checks the condition <em>before</em> running the body. If the condition is false from the start, the body never runs - not even once:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var x = 10;
 while x &lt; 5 {
@@ -4446,7 +4446,7 @@ Loop finished
 <h2 id="infinite-loops-the-good-the-bad-and-the-intentional">Infinite Loops: The Good, The Bad, and The Intentional</h2>
 <p>What if the condition never becomes false?</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 while true {
     Say(&quot;Forever!&quot;);
@@ -4456,7 +4456,7 @@ while true {
 <h3 id="the-bad-accidental-infinite-loops">The Bad: Accidental Infinite Loops</h3>
 <p>The most common cause is forgetting to update the variable you&#x27;re checking:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var count = 1;
 while count &lt;= 5 {
@@ -4476,7 +4476,7 @@ while count &lt;= 5 {
 <p>We print &quot;1&quot; infinitely because <code>count</code> never changes. The condition <code>count &lt;= 5</code> is always true.</p>
 <p>Another classic mistake - changing the wrong variable:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var i = 0;
 var j = 0;
@@ -4526,7 +4526,7 @@ while true {
 <h2 id="the-for-loop">The for Loop</h2>
 <p>When you know how many times to repeat, <code>for</code> is cleaner than <code>while</code>. Instead of manually initializing, checking, and incrementing a counter, <code>for</code> handles all of that:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..6 {
     Say(i);
@@ -4551,7 +4551,7 @@ for variable in range {
 <p>The <code>1..6</code> is called a <em>range</em>. It represents a sequence of numbers. But there&#x27;s something important to understand:</p>
 <p><strong><code>..</code> (two dots) excludes the end:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..5 {
     Say(i);  // Prints 1, 2, 3, 4 (NOT 5!)
@@ -4560,7 +4560,7 @@ for i in 1..5 {
 <p>The range <code>1..5</code> includes 1, 2, 3, 4 but stops <em>before</em> 5.</p>
 <p><strong><code>..=</code> (two dots and equals) includes the end:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..=5 {
     Say(i);  // Prints 1, 2, 3, 4, 5
@@ -4578,7 +4578,7 @@ for i in 0..array.Length {
 <p>If you&#x27;re iterating over array indices, exclusive ranges match naturally. If you&#x27;re counting things humans count (1 to 10), inclusive ranges (<code>..=</code>) feel more natural.</p>
 <h3 id="range-examples">Range Examples</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Count from 0 to 9
 for i in 0..10 {
@@ -4608,7 +4608,7 @@ for i in 5..5 {
 <h3 id="counting-down">Counting Down</h3>
 <p>To count backward, use <code>.rev()</code> to reverse the range:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in (1..=10).rev() {
     Say(i);
@@ -4630,7 +4630,7 @@ for i in (1..=10).rev() {
 <p>Note the parentheses around the range - they&#x27;re necessary because we&#x27;re calling <code>.rev()</code> on the range.</p>
 <p>Classic countdown:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in (1..=5).rev() {
     Say(i);
@@ -4649,7 +4649,7 @@ Liftoff!
 <h3 id="stepping-counting-by-2s-3s-etc">Stepping (Counting by 2s, 3s, etc.)</h3>
 <p>Sometimes you don&#x27;t want every number - you want every second number, or every tenth:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Count by 2s: even numbers from 0 to 10
 for i in (0..=10).step(2) {
@@ -4668,7 +4668,7 @@ for i in (0..=100).step(5) {
 </code></pre>
 <p>You can combine stepping with reversing:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Count down by 2s
 for i in (0..=10).step(2).rev() {
@@ -4686,7 +4686,7 @@ for i in (0..=10).step(2).rev() {
 <li>&quot;Go through each index of an array&quot;</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // We know: exactly 10 iterations
 for i in 1..=10 {
@@ -4701,7 +4701,7 @@ for i in 1..=10 {
 <li>&quot;Search until we find a match&quot;</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // We don&#x27;t know: depends on user input
 var password = &quot;&quot;;
@@ -4717,7 +4717,7 @@ Say(&quot;Access granted!&quot;);
 <h2 id="breaking-out-early">Breaking Out Early</h2>
 <p>Sometimes you want to stop a loop before its natural end. The <code>break</code> statement immediately exits the loop:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..100 {
     if i * i &gt; 50 {
@@ -4744,7 +4744,7 @@ Loop finished
 <h3 id="why-break-is-useful">Why Break is Useful</h3>
 <p><strong>Searching</strong>: Stop when you find what you&#x27;re looking for.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [4, 8, 15, 16, 23, 42];
 var target = 16;
@@ -4766,7 +4766,7 @@ if foundAt &gt;= 0 {
 <p>Without <code>break</code>, the loop would continue checking every element even after finding the target. With thousands of elements, that wastes time.</p>
 <p><strong>Early termination</strong>: Stop when continuing is pointless.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Check if a number is prime
 var n = 97;
@@ -4788,7 +4788,7 @@ if isPrime {
 <p>Once we find any divisor, we know the number isn&#x27;t prime. No point checking more.</p>
 <p><strong>User-controlled loops</strong>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 while true {
     Print(&quot;Enter a command (quit to exit): &quot;);
@@ -4807,7 +4807,7 @@ while true {
 <h2 id="skipping-iterations-with-continue">Skipping Iterations with continue</h2>
 <p>While <code>break</code> exits the loop entirely, <code>continue</code> skips the <em>rest of the current iteration</em> and moves to the next one:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..=10 {
     if i % 2 == 0 {
@@ -4836,7 +4836,7 @@ for i in 1..=10 {
 <h3 id="continue-examples">Continue Examples</h3>
 <p><strong>Processing only valid data:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var values = [10, -5, 20, -15, 30, 0, 40];
 
@@ -4856,7 +4856,7 @@ Processing: 40
 </code></pre>
 <p><strong>Skipping specific cases:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Print numbers 1-20, but skip multiples of 3
 for i in 1..=20 {
@@ -4909,7 +4909,7 @@ for i in 0..items.Length {
 <h2 id="nested-loops-loops-within-loops">Nested Loops: Loops Within Loops</h2>
 <p>Loops can contain other loops. When they do, the inner loop runs completely for each iteration of the outer loop.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for row in 1..=3 {
     for col in 1..=4 {
@@ -4949,7 +4949,7 @@ for row in 1..=3 {
 <p>With nested loops, iterations <em>multiply</em>. A 100-iteration outer loop with a 100-iteration inner loop means 10,000 total iterations. Be mindful of this - it&#x27;s easy to accidentally create very slow code.</p>
 <h3 id="practical-example-multiplication-table">Practical Example: Multiplication Table</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;    1   2   3   4   5&quot;);
 Say(&quot;  +-------------------&quot;);
@@ -4980,7 +4980,7 @@ for row in 1..=5 {
 <h3 id="nested-loops-and-coordinates">Nested Loops and Coordinates</h3>
 <p>Nested loops are natural for 2D structures - grids, tables, game boards:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Draw a 5x5 checkerboard pattern
 for row in 0..5 {
@@ -5005,7 +5005,7 @@ for row in 0..5 {
 <h3 id="break-and-continue-in-nested-loops">Break and Continue in Nested Loops</h3>
 <p><code>break</code> and <code>continue</code> affect only the innermost loop they&#x27;re in:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..=3 {
     for j in 1..=3 {
@@ -5033,7 +5033,7 @@ Inner loop ended for i=3
 <h3 id="pattern-1-counting">Pattern 1: Counting</h3>
 <p>Count how many items match a condition.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
 var count = 0;
@@ -5056,7 +5056,7 @@ Say(&quot;Found &quot; + count + &quot; numbers greater than 5&quot;);  // 4
 <h3 id="pattern-2-summing-accumulating">Pattern 2: Summing (Accumulating)</h3>
 <p>Add up values.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var total = 0;
 for i in 1..=100 {
@@ -5088,7 +5088,7 @@ for i in 1..=5 {
 <h3 id="pattern-3-finding-maximum-minimum">Pattern 3: Finding Maximum/Minimum</h3>
 <p>Find the largest or smallest value.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var values = [23, 7, 42, 15, 8, 31];
 var max = values[0];  // Start with first element
@@ -5113,7 +5113,7 @@ for i in 1..values.Length {
 <h3 id="pattern-4-searching">Pattern 4: Searching</h3>
 <p>Find an item that matches a condition.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;, &quot;Diana&quot;];
 var target = &quot;Charlie&quot;;
@@ -5161,7 +5161,7 @@ for i in 0..numbers.Length {
 <h3 id="pattern-7-building-strings">Pattern 7: Building Strings</h3>
 <p>Construct a string piece by piece.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = &quot;&quot;;
 for i in 1..=5 {
@@ -5181,14 +5181,14 @@ Say(message);  // &quot;2,4,6,8,10,&quot;
 <h3 id="pattern-8-validating-input">Pattern 8: Validating Input</h3>
 <p>Keep asking until valid input is provided.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var valid = false;
 var age = 0;
 
 while !valid {
     Print(&quot;Enter your age (0-120): &quot;);
-    age = Viper.Core.Convert.ToInt64(InputLine());
+    age = Zanna.Core.Convert.ToInt64(InputLine());
 
     if age &gt;= 0 &amp;&amp; age &lt;= 120 {
         valid = true;
@@ -5213,7 +5213,7 @@ Say(&quot;You entered: &quot; + age);
 <li>Wrong comparison operator (<code>&lt;</code> vs <code>&lt;=</code>)</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Intended: print 1-10
 // Bug: prints 1-9
@@ -5242,7 +5242,7 @@ for i in 1..11 {
 <li>Condition that can never become false</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Bug: count never changes
 var count = 0;
@@ -5281,7 +5281,7 @@ while x &gt; 0 {
 <li>Wrong direction range</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Bug: 10 is not less than 5, so body never runs
 var x = 10;
@@ -5308,7 +5308,7 @@ for i in (1..=10).rev() {
 <h3 id="bug-4-wrong-scope">Bug 4: Wrong Scope</h3>
 <p>Variable defined inside loop isn&#x27;t available outside.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 for i in 1..=5 {
     var squared = i * i;
@@ -5318,7 +5318,7 @@ Say(squared);  // Error! squared doesn&#x27;t exist here
 <p>The variable <code>squared</code> is created fresh each iteration and discarded at the end of each iteration. It doesn&#x27;t exist outside the loop.</p>
 <p><strong>Fix</strong>: Declare the variable outside the loop.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var lastSquared = 0;
 for i in 1..=5 {
@@ -5336,7 +5336,7 @@ Say(lastSquared);  // 25
 <li>**Check your updates** - is the right variable changing in the right direction?</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Debugging version
 var count = 0;
@@ -5351,7 +5351,7 @@ while count &lt; 5 {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // while loop
 var i = 0;
@@ -5397,7 +5397,7 @@ NEXT i
 <p>Let&#x27;s improve our guessing game from Chapter 4 with loops:</p>
 <pre><code data-lang="rust">
 module GuessGame;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     final SECRET = 7;
@@ -5416,7 +5416,7 @@ func start() {
         var triesLeft = MAX_TRIES - tries;
 
         Print(&quot;Guess #&quot; + tries + &quot;: &quot;);
-        var guess = Viper.Core.Convert.ToInt64(InputLine());
+        var guess = Zanna.Core.Convert.ToInt64(InputLine());
 
         if guess == SECRET {
             Say(&quot;&quot;);
@@ -5667,7 +5667,7 @@ var scores = [85, 92, 78, 95, 88];
 <h2 id="accessing-array-elements">Accessing Array Elements</h2>
 <p>To access an individual element, use the array name followed by the index in square brackets:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -5772,7 +5772,7 @@ var temperatures = [72.5, 68.3, 75.1, 71.8];
 var numbers: List[Integer] = [];  // Empty array of integers
 var words: List[String] = []; // Empty array of strings
 </code></pre>
-<p>When creating an empty array, you must specify the type because Viper can&#x27;t infer it from non-existent values. The <code>: List[Integer]</code> part says &quot;this will hold 64-bit integers.&quot;</p>
+<p>When creating an empty array, you must specify the type because Zanna can&#x27;t infer it from non-existent values. The <code>: List[Integer]</code> part says &quot;this will hold 64-bit integers.&quot;</p>
 <h3 id="repeating-a-value">Repeating a Value</h3>
 <p>If you need many copies of the same value:</p>
 <pre><code data-lang="rust">
@@ -5785,7 +5785,7 @@ var defaults = [false; 100]; // 100 false values
 <h2 id="array-length">Array Length</h2>
 <p>Every array knows how many elements it contains. Access this with the <code>.Length</code> property:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Carol&quot;];
 Say(names.Length);  // 3
@@ -5807,7 +5807,7 @@ var scores = [85, 92, 78, 95, 88];
 <h2 id="modifying-array-elements">Modifying Array Elements</h2>
 <p>Arrays are mutable — you can change individual elements after creation:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -5822,7 +5822,7 @@ scores[4] = 91;
 </code></pre>
 <p>You can also use an element&#x27;s current value in the calculation:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counts = [10, 20, 30];
 
@@ -5833,11 +5833,11 @@ Say(counts[1]);  // 25
 </code></pre>
 <p>---</p>
 <h2 id="adding-and-removing-elements">Adding and Removing Elements</h2>
-<p>Unlike the fixed arrays in some languages, Viper arrays can grow and shrink dynamically.</p>
+<p>Unlike the fixed arrays in some languages, Zanna arrays can grow and shrink dynamically.</p>
 <h3 id="adding-elements-with-push">Adding Elements with push()</h3>
 <p>The <code>push</code> operation adds an element to the end of an array:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = [&quot;Alice&quot;, &quot;Bob&quot;];
 Say(names.Length);  // 2
@@ -5854,7 +5854,7 @@ Say(names.Length);  // 5
 <h3 id="removing-elements-with-pop">Removing Elements with pop()</h3>
 <p>The <code>pop</code> operation removes the last element and returns it:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [1, 2, 3, 4, 5];
 Say(numbers.Length);  // 5
@@ -5884,14 +5884,14 @@ if numbers.Length &gt; 0 {
 <h3 id="building-arrays-dynamically">Building Arrays Dynamically</h3>
 <p>These operations let you build arrays piece by piece:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var userInputs: List[Integer] = [];
 
 Say(&quot;Enter numbers (0 to stop):&quot;);
 
 while true {
-    var num = Viper.Core.Convert.ToInt64(InputLine());
+    var num = Zanna.Core.Convert.ToInt64(InputLine());
     if num == 0 {
         break;
     }
@@ -5907,7 +5907,7 @@ Say(&quot;You entered &quot; + userInputs.Length + &quot; numbers.&quot;);
 <h3 id="linear-search">Linear Search</h3>
 <p>The simplest approach is to check each element one by one:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Carol&quot;, &quot;Dave&quot;, &quot;Eve&quot;];
 var target = &quot;Carol&quot;;
@@ -5931,7 +5931,7 @@ if foundIndex &gt;= 0 {
 <h3 id="checking-if-an-element-exists">Checking If an Element Exists</h3>
 <p>Sometimes you just need to know yes or no, not where:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 25, 30, 45, 50];
 var lookingFor = 30;
@@ -5953,7 +5953,7 @@ if found {
 <h3 id="counting-occurrences">Counting Occurrences</h3>
 <p>How many times does a value appear?</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grades = [&quot;A&quot;, &quot;B&quot;, &quot;A&quot;, &quot;C&quot;, &quot;A&quot;, &quot;B&quot;, &quot;A&quot;, &quot;D&quot;];
 var countA = 0;
@@ -5970,9 +5970,9 @@ Say(&quot;Number of A grades: &quot; + countA);  // 4
 <h2 id="sorting-arrays">Sorting Arrays</h2>
 <p>Sorting puts array elements in order — smallest to largest (ascending) or largest to smallest (descending).</p>
 <h3 id="using-built-in-sort">Using Built-in Sort</h3>
-<p>Viper provides a built-in sort method:</p>
+<p>Zanna provides a built-in sort method:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [64, 34, 25, 12, 22, 11, 90];
 numbers.Sort();
@@ -5984,7 +5984,7 @@ for n in numbers {
 </code></pre>
 <p>For strings, sort orders alphabetically:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = [&quot;Charlie&quot;, &quot;Alice&quot;, &quot;Bob&quot;, &quot;Diana&quot;];
 names.Sort();
@@ -6028,7 +6028,7 @@ for i in 0..arr.Length {
 <h3 id="pattern-1-for-each-loop-when-you-only-need-values">Pattern 1: For-Each Loop (When You Only Need Values)</h3>
 <p>The cleanest way when you just need each value:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var fruits = [&quot;apple&quot;, &quot;banana&quot;, &quot;cherry&quot;, &quot;date&quot;];
 
@@ -6041,7 +6041,7 @@ for fruit in fruits {
 <h3 id="pattern-2-index-loop-when-you-need-position">Pattern 2: Index Loop (When You Need Position)</h3>
 <p>When you need to know <em>where</em> each element is:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -6068,7 +6068,7 @@ Student 5 scored 88
 <h3 id="pattern-3-while-loop-with-index">Pattern 3: While Loop with Index</h3>
 <p>Sometimes you need more control than a for loop provides:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 20, 30, 40, 50];
 var i = 0;
@@ -6082,7 +6082,7 @@ while i &lt; numbers.Length {
 <h3 id="pattern-4-reverse-iteration">Pattern 4: Reverse Iteration</h3>
 <p>To process elements from last to first:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var countdown = [5, 4, 3, 2, 1];
 
@@ -6107,7 +6107,7 @@ while j &gt;= 0 {
 <h3 id="pattern-5-processing-every-other-element">Pattern 5: Processing Every Other Element</h3>
 <p>Skip elements as needed:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -6132,7 +6132,7 @@ while i &lt; numbers.Length {
 <h3 id="pattern-6-process-until-condition">Pattern 6: Process Until Condition</h3>
 <p>Stop early when you find what you need:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var values = [10, 20, -5, 30, 40];
 
@@ -6147,7 +6147,7 @@ for v in values {
 </code></pre>
 <p>Or skip certain elements:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [1, -2, 3, -4, 5, -6];
 
@@ -6170,7 +6170,7 @@ var x = arr[5];    // Error: index 5 doesn&#x27;t exist
 var y = arr[100];  // Error: way out of bounds
 var z = arr[-1];   // Error: negative indices don&#x27;t exist
 </code></pre>
-<p>Viper performs <em>bounds checking</em> — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:</p>
+<p>Zanna performs <em>bounds checking</em> — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:</p>
 <pre><code data-lang="text">
 Runtime Error: Array index out of bounds
   Index: 5
@@ -6185,7 +6185,7 @@ Runtime Error: Array index out of bounds
 <li>**Security exploits:** Attackers can use out-of-bounds access to hack programs.</li>
 <li>**Incredibly hard-to-find bugs:** The symptom might appear far from the cause.</li>
 </ul>
-<p>Viper&#x27;s bounds checking catches these mistakes immediately, making bugs much easier to find and fix.</p>
+<p>Zanna&#x27;s bounds checking catches these mistakes immediately, making bugs much easier to find and fix.</p>
 <h3 id="common-causes-of-index-errors">Common Causes of Index Errors</h3>
 <p><strong>Off-by-one with length:</strong></p>
 <pre><code data-lang="rust">
@@ -6200,7 +6200,7 @@ var x = empty[0];  // Error! Array is empty, no index 0
 </code></pre>
 <p><strong>Loop going too far:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3];
 for i in 0..=arr.Length {  // Wrong! 0..= includes the endpoint
@@ -6212,15 +6212,15 @@ for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
 </code></pre>
 <p><strong>Calculated index going wrong:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Viper.Core.Convert.ToInt64(InputLine());
+var userInput = Zanna.Core.Convert.ToInt64(InputLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 </code></pre>
 <p>To prevent this, validate indices before using them:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 if userInput &gt;= 0 &amp;&amp; userInput &lt; arr.Length {
     var value = arr[userInput];
@@ -6233,7 +6233,7 @@ if userInput &gt;= 0 &amp;&amp; userInput &lt; arr.Length {
 <h2 id="arrays-of-strings">Arrays of Strings</h2>
 <p>Arrays can hold any type. Strings are especially common:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var fruits = [&quot;apple&quot;, &quot;banana&quot;, &quot;cherry&quot;, &quot;date&quot;, &quot;elderberry&quot;];
 
@@ -6261,7 +6261,7 @@ Menu:
 </ul>
 <h3 id="working-with-string-arrays">Working with String Arrays</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var words = [&quot;The&quot;, &quot;quick&quot;, &quot;brown&quot;, &quot;fox&quot;];
 
@@ -6322,7 +6322,7 @@ var value = grid[1][2];  // Row 1, Column 2 = 6
 <li><code>[2]</code> gets the third element of that row: <code>6</code></li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -6338,7 +6338,7 @@ Say(grid[1][1]);  // 5 (center)
 </code></pre>
 <h3 id="modifying-elements">Modifying Elements</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -6353,7 +6353,7 @@ Say(grid[1][1]);  // 50
 <h3 id="iterating-over-a-2d-array">Iterating Over a 2D Array</h3>
 <p>To visit every element, you need nested loops — one for rows, one for columns:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -6376,7 +6376,7 @@ for row in 0..grid.Length {
 </code></pre>
 <h3 id="example-tic-tac-toe-board">Example: Tic-Tac-Toe Board</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var board = [
     [&quot;X&quot;, &quot;O&quot;, &quot;X&quot;],
@@ -6413,7 +6413,7 @@ printBoard(board);
 </code></pre>
 <h3 id="example-multiplication-table">Example: Multiplication Table</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Create a 10x10 multiplication table
 var table: List[List[Integer]] = [];
@@ -6446,7 +6446,7 @@ for i in 0..table.Length {
 <h3 id="example-image-as-pixels">Example: Image as Pixels</h3>
 <p>A grayscale image is just a 2D array of brightness values (0 = black, 255 = white):</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // A tiny 5x5 &quot;image&quot; of a plus sign
 var image = [
@@ -6482,7 +6482,7 @@ for row in 0..image.Length {
 <p>Let&#x27;s build a functional todo list manager:</p>
 <pre><code data-lang="rust">
 module TodoList;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var tasks: List[String] = [];
@@ -6520,7 +6520,7 @@ func start() {
             }
         } else if input == &quot;done&quot; {
             Print(&quot;Task number to mark done: &quot;);
-            var num = Viper.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(InputLine());
             if num &gt;= 1 &amp;&amp; num &lt;= tasks.Length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Say(&quot;Marked done: &quot; + tasks[num - 1]);
@@ -6529,7 +6529,7 @@ func start() {
             }
         } else if input == &quot;remove&quot; {
             Print(&quot;Task number to remove: &quot;);
-            var num = Viper.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(InputLine());
             if num &gt;= 1 &amp;&amp; num &lt;= tasks.Length {
                 // Rebuild arrays without this task
                 var newTasks: List[String] = [];
@@ -6595,7 +6595,7 @@ Goodbye!
 <p>A simple game inventory:</p>
 <pre><code data-lang="rust">
 module Inventory;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var items: List[String] = [];
@@ -6619,14 +6619,14 @@ func start() {
             Print(&quot;Item name: &quot;);
             var item = InputLine();
             Print(&quot;Quantity: &quot;);
-            var qty = Viper.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(InputLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == &quot;drop&quot; {
             Print(&quot;Item name: &quot;);
             var item = InputLine();
             Print(&quot;Quantity: &quot;);
-            var qty = Viper.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(InputLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == &quot;use&quot; {
@@ -6731,7 +6731,7 @@ func useItem(items: List[String], quantities: List[Integer], name: String) {
 <h2 id="practical-example-high-score-table">Practical Example: High Score Table</h2>
 <pre><code data-lang="rust">
 module HighScores;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Start with some default scores
@@ -6749,7 +6749,7 @@ func start() {
     Print(&quot;Enter your name: &quot;);
     var playerName = InputLine();
     Print(&quot;Enter your score: &quot;);
-    var playerScore = Viper.Core.Convert.ToInt64(InputLine());
+    var playerScore = Zanna.Core.Convert.ToInt64(InputLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -6814,7 +6814,7 @@ func displayScores(names: List[String], scores: List[Integer]) {
 <p>Different languages handle arrays with different syntax, but the concepts are identical.</p>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 20, 30];
 
@@ -6874,7 +6874,7 @@ var last = arr[arr.Length - 1];  // Gets arr[4] = 5
 <p>Remember: Length tells you <em>how many</em> elements. The highest index is always one less.</p>
 <h3 id="forgetting-zero-based-indexing">Forgetting Zero-Based Indexing</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78];
 
@@ -6896,7 +6896,7 @@ if arr.Length &gt; 0 {
 </code></pre>
 <h3 id="using-wrong-loop-range">Using Wrong Loop Range</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3, 4, 5];
 
@@ -6925,11 +6925,11 @@ for n in nums {
 </code></pre>
 <h3 id="index-from-user-input-without-validation">Index From User Input Without Validation</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var items = [&quot;Sword&quot;, &quot;Shield&quot;, &quot;Potion&quot;];
 Print(&quot;Choose item (1-3): &quot;);
-var choice = Viper.Core.Convert.ToInt64(InputLine());
+var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -6947,7 +6947,7 @@ if choice &gt;= 1 &amp;&amp; choice &lt;= items.Length {
 <p>Let&#x27;s build a comprehensive grade tracker that brings everything together:</p>
 <pre><code data-lang="rust">
 module GradeTracker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var grades: List[Integer] = [];
@@ -6959,7 +6959,7 @@ func start() {
     // Collect grades with validation
     while true {
         Print(&quot;Grade: &quot;);
-        var input = Viper.Core.Convert.ToInt64(InputLine());
+        var input = Zanna.Core.Convert.ToInt64(InputLine());
 
         if input == -1 {
             break;
@@ -7150,7 +7150,7 @@ Grade Distribution:
 </ul>
 <p><strong>Safety:</strong></p>
 <ul>
-<li>Viper checks bounds and prevents invalid access</li>
+<li>Zanna checks bounds and prevents invalid access</li>
 <li>Always validate user input before using as an index</li>
 <li>Check <code>array.Length &gt; 0</code> before accessing elements</li>
 </ul>
@@ -7214,7 +7214,7 @@ Grade Distribution:
 <p>Before we define functions formally, let&#x27;s experience the problem they solve. Imagine you&#x27;re writing a program that needs to greet users at several different points:</p>
 <pre><code data-lang="rust">
 module MessyProgram;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Welcome the user
@@ -7245,7 +7245,7 @@ func start() {
 <p>Let&#x27;s see an even worse example. Suppose you need to calculate the area of rectangles throughout your program:</p>
 <pre><code data-lang="rust">
 module MessierProgram;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Calculate area for room 1
@@ -7278,7 +7278,7 @@ func start() {
 <p><strong>Functions solve all of these problems.</strong> Write the logic once, give it a name, use it everywhere. Change it in one place, and every use gets the fix automatically. One source of truth. No copy-paste. No divergence. No maintenance nightmares.</p>
 <p>---</p>
 <h2 id="what-is-a-function">What Is a Function?</h2>
-<p>You&#x27;ve already used functions. <code>Viper.Terminal.Say()</code> is a function. <code>Viper.Core.Convert.ToInt64()</code> is a function. Someone else wrote the code that makes them work; you just use them by name.</p>
+<p>You&#x27;ve already used functions. <code>Zanna.Terminal.Say()</code> is a function. <code>Zanna.Core.Convert.ToInt64()</code> is a function. Someone else wrote the code that makes them work; you just use them by name.</p>
 <p>A function is a named, reusable block of code. You define it once, then <em>call</em> it whenever you need that behavior. Think of a function like a recipe in a cookbook. The recipe has a name (&quot;Chocolate Cake&quot;), a list of ingredients you need to provide (flour, eggs, sugar), and a series of steps. When you want a chocolate cake, you don&#x27;t invent the process from scratch --- you follow the recipe. You can make the cake multiple times, with slightly different ingredients (more sugar for a sweeter cake), and you always get a cake back.</p>
 <p>Functions work the same way:</p>
 <ul>
@@ -7314,7 +7314,7 @@ func start() {
 <p>You give <code>calculateArea</code> the values 5 and 10. It returns 50. How does it calculate that? Maybe it multiplies. Maybe it uses some complex algorithm. Maybe it asks a server over the internet. You don&#x27;t care. As long as the right answer comes out, the internal implementation is irrelevant to you as the user of the function.</p>
 <p>This separation between <em>what a function does</em> and <em>how it does it</em> is called <strong>abstraction</strong>. It&#x27;s one of the most important concepts in all of computer science. Abstraction lets you:</p>
 <ul>
-<li><strong>Use code without understanding it</strong>: You use <code>Viper.Terminal.Say()</code> without understanding terminal I/O, buffering, or system calls.</li>
+<li><strong>Use code without understanding it</strong>: You use <code>Zanna.Terminal.Say()</code> without understanding terminal I/O, buffering, or system calls.</li>
 <li><strong>Change implementations without breaking users</strong>: If someone improves how <code>calculateArea</code> works internally (making it faster, for example), your code keeps working unchanged.</li>
 <li><strong>Build complex systems from simple parts</strong>: Each function is a black box. You combine black boxes to build bigger black boxes. A car is made of an engine, transmission, wheels --- each a black box you use without fully understanding.</li>
 </ul>
@@ -7323,7 +7323,7 @@ func start() {
 <h2 id="defining-functions">Defining Functions</h2>
 <p>Here&#x27;s a simple function:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say(&quot;Hello!&quot;);
@@ -7341,7 +7341,7 @@ func greet() {
 <p>To use it:</p>
 <pre><code data-lang="rust">
 module Greeting;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say(&quot;Hello!&quot;);
@@ -7367,7 +7367,7 @@ Welcome to the program.
 <h2 id="parameters-and-arguments-giving-functions-information">Parameters and Arguments: Giving Functions Information</h2>
 <p>A function that always does the exact same thing is limited. Usually, we want to customize behavior. We do this by giving functions <strong>parameters</strong> --- placeholders for values that will be provided when the function is called.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {
     Say(&quot;Hello, &quot; + name + &quot;!&quot;);
@@ -7395,7 +7395,7 @@ Hello, Carol!
 </ul>
 <p>Think of it this way: the <strong>parameter</strong> is the parking space, the <strong>argument</strong> is the car you park in it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet(name: String) {    // &#x27;name&#x27; is the PARAMETER (the parking space)
     Say(&quot;Hello, &quot; + name + &quot;!&quot;);
@@ -7429,7 +7429,7 @@ func start() {
 <h3 id="multiple-parameters">Multiple Parameters</h3>
 <p>You can have multiple parameters, separated by commas:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func introduce(name: String, age: Integer) {
     Say(name + &quot; is &quot; + age + &quot; years old.&quot;);
@@ -7449,7 +7449,7 @@ Bob is 25 years old.
 <h3 id="parameters-are-copies">Parameters Are Copies</h3>
 <p>When you pass a value to a function, the function receives a <strong>copy</strong> of that value (for simple types like numbers and strings). Modifying the parameter inside the function does not affect the original:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func tryToChange(x: Integer) {
     x = 999;  // This changes the local copy
@@ -7469,7 +7469,7 @@ func start() {
 <h2 id="return-values-getting-information-back">Return Values: Getting Information Back</h2>
 <p>Some functions compute a value and give it back to the caller. They <em>return</em> a result:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -&gt; Integer {
     return a + b;
@@ -7493,7 +7493,7 @@ func start() {
 </ul>
 <p>Think of it like a tennis ball machine. You press the button (call the function), the machine does some internal work (the function body), and a ball shoots out (the return value). The <code>return</code> statement is the moment the ball leaves the machine.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -&gt; Integer {
     return a + b;
@@ -7510,7 +7510,7 @@ var sum = add(3, 4);
 </code></pre>
 <p>The returned value can be used in any way a regular value can be used:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Store it in a variable
 var result = add(3, 4);
@@ -7554,7 +7554,7 @@ if add(3, 4) &gt; 5 {
 <h2 id="functions-that-don-t-return-values">Functions That Don&#x27;t Return Values</h2>
 <p>Some functions do things without computing a result --- like printing, saving files, or modifying state. These functions perform <em>actions</em> rather than <em>calculations</em>. They don&#x27;t specify a return type:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func sayGoodbye() {
     Say(&quot;Goodbye!&quot;);
@@ -7574,7 +7574,7 @@ func start() {
 </code></pre>
 <p>You can use <code>return</code> without a value to exit early:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func maybeGreet(shouldGreet: Boolean) {
     if !shouldGreet {
@@ -7593,7 +7593,7 @@ func start() {
 <h2 id="understanding-scope-where-variables-live">Understanding Scope: Where Variables Live</h2>
 <p>Variables created inside a function are <em>local</em> --- they exist only within that function. This region where a variable is valid is called its <strong>scope</strong>.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func calculateArea(width: Integer, height: Integer) -&gt; Integer {
     var area = width * height;  // &#x27;area&#x27; is born here
@@ -7610,7 +7610,7 @@ func start() {
 <h3 id="why-scope-matters">Why Scope Matters</h3>
 <p>Scope is a feature, not a limitation. It provides <strong>isolation</strong>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func calculateRectangleArea(w: Integer, h: Integer) -&gt; Integer {
     var temp = w * h;
@@ -7635,7 +7635,7 @@ func start() {
 <p>A <strong>local variable</strong> is declared inside a function and exists only within that function. A <strong>global variable</strong> is declared outside any function and exists throughout the program.</p>
 <pre><code data-lang="rust">
 module ScopeDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var globalCounter = 0;  // Global: accessible everywhere
 
@@ -7659,7 +7659,7 @@ func start() {
 <h3 id="nested-scope">Nested Scope</h3>
 <p>Blocks (code inside <code>{ }</code>) create nested scopes:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func scopeExample() {
     var outer = 10;
@@ -7695,7 +7695,7 @@ func functionB() {
 <h3 id="visualizing-the-call-stack">Visualizing the Call Stack</h3>
 <p>Let&#x27;s trace through this code:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func multiply(a: Integer, b: Integer) -&gt; Integer {
     return a * b;
@@ -7797,7 +7797,7 @@ func start() {
 <h2 id="function-overloading-same-name-different-signatures">Function Overloading: Same Name, Different Signatures</h2>
 <p>In many languages (including Zia), you can define multiple functions with the same name as long as they have different parameters. This is called <strong>function overloading</strong>.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func greet() {
     Say(&quot;Hello, stranger!&quot;);
@@ -7833,7 +7833,7 @@ func start() {
 <ol>
 <li>**Handling different types**:</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func printValue(n: Integer) {
     Say(&quot;Integer: &quot; + n);
@@ -7864,7 +7864,7 @@ func printValue(b: Boolean) {
 <p>Factorial is the product of all positive integers up to n. For example, 5! (read &quot;five factorial&quot;) = 5 x 4 x 3 x 2 x 1 = 120.</p>
 <p>Notice something interesting: 5! = 5 x 4! And 4! = 4 x 3! The factorial of n is n times the factorial of (n-1). This is a recursive definition --- factorial is defined in terms of itself.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func factorial(n: Integer) -&gt; Integer {
     if n &lt;= 1 {
@@ -7919,7 +7919,7 @@ factorial(5)
 <h3 id="another-example-fibonacci-numbers">Another Example: Fibonacci Numbers</h3>
 <p>The Fibonacci sequence is: 0, 1, 1, 2, 3, 5, 8, 13, 21, ... Each number is the sum of the two before it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func fib(n: Integer) -&gt; Integer {
     if n &lt;= 1 {
@@ -7969,7 +7969,7 @@ fib(5)
 <h3 id="before-messy-repetitive-code">Before: Messy, Repetitive Code</h3>
 <pre><code data-lang="rust">
 module MessyStats;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var numbers: List[Integer] = [4, 8, 15, 16, 23, 42];
@@ -8036,7 +8036,7 @@ func start() {
 <h3 id="after-clean-organized-code">After: Clean, Organized Code</h3>
 <pre><code data-lang="rust">
 module CleanStats;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Calculate the sum of an array of numbers
 func sum(numbers: List[Integer]) -&gt; Integer {
@@ -8128,8 +8128,8 @@ func start() {
 <h3 id="do-one-thing-single-responsibility">Do One Thing (Single Responsibility)</h3>
 <p>A function should have a single, clear purpose. If you find yourself using &quot;and&quot; to describe what a function does (&quot;calculates the average AND prints it AND saves it to a file&quot;), consider splitting it.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.IO;
+bind Zanna.Terminal;
+bind Zanna.IO;
 
 // Bad: Does three things
 func processGrades(grades: List[Integer]) {
@@ -8278,7 +8278,7 @@ func isSpamEmail(email: String) -&gt; Boolean {
 <p>Let&#x27;s see all these principles applied to a complete, well-organized program:</p>
 <pre><code data-lang="rust">
 module GradeTracker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // ============================================
 // Input Functions
@@ -8288,7 +8288,7 @@ bind Viper.Terminal;
 // Returns -1 if user wants to finish
 func readGrade() -&gt; Integer {
     Print(&quot;Grade: &quot;);
-    return Viper.Core.Convert.ToInt64(InputLine());
+    return Zanna.Core.Convert.ToInt64(InputLine());
 }
 
 // Check if a grade is within valid range
@@ -8453,7 +8453,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -&gt; Integer {
     return a + b;
@@ -8512,7 +8512,7 @@ func badFactorial(n: Integer) -&gt; Integer {
 </code></pre>
 <p><strong>Trying to use local variables outside their function:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func compute() {
     var result = 42;
@@ -8525,7 +8525,7 @@ func start() {
 </code></pre>
 <p><strong>Expecting parameters to modify original variables:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func double(x: Integer) {
     x = x * 2;  // Only modifies local copy
@@ -8608,13 +8608,13 @@ func printReport(report: String) { ... }
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

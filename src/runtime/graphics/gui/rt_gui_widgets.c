@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_widgets.c
-// Purpose: Runtime bindings for the ViperGUI base widget API and fundamental
+// Purpose: Runtime bindings for the ZannaGUI base widget API and fundamental
 //   widgets: font loading/destroy, widget visibility/enabled/size/flex/margin,
 //   Container, Label, Button (with icon support), TextInput (with undo/redo),
 //   Checkbox, RadioButton, Slider, ProgressBar, Image, ListBox, ComboBox,
@@ -32,7 +32,7 @@
 //     backing fonts referenced by retained surfaces are retired through a safe frame generation.
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/gui/include/vg.h (ZannaGUI C API),
 //        src/runtime/graphics/rt_gui_app.c (default font, s_current_app)
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 
 #include "fonts/embedded_font.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Resolve a parent-container handle to its widget.
 /// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
@@ -59,7 +59,7 @@ static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
     return parent_widget;
 }
 
-/// @brief Wrap a borrowed live widget handle in an owned `Viper.Option`.
+/// @brief Wrap a borrowed live widget handle in an owned `Zanna.Option`.
 /// @details Runtime object retention is a no-op for lower-toolkit pointers, so finalizing the
 ///          Option does not destroy or otherwise alter the widget. Invalid or absent widgets map
 ///          to `None` defensively.
@@ -574,7 +574,7 @@ void rt_widget_add_child(void *parent, void *child) {
 /// @details The payload, when present, is a borrowed lower-toolkit handle. Root, detached, stale,
 ///          NULL, and app handles all produce `None` without dereferencing invalid storage.
 /// @param widget Widget whose parent should be queried.
-/// @return Fresh owned `Viper.Option<Widget>` object.
+/// @return Fresh owned `Zanna.Option<Widget>` object.
 void *rt_widget_get_parent_option(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
@@ -1911,7 +1911,7 @@ void rt_treeview_clear(void *tree) {
 }
 
 /// @brief Reclaim retired node tombstones after invalidating their managed wrappers.
-/// @details Existing `Viper.GUI.TreeView.Node` values remain valid managed objects, but their
+/// @details Existing `Zanna.GUI.TreeView.Node` values remain valid managed objects, but their
 ///          targets are cleared before the lower toolkit frees tombstone storage. Subsequent calls
 ///          through a pruned node therefore return the established empty result without reading
 ///          reclaimed memory. Wrappers for nodes still present in the tree are preserved.
@@ -2134,7 +2134,7 @@ int64_t rt_treeview_was_load_children_requested(void *tree) {
     return tv && vg_treeview_was_load_children_requested(tv) ? 1 : 0;
 }
 
-/// @brief Wrap a borrowed live tree node in a fresh owned `Viper.Option`.
+/// @brief Wrap a borrowed live tree node in a fresh owned `Zanna.Option`.
 /// @details The subhandle registry preserves one managed identity per lower node. The Option
 ///          retains that managed wrapper while it is alive and `None` represents absence or a
 ///          failed/stale wrapper lookup.
@@ -2326,7 +2326,7 @@ int64_t rt_treeview_node_is_expanded(void *node) {
     return n->expanded ? 1 : 0;
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — widgets cannot have an owning GUI app.
 void *rt_gui_widget_owner_app(void *handle) {
@@ -2472,7 +2472,7 @@ void rt_widget_add_child(void *parent, void *child) {
 /// @details The API returns an owned `None`, preserving explicit absence rather than a NULL
 ///          runtime object even when graphics support is unavailable.
 /// @param widget Ignored widget handle.
-/// @return Fresh owned `Viper.Option.None` object.
+/// @return Fresh owned `Zanna.Option.None` object.
 void *rt_widget_get_parent_option(void *widget) {
     (void)widget;
     return rt_option_none();
@@ -2490,7 +2490,7 @@ int64_t rt_widget_get_child_count(void *widget) {
 /// @details Both the widget and index are ignored; explicit `None` matches enabled-build absence.
 /// @param widget Ignored widget handle.
 /// @param index Ignored child index.
-/// @return Fresh owned `Viper.Option.None` object.
+/// @return Fresh owned `Zanna.Option.None` object.
 void *rt_widget_get_child_at_option(void *widget, int64_t index) {
     (void)widget;
     (void)index;
@@ -2542,7 +2542,7 @@ int64_t rt_widget_get_id(void *widget) {
 /// @brief Return no ID match in a graphics-disabled runtime.
 /// @param root Ignored root handle.
 /// @param id Ignored widget ID.
-/// @return Fresh owned `Viper.Option.None` object.
+/// @return Fresh owned `Zanna.Option.None` object.
 void *rt_widget_find_by_id_option(void *root, int64_t id) {
     (void)root;
     (void)id;
@@ -2552,7 +2552,7 @@ void *rt_widget_find_by_id_option(void *root, int64_t id) {
 /// @brief Return no name match in a graphics-disabled runtime.
 /// @param root Ignored root handle.
 /// @param name Ignored lookup name.
-/// @return Fresh owned `Viper.Option.None` object.
+/// @return Fresh owned `Zanna.Option.None` object.
 void *rt_widget_find_by_name_option(void *root, rt_string name) {
     (void)root;
     (void)name;
@@ -3451,4 +3451,4 @@ int64_t rt_treeview_node_is_expanded(void *node) {
     return 0;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

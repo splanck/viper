@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <optional>
 #include <vector>
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 class LinearScanAllocator;
 class Spiller;
@@ -76,4 +76,4 @@ class Coalescer {
     void emitCopyTask(const CopyTask &task, std::vector<MInstr> &generated);
 };
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

@@ -4,41 +4,41 @@ audience: public
 last-verified: 2026-05-31
 ---
 
-# Viper FAQ
+# Zanna FAQ
 
-Frequently asked questions about the Viper compiler toolchain.
+Frequently asked questions about the Zanna compiler toolchain.
 
 ---
 
 ## General
 
-### 1. What is Viper?
+### 1. What is Zanna?
 
-Viper is an IL-based compiler toolchain that includes multiple language frontends (Zia and BASIC), an intermediate
+Zanna is an IL-based compiler toolchain that includes multiple language frontends (Zia and BASIC), an intermediate
 language (IL), virtual machine, and native code generator. It's designed as a research and educational platform for
 exploring language implementation, compiler design, and runtime systems.
 
-### 2. What makes Viper different?
+### 2. What makes Zanna different?
 
-Viper uses a modern compiler architecture with an IL that separates language semantics
+Zanna uses a modern compiler architecture with an IL that separates language semantics
 from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL
 layer makes it easy to add new language frontends—Zia and BASIC both compile to the same IL and share a common
 runtime.
 
-### 3. Is Viper suitable for production use?
+### 3. Is Zanna suitable for production use?
 
-No. Viper is an experimental research project at an early stage. While it implements substantial subsets of Zia and
+No. Zanna is an experimental research project at an early stage. While it implements substantial subsets of Zia and
 BASIC, it's intended for education, experimentation, and compiler research rather than production use.
 
 ---
 
 ## Getting Started
 
-### 4. How do I build Viper?
+### 4. How do I build Zanna?
 
 ```bash
-./scripts/build_viper_linux.sh   # Linux
-./scripts/build_viper_mac.sh     # macOS
+./scripts/build_zanna_linux.sh   # Linux
+./scripts/build_zanna_mac.sh     # macOS
 ```
 
 Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level README for platform-specific details.
@@ -46,15 +46,15 @@ Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level RE
 ### 5. How do I run a program?
 
 ```bash
-viper run myprogram.zia
-viper run myprogram.bas
+zanna run myprogram.zia
+zanna run myprogram.bas
 ```
 
 You can also run an entire project directory:
 
 ```bash
-viper run examples/games/frogger/
-viper run examples/apps/vipersql/
+zanna run examples/games/frogger/
+zanna run examples/apps/zannasql/
 ```
 
 The standalone tools `vbasic`, `zia`, and `ilrun` are also available:
@@ -73,15 +73,15 @@ ilrun program.il
 - `/examples/games/xenoscape/` - Side-scroller game in Zia using ten game-engine helpers
 - `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/examples/games/frogger-basic/`, `/examples/games/centipede-basic/`, `/examples/games/pacman-basic/` - BASIC ports of the same games
-- `/examples/apps/` - Zia application examples such as `vipersql/` and `paint/`
-- `/viperide/` - ViperIDE source, built separately from the examples
+- `/examples/apps/` - Zia application examples such as `zannasql/` and `paint/`
+- `/zannaide/` - ZannaIDE source, built separately from the examples
 - `/examples/apiaudit/` - Focused runtime API examples in both Zia and BASIC
 - `/src/tests/zia/` - Frontend tests covering specific Zia language features
 - `/src/tests/basic/` - Frontend tests covering specific BASIC language features
 
-### 7. What platforms does Viper support?
+### 7. What platforms does Zanna support?
 
-Viper builds and runs on:
+Zanna builds and runs on:
 
 - **macOS** (Apple Silicon and Intel)
 - **Linux** (x86-64)
@@ -95,7 +95,7 @@ Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch6
 
 ### 8. What is Zia?
 
-Zia is Viper's primary language, designed as a modern, clean systems programming language. It includes:
+Zia is Zanna's primary language, designed as a modern, clean systems programming language. It includes:
 
 - Module system for code organization
 - Classes and structs with methods and fields
@@ -103,14 +103,14 @@ Zia is Viper's primary language, designed as a modern, clean systems programming
 - Structured control flow (if/else, while, for, match)
 - Functions with type annotations
 - Bind system for multi-file projects
-- First-class support for the Viper runtime library
+- First-class support for the Zanna runtime library
 
 ### 9. How do I write a simple Zia program?
 
 ```rust
 module Main;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, world!");
@@ -120,7 +120,7 @@ func start() {
 Run it with:
 
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
 ### 10. What are classes in Zia?
@@ -163,9 +163,9 @@ See `/examples/games/frogger/` for a complete multi-module Zia game example.
 
 ## BASIC Language
 
-### 12. What BASIC dialect does Viper implement?
+### 12. What BASIC dialect does Zanna implement?
 
-Viper BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with modern extensions. It includes:
+Zanna BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with modern extensions. It includes:
 
 - Structured control flow (If/Then/Else, For/Next, While/Wend, Do/Loop, Select Case)
 - Procedures (Sub/Function) with parameters
@@ -175,9 +175,9 @@ Viper BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with mod
 - File I/O
 - ANSI terminal graphics (COLOR, LOCATE, CLS)
 
-### 13. Does Viper BASIC support object-oriented programming?
+### 13. Does Zanna BASIC support object-oriented programming?
 
-Yes! Viper BASIC includes:
+Yes! Zanna BASIC includes:
 
 - Class definitions with fields and methods
 - Constructors (`Sub New`)
@@ -215,9 +215,9 @@ Paths are relative to the file containing the `AddFile` statement.
 
 ## IL (Intermediate Language)
 
-### 16. What is the Viper IL?
+### 16. What is the Zanna IL?
 
-The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (
+The Zanna Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (
 Zia, BASIC) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
 project's needs.
 
@@ -228,7 +228,7 @@ See `/docs/il/il-guide.md` for the complete IL specification.
 Yes! The IL has a textual assembly syntax. You can write `.il` files and run them:
 
 ```bash
-viper -run myprogram.il
+zanna -run myprogram.il
 ```
 
 Tools available:
@@ -265,8 +265,8 @@ The VM supports source-level debugging:
 
 ```bash
 # Build to IL, then set a source breakpoint in the IL runner
-viper build program.zia -o /tmp/program.il
-viper -run /tmp/program.il --break-src program.zia:42
+zanna build program.zia -o /tmp/program.il
+zanna -run /tmp/program.il --break-src program.zia:42
 
 # Use debugger commands
 # (watch variables, step through code, inspect state)
@@ -278,11 +278,11 @@ See VM debugging tests in `/src/tests/vm/` for examples.
 
 Both frontends (Zia, BASIC) share the same runtime library. Sample built-in functions:
 
-- **Math**: BASIC `SIN`/`COS`/`TAN`/`SQR`/`ABS`/`ROUND`/`FIX`/`POW`; Zia `Sin`/`Cos`/`Sqrt`/`Abs`/`Floor`/`Ceil`/`Pow` (under `Viper.Math.*`)
-- **String**: BASIC `LEN`/`MID$`/`LEFT$`/`RIGHT$`/`LCASE$`/`UCASE$`/`TRIM$` (concatenation uses `+`, not a function); Zia `Substring`/`Mid`/`Concat`/`Trim` on `Viper.String`
-- **I/O**: BASIC `PRINT`/`INPUT`/`LINE INPUT`/`OPEN`; Zia `Say`/`Print`/`TryReadLine`/`ReadLineResult` under `Viper.Terminal`
-- **Graphics**: BASIC `COLOR`/`LOCATE`/`CLS`; Zia `Viper.Graphics.Canvas` and friends
-- **Conversion**: BASIC `STR$`/`VAL`/`CINT`/`CLNG`/`CSNG`/`CDBL`; Zia `Viper.Core.Convert.ToInt64`/`ToStringInt`/`ToStringDouble`
+- **Math**: BASIC `SIN`/`COS`/`TAN`/`SQR`/`ABS`/`ROUND`/`FIX`/`POW`; Zia `Sin`/`Cos`/`Sqrt`/`Abs`/`Floor`/`Ceil`/`Pow` (under `Zanna.Math.*`)
+- **String**: BASIC `LEN`/`MID$`/`LEFT$`/`RIGHT$`/`LCASE$`/`UCASE$`/`TRIM$` (concatenation uses `+`, not a function); Zia `Substring`/`Mid`/`Concat`/`Trim` on `Zanna.String`
+- **I/O**: BASIC `PRINT`/`INPUT`/`LINE INPUT`/`OPEN`; Zia `Say`/`Print`/`TryReadLine`/`ReadLineResult` under `Zanna.Terminal`
+- **Graphics**: BASIC `COLOR`/`LOCATE`/`CLS`; Zia `Zanna.Graphics.Canvas` and friends
+- **Conversion**: BASIC `STR$`/`VAL`/`CINT`/`CLNG`/`CSNG`/`CDBL`; Zia `Zanna.Core.Convert.ToInt64`/`ToStringInt`/`ToStringDouble`
 
 See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/builtins/`
 for language-specific function lists.
@@ -329,13 +329,13 @@ For code-level documentation, see header comments in source files.
 **Build and run a Zia program:**
 
 ```bash
-viper run program.zia
+zanna run program.zia
 ```
 
 **Build and run a BASIC program:**
 
 ```bash
-viper run program.bas
+zanna run program.bas
 ```
 
 **Run with debugging:**

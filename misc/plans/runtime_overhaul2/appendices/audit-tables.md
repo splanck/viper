@@ -6,16 +6,16 @@ These tables summarize concrete findings from the 2026-07-02 live dump.
 
 | Owner | Function count |
 |---|---:|
-| `Viper.Input.Keyboard` | 113 |
-| `Viper.Graphics3D.Canvas3D` | 113 |
-| `Viper.Input.Key` | 99 |
-| `Viper.Input.Key` | 97 |
-| `Viper.GUI.CodeEditor` | 96 |
-| `Viper.Graphics.Canvas` | 86 |
-| `Viper.Game3D.World3D` | 73 |
-| `Viper.Game2D.SceneDocument` | 72 |
-| `Viper.Graphics.Pixels` | 60 |
-| `Viper.String` | 57 |
+| `Zanna.Input.Keyboard` | 113 |
+| `Zanna.Graphics3D.Canvas3D` | 113 |
+| `Zanna.Input.Key` | 99 |
+| `Zanna.Input.Key` | 97 |
+| `Zanna.GUI.CodeEditor` | 96 |
+| `Zanna.Graphics.Canvas` | 86 |
+| `Zanna.Game3D.World3D` | 73 |
+| `Zanna.Game2D.SceneDocument` | 72 |
+| `Zanna.Graphics.Pixels` | 60 |
+| `Zanna.String` | 57 |
 
 ## Duplicate C-Symbol/Signature Examples
 
@@ -66,61 +66,61 @@ methods.
 
 Representative pairs:
 
-- `Viper.Collections.Ring.OwnsElements` and `SetOwnsElements`.
-- `Viper.GUI.TextInput.Text` and `SetText`.
-- `Viper.GUI.CodeEditor.Text` and `SetText`.
-- `Viper.GUI.Dropdown.Selected` and `SetSelected`.
-- `Viper.GUI.Slider.Value` and `SetValue`.
-- `Viper.GUI.ProgressBar.Value` and `SetValue`.
-- `Viper.Network.WsServer.Subprotocol` and `SetSubprotocol`.
-- `Viper.Graphics3D.Material3D.Color` and `SetColor`.
-- `Viper.Graphics3D.Light3D.Intensity` and `SetIntensity`.
-- `Viper.Graphics3D.SceneNode.Position` and `SetPosition`.
-- `Viper.Graphics3D.PhysicsBody3D.Velocity` and `SetVelocity`.
-- `Viper.Graphics3D.Transform3D.Position` and `SetPosition`.
+- `Zanna.Collections.Ring.OwnsElements` and `SetOwnsElements`.
+- `Zanna.GUI.TextInput.Text` and `SetText`.
+- `Zanna.GUI.CodeEditor.Text` and `SetText`.
+- `Zanna.GUI.Dropdown.Selected` and `SetSelected`.
+- `Zanna.GUI.Slider.Value` and `SetValue`.
+- `Zanna.GUI.ProgressBar.Value` and `SetValue`.
+- `Zanna.Network.WsServer.Subprotocol` and `SetSubprotocol`.
+- `Zanna.Graphics3D.Material3D.Color` and `SetColor`.
+- `Zanna.Graphics3D.Light3D.Intensity` and `SetIntensity`.
+- `Zanna.Graphics3D.SceneNode.Position` and `SetPosition`.
+- `Zanna.Graphics3D.PhysicsBody3D.Velocity` and `SetVelocity`.
+- `Zanna.Graphics3D.Transform3D.Position` and `SetPosition`.
 
 ## Side-Channel APIs
 
 Current count: 16.
 
-- `Viper.Crypto.Tls.Error`.
-- `Viper.System.Exec.LastExitCode`.
-- `Viper.System.Pty.LastError`.
-- `Viper.Zia.SemanticJob.Error`.
-- `Viper.Data.JsonStream.Error`.
-- `Viper.Data.Xml.Error`.
-- `Viper.Data.Yaml.Error`.
-- `Viper.Data.Serialize.Error`.
-- `Viper.Game.UI.HudTable.LastHeaderClick`.
-- `Viper.Game2D.SceneDocument.LastError`.
-- `Viper.Network.SmtpClient.get_LastError`.
-- `Viper.Network.RestClient.LastStatus`.
-- `Viper.Network.RestClient.LastResponse`.
-- `Viper.Network.RestClient.LastOk`.
-- `Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadError`.
-- `Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode`.
+- `Zanna.Crypto.Tls.Error`.
+- `Zanna.System.Exec.LastExitCode`.
+- `Zanna.System.Pty.LastError`.
+- `Zanna.Zia.SemanticJob.Error`.
+- `Zanna.Data.JsonStream.Error`.
+- `Zanna.Data.Xml.Error`.
+- `Zanna.Data.Yaml.Error`.
+- `Zanna.Data.Serialize.Error`.
+- `Zanna.Game.UI.HudTable.LastHeaderClick`.
+- `Zanna.Game2D.SceneDocument.LastError`.
+- `Zanna.Network.SmtpClient.get_LastError`.
+- `Zanna.Network.RestClient.LastStatus`.
+- `Zanna.Network.RestClient.LastResponse`.
+- `Zanna.Network.RestClient.LastOk`.
+- `Zanna.Graphics3D.AssetDiagnostics3D.get_LastLoadError`.
+- `Zanna.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode`.
 
 ## Thin Classes
 
 Zero-member classes:
 
-- `Viper.Zia.SemanticJob.SemanticJobHandle`.
-- `Viper.Zia.ProjectIndex.ProjectIndexHandle`.
+- `Zanna.Zia.SemanticJob.SemanticJobHandle`.
+- `Zanna.Zia.ProjectIndex.ProjectIndexHandle`.
 
 Two-or-fewer-member classes include:
 
-- `Viper.Core.ValueType`.
-- `Viper.Diagnostics`.
-- `Viper.GUI.Container`.
-- `Viper.Assets.Resolver`.
-- `Viper.Workspace.WorkspaceWatcher`.
-- `Viper.Project.Manifest`.
-- `Viper.Crypto.SecureRandom`.
-- `Viper.GUI.Font`.
-- `Viper.Graphics3D.CubeMap3D`.
-- `Viper.Graphics3D.DistanceJoint3D`.
-- `Viper.Graphics3D.RopeJoint3D`.
-- `Viper.Game3D.Quality`.
+- `Zanna.Core.ValueType`.
+- `Zanna.Diagnostics`.
+- `Zanna.GUI.Container`.
+- `Zanna.Assets.Resolver`.
+- `Zanna.Workspace.WorkspaceWatcher`.
+- `Zanna.Project.Manifest`.
+- `Zanna.Crypto.SecureRandom`.
+- `Zanna.GUI.Font`.
+- `Zanna.Graphics3D.CubeMap3D`.
+- `Zanna.Graphics3D.DistanceJoint3D`.
+- `Zanna.Graphics3D.RopeJoint3D`.
+- `Zanna.Game3D.Quality`.
 
 ## Cross-Owner Method Targets
 
@@ -143,23 +143,23 @@ Current count: 210 public functions/methods with arity 6 or higher.
 
 Representative examples:
 
-- `Viper.Math.Mat4.New` with 16 values.
-- `Viper.Math.Mat3.New` with 9 values.
-- `Viper.Graphics3D.Mesh3D.SetBoneWeights` with 10 values.
-- `Viper.Graphics2D.Tilemap.SetAutoTileLo/Hi` with 10 values.
-- `Viper.Graphics3D.Mesh3D.AddVertex` with 9 values.
-- `Viper.Graphics.Sprite.DrawTransformed`.
-- `Viper.Graphics.Canvas.Triangle`, `Bezier`, `BlitRegion`.
-- `Viper.Game.Collision.RectsOverlap`.
-- `Viper.System.Pty.Open`.
-- `Viper.Crypto.Tls.ConnectOptions`.
+- `Zanna.Math.Mat4.New` with 16 values.
+- `Zanna.Math.Mat3.New` with 9 values.
+- `Zanna.Graphics3D.Mesh3D.SetBoneWeights` with 10 values.
+- `Zanna.Graphics2D.Tilemap.SetAutoTileLo/Hi` with 10 values.
+- `Zanna.Graphics3D.Mesh3D.AddVertex` with 9 values.
+- `Zanna.Graphics.Sprite.DrawTransformed`.
+- `Zanna.Graphics.Canvas.Triangle`, `Bezier`, `BlitRegion`.
+- `Zanna.Game.Collision.RectsOverlap`.
+- `Zanna.System.Pty.Open`.
+- `Zanna.Crypto.Tls.ConnectOptions`.
 
 ## Naming Outliers
 
 Non-PascalCase public leaves:
 
-- `Viper.Core.Convert.ToString_Int`.
-- `Viper.Core.Convert.ToString_Double`.
+- `Zanna.Core.Convert.ToString_Int`.
+- `Zanna.Core.Convert.ToString_Double`.
 
 Large acronym/mixed-acronym set: 153 leaves. Not all are wrong, but the policy
 must choose canonical casing before release.

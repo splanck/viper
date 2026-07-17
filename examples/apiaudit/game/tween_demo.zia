@@ -1,12 +1,12 @@
-// tween_demo.zia - Comprehensive API audit for Viper.Game.Tween
+// tween_demo.zia - Comprehensive API audit for Zanna.Game.Tween
 // Tests: New, Start, StartI64, Update, Stop, Reset, Pause, Resume,
 //        Value, ValueI64, IsRunning, IsComplete, IsPaused,
 //        Progress, Elapsed, Duration, LerpI64, Ease
 
 module TweenDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Tween API Audit ===");

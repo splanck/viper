@@ -1,8 +1,8 @@
 // assets.zia - Shared meshes and materials for Ridgebound.
 module assets;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
 bind "./config";
 bind "./terrain";
 

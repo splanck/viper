@@ -45,7 +45,7 @@ Not all errors are the same. Understanding the different types helps you diagnos
 Syntax errors happen when your code violates the rules of the language. It's like writing a sentence with the words in the wrong order — even if your meaning is clear to a human, the compiler can't understand it.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Missing semicolon
 var x = 10
@@ -87,7 +87,7 @@ var y = arr[10];  // Index 10 doesn't exist
 var text: String = null;
 var len = text.Length;  // Can't access properties of null
 
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 var num = Convert.ToInt64("hello");  // "hello" is not a number
 ```
 
@@ -181,7 +181,7 @@ When you see an error, follow this process:
 This is crucial: the line where an error occurs is not always the line where the bug lives.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func processUser(user: User) {
     Say(user.name);  // ERROR: null pointer on line 5
@@ -205,7 +205,7 @@ Now that you understand what errors are and how to read error messages, let's le
 ### Basic Structure
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     // Code that might fail
@@ -233,7 +233,7 @@ The `e` variable in `catch(e)` gives you access to information about the error �
 The `try` block should contain the "risky" code — the operations that might fail. When an error occurs, *nothing after that point in the try block runs*:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 try {
     Say("Step 1");
@@ -260,9 +260,9 @@ Step 2 and Step 3 never execute. The moment division by zero is attempted, execu
 A single try block might have multiple things that could go wrong:
 
 ```rust
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(filename);  // Could fail: file missing
@@ -278,9 +278,9 @@ If *any* of these three operations fails, the catch block runs. A plain
 `catch` handles every runtime error:
 
 ```rust
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(filename);
@@ -297,9 +297,9 @@ typed catches for runtime error kinds such as `DivideByZero`, `Bounds`,
 string error messages:
 
 ```rust
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var content = File.ReadAllText(filename);
@@ -320,9 +320,9 @@ your code so that each risky operation is in its own try-catch is still a good
 approach:
 
 ```rust
-bind File = Viper.IO.File;
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 var filename = "number.txt";
 var content = "";
@@ -429,7 +429,7 @@ func computeAverage(numbers: List[Integer]) -> Integer {
 }
 
 func processScores(data: String) {
-    bind Viper.Terminal;
+    bind Zanna.Terminal;
     var scores = parseScores(data);
     var avg = computeAverage(scores);  // Called with empty array
     Say("Average: " + avg);
@@ -452,7 +452,7 @@ The error appears in `divide`, but the bug is in `computeAverage` (or maybe `pro
 Sometimes you need to run cleanup code no matter what happens — whether the try block succeeds or fails:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var connectionOpen = true;
 
@@ -515,7 +515,7 @@ throw ("Email address is invalid");  // Error: example throw
 Include relevant context in the message so the caller knows what happened:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func loadConfiguration() {
     throw ("missing configuration");
@@ -621,7 +621,7 @@ Handle error cases at the top of functions, then proceed with the main logic:
 
 ```rust
 func processFile(filename: String) {
-    bind File = Viper.IO.File;
+    bind File = Zanna.IO.File;
     // Guard clauses handle all the edge cases
     if filename.Length == 0 {
         throw "Filename cannot be empty";
@@ -661,7 +661,7 @@ Catch an error when:
 - You're at the top level and need to report to the user
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 func queryUser(id: Integer) -> String {
     return "user-" + id;
@@ -713,8 +713,8 @@ Let errors propagate when:
 - It's a programming error (bug) that should crash
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func parseConfig(content: String) -> String {
     return content.Trim();
@@ -755,7 +755,7 @@ Logic errors don't produce error messages — they produce wrong results. Findin
 The simplest and most widely used technique: add print statements to see what's happening inside your code.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func mysteriouslyWrongResult(data: List[Integer]) -> Integer {
     Say("DEBUG: Input data, length = " + data.Length);
@@ -807,7 +807,7 @@ When you have a lot of code and don't know where the bug is, use binary search: 
 5. Repeat, narrowing down each time
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func complexProcessing(input: Data) -> Result {
     var a = stepOne(input);
@@ -858,7 +858,7 @@ func processTransactions(accounts: List[Account], transactions: List[Transaction
 
 // Simplified test
 func testSimple() {
-    bind Viper.Terminal;
+    bind Zanna.Terminal;
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
@@ -879,8 +879,8 @@ Let's look at errors you'll encounter in real programs and how to handle them.
 Networks are inherently unreliable. Connections drop, servers go down, requests time out.
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 func fetchUserData(userId: Integer) -> UserData {
     var maxRetries = 3;
@@ -913,9 +913,9 @@ Key strategies for network errors:
 Users will enter invalid data. Always. Count on it.
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
-bind Parse = Viper.Core.Parse;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Parse = Zanna.Core.Parse;
 
 func getValidAge() -> Integer {
     while true {
@@ -951,8 +951,8 @@ Principles for user input:
 Programs can run out of resources: memory, disk space, file handles, network connections.
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func writeReport(content: String) {
     var tempFile = "report.txt.tmp";
@@ -981,8 +981,8 @@ Resource management tips:
 Programs often depend on files that might not exist:
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func loadConfiguration() -> Config {
     final CONFIG_FILE = "config.json";
@@ -1023,10 +1023,10 @@ Let's put it all together with a program that demonstrates comprehensive error h
 ```rust
 module DataProcessor;
 
-bind File = Viper.IO.File;
-bind Viper.Terminal;
-bind Viper.Time.DateTime as DateTime;
-bind Convert = Viper.Core.Convert;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
+bind Zanna.Time.DateTime as DateTime;
+bind Convert = Zanna.Core.Convert;
 
 final LOG_FILE = "processor.log";
 
@@ -1172,7 +1172,7 @@ This program demonstrates:
 
 ### Zia
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func riskyOperation() {
     throw ("example failure");
@@ -1264,7 +1264,7 @@ func start() {
 Catching everything in one block can hide which operation failed:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func complexOperation(data: String) -> String {
     return data.ToUpper();
@@ -1293,7 +1293,7 @@ func start() {
 Better -- separate the operations so you know which one failed:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func complexOperation(data: String) -> String {
     return data.ToUpper();

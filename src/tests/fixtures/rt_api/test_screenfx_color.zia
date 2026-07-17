@@ -1,12 +1,12 @@
 // test_screenfx_color.zia — ScreenFX.Rgba / ScreenFX.Rgb color constructors (VDOC-267)
 // ScreenFX overlay colors are 0xRRGGBBAA and transition colors are 0x00RRGGBB —
-// both distinct from the canonical Viper.Graphics.Color byte order (0xAARRGGBB).
+// both distinct from the canonical Zanna.Graphics.Color byte order (0xAARRGGBB).
 // The Rgba/Rgb static constructors let callers build the correct encoding in the
 // ScreenFX namespace instead of hand-packing or passing an incompatible Color.
 module TestScreenFXColor;
 
-bind Viper.Terminal;
-bind Viper.Game.ScreenFX as FX;
+bind Zanna.Terminal;
+bind Zanna.Game.ScreenFX as FX;
 
 func start() {
     // Static constructors resolve on the class and return packed i64 colors.

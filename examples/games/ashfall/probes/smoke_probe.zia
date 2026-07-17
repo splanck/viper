@@ -9,9 +9,9 @@
 // =============================================================================
 module smoke_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.IO.Path as Path;
-bind Viper.Collections.Map as Map;
+bind Zanna.Terminal as Terminal;
+bind Zanna.IO.Path as Path;
+bind Zanna.Collections.Map as Map;
 bind "../config" as config;
 bind "../game" as game;
 

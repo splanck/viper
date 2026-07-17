@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Viper Platform Website — style.css
+   Zanna Platform Website — style.css
    Single-file stylesheet with dark/light themes, responsive layout.
    ========================================================================== */
 
@@ -859,7 +859,7 @@ code { font-family: var(--font-mono); font-size: 0.9em; }
   border-bottom: none;
 }
 
-.perf-viper {
+.perf-zanna {
   color: var(--color-primary);
   font-weight: 600;
   background: rgba(42, 161, 152, 0.04);
@@ -1263,7 +1263,7 @@ code { font-family: var(--font-mono); font-size: 0.9em; }
   transition: width 0.6s ease;
 }
 
-.bar-chart-fill.viper { background: var(--color-primary); }
+.bar-chart-fill.zanna { background: var(--color-primary); }
 .bar-chart-fill.c { background: #268bd2; }
 .bar-chart-fill.rust { background: #cb4b16; }
 .bar-chart-fill.python { background: #b58900; }

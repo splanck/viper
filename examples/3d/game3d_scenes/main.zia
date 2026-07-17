@@ -8,17 +8,17 @@
 //   - Behavior3D presets: orbiting + spinning + bobbing entities, no per-frame
 //     entity code in the game at all
 //
-// Run: viper run examples/3d/game3d_scenes/main.zia
+// Run: zanna run examples/3d/game3d_scenes/main.zia
 // Press ENTER on the menu to start; ESC in play returns to the menu.
 // ============================================================================
 
 bind "../../games/lib/gamebase3d";
-bind Viper.Input.Key as Key;
+bind Zanna.Input.Key as Key;
 bind "../../games/lib/iscene3d";
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
 
 // --- Menu scene: title text over an empty world -----------------------------
 

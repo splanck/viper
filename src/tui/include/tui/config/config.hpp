@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the configuration system for Viper's TUI, providing
+// This file declares the configuration system for Zanna's TUI, providing
 // structured types for theme colors, editor settings, and key bindings
 // that can be loaded from an INI-style configuration file.
 //
@@ -36,7 +36,7 @@
 #include "tui/input/keymap.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::config {
+namespace zanna::tui::config {
 
 /// @brief Color palette configuration mapping semantic roles to render styles.
 /// @details Configurable via the [theme] section of the configuration file.
@@ -83,4 +83,4 @@ struct Config {
 /// @return True if the file was successfully opened and parsed; false on I/O errors.
 bool loadFromFile(const std::string &path, Config &out);
 
-} // namespace viper::tui::config
+} // namespace zanna::tui::config

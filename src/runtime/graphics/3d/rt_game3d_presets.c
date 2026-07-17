@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_presets.c
-// Purpose: One-call scene presets for the Viper.Game3D layer — lighting rigs,
+// Purpose: One-call scene presets for the Zanna.Game3D layer — lighting rigs,
 //   material presets, post-FX looks, quality tiers, and primitive prefab spawns.
 //   Split out of rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Links: rt_game3d_internal.h, rt_light3d.h, rt_material3d.h, rt_postfx3d.h

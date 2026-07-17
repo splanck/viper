@@ -1,9 +1,9 @@
-// Viper Web Server - Thread Pool Implementation
+// Zanna Web Server - Thread Pool Implementation
 // Provides a pool of worker threads to handle concurrent connections
 module threadpool;
 
-bind Viper.Threads as Threads;
-bind Viper.Collections as Collections;
+bind Zanna.Threads as Threads;
+bind Zanna.Collections as Collections;
 
 // ============================================================================
 // CONFIGURATION
@@ -16,10 +16,10 @@ final POOL_DEFAULT_WORKER_COUNT = 4;
 // ============================================================================
 
 // The connection queue - used as the monitor object
-var pool_queue: List[Viper.Network.Tcp];
+var pool_queue: List[Zanna.Network.Tcp];
 
 // Worker thread handles for cleanup
-var pool_workers: List[Viper.Threads.Thread];
+var pool_workers: List[Zanna.Threads.Thread];
 
 // Flag to signal shutdown
 var pool_running: Integer;
@@ -33,7 +33,7 @@ var pool_workerCount: Integer;
 
 func pool_workerLoop(arg: Any) {
     while pool_running == 1 {
-        var conn: Viper.Network.Tcp = null;
+        var conn: Zanna.Network.Tcp = null;
 
         // Acquire the queue lock
         Threads.Monitor.Enter(pool_queue);
@@ -65,7 +65,7 @@ func pool_workerLoop(arg: Any) {
 }
 
 // Internal: call the handler - this will be called with the stored function pointer
-func pool_handleConnection(conn: Viper.Network.Tcp) {
+func pool_handleConnection(conn: Zanna.Network.Tcp) {
     // For now, we call handleClient directly since indirect calls through
     // stored function pointers require more lowerer work.
     // The handleClient function is defined in main.zia and merged via bind.
@@ -88,10 +88,10 @@ func pool_init(numWorkers: Integer) {
     }
 
     // Create the connection queue
-    pool_queue = new List[Viper.Network.Tcp]();
+    pool_queue = new List[Zanna.Network.Tcp]();
 
     // Create worker list
-    pool_workers = new List[Viper.Threads.Thread]();
+    pool_workers = new List[Zanna.Threads.Thread]();
 
     // Spawn worker threads
     var i = 0;
@@ -103,7 +103,7 @@ func pool_init(numWorkers: Integer) {
 }
 
 // Submit a connection to be handled by the pool
-func pool_submit(conn: Viper.Network.Tcp) {
+func pool_submit(conn: Zanna.Network.Tcp) {
     Threads.Monitor.Enter(pool_queue);
     pool_queue.add(conn);
     // Signal one waiting worker

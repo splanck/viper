@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 ///          allocator reuse when materialising PX_COPY bundles or evicting live
 ///          ranges.
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 namespace {
 
@@ -280,4 +280,4 @@ Operand Spiller::makeFrameOperand(RegClass cls, int slot) const {
     return makeMemOperand(baseReg, static_cast<int32_t>(offset64));
 }
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

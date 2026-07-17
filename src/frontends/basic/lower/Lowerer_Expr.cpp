@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <utility>
 #include <vector>
@@ -167,7 +167,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                 IlType(IlType::Kind::F64), "rt_arr_f64_get", {access.base, access.index});
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::F64)};
         } else {
-            // Integer/numeric array: use rt_arr_i64_get (all Viper integers are 64-bit)
+            // Integer/numeric array: use rt_arr_i64_get (all Zanna integers are 64-bit)
             lowerer_.requireArrayI64Get();
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::I64), "rt_arr_i64_get", {access.base, access.index});
@@ -392,12 +392,12 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
         }
         const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
         // Prefer runtime builtin externs when the name matches a canonical
-        // runtime descriptor (e.g., "Viper.Terminal.PrintI64"). Otherwise, fall
+        // runtime descriptor (e.g., "Zanna.Terminal.PrintI64"). Otherwise, fall
         // back to user-defined procedure signatures collected from the AST.
         const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
         // If not found and the call is unqualified, try resolving against USING imports.
         // This mirrors semantic resolution where USING imports allow unqualified
-        // calls like SetPosition to bind to Viper.Terminal.SetPosition.
+        // calls like SetPosition to bind to Zanna.Terminal.SetPosition.
         if (!rtSig && calleeKey.find('.') == std::string::npos && !expr.callee.empty()) {
             // Helper to convert canonical namespace to title-case for runtime lookup
             auto titleCaseNs = [](const std::string &ns) -> std::string {
@@ -458,9 +458,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                         break;
                 }
             }
-            // Fallback: try common Viper.* namespaces even without explicit USING
+            // Fallback: try common Zanna.* namespaces even without explicit USING
             if (!rtSig) {
-                static const char *defaultNamespaces[] = {"Viper.Terminal", "Viper.Time"};
+                static const char *defaultNamespaces[] = {"Zanna.Terminal", "Zanna.Time"};
                 for (const char *ns : defaultNamespaces) {
                     std::string candidate = std::string(ns) + "." + expr.callee;
                     if (const auto *sig = il::runtime::findRuntimeSignature(candidate)) {
@@ -527,7 +527,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                 args.push_back(arg.value);
             }
             lowerer_.curLoc = expr.loc;
-            // Emit direct call to the canonical runtime extern (e.g., @Viper.Terminal.PrintI64).
+            // Emit direct call to the canonical runtime extern (e.g., @Zanna.Terminal.PrintI64).
             if (rtSig->retType.kind != IlType::Kind::Void) {
                 const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
                 IlValue res = lowerer_.emitCallRet(rtSig->retType, target, args);

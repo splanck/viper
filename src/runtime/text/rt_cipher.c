@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_cipher.c
-// Purpose: Implements high-level authenticated encryption for Viper.Crypto.Cipher.
+// Purpose: Implements high-level authenticated encryption for Zanna.Crypto.Cipher.
 //          Compatibility mode uses ChaCha20-Poly1305; approved mode uses
 //          AES-256-GCM. Password and raw-key forms each expose AAD-aware,
 //          Result, and Option variants.
@@ -78,7 +78,7 @@ static const uint8_t CIPHER_PW_APPROVED_MAGIC[4] = {'V', 'C', 'A', '1'};
 static const uint8_t CIPHER_KEY_APPROVED_MAGIC[4] = {'V', 'K', 'A', '1'};
 
 // HKDF info string for key derivation
-static const char *HKDF_INFO = "viper-cipher-v1";
+static const char *HKDF_INFO = "zanna-cipher-v1";
 
 typedef void *(*cipher_password_decrypt_fn)(void *ciphertext, rt_string password);
 typedef void *(*cipher_password_aad_decrypt_fn)(void *ciphertext, rt_string password, void *aad);
@@ -579,7 +579,7 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
 }
 
 /// @brief Password-derived authenticated encryption with caller-supplied AAD.
-/// @details Implements `Viper.Crypto.Cipher.EncryptAAD(plaintext, password, aad)`.
+/// @details Implements `Zanna.Crypto.Cipher.EncryptAAD(plaintext, password, aad)`.
 ///          Generates a fresh 16-byte salt, runs PBKDF2-HMAC-SHA256
 ///          (CIPHER_PBKDF2_ITERATIONS rounds) to derive a 32-byte key,
 ///          generates a fresh random-prefix/counter nonce, and produces the wire
@@ -716,7 +716,7 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
 ///          Successful plaintext bytes are returned as `Ok(Bytes)`.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_result(void *ciphertext, rt_string password) {
     return cipher_password_result(rt_cipher_decrypt,
                                   ciphertext,
@@ -730,7 +730,7 @@ void *rt_cipher_decrypt_result(void *ciphertext, rt_string password) {
 ///          arguments, and other decryptor traps into `None`.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt(void *ciphertext, rt_string password) {
     return cipher_password_option(rt_cipher_decrypt, ciphertext, password);
 }
@@ -924,7 +924,7 @@ try_legacy:
 /// @param ciphertext Framed ciphertext produced by rt_cipher_encrypt_aad.
 /// @param password Password string used for key derivation.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *aad) {
     return cipher_password_aad_result(rt_cipher_decrypt_aad,
                                       ciphertext,
@@ -939,7 +939,7 @@ void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *a
 /// @param ciphertext Framed ciphertext produced by rt_cipher_encrypt_aad.
 /// @param password Password string used for key derivation.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     return cipher_password_aad_option(rt_cipher_decrypt_aad, ciphertext, password, aad);
 }
@@ -965,7 +965,7 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
 }
 
 /// @brief Raw-key authenticated encryption with caller-supplied AAD.
-/// @details Implements `Viper.Crypto.Cipher.EncryptWithKeyAAD(plaintext, key, aad)`.
+/// @details Implements `Zanna.Crypto.Cipher.EncryptWithKeyAAD(plaintext, key, aad)`.
 ///          Like rt_cipher_encrypt_aad but uses a 32-byte raw key directly
 ///          (no PBKDF2 derivation, no salt). Output uses CIPHER_KEY_MAGIC
 ///          so the format-detection guard distinguishes it from password-
@@ -1085,7 +1085,7 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
 ///          captures traps such as invalid key length or malformed ciphertext.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param key_bytes Bytes object containing exactly 32 bytes.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key_bytes) {
     return cipher_key_result(rt_cipher_decrypt_with_key,
                              ciphertext,
@@ -1099,7 +1099,7 @@ void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key_bytes) {
 ///          ciphertext, and other decryptor traps into `None`.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param key_bytes Bytes object containing exactly 32 bytes.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_with_key(void *ciphertext, void *key_bytes) {
     return cipher_key_option(rt_cipher_decrypt_with_key, ciphertext, key_bytes);
 }
@@ -1230,7 +1230,7 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
 /// @param ciphertext Framed ciphertext from rt_cipher_encrypt_with_key_aad.
 /// @param key_bytes Bytes object containing exactly 32 bytes.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key_bytes, void *aad) {
     return cipher_key_aad_result(rt_cipher_decrypt_with_key_aad,
                                  ciphertext,
@@ -1246,7 +1246,7 @@ void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key_bytes, v
 /// @param ciphertext Framed ciphertext from rt_cipher_encrypt_with_key_aad.
 /// @param key_bytes Bytes object containing exactly 32 bytes.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_cipher_try_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aad) {
     return cipher_key_aad_option(rt_cipher_decrypt_with_key_aad, ciphertext, key_bytes, aad);
 }

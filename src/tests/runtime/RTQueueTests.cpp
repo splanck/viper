@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTQueueTests.cpp
-// Purpose: Comprehensive tests for Viper.Collections.Queue FIFO collection.
+// Purpose: Comprehensive tests for Zanna.Collections.Queue FIFO collection.
 //
 //===----------------------------------------------------------------------===//
 

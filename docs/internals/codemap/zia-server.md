@@ -32,7 +32,7 @@ shared files.
 
 ```text
 zia-server → zia_server_lib → fe_zia, zia_editor_services, il_full, il_transform
-                             → viper_support (diagnostics, source manager)
+                             → zanna_support (diagnostics, source manager)
                              → il_runtime (RuntimeClasses, RuntimeRegistry)
 ```
 

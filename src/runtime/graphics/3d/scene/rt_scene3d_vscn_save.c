@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_box.h"
 #include "rt_canvas3d.h"
@@ -1281,4 +1281,4 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     return result;
 }
 
-#endif // VIPER_ENABLE_GRAPHICS
+#endif // ZANNA_ENABLE_GRAPHICS

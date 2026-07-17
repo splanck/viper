@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -259,7 +259,7 @@ bool rotateLoop(Function &function, const Loop &loop) {
     for (size_t bi = 0; bi < function.blocks.size(); ++bi) {
         for (size_t ii = 0; ii < function.blocks[bi].instructions.size(); ++ii) {
             auto &instr = function.blocks[bi].instructions[ii];
-            if (!viper::il::isTerminator(instr))
+            if (!zanna::il::isTerminator(instr))
                 continue;
             for (size_t li = 0; li < instr.labels.size(); ++li) {
                 if (instr.labels[li] == headerLabel) {
@@ -349,7 +349,7 @@ bool rotateLoop(Function &function, const Loop &loop) {
         if (bb.label == headerLabel || bb.instructions.empty())
             continue;
         const Instr &term = bb.instructions.back();
-        if (!viper::il::isTerminator(term))
+        if (!zanna::il::isTerminator(term))
             continue;
         for (const auto &lbl : term.labels) {
             if (lbl == bodySuccLabel)
@@ -357,7 +357,7 @@ bool rotateLoop(Function &function, const Loop &loop) {
         }
     }
 
-    unsigned nextId = viper::il::nextTempId(function);
+    unsigned nextId = zanna::il::nextTempId(function);
 
     // === Step 1: Turn the header into a guard block ===
     // The guard block contains the header's instructions with the original entry
@@ -458,7 +458,7 @@ bool rotateLoop(Function &function, const Loop &loop) {
         // original header param ids, so it is untouched. The dead header keeps
         // its internal references (harmless; SimplifyCFG removes it).
         for (const auto &kv : oldToNew)
-            viper::il::replaceAllUses(function, kv.first, Value::temp(kv.second));
+            zanna::il::replaceAllUses(function, kv.first, Value::temp(kv.second));
 
         // Append incoming values for the new params on the guard and latch edges
         // to the body. Map any header-param-valued arg through oldToNew so the

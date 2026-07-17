@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -183,7 +183,7 @@ std::string_view IfConvert::id() const {
 }
 
 PreservedAnalyses IfConvert::run(Function &function, AnalysisManager & /*analysis*/) {
-    if (std::getenv("VIPER_NO_IF_CONVERT") != nullptr)
+    if (std::getenv("ZANNA_NO_IF_CONVERT") != nullptr)
         return PreservedAnalyses::all();
 
     bool changed = false;
@@ -251,7 +251,7 @@ PreservedAnalyses IfConvert::run(Function &function, AnalysisManager & /*analysi
                     continue;
 
                 const Value cond = term->operands[0];
-                unsigned nextId = viper::il::nextTempId(function);
+                unsigned nextId = zanna::il::nextTempId(function);
                 std::vector<Instr> selects;
                 std::vector<Value> joinArgs;
                 joinArgs.reserve(target.params.size());
@@ -371,7 +371,7 @@ PreservedAnalyses IfConvert::run(Function &function, AnalysisManager & /*analysi
 
             // --- Commit the conversion ---
             const Value cond = term->operands[0];
-            unsigned nextId = viper::il::nextTempId(function);
+            unsigned nextId = zanna::il::nextTempId(function);
 
             std::vector<Instr> hoisted;
             const auto hoistArm = [&](BasicBlock *arm) {

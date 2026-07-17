@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Linux Platform Backend
+// ZannaAUD Linux Platform Backend
 //
 // Implements audio output using ALSA (Advanced Linux Sound Architecture).
 // ALSA is the standard low-level audio API on Linux, available on all
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Linux ALSA audio backend for ViperAUD.
+/// @brief Linux ALSA audio backend for ZannaAUD.
 
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
@@ -73,7 +73,7 @@ static void alsa_pcm_unlock(vaud_linux_data *plat) {
         pthread_mutex_unlock(&plat->pcm_mutex);
 }
 
-/// @brief Apply explicit ALSA hardware and software parameters for ViperAUD output.
+/// @brief Apply explicit ALSA hardware and software parameters for ZannaAUD output.
 /// @details This replaces `snd_pcm_set_params()` so the backend can control the period size,
 ///          buffer size, start threshold, and wakeup granularity independently. The requested
 ///          format remains stereo 44.1 kHz signed 16-bit PCM; if ALSA cannot provide that exact

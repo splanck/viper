@@ -31,11 +31,11 @@
 // ============================================================================
 module save_slot;
 
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Text.Fmt as Fmt;
 bind "../season/season_model";
 bind "../season/persistence";
 bind "../season/demo/default_franchise";

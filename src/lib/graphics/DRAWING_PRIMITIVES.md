@@ -1,4 +1,4 @@
-# ViperGFX Drawing Primitives Implementation
+# ZannaGFX Drawing Primitives Implementation
 
 **Status:** ✅ **COMPLETE AND TESTED**
 **File:** `src/vgfx_draw.c` (403 lines)
@@ -438,7 +438,7 @@ Status: ✅ All shapes render correctly
 
 ## Higher-Level Primitives (in rt_graphics.c / rt_pixels.c)
 
-These richer primitives are implemented in the Viper runtime layer above vgfx and use the
+These richer primitives are implemented in the Zanna runtime layer above vgfx and use the
 framebuffer direct-access API (`vgfx_get_framebuffer`).
 
 ### 4. Thick Line (Parallelogram Scanline Fill + Round Endcaps)
@@ -538,4 +538,4 @@ The drawing primitives implementation is **production-ready** and provides:
 ✅ **Maintainability:** Clean callback-based architecture
 ✅ **Testability:** Thoroughly tested with visual verification
 
-All primitives follow the specification in `gfxlib.md` and integrate seamlessly with the ViperGFX core.
+All primitives follow the specification in `gfxlib.md` and integrate seamlessly with the ZannaGFX core.

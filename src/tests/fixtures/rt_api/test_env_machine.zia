@@ -1,21 +1,21 @@
 module TestEnvMachine;
-bind Viper.System.Environment;
-bind Viper.System.Machine;
-bind Viper.IO.Dir;
-bind Viper.Terminal;
+bind Zanna.System.Environment;
+bind Zanna.System.Machine;
+bind Zanna.IO.Dir;
+bind Zanna.Terminal;
 
 func start() {
-    Say(Viper.System.Machine.get_Os());
-    Say(Viper.System.Machine.get_OsVersion());
-    Say(Viper.System.Machine.get_User());
-    Say(Viper.System.Machine.get_Home());
-    SayInt(Viper.System.Machine.get_Cores());
-    SayInt(Viper.System.Machine.get_Cores());
-    SayInt(Viper.System.Machine.get_PageSize());
-    Say(Viper.System.Machine.get_Arch());
-    Say(Viper.System.Machine.get_Os());
-    Say(Viper.System.Machine.get_Endian());
-    SayInt(Viper.System.Machine.get_PointerSize());
-    Say(Viper.IO.Dir.Current());
+    Say(Zanna.System.Machine.get_Os());
+    Say(Zanna.System.Machine.get_OsVersion());
+    Say(Zanna.System.Machine.get_User());
+    Say(Zanna.System.Machine.get_Home());
+    SayInt(Zanna.System.Machine.get_Cores());
+    SayInt(Zanna.System.Machine.get_Cores());
+    SayInt(Zanna.System.Machine.get_PageSize());
+    Say(Zanna.System.Machine.get_Arch());
+    Say(Zanna.System.Machine.get_Os());
+    Say(Zanna.System.Machine.get_Endian());
+    SayInt(Zanna.System.Machine.get_PointerSize());
+    Say(Zanna.IO.Dir.Current());
     Say("done");
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -189,7 +189,7 @@ std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, Lit
     }
 }
 
-#ifdef VIPER_CONSTFOLD_ASSERTS
+#ifdef ZANNA_CONSTFOLD_ASSERTS
 /// @brief Compare two constants for equality across all literal kinds.
 /// @details Used exclusively in debug builds to validate that folding helpers
 ///          produce stable results across alternative code paths.
@@ -288,7 +288,7 @@ std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr) {
         return std::nullopt;
 
     auto folded = dispatch_fold(*kind, binary->op, *lhs, *rhs);
-#ifdef VIPER_CONSTFOLD_ASSERTS
+#ifdef ZANNA_CONSTFOLD_ASSERTS
     if (folded) {
         if (*kind == FoldKind::Arith &&
             (binary->op == AST::BinaryExpr::Op::Add || binary->op == AST::BinaryExpr::Op::Mul)) {

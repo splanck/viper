@@ -19,15 +19,15 @@ In scope:
 
 - `examples/games/3dbowling` gameplay, presentation, assets, save migration,
   documentation, and standalone probes.
-- Demo-side use of already-published Viper APIs.
+- Demo-side use of already-published Zanna APIs.
 - Keyboard and gamepad controls on macOS, Windows, and Linux.
-- Existing-binary validation with `viper check` and demo probes.
+- Existing-binary validation with `zanna check` and demo probes.
 
 Out of scope:
 
-- Viper compiler/runtime/API changes, runtime C ABI changes, and IL changes.
+- Zanna compiler/runtime/API changes, runtime C ABI changes, and IL changes.
 - CMake, CTest, workflow, or package-format changes.
-- A Viper rebuild or execution of the Viper CTest suite.
+- A Zanna rebuild or execution of the Zanna CTest suite.
 - Network services, downloaded content, or external dependencies.
 
 ## 3. Feature toggles
@@ -209,8 +209,8 @@ next normal save.
 33. Camera aspect derives from current canvas width/height. Resize and compact
     layouts update without reconstructing the world. Trail sampling, menu
     animation, bowler motion, and oil wear are timestep-based and capped.
-34. Runtime defects NL-VIPER-001 through NL-VIPER-003 remain isolated under
-    `known_viper_issues`. The shipping demo uses stable opaque/geometry-based
+34. Runtime defects NL-ZANNA-001 through NL-ZANNA-003 remain isolated under
+    `known_zanna_issues`. The shipping demo uses stable opaque/geometry-based
     fallbacks and must not depend on those defects being fixed.
 
 ## 6. Error handling
@@ -227,7 +227,7 @@ next normal save.
 
 ## 7. Tests
 
-All tests are standalone Zia probes run through the existing Viper binary.
+All tests are standalone Zia probes run through the existing Zanna binary.
 They are not registered with CTest.
 
 ### Positive

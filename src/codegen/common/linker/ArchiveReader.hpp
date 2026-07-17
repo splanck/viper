@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// A member within an archive.
 struct ArchiveMember {
@@ -70,4 +70,4 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err);
 /// Return a non-copying view of a specific member's raw bytes.
 ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

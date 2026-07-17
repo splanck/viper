@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_scene_editor.h
@@ -22,21 +22,21 @@ extern "C" {
 
 void *rt_game_scene_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height);
 void *rt_game_scene_load_json(rt_string text);
-/// @brief Load a SceneDocument from JSON text and return a Viper.Result.
+/// @brief Load a SceneDocument from JSON text and return a Zanna.Result.
 /// @details Returns `Ok(SceneDocument)` when the document has no retained error
 ///          diagnostics and `Err(message)` when JSON/schema loading records an
 ///          error. The compatibility rt_game_scene_load_json() API still
 ///          returns diagnostic documents for callers that need full records.
 /// @param text Scene JSON text.
-/// @return Opaque Viper.Result object containing a SceneDocument or error string.
+/// @return Opaque Zanna.Result object containing a SceneDocument or error string.
 void *rt_game_scene_load_json_result(rt_string text);
 void *rt_game_scene_load_file(rt_string path);
-/// @brief Load a SceneDocument from a file and return a Viper.Result.
+/// @brief Load a SceneDocument from a file and return a Zanna.Result.
 /// @details Returns `Ok(SceneDocument)` when the file loads without retained
 ///          error diagnostics and `Err(message)` when the file is missing,
 ///          oversized, malformed, or schema-invalid.
 /// @param path Scene file path.
-/// @return Opaque Viper.Result object containing a SceneDocument or error string.
+/// @return Opaque Zanna.Result object containing a SceneDocument or error string.
 void *rt_game_scene_load_file_result(rt_string path);
 rt_string rt_game_scene_to_json(void *scene);
 int8_t rt_game_scene_save_file(void *scene, rt_string path);
@@ -96,7 +96,7 @@ int64_t rt_game_scene_find_object(void *scene, rt_string id);
 ///          `None` when absent, avoiding the legacy `-1` sentinel.
 /// @param scene SceneDocument handle.
 /// @param id Object id to search for.
-/// @return Opaque Viper.Option containing the object index, or None.
+/// @return Opaque Zanna.Option containing the object index, or None.
 void *rt_game_scene_find_object_option(void *scene, rt_string id);
 void rt_game_scene_move_object(void *scene, int64_t from, int64_t to);
 

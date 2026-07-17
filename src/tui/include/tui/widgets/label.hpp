@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Label widget for Viper's TUI framework.
+// This file declares the Label widget for Zanna's TUI framework.
 // Label is a simple read-only text display widget that renders a single
 // string using the theme's normal style.
 //
@@ -30,7 +30,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Simple read-only text display widget.
 /// @details Renders a single line of text at the top-left of its layout rectangle
@@ -51,4 +51,4 @@ class Label : public ui::Widget {
     const style::Theme &theme_;
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

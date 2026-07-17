@@ -1,12 +1,12 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
 #
 # File: CMakeLists.txt
-# Purpose: Configure Viper's cross-platform build, generated metadata, and tests.
+# Purpose: Configure Zanna's cross-platform build, generated metadata, and tests.
 #
 # Key invariants: Build identity is canonical and platform capabilities are explicit.
 #
@@ -24,29 +24,29 @@ endif()
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ---- Begin: Viper version wiring (SSOT + snapshots) ----
+# ---- Begin: Zanna version wiring (SSOT + snapshots) ----
 # Read SSOT files from repo root
-file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"     VIPER_VERSION_STR)
-string(STRIP "${VIPER_VERSION_STR}"         VIPER_VERSION_STR)
-file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/IL_VERSION"  VIPER_IL_VERSION_STR)
-string(STRIP "${VIPER_IL_VERSION_STR}"      VIPER_IL_VERSION_STR)
+file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"     ZANNA_VERSION_STR)
+string(STRIP "${ZANNA_VERSION_STR}"         ZANNA_VERSION_STR)
+file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/IL_VERSION"  ZANNA_IL_VERSION_STR)
+string(STRIP "${ZANNA_IL_VERSION_STR}"      ZANNA_IL_VERSION_STR)
 
 # Extract numeric MAJOR.MINOR.PATCH for CMake's project() VERSION
-string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" VIPER_VERSION_MAJOR "${VIPER_VERSION_STR}")
-string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" VIPER_VERSION_MINOR "${VIPER_VERSION_STR}")
-string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\3" VIPER_VERSION_PATCH "${VIPER_VERSION_STR}")
-set(VIPER_SEMVER_NUM "${VIPER_VERSION_MAJOR}.${VIPER_VERSION_MINOR}.${VIPER_VERSION_PATCH}")
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" ZANNA_VERSION_MAJOR "${ZANNA_VERSION_STR}")
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" ZANNA_VERSION_MINOR "${ZANNA_VERSION_STR}")
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\3" ZANNA_VERSION_PATCH "${ZANNA_VERSION_STR}")
+set(ZANNA_SEMVER_NUM "${ZANNA_VERSION_MAJOR}.${ZANNA_VERSION_MINOR}.${ZANNA_VERSION_PATCH}")
 
 # Compute snapshot/source identity from git (empty/unknown if unavailable).
 # Source archives and hermetic release builders can provide the immutable
 # identity explicitly without requiring a .git directory.
 find_package(Git QUIET)
-set(VIPER_SNAPSHOT_STR "")
-set(VIPER_SOURCE_COMMIT "" CACHE STRING
-    "Source commit embedded in Viper build metadata (auto-detected when empty)")
-set(VIPER_SOURCE_STATE "" CACHE STRING
+set(ZANNA_SNAPSHOT_STR "")
+set(ZANNA_SOURCE_COMMIT "" CACHE STRING
+    "Source commit embedded in Zanna build metadata (auto-detected when empty)")
+set(ZANNA_SOURCE_STATE "" CACHE STRING
     "Source tree state embedded in build metadata: clean, dirty, or unknown")
-mark_as_advanced(VIPER_SOURCE_COMMIT VIPER_SOURCE_STATE)
+mark_as_advanced(ZANNA_SOURCE_COMMIT ZANNA_SOURCE_STATE)
 if(GIT_FOUND)
   execute_process(
     COMMAND ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --long --dirty
@@ -56,9 +56,9 @@ if(GIT_FOUND)
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
   if(_git_r EQUAL 0)
-    string(REGEX REPLACE "^v" "" VIPER_SNAPSHOT_STR "${_git_out}")  # drop leading 'v'
+    string(REGEX REPLACE "^v" "" ZANNA_SNAPSHOT_STR "${_git_out}")  # drop leading 'v'
   endif()
-  if(VIPER_SOURCE_COMMIT STREQUAL "")
+  if(ZANNA_SOURCE_COMMIT STREQUAL "")
     execute_process(
       COMMAND ${GIT_EXECUTABLE} rev-parse --verify HEAD
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -67,10 +67,10 @@ if(GIT_FOUND)
       OUTPUT_STRIP_TRAILING_WHITESPACE
     )
     if(_git_commit_r EQUAL 0)
-      string(TOLOWER "${_git_commit_out}" VIPER_SOURCE_COMMIT)
+      string(TOLOWER "${_git_commit_out}" ZANNA_SOURCE_COMMIT)
     endif()
   endif()
-  if(VIPER_SOURCE_STATE STREQUAL "")
+  if(ZANNA_SOURCE_STATE STREQUAL "")
     execute_process(
       COMMAND ${GIT_EXECUTABLE} status --porcelain --untracked-files=normal
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -80,30 +80,30 @@ if(GIT_FOUND)
     )
     if(_git_status_r EQUAL 0)
       if(_git_status_out STREQUAL "")
-        set(VIPER_SOURCE_STATE "clean")
+        set(ZANNA_SOURCE_STATE "clean")
       else()
-        set(VIPER_SOURCE_STATE "dirty")
+        set(ZANNA_SOURCE_STATE "dirty")
       endif()
     endif()
   endif()
 endif()
-if(VIPER_SOURCE_STATE STREQUAL "")
-  set(VIPER_SOURCE_STATE "unknown")
+if(ZANNA_SOURCE_STATE STREQUAL "")
+  set(ZANNA_SOURCE_STATE "unknown")
 endif()
-string(LENGTH "${VIPER_SOURCE_COMMIT}" _viper_source_commit_length)
-if(NOT VIPER_SOURCE_COMMIT STREQUAL "" AND
-   (NOT VIPER_SOURCE_COMMIT MATCHES "^[0-9a-f]+$" OR
-    _viper_source_commit_length LESS 7 OR _viper_source_commit_length GREATER 64))
+string(LENGTH "${ZANNA_SOURCE_COMMIT}" _zanna_source_commit_length)
+if(NOT ZANNA_SOURCE_COMMIT STREQUAL "" AND
+   (NOT ZANNA_SOURCE_COMMIT MATCHES "^[0-9a-f]+$" OR
+    _zanna_source_commit_length LESS 7 OR _zanna_source_commit_length GREATER 64))
   message(FATAL_ERROR
-      "VIPER_SOURCE_COMMIT must be 7-64 lowercase hexadecimal characters")
+      "ZANNA_SOURCE_COMMIT must be 7-64 lowercase hexadecimal characters")
 endif()
-if(NOT VIPER_SOURCE_STATE MATCHES "^(clean|dirty|unknown)$")
-  message(FATAL_ERROR "VIPER_SOURCE_STATE must be clean, dirty, or unknown")
+if(NOT ZANNA_SOURCE_STATE MATCHES "^(clean|dirty|unknown)$")
+  message(FATAL_ERROR "ZANNA_SOURCE_STATE must be clean, dirty, or unknown")
 endif()
-# ---- End: Viper version wiring ----
-project(Viper LANGUAGES CXX VERSION ${VIPER_SEMVER_NUM})
+# ---- End: Zanna version wiring ----
+project(Zanna LANGUAGES CXX VERSION ${ZANNA_SEMVER_NUM})
 enable_language(C)
-# Enable Objective-C for macOS (needed by ViperGFX)
+# Enable Objective-C for macOS (needed by ZannaGFX)
 if(APPLE)
     enable_language(OBJC)
 endif()
@@ -112,33 +112,33 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 # Runtime namespace transition flag: dual-publish legacy rt_* aliases alongside
-# canonical Viper.* names. Default ON to preserve compatibility while frontends
-# and examples migrate to emitting canonical Viper.* names. Users can re-enable
-# legacy aliases explicitly via -DVIPER_RUNTIME_NS_DUAL=ON when loading older IL.
-option(VIPER_RUNTIME_NS_DUAL "Publish legacy rt_* runtime aliases alongside Viper.*" ON)
+# canonical Zanna.* names. Default ON to preserve compatibility while frontends
+# and examples migrate to emitting canonical Zanna.* names. Users can re-enable
+# legacy aliases explicitly via -DZANNA_RUNTIME_NS_DUAL=ON when loading older IL.
+option(ZANNA_RUNTIME_NS_DUAL "Publish legacy rt_* runtime aliases alongside Zanna.*" ON)
 
 # Compute numeric define for headers and C++ sources (1/0)
-if(VIPER_RUNTIME_NS_DUAL)
-  set(VIPER_RUNTIME_NS_DUAL_DEFINE 1)
+if(ZANNA_RUNTIME_NS_DUAL)
+  set(ZANNA_RUNTIME_NS_DUAL_DEFINE 1)
 else()
-  set(VIPER_RUNTIME_NS_DUAL_DEFINE 0)
+  set(ZANNA_RUNTIME_NS_DUAL_DEFINE 0)
 endif()
 
 # Emit the generated version header
 file(MAKE_DIRECTORY
-  "${CMAKE_BINARY_DIR}/generated/viper"
-  "${CMAKE_BINARY_DIR}/generated/viper/platform"
-  "${CMAKE_BINARY_DIR}/generated/viper/runtime"
+  "${CMAKE_BINARY_DIR}/generated/zanna"
+  "${CMAKE_BINARY_DIR}/generated/zanna/platform"
+  "${CMAKE_BINARY_DIR}/generated/zanna/runtime"
 )
 configure_file(
-  "${CMAKE_SOURCE_DIR}/include/viper/version.hpp.in"
-  "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
+  "${CMAKE_SOURCE_DIR}/include/zanna/version.hpp.in"
+  "${CMAKE_BINARY_DIR}/generated/zanna/version.hpp"
   @ONLY
 )
-install(FILES "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper)
+install(FILES "${CMAKE_BINARY_DIR}/generated/zanna/version.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna)
 
-function(viper_require_feature_mode var_name)
+function(zanna_require_feature_mode var_name)
   if(NOT DEFINED ${var_name})
     message(FATAL_ERROR "Required feature mode variable '${var_name}' is not defined")
   endif()
@@ -153,54 +153,54 @@ endfunction()
 
 # No external scripting dependencies required (Python removed).
 
-option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
-option(VIPER_INSTALL_VIPERIDE "Build and install ViperIDE with toolchain installers" ON)
-set(VIPER_IDE_ARCH "" CACHE STRING
-    "ViperIDE native target architecture: x64 or arm64 (empty selects host architecture)")
-set_property(CACHE VIPER_IDE_ARCH PROPERTY STRINGS "" x64 arm64)
-option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
-option(VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
+option(ZANNA_INSTALL_TUI "Install TUI apps/libraries" OFF)
+option(ZANNA_INSTALL_ZANNAIDE "Build and install ZannaIDE with toolchain installers" ON)
+set(ZANNA_IDE_ARCH "" CACHE STRING
+    "ZannaIDE native target architecture: x64 or arm64 (empty selects host architecture)")
+set_property(CACHE ZANNA_IDE_ARCH PROPERTY STRINGS "" x64 arm64)
+option(ZANNA_BUILD_TESTING "Enable CTest-based tests" ON)
+option(ZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
        "Register one CTest per BASIC-to-IL golden case in addition to the batch test" OFF)
-set(VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS "8" CACHE STRING
+set(ZANNA_BASIC_TO_IL_GOLDEN_BATCH_SHARDS "8" CACHE STRING
     "Number of CTest shards used for the batched BASIC-to-IL golden suite")
-option(VIPER_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
-option(VIPER_INSTALLER_ENABLE_TEST_HOOKS
+option(ZANNA_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
+option(ZANNA_INSTALLER_ENABLE_TEST_HOOKS
        "Enable destructive Windows installer fault-injection hooks (test builds only)" OFF)
-mark_as_advanced(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
-option(VIPER_BUILD_VSCODE_VSIX "Build and install the packaged Zia VS Code extension" OFF)
-option(VIPER_INSTALL_MSVC_RUNTIME
+mark_as_advanced(ZANNA_INSTALLER_ENABLE_TEST_HOOKS)
+option(ZANNA_BUILD_VSCODE_VSIX "Build and install the packaged Zia VS Code extension" OFF)
+option(ZANNA_INSTALL_MSVC_RUNTIME
        "Install the app-local MSVC runtime DLLs required by the Windows toolchain"
        ON)
-option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
-option(VIPER_VM_TAILCALL "Enable tailcall" ON)
-option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
-set(VIPER_GRAPHICS_MODE "AUTO" CACHE STRING
+option(ZANNA_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
+option(ZANNA_VM_TAILCALL "Enable tailcall" ON)
+option(ZANNA_VM_OPCOUNTS "Enable op counters" ON)
+set(ZANNA_GRAPHICS_MODE "AUTO" CACHE STRING
     "Graphics capability mode: AUTO, REQUIRE, or OFF")
-set(VIPER_GRAPHICS_BACKEND "AUTO" CACHE STRING
+set(ZANNA_GRAPHICS_BACKEND "AUTO" CACHE STRING
     "Graphics backend: AUTO, NATIVE, X11, or HEADLESS")
-set(VIPER_AUDIO_MODE "AUTO" CACHE STRING
+set(ZANNA_AUDIO_MODE "AUTO" CACHE STRING
     "Audio capability mode: AUTO, REQUIRE, or OFF")
-set_property(CACHE VIPER_GRAPHICS_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
-set_property(CACHE VIPER_GRAPHICS_BACKEND PROPERTY STRINGS AUTO NATIVE X11 HEADLESS)
-set_property(CACHE VIPER_AUDIO_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
-viper_require_feature_mode(VIPER_GRAPHICS_MODE)
-viper_require_feature_mode(VIPER_AUDIO_MODE)
-string(TOUPPER "${VIPER_GRAPHICS_BACKEND}" VIPER_GRAPHICS_BACKEND)
-if(NOT VIPER_GRAPHICS_BACKEND STREQUAL "AUTO" AND
-   NOT VIPER_GRAPHICS_BACKEND STREQUAL "NATIVE" AND
-   NOT VIPER_GRAPHICS_BACKEND STREQUAL "X11" AND
-   NOT VIPER_GRAPHICS_BACKEND STREQUAL "HEADLESS")
+set_property(CACHE ZANNA_GRAPHICS_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
+set_property(CACHE ZANNA_GRAPHICS_BACKEND PROPERTY STRINGS AUTO NATIVE X11 HEADLESS)
+set_property(CACHE ZANNA_AUDIO_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
+zanna_require_feature_mode(ZANNA_GRAPHICS_MODE)
+zanna_require_feature_mode(ZANNA_AUDIO_MODE)
+string(TOUPPER "${ZANNA_GRAPHICS_BACKEND}" ZANNA_GRAPHICS_BACKEND)
+if(NOT ZANNA_GRAPHICS_BACKEND STREQUAL "AUTO" AND
+   NOT ZANNA_GRAPHICS_BACKEND STREQUAL "NATIVE" AND
+   NOT ZANNA_GRAPHICS_BACKEND STREQUAL "X11" AND
+   NOT ZANNA_GRAPHICS_BACKEND STREQUAL "HEADLESS")
   message(FATAL_ERROR
-    "VIPER_GRAPHICS_BACKEND must be AUTO, NATIVE, X11, or HEADLESS (got '${VIPER_GRAPHICS_BACKEND}')")
+    "ZANNA_GRAPHICS_BACKEND must be AUTO, NATIVE, X11, or HEADLESS (got '${ZANNA_GRAPHICS_BACKEND}')")
 endif()
-set(VIPER_GRAPHICS_BACKEND "${VIPER_GRAPHICS_BACKEND}" CACHE STRING "" FORCE)
+set(ZANNA_GRAPHICS_BACKEND "${ZANNA_GRAPHICS_BACKEND}" CACHE STRING "" FORCE)
 
 # A Windows toolchain installer must run on a clean machine that has never had
 # Visual Studio or another VC++ application installed. Keep the SDK libraries
 # and executable targets on CMake's consistent dynamic-runtime model, and stage
-# the compiler-provided redistributable DLLs beside bin/viper.exe. The package
+# the compiler-provided redistributable DLLs beside bin/zanna.exe. The package
 # builder independently verifies that every imported MSVC runtime is present.
-if(WIN32 AND MSVC AND VIPER_INSTALL_MSVC_RUNTIME)
+if(WIN32 AND MSVC AND ZANNA_INSTALL_MSVC_RUNTIME)
   set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
   include(InstallRequiredSystemLibraries)
 endif()
@@ -230,13 +230,13 @@ option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 option(IL_SANITIZE_THREAD "Enable thread sanitizer (mutually exclusive with ASAN)" OFF)
-option(VIPER_ENABLE_COVERAGE "Enable Clang source-based coverage instrumentation" OFF)
-option(VIPER_FAST_DEBUG
-       "Use light optimization and reduced STL checking for Debug builds of Viper targets"
+option(ZANNA_ENABLE_COVERAGE "Enable Clang source-based coverage instrumentation" OFF)
+option(ZANNA_FAST_DEBUG
+       "Use light optimization and reduced STL checking for Debug builds of Zanna targets"
        OFF)
 
-if(VIPER_ENABLE_COVERAGE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  message(FATAL_ERROR "VIPER_ENABLE_COVERAGE requires Clang or AppleClang")
+if(ZANNA_ENABLE_COVERAGE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  message(FATAL_ERROR "ZANNA_ENABLE_COVERAGE requires Clang or AppleClang")
 endif()
 
 set(IL_COMPILE_FLAGS)
@@ -245,7 +245,7 @@ set(IL_LINK_FLAGS)
 if(MSVC)
   # Global MSVC flags: synchronous PDB writes (prevents parallel build races)
   # and UTF-8 source encoding. These must apply to ALL targets including
-  # sub-libraries that don't link viper_common_opts.
+  # sub-libraries that don't link zanna_common_opts.
   add_compile_options(/FS /utf-8)
   add_compile_options($<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>)
 
@@ -277,7 +277,7 @@ if(MSVC)
       -Wno-overloaded-virtual
     )
   endif()
-  if(VIPER_BUILD_TESTING)
+  if(ZANNA_BUILD_TESTING)
     list(APPEND IL_COMPILE_FLAGS
       /wd4189  # local variable initialized but not referenced
       /wd4505  # unreferenced local function
@@ -301,7 +301,7 @@ else()
   list(APPEND IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
 
   # AArch64 outline atomics introduce libgcc.a helper references such as
-  # __aarch64_ldadd* into static archives. Viper's native linker does not pull
+  # __aarch64_ldadd* into static archives. Zanna's native linker does not pull
   # compiler runtime archive members, so keep atomics inline for portable
   # self-contained archives.
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$" AND
@@ -339,7 +339,7 @@ else()
       list(APPEND IL_COMPILE_FLAGS -fsanitize=thread)
       list(APPEND IL_LINK_FLAGS -fsanitize=thread)
     endif()
-    if(VIPER_ENABLE_COVERAGE)
+    if(ZANNA_ENABLE_COVERAGE)
       list(APPEND IL_COMPILE_FLAGS -fprofile-instr-generate -fcoverage-mapping)
       list(APPEND IL_LINK_FLAGS -fprofile-instr-generate)
     endif()
@@ -361,7 +361,7 @@ else()
   endif()
 
   # Test code often has variables/functions/types used only in assertions (compiled out in release builds)
-  if(VIPER_BUILD_TESTING)
+  if(ZANNA_BUILD_TESTING)
     list(APPEND IL_COMPILE_FLAGS -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-lambda-capture -Wno-unused-local-typedef)
   endif()
 
@@ -374,7 +374,7 @@ else()
   endif()
 endif()
 
-if(VIPER_FAST_DEBUG)
+if(ZANNA_FAST_DEBUG)
   if(MSVC)
     # CMake's MSVC Debug defaults (/Od /RTC1 and checked STL iterators) make
     # interpreter- and software-renderer-heavy tests an order of magnitude
@@ -383,17 +383,17 @@ if(VIPER_FAST_DEBUG)
     # flags while this explicitly requested fast-Debug mode is active.  Keep
     # debug symbols, assertions, and the Debug CRT; only compiler optimization
     # and iterator instrumentation change.
-    foreach(_viper_debug_flags_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG)
-      set(_viper_debug_flags "${${_viper_debug_flags_var}}")
-      foreach(_viper_slow_debug_flag IN ITEMS
+    foreach(_zanna_debug_flags_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG)
+      set(_zanna_debug_flags "${${_zanna_debug_flags_var}}")
+      foreach(_zanna_slow_debug_flag IN ITEMS
           "[/-]RTC[1su]"
           "[/-]Od"
           "[/-]Ob0")
-        string(REGEX REPLACE "(^| )${_viper_slow_debug_flag}($| )" " "
-               _viper_debug_flags "${_viper_debug_flags}")
+        string(REGEX REPLACE "(^| )${_zanna_slow_debug_flag}($| )" " "
+               _zanna_debug_flags "${_zanna_debug_flags}")
       endforeach()
-      string(APPEND _viper_debug_flags " /O1 /Ob1")
-      set(${_viper_debug_flags_var} "${_viper_debug_flags}")
+      string(APPEND _zanna_debug_flags " /O1 /Ob1")
+      set(${_zanna_debug_flags_var} "${_zanna_debug_flags}")
     endforeach()
     add_compile_definitions("$<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>")
   else()
@@ -402,10 +402,10 @@ if(VIPER_FAST_DEBUG)
 endif()
 
 add_compile_definitions(
-  VIPER_ENABLE_OOP=1
-  VIPER_VM_TAILCALL=$<BOOL:${VIPER_VM_TAILCALL}>
-  VIPER_VM_OPCOUNTS=$<BOOL:${VIPER_VM_OPCOUNTS}>
-  VIPER_RUNTIME_NS_DUAL=$<BOOL:${VIPER_RUNTIME_NS_DUAL}>
+  ZANNA_ENABLE_OOP=1
+  ZANNA_VM_TAILCALL=$<BOOL:${ZANNA_VM_TAILCALL}>
+  ZANNA_VM_OPCOUNTS=$<BOOL:${ZANNA_VM_OPCOUNTS}>
+  ZANNA_RUNTIME_NS_DUAL=$<BOOL:${ZANNA_RUNTIME_NS_DUAL}>
 )
 
 if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
@@ -413,28 +413,28 @@ if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
   list(APPEND IL_LINK_FLAGS -stdlib=libc++)
 endif()
 
-add_library(viper_common_opts INTERFACE)
+add_library(zanna_common_opts INTERFACE)
 # Generated headers live here (configured below)
-target_include_directories(viper_common_opts INTERFACE
+target_include_directories(zanna_common_opts INTERFACE
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
-target_compile_features(viper_common_opts INTERFACE cxx_std_20)
+target_compile_features(zanna_common_opts INTERFACE cxx_std_20)
 if(IL_COMPILE_FLAGS)
-  target_compile_options(viper_common_opts INTERFACE ${IL_COMPILE_FLAGS})
+  target_compile_options(zanna_common_opts INTERFACE ${IL_COMPILE_FLAGS})
 endif()
 
-set(_viper_link_opts ${IL_LINK_FLAGS})
-list(FILTER _viper_link_opts EXCLUDE REGEX "^$")
-if(_viper_link_opts)
-  target_link_options(viper_common_opts INTERFACE ${_viper_link_opts})
+set(_zanna_link_opts ${IL_LINK_FLAGS})
+list(FILTER _zanna_link_opts EXCLUDE REGEX "^$")
+if(_zanna_link_opts)
+  target_link_options(zanna_common_opts INTERFACE ${_zanna_link_opts})
 endif()
 
 # Silence benign duplicate-library warnings on macOS early so it applies to all targets
-option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
-if(APPLE AND VIPER_SUPPRESS_DUPLIB_WARN)
+option(ZANNA_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
+if(APPLE AND ZANNA_SUPPRESS_DUPLIB_WARN)
   add_link_options(-Wl,-no_warn_duplicate_libraries)
 endif()
 
-function(viper_assert_no_directory_link_libraries dir label)
+function(zanna_assert_no_directory_link_libraries dir label)
   if("${dir}" STREQUAL ".")
     get_property(_dir_link_libs DIRECTORY PROPERTY LINK_LIBRARIES)
   else()
@@ -448,46 +448,46 @@ function(viper_assert_no_directory_link_libraries dir label)
   endif()
 endfunction()
 
-function(viper_assert_no_archive_link_paths)
-  get_property(_viper_all_targets GLOBAL PROPERTY TARGETS)
-  if(NOT _viper_all_targets)
+function(zanna_assert_no_archive_link_paths)
+  get_property(_zanna_all_targets GLOBAL PROPERTY TARGETS)
+  if(NOT _zanna_all_targets)
     return()
   endif()
 
-  set(_viper_archive_offenders)
-  foreach(_viper_target IN LISTS _viper_all_targets)
-    foreach(_viper_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
-      get_target_property(_viper_links "${_viper_target}" "${_viper_prop}")
-      if(NOT _viper_links)
+  set(_zanna_archive_offenders)
+  foreach(_zanna_target IN LISTS _zanna_all_targets)
+    foreach(_zanna_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+      get_target_property(_zanna_links "${_zanna_target}" "${_zanna_prop}")
+      if(NOT _zanna_links)
         continue()
       endif()
 
-      foreach(_viper_entry IN LISTS _viper_links)
-        if(NOT _viper_entry)
+      foreach(_zanna_entry IN LISTS _zanna_links)
+        if(NOT _zanna_entry)
           continue()
         endif()
 
-        if(_viper_entry STREQUAL "optimized" OR _viper_entry STREQUAL "debug" OR _viper_entry STREQUAL "general")
+        if(_zanna_entry STREQUAL "optimized" OR _zanna_entry STREQUAL "debug" OR _zanna_entry STREQUAL "general")
           continue()
         endif()
 
-        if(_viper_entry MATCHES "^\\$<")
+        if(_zanna_entry MATCHES "^\\$<")
           continue()
         endif()
 
-        string(REPLACE "\\" "/" _viper_normalized "${_viper_entry}")
-        if(_viper_normalized MATCHES "/[^/]+\\.a$")
-          list(APPEND _viper_archive_offenders "${_viper_target} -> ${_viper_entry}")
+        string(REPLACE "\\" "/" _zanna_normalized "${_zanna_entry}")
+        if(_zanna_normalized MATCHES "/[^/]+\\.a$")
+          list(APPEND _zanna_archive_offenders "${_zanna_target} -> ${_zanna_entry}")
         endif()
       endforeach()
     endforeach()
   endforeach()
 
-  if(_viper_archive_offenders)
-    list(REMOVE_DUPLICATES _viper_archive_offenders)
-    list(JOIN _viper_archive_offenders "\n  " _viper_archive_message)
+  if(_zanna_archive_offenders)
+    list(REMOVE_DUPLICATES _zanna_archive_offenders)
+    list(JOIN _zanna_archive_offenders "\n  " _zanna_archive_message)
     message(FATAL_ERROR
-      "Targets linked against archive file paths:\n  ${_viper_archive_message}\n"
+      "Targets linked against archive file paths:\n  ${_zanna_archive_message}\n"
       "Link against the producing CMake target or wrap the archive with add_library(IMPORTED).")
   endif()
 endfunction()
@@ -558,7 +558,7 @@ add_custom_target(clean-all
 add_custom_target(bump_il
   COMMAND ${CMAKE_COMMAND}
           -DIL_VERSION_FILE=${CMAKE_SOURCE_DIR}/src/buildmeta/IL_VERSION
-          -DHEADER_FILE=${CMAKE_BINARY_DIR}/generated/viper/version.hpp
+          -DHEADER_FILE=${CMAKE_BINARY_DIR}/generated/zanna/version.hpp
           -P ${CMAKE_SOURCE_DIR}/cmake/BumpIlVersion.cmake
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
   COMMENT "Normalize IL version macro in generated header"
@@ -613,13 +613,13 @@ message(STATUS "IL_X64_LD_FLAGS=${IL_X64_LD_FLAGS}")
 message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "Warn-as-error: ${IL_WARN_AS_ERROR}")
 message(STATUS "Linker: lld=${IL_USE_LLD}")
-message(STATUS "Coverage: ${VIPER_ENABLE_COVERAGE}")
-message(STATUS "VIPER_VM_THREADED=${VIPER_VM_THREADED}")
+message(STATUS "Coverage: ${ZANNA_ENABLE_COVERAGE}")
+message(STATUS "ZANNA_VM_THREADED=${ZANNA_VM_THREADED}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(STATUS "Stdlib (Clang): libc++=${IL_USE_LIBCXX}")
 endif()
 
-if(VIPER_BUILD_TESTING)
+if(ZANNA_BUILD_TESTING)
   enable_testing()
 
   # Disable CTest cost data to prevent scheduling issues with CMake 4.x
@@ -649,8 +649,8 @@ if(VIPER_BUILD_TESTING)
 
     add_test(
       NAME build_script_concurrency_lock
-      COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/build/build_viper_lock.sh
-              ${CMAKE_SOURCE_DIR}/scripts/build_viper_unix.sh
+      COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/build/build_zanna_lock.sh
+              ${CMAKE_SOURCE_DIR}/scripts/build_zanna_unix.sh
     )
     set_tests_properties(build_script_concurrency_lock PROPERTIES LABELS "build;tools")
   endif()
@@ -659,231 +659,231 @@ endif()
 # ---- Shared Text Engine ----
 # (Must be added before GUI and TUI so both editors link the same implementation)
 add_subdirectory(src/common/text)
-viper_assert_no_directory_link_libraries("src/common/text" "src/common/text")
+zanna_assert_no_directory_link_libraries("src/common/text" "src/common/text")
 
-# ---- ViperGFX library ----
+# ---- ZannaGFX library ----
 # (Must be added before runtime so rt_graphics can link to it)
 add_subdirectory(src/lib/graphics)
-viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
+zanna_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 
-# ---- ViperGUI library ----
-# (Must be added after graphics since it depends on vipergfx)
-if(TARGET vipergfx)
+# ---- ZannaGUI library ----
+# (Must be added after graphics since it depends on zannagfx)
+if(TARGET zannagfx)
   add_subdirectory(src/lib/gui)
-  viper_assert_no_directory_link_libraries("src/lib/gui" "src/lib/gui")
+  zanna_assert_no_directory_link_libraries("src/lib/gui" "src/lib/gui")
 endif()
 
-# ---- ViperAUD library ----
+# ---- ZannaAUD library ----
 # (Must be added before runtime so rt_audio can link to it)
 add_subdirectory(src/lib/audio)
-viper_assert_no_directory_link_libraries("src/lib/audio" "src/lib/audio")
+zanna_assert_no_directory_link_libraries("src/lib/audio" "src/lib/audio")
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
-viper_assert_no_directory_link_libraries("src/runtime" "src/runtime")
+zanna_assert_no_directory_link_libraries("src/runtime" "src/runtime")
 
-if(TARGET vipergfx)
-  set(VIPER_BUILD_HAS_GRAPHICS 1)
+if(TARGET zannagfx)
+  set(ZANNA_BUILD_HAS_GRAPHICS 1)
 else()
-  set(VIPER_BUILD_HAS_GRAPHICS 0)
+  set(ZANNA_BUILD_HAS_GRAPHICS 0)
 endif()
-if(TARGET viperaud)
-  set(VIPER_BUILD_HAS_AUDIO 1)
+if(TARGET zannaaud)
+  set(ZANNA_BUILD_HAS_AUDIO 1)
 else()
-  set(VIPER_BUILD_HAS_AUDIO 0)
+  set(ZANNA_BUILD_HAS_AUDIO 0)
 endif()
-if(TARGET vipergui)
-  set(VIPER_BUILD_HAS_GUI 1)
+if(TARGET zannagui)
+  set(ZANNA_BUILD_HAS_GUI 1)
 else()
-  set(VIPER_BUILD_HAS_GUI 0)
+  set(ZANNA_BUILD_HAS_GUI 0)
 endif()
 
 if(WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-  set(VIPER_BUILD_NATIVE_LINK_X86_64 1)
+  set(ZANNA_BUILD_NATIVE_LINK_X86_64 1)
 elseif(UNIX AND NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
-  set(VIPER_BUILD_NATIVE_LINK_X86_64 1)
+  set(ZANNA_BUILD_NATIVE_LINK_X86_64 1)
 else()
-  set(VIPER_BUILD_NATIVE_LINK_X86_64 0)
+  set(ZANNA_BUILD_NATIVE_LINK_X86_64 0)
 endif()
 
 if((APPLE OR WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
    AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
-  set(VIPER_BUILD_NATIVE_LINK_AARCH64 1)
+  set(ZANNA_BUILD_NATIVE_LINK_AARCH64 1)
 else()
-  set(VIPER_BUILD_NATIVE_LINK_AARCH64 0)
+  set(ZANNA_BUILD_NATIVE_LINK_AARCH64 0)
 endif()
 
 if(WIN32)
-  set(VIPER_HOST_WINDOWS_VALUE 1)
-  set(VIPER_HOST_MACOS_VALUE 0)
-  set(VIPER_HOST_LINUX_VALUE 0)
+  set(ZANNA_HOST_WINDOWS_VALUE 1)
+  set(ZANNA_HOST_MACOS_VALUE 0)
+  set(ZANNA_HOST_LINUX_VALUE 0)
 elseif(APPLE)
-  set(VIPER_HOST_WINDOWS_VALUE 0)
-  set(VIPER_HOST_MACOS_VALUE 1)
-  set(VIPER_HOST_LINUX_VALUE 0)
+  set(ZANNA_HOST_WINDOWS_VALUE 0)
+  set(ZANNA_HOST_MACOS_VALUE 1)
+  set(ZANNA_HOST_LINUX_VALUE 0)
 elseif(UNIX)
-  set(VIPER_HOST_WINDOWS_VALUE 0)
-  set(VIPER_HOST_MACOS_VALUE 0)
-  set(VIPER_HOST_LINUX_VALUE 1)
+  set(ZANNA_HOST_WINDOWS_VALUE 0)
+  set(ZANNA_HOST_MACOS_VALUE 0)
+  set(ZANNA_HOST_LINUX_VALUE 1)
 else()
-  set(VIPER_HOST_WINDOWS_VALUE 0)
-  set(VIPER_HOST_MACOS_VALUE 0)
-  set(VIPER_HOST_LINUX_VALUE 0)
+  set(ZANNA_HOST_WINDOWS_VALUE 0)
+  set(ZANNA_HOST_MACOS_VALUE 0)
+  set(ZANNA_HOST_LINUX_VALUE 0)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  set(VIPER_COMPILER_MSVC_VALUE 1)
-  set(VIPER_COMPILER_CLANG_VALUE 0)
-  set(VIPER_COMPILER_GCC_VALUE 0)
+  set(ZANNA_COMPILER_MSVC_VALUE 1)
+  set(ZANNA_COMPILER_CLANG_VALUE 0)
+  set(ZANNA_COMPILER_GCC_VALUE 0)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(VIPER_COMPILER_MSVC_VALUE 0)
-  set(VIPER_COMPILER_CLANG_VALUE 1)
-  set(VIPER_COMPILER_GCC_VALUE 0)
+  set(ZANNA_COMPILER_MSVC_VALUE 0)
+  set(ZANNA_COMPILER_CLANG_VALUE 1)
+  set(ZANNA_COMPILER_GCC_VALUE 0)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  set(VIPER_COMPILER_MSVC_VALUE 0)
-  set(VIPER_COMPILER_CLANG_VALUE 0)
-  set(VIPER_COMPILER_GCC_VALUE 1)
+  set(ZANNA_COMPILER_MSVC_VALUE 0)
+  set(ZANNA_COMPILER_CLANG_VALUE 0)
+  set(ZANNA_COMPILER_GCC_VALUE 1)
 else()
-  set(VIPER_COMPILER_MSVC_VALUE 0)
-  set(VIPER_COMPILER_CLANG_VALUE 0)
-  set(VIPER_COMPILER_GCC_VALUE 0)
+  set(ZANNA_COMPILER_MSVC_VALUE 0)
+  set(ZANNA_COMPILER_CLANG_VALUE 0)
+  set(ZANNA_COMPILER_GCC_VALUE 0)
 endif()
 
 configure_file(
-  "${CMAKE_SOURCE_DIR}/include/viper/platform/Capabilities.hpp.in"
-  "${CMAKE_BINARY_DIR}/generated/viper/platform/Capabilities.hpp"
+  "${CMAKE_SOURCE_DIR}/include/zanna/platform/Capabilities.hpp.in"
+  "${CMAKE_BINARY_DIR}/generated/zanna/platform/Capabilities.hpp"
   @ONLY
 )
-install(FILES "${CMAKE_BINARY_DIR}/generated/viper/platform/Capabilities.hpp"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/platform)
+install(FILES "${CMAKE_BINARY_DIR}/generated/zanna/platform/Capabilities.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna/platform)
 
-set(VIPER_RUNTIME_COMPONENT_ARCHIVE_COUNT 0)
-set(VIPER_RUNTIME_COMPONENT_ARCHIVE_ENTRIES "")
-if(DEFINED VIPER_RUNTIME_COMPONENT_ARCHIVES)
-  list(LENGTH VIPER_RUNTIME_COMPONENT_ARCHIVES VIPER_RUNTIME_COMPONENT_ARCHIVE_COUNT)
-  foreach(_viper_runtime_archive IN LISTS VIPER_RUNTIME_COMPONENT_ARCHIVES)
-    string(APPEND VIPER_RUNTIME_COMPONENT_ARCHIVE_ENTRIES
-           "        \"${_viper_runtime_archive}\",\n")
+set(ZANNA_RUNTIME_COMPONENT_ARCHIVE_COUNT 0)
+set(ZANNA_RUNTIME_COMPONENT_ARCHIVE_ENTRIES "")
+if(DEFINED ZANNA_RUNTIME_COMPONENT_ARCHIVES)
+  list(LENGTH ZANNA_RUNTIME_COMPONENT_ARCHIVES ZANNA_RUNTIME_COMPONENT_ARCHIVE_COUNT)
+  foreach(_zanna_runtime_archive IN LISTS ZANNA_RUNTIME_COMPONENT_ARCHIVES)
+    string(APPEND ZANNA_RUNTIME_COMPONENT_ARCHIVE_ENTRIES
+           "        \"${_zanna_runtime_archive}\",\n")
   endforeach()
 endif()
 configure_file(
-  "${CMAKE_SOURCE_DIR}/include/viper/runtime/RuntimeComponentManifest.hpp.in"
-  "${CMAKE_BINARY_DIR}/generated/viper/runtime/RuntimeComponentManifest.hpp"
+  "${CMAKE_SOURCE_DIR}/include/zanna/runtime/RuntimeComponentManifest.hpp.in"
+  "${CMAKE_BINARY_DIR}/generated/zanna/runtime/RuntimeComponentManifest.hpp"
   @ONLY
 )
-install(FILES "${CMAKE_BINARY_DIR}/generated/viper/runtime/RuntimeComponentManifest.hpp"
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime)
+install(FILES "${CMAKE_BINARY_DIR}/generated/zanna/runtime/RuntimeComponentManifest.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna/runtime)
 
 message(STATUS "")
 message(STATUS "==========================================")
-message(STATUS " Viper Capability Summary")
+message(STATUS " Zanna Capability Summary")
 message(STATUS "==========================================")
 message(STATUS " Host OS:             ${CMAKE_SYSTEM_NAME}")
 message(STATUS " Host Arch:           ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS " Compiler:            ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-if(VIPER_BUILD_HAS_GRAPHICS)
-  message(STATUS " Graphics:            ENABLED (${VIPERGFX_BACKEND})")
+if(ZANNA_BUILD_HAS_GRAPHICS)
+  message(STATUS " Graphics:            ENABLED (${ZANNAGFX_BACKEND})")
 else()
-  message(STATUS " Graphics:            DISABLED (${VIPERGFX_UNAVAILABLE_REASON})")
+  message(STATUS " Graphics:            DISABLED (${ZANNAGFX_UNAVAILABLE_REASON})")
 endif()
-if(VIPER_BUILD_HAS_AUDIO)
-  message(STATUS " Audio:               ENABLED (${VIPERAUD_BACKEND})")
+if(ZANNA_BUILD_HAS_AUDIO)
+  message(STATUS " Audio:               ENABLED (${ZANNAAUD_BACKEND})")
 else()
-  message(STATUS " Audio:               DISABLED (${VIPERAUD_UNAVAILABLE_REASON})")
+  message(STATUS " Audio:               DISABLED (${ZANNAAUD_UNAVAILABLE_REASON})")
 endif()
-if(VIPER_BUILD_HAS_GUI)
+if(ZANNA_BUILD_HAS_GUI)
   message(STATUS " GUI:                 ENABLED")
 else()
   message(STATUS " GUI:                 DISABLED")
 endif()
-message(STATUS " Native Link x86_64:  ${VIPER_BUILD_NATIVE_LINK_X86_64}")
-message(STATUS " Native Link AArch64: ${VIPER_BUILD_NATIVE_LINK_AARCH64}")
+message(STATUS " Native Link x86_64:  ${ZANNA_BUILD_NATIVE_LINK_X86_64}")
+message(STATUS " Native Link AArch64: ${ZANNA_BUILD_NATIVE_LINK_AARCH64}")
 message(STATUS "==========================================")
 message(STATUS "")
 
 add_subdirectory(src)
-viper_assert_no_directory_link_libraries("src" "src")
+zanna_assert_no_directory_link_libraries("src" "src")
 
-if(VIPER_INSTALL_VIPERIDE)
-  set(_VIPER_IDE_ARCH "${VIPER_IDE_ARCH}")
-  if(_VIPER_IDE_ARCH STREQUAL "")
+if(ZANNA_INSTALL_ZANNAIDE)
+  set(_ZANNA_IDE_ARCH "${ZANNA_IDE_ARCH}")
+  if(_ZANNA_IDE_ARCH STREQUAL "")
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
-      set(_VIPER_IDE_ARCH arm64)
+      set(_ZANNA_IDE_ARCH arm64)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
-      set(_VIPER_IDE_ARCH x64)
+      set(_ZANNA_IDE_ARCH x64)
     else()
       message(FATAL_ERROR
-        "VIPER_INSTALL_VIPERIDE requires VIPER_IDE_ARCH=x64 or arm64 for "
+        "ZANNA_INSTALL_ZANNAIDE requires ZANNA_IDE_ARCH=x64 or arm64 for "
         "host processor '${CMAKE_SYSTEM_PROCESSOR}'")
     endif()
   endif()
-  if(NOT _VIPER_IDE_ARCH STREQUAL "x64" AND NOT _VIPER_IDE_ARCH STREQUAL "arm64")
-    message(FATAL_ERROR "VIPER_IDE_ARCH must be x64 or arm64, got '${_VIPER_IDE_ARCH}'")
+  if(NOT _ZANNA_IDE_ARCH STREQUAL "x64" AND NOT _ZANNA_IDE_ARCH STREQUAL "arm64")
+    message(FATAL_ERROR "ZANNA_IDE_ARCH must be x64 or arm64, got '${_ZANNA_IDE_ARCH}'")
   endif()
 
-  set(_VIPERIDE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/viperide")
-  set(_VIPERIDE_BINARY "${_VIPERIDE_OUTPUT_DIR}/viperide${CMAKE_EXECUTABLE_SUFFIX}")
-  set(_VIPERIDE_BUILDINFO "${_VIPERIDE_OUTPUT_DIR}/viperide.buildinfo")
-  file(GLOB_RECURSE _VIPERIDE_SOURCE_FILES CONFIGURE_DEPENDS
-       "${CMAKE_SOURCE_DIR}/src/viperide/src/*.zia"
-       "${CMAKE_SOURCE_DIR}/src/viperide/viper.project")
+  set(_ZANNAIDE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/zannaide")
+  set(_ZANNAIDE_BINARY "${_ZANNAIDE_OUTPUT_DIR}/zannaide${CMAKE_EXECUTABLE_SUFFIX}")
+  set(_ZANNAIDE_BUILDINFO "${_ZANNAIDE_OUTPUT_DIR}/zannaide.buildinfo")
+  file(GLOB_RECURSE _ZANNAIDE_SOURCE_FILES CONFIGURE_DEPENDS
+       "${CMAKE_SOURCE_DIR}/src/zannaide/src/*.zia"
+       "${CMAKE_SOURCE_DIR}/src/zannaide/zanna.project")
   add_custom_command(
-    OUTPUT "${_VIPERIDE_BINARY}" "${_VIPERIDE_BUILDINFO}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_VIPERIDE_OUTPUT_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E env "VIPER_BUILD_DIR=${CMAKE_BINARY_DIR}"
-            "$<TARGET_FILE:viper>" build "${CMAKE_SOURCE_DIR}/src/viperide"
-            --arch "${_VIPER_IDE_ARCH}" -o "${_VIPERIDE_BINARY}"
+    OUTPUT "${_ZANNAIDE_BINARY}" "${_ZANNAIDE_BUILDINFO}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNAIDE_OUTPUT_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannaide"
+            --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNAIDE_BINARY}"
     COMMAND ${CMAKE_COMMAND}
-            "-DOUTPUT_FILE=${_VIPERIDE_BINARY}"
-            "-DVIPER_PATH=$<TARGET_FILE:viper>"
+            "-DOUTPUT_FILE=${_ZANNAIDE_BINARY}"
+            "-DZANNA_PATH=$<TARGET_FILE:zanna>"
             "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
-            -P "${CMAKE_SOURCE_DIR}/cmake/WriteViperIDEBuildInfo.cmake"
-    DEPENDS viper ${_VIPERIDE_SOURCE_FILES}
+            -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaIDEBuildInfo.cmake"
+    DEPENDS zanna ${_ZANNAIDE_SOURCE_FILES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Building ViperIDE native binary"
+    COMMENT "Building ZannaIDE native binary"
     VERBATIM)
-  add_custom_target(viperide_native ALL DEPENDS "${_VIPERIDE_BINARY}" "${_VIPERIDE_BUILDINFO}")
-  install(PROGRAMS "${_VIPERIDE_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
-  install(FILES "${_VIPERIDE_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  add_custom_target(zannaide_native ALL DEPENDS "${_ZANNAIDE_BINARY}" "${_ZANNAIDE_BUILDINFO}")
+  install(PROGRAMS "${_ZANNAIDE_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES "${_ZANNAIDE_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-# ---- ViperTUI subproject ----
-option(BUILD_TUI "Build ViperTUI subproject" ON)
-if(VIPER_INSTALL_TUI AND NOT BUILD_TUI)
-  message(WARNING "VIPER_INSTALL_TUI is ON but BUILD_TUI is OFF; no TUI targets will be installed.")
+# ---- ZannaTUI subproject ----
+option(BUILD_TUI "Build ZannaTUI subproject" ON)
+if(ZANNA_INSTALL_TUI AND NOT BUILD_TUI)
+  message(WARNING "ZANNA_INSTALL_TUI is ON but BUILD_TUI is OFF; no TUI targets will be installed.")
 endif()
 if(BUILD_TUI)
   add_subdirectory(src/tui)
-  viper_assert_no_directory_link_libraries("src/tui" "src/tui")
+  zanna_assert_no_directory_link_libraries("src/tui" "src/tui")
 endif()
 
-if(VIPER_BUILD_TESTING)
+if(ZANNA_BUILD_TESTING)
   add_subdirectory(src/tests)
-  viper_assert_no_directory_link_libraries("src/tests" "src/tests")
+  zanna_assert_no_directory_link_libraries("src/tests" "src/tests")
 endif()
 
 # ---- Examples ----
 option(BUILD_EXAMPLES "Build C++ examples" ON)
 if(BUILD_EXAMPLES)
   add_executable(example_vm_stepping examples/embedding/stepping_example.cpp)
-  target_link_libraries(example_vm_stepping PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_link_libraries(example_vm_stepping PRIVATE zanna_common_opts il_build il_vm zanna_support)
   target_include_directories(example_vm_stepping PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 
   add_executable(example_vm_register_times2 examples/embedding/register_times2.cpp)
-  target_link_libraries(example_vm_register_times2 PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_link_libraries(example_vm_register_times2 PRIVATE zanna_common_opts il_build il_vm zanna_support)
   target_include_directories(example_vm_register_times2 PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 
   add_executable(example_vm_smoke_combined examples/embedding/combined.cpp)
-  target_link_libraries(example_vm_smoke_combined PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_link_libraries(example_vm_smoke_combined PRIVATE zanna_common_opts il_build il_vm zanna_support)
   target_include_directories(example_vm_smoke_combined PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 endif()
 
 # Install source-level samples as a selectable toolchain payload. Native Windows
 # setup presents this tree as a default-on optional component; other package
 # formats retain the complete developer distribution.
-option(VIPER_INSTALL_SAMPLES "Install Viper sample projects and games" ON)
-if(VIPER_INSTALL_SAMPLES)
+option(ZANNA_INSTALL_SAMPLES "Install Zanna sample projects and games" ON)
+if(ZANNA_INSTALL_SAMPLES)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/samples
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/zanna/samples
           PATTERN ".git*" EXCLUDE
           PATTERN "__pycache__" EXCLUDE
           PATTERN "node_modules" EXCLUDE
@@ -909,9 +909,9 @@ endif()
 # Canonical project artwork used by native installers, shortcuts, file
 # associations, and installed developer applications.
 install(FILES
-  ${CMAKE_SOURCE_DIR}/misc/images/viperlogo2.png
-  ${CMAKE_SOURCE_DIR}/misc/images/viperwallpaper2.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/branding
+  ${CMAKE_SOURCE_DIR}/misc/images/zannalogo2.png
+  ${CMAKE_SOURCE_DIR}/misc/images/zannawallpaper2.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/zanna/branding
 )
 
 # Man pages (sections 1 and 7)
@@ -929,49 +929,49 @@ endif()
 install(FILES
   ${CMAKE_SOURCE_DIR}/LICENSE
   ${CMAKE_SOURCE_DIR}/README.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/viper
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/zanna
 )
 
-set(_VIPER_ZIA_VSCODE_DIR ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia)
-set(_VIPER_ZIA_VSCODE_VSIX ${_VIPER_ZIA_VSCODE_DIR}/zia-language-0.1.0.vsix)
-if(VIPER_BUILD_VSCODE_VSIX)
+set(_ZANNA_ZIA_VSCODE_DIR ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia)
+set(_ZANNA_ZIA_VSCODE_VSIX ${_ZANNA_ZIA_VSCODE_DIR}/zia-language-0.1.0.vsix)
+if(ZANNA_BUILD_VSCODE_VSIX)
   if(WIN32)
     find_program(NPM_EXECUTABLE NAMES npm.cmd npm)
-    set(_VIPER_NPM_COMMAND cmd /c call "${NPM_EXECUTABLE}")
+    set(_ZANNA_NPM_COMMAND cmd /c call "${NPM_EXECUTABLE}")
   else()
     find_program(NPM_EXECUTABLE NAMES npm)
-    set(_VIPER_NPM_COMMAND "${NPM_EXECUTABLE}")
+    set(_ZANNA_NPM_COMMAND "${NPM_EXECUTABLE}")
   endif()
   if(NOT NPM_EXECUTABLE)
-    message(FATAL_ERROR "VIPER_BUILD_VSCODE_VSIX requires npm on PATH")
+    message(FATAL_ERROR "ZANNA_BUILD_VSCODE_VSIX requires npm on PATH")
   endif()
-  set(_VIPER_BUILT_ZIA_VSIX ${CMAKE_BINARY_DIR}/vscode/zia-language-0.1.0.vsix)
+  set(_ZANNA_BUILT_ZIA_VSIX ${CMAKE_BINARY_DIR}/vscode/zia-language-0.1.0.vsix)
   add_custom_command(
-    OUTPUT ${_VIPER_BUILT_ZIA_VSIX}
+    OUTPUT ${_ZANNA_BUILT_ZIA_VSIX}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/vscode
-    COMMAND ${_VIPER_NPM_COMMAND} ci
-    COMMAND ${_VIPER_NPM_COMMAND} run package:vsix -- --out ${_VIPER_BUILT_ZIA_VSIX}
-    WORKING_DIRECTORY ${_VIPER_ZIA_VSCODE_DIR}
+    COMMAND ${_ZANNA_NPM_COMMAND} ci
+    COMMAND ${_ZANNA_NPM_COMMAND} run package:vsix -- --out ${_ZANNA_BUILT_ZIA_VSIX}
+    WORKING_DIRECTORY ${_ZANNA_ZIA_VSCODE_DIR}
     DEPENDS
-      ${_VIPER_ZIA_VSCODE_DIR}/package.json
-      ${_VIPER_ZIA_VSCODE_DIR}/package-lock.json
-      ${_VIPER_ZIA_VSCODE_DIR}/extension.js
-      ${_VIPER_ZIA_VSCODE_DIR}/language-configuration.json
-      ${_VIPER_ZIA_VSCODE_DIR}/syntaxes/zia.tmLanguage.json
+      ${_ZANNA_ZIA_VSCODE_DIR}/package.json
+      ${_ZANNA_ZIA_VSCODE_DIR}/package-lock.json
+      ${_ZANNA_ZIA_VSCODE_DIR}/extension.js
+      ${_ZANNA_ZIA_VSCODE_DIR}/language-configuration.json
+      ${_ZANNA_ZIA_VSCODE_DIR}/syntaxes/zia.tmLanguage.json
     COMMENT "Building Zia VS Code extension VSIX"
     VERBATIM)
-  add_custom_target(vscode_zia_vsix ALL DEPENDS ${_VIPER_BUILT_ZIA_VSIX})
-  install(FILES ${_VIPER_BUILT_ZIA_VSIX}
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode)
-elseif(EXISTS ${_VIPER_ZIA_VSCODE_VSIX})
+  add_custom_target(vscode_zia_vsix ALL DEPENDS ${_ZANNA_BUILT_ZIA_VSIX})
+  install(FILES ${_ZANNA_BUILT_ZIA_VSIX}
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/zanna/vscode)
+elseif(EXISTS ${_ZANNA_ZIA_VSCODE_VSIX})
   install(FILES
-    ${_VIPER_ZIA_VSCODE_VSIX}
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode
+    ${_ZANNA_ZIA_VSCODE_VSIX}
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/zanna/vscode
   )
 endif()
-if(EXISTS ${_VIPER_ZIA_VSCODE_DIR}/package.json)
-  install(DIRECTORY ${_VIPER_ZIA_VSCODE_DIR}/
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode/zia
+if(EXISTS ${_ZANNA_ZIA_VSCODE_DIR}/package.json)
+  install(DIRECTORY ${_ZANNA_ZIA_VSCODE_DIR}/
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/zanna/vscode/zia
           PATTERN "node_modules" EXCLUDE
           PATTERN "*.vsix" EXCLUDE)
 endif()
@@ -988,27 +988,27 @@ if(NOT TARGET uninstall)
 endif()
 
 # ---- Legacy developer archives (CPack) ----
-# The system of record for release installers is `viper package` / `viper install-package`
+# The system of record for release installers is `zanna package` / `zanna install-package`
 # (src/tools/common/packaging). CPack remains only as an opt-in generic developer-archive
-# fallback; enable it with -DVIPER_ENABLE_LEGACY_CPACK=ON.
-option(VIPER_ENABLE_LEGACY_CPACK "Enable the legacy CPack developer-archive fallback" OFF)
-if(VIPER_ENABLE_LEGACY_CPACK)
-  set(CPACK_PACKAGE_NAME "Viper")
-  set(CPACK_PACKAGE_VENDOR "Viper Project")
-  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Viper IL compiler toolchain and VM")
+# fallback; enable it with -DZANNA_ENABLE_LEGACY_CPACK=ON.
+option(ZANNA_ENABLE_LEGACY_CPACK "Enable the legacy CPack developer-archive fallback" OFF)
+if(ZANNA_ENABLE_LEGACY_CPACK)
+  set(CPACK_PACKAGE_NAME "Zanna")
+  set(CPACK_PACKAGE_VENDOR "Zanna Project")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Zanna IL compiler toolchain and VM")
   set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
   set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
-  set(CPACK_PACKAGE_CONTACT "viper@example.com")
+  set(CPACK_PACKAGE_CONTACT "zanna@example.com")
 
   if(APPLE)
     # Build a macOS installer package (.pkg) suitable for CLI tools
     set(CPACK_GENERATOR "productbuild")
-    set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
+    set(CPACK_PACKAGE_FILE_NAME "Zanna-${PROJECT_VERSION}-macos")
   elseif(WIN32)
     # Windows: ZIP archive fallback, plus NSIS if a developer has it installed.
     set(CPACK_GENERATOR "ZIP")
-    set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-win64")
+    set(CPACK_PACKAGE_FILE_NAME "Zanna-${PROJECT_VERSION}-win64")
     # Optional: Enable NSIS installer if available
     find_program(NSIS_FOUND makensis)
     if(NSIS_FOUND)
@@ -1017,149 +1017,149 @@ if(VIPER_ENABLE_LEGACY_CPACK)
   elseif(UNIX)
     # Build both DEB and RPM if possible; users can choose
     set(CPACK_GENERATOR "DEB;RPM")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
-    set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Zanna Project")
+    set(CPACK_PACKAGE_FILE_NAME "zanna-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 
   include(CPack)
 endif()
 
-viper_assert_no_archive_link_paths()
+zanna_assert_no_archive_link_paths()
 
 add_custom_target(distclean
   COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/DistClean.cmake"
   COMMENT "Scrub CMake-generated files in this build tree"
 )
 
-set(VIPER_PUBLIC_LIB_TARGETS
-  viper_common_opts
-  viper_support
+set(ZANNA_PUBLIC_LIB_TARGETS
+  zanna_common_opts
+  zanna_support
 )
 
-if(DEFINED VIPER_RUNTIME_COMPONENT_ARCHIVES)
-  list(APPEND VIPER_PUBLIC_LIB_TARGETS ${VIPER_RUNTIME_COMPONENT_ARCHIVES})
+if(DEFINED ZANNA_RUNTIME_COMPONENT_ARCHIVES)
+  list(APPEND ZANNA_PUBLIC_LIB_TARGETS ${ZANNA_RUNTIME_COMPONENT_ARCHIVES})
 endif()
 
-list(APPEND VIPER_PUBLIC_LIB_TARGETS
-  viper_runtime
-  viper_pass
-  viper_il_core
+list(APPEND ZANNA_PUBLIC_LIB_TARGETS
+  zanna_runtime
+  zanna_pass
+  zanna_il_core
   il_runtime
   il_build
-  viper_il_io
-  viper_il_verify
-  viper_il_full
+  zanna_il_io
+  zanna_il_verify
+  zanna_il_full
   il_analysis
   il_transform
   il_utils
   il_vm
-  viper_text_core
+  zanna_text_core
   fe_common
   fe_basic
   il_api
 )
-list(REMOVE_DUPLICATES VIPER_PUBLIC_LIB_TARGETS)
+list(REMOVE_DUPLICATES ZANNA_PUBLIC_LIB_TARGETS)
 
 # Add platform-dependent targets to export set only if they were built
-if (TARGET vipergfx)
-  list(APPEND VIPER_PUBLIC_LIB_TARGETS vipergfx)
+if (TARGET zannagfx)
+  list(APPEND ZANNA_PUBLIC_LIB_TARGETS zannagfx)
 endif ()
-if (TARGET vipergui)
-  list(APPEND VIPER_PUBLIC_LIB_TARGETS vipergui)
+if (TARGET zannagui)
+  list(APPEND ZANNA_PUBLIC_LIB_TARGETS zannagui)
 endif ()
-if (TARGET viperaud)
-  list(APPEND VIPER_PUBLIC_LIB_TARGETS viperaud)
+if (TARGET zannaaud)
+  list(APPEND ZANNA_PUBLIC_LIB_TARGETS zannaaud)
 endif ()
 
-if(VIPER_FAST_DEBUG AND MSVC)
+if(ZANNA_FAST_DEBUG AND MSVC)
   # MSVC encodes _ITERATOR_DEBUG_LEVEL into C++ object files and rejects a
   # consumer that links static libraries built with a different value. Export
-  # the fast-Debug ABI requirement on every public library so find_package(Viper)
+  # the fast-Debug ABI requirement on every public library so find_package(Zanna)
   # consumers compile their Debug objects compatibly.
-  foreach(_viper_public_target IN LISTS VIPER_PUBLIC_LIB_TARGETS)
-    target_compile_definitions(${_viper_public_target} INTERFACE
+  foreach(_zanna_public_target IN LISTS ZANNA_PUBLIC_LIB_TARGETS)
+    target_compile_definitions(${_zanna_public_target} INTERFACE
       "$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CXX>>:_ITERATOR_DEBUG_LEVEL=0>")
   endforeach()
 endif()
 
-set_target_properties(viper_common_opts PROPERTIES EXPORT_NAME common_opts)
-if (TARGET viper_support)
-  set_target_properties(viper_support PROPERTIES EXPORT_NAME support)
+set_target_properties(zanna_common_opts PROPERTIES EXPORT_NAME common_opts)
+if (TARGET zanna_support)
+  set_target_properties(zanna_support PROPERTIES EXPORT_NAME support)
 endif ()
-foreach(_rt_target IN LISTS VIPER_RUNTIME_COMPONENT_ARCHIVES)
+foreach(_rt_target IN LISTS ZANNA_RUNTIME_COMPONENT_ARCHIVES)
   if (TARGET ${_rt_target})
-    string(REGEX REPLACE "^viper_" "" _export_name "${_rt_target}")
+    string(REGEX REPLACE "^zanna_" "" _export_name "${_rt_target}")
     set_target_properties(${_rt_target} PROPERTIES EXPORT_NAME "${_export_name}")
   endif ()
 endforeach()
 
-foreach(_rt_target IN LISTS VIPER_RUNTIME_COMPONENT_ARCHIVES)
-  if (TARGET ${_rt_target} AND NOT _rt_target IN_LIST VIPER_PUBLIC_LIB_TARGETS)
+foreach(_rt_target IN LISTS ZANNA_RUNTIME_COMPONENT_ARCHIVES)
+  if (TARGET ${_rt_target} AND NOT _rt_target IN_LIST ZANNA_PUBLIC_LIB_TARGETS)
     message(FATAL_ERROR
-      "Runtime component target ${_rt_target} is built but not exported via VIPER_PUBLIC_LIB_TARGETS.")
+      "Runtime component target ${_rt_target} is built but not exported via ZANNA_PUBLIC_LIB_TARGETS.")
   endif ()
 endforeach()
-if (TARGET viper_runtime)
-  set_target_properties(viper_runtime PROPERTIES EXPORT_NAME runtime)
+if (TARGET zanna_runtime)
+  set_target_properties(zanna_runtime PROPERTIES EXPORT_NAME runtime)
 endif ()
-if (TARGET viper_pass)
-  set_target_properties(viper_pass PROPERTIES EXPORT_NAME pass)
+if (TARGET zanna_pass)
+  set_target_properties(zanna_pass PROPERTIES EXPORT_NAME pass)
 endif ()
-if (TARGET viper_il_core)
-  set_target_properties(viper_il_core PROPERTIES EXPORT_NAME il_core)
+if (TARGET zanna_il_core)
+  set_target_properties(zanna_il_core PROPERTIES EXPORT_NAME il_core)
 endif ()
-if (TARGET viper_il_io)
-  set_target_properties(viper_il_io PROPERTIES EXPORT_NAME il_io)
+if (TARGET zanna_il_io)
+  set_target_properties(zanna_il_io PROPERTIES EXPORT_NAME il_io)
 endif ()
-if (TARGET viper_il_verify)
-  set_target_properties(viper_il_verify PROPERTIES EXPORT_NAME il_verify)
+if (TARGET zanna_il_verify)
+  set_target_properties(zanna_il_verify PROPERTIES EXPORT_NAME il_verify)
 endif ()
-if (TARGET viper_il_full)
-  set_target_properties(viper_il_full PROPERTIES EXPORT_NAME il_full)
+if (TARGET zanna_il_full)
+  set_target_properties(zanna_il_full PROPERTIES EXPORT_NAME il_full)
 endif ()
-if (TARGET viper_text_core)
-  set_target_properties(viper_text_core PROPERTIES EXPORT_NAME text_core)
+if (TARGET zanna_text_core)
+  set_target_properties(zanna_text_core PROPERTIES EXPORT_NAME text_core)
 endif ()
 
-install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}
-  EXPORT ViperTargets
+install(TARGETS ${ZANNA_PUBLIC_LIB_TARGETS}
+  EXPORT ZannaTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-set(VIPER_CLI_TARGETS viper il-verify il-dis)
-install(TARGETS ${VIPER_CLI_TARGETS}
+set(ZANNA_CLI_TARGETS zanna il-verify il-dis)
+install(TARGETS ${ZANNA_CLI_TARGETS}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-export(EXPORT ViperTargets
-  NAMESPACE viper::
-  FILE "${CMAKE_CURRENT_BINARY_DIR}/ViperTargets.cmake"
+export(EXPORT ZannaTargets
+  NAMESPACE zanna::
+  FILE "${CMAKE_CURRENT_BINARY_DIR}/ZannaTargets.cmake"
 )
 
-install(EXPORT ViperTargets
-  NAMESPACE viper::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+install(EXPORT ZannaTargets
+  NAMESPACE zanna::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Zanna
 )
 
 write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfigVersion.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/ZannaConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
 
 configure_package_config_file(
-  "${CMAKE_CURRENT_LIST_DIR}/cmake/ViperConfig.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfig.cmake"
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/ZannaConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/ZannaConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Zanna
 )
 
 install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfig.cmake"
-  "${CMAKE_CURRENT_BINARY_DIR}/ViperConfigVersion.cmake"
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
+  "${CMAKE_CURRENT_BINARY_DIR}/ZannaConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/ZannaConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Zanna
 )
 
-viper_assert_no_directory_link_libraries("." "root project")
+zanna_assert_no_directory_link_libraries("." "root project")

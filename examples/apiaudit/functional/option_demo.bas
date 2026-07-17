@@ -1,26 +1,26 @@
-' API Audit: Viper.Option (BASIC)
-PRINT "=== API Audit: Viper.Option ==="
+' API Audit: Zanna.Option (BASIC)
+PRINT "=== API Audit: Zanna.Option ==="
 
 ' --- SomeI64 ---
 PRINT "--- SomeI64 ---"
-DIM o1 AS OBJECT = Viper.Option.SomeI64(42)
+DIM o1 AS OBJECT = Zanna.Option.SomeI64(42)
 PRINT o1.IsSome
 PRINT o1.IsNone
 PRINT o1.UnwrapI64()
 
 ' --- SomeStr ---
 PRINT "--- SomeStr ---"
-DIM o2 AS OBJECT = Viper.Option.SomeStr("hello")
+DIM o2 AS OBJECT = Zanna.Option.SomeStr("hello")
 PRINT o2.UnwrapStr()
 
 ' --- SomeF64 ---
 PRINT "--- SomeF64 ---"
-DIM o3 AS OBJECT = Viper.Option.SomeF64(2.71)
+DIM o3 AS OBJECT = Zanna.Option.SomeF64(2.71)
 PRINT o3.UnwrapF64()
 
 ' --- None ---
 PRINT "--- None ---"
-DIM o4 AS OBJECT = Viper.Option.None()
+DIM o4 AS OBJECT = Zanna.Option.None()
 PRINT o4.IsSome
 PRINT o4.IsNone
 

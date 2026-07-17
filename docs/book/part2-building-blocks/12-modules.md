@@ -153,7 +153,7 @@ To use code from another module, you bind it:
 module Main;
 
 bind MathUtils;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var x = 5.0;
@@ -192,7 +192,7 @@ If you only need certain items, bind them directly:
 
 ```rust
 bind MathUtils { square, PI };
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(square(5.0));  // No prefix needed
@@ -208,7 +208,7 @@ Sometimes you want to rename a binding. Maybe the name is too long, or maybe it 
 
 ```rust
 bind MathUtils as M;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(M.square(5.0));
@@ -222,7 +222,7 @@ You can also bind specific items from a module without the prefix:
 
 ```rust
 bind MathUtils { square, PI };
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say(square(5.0));  // No prefix needed
@@ -255,8 +255,8 @@ Real-world example:
 
 ```rust
 // Good: Bind with alias when using many functions
-bind Viper.Math as Math;
-bind Viper.Terminal { Say };
+bind Zanna.Math as Math;
+bind Zanna.Terminal { Say };
 
 func start() {
     var a = 0.5;
@@ -309,7 +309,7 @@ Other modules can use `increment`, `decrement`, and `get`.
 module Main;
 
 bind Counter;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Counter.increment();
@@ -351,8 +351,8 @@ Things that should usually be private:
 
 ```rust
 module EmailValidator;
-bind Viper.String as Str;
-bind Viper.Collections.Seq as Seq;
+bind Zanna.String as Str;
+bind Zanna.Collections.Seq as Seq;
 
 // Public: This is what the module is for
 expose func isValid(email: String) -> Boolean {
@@ -475,40 +475,40 @@ Choose the structure that makes sense for your project. The goal is that anyone 
 
 ## The Standard Library
 
-Viper comes with a rich standard library organized into namespaces:
+Zanna comes with a rich standard library organized into namespaces:
 
 ```rust
-bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
-bind Viper.IO;         // File operations
-bind Viper.Math;       // Mathematical functions
-bind Viper.Math.Random as Random;  // Random numbers
-bind Viper.Text.Fmt;        // Formatting
-bind Viper.Time;       // Date and time
-bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
+bind Zanna.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
+bind Zanna.IO;         // File operations
+bind Zanna.Math;       // Mathematical functions
+bind Zanna.Math.Random as Random;  // Random numbers
+bind Zanna.Text.Fmt;        // Formatting
+bind Zanna.Time;       // Date and time
+bind Zanna.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 ```
 
-When you bind a Viper namespace, its functions become available without the full prefix:
+When you bind a Zanna namespace, its functions become available without the full prefix:
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Math.Random as Random;
+bind Zanna.Terminal;
+bind Zanna.Math.Random as Random;
 
 func start() {
-    Say("Guess a number!");           // No Viper.Terminal. prefix needed
-    var secret = Random.NextInt(100) + 1;    // No Viper.Math.Random prefix needed
+    Say("Guess a number!");           // No Zanna.Terminal. prefix needed
+    var secret = Random.NextInt(100) + 1;    // No Zanna.Math.Random prefix needed
 }
 ```
 
-Without `bind`, you'd write `Viper.Terminal.Say("...")` and `Viper.Math.Random.NextInt(100)`. Both work, but `bind` makes code cleaner.
+Without `bind`, you'd write `Zanna.Terminal.Say("...")` and `Zanna.Math.Random.NextInt(100)`. Both work, but `bind` makes code cleaner.
 
 You can also bind with aliases or selectively import specific items:
 
 ```rust
-bind Viper.Terminal as T;              // Alias: T.Say("Hello")
-bind Viper.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn't
+bind Zanna.Terminal as T;              // Alias: T.Say("Hello")
+bind Zanna.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn't
 ```
 
-Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Text.Fmt`.
+Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check `Zanna.Time`. Need to format numbers? Check `Zanna.Text.Fmt`.
 
 ---
 
@@ -734,7 +734,7 @@ Let's refactor our game demo into proper modules:
 // file: Vec2.zia
 module Vec2;
 
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 expose struct Vec2 {
     expose Number x;
@@ -885,7 +885,7 @@ module Main;
 bind Vec2;
 bind Player;
 bind Enemy;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Modular Game Demo ===");
@@ -961,7 +961,7 @@ Users bind `string_utils` and get a clean, organized API:
 ```rust
 bind string_utils;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var email = "test@example.com";
 if string_utils.validation.isEmail(email) {
@@ -1055,7 +1055,7 @@ One of the biggest benefits of good module design is testability. When code is p
 module Vec2Test;
 
 bind Vec2;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func require(condition: Boolean, message: String) {
     if !condition {
@@ -1113,7 +1113,7 @@ Sometimes you want to test internal functions that aren't exported. There are se
 ```rust
 module EmailValidator;
 
-bind Viper.String as Str;
+bind Zanna.String as Str;
 
 hide func containsAt(email: String) -> Boolean {
     return Str.Has(email, "@");
@@ -1130,7 +1130,7 @@ expose func test_containsAt(email: String) -> Boolean {
 ```rust
 module EmailValidator;
 
-bind Viper.String as Str;
+bind Zanna.String as Str;
 
 func require(condition: Boolean, message: String) {
     if !condition {
@@ -1355,6 +1355,6 @@ Draw the dependency graph. Make sure there are no circular dependencies. Think c
 
 ---
 
-*We can now organize large programs into manageable pieces. Our code is cleaner, our dependencies are clear, and our modules can be understood, tested, and reused independently. Next, we survey the entire standard library — what Viper gives you for free.*
+*We can now organize large programs into manageable pieces. Our code is cleaner, our dependencies are clear, and our modules can be understood, tested, and reused independently. Next, we survey the entire standard library — what Zanna gives you for free.*
 
 *[Continue to Chapter 13: The Standard Library ->](13-stdlib.md)*

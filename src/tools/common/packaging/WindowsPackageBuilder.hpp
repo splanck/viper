@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Transform one complete PE image into its signed form before packaging.
 /// @details The logical name is an install-relative path used for diagnostics and
@@ -93,13 +93,13 @@ struct WindowsToolchainBuildParams {
     std::string outputPath;     ///< Output .exe path for the installer.
     std::string archStr{"x64"}; ///< Payload architecture ("x64" or "arm64").
     std::string displayName{
-        "Viper Toolchain"}; ///< Human-readable product name shown in Add/Remove Programs.
+        "Zanna Toolchain"}; ///< Human-readable product name shown in Add/Remove Programs.
     std::string publisher{
-        "Viper Project"}; ///< Publisher string written to the uninstall registry key.
+        "Zanna Project"}; ///< Publisher string written to the uninstall registry key.
     std::string identifier{
-        "org.viper.toolchain"}; ///< Unique product identifier used as the registry key name.
-    std::string installDirName{"Viper"}; ///< Directory name under the selected install root.
-    std::string homepage{"https://github.com/splanck/viper"}; ///< Support/update URL.
+        "org.zanna.toolchain"}; ///< Unique product identifier used as the registry key name.
+    std::string installDirName{"Zanna"}; ///< Directory name under the selected install root.
+    std::string homepage{"https://github.com/zannagames/zanna"}; ///< Support/update URL.
     std::string documentationUrl;         ///< Documentation URL; defaults to homepage.
     std::string updateManifestUrl;        ///< Optional HTTPS signed update-manifest URL.
     std::string updateRsaModulus;         ///< RSA public modulus for update signature verification.
@@ -110,18 +110,18 @@ struct WindowsToolchainBuildParams {
         "user"};          ///< "user" for LocalAppData/HKCU, "machine" for ProgramFiles/HKLM.
     bool addToPath{true}; ///< Add bin/ to the selected PATH registry value.
     bool registerFileAssociations{true}; ///< Register .zia/.bas/.il file associations.
-    bool createStartMenuShortcuts{true}; ///< Create Viper developer shortcuts in the Start Menu.
+    bool createStartMenuShortcuts{true}; ///< Create Zanna developer shortcuts in the Start Menu.
     std::string installerHostPath; ///< Native host template; auto-detected in staged bin/ if empty.
     std::string installerCleanupPath; ///< Detached cleanup helper; auto-detected in staged bin/.
-    WindowsPeSigner peSigner; ///< Optional signer for Viper-owned payload PEs and uninstall.exe.
+    WindowsPeSigner peSigner; ///< Optional signer for Zanna-owned payload PEs and uninstall.exe.
 };
 
 /// @brief Build a Windows toolchain installer .exe from a staged install manifest.
 ///
 /// Packages every staged file into a compressed inner ZIP carried by a PE32+
-/// self-extracting stub. The stub installs files under the selected Viper install
+/// self-extracting stub. The stub installs files under the selected Zanna install
 /// root, writes an uninstall registry key, updates PATH, and creates Start Menu
-/// shortcuts when requested. All required toolchain components (viper binary,
+/// shortcuts when requested. All required toolchain components (zanna binary,
 /// CMake config, runtime archives) must already be validated in the manifest by
 /// validateToolchainInstallManifest before calling this function.
 ///
@@ -129,4 +129,4 @@ struct WindowsToolchainBuildParams {
 /// @throws std::runtime_error on any I/O, validation, or PE assembly failure.
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

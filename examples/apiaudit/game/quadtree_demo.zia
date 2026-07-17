@@ -1,11 +1,11 @@
-// quadtree_demo.zia - Comprehensive API audit for Viper.Game.Quadtree
+// quadtree_demo.zia - Comprehensive API audit for Zanna.Game.Quadtree
 // Tests: New, Insert, Remove, Update, QueryRectResult, QueryPointResult,
 //        QueryPairs, QueryResult, QuadtreePairResult, ItemCount, Clear
 
 module QuadtreeDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Quadtree API Audit ===");

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/include/vg_font.h
-// Purpose: Public API for the Viper GUI font subsystem — TTF loading, glyph
+// Purpose: Public API for the Zanna GUI font subsystem — TTF loading, glyph
 //          rasterization, text measurement, hit-testing, and rendering.
 // Key invariants:
 //   - Font handles are opaque and must be destroyed with vg_font_destroy.

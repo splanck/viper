@@ -12,10 +12,10 @@
 
 module renderer;
 
-bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
-bind Viper.Text.Fmt;
-bind SmoothValue = Viper.Game.SmoothValue;
+bind Zanna.Graphics;
+bind Color = Zanna.Graphics.Color;
+bind Zanna.Text.Fmt;
+bind SmoothValue = Zanna.Game.SmoothValue;
 
 bind "../config";
 bind "../progression";

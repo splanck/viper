@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_version.c
 // Purpose: Implements semantic version parsing, comparison, and constraint
-//          checking for the Viper.Text.Version class per SemVer 2.0.0
+//          checking for the Zanna.Text.Version class per SemVer 2.0.0
 //          (https://semver.org/). Supports major.minor.patch with optional
 //          pre-release identifiers and build metadata.
 //

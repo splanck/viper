@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_videoplayer.h"
 #include "../audio/rt_ogg.h"
@@ -34,7 +34,7 @@
 #include "rt_string.h"
 #include "rt_theora.h"
 #include "rt_ycbcr.h"
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
 #include "../audio/rt_audio.h"
 #endif
 
@@ -827,7 +827,7 @@ typedef struct {
     theora_decoder_t theora;
     uint32_t theora_serial; /* OGG stream serial for Theora */
     int32_t ogv_consecutive_decode_errors;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     void *audio_track; /* rt_music */
     int8_t audio_started;
     int8_t audio_paused;
@@ -1076,7 +1076,7 @@ static int copy_theora_frame_to_display(rt_videoplayer *vp,
     return 1;
 }
 
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
 // ---------------------------------------------------------------------------
 // Audio-track helpers — the videoplayer mixes the optional
 // embedded audio stream (Vorbis if present in the Ogg container)
@@ -1324,7 +1324,7 @@ static void videoplayer_finalizer(void *obj) {
         return;
     if (vp->container_type == 0)
         avi_free(&vp->avi);
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->audio_track)
         rt_music_destroy(vp->audio_track);
 #endif
@@ -1427,7 +1427,7 @@ void *rt_videoplayer_open(rt_string path) {
                 rt_obj_free(vp);
             return NULL;
         }
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
         vp->audio_track = rt_music_load(path);
         videoplayer_set_audio_volume(vp);
 #endif
@@ -1479,7 +1479,7 @@ void rt_videoplayer_play(void *obj) {
     if (!vp)
         return;
     vp->playing = 1;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1)
         videoplayer_start_audio(vp);
 #endif
@@ -1491,7 +1491,7 @@ void rt_videoplayer_pause(void *obj) {
     if (!vp)
         return;
     vp->playing = 0;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1)
         videoplayer_pause_audio(vp);
 #endif
@@ -1515,7 +1515,7 @@ void rt_videoplayer_stop(void *obj) {
     } else if (vp->container_type == 1) {
         ogv_prepare_playback(vp);
     }
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1)
         videoplayer_stop_audio(vp);
 #endif
@@ -1574,7 +1574,7 @@ void rt_videoplayer_seek(void *obj, double seconds) {
             return;
         }
         vp->position = seconds;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
         videoplayer_seek_audio(vp);
 #endif
     } else {
@@ -1604,7 +1604,7 @@ void rt_videoplayer_update(void *obj, double dt) {
     if (!vp->playing)
         return;
 
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1 && vp->audio_track && vp->audio_started &&
         rt_music_is_playing(vp->audio_track)) {
         vp->position = (double)rt_music_get_position(vp->audio_track) / 1000.0;
@@ -1624,7 +1624,7 @@ void rt_videoplayer_update(void *obj, double dt) {
         }
         vp->position = vp->duration;
         vp->playing = 0;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
         if (vp->container_type == 1)
             videoplayer_stop_audio(vp);
 #endif
@@ -1637,7 +1637,7 @@ void rt_videoplayer_update(void *obj, double dt) {
         vp->playing = 0;
         if (isfinite(vp->duration) && vp->duration >= 0.0)
             vp->position = vp->duration;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
         if (vp->container_type == 1)
             videoplayer_stop_audio(vp);
 #endif
@@ -1680,7 +1680,7 @@ void rt_videoplayer_set_volume(void *obj, double vol) {
     if (vol > 1.0)
         vol = 1.0;
     vp->volume = vol;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1)
         videoplayer_set_audio_volume(vp);
 #endif
@@ -1709,7 +1709,7 @@ double rt_videoplayer_get_position(void *obj) {
     rt_videoplayer *vp = videoplayer_checked(obj);
     if (!vp)
         return 0.0;
-#ifdef VIPER_ENABLE_AUDIO
+#ifdef ZANNA_ENABLE_AUDIO
     if (vp->container_type == 1 && vp->audio_track && vp->audio_started &&
         rt_music_is_playing(vp->audio_track)) {
         return (double)rt_music_get_position(vp->audio_track) / 1000.0;
@@ -1733,4 +1733,4 @@ void *rt_videoplayer_get_frame(void *obj) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

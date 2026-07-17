@@ -1,0 +1,57 @@
+// Test: OOP - Generics
+// Tests: generic entities, generic functions
+module Test;
+
+// Generic entity
+class Box[T] {
+    expose T value;
+
+    expose func init(v: T) {
+        value = v;
+    }
+
+    expose func get() -> T {
+        return value;
+    }
+
+    expose func set(v: T) {
+        value = v;
+    }
+}
+
+// Generic function
+func identity[T](x: T) -> T {
+    return x;
+}
+
+func main() {
+    Zanna.Terminal.Say("=== OOP Generics Test ===");
+
+    // Test generic entity with Integer
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Generic Box[Integer] ---");
+    var intBox = new Box[Integer](42);
+    Zanna.Terminal.Print("Initial value: ");
+    Zanna.Terminal.SayInt(intBox.get());
+    intBox.set(100);
+    Zanna.Terminal.Print("After set(100): ");
+    Zanna.Terminal.SayInt(intBox.get());
+
+    // Test generic entity with String
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Generic Box[String] ---");
+    var strBox = new Box[String]("Hello");
+    Zanna.Terminal.Say("Initial value: " + strBox.get());
+    strBox.set("World");
+    Zanna.Terminal.Say("After set: " + strBox.get());
+
+    // Test generic function
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Generic Function ---");
+    var i = identity[Integer](42);
+    Zanna.Terminal.Print("identity[Integer](42) = ");
+    Zanna.Terminal.SayInt(i);
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== OOP Generics test complete ===");
+}

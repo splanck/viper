@@ -30,8 +30,8 @@ extract_enum_values() {
 # --- Helper: extract X-macro opcode names from MOpcodeDef.inc ---
 extract_inc_opcodes() {
     local file="$1"
-    grep '^[[:space:]]*VIPER_MIR_OPCODE(' "$file" \
-        | sed -E 's/.*VIPER_MIR_OPCODE\(([A-Za-z_][A-Za-z0-9_]*)\).*/\1/' \
+    grep '^[[:space:]]*ZANNA_MIR_OPCODE(' "$file" \
+        | sed -E 's/.*ZANNA_MIR_OPCODE\(([A-Za-z_][A-Za-z0-9_]*)\).*/\1/' \
         | sort
 }
 

@@ -21,7 +21,7 @@ death/hit-reaction pipeline a third-person adventure game requires.
 
 ## Decision
 
-`Viper.Graphics3D.Ragdoll3D` (`rt_ragdoll3d.c`, id `-0x603052`) plus three
+`Zanna.Graphics3D.Ragdoll3D` (`rt_ragdoll3d.c`, id `-0x603052`) plus three
 internal support APIs:
 
 - `rt_skeleton3d_get_bone_parent_raw` / `get_bone_bind_local_raw` expose the

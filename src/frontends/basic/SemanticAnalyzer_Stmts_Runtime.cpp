@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -756,13 +756,13 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d) {
                 previous = itType->second;
             activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
-        // Check for explicit class type Viper.System.String -> treat as String
+        // Check for explicit class type Zanna.System.String -> treat as String
         // All other object/class types -> treat as Object
         Type dimType = astToSemanticType(d.type);
         if (!d.explicitClassQname.empty()) {
             std::string qname = JoinDots(d.explicitClassQname);
-            if (string_utils::iequals(qname, "viper.system.string") ||
-                string_utils::iequals(qname, "viper.string")) {
+            if (string_utils::iequals(qname, "zanna.system.string") ||
+                string_utils::iequals(qname, "zanna.string")) {
                 dimType = Type::String;
             } else {
                 // Any other class/interface type is an object

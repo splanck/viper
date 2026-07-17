@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the incremental search bar widget for the Viper TUI text view.  It
+// Implements the incremental search bar widget for the Zanna TUI text view.  It
 // captures keystrokes, maintains the active query, and highlights matches within
 // an attached text buffer while synchronising the cursor position in the bound
 // text view.  Behaviour mimics modal editors: typing extends the query, pressing
@@ -32,8 +32,8 @@
 #include "tui/widgets/search_bar.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::widgets {
-using viper::tui::term::KeyEvent;
+namespace zanna::tui::widgets {
+using zanna::tui::term::KeyEvent;
 
 /// @brief Construct a search bar bound to a text buffer and view.
 /// @details Stores references to the supplied buffer, view, and theme.  No work
@@ -141,4 +141,4 @@ void SearchBar::paint(render::ScreenBuffer &sb) {
     }
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

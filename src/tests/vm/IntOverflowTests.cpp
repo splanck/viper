@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -49,14 +49,14 @@ void buildOverflowFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) 
 int64_t runOverflow(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildOverflowFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 void expectOverflowTrap(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildOverflowFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find("Overflow") != std::string::npos);
 }
@@ -64,7 +64,7 @@ void expectOverflowTrap(Opcode op, int64_t lhs, int64_t rhs) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     const int64_t minVal = std::numeric_limits<int64_t>::min();

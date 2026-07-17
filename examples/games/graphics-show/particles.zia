@@ -1,7 +1,7 @@
 module particles;
 
 // ============================================================================
-// PARTICLES.VIPER - Advanced Particle System Demo
+// PARTICLES.ZANNA - Advanced Particle System Demo
 // ============================================================================
 // Demonstrates a physics-based particle system with gravity, wind,
 // multiple emitters, and various particle behaviors.
@@ -9,13 +9,13 @@ module particles;
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Text.Fmt;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Text.Fmt;
+bind Zanna.Time;
 
 // Single particle with physics properties
 class Particle {
@@ -287,6 +287,6 @@ func particlesRun(canvas: Canvas) {
 
         canvas.Flip();
         frameCount = frameCount + 1;
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

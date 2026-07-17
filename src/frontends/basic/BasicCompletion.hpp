@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/BasicCompletion.hpp
-// Purpose: Code-completion engine for the Viper BASIC language.
+// Purpose: Code-completion engine for the Zanna BASIC language.
 // Key invariants:
 //   - Reuses same CompletionKind/CompletionItem types as Zia
 //   - One-entry LRU cache keyed by FNV-1a source hash plus file path
@@ -120,7 +120,7 @@ class BasicCompletionEngine {
     std::vector<CompletionItem> provideMemberCompletions(const SemanticAnalyzer &sema,
                                                          const Context &ctx) const;
     /// @brief Suggest members of a runtime class resolved purely by name.
-    /// @param className Fully-qualified runtime class (e.g. "Viper.String").
+    /// @param className Fully-qualified runtime class (e.g. "Zanna.String").
     std::vector<CompletionItem> provideRuntimeMembers(const std::string &className,
                                                       const std::string &prefix) const;
 

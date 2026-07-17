@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
 #endif
-#define main viper_rtgen_tool_main
+#define main zanna_rtgen_tool_main
 #include "tools/rtgen/rtgen.cpp"
 #undef main
 #if defined(__clang__)
@@ -41,7 +41,7 @@ struct TempDir {
 
 TempDir makeTempDir() {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    TempDir dir{fs::temp_directory_path() / ("viper-rtgen-header-parse-" + std::to_string(stamp))};
+    TempDir dir{fs::temp_directory_path() / ("zanna-rtgen-header-parse-" + std::to_string(stamp))};
     fs::create_directories(dir.path);
     return dir;
 }
@@ -105,6 +105,6 @@ TEST(RtgenHeaderParse, LoadRuntimeHeaderDeclarationsIgnoresInlineBodyCalls) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

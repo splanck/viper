@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -159,7 +159,7 @@ class SemanticAnalyzer {
     const ProcTable &procs() const;
 
     /// @brief Get canonical lowercase USING import namespaces from file scope.
-    /// @return Set of imported namespace paths (e.g., "viper.terminal").
+    /// @return Set of imported namespace paths (e.g., "zanna.terminal").
     std::vector<std::string> getUsingImports() const;
 
     /// @brief Lookup array metadata for a given array name.

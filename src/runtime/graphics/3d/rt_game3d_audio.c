@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_audio.c
-// Purpose: Sound3D audio subsystem for the Viper.Game3D layer — listener/source
+// Purpose: Sound3D audio subsystem for the Zanna.Game3D layer — listener/source
 //   management, distance attenuation, and camera-follow listener. Split out of
 //   rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Ownership/Lifetime:

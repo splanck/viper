@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -18,7 +18,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required VIPER_BIN TEST_WORK_DIR)
+foreach (_required ZANNA_BIN TEST_WORK_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to PackageCliTests.cmake")
     endif ()
@@ -28,21 +28,21 @@ file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package --help
+        COMMAND "${ZANNA_BIN}" package --help
         RESULT_VARIABLE _help_rv
         OUTPUT_VARIABLE _help_out
         ERROR_VARIABLE _help_err)
 if (NOT _help_rv EQUAL 0)
-    message(FATAL_ERROR "viper package --help should exit 0\nstdout:\n${_help_out}\nstderr:\n${_help_err}")
+    message(FATAL_ERROR "zanna package --help should exit 0\nstdout:\n${_help_out}\nstderr:\n${_help_err}")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package --target
+        COMMAND "${ZANNA_BIN}" package --target
         RESULT_VARIABLE _missing_target_rv
         OUTPUT_VARIABLE _missing_target_out
         ERROR_VARIABLE _missing_target_err)
 if (_missing_target_rv EQUAL 0)
-    message(FATAL_ERROR "viper package --target without a value should fail")
+    message(FATAL_ERROR "zanna package --target without a value should fail")
 endif ()
 
 set(_quoted_project "${TEST_WORK_DIR}/quoted-project")
@@ -51,7 +51,7 @@ file(MAKE_DIRECTORY "${_quoted_project}/scripts")
 file(WRITE "${_quoted_project}/main.zia" "func start() {}\n")
 file(WRITE "${_quoted_project}/asset dir/config.txt" "ok\n")
 file(WRITE "${_quoted_project}/scripts/post install.sh" "echo post-install\n")
-file(WRITE "${_quoted_project}/viper.project"
+file(WRITE "${_quoted_project}/zanna.project"
         "project quotedpkg
 version 1.0.0
 lang zia
@@ -62,7 +62,7 @@ post-install \"scripts/post install.sh\"
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_quoted_project}" --target tarball --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_quoted_project}" --target tarball --dry-run
         RESULT_VARIABLE _quoted_rv
         OUTPUT_VARIABLE _quoted_out
         ERROR_VARIABLE _quoted_err)
@@ -73,7 +73,7 @@ endif ()
 set(_missing_project "${TEST_WORK_DIR}/missing-project")
 file(MAKE_DIRECTORY "${_missing_project}")
 file(WRITE "${_missing_project}/main.zia" "func start() {}\n")
-file(WRITE "${_missing_project}/viper.project"
+file(WRITE "${_missing_project}/zanna.project"
         "project missingpkg
 version 1.0.0
 lang zia
@@ -82,7 +82,7 @@ asset missing data
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_missing_project}" --target tarball --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_missing_project}" --target tarball --dry-run
         RESULT_VARIABLE _missing_asset_rv
         OUTPUT_VARIABLE _missing_asset_out
         ERROR_VARIABLE _missing_asset_err)
@@ -96,7 +96,7 @@ endif ()
 set(_bad_url_project "${TEST_WORK_DIR}/bad-url-project")
 file(MAKE_DIRECTORY "${_bad_url_project}")
 file(WRITE "${_bad_url_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_url_project}/viper.project"
+file(WRITE "${_bad_url_project}/zanna.project"
         "project badurl
 version 1.0.0
 lang zia
@@ -105,7 +105,7 @@ package-homepage https:///missing-host
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_url_project}" --target tarball --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_url_project}" --target tarball --dry-run
         RESULT_VARIABLE _bad_url_rv
         OUTPUT_VARIABLE _bad_url_out
         ERROR_VARIABLE _bad_url_err)
@@ -119,7 +119,7 @@ endif ()
 set(_bad_assoc_project "${TEST_WORK_DIR}/bad-assoc-project")
 file(MAKE_DIRECTORY "${_bad_assoc_project}")
 file(WRITE "${_bad_assoc_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_assoc_project}/viper.project"
+file(WRITE "${_bad_assoc_project}/zanna.project"
         "project badassoc
 version 1.0.0
 lang zia
@@ -128,7 +128,7 @@ file-assoc . \"Bad\" text/plain
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_assoc_project}" --target linux --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_assoc_project}" --target linux --dry-run
         RESULT_VARIABLE _bad_assoc_rv
         OUTPUT_VARIABLE _bad_assoc_out
         ERROR_VARIABLE _bad_assoc_err)
@@ -142,7 +142,7 @@ endif ()
 set(_dup_assoc_project "${TEST_WORK_DIR}/dup-assoc-project")
 file(MAKE_DIRECTORY "${_dup_assoc_project}")
 file(WRITE "${_dup_assoc_project}/main.zia" "func start() {}\n")
-file(WRITE "${_dup_assoc_project}/viper.project"
+file(WRITE "${_dup_assoc_project}/zanna.project"
         "project dupassoc
 version 1.0.0
 lang zia
@@ -152,7 +152,7 @@ file-assoc .ZIA \"Zia Source 2\" text/x-zia-2
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_dup_assoc_project}" --target linux --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_dup_assoc_project}" --target linux --dry-run
         RESULT_VARIABLE _dup_assoc_rv
         OUTPUT_VARIABLE _dup_assoc_out
         ERROR_VARIABLE _dup_assoc_err)
@@ -166,7 +166,7 @@ endif ()
 set(_bad_scalar_project "${TEST_WORK_DIR}/bad-scalar-project")
 file(MAKE_DIRECTORY "${_bad_scalar_project}")
 file(WRITE "${_bad_scalar_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_scalar_project}/viper.project"
+file(WRITE "${_bad_scalar_project}/zanna.project"
         "project badscalar
 version 1.0.0
 lang zia
@@ -175,7 +175,7 @@ package-name \"Foo\" bar
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_scalar_project}" --target tarball --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_scalar_project}" --target tarball --dry-run
         RESULT_VARIABLE _bad_scalar_rv
         OUTPUT_VARIABLE _bad_scalar_out
         ERROR_VARIABLE _bad_scalar_err)
@@ -189,7 +189,7 @@ endif ()
 set(_linux_dep_project "${TEST_WORK_DIR}/linux-dep-project")
 file(MAKE_DIRECTORY "${_linux_dep_project}")
 file(WRITE "${_linux_dep_project}/main.zia" "func start() {}\n")
-file(WRITE "${_linux_dep_project}/viper.project"
+file(WRITE "${_linux_dep_project}/zanna.project"
         "project linuxdeps
 version 1.0.0
 lang zia
@@ -199,7 +199,7 @@ package-depends libc6 (>= 2.34),\tlibstdc++6 | libc++1
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_linux_dep_project}" --target linux --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_linux_dep_project}" --target linux --dry-run
         RESULT_VARIABLE _linux_dep_rv
         OUTPUT_VARIABLE _linux_dep_out
         ERROR_VARIABLE _linux_dep_err)
@@ -210,7 +210,7 @@ endif ()
 set(_bad_deb_version_project "${TEST_WORK_DIR}/bad-deb-version-project")
 file(MAKE_DIRECTORY "${_bad_deb_version_project}")
 file(WRITE "${_bad_deb_version_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_deb_version_project}/viper.project"
+file(WRITE "${_bad_deb_version_project}/zanna.project"
         "project baddebversion
 version -1.0
 lang zia
@@ -218,7 +218,7 @@ entry main.zia
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_deb_version_project}" --target linux --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_deb_version_project}" --target linux --dry-run
         RESULT_VARIABLE _bad_deb_version_rv
         OUTPUT_VARIABLE _bad_deb_version_out
         ERROR_VARIABLE _bad_deb_version_err)
@@ -232,16 +232,16 @@ endif ()
 set(_bad_macos_id_project "${TEST_WORK_DIR}/bad-macos-id-project")
 file(MAKE_DIRECTORY "${_bad_macos_id_project}")
 file(WRITE "${_bad_macos_id_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_macos_id_project}/viper.project"
+file(WRITE "${_bad_macos_id_project}/zanna.project"
         "project badmacid
 version 1.0.0
 lang zia
 entry main.zia
-package-identifier org.viper.bad_id
+package-identifier org.zanna.bad_id
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_macos_id_project}" --target macos --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_macos_id_project}" --target macos --dry-run
         RESULT_VARIABLE _bad_macos_id_rv
         OUTPUT_VARIABLE _bad_macos_id_out
         ERROR_VARIABLE _bad_macos_id_err)
@@ -255,7 +255,7 @@ endif ()
 set(_bad_macos_sign_project "${TEST_WORK_DIR}/bad-macos-sign-project")
 file(MAKE_DIRECTORY "${_bad_macos_sign_project}")
 file(WRITE "${_bad_macos_sign_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_macos_sign_project}/viper.project"
+file(WRITE "${_bad_macos_sign_project}/zanna.project"
         "project badmacsign
 version 1.0.0
 lang zia
@@ -264,7 +264,7 @@ macos-sign-mode bogus
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_macos_sign_project}" --target macos --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_macos_sign_project}" --target macos --dry-run
         RESULT_VARIABLE _bad_macos_sign_rv
         OUTPUT_VARIABLE _bad_macos_sign_out
         ERROR_VARIABLE _bad_macos_sign_err)
@@ -278,7 +278,7 @@ endif ()
 set(_bad_macos_notary_project "${TEST_WORK_DIR}/bad-macos-notary-project")
 file(MAKE_DIRECTORY "${_bad_macos_notary_project}")
 file(WRITE "${_bad_macos_notary_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_macos_notary_project}/viper.project"
+file(WRITE "${_bad_macos_notary_project}/zanna.project"
         "project badmacnotary
 version 1.0.0
 lang zia
@@ -288,7 +288,7 @@ macos-notary-profile profile
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_macos_notary_project}" --target macos --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_macos_notary_project}" --target macos --dry-run
         RESULT_VARIABLE _bad_macos_notary_rv
         OUTPUT_VARIABLE _bad_macos_notary_out
         ERROR_VARIABLE _bad_macos_notary_err)
@@ -302,7 +302,7 @@ endif ()
 set(_macos_sign_project "${TEST_WORK_DIR}/macos-sign-project")
 file(MAKE_DIRECTORY "${_macos_sign_project}")
 file(WRITE "${_macos_sign_project}/main.zia" "func start() {}\n")
-file(WRITE "${_macos_sign_project}/viper.project"
+file(WRITE "${_macos_sign_project}/zanna.project"
         "project macsign
 version 1.0.0
 lang zia
@@ -312,7 +312,7 @@ macos-hardened-runtime on
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_macos_sign_project}" --target macos --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_macos_sign_project}" --target macos --dry-run
         RESULT_VARIABLE _macos_sign_rv
         OUTPUT_VARIABLE _macos_sign_out
         ERROR_VARIABLE _macos_sign_err)
@@ -326,7 +326,7 @@ endif ()
 set(_windows_scope_project "${TEST_WORK_DIR}/windows-scope-project")
 file(MAKE_DIRECTORY "${_windows_scope_project}")
 file(WRITE "${_windows_scope_project}/main.zia" "func start() {}\n")
-file(WRITE "${_windows_scope_project}/viper.project"
+file(WRITE "${_windows_scope_project}/zanna.project"
         "project winscope
 version 1.0.0
 lang zia
@@ -335,11 +335,11 @@ windows-install-scope user
 windows-install-dir WinScopeRoot
 windows-sign off
 windows-sign-thumbprint ABCDEFFE00112233445566778899AABBCCDDEEFF
-file-assoc .vap \"VAPS Project\" text/x-vaps --open-project
+file-assoc .zap \"ZAPS Project\" text/x-zaps --open-project
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_windows_scope_project}" --target windows --dry-run
         RESULT_VARIABLE _windows_scope_rv
         OUTPUT_VARIABLE _windows_scope_out
         ERROR_VARIABLE _windows_scope_err)
@@ -360,7 +360,7 @@ if (NOT _windows_scope_out MATCHES "Windows open args: --open-project")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-install-scope machine
+        COMMAND "${ZANNA_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-install-scope machine
         RESULT_VARIABLE _windows_scope_cli_rv
         OUTPUT_VARIABLE _windows_scope_cli_out
         ERROR_VARIABLE _windows_scope_cli_err)
@@ -374,7 +374,7 @@ endif ()
 set(_windows_thumbprint_only_project "${TEST_WORK_DIR}/windows-thumbprint-only-project")
 file(MAKE_DIRECTORY "${_windows_thumbprint_only_project}")
 file(WRITE "${_windows_thumbprint_only_project}/main.zia" "func start() {}\n")
-file(WRITE "${_windows_thumbprint_only_project}/viper.project"
+file(WRITE "${_windows_thumbprint_only_project}/zanna.project"
         "project winthumbonly
 version 1.0.0
 lang zia
@@ -383,7 +383,7 @@ windows-sign-thumbprint ABCDEFFE00112233445566778899AABBCCDDEEFF
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_windows_thumbprint_only_project}" --target windows --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_windows_thumbprint_only_project}" --target windows --dry-run
         RESULT_VARIABLE _windows_thumbprint_only_rv
         OUTPUT_VARIABLE _windows_thumbprint_only_out
         ERROR_VARIABLE _windows_thumbprint_only_err)
@@ -398,7 +398,7 @@ if (NOT _windows_thumbprint_only_out MATCHES "Windows signing thumbprint: ABCDEF
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-sign-thumbprint 1234
+        COMMAND "${ZANNA_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-sign-thumbprint 1234
         RESULT_VARIABLE _bad_windows_thumb_rv
         OUTPUT_VARIABLE _bad_windows_thumb_out
         ERROR_VARIABLE _bad_windows_thumb_err)
@@ -412,7 +412,7 @@ endif ()
 set(_bad_windows_scope_project "${TEST_WORK_DIR}/bad-windows-scope-project")
 file(MAKE_DIRECTORY "${_bad_windows_scope_project}")
 file(WRITE "${_bad_windows_scope_project}/main.zia" "func start() {}\n")
-file(WRITE "${_bad_windows_scope_project}/viper.project"
+file(WRITE "${_bad_windows_scope_project}/zanna.project"
         "project badwinscope
 version 1.0.0
 lang zia
@@ -421,7 +421,7 @@ windows-install-scope portable
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_bad_windows_scope_project}" --target windows --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_bad_windows_scope_project}" --target windows --dry-run
         RESULT_VARIABLE _bad_windows_scope_rv
         OUTPUT_VARIABLE _bad_windows_scope_out
         ERROR_VARIABLE _bad_windows_scope_err)
@@ -435,14 +435,14 @@ endif ()
 set(_no_version_project "${TEST_WORK_DIR}/no-version-project")
 file(MAKE_DIRECTORY "${_no_version_project}")
 file(WRITE "${_no_version_project}/main.zia" "func start() {}\n")
-file(WRITE "${_no_version_project}/viper.project"
+file(WRITE "${_no_version_project}/zanna.project"
         "project noversionpkg
 lang zia
 entry main.zia
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_no_version_project}" --target tarball --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_no_version_project}" --target tarball --dry-run
         RESULT_VARIABLE _no_version_rv
         OUTPUT_VARIABLE _no_version_out
         ERROR_VARIABLE _no_version_err)
@@ -456,7 +456,7 @@ endif ()
 set(_portable_version_project "${TEST_WORK_DIR}/portable-version-project")
 file(MAKE_DIRECTORY "${_portable_version_project}")
 file(WRITE "${_portable_version_project}/main.zia" "func start() {}\n")
-file(WRITE "${_portable_version_project}/viper.project"
+file(WRITE "${_portable_version_project}/zanna.project"
         "project portableversion
 version 1^2
 lang zia
@@ -464,7 +464,7 @@ entry main.zia
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_portable_version_project}" --target tarball --dry-run --json
+        COMMAND "${ZANNA_BIN}" package "${_portable_version_project}" --target tarball --dry-run --json
         RESULT_VARIABLE _portable_version_rv
         OUTPUT_VARIABLE _portable_version_out
         ERROR_VARIABLE _portable_version_err)
@@ -478,7 +478,7 @@ endif ()
 set(_rpm_version_project "${TEST_WORK_DIR}/rpm-version-project")
 file(MAKE_DIRECTORY "${_rpm_version_project}")
 file(WRITE "${_rpm_version_project}/main.zia" "func start() {}\n")
-file(WRITE "${_rpm_version_project}/viper.project"
+file(WRITE "${_rpm_version_project}/zanna.project"
         "project rpmversion
 version 1^2
 lang zia
@@ -487,7 +487,7 @@ package-rpm-depends libX11 >= 1.8
 ")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" package "${_rpm_version_project}" --target rpm --dry-run
+        COMMAND "${ZANNA_BIN}" package "${_rpm_version_project}" --target rpm --dry-run
         RESULT_VARIABLE _rpm_version_rv
         OUTPUT_VARIABLE _rpm_version_out
         ERROR_VARIABLE _rpm_version_err)
@@ -497,7 +497,7 @@ endif ()
 
 file(WRITE "${TEST_WORK_DIR}/not-an-installer.zip" "not an installer\n")
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
         RESULT_VARIABLE _verify_unknown_rv
         OUTPUT_VARIABLE _verify_unknown_out
         ERROR_VARIABLE _verify_unknown_err)
@@ -509,7 +509,7 @@ if (NOT _verify_unknown_err MATCHES "cannot infer")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --target appimage --stage-dir "${TEST_WORK_DIR}"
+        COMMAND "${ZANNA_BIN}" install-package --target appimage --stage-dir "${TEST_WORK_DIR}"
         RESULT_VARIABLE _legacy_toolchain_target_rv
         OUTPUT_VARIABLE _legacy_toolchain_target_out
         ERROR_VARIABLE _legacy_toolchain_target_err)
@@ -523,7 +523,7 @@ endif ()
 
 file(WRITE "${TEST_WORK_DIR}/not-a-toolchain.AppImage" "not a toolchain bundle\n")
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-a-toolchain.AppImage"
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-a-toolchain.AppImage"
         RESULT_VARIABLE _legacy_toolchain_suffix_rv
         OUTPUT_VARIABLE _legacy_toolchain_suffix_out
         ERROR_VARIABLE _legacy_toolchain_suffix_err)
@@ -537,7 +537,7 @@ endif ()
 
 execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
-                "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                "${ZANNA_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
                 --target tarball --release --no-verify
         RESULT_VARIABLE _release_bypass_rv
         OUTPUT_VARIABLE _release_bypass_out
@@ -549,7 +549,7 @@ endif ()
 
 execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env --unset=SOURCE_DATE_EPOCH
-                "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                "${ZANNA_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
                 --target tarball --release
         RESULT_VARIABLE _release_epoch_rv
         OUTPUT_VARIABLE _release_epoch_out
@@ -561,7 +561,7 @@ endif ()
 
 execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
-                "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
+                "${ZANNA_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
                 --release
         RESULT_VARIABLE _release_verify_rv
         OUTPUT_VARIABLE _release_verify_out
@@ -572,7 +572,7 @@ if (_release_verify_rv EQUAL 0 OR NOT _release_verify_err MATCHES "--release is 
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+        COMMAND "${ZANNA_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
                 --target windows --stage-only --windows-channel stable
         RESULT_VARIABLE _local_stable_rv
         OUTPUT_VARIABLE _local_stable_out
@@ -584,7 +584,7 @@ if (_local_stable_rv EQUAL 0 OR
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+        COMMAND "${ZANNA_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
                 --target windows --stage-only --windows-channel "-unsafe"
         RESULT_VARIABLE _unsafe_channel_rv
         OUTPUT_VARIABLE _unsafe_channel_out
@@ -596,7 +596,7 @@ if (_unsafe_channel_rv EQUAL 0 OR
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+        COMMAND "${ZANNA_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
                 --target tarball --require-checksum
         RESULT_VARIABLE _generation_checksum_rv
         OUTPUT_VARIABLE _generation_checksum_out
@@ -607,7 +607,7 @@ if (_generation_checksum_rv EQUAL 0 OR NOT _generation_checksum_err MATCHES "--r
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip" --windows-sign-thumbprint 1234
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip" --windows-sign-thumbprint 1234
         RESULT_VARIABLE _install_bad_thumb_rv
         OUTPUT_VARIABLE _install_bad_thumb_out
         ERROR_VARIABLE _install_bad_thumb_err)

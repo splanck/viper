@@ -1,12 +1,12 @@
-// stack_demo.zia - Comprehensive API audit for Viper.Collections.Stack
+// stack_demo.zia - Comprehensive API audit for Zanna.Collections.Stack
 // Tests: New, Push, Pop, Peek, Len, IsEmpty, Clear
 
 module StackDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Stack API Audit ===");

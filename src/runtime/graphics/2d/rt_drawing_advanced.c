@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include <limits.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 
 enum {
@@ -32,7 +32,7 @@ enum {
 };
 
 /// @brief Validate a points array passed to Polyline/Polygon and expose its raw element pointer.
-/// @details Polyline/Polygon take an Integer-typed Viper array of length
+/// @details Polyline/Polygon take an Integer-typed Zanna array of length
 ///          `count * 2` (interleaved x/y pairs). This helper rejects: NULL
 ///          array, non-positive count, count > INT64_MAX/2 (so the multiply
 ///          can't overflow), arrays whose heap header is missing or wrong
@@ -99,7 +99,7 @@ static int64_t rt_canvas_adv_interp_x(int64_t x0, int64_t y0, int64_t x1, int64_
     return rt_canvas_adv_floor_ld_to_i64_sat(x);
 }
 
-/// @brief Convert a Viper packed color to a 24-bit ViperGFX RGB value.
+/// @brief Convert a Zanna packed color to a 24-bit ZannaGFX RGB value.
 /// @details Normalizes through rt_pixels_color_to_rgba (0xRRGGBBAA) then drops
 ///          the alpha byte, since the advanced canvas primitives draw opaque.
 static vgfx_color_t rt_canvas_adv_color_to_vgfx_rgb(int64_t color) {
@@ -1588,4 +1588,4 @@ void rt_canvas_gradient_v(
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

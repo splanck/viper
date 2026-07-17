@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/runtime/TestEntity.cpp
-// Purpose: Tests for Viper.Game.Entity — physics, collision flags, helpers.
+// Purpose: Tests for Zanna.Game.Entity — physics, collision flags, helpers.
 //
 //===----------------------------------------------------------------------===//
 
@@ -175,5 +175,5 @@ TEST(Entity, NullSafe) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

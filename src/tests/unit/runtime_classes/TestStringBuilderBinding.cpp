@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,8 +31,8 @@ TEST(RuntimeClassBinding, EmitsStringBuilderCapacityAndCtorExterns) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM sb AS Viper.Text.StringBuilder
-20 sb = NEW Viper.Text.StringBuilder()
+10 DIM sb AS Zanna.Text.StringBuilder
+20 sb = NEW Zanna.Text.StringBuilder()
 30 PRINT sb.Capacity
 40 END
 )BASIC";
@@ -40,11 +40,11 @@ TEST(RuntimeClassBinding, EmitsStringBuilderCapacityAndCtorExterns) {
     il::frontends::basic::BasicCompilerInput input{source, "sb_capacity.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Text.StringBuilder.New"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Text.StringBuilder.get_Capacity"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Text.StringBuilder.New"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Text.StringBuilder.get_Capacity"));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

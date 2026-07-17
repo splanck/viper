@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,10 +17,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// clipboard.zia - Pixel clipboard for Viper Paint copy/paste
+// clipboard.zia - Pixel clipboard for Zanna Paint copy/paste
 module clipboard;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 /// @brief Holds a copied rectangular Pixels region for paste.
 class PaintClipboard {

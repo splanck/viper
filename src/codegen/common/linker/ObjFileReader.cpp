@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <limits>
 #include <utility>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
@@ -141,4 +141,4 @@ bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err) {
     return readObjFile(data.data(), data.size(), path, obj, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

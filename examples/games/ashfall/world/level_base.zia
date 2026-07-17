@@ -11,12 +11,12 @@
 // =============================================================================
 module level_base;
 
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics3D as G3D;
-bind Viper.Math as Math;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../assets/textures" as textures;
-bind Viper.Graphics as Gfx;
+bind Zanna.Graphics as Gfx;
 bind "../core/mathutil" as M;
 
 class LevelBuilder {

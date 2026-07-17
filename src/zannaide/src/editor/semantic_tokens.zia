@@ -1,0 +1,181 @@
+module semantic_tokens;
+
+// Drives the async Zia semantic-token job (Zanna.Zia.Completion.BeginTokensForFile)
+// and applies the compiler-classified overlay on top of the lexical highlighter
+// via CodeEditor.AddSemanticToken. Zia-only; debounced on content revision, like
+// LiveDiagnostics. The overlay distinguishes parameters/fields/types/functions
+// that the purely lexical highlighter cannot, and corrects its heuristic guesses.
+
+bind "../editor/editor_engine";
+bind "../editor/zia_query";
+
+bind ZiaCompletion = Zanna.Zia.Completion;
+bind SemanticJob = Zanna.Zia.SemanticJob;
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Convert = Zanna.Core.Convert;
+bind Threads = Zanna.Threads;
+
+// ============================================================================
+// MODULE: semantic_tokens
+// PURPOSE: Apply compiler-classified semantic colors to the active Zia editor.
+//
+// WHERE-THIS-FITS: The lexical highlighter runs in CodeEditor; this controller
+//          schedules Zia semantic-token jobs after edits and overlays resolved
+//          symbol kinds such as fields, parameters, functions, and types.
+//
+// TEACHING-NOTE: Semantic coloring is useful only when it stays stale-safe.
+//          Always debounce, tie results to the editor revision, and ignore token
+//          kinds that should keep the lexical color.
+// ============================================================================
+
+// Token types — mirror vg_syntax_token_type / CodeEditor.SetTokenColor indices.
+final TOK_DEFAULT = 0;
+final TOK_TYPE = 2;
+final TOK_FUNCTION = 6;
+final TOK_PARAMETER = 9;
+final TOK_PROPERTY = 10;
+
+final SEM_DEBOUNCE_MS = 400;
+
+/// @brief Map a compiler symbol-kind string to a CodeEditor token type, or -1
+///        to leave the lexical color untouched.
+func tokenTypeForKind(kind: String) -> Integer {
+    if kind == "parameter" { return TOK_PARAMETER; }
+    if kind == "field" { return TOK_PROPERTY; }
+    if kind == "function" { return TOK_FUNCTION; }
+    if kind == "method" { return TOK_FUNCTION; }
+    if kind == "type" { return TOK_TYPE; }
+    if kind == "module" { return TOK_TYPE; }
+    // A resolved local: force the default color so the lexical uppercase-name
+    // heuristic cannot mis-tint a capitalized local as a type.
+    if kind == "variable" { return TOK_DEFAULT; }
+    return -1;
+}
+
+/// @brief Per-editor semantic-highlight driver.
+class SemanticHighlighter {
+    expose Boolean enabled;
+    expose String sourcePath;
+
+    hide Integer appliedRevision;
+    hide String appliedPath;
+
+    hide Boolean pending;
+    hide Integer pendingRevision;
+    hide Threads.Debouncer semDebounce;
+
+    hide Any pendingJob;
+    hide Integer pendingJobRevision;
+    hide String pendingJobPath;
+    hide Integer pendingJobLineOffset;
+
+    expose func init() {
+        enabled = true;
+        sourcePath = "";
+        appliedRevision = -1;
+        appliedPath = "";
+        pending = false;
+        pendingRevision = -1;
+        semDebounce = Threads.Debouncer.New(SEM_DEBOUNCE_MS);
+        pendingJob = null;
+        pendingJobRevision = -1;
+        pendingJobPath = "";
+        pendingJobLineOffset = 0;
+    }
+
+    /// @brief Update the active document path; resets state on a change. Enable
+    ///        (caller-controlled) gates this to Zia documents.
+    expose func setSourcePath(path: String) {
+        if path != sourcePath {
+            sourcePath = path;
+            appliedRevision = -1;
+            appliedPath = "";
+            CancelPending();
+        }
+    }
+
+    hide func CancelPending() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
+        pending = false;
+    }
+
+    /// @brief Per-frame update. Debounced; only runs for Zia documents.
+    expose func update(engine: editor_engine.EditorEngine) {
+        if enabled == false { return; }
+        if engine == null or engine.editor == null { return; }
+
+        var revision = engine.GetRevision();
+        if pendingJob != null {
+            if revision != pendingJobRevision or sourcePath != pendingJobPath {
+                CancelPending();
+            } else {
+                PollPending(engine);
+                return;
+            }
+        }
+
+        if revision == appliedRevision and sourcePath == appliedPath { return; }
+
+        if pending == false or revision != pendingRevision {
+            pending = true;
+            pendingRevision = revision;
+            semDebounce.Signal();
+            return;
+        }
+        if semDebounce.get_IsReady() == false { return; }
+
+        StartJob(engine, revision);
+    }
+
+    hide func StartJob(engine: editor_engine.EditorEngine, revision: Integer) {
+        pending = false;
+        var source = engine.GetTextSnapshot();
+        var qsource = zia_query.WrapForQuery(source);
+        var lineOff = zia_query.LineOffset(source);
+        var job = ZiaCompletion.BeginTokensForFile(qsource, sourcePath);
+        if job == null { return; }
+        pendingJob = job;
+        pendingJobRevision = revision;
+        pendingJobPath = sourcePath;
+        pendingJobLineOffset = lineOff;
+    }
+
+    hide func PollPending(engine: editor_engine.EditorEngine) {
+        if pendingJob == null { return; }
+        if SemanticJob.IsDone(pendingJob) == false { return; }
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) { return; }
+        if engine.GetRevision() != pendingJobRevision or sourcePath != pendingJobPath { return; }
+        Apply(engine, SemanticJob.Tokens(job), pendingJobLineOffset);
+        appliedRevision = pendingJobRevision;
+        appliedPath = pendingJobPath;
+    }
+
+    hide func Apply(engine: editor_engine.EditorEngine, raw: String, lineOff: Integer) {
+        engine.editor.ClearSemanticTokens();
+        if raw == "" { return; }
+        var lines = Str.Split(raw, "\n");
+        var i = 0;
+        while i < Seq.get_Count(lines) {
+            var row = Obj.ToString(Seq.Get(lines, i));
+            i = i + 1;
+            if row == "" { continue; }
+            var parts = Str.Split(row, "\t");
+            if Seq.get_Count(parts) < 4 { continue; }
+            var lineNum = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 0))) - lineOff;
+            var startCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 1)));
+            var endCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 2)));
+            var kind = Obj.ToString(Seq.Get(parts, 3));
+            if lineNum < 0 { continue; }
+            var tt = tokenTypeForKind(kind);
+            if tt < 0 { continue; }
+            engine.editor.AddSemanticToken(lineNum, startCol, endCol, tt);
+        }
+    }
+}

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 //   - The pipeline does not own the IL module or TargetInfo.
 //
 // Links: codegen/aarch64/passes/PassManager.hpp (types),
-//        tools/viper/cmd_codegen_arm64.cpp (caller)
+//        tools/zanna/cmd_codegen_arm64.cpp (caller)
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Result returned by a pipeline run.
 struct PipelineResult {
@@ -58,19 +58,19 @@ struct PipelineOptions {
 ///
 /// Wraps the full AArch64 pipeline (IL parse → IL opt → MIR lower → RA →
 /// peephole → sched → emit → assemble → link) behind a single `run()` entry
-/// point used by the `viper` CLI driver.
+/// point used by the `zanna` CLI driver.
 class CodegenPipeline {
   public:
     /// @brief Which assembler to use for translating emitted .s files to .o files.
     enum class AssemblerMode {
         System, ///< Invoke the system `as` (or clang -c) via subprocess.
-        Native, ///< Use Viper's built-in assembler/encoder.
+        Native, ///< Use Zanna's built-in assembler/encoder.
     };
 
     /// @brief Which linker to use for producing the final native binary.
     enum class LinkMode {
         System, ///< Invoke the system `ld` (or clang) via subprocess.
-        Native, ///< Use Viper's built-in linker.
+        Native, ///< Use Zanna's built-in linker.
     };
 
     /// @brief OS target for emitted code; affects symbol mangling and ABI.
@@ -99,7 +99,7 @@ class CodegenPipeline {
         bool emit_debug_lines = false; ///< Emit .loc / line-number directives in assembly.
         bool time_passes = false;      ///< Print per-pass wall-clock timings to stderr.
         bool fast_link = false;        ///< Skip non-essential size-reduction passes in the linker.
-        std::string asset_blob_path{}; ///< Path to VPA asset blob for .rodata embedding.
+        std::string asset_blob_path{}; ///< Path to ZPAK asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{};    ///< Extra .o files to pass to the linker.
         std::optional<bool> windows_debug_runtime{}; ///< Override Windows CRT import flavor.
     };
@@ -132,4 +132,4 @@ bool runCodegenPipeline(passes::AArch64Module &module,
                         const PipelineOptions &opts,
                         std::ostream &diagOut);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

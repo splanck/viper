@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,9 +29,9 @@ module Test;
 
 func start() {    var x = 1;
     if (x > 0) {
-        Viper.Terminal.Say("yes");
+        Zanna.Terminal.Say("yes");
     } else {
-        Viper.Terminal.Say("no");
+        Zanna.Terminal.Say("no");
     }
 }
 )";
@@ -104,7 +104,7 @@ func start() {    var sum: Integer = 0;
     for (i in 0..5) {
         sum = sum + i;
     }
-    Viper.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(sum);
 }
 )";
     CompilerInput input{.source = source, .path = "forin.zia"};
@@ -160,7 +160,7 @@ func start() {    var numbers: List[Integer] = [1, 2, 3];
         sum = sum + age;
     }
 
-    Viper.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(sum);
 }
 )";
     CompilerInput input{.source = source, .path = "forin_collections.zia"};
@@ -215,7 +215,7 @@ func start() {    var out: Integer = 0;
     for (n in names) {
         out = out + 1;
     }
-    Viper.Terminal.SayInt(out);
+    Zanna.Terminal.SayInt(out);
 }
 )";
     CompilerInput input{.source = source, .path = "forin_str_init.zia"};
@@ -292,5 +292,5 @@ func start() {    var p: Player = new Player();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

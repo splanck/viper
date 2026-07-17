@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Symbol binding/visibility.
 enum class SymbolBinding : uint8_t {
@@ -115,4 +115,4 @@ class SymbolTable {
     std::unordered_set<std::string> ambiguousNames_;
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

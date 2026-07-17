@@ -1,9 +1,9 @@
 module test_game3d_persistence_probe;
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics3D;
-bind Viper.IO as IO;
-bind Viper.Math as Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.IO as IO;
+bind Zanna.Math as Math;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var world = Game3D.World3D.New("Persistence Probe", 64, 48);
@@ -62,7 +62,7 @@ func start() {
     stream.ClearLoadedCellEvents();
 
     // Snapshot round-trip: save, mutate, load restores the saved state.
-    if (world.SaveState("viper-persistence-probe", "slot1") == false) {
+    if (world.SaveState("zanna-persistence-probe", "slot1") == false) {
         Terminal.Say("FAIL: SaveState should succeed");
         return;
     }
@@ -70,7 +70,7 @@ func start() {
     crate.StateTag = 99;
     stream.SetCellFlag("cell_a", "door_open", 42);
     world.StepSimulation(1.0 / 60.0);
-    if (world.LoadState("viper-persistence-probe", "slot1") == false) {
+    if (world.LoadState("zanna-persistence-probe", "slot1") == false) {
         Terminal.Say("FAIL: LoadState should succeed");
         return;
     }
@@ -93,13 +93,13 @@ func start() {
     }
 
     // Missing and corrupt snapshots recover false without touching state.
-    if (world.LoadState("viper-persistence-probe", "no-such-slot") == true) {
+    if (world.LoadState("zanna-persistence-probe", "no-such-slot") == true) {
         Terminal.Say("FAIL: a missing slot must load false");
         return;
     }
-    var corruptPath = IO.Path.DataDir("viper-persistence-probe") + "/corrupt.vw3dsav";
+    var corruptPath = IO.Path.DataDir("zanna-persistence-probe") + "/corrupt.vw3dsav";
     IO.File.WriteAllText(corruptPath, "this is not a save file at all");
-    if (world.LoadState("viper-persistence-probe", "corrupt") == true) {
+    if (world.LoadState("zanna-persistence-probe", "corrupt") == true) {
         Terminal.Say("FAIL: a corrupt slot must load false");
         return;
     }
@@ -109,11 +109,11 @@ func start() {
     }
 
     // Second save of identical state produces an identical loadable file.
-    if (world.SaveState("viper-persistence-probe", "slot2") == false) {
+    if (world.SaveState("zanna-persistence-probe", "slot2") == false) {
         Terminal.Say("FAIL: second SaveState should succeed");
         return;
     }
-    if (world.LoadState("viper-persistence-probe", "slot2") == false) {
+    if (world.LoadState("zanna-persistence-probe", "slot2") == false) {
         Terminal.Say("FAIL: second slot should load");
         return;
     }

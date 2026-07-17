@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ static vg_font_t *rt_gui_font_load_first(const char *const *paths) {
     return NULL;
 }
 
-/// @brief Load a proportional system UI font through Viper's dependency-free TrueType parser.
+/// @brief Load a proportional system UI font through Zanna's dependency-free TrueType parser.
 /// @details Candidate paths are ordered deterministically per supported platform. The function
 ///          creates no window or platform font object and leaves embedded fallback selection to
 ///          the caller when every candidate is absent or unsupported.

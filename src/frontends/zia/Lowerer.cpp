@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 /// @brief Implementation of Zia to IL code generation.
 ///
 /// @details This file implements the Lowerer class which transforms a
-/// type-checked Zia AST into Viper IL. Key implementation details:
+/// type-checked Zia AST into Zanna IL. Key implementation details:
 ///
 /// ## Lowering Process
 ///

@@ -1,52 +1,52 @@
-REM BASIC: Verify Viper.IO.Dir listing helpers
+REM BASIC: Verify Zanna.IO.Dir listing helpers
 
 DIM base AS STRING
 base = "tmp_dir_seq_wrappers"
 
-Viper.IO.Dir.RemoveAll(base)
-Viper.IO.Dir.Make(base)
+Zanna.IO.Dir.RemoveAll(base)
+Zanna.IO.Dir.Make(base)
 
 DIM subdir AS STRING
-subdir = Viper.IO.Path.Join(base, "subdir")
-Viper.IO.Dir.Make(subdir)
+subdir = Zanna.IO.Path.Join(base, "subdir")
+Zanna.IO.Dir.Make(subdir)
 
 DIM file1 AS STRING
-file1 = Viper.IO.Path.Join(base, "file1.txt")
+file1 = Zanna.IO.Path.Join(base, "file1.txt")
 DIM file2 AS STRING
-file2 = Viper.IO.Path.Join(base, "file2.txt")
+file2 = Zanna.IO.Path.Join(base, "file2.txt")
 
-Viper.IO.File.WriteAllText(file1, "one")
-Viper.IO.File.WriteAllText(file2, "two")
+Zanna.IO.File.WriteAllText(file1, "one")
+Zanna.IO.File.WriteAllText(file2, "two")
 
-DIM list AS Viper.Collections.Seq
-list = Viper.IO.Dir.List(base)
+DIM list AS Zanna.Collections.Seq
+list = Zanna.IO.Dir.List(base)
 
 DIM list_join AS STRING
-list_join = "|" + Viper.String.Join("|", list) + "|"
+list_join = "|" + Zanna.String.Join("|", list) + "|"
 
 PRINT list.Count
 PRINT list_join.Contains("|subdir|")
 PRINT list_join.Contains("|file1.txt|")
 PRINT list_join.Contains("|file2.txt|")
 
-DIM files AS Viper.Collections.Seq
-files = Viper.IO.Dir.Files(base)
+DIM files AS Zanna.Collections.Seq
+files = Zanna.IO.Dir.Files(base)
 
 DIM files_join AS STRING
-files_join = "|" + Viper.String.Join("|", files) + "|"
+files_join = "|" + Zanna.String.Join("|", files) + "|"
 
 PRINT files.Count
 PRINT files_join.Contains("|file1.txt|")
 PRINT files_join.Contains("|file2.txt|")
 
-DIM dirs AS Viper.Collections.Seq
-dirs = Viper.IO.Dir.Dirs(base)
+DIM dirs AS Zanna.Collections.Seq
+dirs = Zanna.IO.Dir.Dirs(base)
 
 DIM dirs_join AS STRING
-dirs_join = "|" + Viper.String.Join("|", dirs) + "|"
+dirs_join = "|" + Zanna.String.Join("|", dirs) + "|"
 
 PRINT dirs.Count
 PRINT dirs_join.Contains("|subdir|")
 
-Viper.IO.Dir.RemoveAll(base)
+Zanna.IO.Dir.RemoveAll(base)
 END

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_internal.h
-// Purpose: Private shared surface of the Viper.Game3D layer — tuning constants,
+// Purpose: Private shared surface of the Zanna.Game3D layer — tuning constants,
 //   the effect-item discriminator, reused Camera3D/Scene/Decal/Particles entry
 //   points, and every internal handle-payload struct. Included by rt_game3d.c
 //   and its split sibling translation units (rt_game3d_*.c) so they share one
@@ -141,12 +141,12 @@ typedef struct rt_game3d_layermask {
 typedef struct rt_game3d_input {
     double look_sensitivity;
     int8_t has_snapshot;
-    uint8_t key_down[VIPER_KEY_MAX];
-    uint8_t key_pressed[VIPER_KEY_MAX];
-    uint8_t key_released[VIPER_KEY_MAX];
-    uint8_t mouse_down[VIPER_MOUSE_BUTTON_MAX];
-    uint8_t mouse_pressed[VIPER_MOUSE_BUTTON_MAX];
-    uint8_t mouse_released[VIPER_MOUSE_BUTTON_MAX];
+    uint8_t key_down[ZANNA_KEY_MAX];
+    uint8_t key_pressed[ZANNA_KEY_MAX];
+    uint8_t key_released[ZANNA_KEY_MAX];
+    uint8_t mouse_down[ZANNA_MOUSE_BUTTON_MAX];
+    uint8_t mouse_pressed[ZANNA_MOUSE_BUTTON_MAX];
+    uint8_t mouse_released[ZANNA_MOUSE_BUTTON_MAX];
     int64_t mouse_dx;
     int64_t mouse_dy;
     /* Sub-pixel mouse deltas (relative mouse mode); mirror mouse_dx/dy. */

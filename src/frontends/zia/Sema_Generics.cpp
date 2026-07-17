@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -125,7 +125,7 @@ TypeRef Sema::substituteTypeParams(TypeRef type) const {
             newArgs.push_back(substArg);
         }
         if (changed) {
-            return std::make_shared<ViperType>(type->kind, type->name, newArgs);
+            return std::make_shared<ZannaType>(type->kind, type->name, newArgs);
         }
     }
 
@@ -243,7 +243,7 @@ bool Sema::validateGenericConstraints(const std::vector<std::string> &params,
 /// @brief Analyze a generic type's body under the active substitutions to register a concrete type.
 /// @param decl The generic type declaration (struct/class/interface).
 /// @param mangledName The instantiation's mangled name.
-/// @return The instantiated ViperType, or unknown for an unsupported declaration kind.
+/// @return The instantiated ZannaType, or unknown for an unsupported declaration kind.
 /// @details Registers the instantiated type before analyzing members so self-references resolve,
 ///          then records each field/method's substituted type, visibility, and (for classes)
 ///          interface/inheritance relationships under `mangledName.member` keys.
@@ -253,7 +253,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
         case DeclKind::Struct: {
             auto *structDecl = static_cast<StructDecl *>(decl);
             // Create the instantiated struct type
-            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Struct, mangledName);
+            auto instantiated = std::make_shared<ZannaType>(TypeKindSem::Struct, mangledName);
 
             // Register the instantiated type first so self-references work
             typeRegistry_[mangledName] = instantiated;
@@ -309,7 +309,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
         }
         case DeclKind::Class: {
             auto *classDecl = static_cast<ClassDecl *>(decl);
-            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Class, mangledName);
+            auto instantiated = std::make_shared<ZannaType>(TypeKindSem::Class, mangledName);
 
             typeRegistry_[mangledName] = instantiated;
             classDecls_[mangledName] = classDecl;
@@ -367,7 +367,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
         }
         case DeclKind::Interface: {
             auto *ifaceDecl = static_cast<InterfaceDecl *>(decl);
-            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Interface, mangledName);
+            auto instantiated = std::make_shared<ZannaType>(TypeKindSem::Interface, mangledName);
 
             typeRegistry_[mangledName] = instantiated;
             interfaceDecls_[mangledName] = ifaceDecl;

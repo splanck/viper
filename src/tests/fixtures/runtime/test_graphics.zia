@@ -5,81 +5,81 @@ bind "./_support";
 // EXPECT_OUT: RESULT: ok
 // NOTE: Graphics tests verify functions work without crashing
 // Visual correctness requires manual verification
-// COVER: Viper.Graphics.Color.RGB
-// COVER: Viper.Graphics.Color.RGBA
-// COVER: Viper.Graphics.Color.GetR
-// COVER: Viper.Graphics.Color.GetG
-// COVER: Viper.Graphics.Color.GetB
-// COVER: Viper.Graphics.Color.GetA
-// COVER: Viper.Graphics.Color.FromHSL
-// COVER: Viper.Graphics.Color.GetH
-// COVER: Viper.Graphics.Color.GetS
-// COVER: Viper.Graphics.Color.GetL
-// COVER: Viper.Graphics.Color.Lerp
-// COVER: Viper.Graphics.Color.Brighten
-// COVER: Viper.Graphics.Color.Darken
-// COVER: Viper.Graphics.Pixels.New
-// COVER: Viper.Graphics.Pixels.get_Width
-// COVER: Viper.Graphics.Pixels.get_Height
-// COVER: Viper.Graphics.Pixels.Get
-// COVER: Viper.Graphics.Pixels.Set
-// COVER: Viper.Graphics.Pixels.Clear
-// COVER: Viper.Graphics.Pixels.Fill
-// COVER: Viper.Graphics.Pixels.Clone
-// COVER: Viper.Graphics.Canvas.TextWidth
-// COVER: Viper.Graphics.Canvas.TextHeight
+// COVER: Zanna.Graphics.Color.RGB
+// COVER: Zanna.Graphics.Color.RGBA
+// COVER: Zanna.Graphics.Color.GetR
+// COVER: Zanna.Graphics.Color.GetG
+// COVER: Zanna.Graphics.Color.GetB
+// COVER: Zanna.Graphics.Color.GetA
+// COVER: Zanna.Graphics.Color.FromHSL
+// COVER: Zanna.Graphics.Color.GetH
+// COVER: Zanna.Graphics.Color.GetS
+// COVER: Zanna.Graphics.Color.GetL
+// COVER: Zanna.Graphics.Color.Lerp
+// COVER: Zanna.Graphics.Color.Brighten
+// COVER: Zanna.Graphics.Color.Darken
+// COVER: Zanna.Graphics.Pixels.New
+// COVER: Zanna.Graphics.Pixels.get_Width
+// COVER: Zanna.Graphics.Pixels.get_Height
+// COVER: Zanna.Graphics.Pixels.Get
+// COVER: Zanna.Graphics.Pixels.Set
+// COVER: Zanna.Graphics.Pixels.Clear
+// COVER: Zanna.Graphics.Pixels.Fill
+// COVER: Zanna.Graphics.Pixels.Clone
+// COVER: Zanna.Graphics.Canvas.TextWidth
+// COVER: Zanna.Graphics.Canvas.TextHeight
 
 func testColorRGB() {
     setTest("ColorRGB");
 
     // Create color from RGB
-    var red = Viper.Graphics.Color.RGB(255, 0, 0);
-    assertEqInt(Viper.Graphics.Color.GetRed(red), 255, "red R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(red), 0, "red G");
-    assertEqInt(Viper.Graphics.Color.GetBlue(red), 0, "red B");
+    var red = Zanna.Graphics.Color.RGB(255, 0, 0);
+    assertEqInt(Zanna.Graphics.Color.GetRed(red), 255, "red R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(red), 0, "red G");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(red), 0, "red B");
 
-    var green = Viper.Graphics.Color.RGB(0, 255, 0);
-    assertEqInt(Viper.Graphics.Color.GetRed(green), 0, "green R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(green), 255, "green G");
-    assertEqInt(Viper.Graphics.Color.GetBlue(green), 0, "green B");
+    var green = Zanna.Graphics.Color.RGB(0, 255, 0);
+    assertEqInt(Zanna.Graphics.Color.GetRed(green), 0, "green R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(green), 255, "green G");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(green), 0, "green B");
 
-    var blue = Viper.Graphics.Color.RGB(0, 0, 255);
-    assertEqInt(Viper.Graphics.Color.GetBlue(blue), 255, "blue B");
+    var blue = Zanna.Graphics.Color.RGB(0, 0, 255);
+    assertEqInt(Zanna.Graphics.Color.GetBlue(blue), 255, "blue B");
 
     // White
-    var white = Viper.Graphics.Color.RGB(255, 255, 255);
-    assertEqInt(Viper.Graphics.Color.GetRed(white), 255, "white R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(white), 255, "white G");
-    assertEqInt(Viper.Graphics.Color.GetBlue(white), 255, "white B");
+    var white = Zanna.Graphics.Color.RGB(255, 255, 255);
+    assertEqInt(Zanna.Graphics.Color.GetRed(white), 255, "white R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(white), 255, "white G");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(white), 255, "white B");
 }
 
 func testColorRGBA() {
     setTest("ColorRGBA");
 
     // Create color with alpha
-    var color = Viper.Graphics.Color.RGBA(128, 64, 32, 200);
-    assertEqInt(Viper.Graphics.Color.GetRed(color), 128, "RGBA R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(color), 64, "RGBA G");
-    assertEqInt(Viper.Graphics.Color.GetBlue(color), 32, "RGBA B");
-    assertEqInt(Viper.Graphics.Color.GetAlpha(color), 200, "RGBA A");
+    var color = Zanna.Graphics.Color.RGBA(128, 64, 32, 200);
+    assertEqInt(Zanna.Graphics.Color.GetRed(color), 128, "RGBA R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(color), 64, "RGBA G");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(color), 32, "RGBA B");
+    assertEqInt(Zanna.Graphics.Color.GetAlpha(color), 200, "RGBA A");
 
     // Fully transparent
-    var transparent = Viper.Graphics.Color.RGBA(255, 255, 255, 0);
-    assertEqInt(Viper.Graphics.Color.GetAlpha(transparent), 0, "transparent A");
+    var transparent = Zanna.Graphics.Color.RGBA(255, 255, 255, 0);
+    assertEqInt(Zanna.Graphics.Color.GetAlpha(transparent), 0, "transparent A");
 }
 
 func testColorHSL() {
     setTest("ColorHSL");
 
     // Create from HSL
-    var red = Viper.Graphics.Color.FromHsl(0, 100, 50);  // Red
-    assertGteInt(Viper.Graphics.Color.GetRed(red), 200, "HSL red R >= 200");
+    var red = Zanna.Graphics.Color.FromHsl(0, 100, 50);  // Red
+    assertGteInt(Zanna.Graphics.Color.GetRed(red), 200, "HSL red R >= 200");
 
     // Get HSL components
-    var color = Viper.Graphics.Color.RGB(255, 0, 0);
-    var h = Viper.Graphics.Color.GetHue(color);
-    var s = Viper.Graphics.Color.GetSaturation(color);
-    var l = Viper.Graphics.Color.GetLightness(color);
+    var color = Zanna.Graphics.Color.RGB(255, 0, 0);
+    var h = Zanna.Graphics.Color.GetHue(color);
+    var s = Zanna.Graphics.Color.GetSaturation(color);
+    var l = Zanna.Graphics.Color.GetLightness(color);
 
     assertGteInt(h, 0, "H >= 0");
     assertLteInt(h, 360, "H <= 360");
@@ -92,118 +92,118 @@ func testColorHSL() {
 func testColorLerp() {
     setTest("ColorLerp");
 
-    var black = Viper.Graphics.Color.RGB(0, 0, 0);
-    var white = Viper.Graphics.Color.RGB(255, 255, 255);
+    var black = Zanna.Graphics.Color.RGB(0, 0, 0);
+    var white = Zanna.Graphics.Color.RGB(255, 255, 255);
 
     // Lerp at 0 = black
-    var c0 = Viper.Graphics.Color.Lerp(black, white, 0);
-    assertEqInt(Viper.Graphics.Color.GetRed(c0), 0, "lerp 0 R");
+    var c0 = Zanna.Graphics.Color.Lerp(black, white, 0);
+    assertEqInt(Zanna.Graphics.Color.GetRed(c0), 0, "lerp 0 R");
 
     // Lerp at 100 = white
-    var c100 = Viper.Graphics.Color.Lerp(black, white, 100);
-    assertEqInt(Viper.Graphics.Color.GetRed(c100), 255, "lerp 100 R");
+    var c100 = Zanna.Graphics.Color.Lerp(black, white, 100);
+    assertEqInt(Zanna.Graphics.Color.GetRed(c100), 255, "lerp 100 R");
 
     // Lerp at 50 = gray
-    var c50 = Viper.Graphics.Color.Lerp(black, white, 50);
-    assertGteInt(Viper.Graphics.Color.GetRed(c50), 100, "lerp 50 R >= 100");
-    assertLteInt(Viper.Graphics.Color.GetRed(c50), 155, "lerp 50 R <= 155");
+    var c50 = Zanna.Graphics.Color.Lerp(black, white, 50);
+    assertGteInt(Zanna.Graphics.Color.GetRed(c50), 100, "lerp 50 R >= 100");
+    assertLteInt(Zanna.Graphics.Color.GetRed(c50), 155, "lerp 50 R <= 155");
 }
 
 func testColorBrightenDarken() {
     setTest("ColorBrightenDarken");
 
-    var gray = Viper.Graphics.Color.RGB(128, 128, 128);
+    var gray = Zanna.Graphics.Color.RGB(128, 128, 128);
 
     // Brighten
-    var brighter = Viper.Graphics.Color.Brighten(gray, 50);
-    assertGtInt(Viper.Graphics.Color.GetRed(brighter), 128, "brighten increases R");
+    var brighter = Zanna.Graphics.Color.Brighten(gray, 50);
+    assertGtInt(Zanna.Graphics.Color.GetRed(brighter), 128, "brighten increases R");
 
     // Darken
-    var darker = Viper.Graphics.Color.Darken(gray, 50);
-    assertLtInt(Viper.Graphics.Color.GetRed(darker), 128, "darken decreases R");
+    var darker = Zanna.Graphics.Color.Darken(gray, 50);
+    assertLtInt(Zanna.Graphics.Color.GetRed(darker), 128, "darken decreases R");
 }
 
 func testPixelsBasic() {
     setTest("PixelsBasic");
 
     // Create pixels buffer
-    var pix = Viper.Graphics.Pixels.New(100, 50);
-    assertEqInt(Viper.Graphics.Pixels.get_Width(pix), 100, "pixels width");
-    assertEqInt(Viper.Graphics.Pixels.get_Height(pix), 50, "pixels height");
+    var pix = Zanna.Graphics.Pixels.New(100, 50);
+    assertEqInt(Zanna.Graphics.Pixels.get_Width(pix), 100, "pixels width");
+    assertEqInt(Zanna.Graphics.Pixels.get_Height(pix), 50, "pixels height");
 
     // Set pixel
-    var red = Viper.Graphics.Color.RGB(255, 0, 0);
-    Viper.Graphics.Pixels.Set(pix, 10, 20, red);
+    var red = Zanna.Graphics.Color.RGB(255, 0, 0);
+    Zanna.Graphics.Pixels.Set(pix, 10, 20, red);
 
     // Get pixel
-    var color = Viper.Graphics.Pixels.Get(pix, 10, 20);
-    assertEqInt(Viper.Graphics.Color.GetRed(color), 255, "pixel R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(color), 0, "pixel G");
+    var color = Zanna.Graphics.Pixels.Get(pix, 10, 20);
+    assertEqInt(Zanna.Graphics.Color.GetRed(color), 255, "pixel R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(color), 0, "pixel G");
 }
 
 func testPixelsFill() {
     setTest("PixelsFill");
 
-    var pix = Viper.Graphics.Pixels.New(10, 10);
-    var blue = Viper.Graphics.Color.RGB(0, 0, 255);
+    var pix = Zanna.Graphics.Pixels.New(10, 10);
+    var blue = Zanna.Graphics.Color.RGB(0, 0, 255);
 
-    Viper.Graphics.Pixels.Fill(pix, blue);
+    Zanna.Graphics.Pixels.Fill(pix, blue);
 
     // All pixels should be blue
-    var c1 = Viper.Graphics.Pixels.Get(pix, 0, 0);
-    var c2 = Viper.Graphics.Pixels.Get(pix, 5, 5);
-    var c3 = Viper.Graphics.Pixels.Get(pix, 9, 9);
+    var c1 = Zanna.Graphics.Pixels.Get(pix, 0, 0);
+    var c2 = Zanna.Graphics.Pixels.Get(pix, 5, 5);
+    var c3 = Zanna.Graphics.Pixels.Get(pix, 9, 9);
 
-    assertEqInt(Viper.Graphics.Color.GetBlue(c1), 255, "fill c1 B");
-    assertEqInt(Viper.Graphics.Color.GetBlue(c2), 255, "fill c2 B");
-    assertEqInt(Viper.Graphics.Color.GetBlue(c3), 255, "fill c3 B");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(c1), 255, "fill c1 B");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(c2), 255, "fill c2 B");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(c3), 255, "fill c3 B");
 }
 
 func testPixelsClear() {
     setTest("PixelsClear");
 
-    var pix = Viper.Graphics.Pixels.New(10, 10);
-    var red = Viper.Graphics.Color.RGB(255, 0, 0);
-    Viper.Graphics.Pixels.Fill(pix, red);
+    var pix = Zanna.Graphics.Pixels.New(10, 10);
+    var red = Zanna.Graphics.Color.RGB(255, 0, 0);
+    Zanna.Graphics.Pixels.Fill(pix, red);
 
     // Clear should set all to transparent black (or black)
-    Viper.Graphics.Pixels.Clear(pix);
+    Zanna.Graphics.Pixels.Clear(pix);
 
-    var c = Viper.Graphics.Pixels.Get(pix, 5, 5);
-    assertEqInt(Viper.Graphics.Color.GetRed(c), 0, "cleared R");
-    assertEqInt(Viper.Graphics.Color.GetGreen(c), 0, "cleared G");
-    assertEqInt(Viper.Graphics.Color.GetBlue(c), 0, "cleared B");
+    var c = Zanna.Graphics.Pixels.Get(pix, 5, 5);
+    assertEqInt(Zanna.Graphics.Color.GetRed(c), 0, "cleared R");
+    assertEqInt(Zanna.Graphics.Color.GetGreen(c), 0, "cleared G");
+    assertEqInt(Zanna.Graphics.Color.GetBlue(c), 0, "cleared B");
 }
 
 func testPixelsClone() {
     setTest("PixelsClone");
 
-    var pix = Viper.Graphics.Pixels.New(20, 20);
-    var green = Viper.Graphics.Color.RGB(0, 255, 0);
-    Viper.Graphics.Pixels.SetColor(pix, 10, 10, green);
+    var pix = Zanna.Graphics.Pixels.New(20, 20);
+    var green = Zanna.Graphics.Color.RGB(0, 255, 0);
+    Zanna.Graphics.Pixels.SetColor(pix, 10, 10, green);
 
-    var clone = Viper.Graphics.Pixels.Clone(pix);
-    assertEqInt(Viper.Graphics.Pixels.get_Width(clone), 20, "clone width");
-    assertEqInt(Viper.Graphics.Pixels.get_Height(clone), 20, "clone height");
+    var clone = Zanna.Graphics.Pixels.Clone(pix);
+    assertEqInt(Zanna.Graphics.Pixels.get_Width(clone), 20, "clone width");
+    assertEqInt(Zanna.Graphics.Pixels.get_Height(clone), 20, "clone height");
 
     // Verify pixel was cloned
-    var c = Viper.Graphics.Pixels.GetColor(clone, 10, 10);
-    assertEqInt(Viper.Graphics.Color.GetGreen(c), 255, "cloned pixel G");
+    var c = Zanna.Graphics.Pixels.GetColor(clone, 10, 10);
+    assertEqInt(Zanna.Graphics.Color.GetGreen(c), 255, "cloned pixel G");
 
     // Modifying clone shouldn't affect original
-    Viper.Graphics.Pixels.SetColor(clone, 10, 10, Viper.Graphics.Color.RGB(255, 0, 0));
-    var origC = Viper.Graphics.Pixels.GetColor(pix, 10, 10);
-    assertEqInt(Viper.Graphics.Color.GetGreen(origC), 255, "original unchanged");
+    Zanna.Graphics.Pixels.SetColor(clone, 10, 10, Zanna.Graphics.Color.RGB(255, 0, 0));
+    var origC = Zanna.Graphics.Pixels.GetColor(pix, 10, 10);
+    assertEqInt(Zanna.Graphics.Color.GetGreen(origC), 255, "original unchanged");
 }
 
 func testTextMetrics() {
     setTest("TextMetrics");
 
     // Text width/height should return reasonable values
-    var width = Viper.Graphics.Canvas.TextWidth("Hello");
+    var width = Zanna.Graphics.Canvas.TextWidth("Hello");
     assertGtInt(width, 0, "text width > 0");
 
-    var height = Viper.Graphics.Canvas.TextHeight();
+    var height = Zanna.Graphics.Canvas.TextHeight();
     assertGtInt(height, 0, "text height > 0");
 }
 

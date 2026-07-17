@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 namespace {
 
@@ -261,13 +261,13 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
     textSec.alloc = true;
     textSec.alignment = 4;
 
-    // Section 2: .got.viper_stubs (synthetic dyld GOT slots, writable).
+    // Section 2: .got.zanna_stubs (synthetic dyld GOT slots, writable).
     // Use a dedicated name so the slots stay distinguishable from the user's
     // .data — section-merger still routes both into the data segment, but the
     // chunk's identity in InputChunk::inputSecIndex/name maps it back to this
     // synthetic origin for dead-strip, ICF, and debugger reporting.
     ObjSection gotSec;
-    gotSec.name = ".got.viper_stubs";
+    gotSec.name = ".got.zanna_stubs";
     gotSec.executable = false;
     gotSec.writable = true;
     gotSec.alloc = true;
@@ -355,7 +355,7 @@ ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms
     // slots in a section named separately from the user's .data so their
     // origin remains identifiable.
     ObjSection gotSec;
-    gotSec.name = ".got.viper_stubs";
+    gotSec.name = ".got.zanna_stubs";
     gotSec.executable = false;
     gotSec.writable = true;
     gotSec.alloc = true;
@@ -409,4 +409,4 @@ ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms
     return stubObj;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

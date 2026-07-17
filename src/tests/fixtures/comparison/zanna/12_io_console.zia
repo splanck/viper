@@ -1,0 +1,37 @@
+// Test: I/O & Console
+// Tests: Terminal output functions
+module Test;
+
+func main() {
+    Zanna.Terminal.Say("=== I/O Console Test ===");
+
+    // Test Say (print with newline)
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Say (with newline) ---");
+    Zanna.Terminal.Say("Hello, World!");
+
+    // Test Print (without newline)
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Print (no newline) ---");
+    Zanna.Terminal.Print("Part 1... ");
+    Zanna.Terminal.Print("Part 2... ");
+    Zanna.Terminal.Say("Done!");
+
+    // Test numeric output
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Numeric Output ---");
+    Zanna.Terminal.Print("Integer: ");
+    Zanna.Terminal.SayInt(42);
+    Zanna.Terminal.Print("Number: ");
+    Zanna.Terminal.SayNum(3.14159);
+
+    // Test formatted numbers
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Formatted Output ---");
+    Zanna.Terminal.Say("Formatted int: " + Zanna.Text.Fmt.Int(42));
+    Zanna.Terminal.Say("Formatted num: " + Zanna.Text.Fmt.Num(3.14159));
+    Zanna.Terminal.Say("Formatted bool: " + Zanna.Text.Fmt.Bool(true));
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== I/O Console test complete ===");
+}

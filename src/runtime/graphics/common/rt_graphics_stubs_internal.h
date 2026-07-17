@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -86,7 +86,7 @@
 /// the same trap kind, diagnostic code, and synthetic source location are
 /// reported regardless of whether the disabled API was Canvas2D, Canvas3D,
 /// physics, navigation, media, or an asset loader. Builds without
-/// `VIPER_ENABLE_GRAPHICS` compile these stub units instead of the real
+/// `ZANNA_ENABLE_GRAPHICS` compile these stub units instead of the real
 /// backend-backed implementations, so reaching this helper means user code
 /// attempted to use a graphics API that was intentionally excluded.
 ///
@@ -105,12 +105,12 @@ static inline void rt_graphics_unavailable_(const char *msg) {
 /// @details The default disabled-graphics behavior keeps documented probe
 ///          fallbacks such as `0`, `NULL`, or `-1` so headless smoke tests can
 ///          branch around unavailable backends. Setting
-///          `VIPER_GRAPHICS_STUBS_STRICT` to any non-empty value except `0`
+///          `ZANNA_GRAPHICS_STUBS_STRICT` to any non-empty value except `0`
 ///          turns those silent stubs into traps, making accidental use of a
 ///          disabled backend visible during development.
 /// @return Nonzero when strict stub trapping is enabled.
 static inline int rt_graphics_stub_strict_(void) {
-    const char *value = getenv("VIPER_GRAPHICS_STUBS_STRICT");
+    const char *value = getenv("ZANNA_GRAPHICS_STUBS_STRICT");
     return value && value[0] != '\0' && strcmp(value, "0") != 0;
 }
 

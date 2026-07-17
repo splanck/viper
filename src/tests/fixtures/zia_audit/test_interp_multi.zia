@@ -5,5 +5,5 @@ func start() {
     var b: Integer = 5;
     // Test: Multiple interpolations in one string
     var s: String = "${a} + ${b} = ${a + b}";
-    Viper.Terminal.Say(s);
+    Zanna.Terminal.Say(s);
 }

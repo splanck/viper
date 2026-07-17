@@ -2,7 +2,7 @@ module config;
 
 // ============================================================================
 // MODULE: config
-// PURPOSE: All tuning constants for Viper Paint in one place: window
+// PURPOSE: All tuning constants for Zanna Paint in one place: window
 //          dimensions, canvas defaults, UI panel sizes, palette grid,
 //          brush limits, history depth, named colour hex values, tool
 //          IDs, keyboard scancodes.
@@ -25,7 +25,7 @@ module config;
 // Window dimensions
 final WINDOW_WIDTH = 1300;
 final WINDOW_HEIGHT = 900;
-final WINDOW_TITLE = "Viper Paint";
+final WINDOW_TITLE = "Zanna Paint";
 
 // Default canvas dimensions
 final DEFAULT_CANVAS_WIDTH = 1024;

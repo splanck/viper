@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
 
 [[nodiscard]] ILValue makeI32Param(int id) noexcept {
@@ -80,10 +80,10 @@ namespace {
 }
 
 } // namespace
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
 int main() {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     struct Case {
         const char *opcode;

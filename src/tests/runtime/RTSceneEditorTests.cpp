@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTSceneEditorTests.cpp
@@ -247,9 +247,9 @@ int main() {
     assert(rt_game_scene_get_tile(legacy, 0, 1, 1) == 0);
     assert(rt_seq_len(rt_game_scene_diagnostic_records(legacy)) == 1);
 
-#ifdef VIPER_SOURCE_DIR
+#ifdef ZANNA_SOURCE_DIR
     std::filesystem::path fixture_dir =
-        std::filesystem::path(VIPER_SOURCE_DIR) / "src/tests/data/game/scenes";
+        std::filesystem::path(ZANNA_SOURCE_DIR) / "src/tests/data/game/scenes";
     std::string minimal_text = read_text(fixture_dir / "v1_minimal.scene");
     rt_string minimal_s = rt_string_from_bytes(minimal_text.data(), minimal_text.size());
     void *minimal = rt_game_scene_load_json(minimal_s);
@@ -373,7 +373,7 @@ int main() {
 #endif
 
     std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "viper_scene_editor_test.json";
+        std::filesystem::temp_directory_path() / "zanna_scene_editor_test.json";
     std::string path_text = path.string();
     rt_string path_s = rt_string_from_bytes(path_text.data(), path_text.size());
     assert(rt_game_scene_save_file(scene, path_s) == 1);
@@ -383,7 +383,7 @@ int main() {
     std::filesystem::remove(path);
 
     std::filesystem::path blocked_path =
-        std::filesystem::temp_directory_path() / "viper_scene_editor_save_target_dir";
+        std::filesystem::temp_directory_path() / "zanna_scene_editor_save_target_dir";
     std::filesystem::remove_all(blocked_path);
     std::filesystem::create_directory(blocked_path);
     std::string blocked_text = blocked_path.string();

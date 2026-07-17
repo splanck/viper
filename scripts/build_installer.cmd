@@ -2,8 +2,8 @@
 setlocal DisableDelayedExpansion
 
 set "ROOT_DIR=%~dp0.."
-if "%VIPER_BUILD_DIR%"=="" set "VIPER_BUILD_DIR=%ROOT_DIR%\build"
-if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Release"
+if "%ZANNA_BUILD_DIR%"=="" set "ZANNA_BUILD_DIR=%ROOT_DIR%\build"
+if "%ZANNA_BUILD_TYPE%"=="" set "ZANNA_BUILD_TYPE=Release"
 if "%NUMBER_OF_PROCESSORS%"=="" (
     set "JOBS=8"
 ) else (
@@ -22,31 +22,31 @@ shift
 goto parse_args
 
 :args_done
-if "%VIPER_SKIP_INSTALL%"=="" set "VIPER_SKIP_INSTALL=1"
+if "%ZANNA_SKIP_INSTALL%"=="" set "ZANNA_SKIP_INSTALL=1"
 if "%USES_EXISTING_INPUT%"=="0" (
-    set VIPER_EXTRA_CMAKE_ARGS 2>nul | findstr /C:"-DVIPER_INSTALL_VIPERIDE=" >nul
+    set ZANNA_EXTRA_CMAKE_ARGS 2>nul | findstr /C:"-DZANNA_INSTALL_ZANNAIDE=" >nul
     if errorlevel 1 (
-        set "VIPER_EXTRA_CMAKE_ARGS=%VIPER_EXTRA_CMAKE_ARGS% -DVIPER_INSTALL_VIPERIDE=ON"
+        set "ZANNA_EXTRA_CMAKE_ARGS=%ZANNA_EXTRA_CMAKE_ARGS% -DZANNA_INSTALL_ZANNAIDE=ON"
     )
-    call "%ROOT_DIR%\scripts\build_viper_win.cmd"
+    call "%ROOT_DIR%\scripts\build_zanna_win.cmd"
     if errorlevel 1 exit /b 1
 )
 
-set "VIPER_EXE=%VIPER_BUILD_DIR%\src\tools\viper\viper.exe"
-if exist "%VIPER_BUILD_DIR%\src\tools\viper\%VIPER_BUILD_TYPE%\viper.exe" (
-    set "VIPER_EXE=%VIPER_BUILD_DIR%\src\tools\viper\%VIPER_BUILD_TYPE%\viper.exe"
+set "ZANNA_EXE=%ZANNA_BUILD_DIR%\src\tools\zanna\zanna.exe"
+if exist "%ZANNA_BUILD_DIR%\src\tools\zanna\%ZANNA_BUILD_TYPE%\zanna.exe" (
+    set "ZANNA_EXE=%ZANNA_BUILD_DIR%\src\tools\zanna\%ZANNA_BUILD_TYPE%\zanna.exe"
 )
-if not exist "%VIPER_EXE%" (
-    echo ERROR: viper executable not found at "%VIPER_EXE%"
-    echo Build Viper first or set VIPER_BUILD_DIR to an existing build tree.
+if not exist "%ZANNA_EXE%" (
+    echo ERROR: zanna executable not found at "%ZANNA_EXE%"
+    echo Build Zanna first or set ZANNA_BUILD_DIR to an existing build tree.
     exit /b 1
 )
 
 if "%USES_EXISTING_INPUT%"=="0" (
     if "%HAS_EXPLICIT_BUILD_DIR%"=="0" (
-        "%VIPER_EXE%" install-package --build-dir "%VIPER_BUILD_DIR%" --config %VIPER_BUILD_TYPE% --skip-build %FORWARD_ARGS%
+        "%ZANNA_EXE%" install-package --build-dir "%ZANNA_BUILD_DIR%" --config %ZANNA_BUILD_TYPE% --skip-build %FORWARD_ARGS%
         exit /b %ERRORLEVEL%
     )
 )
-"%VIPER_EXE%" install-package %FORWARD_ARGS%
+"%ZANNA_EXE%" install-package %FORWARD_ARGS%
 exit /b %ERRORLEVEL%

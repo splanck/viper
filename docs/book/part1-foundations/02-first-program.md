@@ -22,11 +22,11 @@ Before we can write our first program, we need to make sure you have a comfortab
 
 Every programmer needs a home for their code. Let's create one:
 
-1. **On Windows**: Open File Explorer, navigate to your Documents folder, and create a new folder called `viper-projects`
+1. **On Windows**: Open File Explorer, navigate to your Documents folder, and create a new folder called `zanna-projects`
 
-2. **On macOS**: Open Finder, go to your home folder, and create a new folder called `viper-projects`
+2. **On macOS**: Open Finder, go to your home folder, and create a new folder called `zanna-projects`
 
-3. **On Linux**: Open your file manager or use `mkdir ~/viper-projects` in the terminal
+3. **On Linux**: Open your file manager or use `mkdir ~/zanna-projects` in the terminal
 
 This will be where all your programs live as you work through this book. Keeping your code organized from the start is a habit that will serve you well.
 
@@ -60,19 +60,19 @@ You'll also need a terminal (also called "command line" or "console") to run you
 Once the terminal is open, navigate to your project folder:
 
 ```bash
-cd ~/viper-projects
+cd ~/zanna-projects
 ```
 
 On Windows, the path might look like:
 ```bash
-cd C:\Users\YourName\Documents\viper-projects
+cd C:\Users\YourName\Documents\zanna-projects
 ```
 
 If you see your project folder name in the terminal prompt, you're in the right place.
 
-### Verifying Viper Is Ready
+### Verifying Zanna Is Ready
 
-Let's make sure Viper is properly installed. In your terminal, type:
+Let's make sure Zanna is properly installed. In your terminal, type:
 
 ```bash
 zia --version
@@ -85,15 +85,15 @@ Zia Compiler
 IL version: 0.3.0
 ```
 
-If you see "command not found" or a similar error, go back to the Getting Started chapter and make sure you followed all the installation steps. The most common issue is that Viper isn't in your PATH — the list of places your computer looks for programs.
+If you see "command not found" or a similar error, go back to the Getting Started chapter and make sure you followed all the installation steps. The most common issue is that Zanna isn't in your PATH — the list of places your computer looks for programs.
 
 **Troubleshooting "command not found":**
 
 1. **Did the install step complete?** The build script installs the tools to `/usr/local/bin` on macOS and Linux. Check with `ls /usr/local/bin/zia`.
 
-2. **Does your PATH include `/usr/local/bin`?** Check with `echo $PATH`. If it's missing, see the "Making Viper Available Everywhere" section in Chapter 0.
+2. **Does your PATH include `/usr/local/bin`?** Check with `echo $PATH`. If it's missing, see the "Making Zanna Available Everywhere" section in Chapter 0.
 
-3. **On Windows**, make sure you've added Viper to your system PATH through the Environment Variables settings (the [Windows setup guide](../../getting-started/windows.md) shows how).
+3. **On Windows**, make sure you've added Zanna to your system PATH through the Environment Variables settings (the [Windows setup guide](../../getting-started/windows.md) shows how).
 
 ---
 
@@ -129,7 +129,7 @@ Open your text editor and create a new file. Type the following code exactly as 
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -141,7 +141,7 @@ Now save this file as `hello.zia` in your project folder.
 **Important tips for saving:**
 - Make sure the file extension is `.zia`, not `.zia.txt` or anything else
 - Use exactly lowercase `hello.zia` — consistency matters
-- Save it in your `viper-projects` folder so you can find it easily
+- Save it in your `zanna-projects` folder so you can find it easily
 
 ### What If You're Not Sure You Typed It Right?
 
@@ -153,9 +153,9 @@ m o d u l e   H e l l o ;
 That's the word "module", a space, the word "Hello", and a semicolon.
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 ```
-That's "bind", a space, "Viper.Terminal", and a semicolon. This imports the terminal functions.
+That's "bind", a space, "Zanna.Terminal", and a semicolon. This imports the terminal functions.
 
 ```text
 func start() {
@@ -175,7 +175,7 @@ Just a closing curly brace.
 Double-check your code against this. The most common mistakes are:
 - Forgetting the semicolons
 - Using the wrong kind of quotes (use straight quotes ", not curly quotes " ")
-- Misspelling "module", "func", "start", "Viper", "Terminal", or "Say"
+- Misspelling "module", "func", "start", "Zanna", "Terminal", or "Say"
 - Forgetting the bind line
 
 ---
@@ -187,10 +187,10 @@ With your file saved, switch to your terminal. Make sure you're in the same fold
 Now type:
 
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
-(`viper run` is the standard way to run any Viper program — it works for Zia
+(`zanna run` is the standard way to run any Zanna program — it works for Zia
 files, BASIC files, and whole project folders. The standalone `zia` compiler
 exists too, and you'll meet it later.)
 
@@ -210,11 +210,11 @@ This might seem like a small thing — just three words on a screen. But think a
 
 ## What's Really Happening: Behind the Scenes
 
-When you typed `viper run hello.zia`, a remarkable chain of events unfolded in milliseconds. Understanding this process will help you understand programming more deeply.
+When you typed `zanna run hello.zia`, a remarkable chain of events unfolded in milliseconds. Understanding this process will help you understand programming more deeply.
 
 ### Step 1: Reading Your Code
 
-The Viper compiler opened your `hello.zia` file and read its contents — the exact characters you typed. At this point, it's just text, like this document you're reading.
+The Zanna compiler opened your `hello.zia` file and read its contents — the exact characters you typed. At this point, it's just text, like this document you're reading.
 
 ### Step 2: Lexical Analysis (Tokenizing)
 
@@ -238,7 +238,7 @@ If anything was wrong (missing semicolon, misspelled keyword), this is where you
 
 ### Step 4: Compilation (Translation)
 
-The compiler translated your Zia code into machine code — the raw numbers that your computer's processor can execute. The friendly `Viper.Terminal.Say("Hello, World!")` became something more like "load this text into memory, call the operating system's output function, pass it the memory address..."
+The compiler translated your Zia code into machine code — the raw numbers that your computer's processor can execute. The friendly `Zanna.Terminal.Say("Hello, World!")` became something more like "load this text into memory, call the operating system's output function, pass it the memory address..."
 
 ### Step 5: Execution (Running)
 
@@ -268,12 +268,12 @@ This line gives your program a name. In Zia, every program is organized into *mo
 
 **What's the semicolon for?** In Zia, semicolons mark the end of statements — complete thoughts or commands. It's like the period at the end of a sentence. The semicolon tells the compiler "this statement is complete, don't try to continue reading it onto the next line."
 
-**Can you omit this line?** For a tiny single-file program, Viper can still
+**Can you omit this line?** For a tiny single-file program, Zanna can still
 compile and run your code by giving the file an implicit module name:
 
 ```rust
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Zanna.Terminal.Say("Hello, World!");
 }
 ```
 
@@ -281,17 +281,17 @@ That works, but the examples in this book still declare modules explicitly.
 Explicit module names make larger programs easier to organize, make imports
 clearer, and avoid depending on file-name inference.
 
-### Line 2: `bind Viper.Terminal;`
+### Line 2: `bind Zanna.Terminal;`
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 ```
 
-This line imports the Terminal module from Viper's standard library. The *standard library* is a collection of pre-written code that comes with Zia. You don't have to write code to display text on the screen — the standard library provides these capabilities ready-made.
+This line imports the Terminal module from Zanna's standard library. The *standard library* is a collection of pre-written code that comes with Zia. You don't have to write code to display text on the screen — the standard library provides these capabilities ready-made.
 
-**What does `bind` do?** It makes the functions from `Viper.Terminal` available directly. Without this line, you'd have to write `Viper.Terminal.Say("Hello, World!")` — the full path to the function. With `bind`, you can just write `Say("Hello, World!")`.
+**What does `bind` do?** It makes the functions from `Zanna.Terminal` available directly. Without this line, you'd have to write `Zanna.Terminal.Say("Hello, World!")` — the full path to the function. With `bind`, you can just write `Say("Hello, World!")`.
 
-**Why `Viper.Terminal`?** The dots (`.`) navigate through namespaces. `Viper` is the overall namespace for the standard library. `Terminal` is the specific module for terminal/console operations (displaying text, getting keyboard input, etc.).
+**Why `Zanna.Terminal`?** The dots (`.`) navigate through namespaces. `Zanna` is the overall namespace for the standard library. `Terminal` is the specific module for terminal/console operations (displaying text, getting keyboard input, etc.).
 
 **What happens without this line?**
 
@@ -341,7 +341,7 @@ This line defines a *function* called `start`. There's a lot packed into this on
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func begin() {
     Say("Hello, World!");
@@ -365,18 +365,18 @@ This is the line that actually makes something happen. Let's examine each piece:
 
 **The indentation** — those four spaces at the beginning — isn't required by Zia. The program would work exactly the same without them. But they're *crucial* for humans. The indentation shows visually that this line is *inside* the function, subordinate to it. When you see indented code, you know it's part of something. Consistent indentation makes code readable. Most programmers use either 2 or 4 spaces for each level of indentation.
 
-**`Say`** is a function from the Terminal module that displays text followed by a newline (moving to the next line afterward). We can call it directly because we imported it with `bind Viper.Terminal;` at the top of the file.
+**`Say`** is a function from the Terminal module that displays text followed by a newline (moving to the next line afterward). We can call it directly because we imported it with `bind Zanna.Terminal;` at the top of the file.
 
 **`("Hello, World!")`** — the parentheses contain what we're passing to the `Say` function. This is called an *argument*. We're telling `Say` *what* to say. The double quotes indicate that `Hello, World!` is a *string* — a piece of text. Without the quotes, the compiler would try to interpret `Hello` as a variable name and get confused.
 
 **The semicolon** ends this statement.
 
-> **Note:** Without `bind Viper.Terminal;`, you'd have to write `Viper.Terminal.Say("Hello, World!");` — the full path to the function. Both approaches work, but `bind` makes code cleaner.
+> **Note:** Without `bind Zanna.Terminal;`, you'd have to write `Zanna.Terminal.Say("Hello, World!");` — the full path to the function. Both approaches work, but `bind` makes code cleaner.
 
 **What if you forget the semicolon?**
 
 ```rust
-    Viper.Terminal.Say("Hello, World!")
+    Zanna.Terminal.Say("Hello, World!")
 ```
 
 Error:
@@ -389,12 +389,12 @@ The compiler reached the closing brace and realized the previous statement was n
 **What if you misspell `Say`?**
 
 ```rust
-    Viper.Terminal.Sya("Hello, World!");  // typo: 'Sya' instead of 'Say'
+    Zanna.Terminal.Sya("Hello, World!");  // typo: 'Sya' instead of 'Say'
 ```
 
 Error:
 ```text
-hello.zia:4:23: error[V3000]: Runtime class 'Viper.Terminal' has no method 'Sya'
+hello.zia:4:23: error[V3000]: Runtime class 'Zanna.Terminal' has no method 'Sya'
 ```
 
 The compiler can't find a function with that name. Function names must be spelled exactly right. Most of the standard library uses `PascalCase` for function names (capital letter at the start of each word).
@@ -402,7 +402,7 @@ The compiler can't find a function with that name. Function names must be spelle
 **What if you forget the quotes around the text?**
 
 ```rust
-    Viper.Terminal.Say(Hello, World!);
+    Zanna.Terminal.Say(Hello, World!);
 ```
 
 Error:
@@ -427,7 +427,7 @@ The closing curly brace marks the end of the `start` function. Everything betwee
 module Hello;
 
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Zanna.Terminal.Say("Hello, World!");
 
 ```
 
@@ -442,7 +442,7 @@ The compiler reached the end of the file still expecting to find the closing bra
 
 ## The Same Program in BASIC
 
-Viper supports two languages that express the same concepts differently. Seeing the same program in a different language helps you understand what's fundamental (the ideas) versus what's surface-level (the syntax).
+Zanna supports two languages that express the same concepts differently. Seeing the same program in a different language helps you understand what's fundamental (the ideas) versus what's surface-level (the syntax).
 
 ### BASIC
 
@@ -461,7 +461,7 @@ This simplicity is BASIC's strength and limitation. For small programs, it's del
 
 To run this, save it as `hello.bas` and run:
 ```bash
-viper run hello.bas
+zanna run hello.bas
 ```
 
 ### What's the Same?
@@ -481,19 +481,19 @@ These are the *concepts*. The syntax — the specific characters and words — i
 
 When things go wrong (and they will — that's normal!), error messages are your guide. Here are the most common problems beginners encounter:
 
-### "command not found" or "viper is not recognized"
+### "command not found" or "zanna is not recognized"
 
-**What it means:** Your computer doesn't know where to find the Viper program.
+**What it means:** Your computer doesn't know where to find the Zanna program.
 
 **How to fix it:**
 1. Make sure you completed the installation in Chapter 0
 2. If on macOS/Linux, check that the tools were installed: `ls /usr/local/bin/zia`
-3. If on Windows, check that Viper is in your system PATH
-4. Try using the full path: `/usr/local/bin/viper run hello.zia`
+3. If on Windows, check that Zanna is in your system PATH
+4. Try using the full path: `/usr/local/bin/zanna run hello.zia`
 
 ### "file not found" or "No such file or directory"
 
-**What it means:** Viper can't find your `hello.zia` file.
+**What it means:** Zanna can't find your `hello.zia` file.
 
 **How to fix it:**
 1. Make sure you're in the same folder as your file. Type `ls` (or `dir` on Windows) to see what files are in your current folder.
@@ -506,7 +506,7 @@ When things go wrong (and they will — that's normal!), error messages are your
 
 **What the code probably looks like:**
 ```rust
-Viper.Terminal.Say("Hello, World!);  // Missing closing quote
+Zanna.Terminal.Say("Hello, World!);  // Missing closing quote
 ```
 
 **How to fix it:** Make sure every opening `"` has a matching closing `"`.
@@ -517,7 +517,7 @@ Viper.Terminal.Say("Hello, World!);  // Missing closing quote
 
 **What the code probably looks like:**
 ```rust
-Viper.Terminal.Say("Hello, World!")  // Missing semicolon
+Zanna.Terminal.Say("Hello, World!")  // Missing semicolon
 ```
 
 **How to fix it:** Add a semicolon at the end of the line.
@@ -534,14 +534,14 @@ Viper.Terminal.Say("Hello, World!")  // Missing semicolon
 
 **How to fix it:** Make sure you have `func start() { ... }` and that you spelled `start` correctly.
 
-### "Runtime class 'Viper.Terminal' has no method 'xxx'"
+### "Runtime class 'Zanna.Terminal' has no method 'xxx'"
 
 **What it means:** You tried to use a function that doesn't exist in the Terminal module.
 
 **What the code probably looks like:**
 ```rust
-Viper.Terminal.Sya("Hello");  // Typo: 'Sya' instead of 'Say'
-Viper.Terminal.Display("Hello");  // No such function
+Zanna.Terminal.Sya("Hello");  // Typo: 'Sya' instead of 'Say'
+Zanna.Terminal.Display("Hello");  // No such function
 ```
 
 **How to fix it:** Check the spelling. Standard library functions use PascalCase (capital letter at the start of each word).
@@ -567,7 +567,7 @@ Edit your program to say something different:
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("I wrote my first program!");
@@ -590,7 +590,7 @@ A single `Say` prints one line. What if you want more?
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Line one.");
@@ -615,7 +615,7 @@ What if you want multiple things on the same line? Use `Print` instead of `Say`:
 ```rust
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print("One ");
@@ -642,7 +642,7 @@ With what you know, you can create simple text art:
 ```rust
 module Art;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("  *  ");
@@ -678,7 +678,7 @@ This example is intentionally broken and expected to fail:
 module Hello;
 
 func start() {
-    Viper.Terminal.Say("Hello, World!);
+    Zanna.Terminal.Say("Hello, World!);
 }
 ```
 
@@ -704,7 +704,7 @@ This example is intentionally broken and expected to fail:
 module Hello;
 
 func start() {
-    Viper.Terminal.Say("Hello, World!")
+    Zanna.Terminal.Say("Hello, World!")
 }
 ```
 
@@ -723,13 +723,13 @@ This is common — errors sometimes manifest on a different line than where the 
 module Hello;
 
 func start() {
-    Viper.Terminal.Sya("Hello, World!");
+    Zanna.Terminal.Sya("Hello, World!");
 }
 ```
 
 Run it:
 ```text
-hello.zia:4:23: error[V3000]: Runtime class 'Viper.Terminal' has no method 'Sya'
+hello.zia:4:23: error[V3000]: Runtime class 'Zanna.Terminal' has no method 'Sya'
 ```
 
 The compiler knows `Terminal` exists but doesn't recognize `Sya`. This kind of error often comes from typos.
@@ -759,7 +759,7 @@ Here are the key concepts from this chapter:
 
 **Exercise 2.3**: Using `Print` and `Say`, make a program that outputs this on a single line: `Hello, my name is [your name].`
 
-**Exercise 2.4**: Write the "Hello, World!" program in BASIC. Save it as `hello.bas` and run it with `viper run hello.bas`.
+**Exercise 2.4**: Write the "Hello, World!" program in BASIC. Save it as `hello.bas` and run it with `zanna run hello.bas`.
 
 **Exercise 2.5**: Make each of these errors deliberately, then read and understand the error message:
 - Missing closing quote

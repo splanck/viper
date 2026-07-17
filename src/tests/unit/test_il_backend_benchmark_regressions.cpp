@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_backend_benchmark_regressions.cpp
 // Purpose: Correctness regression tests for optimizer/backend issues that were first
-//          exposed by the Viper benchmark suite. NOTE: despite the file name, these
+//          exposed by the Zanna benchmark suite. NOTE: despite the file name, these
 //          assert IL/result correctness only — they do NOT measure or gate performance.
 // Key invariants: Owned string materialization is not CSE/LICM-safe, O2 keeps
 //                 verifier-clean checked unsigned div/rem, and O2 has a
@@ -112,7 +112,7 @@ void testStringOwnershipMetadata() {
     assert(effects.returnsOwned);
     assert(effects.mayAllocate);
 
-    effects = il::transform::classifyCalleeEffects("Viper.String.Concat");
+    effects = il::transform::classifyCalleeEffects("Zanna.String.Concat");
     assert(effects.consumesArg(0));
     assert(effects.consumesArg(1));
     assert(effects.returnsOwned);

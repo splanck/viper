@@ -2,8 +2,8 @@
 // EXPECT_OUT: RESULT: ok
 module TestAliasNamespaceBind;
 
-// Bind Viper.Terminal with alias
-bind Viper.Terminal as T;
+// Bind Zanna.Terminal with alias
+bind Zanna.Terminal as T;
 
 func start() {
     // Access via alias

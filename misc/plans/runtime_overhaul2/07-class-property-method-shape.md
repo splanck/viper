@@ -25,8 +25,8 @@ than guessed.
 The live dump has 17 classes with two or fewer public members and two public
 zero-member classes:
 
-- `Viper.Zia.SemanticJob.SemanticJobHandle`;
-- `Viper.Zia.ProjectIndex.ProjectIndexHandle`.
+- `Zanna.Zia.SemanticJob.SemanticJobHandle`;
+- `Zanna.Zia.ProjectIndex.ProjectIndexHandle`.
 
 Decision: thin classes are acceptable only if they are intentional opaque
 handles or enum/domain containers. Metadata should say so. Otherwise they
@@ -96,14 +96,14 @@ Decision:
 Large classes make the API harder to learn and maintain. Current hotspots
 include:
 
-- `Viper.Input.Keyboard`;
-- `Viper.Graphics3D.Canvas3D`;
-- `Viper.Input.Key`;
-- `Viper.Input.Key`;
-- `Viper.GUI.CodeEditor`;
-- `Viper.Graphics.Canvas`;
-- `Viper.Game3D.World3D`;
-- `Viper.Game2D.SceneDocument`.
+- `Zanna.Input.Keyboard`;
+- `Zanna.Graphics3D.Canvas3D`;
+- `Zanna.Input.Key`;
+- `Zanna.Input.Key`;
+- `Zanna.GUI.CodeEditor`;
+- `Zanna.Graphics.Canvas`;
+- `Zanna.Game3D.World3D`;
+- `Zanna.Game2D.SceneDocument`.
 
 Decision: large classes need sub-objects or grouped config/event/result types
 when member count reflects multiple responsibilities.

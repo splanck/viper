@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <string>
 
 using namespace il::core;
-using viper::tests::VmFixture;
+using zanna::tests::VmFixture;
 
 //===----------------------------------------------------------------------===//
 // Test: Trap instruction produces correct diagnostics (DomainError)
@@ -291,7 +291,7 @@ static int testSuccessfulExecutionNoTrap() {
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     std::printf("Running trap invariant tests...\n");

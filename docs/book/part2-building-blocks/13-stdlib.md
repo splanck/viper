@@ -16,7 +16,7 @@ The answer is: you shouldn't have to. That's what the standard library is for.
 
 ## What Is a Standard Library?
 
-A *standard library* is a collection of pre-written code that comes bundled with a programming language. When you install Viper, you don't just get the ability to write `if` statements and `for` loops. You get thousands of lines of carefully tested, optimized code for common tasks.
+A *standard library* is a collection of pre-written code that comes bundled with a programming language. When you install Zanna, you don't just get the ability to write `if` statements and `for` loops. You get thousands of lines of carefully tested, optimized code for common tasks.
 
 Think of it as a toolbox that comes free with the language:
 
@@ -25,7 +25,7 @@ Think of it as a toolbox that comes free with the language:
 - Need to shuffle an array randomly? One line of code.
 - Want to know what time it is? Just ask.
 
-Every mainstream programming language has a standard library. Python is famous for its "batteries included" philosophy. Java has a massive standard library. C has a minimal one. Viper strikes a balance: comprehensive enough to be useful, organized enough to be learnable.
+Every mainstream programming language has a standard library. Python is famous for its "batteries included" philosophy. Java has a massive standard library. C has a minimal one. Zanna strikes a balance: comprehensive enough to be useful, organized enough to be learnable.
 
 **Why does this matter?** Three reasons:
 
@@ -33,48 +33,48 @@ Every mainstream programming language has a standard library. Python is famous f
 
 2. **Standard library code is tested.** Millions of programs use these functions. Bugs get found and fixed. Your hand-written version won't have that testing.
 
-3. **Other programmers know it.** When you use `Viper.Math.Sqrt()`, any Viper programmer knows what it does. Your custom `mySquareRoot()` function? They'd have to read your code.
+3. **Other programmers know it.** When you use `Zanna.Math.Sqrt()`, any Zanna programmer knows what it does. Your custom `mySquareRoot()` function? They'd have to read your code.
 
 The standard library is a superpower. Learning it makes you a dramatically more productive programmer.
 
 ---
 
-## A Tour of Viper's Standard Library
+## A Tour of Zanna's Standard Library
 
-Viper's standard library is organized into modules under the `Viper` namespace. Each module handles a different category of tasks:
+Zanna's standard library is organized into modules under the `Zanna` namespace. Each module handles a different category of tasks:
 
 | Module | Purpose | You'll Use It For |
 |--------|---------|-------------------|
-| `Viper.Collections` | Data structures | Lists, maps, sets |
-| `Viper.Core.Convert` | String-to-number conversion | Processing user input |
-| `Viper.Crypto` | Hashing and encoding | Security, verification |
-| `Viper.System.Environment` | System information | Config, command-line args |
-| `Viper.Text.Fmt` | String formatting | Creating output messages |
-| `Viper.Graphics` | Low-level drawing | Games, visualizations |
-| `Viper.GUI` | Widget-based UI | Desktop applications |
-| `Viper.IO.Dir` | Directory operations | Navigating the filesystem |
-| `Viper.IO.File` | File operations | Reading/writing data |
-| `Viper.IO.Path` | Path manipulation | Building file paths safely |
-| `Viper.Math` | Mathematical functions | Calculations, geometry |
-| `Viper.Network` | TCP/UDP networking | Web clients, servers |
-| `Viper.Math.Random` | Random number generation | Games, simulations, testing |
-| `Viper.String` | Advanced string operations | Text processing |
-| `Viper.Terminal` | Console input/output | User interaction, debugging |
-| `Viper.Threads` | Concurrency | Parallel processing |
-| `Viper.Time` | Date and time | Timestamps, scheduling |
+| `Zanna.Collections` | Data structures | Lists, maps, sets |
+| `Zanna.Core.Convert` | String-to-number conversion | Processing user input |
+| `Zanna.Crypto` | Hashing and encoding | Security, verification |
+| `Zanna.System.Environment` | System information | Config, command-line args |
+| `Zanna.Text.Fmt` | String formatting | Creating output messages |
+| `Zanna.Graphics` | Low-level drawing | Games, visualizations |
+| `Zanna.GUI` | Widget-based UI | Desktop applications |
+| `Zanna.IO.Dir` | Directory operations | Navigating the filesystem |
+| `Zanna.IO.File` | File operations | Reading/writing data |
+| `Zanna.IO.Path` | Path manipulation | Building file paths safely |
+| `Zanna.Math` | Mathematical functions | Calculations, geometry |
+| `Zanna.Network` | TCP/UDP networking | Web clients, servers |
+| `Zanna.Math.Random` | Random number generation | Games, simulations, testing |
+| `Zanna.String` | Advanced string operations | Text processing |
+| `Zanna.Terminal` | Console input/output | User interaction, debugging |
+| `Zanna.Threads` | Concurrency | Parallel processing |
+| `Zanna.Time` | Date and time | Timestamps, scheduling |
 
 Let's explore each one in depth.
 
 ---
 
-## Viper.Terminal: Console I/O
+## Zanna.Terminal: Console I/O
 
-You've used `Viper.Terminal` throughout this book. It's how your programs talk to users.
+You've used `Zanna.Terminal` throughout this book. It's how your programs talk to users.
 
 ### Basic Input and Output
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say("Hello!");              // Print with newline
 Print("No newline here");   // Print without newline
@@ -94,7 +94,7 @@ var char = GetKey();        // Read a single keypress
 For interactive applications, you can control the cursor and colors:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Clear();                    // Clear the screen
 SetPosition(10, 5);         // Move cursor to column 10, row 5
@@ -108,8 +108,8 @@ These are essential for building text-based games, progress bars, or any program
 ### Practical Example: A Simple Menu
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func showMenu() -> Integer {
     Clear();
@@ -128,14 +128,14 @@ func showMenu() -> Integer {
 
 ---
 
-## Viper.Math: Mathematics
+## Zanna.Math: Mathematics
 
-Math operations beyond basic arithmetic live in `Viper.Math`. These functions have been implemented by experts, optimized for speed, and tested for accuracy across edge cases.
+Math operations beyond basic arithmetic live in `Zanna.Math`. These functions have been implemented by experts, optimized for speed, and tested for accuracy across edge cases.
 
 ### Basic Functions
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Abs(-5.0);          // 5.0 (absolute value)
 Math.AbsInt(-5);         // 5   (integer absolute value)
@@ -147,7 +147,7 @@ Math.ClampInt(15, 0, 10); // 10 (constrain to range 0-10)
 ### Rounding
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Floor(3.7);       // 3.0 (round down)
 Math.Ceil(3.2);        // 4.0 (round up)
@@ -158,7 +158,7 @@ Math.Round(3.4);       // 3.0
 ### Powers and Roots
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Sqrt(16.0);       // 4.0 (square root)
 Math.Pow(2.0, 8.0);    // 256.0 (2 to the 8th power)
@@ -170,7 +170,7 @@ Math.Exp(1.0);         // ~2.718 (e^x)
 ### Trigonometry
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Sin(0.0);         // 0.0
 Math.Cos(0.0);         // 1.0
@@ -181,7 +181,7 @@ Math.Atan2(y, x);      // Angle from coordinates
 ### Constants
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 Math.Pi;               // 3.14159265358979...
 Math.Euler;                // 2.71828182845904...
@@ -192,7 +192,7 @@ Math.Euler;                // 2.71828182845904...
 **Game development:** Calculate distances, angles, movement vectors.
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Distance between two points
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
@@ -205,7 +205,7 @@ func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
 **Scientific calculations:** Statistics, physics simulations, financial modeling.
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Compound interest
 func compoundInterest(principal: Number, rate: Number, years: Integer) -> Number {
@@ -216,7 +216,7 @@ func compoundInterest(principal: Number, rate: Number, years: Integer) -> Number
 **Graphics:** Smooth animations, circular motion, wave patterns.
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Move in a circle
 var angle = time * speed;
@@ -236,14 +236,14 @@ The standard library handles all of this. Use it.
 
 ---
 
-## Viper.Math.Random: Randomness
+## Zanna.Math.Random: Randomness
 
-Games need dice rolls. Simulations need random data. Testing needs random inputs. `Viper.Math.Random` (aliased as `Random` below) provides it all.
+Games need dice rolls. Simulations need random data. Testing needs random inputs. `Zanna.Math.Random` (aliased as `Random` below) provides it all.
 
 ### Basic Random Values
 
 ```rust
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 Random.Range(1, 100);  // Random integer from 1 to 100 (inclusive)
 Random.Next();         // Random float from 0.0 to 1.0
@@ -253,10 +253,10 @@ Random.Dice(2);        // 1 or 2 — simulates a coin flip
 ### Working with Collections
 
 ```rust
-bind Viper.Math.Random as Random;
-bind Seq = Viper.Collections.Seq;
-bind Box = Viper.Core.Box;
-bind Viper.Terminal;
+bind Zanna.Math.Random as Random;
+bind Seq = Zanna.Collections.Seq;
+bind Box = Zanna.Core.Box;
+bind Zanna.Terminal;
 
 var deck = Seq.New();
 var i = 1;
@@ -273,7 +273,7 @@ SayInt(deck.Count);
 For testing or game replays, you can *seed* the random number generator:
 
 ```rust
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 Random.Seed(12345);  // Same seed = same sequence of "random" numbers
 ```
@@ -284,9 +284,9 @@ This is crucial for debugging. If a bug only appears sometimes, set a seed to re
 
 **Dice roll:**
 ```rust
-bind Viper.Math.Random as Random;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Math.Random as Random;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var die = Random.Dice(6);
 Say("You rolled: " + Fmt.Int(die));
@@ -294,8 +294,8 @@ Say("You rolled: " + Fmt.Int(die));
 
 **Coin flip:**
 ```rust
-bind Viper.Math.Random as Random;
-bind Viper.Terminal;
+bind Zanna.Math.Random as Random;
+bind Zanna.Terminal;
 
 if Random.Chance(0.5) {
     Say("Heads!");
@@ -306,7 +306,7 @@ if Random.Chance(0.5) {
 
 **Random enemy spawn:**
 ```rust
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 // Simple weighted random (for illustration)
 var roll = Random.Range(1, 100);
@@ -323,7 +323,7 @@ if roll <= 50 {
 
 **Password generator:**
 ```rust
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 func generatePassword(length: Integer) -> String {
     var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
@@ -342,16 +342,16 @@ func generatePassword(length: Integer) -> String {
 
 ---
 
-## Viper.Time: Date and Time
+## Zanna.Time: Date and Time
 
 Time is surprisingly complex. Leap years, time zones, daylight saving, calendar systems. The standard library handles the complexity so you don't have to.
 
 ### Getting the Current Time
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 
@@ -368,9 +368,9 @@ Say("Second: " + Fmt.Int(Time.DateTime.Second(dt)));
 Dates need to be displayed in different formats depending on context:
 
 ```rust
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Terminal;
 
 var dt = Time.DateTime.Now();
 var y  = Time.DateTime.Year(dt);
@@ -395,9 +395,9 @@ Say(Fmt.IntPad(y, 4, "0") + "-" + Fmt.IntPad(mo, 2, "0") + "-" + Fmt.IntPad(d, 2
 For performance measurement or timing games:
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var start = Time.Clock.Ticks();
 
@@ -411,8 +411,8 @@ Say("Processing took " + Fmt.Int(elapsed) + " ms");
 ### Delays and Pauses
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 Say("Loading...");
 Time.Clock.Sleep(2000);  // Pause for 2000 milliseconds (2 seconds)
@@ -422,9 +422,9 @@ Say("Done!");
 ### Practical Example: Simple Stopwatch
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
 
 func stopwatch() {
     Say("Press Enter to start...");
@@ -454,9 +454,9 @@ The standard library has been battle-tested against these edge cases. Trust it.
 
 ---
 
-## Viper.System.Environment: System Information
+## Zanna.System.Environment: System Information
 
-Your program doesn't run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. `Viper.System.Environment` gives you access to this context.
+Your program doesn't run in isolation. It runs on a specific computer, in a specific directory, perhaps launched with command-line arguments. `Zanna.System.Environment` gives you access to this context.
 
 ### Command-Line Arguments
 
@@ -469,13 +469,13 @@ $ zia myprogram.zia input.txt --verbose
 You can access those arguments:
 
 ```rust
-bind Viper.System.Environment;
-bind Viper.Terminal;
+bind Zanna.System.Environment;
+bind Zanna.Terminal;
 
-var count = Viper.System.Environment.GetArgumentCount();
+var count = Zanna.System.Environment.GetArgumentCount();
 
 for i in 0..count {
-    Say("Argument: " + Viper.System.Environment.GetArgument(i));
+    Say("Argument: " + Zanna.System.Environment.GetArgument(i));
 }
 // Output:
 // Argument: input.txt
@@ -487,7 +487,7 @@ for i in 0..count {
 Operating systems have configuration through environment variables:
 
 ```rust
-bind Env = Viper.System.Environment;
+bind Env = Zanna.System.Environment;
 
 var home = Env.GetVariable("HOME");       // /Users/alice
 var path = Env.GetVariable("PATH");       // System PATH
@@ -503,8 +503,8 @@ if Env.HasVariable("DEBUG") {
 ### System Information
 
 ```rust
-bind Env = Viper.System.Environment;
-bind Viper.System.Machine as Machine;
+bind Env = Zanna.System.Environment;
+bind Zanna.System.Machine as Machine;
 
 var osName = Machine.Os;         // "windows", "macos", or "linux"
 var home = Env.GetVariable("HOME");  // User's home directory
@@ -513,9 +513,9 @@ var home = Env.GetVariable("HOME");  // User's home directory
 ### Practical Example: Cross-Platform Configuration
 
 ```rust
-bind Env = Viper.System.Environment;
-bind Viper.IO.Path as Path;
-bind Viper.System.Machine as Machine;
+bind Env = Zanna.System.Environment;
+bind Zanna.IO.Path as Path;
+bind Zanna.System.Machine as Machine;
 
 func getConfigPath() -> String {
     var home = Machine.Home;
@@ -532,15 +532,15 @@ func getConfigPath() -> String {
 
 ---
 
-## Viper.Text.Fmt: String Formatting
+## Zanna.Text.Fmt: String Formatting
 
-Concatenating strings with `+` gets messy when mixing numbers and text. `Viper.Text.Fmt` makes formatting cleaner.
+Concatenating strings with `+` gets messy when mixing numbers and text. `Zanna.Text.Fmt` makes formatting cleaner.
 
 ### Basic Formatting
 
 ```rust
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Terminal;
 
 var name = "Alice";
 var score = 95;
@@ -557,7 +557,7 @@ Say(Fmt.NumFixed(3.14159, 4));   // "3.1416"
 ### Number Formatting
 
 ```rust
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 
 // Decimal places
 Fmt.NumFixed(3.14159, 2);    // "3.14"
@@ -576,8 +576,8 @@ Fmt.Oct(8);                  // "10"
 ### Practical Example: Formatted Table
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func printScoreboard(players: List[Player]) {
     Say("Name            Score");
@@ -601,9 +601,9 @@ func printScoreboard(players: List[Player]) {
 
 ---
 
-## Viper.String: String Utilities
+## Zanna.String: String Utilities
 
-Beyond basic concatenation, `Viper.String` provides advanced text operations as instance methods on strings.
+Beyond basic concatenation, `Zanna.String` provides advanced text operations as instance methods on strings.
 
 ### Padding and Alignment
 
@@ -657,20 +657,20 @@ func isValidUsername(username: String) -> Boolean {
 
 ---
 
-## Collections in Zia and Viper.Collections
+## Collections in Zia and Zanna.Collections
 
 Zia has two collection layers that work together:
 
 - **Language-level generic collections** like `List[T]`, `Map[String, T]`, and `Set[T]`. These are the most natural choice in everyday Zia code.
-- **Runtime collection classes** under `Viper.Collections`, such as `Queue`, `Stack`, `Heap`, `OrderedMap`, and `BitSet`. These cover specialized data structures or boxed, dynamically typed storage.
+- **Runtime collection classes** under `Zanna.Collections`, such as `Queue`, `Stack`, `Heap`, `OrderedMap`, and `BitSet`. These cover specialized data structures or boxed, dynamically typed storage.
 
-Use the language-level generic collections first. Reach for `Viper.Collections.*` when you need a specialized runtime container.
+Use the language-level generic collections first. Reach for `Zanna.Collections.*` when you need a specialized runtime container.
 
 ### Generic List
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var list: List[String] = [];
 
@@ -689,8 +689,8 @@ list.clear();
 ### Generic Map
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var scores: Map[String, Integer] = {};
 
@@ -721,9 +721,9 @@ scores.remove("Bob");
 ### Generic Set
 
 ```rust
-bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Collections;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var tags: Set[String] = Set.New();
 
@@ -741,12 +741,12 @@ Non-empty set literals like `{"a", "b"}` are supported. The empty literal `{}` i
 
 ### Specialized Runtime Collections
 
-Some containers are runtime classes rather than language literals. These live under `Viper.Collections`:
+Some containers are runtime classes rather than language literals. These live under `Zanna.Collections`:
 
 ```rust
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
 
 var queue = Queue.New();
 queue.Push(Box.Str("first"));
@@ -764,9 +764,9 @@ Use these when you need FIFO/LIFO behavior, heaps, ordered maps, frozen collecti
 ### Practical Example: Word Frequency Counter
 
 ```rust
-bind Viper.String as Str;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.String as Str;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func countWords(text: String) -> Map[String, Integer] {
     var frequency: Map[String, Integer] = {};
@@ -795,14 +795,14 @@ for word, count in counts {
 
 ---
 
-## Viper.Core.Convert: Parsing Values
+## Zanna.Core.Convert: Parsing Values
 
 Converting strings to other types is so common it gets its own module.
 
 ### Basic Parsing
 
 ```rust
-bind Convert = Viper.Core.Convert;
+bind Convert = Zanna.Core.Convert;
 
 Convert.ToInt64("42");        // 42
 Convert.ToDouble("3.14");     // 3.14
@@ -815,8 +815,8 @@ Convert.ToStringDouble(3.14); // "3.14"
 Parsing can fail. Handle it gracefully:
 
 ```rust
-bind Convert = Viper.Core.Convert;
-bind Viper.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Terminal;
 
 try {
     var num = Convert.ToInt64("not a number");
@@ -828,9 +828,9 @@ try {
 ### Practical Example: Robust Input Function
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
-bind Parse = Viper.Core.Parse;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Parse = Zanna.Core.Parse;
 
 func getNumber(prompt: String) -> Integer {
     while true {
@@ -852,14 +852,14 @@ var age = getNumber("Enter your age: ");
 
 ---
 
-## Viper.IO.File / Viper.IO.Dir / Viper.IO.Path
+## Zanna.IO.File / Zanna.IO.Dir / Zanna.IO.Path
 
 We covered file operations in Chapter 9, but let's review the key patterns.
 
 ### File Operations
 
 ```rust
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Reading
 var content = File.ReadAllText("data.txt");
@@ -883,7 +883,7 @@ File.Delete("temp.txt");
 ### Directory Operations
 
 ```rust
-bind Viper.IO.Dir as Dir;
+bind Zanna.IO.Dir as Dir;
 
 Dir.Make("output");
 Dir.MakeAll("output/reports/2024");  // Creates intermediate directories
@@ -903,7 +903,7 @@ Dir.Remove("temp");
 The **critical** module for working with file paths:
 
 ```rust
-bind Viper.IO.Path as Path;
+bind Zanna.IO.Path as Path;
 
 // Join paths safely (handles OS-specific separators)
 var path = Path.Join(Path.Join("users/alice", "documents"), "file.txt");
@@ -922,7 +922,7 @@ Path.Stem("/path/to/file.txt");     // "file"
 Never concatenate paths with `+`:
 
 ```rust
-bind Viper.IO.Path as Path;
+bind Zanna.IO.Path as Path;
 
 var dir = "users";
 var filename = "file.txt";
@@ -938,7 +938,7 @@ Windows uses backslashes (`\`), Unix uses forward slashes (`/`). `Path.Join()` h
 
 ---
 
-## Viper.Crypto: Security and Encoding
+## Zanna.Crypto: Security and Encoding
 
 For hashing, encoding, and unique identifiers.
 
@@ -947,7 +947,7 @@ For hashing, encoding, and unique identifiers.
 Hashing converts data into a fixed-size fingerprint. The same input always produces the same hash, but you can't reverse a hash back to the original.
 
 ```rust
-bind Viper.Crypto.Hash as Hash;
+bind Zanna.Crypto.Hash as Hash;
 
 var sha = Hash.SHA256("hello");    // 64-character hex string
 var mac = Hash.HmacSHA256("key", "hello");
@@ -960,15 +960,15 @@ var mac = Hash.HmacSHA256("key", "hello");
 - Detecting duplicates
 
 MD5, SHA-1, CRC32, and their legacy HMAC variants remain available through
-`Viper.Crypto.Legacy.Hash` for compatibility with old formats, but new code
+`Zanna.Crypto.Legacy.Hash` for compatibility with old formats, but new code
 should use SHA-256, HMAC-SHA256, `Password`, `KeyDerive`, or `Cipher`.
 
 ### Encoding
 
-Base64 encoding converts binary data to text. This lives in `Viper.Text.Codec`:
+Base64 encoding converts binary data to text. This lives in `Zanna.Text.Codec`:
 
 ```rust
-bind Codec = Viper.Text.Codec;
+bind Codec = Zanna.Text.Codec;
 
 var encoded = Codec.Base64Enc("Hello, World!");
 // "SGVsbG8sIFdvcmxkIQ=="
@@ -987,7 +987,7 @@ var decoded = Codec.Base64Dec(encoded);
 GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:
 
 ```rust
-bind Uuid = Viper.Text.Uuid;
+bind Uuid = Zanna.Text.Uuid;
 
 var id = Uuid.Generate();
 // "550e8400-e29b-41d4-a716-446655440000"
@@ -1004,9 +1004,9 @@ var id = Uuid.Generate();
 **Never store passwords in plain text.** Hash them:
 
 ```rust
-bind Viper.Crypto.Hash as Hash;
-bind Uuid = Viper.Text.Uuid;
-bind Viper.Terminal;
+bind Zanna.Crypto.Hash as Hash;
+bind Uuid = Zanna.Text.Uuid;
+bind Zanna.Terminal;
 
 func hashPassword(password: String, salt: String) -> String {
     // Combine password with salt to prevent rainbow table attacks
@@ -1039,18 +1039,18 @@ Here's a complete program using multiple standard library modules:
 ```rust
 module StdlibDemo;
 
-bind Viper.Terminal;
-bind Env = Viper.System.Environment;
-bind Viper.Time.DateTime as DateTime;
-bind Viper.Time.Clock as Clock;
-bind Viper.Math as Math;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Math.Random as Random;
-bind Viper.System.Machine as Machine;
-bind Viper.Crypto.Hash as Hash;
+bind Zanna.Terminal;
+bind Env = Zanna.System.Environment;
+bind Zanna.Time.DateTime as DateTime;
+bind Zanna.Time.Clock as Clock;
+bind Zanna.Math as Math;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Math.Random as Random;
+bind Zanna.System.Machine as Machine;
+bind Zanna.Crypto.Hash as Hash;
 
 func start() {
-    Say("=== Viper Standard Library Demo ===");
+    Say("=== Zanna Standard Library Demo ===");
     Say("");
 
     // Environment
@@ -1095,7 +1095,7 @@ func start() {
     Say("");
 
     // Crypto
-    var message = "Hello, Viper!";
+    var message = "Hello, Zanna!";
     Say("Crypto Demo:");
     Say("  Message: " + message);
     Say("  SHA256: " + Hash.SHA256(message).Substring(0, 16) + "...");
@@ -1190,11 +1190,11 @@ You won't memorize every function. Here's how to find what you need:
 
 ### 1. Explore in Your Editor
 
-Most editors offer autocomplete. Type `Viper.` and see what modules appear. Type `Viper.Math.` and see available functions.
+Most editors offer autocomplete. Type `Zanna.` and see what modules appear. Type `Zanna.Math.` and see available functions.
 
 ### 2. Read the Documentation
 
-The official Viper documentation covers every module. Keep it bookmarked. Appendix D of this book provides a quick reference.
+The official Zanna documentation covers every module. Keep it bookmarked. Appendix D of this book provides a quick reference.
 
 ### 3. Guess Intelligently
 
@@ -1211,7 +1211,7 @@ If a function exists, it probably has the name you'd expect.
 
 Before implementing something:
 1. Think: "Is this a common problem?"
-2. If yes, search: "Viper [what you need]"
+2. If yes, search: "Zanna [what you need]"
 3. Check if the standard library has it
 
 You'll be surprised how often the answer is "yes, there's a function for that."
@@ -1227,7 +1227,7 @@ When you encounter a new standard library module:
 Don't try to learn every function. Start with the most common operations:
 
 ```text
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // For File, start with:
 File.ReadAllText()
@@ -1248,9 +1248,9 @@ Create a `test.zia` file and try things:
 ```rust
 module Test;
 
-bind Viper.Math as Math;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
     // Experiment here
@@ -1285,9 +1285,9 @@ Some standard library patterns appear constantly. Learn these by heart.
 ### Pattern: Safe User Input
 
 ```rust
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
-bind Parse = Viper.Core.Parse;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Parse = Zanna.Core.Parse;
 
 func getInt(prompt: String) -> Integer {
     while true {
@@ -1306,7 +1306,7 @@ func getInt(prompt: String) -> Integer {
 ### Pattern: Read Config with Default
 
 ```rust
-bind Env = Viper.System.Environment;
+bind Env = Zanna.System.Environment;
 
 func getConfig(key: String, defaultValue: String) -> String {
     if Env.HasVariable(key) {
@@ -1322,8 +1322,8 @@ func getConfig(key: String, defaultValue: String) -> String {
 ### Pattern: Safe File Read
 
 ```rust
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 func readFileSafe(path: String) -> String {
     if !File.Exists(path) {
@@ -1342,9 +1342,9 @@ func readFileSafe(path: String) -> String {
 ### Pattern: Measure Performance
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 var start = Time.Clock.Ticks();
 
@@ -1363,10 +1363,10 @@ Say("Loop took " + Fmt.Int(elapsed) + " ms");
 ### Pattern: Build a Path
 
 ```rust
-bind Viper.IO.Path as Path;
-bind Viper.System.Machine as Machine;
-bind Viper.Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.IO.Path as Path;
+bind Zanna.System.Machine as Machine;
+bind Zanna.Time;
+bind Zanna.Text.Fmt as Fmt;
 
 var dt = Time.DateTime.Now();
 var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, "0") + "-" +
@@ -1381,7 +1381,7 @@ var logFile = Path.Join(logDir, dateStr + ".log");
 
 ## Summary
 
-The Viper standard library provides:
+The Zanna standard library provides:
 
 | Category | Modules | Key Functions |
 |----------|---------|---------------|
@@ -1389,7 +1389,7 @@ The Viper standard library provides:
 | Numbers | Math, Math.Random, Convert | Math.Sqrt, Math.Sin, Random.Range, Convert.ToInt64 |
 | Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
-| Data | Generic collections, Viper.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
+| Data | Generic collections, Zanna.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
 | System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.Os |
 | Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.HmacSHA256, Uuid.Generate |
 
@@ -1403,7 +1403,7 @@ Think of the standard library as your tool belt. You don't build a hammer every 
 
 **Exercise 13.1**: Write a program that prints the current date in three different formats: ISO (2024-03-15), US (March 15, 2024), and EU (15/03/2024).
 
-**Exercise 13.2**: Use `Viper.Math` to calculate the distance between two points (x1, y1) and (x2, y2) using the Pythagorean theorem.
+**Exercise 13.2**: Use `Zanna.Math` to calculate the distance between two points (x1, y1) and (x2, y2) using the Pythagorean theorem.
 
 **Exercise 13.3**: Create a simple stopwatch: prompt to start, wait for user input, then display elapsed time in seconds and milliseconds.
 

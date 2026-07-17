@@ -6,14 +6,14 @@
 
 ## Overview
 
-The macOS backend provides a complete Cocoa-based implementation of the ViperGFX platform abstraction layer. It creates
+The macOS backend provides a complete Cocoa-based implementation of the ZannaGFX platform abstraction layer. It creates
 native NSWindow instances, handles all input events, and renders the software framebuffer using CoreGraphics.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────┐
-│     ViperGFX Core (vgfx.c)          │
+│     ZannaGFX Core (vgfx.c)          │
 │  - Platform-agnostic logic          │
 │  - Framebuffer management           │
 └──────────────┬──────────────────────┘
@@ -77,7 +77,7 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 
 ### 3. VGFXWindowDelegate - Window Event Handler
 
-**Purpose:** Translates Cocoa window events to ViperGFX events.
+**Purpose:** Translates Cocoa window events to ZannaGFX events.
 
 **Implemented Delegate Methods:**
 
@@ -186,7 +186,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
                                       inMode:NSDefaultRunLoopMode
                                      dequeue:YES])) {
     [NSApp sendEvent:event];  /* Let Cocoa handle first */
-    /* Translate to ViperGFX events... */
+    /* Translate to ZannaGFX events... */
 }
 ```
 
@@ -195,7 +195,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 - Uses `[NSDate distantPast]` for non-blocking poll
 - Processes all pending events in one call
 - Sends events to NSApp first (required for proper window behavior)
-- Then translates to ViperGFX events
+- Then translates to ZannaGFX events
 
 ### `vgfx_platform_present`
 
@@ -228,7 +228,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ✅ **quick_test** - Automated visual test
 
 ```
-ViperGFX macOS Backend Test
+ZannaGFX macOS Backend Test
 ============================
 
 1. Creating window...
@@ -283,12 +283,12 @@ All shapes render correctly with proper pixel-perfect accuracy.
 ## Known Limitations
 
 1. **Main Thread Requirement:** All Cocoa calls must happen on the main thread. The current implementation assumes the
-   user calls all ViperGFX functions from the main thread.
+   user calls all ZannaGFX functions from the main thread.
 
-2. **Retina/HiDPI:** Currently renders at logical points, not backing pixels. For Retina displays, this means 1 ViperGFX
+2. **Retina/HiDPI:** Currently renders at logical points, not backing pixels. For Retina displays, this means 1 ZannaGFX
    pixel = 1 logical point (which may be 2x2 or more backing pixels).
 
-3. **Menu Bar:** A default native app menu is installed automatically for all ViperGFX windows on macOS. Apps that use
+3. **Menu Bar:** A default native app menu is installed automatically for all ZannaGFX windows on macOS. Apps that use
    `GUI.MenuBar` replace that default menu with their own native top-level menu tree.
 
 4. **Key Mapping:** Only supports the Phase 1 key set (A-Z, 0-9, arrows, Enter, Escape, Space). Additional keys require
@@ -328,6 +328,6 @@ All shapes render correctly with proper pixel-perfect accuracy.
 
 ## Summary
 
-The macOS Cocoa backend is **production-ready** for ViperGFX v1.0. It provides a complete, working implementation of all
+The macOS Cocoa backend is **production-ready** for ZannaGFX v1.0. It provides a complete, working implementation of all
 platform requirements with proper event handling, efficient rendering, and robust error handling. The implementation
-follows Apple's best practices for Cocoa development and integrates cleanly with the ViperGFX core.
+follows Apple's best practices for Cocoa development and integrates cleanly with the ZannaGFX core.

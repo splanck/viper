@@ -37,7 +37,7 @@ Depends on **X1 config plumbing** (done in the macOS session) for license text +
 3. **Dialog template.** `DLGTEMPLATE`/`DLGITEMTEMPLATE` blobs via `embedBytes`: STATIC `SS_BITMAP`
    banner, multiline read-only `EDIT` license + "I accept" checkbox, install-scope radios,
    `msctls_progress32`, Back/Next/Cancel. DWORD-aligned, Unicode.
-4. **Banner bitmap.** Decode `misc/images/viperlogo*.png` via `PkgPNG` → DIB; set via `STM_SETIMAGE`.
+4. **Banner bitmap.** Decode `misc/images/zannalogo*.png` via `PkgPNG` → DIB; set via `STM_SETIMAGE`.
 5. **Dialog procedure** (emitted callback, x64 ABI RCX/RDX/R8/R9): `WM_INITDIALOG`, `WM_COMMAND`
    (button IDs; accept-gate enables Next), custom `WM_APP+n` progress, `WM_CLOSE`; drives page flow
    + `EndDialog`.
@@ -65,7 +65,7 @@ Depends on **X1 config plumbing** (done in the macOS session) for license text +
 
 `src/tools/common/packaging/InstallerStub.cpp`, `InstallerStubGen.{hpp,cpp}`, new
 `InstallerStubGenA64.{hpp,cpp}`, `WindowsPackageBuilder.cpp`, `PEBuilder.{hpp,cpp}`,
-`LnkWriter.*`, `PkgPNG.*`, `IconGenerator.*`; `src/tools/viper/cmd_install_package.cpp`;
+`LnkWriter.*`, `PkgPNG.*`, `IconGenerator.*`; `src/tools/zanna/cmd_install_package.cpp`;
 `scripts/sign-windows-installer.ps1`, `scripts/validate-windows-toolchain-installer.ps1`.
 
 ## Verification

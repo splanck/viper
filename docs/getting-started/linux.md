@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # Getting Started on Linux
 
-This guide walks you through installing and running the Viper compiler toolchain on Linux. Commands are provided for both Debian/Ubuntu and Fedora/RHEL families.
+This guide walks you through installing and running the Zanna compiler toolchain on Linux. Commands are provided for both Debian/Ubuntu and Fedora/RHEL families.
 
 ---
 
@@ -14,7 +14,7 @@ This guide walks you through installing and running the Viper compiler toolchain
 
 | Tool | Minimum Version | Purpose |
 |------|-----------------|---------|
-| C++20 compiler | Clang 14+ or GCC 11+ | Compile Viper from source |
+| C++20 compiler | Clang 14+ or GCC 11+ | Compile Zanna from source |
 | CMake | 3.20 | Build system generator |
 | Make | any | Build executor (ships with most distros) |
 | Git | any | Clone the repository |
@@ -52,7 +52,7 @@ cmake --version     # must be 3.20 or higher
 
 ### Optional: Graphics and Audio Libraries
 
-Viper's graphics and audio subsystems require platform libraries. These are optional — the core compiler, VM, and language frontends build and run without them.
+Zanna's graphics and audio subsystems require platform libraries. These are optional — the core compiler, VM, and language frontends build and run without them.
 
 **Debian / Ubuntu:**
 
@@ -75,9 +75,9 @@ If these packages are not installed, the build will print a warning and skip the
 Clone the repository and run the build script:
 
 ```bash
-git clone https://github.com/splanck/viper.git
-cd viper
-./scripts/build_viper_linux.sh
+git clone https://github.com/zannagames/zanna.git
+cd zanna
+./scripts/build_zanna_linux.sh
 ```
 
 The build script will:
@@ -91,7 +91,7 @@ The build script will:
 A successful build ends with output similar to:
 
 ```text
-[100%] Built target viper
+[100%] Built target zanna
 ...
 100% tests passed, 0 tests failed
 ...
@@ -102,13 +102,13 @@ Install complete.
 
 ## Verify the Installation
 
-After building, confirm Viper is working:
+After building, confirm Zanna is working:
 
 ```bash
-viper --version
+zanna --version
 ```
 
-You should see the version string (e.g., `viper v0.2.x-dev`) followed by the IL version. If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
+You should see the version string (e.g., `zanna v0.2.x-dev`) followed by the IL version. If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin
@@ -123,7 +123,7 @@ source ~/.bashrc
 
 ### Installing a Release Package
 
-Release `.deb` and `.rpm` toolchain packages install `viper`, headers, runtime archives,
+Release `.deb` and `.rpm` toolchain packages install `zanna`, headers, runtime archives,
 CMake package files, manpages, and desktop/MIME associations. Install them through the
 distribution package manager so runtime dependencies are resolved and developer
 prerequisites are offered. CMake, `make`, a C++ compiler, and cache utilities are
@@ -132,17 +132,17 @@ over-constrained:
 
 ```bash
 # Debian / Ubuntu
-sudo apt install ./viper_<version>_amd64.deb
+sudo apt install ./zanna_<version>_amd64.deb
 
 # Fedora / RHEL
-sudo dnf install ./viper-<version>-1.x86_64.rpm
+sudo dnf install ./zanna-<version>-1.x86_64.rpm
 ```
 
 Portable `.tar.gz` packages include `install.sh`, `uninstall.sh`, and an install
 manifest. `install.sh` defaults to `/usr/local`, honors `PREFIX` and `DESTDIR`,
-and removes stale files from the previous Viper tarball manifest before copying
+and removes stale files from the previous Zanna tarball manifest before copying
 the new payload in a rollback-capable transaction. A FUSE-less `.run` bundle is
-also available through `viper install-package --target linux-bundle`; it verifies
+also available through `zanna install-package --target linux-bundle`; it verifies
 its payload and reuses a content-addressed private XDG cache.
 
 See the [installer and package release guide](../installer-release.md) for
@@ -157,7 +157,7 @@ Create a file called `hello.zia` with the following content:
 ```zia
 module Hello;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Hello, World!");
@@ -167,7 +167,7 @@ func start() {
 Run it:
 
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
 **Expected output:**
@@ -179,7 +179,7 @@ Hello, World!
 **What this program does:**
 
 - `module Hello;` declares the module name (required in every Zia file)
-- `bind Viper.Terminal;` imports the Terminal module so you can call its functions directly
+- `bind Zanna.Terminal;` imports the Terminal module so you can call its functions directly
 - `func start()` is the program entry point (like `main()` in C)
 - `Say()` prints a line of text to the console with a trailing newline
 
@@ -189,8 +189,8 @@ Hello, World!
 
 - **[Zia Tutorial](../tutorials/zia-tutorial.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
 - **[Zia Reference](../languages/zia-reference.md)** — Complete language reference
-- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Viper also ships a BASIC frontend
-- **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference
+- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Zanna also ships a BASIC frontend
+- **[Getting Started (general)](../getting-started.md)** — Project creation with `zanna init`, the REPL, IL programs, and the full command reference
 
 ---
 
@@ -233,8 +233,8 @@ After installing, re-run the build script. Verify with `clang++ --version` or `g
 **Symptom:** During the CMake configure step you see status lines like:
 
 ```text
--- ViperGFX: disabled (X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF)
--- ViperAUD: disabled (ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF)
+-- ZannaGFX: disabled (X11 not found; install libx11-dev/libX11-devel or set ZANNA_GRAPHICS_MODE=OFF)
+-- ZannaAUD: disabled (ALSA not found; install libasound2-dev/alsa-lib-devel or set ZANNA_AUDIO_MODE=OFF)
 ```
 
 **Cause:** The development headers for X11 or ALSA are not installed. The build continues, but the graphics and/or audio libraries are skipped.
@@ -253,7 +253,7 @@ Then clean and rebuild:
 
 ```bash
 rm -rf build
-./scripts/build_viper_linux.sh
+./scripts/build_zanna_linux.sh
 ```
 
 If you only need the compiler, VM, and language frontends, these warnings are safe to ignore.

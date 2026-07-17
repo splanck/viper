@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -115,7 +115,7 @@ std::string captureCastFpToUiTrap(double input) {
     Module module;
     buildCastFpToUi(module, input);
 
-    auto result = viper::tests::runModuleIsolated(module);
+    auto result = zanna::tests::runModuleIsolated(module);
     assert(result.trapped());
     return result.stderrText;
 }
@@ -123,7 +123,7 @@ std::string captureCastFpToUiTrap(double input) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     const std::array<std::pair<int64_t, int64_t>, 5> truncCases = {

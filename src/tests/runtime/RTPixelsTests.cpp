@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTPixelsTests.cpp
-// Purpose: Tests for Viper.Graphics.Pixels software image buffer.
+// Purpose: Tests for Zanna.Graphics.Pixels software image buffer.
 //
 //===----------------------------------------------------------------------===//
 
@@ -616,7 +616,7 @@ static void test_bmp_save_load_roundtrip() {
     }
 
     // Create temp file path
-    char tmpfile[] = "/tmp/viper_test_bmp_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_bmp_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     close(fd);
@@ -697,7 +697,7 @@ static void test_bmp_odd_dimensions() {
     }
 
     // Create temp file
-    char tmpfile[] = "/tmp/viper_test_bmp_odd_XXXXXX";
+    char tmpfile[] = "/tmp/zanna_test_bmp_odd_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
     close(fd);
@@ -737,7 +737,7 @@ static void test_bmp_load_rejects_invalid_header_extents() {
     assert(p != nullptr);
     rt_pixels_set(p, 0, 0, 0x123456FF);
 
-    const char *bmppath = "/tmp/viper_test_bad_bmp_header.bmp";
+    const char *bmppath = "/tmp/zanna_test_bad_bmp_header.bmp";
     rt_string path = rt_string_from_bytes(bmppath, strlen(bmppath));
     assert(rt_pixels_save_bmp(p, path) == 1);
 
@@ -767,7 +767,7 @@ static void test_png_load_rejects_bad_chunk_crc() {
     assert(p != nullptr);
     rt_pixels_set(p, 0, 0, 0xFF0000FF);
 
-    const char *pngpath = "/tmp/viper_test_bad_crc.png";
+    const char *pngpath = "/tmp/zanna_test_bad_crc.png";
     rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
     assert(rt_pixels_save_png(p, path) == 1);
 
@@ -788,7 +788,7 @@ static void test_png_load_rejects_bad_zlib_adler() {
     assert(p != nullptr);
     rt_pixels_set(p, 0, 0, 0x00FF00FF);
 
-    const char *pngpath = "/tmp/viper_test_bad_adler.png";
+    const char *pngpath = "/tmp/zanna_test_bad_adler.png";
     rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
     assert(rt_pixels_save_png(p, path) == 1);
 
@@ -824,7 +824,7 @@ static void test_png_load_rejects_bad_zlib_adler() {
 }
 
 static void test_png_truecolor_trns_transparency() {
-    const char *pngpath = "/tmp/viper_test_truecolor_trns.png";
+    const char *pngpath = "/tmp/zanna_test_truecolor_trns.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -882,7 +882,7 @@ static std::vector<uint8_t> test_png_stored_idat(const uint8_t *scanline, size_t
 }
 
 static void test_png_rejects_invalid_ihdr_methods() {
-    const char *pngpath = "/tmp/viper_test_invalid_ihdr_methods.png";
+    const char *pngpath = "/tmp/zanna_test_invalid_ihdr_methods.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -904,7 +904,7 @@ static void test_png_rejects_invalid_ihdr_methods() {
 }
 
 static void test_png_indexed_requires_palette() {
-    const char *pngpath = "/tmp/viper_test_indexed_no_plte.png";
+    const char *pngpath = "/tmp/zanna_test_indexed_no_plte.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -928,7 +928,7 @@ static void test_png_indexed_requires_palette() {
 }
 
 static void test_png_indexed_rejects_palette_index_out_of_range() {
-    const char *pngpath = "/tmp/viper_test_indexed_bad_index.png";
+    const char *pngpath = "/tmp/zanna_test_indexed_bad_index.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -955,7 +955,7 @@ static void test_png_indexed_rejects_palette_index_out_of_range() {
 }
 
 static void test_png_subbyte_grayscale_trns_uses_raw_sample() {
-    const char *pngpath = "/tmp/viper_test_gray1_trns.png";
+    const char *pngpath = "/tmp/zanna_test_gray1_trns.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -983,7 +983,7 @@ static void test_png_subbyte_grayscale_trns_uses_raw_sample() {
 }
 
 static void test_png_rejects_trns_for_alpha_color_type() {
-    const char *pngpath = "/tmp/viper_test_rgba_trns_invalid.png";
+    const char *pngpath = "/tmp/zanna_test_rgba_trns_invalid.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -1006,7 +1006,7 @@ static void test_png_rejects_trns_for_alpha_color_type() {
 }
 
 static void test_png_rejects_wrong_truecolor_trns_length() {
-    const char *pngpath = "/tmp/viper_test_rgb_trns_bad_len.png";
+    const char *pngpath = "/tmp/zanna_test_rgb_trns_bad_len.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -1029,7 +1029,7 @@ static void test_png_rejects_wrong_truecolor_trns_length() {
 }
 
 static void test_png_adam7_invalid_filter_rejected() {
-    const char *pngpath = "/tmp/viper_test_adam7_bad_filter.png";
+    const char *pngpath = "/tmp/zanna_test_adam7_bad_filter.png";
     std::vector<uint8_t> png;
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     png.insert(png.end(), signature, signature + 8);
@@ -1659,9 +1659,9 @@ static void test_blend_out_of_bounds() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
+    ZANNA_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
-    printf("=== Viper.Graphics.Pixels Tests ===\n\n");
+    printf("=== Zanna.Graphics.Pixels Tests ===\n\n");
 
     // Constructors
     test_new();

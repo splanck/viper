@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // File: src/frontends/basic/sem/RuntimePropertyIndex.hpp
 // Purpose: Index runtime class properties for case-insensitive lookup.
 // Invariants: Keys are case-insensitive; values reference canonical strings.

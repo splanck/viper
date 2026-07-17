@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,8 +35,8 @@
 #include <sstream>
 #include <vector>
 
-using namespace viper::codegen::objfile;
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::objfile;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -56,7 +56,7 @@ static const char *tmpPath(const char *name) {
     fs::path dir = fs::temp_directory_path(ec);
     if (ec || dir.empty())
         dir = fs::path(".");
-    dir /= "viper_objfile_tests";
+    dir /= "zanna_objfile_tests";
     fs::create_directories(dir, ec);
     path = (dir / name).string();
     return path.c_str();
@@ -154,7 +154,7 @@ static void testMinimalX64Macho() {
     text.emit8(0xC3); // ret
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_minimal_x64.macho.o");
+    std::string path = tmpPath("zanna_test_minimal_x64.macho.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -204,7 +204,7 @@ static void testMinimalA64Macho() {
     text.emit32LE(0xD65F03C0); // ret
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_minimal_a64.macho.o");
+    std::string path = tmpPath("zanna_test_minimal_a64.macho.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::AArch64);
@@ -234,7 +234,7 @@ static void testLoadCommands() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
-    std::string path = tmpPath("viper_test_macho_lc.o");
+    std::string path = tmpPath("zanna_test_macho_lc.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -280,7 +280,7 @@ static void testSectionHeaders() {
     const char *str = "hello";
     rodata.emitBytes(str, std::strlen(str) + 1);
 
-    std::string path = tmpPath("viper_test_macho_sects.o");
+    std::string path = tmpPath("zanna_test_macho_sects.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -332,7 +332,7 @@ static void testSymbolMangling() {
     text.defineSymbol("Log", SymbolBinding::Global, SymbolSection::Text);
     text.findOrDeclareSymbol("external_func");
 
-    std::string path = tmpPath("viper_test_macho_mangle.o");
+    std::string path = tmpPath("zanna_test_macho_mangle.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -402,7 +402,7 @@ static void testX64Relocations() {
 
     text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_macho_x64_relocs.o");
+    std::string path = tmpPath("zanna_test_macho_x64_relocs.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -470,7 +470,7 @@ static void testA64Relocations() {
 
     text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_macho_a64_relocs.o");
+    std::string path = tmpPath("zanna_test_macho_a64_relocs.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::AArch64);
@@ -512,7 +512,7 @@ static void testA64AddendRelocationPair() {
     text.emit32LE(0x94000000); // bl placeholder
     text.emit32LE(0xD65F03C0); // ret
 
-    std::string path = tmpPath("viper_test_macho_a64_addend.o");
+    std::string path = tmpPath("zanna_test_macho_a64_addend.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::AArch64);
@@ -547,7 +547,7 @@ static void testA64AddendRangeValidation() {
         text.addRelocation(RelocKind::A64Call26, symIdx, -1);
         text.emit32LE(0x94000000);
 
-        const std::string path = tmpPath("viper_test_macho_a64_negative_addend.o");
+        const std::string path = tmpPath("zanna_test_macho_a64_negative_addend.o");
         std::ostringstream errStream;
         MachOWriter writer(ObjArch::AArch64);
         CHECK(writer.write(path, text, rodata, errStream));
@@ -567,9 +567,9 @@ static void testA64AddendRangeValidation() {
 
         std::ostringstream errStream;
         MachOWriter writer(ObjArch::AArch64);
-        CHECK(!writer.write(tmpPath("viper_test_macho_a64_large_addend.o"), text, rodata, errStream));
+        CHECK(!writer.write(tmpPath("zanna_test_macho_a64_large_addend.o"), text, rodata, errStream));
         CHECK(errStream.str().find("signed 24-bit") != std::string::npos);
-        std::remove(tmpPath("viper_test_macho_a64_large_addend.o"));
+        std::remove(tmpPath("zanna_test_macho_a64_large_addend.o"));
     }
 }
 
@@ -582,7 +582,7 @@ static void testA64LargeSectionOffsetUsesSyntheticAnchor() {
         RelocKind::A64AdrpPage21, rodata, SymbolSection::Rodata, kLargeOffset);
     text.emit32LE(0x90000000); // ADRP X0, #0
 
-    const std::string path = tmpPath("viper_test_macho_a64_large_section_offset.o");
+    const std::string path = tmpPath("zanna_test_macho_a64_large_section_offset.o");
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::AArch64);
     CHECK(writer.write(path, text, rodata, errStream));
@@ -621,7 +621,7 @@ static void testRelocDescendingOrder() {
     text.emit32LE(0xD65F03C0); // ret
     text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_macho_reloc_order.o");
+    std::string path = tmpPath("zanna_test_macho_reloc_order.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::AArch64);
@@ -665,7 +665,7 @@ static void testRodataSection() {
     const char *str = "Hello, World!";
     rodata.emitBytes(str, std::strlen(str) + 1);
 
-    std::string path = tmpPath("viper_test_macho_rodata.o");
+    std::string path = tmpPath("zanna_test_macho_rodata.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -696,7 +696,7 @@ static void testRodataRelocation() {
     rodata.addRelocation(RelocKind::Abs64, symIdx, 4, SymbolSection::Text);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_macho_rodata_reloc.o");
+    std::string path = tmpPath("zanna_test_macho_rodata_reloc.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -760,7 +760,7 @@ static void testDataSection() {
     const uint64_t kInit = 41;
     data.emit64LE(kInit);
 
-    const std::string path = tmpPath("viper_test_macho_data_section.o");
+    const std::string path = tmpPath("zanna_test_macho_data_section.o");
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::AArch64);
     writer.setDataSection(data);
@@ -822,7 +822,7 @@ static void testDysymtabRanges() {
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
     text.findOrDeclareSymbol("ext_func");
 
-    std::string path = tmpPath("viper_test_macho_dysym.o");
+    std::string path = tmpPath("zanna_test_macho_dysym.o");
     std::ostringstream errStream;
 
     MachOWriter writer(ObjArch::X86_64);
@@ -868,7 +868,7 @@ static void testMultiSectionReaderSplitsSubsectionsViaSymbols() {
     textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
     textB.emit8(0xC3);
 
-    std::string path = tmpPath("viper_test_macho_multitext_merge.o");
+    std::string path = tmpPath("zanna_test_macho_multitext_merge.o");
     std::ostringstream errStream;
 
     auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
@@ -903,7 +903,7 @@ static void testSplitSubsectionsDoesNotDuplicateDirectRelocs() {
     rodata.addRelocation(RelocKind::Abs64, funcA, 0, SymbolSection::Text);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_macho_split_direct_relocs.o");
+    std::string path = tmpPath("zanna_test_macho_split_direct_relocs.o");
     std::ostringstream errStream;
 
     auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
@@ -937,7 +937,7 @@ static void testMultiSectionMergeUniquifiesDuplicateLocals() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    const std::string path = tmpPath("viper_test_macho_multitext_duplicate_locals.o");
+    const std::string path = tmpPath("zanna_test_macho_multitext_duplicate_locals.o");
     CHECK(writer.write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream));
 
     ObjFile obj;
@@ -968,11 +968,11 @@ static void testUnsupportedRelocationFails() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::AArch64);
-    const bool ok = writer.write(tmpPath("viper_test_macho_bad_reloc.o"), text, rodata, errStream);
+    const bool ok = writer.write(tmpPath("zanna_test_macho_bad_reloc.o"), text, rodata, errStream);
     CHECK(!ok);
     CHECK(errStream.str().find("no Mach-O encoding") != std::string::npos);
 
-    std::remove(tmpPath("viper_test_macho_bad_reloc.o"));
+    std::remove(tmpPath("zanna_test_macho_bad_reloc.o"));
 }
 
 static void testWrongArchRelocationFails() {
@@ -983,10 +983,10 @@ static void testWrongArchRelocationFails() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_macho_wrong_arch.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_macho_wrong_arch.o"), text, rodata, errStream));
     CHECK(errStream.str().find("not valid for this object architecture") != std::string::npos);
 
-    std::remove(tmpPath("viper_test_macho_wrong_arch.o"));
+    std::remove(tmpPath("zanna_test_macho_wrong_arch.o"));
 }
 
 static void testRelocationOffsetBoundsFails() {
@@ -997,10 +997,10 @@ static void testRelocationOffsetBoundsFails() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_macho_bad_reloc_offset.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_macho_bad_reloc_offset.o"), text, rodata, errStream));
     CHECK(errStream.str().find("extends beyond __text contents") != std::string::npos);
 
-    std::remove(tmpPath("viper_test_macho_bad_reloc_offset.o"));
+    std::remove(tmpPath("zanna_test_macho_bad_reloc_offset.o"));
 }
 
 static void testRel32AddendRangeFails() {
@@ -1013,10 +1013,10 @@ static void testRel32AddendRangeFails() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_macho_bad_rel32_addend.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_macho_bad_rel32_addend.o"), text, rodata, errStream));
     CHECK(errStream.str().find("signed 32-bit range") != std::string::npos);
 
-    std::remove(tmpPath("viper_test_macho_bad_rel32_addend.o"));
+    std::remove(tmpPath("zanna_test_macho_bad_rel32_addend.o"));
 }
 
 static void testLogicalBiasSymbolsArePhysical() {
@@ -1027,7 +1027,7 @@ static void testLogicalBiasSymbolsArePhysical() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    const std::string path = tmpPath("viper_test_macho_biased_symbol.o");
+    const std::string path = tmpPath("zanna_test_macho_biased_symbol.o");
     CHECK(writer.write(path, text, rodata, errStream));
 
     ObjFile obj;
@@ -1050,7 +1050,7 @@ static void testDuplicateLocalSymbolsStayDistinct() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    const std::string path = tmpPath("viper_test_macho_duplicate_locals.o");
+    const std::string path = tmpPath("zanna_test_macho_duplicate_locals.o");
     CHECK(writer.write(path, text, rodata, errStream));
 
     ObjFile obj;
@@ -1080,7 +1080,7 @@ static void testUndefinedExternalDoesNotBindLocalSameName() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    const std::string path = tmpPath("viper_test_macho_external_local_collision.o");
+    const std::string path = tmpPath("zanna_test_macho_external_local_collision.o");
     CHECK(writer.write(path, text, rodata, errStream));
 
     ObjFile obj;
@@ -1113,7 +1113,7 @@ static void testUndefinedRodataLocalReferenceUsesLocalDefinition() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::AArch64);
-    const std::string path = tmpPath("viper_test_macho_rodata_local_ref.o");
+    const std::string path = tmpPath("zanna_test_macho_rodata_local_ref.o");
     CHECK(writer.write(path, text, rodata, errStream));
 
     ObjFile obj;
@@ -1150,7 +1150,7 @@ static void testA64LargeSectionOffsetRelocationUsesAnchor() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::AArch64);
-    const std::string path = tmpPath("viper_test_macho_large_section_offset.o");
+    const std::string path = tmpPath("zanna_test_macho_large_section_offset.o");
     CHECK(writer.write(path, text, rodata, errStream));
     CHECK(errStream.str().empty());
 
@@ -1183,9 +1183,9 @@ static void testAmbiguousCrossSectionRelocationFails() {
 
     std::ostringstream errStream;
     MachOWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_macho_ambiguous_cross.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_macho_ambiguous_cross.o"), text, rodata, errStream));
     CHECK(errStream.str().find("ambiguous cross-section target") != std::string::npos);
-    std::remove(tmpPath("viper_test_macho_ambiguous_cross.o"));
+    std::remove(tmpPath("zanna_test_macho_ambiguous_cross.o"));
 }
 
 static void testMalformedSymtabFails() {
@@ -1211,7 +1211,7 @@ static void testMalformedSectionContentsFails() {
     text.emit8(0xC3);
 
     std::ostringstream errStream;
-    const std::string path = tmpPath("viper_test_macho_bad_section.o");
+    const std::string path = tmpPath("zanna_test_macho_bad_section.o");
     MachOWriter writer(ObjArch::X86_64);
     CHECK(writer.write(path, text, rodata, errStream));
 
@@ -1233,7 +1233,7 @@ static void testScatteredRelocationFails() {
     text.emit32LE(0);
 
     std::ostringstream errStream;
-    const std::string path = tmpPath("viper_test_macho_scattered_reloc.o");
+    const std::string path = tmpPath("zanna_test_macho_scattered_reloc.o");
     MachOWriter writer(ObjArch::X86_64);
     CHECK(writer.write(path, text, rodata, errStream));
 
@@ -1254,7 +1254,7 @@ static void testMalformedSymbolStringOffsetFails() {
     text.emit8(0xC3);
 
     std::ostringstream errStream;
-    const std::string path = tmpPath("viper_test_macho_bad_symbol_name.o");
+    const std::string path = tmpPath("zanna_test_macho_bad_symbol_name.o");
     MachOWriter writer(ObjArch::X86_64);
     CHECK(writer.write(path, text, rodata, errStream));
 

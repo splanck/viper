@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -270,9 +270,9 @@ const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualif
 
 /// @brief Seed the procedure registry with builtin externs from the runtime registry.
 /// @details Iterates runtime descriptors, selects canonical dotted names (e.g.,
-///          "Viper.*"), maps IL types to BASIC types, and registers them as
+///          "Zanna.*"), maps IL types to BASIC types, and registers them as
 ///          procedures so the semantic analyzer can resolve calls like
-///          Viper.Terminal.PrintI64.
+///          Zanna.Terminal.PrintI64.
 void ProcRegistry::seedRuntimeBuiltins() {
     using namespace il::runtime;
     const auto &registry = runtimeRegistry();
@@ -283,7 +283,7 @@ void ProcRegistry::seedRuntimeBuiltins() {
 
         // Prefer helpers with a generated signature id (back-pointer for lowering),
         // but also seed descriptors without one so dotted runtime names like
-        // Viper.IO.File.* resolve during semantic analysis.
+        // Zanna.IO.File.* resolve during semantic analysis.
         auto sigIdOpt = findRuntimeSignatureId(desc.name);
 
         // Map return type; Void -> SUB (no return), others -> FUNCTION.

@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>XENOSCAPE — Viper Showcase</title>
-  <meta name="description" content="A 17K-line Metroid-style sidescroller built in Zia: 10 levels across 6 biomes, 25+ enemies, bosses, abilities, JSON level loading, save/load. The largest game demo in the Viper showcase.">
+  <title>XENOSCAPE — Zanna Showcase</title>
+  <meta name="description" content="A 17K-line Metroid-style sidescroller built in Zia: 10 levels across 6 biomes, 25+ enemies, bosses, abilities, JSON level loading, save/load. The largest game demo in the Zanna showcase.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="./" class="active">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -37,7 +37,7 @@
       <span class="badge-loc">17,400 LOC</span>
     </p>
 
-    <p>A Metroid-style sidescroller exploring an alien planet. Ten interconnected levels across six biomes, 25+ enemies, mid-bosses, and a final boss arena. Built end-to-end in Zia using the Viper game engine, runtime asset embedding (VPA), and the same native ARM64/x86-64 codegen used to build Viper itself. The largest game demo in the Viper showcase.</p>
+    <p>A Metroid-style sidescroller exploring an alien planet. Ten interconnected levels across six biomes, 25+ enemies, mid-bosses, and a final boss arena. Built end-to-end in Zia using the Zanna game engine, runtime asset embedding (ZPAK), and the same native ARM64/x86-64 codegen used to build Zanna itself. The largest game demo in the Zanna showcase.</p>
 
     <div class="screenshot-placeholder">Screenshot coming soon</div>
 
@@ -51,7 +51,7 @@
       <li>JSON level loading via `LevelDocument` (objects, spawn points, theme metadata)</li>
       <li>Save/load via SaveData (versioned JSON, GC-managed strings)</li>
       <li>Six biomes with unique tilesets, parallax backgrounds, and particle effects</li>
-      <li>HUD via `Viper.Game.UI` (bars, labels, achievement popups)</li>
+      <li>HUD via `Zanna.Game.UI` (bars, labels, achievement popups)</li>
       <li>Audio: ambient music streaming + spatial sound effects</li>
       <li>Native cross-platform: macOS / Linux / Windows (incl. ARM64 native smoke)</li>
     </ul>
@@ -61,9 +61,9 @@
 <span class="cmd">./scripts/build_demos.sh</span>
 
 <span class="comment"># Run this demo</span>
-<span class="cmd">viper run examples/games/xenoscape/</span></code></pre>
+<span class="cmd">zanna run examples/games/xenoscape/</span></code></pre>
 
-    <p><a href="https://github.com/splanck/viper/tree/master/examples/games/xenoscape/">View source on GitHub &rarr;</a></p>
+    <p><a href="https://github.com/zannagames/zanna/tree/master/examples/games/xenoscape/">View source on GitHub &rarr;</a></p>
 
     <p><a href="./">&larr; Back to Showcase</a></p>
   </div>
@@ -89,13 +89,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

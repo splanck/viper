@@ -1,2 +1,2 @@
-REM BASIC: Convert string to double via Viper.Core.Convert.ToDouble
-PRINT Viper.Core.Parse.TryDouble("3.5")
+REM BASIC: Convert string to double via Zanna.Core.Convert.ToDouble
+PRINT Zanna.Core.Parse.TryDouble("3.5")

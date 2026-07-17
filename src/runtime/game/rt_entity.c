@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -175,154 +175,154 @@ void *rt_entity_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 
 /// @brief Read X position in centipixels (divide by 100 to get pixels).
 int64_t rt_entity_get_x(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.X: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.X: expected Zanna.Game.Entity");
     return e ? e->x : 0;
 }
 
 /// @brief Read Y position in centipixels.
 int64_t rt_entity_get_y(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Y: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Y: expected Zanna.Game.Entity");
     return e ? e->y : 0;
 }
 
 /// @brief Set X position in centipixels (teleport — bypasses collision).
 void rt_entity_set_x(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.X.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.X.set: expected Zanna.Game.Entity");
     if (e)
         e->x = v;
 }
 
 /// @brief Set Y position in centipixels.
 void rt_entity_set_y(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.Y.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Y.set: expected Zanna.Game.Entity");
     if (e)
         e->y = v;
 }
 
 /// @brief Read X velocity in centipixels per dt unit.
 int64_t rt_entity_get_vx(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.VelocityX: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityX: expected Zanna.Game.Entity");
     return e ? e->vx : 0;
 }
 
 /// @brief Read Y velocity in centipixels per dt unit.
 int64_t rt_entity_get_vy(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.VelocityY: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityY: expected Zanna.Game.Entity");
     return e ? e->vy : 0;
 }
 
 /// @brief Set X velocity in centipixels per dt.
 void rt_entity_set_vx(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.VelocityX.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityX.set: expected Zanna.Game.Entity");
     if (e)
         e->vx = v;
 }
 
 /// @brief Set Y velocity in centipixels per dt.
 void rt_entity_set_vy(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.VelocityY.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityY.set: expected Zanna.Game.Entity");
     if (e)
         e->vy = v;
 }
 
 /// @brief Read entity bounding-box width in pixels (set on construction).
 int64_t rt_entity_get_width(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Width: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Width: expected Zanna.Game.Entity");
     return e ? e->width : 0;
 }
 
 /// @brief Read entity bounding-box height in pixels.
 int64_t rt_entity_get_height(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Height: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Height: expected Zanna.Game.Entity");
     return e ? e->height : 0;
 }
 
 /// @brief Read facing direction (-1 = left, +1 = right). Defaults to +1 for NULL.
 int64_t rt_entity_get_dir(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Dir: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Dir: expected Zanna.Game.Entity");
     return e ? e->dir : 1;
 }
 
 /// @brief Set facing direction. Used by sprite-mirroring and patrol/turn logic.
 void rt_entity_set_dir(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.Dir.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Dir.set: expected Zanna.Game.Entity");
     if (e)
         e->dir = v < 0 ? -1 : 1;
 }
 
 /// @brief Read current hit-point count.
 int64_t rt_entity_get_hp(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Health: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Health: expected Zanna.Game.Entity");
     return e ? e->hp : 0;
 }
 
 /// @brief Set current hit-point count (no clamping — caller responsible for capping at max_hp).
 void rt_entity_set_hp(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.Health.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Health.set: expected Zanna.Game.Entity");
     if (e)
         e->hp = v;
 }
 
 /// @brief Read maximum hit-point cap.
 int64_t rt_entity_get_max_hp(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.MaxHealth: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.MaxHealth: expected Zanna.Game.Entity");
     return e ? e->max_hp : 0;
 }
 
 /// @brief Set the max hit-point cap.
 void rt_entity_set_max_hp(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.MaxHealth.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.MaxHealth.set: expected Zanna.Game.Entity");
     if (e)
         e->max_hp = v;
 }
 
 /// @brief Read user-defined entity type tag (e.g., 0=player, 1=enemy, 2=pickup). Game-specific.
 int64_t rt_entity_get_type(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Type: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Type: expected Zanna.Game.Entity");
     return e ? e->type : 0;
 }
 
 /// @brief Set the entity type tag.
 void rt_entity_set_type(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.Type.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Type.set: expected Zanna.Game.Entity");
     if (e)
         e->type = v;
 }
 
 /// @brief Returns 1 if the entity is currently active (participates in update/draw).
 int8_t rt_entity_get_active(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.Active: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Active: expected Zanna.Game.Entity");
     return e ? e->active : 0;
 }
 
 /// @brief Toggle active flag. Inactive entities should be skipped by game-loop systems.
 void rt_entity_set_active(void *ent, int8_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.Active.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Active.set: expected Zanna.Game.Entity");
     if (e)
         e->active = v ? 1 : 0;
 }
 
 /// @brief Last-collision flag: 1 if the entity is touching a solid tile below.
 int8_t rt_entity_on_ground(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.OnGround: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.OnGround: expected Zanna.Game.Entity");
     return e ? e->on_ground : 0;
 }
 
 /// @brief Last-collision flag: 1 if the entity bumped a solid tile on its left side.
 int8_t rt_entity_hit_left(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.HitLeft: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.HitLeft: expected Zanna.Game.Entity");
     return e ? e->hit_left : 0;
 }
 
 /// @brief Last-collision flag: 1 if the entity bumped a solid tile on its right side.
 int8_t rt_entity_hit_right(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.HitRight: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.HitRight: expected Zanna.Game.Entity");
     return e ? e->hit_right : 0;
 }
 
 /// @brief Last-collision flag: 1 if the entity bumped a solid tile above (head bonk).
 int8_t rt_entity_hit_ceiling(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.HitCeiling: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.HitCeiling: expected Zanna.Game.Entity");
     return e ? e->hit_ceiling : 0;
 }
 
@@ -456,7 +456,7 @@ static void entity_sweep_y(
 
 /// @brief Apply downward gravitational acceleration, clamped to max_fall terminal velocity.
 void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64_t dt) {
-    entity_impl *e = checked_entity(ent, "Entity.ApplyGravity: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.ApplyGravity: expected Zanna.Game.Entity");
     if (!e || dt <= 0)
         return;
     if (max_fall < 0)
@@ -476,7 +476,7 @@ void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64
 ///          flags (on_ground, hit_left, hit_right, hit_ceiling) and zeroes the
 ///          velocity component on collision. Positions are in centipixels (÷100 for px).
 void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
-    entity_impl *e = checked_entity(ent, "Entity.MoveAndCollide: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.MoveAndCollide: expected Zanna.Game.Entity");
     if (!e || dt <= 0)
         return;
 
@@ -535,7 +535,7 @@ void rt_entity_update_physics(
 
 /// @brief Check whether the entity is at a platform edge (no solid tile below in facing direction).
 int8_t rt_entity_at_edge(void *ent, void *tilemap) {
-    entity_impl *e = checked_entity(ent, "Entity.AtEdge: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.AtEdge: expected Zanna.Game.Entity");
     if (!e || !tilemap)
         return 0;
     int64_t px = entity_cp_to_px(e->x);
@@ -548,7 +548,7 @@ int8_t rt_entity_at_edge(void *ent, void *tilemap) {
 
 /// @brief Reverse direction when hitting a wall (check hit_left/hit_right flags).
 void rt_entity_patrol_reverse(void *ent, int64_t speed) {
-    entity_impl *e = checked_entity(ent, "Entity.PatrolReverse: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.PatrolReverse: expected Zanna.Game.Entity");
     if (!e)
         return;
     if (e->hit_left) {
@@ -563,8 +563,8 @@ void rt_entity_patrol_reverse(void *ent, int64_t speed) {
 
 /// @brief Test whether two entities' bounding boxes overlap (AABB collision test).
 int8_t rt_entity_overlaps(void *ent, void *other) {
-    entity_impl *a = checked_entity(ent, "Entity.Overlaps: expected Viper.Game.Entity");
-    entity_impl *b = checked_entity(other, "Entity.Overlaps: expected Viper.Game.Entity");
+    entity_impl *a = checked_entity(ent, "Entity.Overlaps: expected Zanna.Game.Entity");
+    entity_impl *b = checked_entity(other, "Entity.Overlaps: expected Zanna.Game.Entity");
     if (!a || !b)
         return 0;
     int64_t ax = entity_cp_to_px(a->x);

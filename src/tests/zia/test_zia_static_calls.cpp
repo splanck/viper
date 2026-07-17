@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,8 +42,8 @@ TEST(ZiaStaticCalls, ResultOkI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var r = Viper.Result.OkI64(42);
-    var v = Viper.Result.UnwrapI64(r);
+func start() {    var r = Zanna.Result.OkI64(42);
+    var v = Zanna.Result.UnwrapI64(r);
 }
 )"));
 }
@@ -52,10 +52,10 @@ func start() {    var r = Viper.Result.OkI64(42);
 TEST(ZiaStaticCalls, ResultWithBind) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 /// @brief Start.
-func start() {    var r = Viper.Result.OkStr("hello");
-    Say(Viper.Result.UnwrapStr(r));
+func start() {    var r = Zanna.Result.OkStr("hello");
+    Say(Zanna.Result.UnwrapStr(r));
 }
 )"));
 }
@@ -64,8 +64,8 @@ func start() {    var r = Viper.Result.OkStr("hello");
 TEST(ZiaStaticCalls, UuidNew) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.Terminal;
-bind Viper.Text;
+bind Zanna.Terminal;
+bind Zanna.Text;
 /// @brief Start.
 func start() {    Say(Uuid.Generate());
 }
@@ -76,8 +76,8 @@ func start() {    Say(Uuid.Generate());
 TEST(ZiaStaticCalls, PasswordHash) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.Terminal;
-bind Viper.Crypto;
+bind Zanna.Terminal;
+bind Zanna.Crypto;
 /// @brief Start.
 func start() {    var hash = Password.Hash("secret");
     Say(hash);
@@ -90,8 +90,8 @@ TEST(ZiaStaticCalls, OptionSomeI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var opt = Viper.Option.SomeI64(99);
-    var v = Viper.Option.UnwrapI64(opt);
+func start() {    var opt = Zanna.Option.SomeI64(99);
+    var v = Zanna.Option.UnwrapI64(opt);
 }
 )"));
 }
@@ -100,7 +100,7 @@ func start() {    var opt = Viper.Option.SomeI64(99);
 TEST(ZiaStaticCalls, EasingLinear) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.Math;
+bind Zanna.Math;
 /// @brief Start.
 func start() {    var v = Easing.Linear(0.5);
 }
@@ -112,8 +112,8 @@ TEST(ZiaStaticCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var lazy = Viper.Functional.Lazy.OfI64(42);
-    var v = Viper.Functional.Lazy.GetI64(lazy);
+func start() {    var lazy = Zanna.Functional.Lazy.OfI64(42);
+    var v = Zanna.Functional.Lazy.GetI64(lazy);
 }
 )"));
 }
@@ -122,13 +122,13 @@ TEST(ZiaStaticCalls, RuntimeBuilderApis) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var box = Viper.GUI.MessageBox.NewInfo("Title", "Body");
+func start() {    var box = Zanna.GUI.MessageBox.NewInfo("Title", "Body");
     box.AddButton("OK", 1);
     box.SetDefaultButton(1);
     var choice = box.Show();
     box.Destroy();
 
-    var dlg = Viper.GUI.FileDialog.NewOpen();
+    var dlg = Zanna.GUI.FileDialog.NewOpen();
     dlg.SetTitle("Choose");
     dlg.AddFilter("Images", "*.png");
     dlg.SetMultiple(true);
@@ -145,18 +145,18 @@ TEST(ZiaStaticCalls, RuntimeCollectionConverters) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var seq = Viper.Collections.Seq.New();
-    var list = Viper.Collections.Seq.ToList(seq);
-    var set = Viper.Collections.Seq.ToSet(seq);
-    var bag = Viper.Collections.Seq.ToStringSet(seq);
-    var queue = Viper.Collections.Seq.ToQueue(seq);
-    var stack = Viper.Collections.Seq.ToStack(seq);
-    var deque = Viper.Collections.Seq.ToDeque(seq);
-    var seqFromList = Viper.Collections.List.ToSeq(list);
-    var seqFromSet = Viper.Collections.Set.ToSeq(set);
-    var seqFromBag = Viper.Collections.StringSet.ToSeq(bag);
-    var listFromSet = Viper.Collections.Set.ToList(set);
-    var listFromDeque = Viper.Collections.Deque.ToList(deque);
+func start() {    var seq = Zanna.Collections.Seq.New();
+    var list = Zanna.Collections.Seq.ToList(seq);
+    var set = Zanna.Collections.Seq.ToSet(seq);
+    var bag = Zanna.Collections.Seq.ToStringSet(seq);
+    var queue = Zanna.Collections.Seq.ToQueue(seq);
+    var stack = Zanna.Collections.Seq.ToStack(seq);
+    var deque = Zanna.Collections.Seq.ToDeque(seq);
+    var seqFromList = Zanna.Collections.List.ToSeq(list);
+    var seqFromSet = Zanna.Collections.Set.ToSeq(set);
+    var seqFromBag = Zanna.Collections.StringSet.ToSeq(bag);
+    var listFromSet = Zanna.Collections.Set.ToList(set);
+    var listFromDeque = Zanna.Collections.Deque.ToList(deque);
 }
 )"));
 }
@@ -165,7 +165,7 @@ TEST(ZiaStaticCalls, SpriteAnimatorSurface) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {    var anim = Viper.Graphics.SpriteAnimator.New();
+func start() {    var anim = Zanna.Graphics.SpriteAnimator.New();
     var added = anim.AddClip("idle", 0, 0, 16, 16);
     var playing = anim.Play("idle");
     var current = anim.Current;
@@ -180,14 +180,14 @@ TEST(ZiaStaticCalls, RuntimeObjectCallbackMethod) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 
-func keepList(x: Viper.Collections.List) -> Viper.Collections.List {    return x;
+func keepList(x: Zanna.Collections.List) -> Zanna.Collections.List {    return x;
 }
 
 /// @brief Start.
-func start() {    var list = Viper.Collections.List.New();
-    var opt = Viper.Option.Some(list);
+func start() {    var list = Zanna.Collections.List.New();
+    var opt = Zanna.Option.Some(list);
     var mapped = opt.Map(&keepList);
-    var out = Viper.Option.Unwrap(mapped);
+    var out = Zanna.Option.Unwrap(mapped);
 }
 )"));
 }
@@ -195,9 +195,9 @@ func start() {    var list = Viper.Collections.List.New();
 TEST(ZiaStaticCalls, ExplicitReceiverRuntimeMethodsAndProperties) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.String as Str;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Network;
+bind Zanna.String as Str;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Network;
 
 func worker(arg: Any) {}
 
@@ -206,12 +206,12 @@ func start() {
     var parts = Str.Split("a,b", ",");
     var n = Seq.get_Count(parts);
     var first = Seq.Get(parts, 0);
-    var tcp = Viper.Network.Tcp.Connect("127.0.0.1", 1);
-    var host = Viper.Network.Tcp.get_Host(tcp);
-    Viper.Network.Tcp.Close(tcp);
-    var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
-    var pool = Viper.Threads.Pool.New(1);
-    var pending = Viper.Threads.Pool.get_Pending(pool);
+    var tcp = Zanna.Network.Tcp.Connect("127.0.0.1", 1);
+    var host = Zanna.Network.Tcp.get_Host(tcp);
+    Zanna.Network.Tcp.Close(tcp);
+    var thread = Zanna.Threads.Thread.StartSafe(&worker, 0);
+    var pool = Zanna.Threads.Pool.New(1);
+    var pending = Zanna.Threads.Pool.get_Pending(pool);
 }
 )"));
 }
@@ -219,11 +219,11 @@ func start() {
 TEST(ZiaStaticCalls, AddressOfAllowsForwardDeclaredCallbacks) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
-bind Viper.Threads;
+bind Zanna.Threads;
 
 /// @brief Start.
 func start() {
-    var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
+    var thread = Zanna.Threads.Thread.StartSafe(&worker, 0);
 }
 
 func worker(arg: Any) {}
@@ -236,16 +236,16 @@ module Test;
 
 /// @brief Start.
 func start() {
-    var x = Viper.Input.Mouse.X;
-    var y = Viper.Input.Mouse.Y;
-    var dx = Viper.Input.Mouse.DeltaX;
-    var left = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft);
-    Viper.Input.Mouse.Hide();
-    Viper.Input.Mouse.Show();
+    var x = Zanna.Input.Mouse.X;
+    var y = Zanna.Input.Mouse.Y;
+    var dx = Zanna.Input.Mouse.DeltaX;
+    var left = Zanna.Input.Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft);
+    Zanna.Input.Mouse.Hide();
+    Zanna.Input.Mouse.Show();
 }
 )"));
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

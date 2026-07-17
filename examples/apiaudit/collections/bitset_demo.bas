@@ -1,4 +1,4 @@
-' bitset_demo.bas - Comprehensive API audit for Viper.Collections.BitSet
+' bitset_demo.bas - Comprehensive API audit for Zanna.Collections.BitSet
 ' Tests: New, Set, Get, Clear, Toggle, ClearAll, SetAll, Count, Len,
 '        IsEmpty, Not, And, Or, Xor, ToString
 
@@ -7,7 +7,7 @@ PRINT "=== BitSet API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM bs AS OBJECT
-bs = Viper.Collections.BitSet.New(8)
+bs = Zanna.Collections.BitSet.New(8)
 PRINT bs.Length        ' 8
 PRINT bs.Count      ' 0
 PRINT bs.IsEmpty    ' 1
@@ -60,12 +60,12 @@ PRINT bs.ToString()
 
 ' --- And ---
 PRINT "--- And ---"
-DIM a AS OBJECT = Viper.Collections.BitSet.New(8)
+DIM a AS OBJECT = Zanna.Collections.BitSet.New(8)
 a.Set(0)
 a.Set(1)
 a.Set(2)
 
-DIM b AS OBJECT = Viper.Collections.BitSet.New(8)
+DIM b AS OBJECT = Zanna.Collections.BitSet.New(8)
 b.Set(1)
 b.Set(2)
 b.Set(3)
@@ -97,7 +97,7 @@ PRINT xorResult.Count   ' 2
 
 ' --- Not ---
 PRINT "--- Not ---"
-DIM c AS OBJECT = Viper.Collections.BitSet.New(4)
+DIM c AS OBJECT = Zanna.Collections.BitSet.New(4)
 c.Set(0)
 c.Set(2)
 DIM notResult AS OBJECT = c.Not()

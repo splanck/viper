@@ -1,8 +1,8 @@
 il 0.1
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.Terminal.ReadLine() -> str
-extern @Viper.Core.Convert.ToInt64(str) -> i64
+extern @Zanna.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.ReadLine() -> str
+extern @Zanna.Core.Convert.ToInt64(str) -> i64
 
 global const str @.L0 = "FACTORIAL"
 global const str @.L1 = "ENTER N:"
@@ -14,15 +14,15 @@ entry:
   %r_slot = alloca 8
 
   %h0 = const_str @.L0
-  call @Viper.Terminal.PrintStr(%h0)
+  call @Zanna.Terminal.PrintStr(%h0)
   %h1 = const_str @.L1
-  call @Viper.Terminal.PrintStr(%h1)
+  call @Zanna.Terminal.PrintStr(%h1)
 
-  %line = call @Viper.Terminal.ReadLine()
+  %line = call @Zanna.Terminal.ReadLine()
   store str, %s_slot, %line
 
   %sval = load str, %s_slot
-  %n0 = call @Viper.Core.Convert.ToInt64(%sval)
+  %n0 = call @Zanna.Core.Convert.ToInt64(%sval)
   store i64, %n_slot, %n0
 
   store i64, %r_slot, 1
@@ -43,6 +43,6 @@ loop_body:
 
 done:
   %r2 = load i64, %r_slot
-  call @Viper.Terminal.PrintI64(%r2)
+  call @Zanna.Terminal.PrintI64(%r2)
   ret 0
 }

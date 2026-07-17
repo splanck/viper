@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include "frontends/common/ExprResult.hpp"
 #include "frontends/common/StringHash.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 #include <cctype>
 #include <functional>
 #include <optional>

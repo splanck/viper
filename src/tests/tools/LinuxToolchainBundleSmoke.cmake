@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
 
-foreach (_required CMAKE_BIN VIPER_BIN VIPER_BUILD_DIR)
+foreach (_required CMAKE_BIN ZANNA_BIN ZANNA_BUILD_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to LinuxToolchainBundleSmoke.cmake")
     endif ()
@@ -20,15 +20,15 @@ if (NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     return()
 endif ()
 
-set(_tmp_root "${VIPER_BUILD_DIR}/tests/linux-toolchain-bundle-smoke")
-set(_artifact "${_tmp_root}/viper-toolchain.run")
+set(_tmp_root "${ZANNA_BUILD_DIR}/tests/linux-toolchain-bundle-smoke")
+set(_artifact "${_tmp_root}/zanna-toolchain.run")
 set(_stage_dir "${_tmp_root}/stage")
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}")
 
-set(_install_cmd "${CMAKE_BIN}" --install "${VIPER_BUILD_DIR}" --prefix "${_stage_dir}")
-if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-    list(APPEND _install_cmd --config "${VIPER_CONFIG}")
+set(_install_cmd "${CMAKE_BIN}" --install "${ZANNA_BUILD_DIR}" --prefix "${_stage_dir}")
+if (DEFINED ZANNA_CONFIG AND NOT "${ZANNA_CONFIG}" STREQUAL "")
+    list(APPEND _install_cmd --config "${ZANNA_CONFIG}")
 endif ()
 execute_process(
         COMMAND ${_install_cmd}
@@ -40,7 +40,7 @@ if (NOT _stage_rv EQUAL 0)
             "cmake --install failed while staging Linux bundle smoke payload\nstdout:\n${_stage_out}\nstderr:\n${_stage_err}")
 endif ()
 
-viper_installer_smoke_required_tool_names(_required_tools)
+zanna_installer_smoke_required_tool_names(_required_tools)
 foreach (_tool IN LISTS _required_tools)
     if (NOT EXISTS "${_stage_dir}/bin/${_tool}")
         message(FATAL_ERROR "Linux bundle smoke stage is missing ${_stage_dir}/bin/${_tool}")
@@ -48,7 +48,7 @@ foreach (_tool IN LISTS _required_tools)
 endforeach ()
 
 set(_install_package_cmd
-        "${VIPER_BIN}" install-package
+        "${ZANNA_BIN}" install-package
         --stage-dir "${_stage_dir}"
         --target linux-bundle
         -o "${_artifact}")
@@ -61,7 +61,7 @@ execute_process(
 )
 if (NOT _build_rv EQUAL 0)
     message(FATAL_ERROR
-            "viper install-package --target linux-bundle failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
+            "zanna install-package --target linux-bundle failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
 endif ()
 
 if (NOT EXISTS "${_artifact}")
@@ -69,14 +69,14 @@ if (NOT EXISTS "${_artifact}")
 endif ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${_artifact}"
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${_artifact}"
         RESULT_VARIABLE _verify_rv
         OUTPUT_VARIABLE _verify_out
         ERROR_VARIABLE _verify_err
 )
 if (NOT _verify_rv EQUAL 0)
     message(FATAL_ERROR
-            "viper install-package --verify-only failed for Linux bundle\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
+            "zanna install-package --verify-only failed for Linux bundle\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
 endif ()
 
 execute_process(
@@ -92,7 +92,7 @@ endif ()
 execute_process(
         COMMAND "${CMAKE_BIN}" -E env
                 "XDG_CACHE_HOME=${_tmp_root}/cache"
-                "VIPER_BUNDLE_QUIET=1"
+                "ZANNA_BUNDLE_QUIET=1"
                 "${_artifact}" --version
         RESULT_VARIABLE _run_rv
         OUTPUT_VARIABLE _run_out
@@ -107,15 +107,15 @@ endif ()
 file(REMOVE_RECURSE "${_tmp_root}/concurrent-cache")
 execute_process(
         COMMAND "${CMAKE_BIN}" -E env
-                "VIPER_BUNDLE=${_artifact}"
-                "VIPER_CACHE=${_tmp_root}/concurrent-cache"
+                "ZANNA_BUNDLE=${_artifact}"
+                "ZANNA_CACHE=${_tmp_root}/concurrent-cache"
                 /bin/sh -c [=[
 set -eu
 pids=
 i=1
 while [ "$i" -le 4 ]; do
-    XDG_CACHE_HOME="$VIPER_CACHE" VIPER_BUNDLE_QUIET=1 "$VIPER_BUNDLE" --version \
-        >"$VIPER_CACHE.out.$i" 2>"$VIPER_CACHE.err.$i" &
+    XDG_CACHE_HOME="$ZANNA_CACHE" ZANNA_BUNDLE_QUIET=1 "$ZANNA_BUNDLE" --version \
+        >"$ZANNA_CACHE.out.$i" 2>"$ZANNA_CACHE.err.$i" &
     pids="$pids $!"
     i=$((i + 1))
 done
@@ -128,13 +128,13 @@ if (NOT _concurrent_rv EQUAL 0)
     message(FATAL_ERROR
             "concurrent Linux bundle extraction failed\nstdout:\n${_concurrent_out}\nstderr:\n${_concurrent_err}")
 endif ()
-file(GLOB_RECURSE _cache_stamps "${_tmp_root}/concurrent-cache/viper/.payload.sha256")
+file(GLOB_RECURSE _cache_stamps "${_tmp_root}/concurrent-cache/zanna/.payload.sha256")
 list(LENGTH _cache_stamps _cache_stamp_count)
 if (NOT _cache_stamp_count EQUAL 1)
     message(FATAL_ERROR
             "concurrent Linux bundle extraction expected one content-addressed cache stamp, found ${_cache_stamp_count}")
 endif ()
-file(GLOB _cache_locks "${_tmp_root}/concurrent-cache/viper/.*.lock")
+file(GLOB _cache_locks "${_tmp_root}/concurrent-cache/zanna/.*.lock")
 if (_cache_locks)
     message(FATAL_ERROR "concurrent Linux bundle extraction left lock directories: ${_cache_locks}")
 endif ()

@@ -1,0 +1,469 @@
+module refactors;
+
+bind "../services/text_utils";
+bind "identifier_utils";
+bind "source_scan";
+
+bind Obj = Zanna.Core.Object;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: refactors
+// PURPOSE: Pure source transforms for conservative Zia local refactor commands.
+//
+// WHERE-THIS-FITS: Used by commands/edit_commands.zia. GUI commands collect
+//          cursor/selection/name input, then call this module to produce a new
+//          full-document text. The transform returns the original source when
+//          preconditions are not met.
+//
+// KEY-DESIGN-CHOICES:
+//   * FAILS BY NO-OP. Refactors return the original text instead of partial
+//     edits when a safety check fails.
+//   * NO CAPTURE INFERENCE. Extract Function currently rejects selections that
+//     capture locals from before the selection or leak selected locals after it.
+//   * TRIVIA-AWARE IDENTIFIERS. Identifier replacement ignores strings and
+//     `//` comments so generated edits do not modify trivia.
+// ============================================================================
+
+/// @brief Inline a simple local variable declaration.
+/// @details The declaration must be `var name = expr;`, the variable must not be
+///          reassigned later in the enclosing function, and at least one later
+///          use must be replaced.
+/// @param source Full Zia document text.
+/// @param declarationLine 0-based line containing the declaration.
+/// @return Rewritten source, or original source when unsafe/unavailable.
+expose func InlineLocalVariableText(source: String,
+                                    declarationLine: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Count(lines);
+    if declarationLine < 0 or declarationLine >= count { return source; }
+
+    var declLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, declarationLine)));
+    var name = InlineLocalNameFromLine(declLine);
+    var expr = InlineLocalExpressionFromLine(declLine);
+    if name == "" or expr == "" { return source; }
+
+    var funcStart = source_scan.EnclosingZiaFunctionStartLine(source, declarationLine + 1);
+    var funcEnd = count;
+    if funcStart > 0 {
+        funcEnd = source_scan.ZiaFunctionEndLine(source, funcStart);
+    }
+    if funcEnd <= declarationLine + 1 { return source; }
+
+    var replacements = 0;
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        if i == declarationLine {
+            i = i + 1;
+            continue;
+        }
+        if i > declarationLine and i < funcEnd {
+            if LineAssignsToIdentifier(line, name) {
+                return source;
+            }
+            var replaced = source_scan.ReplaceIdentifierOutsideTrivia(line, name, "(" + expr + ")");
+            if replaced != line {
+                replacements = replacements + 1;
+                line = replaced;
+            }
+        }
+        output.add(line);
+        i = i + 1;
+    }
+
+    if replacements == 0 { return source; }
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    return text_utils.JoinStringList(output, eol);
+}
+
+/// @brief Extract a selected single-line expression into a local variable.
+/// @param source Full Zia document text.
+/// @param startLine 0-based selection start line.
+/// @param startCol 0-based selection start column.
+/// @param endLine 0-based selection end line.
+/// @param endCol 0-based selection end column.
+/// @param name New local variable name.
+/// @return Rewritten source, or original source when unsafe/unavailable.
+expose func ExtractLocalVariableText(source: String,
+                                     startLine: Integer,
+                                     startCol: Integer,
+                                     endLine: Integer,
+                                     endCol: Integer,
+                                     name: String) -> String {
+    if identifier_utils.IsValidIdentifier(name) == false { return source; }
+    if startLine != endLine { return source; }
+    if startCol < 0 or endCol <= startCol { return source; }
+
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Count(lines);
+    if startLine < 0 or startLine >= count { return source; }
+
+    var funcStart = source_scan.EnclosingZiaFunctionStartLine(source, startLine + 1);
+    if funcStart <= 0 { return source; }
+    var funcEnd = source_scan.ZiaFunctionEndLine(source, funcStart);
+    if startLine + 1 <= funcStart or startLine + 1 >= funcEnd { return source; }
+    if ZiaFunctionContainsIdentifier(source, funcStart, funcEnd, name) {
+        return source;
+    }
+
+    var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, startLine)));
+    if endCol > Str.get_Length(line) { return source; }
+
+    var expr = Str.MidLen(line, startCol + 1, endCol - startCol);
+    var trimmedExpr = Str.Trim(expr);
+    if trimmedExpr == "" { return source; }
+    if Str.IndexOf(trimmedExpr, ";") != 0 { return source; }
+    if Str.IndexOf(trimmedExpr, "//") != 0 { return source; }
+
+    var before = "";
+    if startCol > 0 { before = Str.Left(line, startCol); }
+    var after = Str.Mid(line, endCol + 1);
+    var replacedLine = before + name + after;
+
+    var indentLen = text_utils.LeadingWhitespaceLength(line);
+    var indent = "";
+    if indentLen > 0 { indent = Str.Left(line, indentLen); }
+    var declaration = indent + "var " + name + " = " + trimmedExpr + ";";
+
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var outLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        if i == startLine {
+            output.add(declaration);
+            output.add(replacedLine);
+        } else {
+            output.add(outLine);
+        }
+        i = i + 1;
+    }
+
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    return text_utils.JoinStringList(output, eol);
+}
+
+/// @brief Extract selected complete statements into a new function.
+/// @details The selection must start/end on whole statement lines inside one
+///          function, must have balanced braces, must not contain control-flow
+///          exits, and must not capture or leak local variables.
+/// @param source Full Zia document text.
+/// @param startLine 0-based selection start line.
+/// @param startCol 0-based selection start column.
+/// @param endLine 0-based selection end line.
+/// @param endCol 0-based selection end column.
+/// @param name New function name.
+/// @return Rewritten source, or original source when unsafe/unavailable.
+expose func ExtractFunctionText(source: String,
+                                startLine: Integer,
+                                startCol: Integer,
+                                endLine: Integer,
+                                endCol: Integer,
+                                name: String) -> String {
+    if identifier_utils.IsValidIdentifier(name) == false { return source; }
+    if source == "" { return source; }
+
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Count(lines);
+    var rangeStart = startLine;
+    var rangeEnd = endLine;
+    if rangeStart < 0 or rangeStart >= count { return source; }
+    if rangeEnd < rangeStart or rangeEnd >= count { return source; }
+
+    if rangeEnd > rangeStart and endCol == 0 {
+        rangeEnd = rangeEnd - 1;
+        if rangeEnd < rangeStart { return source; }
+    }
+
+    var firstLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeStart)));
+    var lastLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeEnd)));
+    if startCol > text_utils.LeadingWhitespaceLength(firstLine) { return source; }
+    if endCol < Str.get_Length(lastLine) { return source; }
+
+    var funcStart = source_scan.EnclosingZiaFunctionStartLine(source, rangeStart + 1);
+    if funcStart <= 0 { return source; }
+    var funcEnd = source_scan.ZiaFunctionEndLine(source, funcStart);
+    if rangeStart + 1 <= funcStart or rangeEnd + 1 >= funcEnd { return source; }
+    if ZiaFunctionNameExists(source, name) { return source; }
+
+    if ExtractFunctionSelectionIsSafe(lines, funcStart, funcEnd, rangeStart, rangeEnd) == false {
+        return source;
+    }
+
+    var headerLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, funcStart - 1)));
+    var headerIndentLen = text_utils.LeadingWhitespaceLength(headerLine);
+    var headerIndent = "";
+    if headerIndentLen > 0 { headerIndent = Str.Left(headerLine, headerIndentLen); }
+    var callIndentLen = text_utils.LeadingWhitespaceLength(firstLine);
+    var callIndent = "";
+    if callIndentLen > 0 { callIndent = Str.Left(firstLine, callIndentLen); }
+    var callLine = callIndent + name + "();";
+
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        if i == rangeStart {
+            output.add(callLine);
+            i = rangeEnd + 1;
+            continue;
+        }
+        output.add(line);
+        i = i + 1;
+    }
+
+    var insertAt = funcEnd - (rangeEnd - rangeStart);
+    if insertAt > output.count() { insertAt = output.count(); }
+    output.insert(insertAt, "");
+    output.insert(insertAt + 1, headerIndent + "func " + name + "() {");
+    var selected = rangeStart;
+    var insertOffset = 2;
+    while selected <= rangeEnd {
+        output.insert(insertAt + insertOffset,
+                      text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, selected))));
+        insertOffset = insertOffset + 1;
+        selected = selected + 1;
+    }
+    output.insert(insertAt + insertOffset, headerIndent + "}");
+
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    return text_utils.JoinStringList(output, eol);
+}
+
+/// @brief Extract the local name from a simple `var name = expr;` line.
+/// @param line Source line with no trailing newline.
+/// @return Local identifier, or empty when the line is not a simple declaration.
+expose func InlineLocalNameFromLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    if Str.StartsWith(trimmed, "var ") == false { return ""; }
+    var eq = Str.IndexOf(trimmed, "=");
+    var semi = Str.IndexOf(trimmed, ";");
+    if eq == 0 or semi == 0 or semi < eq { return ""; }
+    if Str.Trim(Str.Mid(trimmed, semi + 1)) != "" { return ""; }
+    var beforeEq = Str.Trim(Str.MidLen(trimmed, 5, eq - 5));
+    var colon = Str.IndexOf(beforeEq, ":");
+    if colon != 0 {
+        beforeEq = Str.Trim(Str.Left(beforeEq, colon - 1));
+    }
+    if identifier_utils.IsValidIdentifier(beforeEq) == false { return ""; }
+    return beforeEq;
+}
+
+/// @brief Extract the initializer expression from a simple local declaration.
+/// @param line Source line with no trailing newline.
+/// @return Initializer expression, or empty when unavailable.
+expose func InlineLocalExpressionFromLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    var eq = Str.IndexOf(trimmed, "=");
+    var semi = Str.IndexOf(trimmed, ";");
+    if eq == 0 or semi == 0 or semi < eq { return ""; }
+    return Str.Trim(Str.MidLen(trimmed, eq + 1, semi - eq - 1));
+}
+
+/// @brief Return whether a Zia function name already exists in a source file.
+/// @param source Full Zia source text.
+/// @param name Candidate function name.
+/// @return True when any function declaration uses name.
+func ZiaFunctionNameExists(source: String,
+                           name: String) -> Boolean {
+    var lines = Str.Split(source, "\n");
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        if source_scan.ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i))) == name {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Validate whether selected lines can be extracted into a function.
+/// @param lines Sequence of source lines.
+/// @param funcStart Zero-based start line of the enclosing function.
+/// @param funcEnd Zero-based end line of the enclosing function.
+/// @param startLine Zero-based first selected line.
+/// @param endLine Zero-based last selected line.
+/// @return True when the extraction avoids obvious control/data-flow hazards.
+/// @details This is intentionally conservative. It rejects selections that jump
+///          out of the extracted block, depend on locals declared before the
+///          block, leave selected locals used after the block, or unbalance braces.
+func ExtractFunctionSelectionIsSafe(lines: Any,
+                                    funcStart: Integer,
+                                    funcEnd: Integer,
+                                    startLine: Integer,
+                                    endLine: Integer) -> Boolean {
+    var selectedDecls = new List();
+    var beforeDecls = new List();
+
+    var i = funcStart;
+    while i < startLine {
+        var beforeName = InlineLocalNameFromLine(text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
+        if beforeName != "" and text_utils.StringListContains(beforeDecls, beforeName) == false {
+            beforeDecls.add(beforeName);
+        }
+        i = i + 1;
+    }
+
+    var braceDelta = 0;
+    var commentDepth = source_scan.ZiaCommentDepthBeforeLine(lines, startLine);
+    i = startLine;
+    while i <= endLine {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var trimmed = Str.Trim(line);
+        if trimmed == "" {
+            i = i + 1;
+            continue;
+        }
+        if Str.StartsWith(trimmed, "return")
+           or Str.StartsWith(trimmed, "break")
+           or Str.StartsWith(trimmed, "continue") {
+            return false;
+        }
+        if LineUsesAnyIdentifier(line, beforeDecls) {
+            return false;
+        }
+        var declName = InlineLocalNameFromLine(line);
+        if declName != "" and text_utils.StringListContains(selectedDecls, declName) == false {
+            selectedDecls.add(declName);
+        }
+        braceDelta = braceDelta + source_scan.ZiaBraceDelta(line, commentDepth);
+        commentDepth = source_scan.ZiaCommentDepthAfter(line, commentDepth);
+        i = i + 1;
+    }
+    if braceDelta != 0 { return false; }
+
+    i = endLine + 1;
+    while i < funcEnd - 1 {
+        var afterLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        if LineUsesAnyIdentifier(afterLine, selectedDecls) {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Return whether a line references any identifier from a list.
+/// @param line Source line to inspect.
+/// @param names List of identifier names.
+/// @return True when at least one identifier appears outside trivia.
+func LineUsesAnyIdentifier(line: String,
+                           names: List) -> Boolean {
+    var i = 0;
+    while i < names.count() {
+        var name = Obj.ToString(names.get(i));
+        if name != "" and source_scan.ReplaceIdentifierOutsideTrivia(line, name, "") != line {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return whether a function range references an identifier.
+/// @param source Full Zia source text.
+/// @param startLine One-based first function line.
+/// @param endLine One-based last function line.
+/// @param name Identifier to find.
+/// @return True when name appears outside comments and strings.
+func ZiaFunctionContainsIdentifier(source: String,
+                                   startLine: Integer,
+                                   endLine: Integer,
+                                   name: String) -> Boolean {
+    var lines = Str.Split(source, "\n");
+    var i = startLine - 1;
+    if i < 0 { i = 0; }
+    var last = endLine - 1;
+    if last >= Seq.get_Count(lines) { last = Seq.get_Count(lines) - 1; }
+    while i <= last {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if source_scan.ReplaceIdentifierOutsideTrivia(line, name, "") != line {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return whether a source line assigns to a specific identifier.
+/// @param line Source line to inspect.
+/// @param name Identifier being considered for inline-local refactoring.
+/// @return True for direct, compound, increment, or decrement assignment.
+/// @details Comments and strings are skipped so text examples do not block a
+///          safe inline operation.
+func LineAssignsToIdentifier(line: String,
+                             name: String) -> Boolean {
+    var pos = 1;
+    var inString = false;
+    var escape = false;
+    while pos <= Str.get_Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.get_Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" { return false; }
+        if ch == "\"" {
+            inString = true;
+            pos = pos + 1;
+            continue;
+        }
+        if identifier_utils.IsIdentStart(ch) {
+            var start = pos;
+            var ident = "";
+            while pos <= Str.get_Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+                ident = ident + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            if ident == name {
+                var after = source_scan.SkipWhitespace(line, pos);
+                if InlineLocalAssignmentOperatorAt(line, after) {
+                    return true;
+                }
+            }
+            if pos == start { pos = pos + 1; }
+            continue;
+        }
+        pos = pos + 1;
+    }
+    return false;
+}
+
+/// @brief Test whether an assignment-like operator starts at a position.
+/// @param line Source line.
+/// @param pos One-based position after an identifier and following whitespace.
+/// @return True for `=`, compound assignments, `++`, or `--`.
+func InlineLocalAssignmentOperatorAt(line: String,
+                                     pos: Integer) -> Boolean {
+    if pos > Str.get_Length(line) { return false; }
+    var op = Str.MidLen(line, pos, 1);
+    var next = "";
+    if pos < Str.get_Length(line) {
+        next = Str.MidLen(line, pos + 1, 1);
+    }
+    if op == "=" {
+        return next != "=";
+    }
+    if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
+        if next == "=" { return true; }
+        if op == "+" and next == "+" { return true; }
+        if op == "-" and next == "-" { return true; }
+    }
+    return false;
+}

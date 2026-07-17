@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 //     a literal apostrophe. An unterminated quoted literal traps.
 //   - Pattern letters outside the supported set (y M d E H h m s a) are
 //     rejected with a trap. Supported letters are explicitly enumerated
-//     elsewhere in docs/viperlib/localization/formatting.md.
+//     elsewhere in docs/zannalib/localization/formatting.md.
 //
 // Ownership/Lifetime:
 //   - Caller owns the string builder; this function only appends bytes.
@@ -102,7 +102,7 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
 static int dateformat_check_append(rt_sb_status_t status) {
     if (status == RT_SB_OK)
         return 1;
-    rt_trap("Viper.Localization.DateFormat: formatting failed");
+    rt_trap("Zanna.Localization.DateFormat: formatting failed");
     return 0;
 }
 
@@ -234,7 +234,7 @@ static int emit_month(rt_string_builder *sb,
                       const rt_locale_data_t *data) {
     int idx = (int)(c->month - 1);
     if (idx < 0 || idx > 11) {
-        rt_trap("Viper.Localization.DateFormat: month component out of range");
+        rt_trap("Zanna.Localization.DateFormat: month component out of range");
         return 0;
     }
     if (count == 1) {
@@ -272,7 +272,7 @@ static int emit_dow(rt_string_builder *sb,
                     const rt_locale_data_t *data) {
     int idx = (int)c->dow;
     if (idx < 0 || idx > 6) {
-        rt_trap("Viper.Localization.DateFormat: weekday component out of range");
+        rt_trap("Zanna.Localization.DateFormat: weekday component out of range");
         return 0;
     }
     if (count <= 3) {
@@ -392,7 +392,7 @@ int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
     // Cap pattern length defensively (plan calls for 256 chars at load time;
     // Custom() pattern inputs from users are capped here as well).
     if (pattern_len > 256) {
-        rt_trap("Viper.Localization.DateFormat: pattern too long (max 256 chars)");
+        rt_trap("Zanna.Localization.DateFormat: pattern too long (max 256 chars)");
         return 0;
     }
 
@@ -429,7 +429,7 @@ int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
                 ++i;
             }
             if (!closed) {
-                rt_trap("Viper.Localization.DateFormat: unterminated quoted literal");
+                rt_trap("Zanna.Localization.DateFormat: unterminated quoted literal");
                 return 0;
             }
             continue;
@@ -480,7 +480,7 @@ int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
                         return 0;
                     break;
                 default:
-                    rt_trap("Viper.Localization.DateFormat: unsupported pattern letter");
+                    rt_trap("Zanna.Localization.DateFormat: unsupported pattern letter");
                     return 0;
             }
             continue;

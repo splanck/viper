@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 // Key invariants: Wrappers return Err_None on success and allocate readable strings.
 // Ownership/Lifetime: Runtime owns allocations; test releases acquired strings.
 // Links: docs/internals/codemap.md
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "tests/common/PosixCompat.h"
 #include <assert.h>
@@ -33,7 +33,7 @@ int main(void) {
     assert(written > 0 && written < (int)sizeof(template_path));
     remove(template_path);
 
-    ViperString *path = rt_const_cstr(template_path);
+    ZannaString *path = rt_const_cstr(template_path);
     assert(path != NULL);
 
     assert(rt_open_err_vstr(path, RT_F_OUTPUT, 0) == Err_InvalidOperation);
@@ -49,11 +49,11 @@ int main(void) {
     assert(rt_write_ch_err(5, NULL) == Err_InvalidOperation);
     assert(rt_println_ch_err(5, NULL) == Err_InvalidOperation);
 
-    ViperString *hello = rt_const_cstr("hello ");
+    ZannaString *hello = rt_const_cstr("hello ");
     int32_t write_rc = rt_write_ch_err(5, hello);
     assert(write_rc == Err_None);
 
-    ViperString *world = rt_const_cstr("world");
+    ZannaString *world = rt_const_cstr("world");
     int32_t println_rc = rt_println_ch_err(5, world);
     assert(println_rc == Err_None);
 
@@ -63,7 +63,7 @@ int main(void) {
     int32_t open_in = rt_open_err_vstr(path, RT_F_INPUT, 5);
     assert(open_in == Err_None);
 
-    ViperString *line = NULL;
+    ZannaString *line = NULL;
     int32_t input_rc = rt_line_input_ch_err(5, &line);
     assert(input_rc == Err_None);
     assert(line != NULL);
@@ -78,13 +78,13 @@ int main(void) {
     int32_t open_random = rt_open_err_vstr(path, RT_F_RANDOM, 6);
     assert(open_random == Err_None);
 
-    ViperString *random_line = NULL;
+    ZannaString *random_line = NULL;
     int32_t random_read_rc = rt_line_input_ch_err(6, &random_line);
     assert(random_read_rc == Err_None);
     assert(random_line != NULL);
     rt_string_unref(random_line);
 
-    ViperString *eof_line = NULL;
+    ZannaString *eof_line = NULL;
     int32_t eof_rc = rt_line_input_ch_err(6, &eof_line);
     assert(eof_rc == Err_EOF);
     assert(eof_line == NULL);
@@ -96,7 +96,7 @@ int main(void) {
 
     const char *suffix_cstr = "again";
     size_t suffix_len = strlen(suffix_cstr);
-    ViperString *suffix = rt_const_cstr(suffix_cstr);
+    ZannaString *suffix = rt_const_cstr(suffix_cstr);
     assert(suffix != NULL);
 
     int32_t write_after_eof_rc = rt_println_ch_err(6, suffix);
@@ -115,7 +115,7 @@ int main(void) {
     off_t seek_rc = lseek(fd, -(off_t)(suffix_len + 1), SEEK_END);
     assert(seek_rc >= 0);
 
-    ViperString *again_line = NULL;
+    ZannaString *again_line = NULL;
     int32_t read_again_rc = rt_line_input_ch_err(6, &again_line);
     assert(read_again_rc == Err_None);
     assert(again_line != NULL);
@@ -124,7 +124,7 @@ int main(void) {
     assert(strcmp(again_view, suffix_cstr) == 0);
     rt_string_unref(again_line);
 
-    ViperString *final_line = NULL;
+    ZannaString *final_line = NULL;
     int32_t final_eof_rc = rt_line_input_ch_err(6, &final_line);
     assert(final_eof_rc == Err_EOF);
     assert(final_line == NULL);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_scene_editor.cpp
@@ -1632,7 +1632,7 @@ static std::string firstErrorMessage(const SceneState &s) {
 ///          as `Err(message)` while preserving warning-only documents as Ok.
 /// @param scene SceneDocument handle returned by a load API.
 /// @param fallback Fallback error message when the document has no error diagnostic.
-/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+/// @return Owned `Zanna.Result` carrying a SceneDocument or an error string.
 static void *scene_load_to_result(void *scene, const char *fallback) {
     if (!scene)
         return rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneDocument load failed"));
@@ -1666,7 +1666,7 @@ extern "C" {
 
 /// @brief `SceneDocument.LoadJsonResult(text)` — load scene JSON as a Result.
 /// @param text Scene JSON text.
-/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+/// @return Owned `Zanna.Result` carrying a SceneDocument or an error string.
 void *rt_game_scene_load_json_result(rt_string text) {
     void *scene = rt_game_scene_load_json(text);
     return scene_load_to_result(scene, "SceneDocument.LoadJson failed");
@@ -1703,7 +1703,7 @@ void *rt_game_scene_load_file(rt_string path_s) {
 
 /// @brief `SceneDocument.LoadResult(path)` — load a scene file as a Result.
 /// @param path Scene file path.
-/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+/// @return Owned `Zanna.Result` carrying a SceneDocument or an error string.
 void *rt_game_scene_load_file_result(rt_string path) {
     void *scene = rt_game_scene_load_file(path);
     return scene_load_to_result(scene, "SceneDocument.Load failed");
@@ -2201,7 +2201,7 @@ int64_t rt_game_scene_find_object(void *scene, rt_string id) {
 ///          returns `SomeI64(index)`, while absence returns None.
 /// @param scene SceneDocument handle.
 /// @param id Object id to search for.
-/// @return Opaque Viper.Option containing the object index, or None.
+/// @return Opaque Zanna.Option containing the object index, or None.
 void *rt_game_scene_find_object_option(void *scene, rt_string id) {
     int64_t index = rt_game_scene_find_object(scene, id);
     return index >= 0 ? rt_option_some_i64(index) : rt_option_none();

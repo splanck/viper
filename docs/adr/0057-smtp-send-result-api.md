@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-`Viper.Network.SmtpClient.Send(...)` and `SendHtml(...)` return only a Boolean.
+`Zanna.Network.SmtpClient.Send(...)` and `SendHtml(...)` return only a Boolean.
 When a send fails, callers must read `LastError` on the same client to learn the
 SMTP, validation, or transport diagnostic. That side-channel pattern is easy to
 lose during refactors, and it makes retry/reporting code depend on mutable client
@@ -21,8 +21,8 @@ state after the operation has already completed.
 
 Add Result-returning send APIs:
 
-- `SmtpClient.SendResult(from, to, subject, body) -> Viper.Result`
-- `SmtpClient.SendHtmlResult(from, to, subject, html) -> Viper.Result`
+- `SmtpClient.SendResult(from, to, subject, body) -> Zanna.Result`
+- `SmtpClient.SendHtmlResult(from, to, subject, html) -> Zanna.Result`
 
 Successful sends return `OkI64(1)`. Failed sends return `ErrStr(message)` using
 the same diagnostic that the compatibility `LastError` property exposes.

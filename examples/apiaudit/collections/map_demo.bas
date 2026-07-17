@@ -1,4 +1,4 @@
-' map_demo.bas - Comprehensive API audit for Viper.Collections.Map
+' map_demo.bas - Comprehensive API audit for Zanna.Collections.Map
 ' Tests: New, Set, Get, GetOr, Has, Remove, Clear, Len, IsEmpty,
 '        Keys, Values, SetIfMissing
 
@@ -6,15 +6,15 @@ PRINT "=== Map API Audit ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM m AS Viper.Collections.Map
-m = Viper.Collections.Map.New()
+DIM m AS Zanna.Collections.Map
+m = Zanna.Collections.Map.New()
 PRINT m.Count       ' 0
 PRINT m.IsEmpty   ' 1
 
 ' --- Set / Len ---
 PRINT "--- Set / Len ---"
 m.Set("name", "Alice")
-m.Set("age", Viper.Core.Box.I64(30))
+m.Set("age", Zanna.Core.Box.I64(30))
 m.Set("city", "Boston")
 PRINT m.Count       ' 3
 PRINT m.IsEmpty   ' 0
@@ -45,7 +45,7 @@ PRINT m.Count                              ' 4
 
 ' --- Set (update existing) ---
 PRINT "--- Set (update) ---"
-m.Set("age", Viper.Core.Box.I64(31))
+m.Set("age", Zanna.Core.Box.I64(31))
 PRINT m.Count                              ' 4 (no new entry)
 
 ' --- Remove ---

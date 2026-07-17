@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -58,9 +58,9 @@ static void callWrongArgCount() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(callUnknownExtern);
-    viper::tests::registerChildFunction(callWrongArgCount);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(callUnknownExtern);
+    zanna::tests::registerChildFunction(callWrongArgCount);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Case 1: Register extern and invoke successfully.
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     // Case 2: Unknown extern -> trap (capture in child).
     {
-        auto result = viper::tests::runIsolated(callUnknownExtern);
+        auto result = zanna::tests::runIsolated(callUnknownExtern);
         assert(result.trapped());
         assert(result.stderrText.find("unknown runtime helper 'times2'") != std::string::npos);
     }
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
         ext.fn = reinterpret_cast<void *>(&times2_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
 
-        auto result = viper::tests::runIsolated(callWrongArgCount);
+        auto result = zanna::tests::runIsolated(callWrongArgCount);
         assert(result.trapped());
         assert(result.stderrText.find("expected 1 argument(s), got 0") != std::string::npos);
 

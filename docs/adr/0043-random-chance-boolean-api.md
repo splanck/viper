@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Math.Random.Chance(probability)` reads like a predicate and is commonly
+`Zanna.Math.Random.Chance(probability)` reads like a predicate and is commonly
 used in examples as a probability check. Its public signature returned `i64`,
 with `1` for success and `0` for failure. That shape encouraged integer
 truthiness in user code and made the API less clear than the surrounding
@@ -23,8 +23,8 @@ or compatibility with older examples.
 
 ## Decision
 
-Make `Viper.Math.Random.Chance(probability)` return `Boolean` (`i1`). Add
-`Viper.Math.Random.ChanceInt(probability)` for the previous integer 0/1 result.
+Make `Zanna.Math.Random.Chance(probability)` return `Boolean` (`i1`). Add
+`Zanna.Math.Random.ChanceInt(probability)` for the previous integer 0/1 result.
 
 Both functions share the same probability clamping and deterministic RNG state:
 probability `<= 0.0` fails, probability `>= 1.0` succeeds, and values between

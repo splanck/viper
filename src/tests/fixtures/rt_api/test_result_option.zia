@@ -1,19 +1,19 @@
 // test_result_option.zia — Result, Option functional types
 module TestResultOption;
 
-bind Viper.Terminal;
-bind Viper.Result;
-bind Viper.Option;
+bind Zanna.Terminal;
+bind Zanna.Result;
+bind Zanna.Option;
 
 func start() {
-    var ok = Viper.Result.OkI64(42);
-    var err = Viper.Result.ErrStr("boom");
-    var some = Viper.Option.SomeStr("hi");
-    var none = Viper.Option.None();
+    var ok = Zanna.Result.OkI64(42);
+    var err = Zanna.Result.ErrStr("boom");
+    var some = Zanna.Option.SomeStr("hi");
+    var none = Zanna.Option.None();
 
-    SayInt(Viper.Result.UnwrapI64(ok));
-    Say(Viper.Result.UnwrapErrStr(err));
-    Say(Viper.Option.UnwrapStr(some));
+    SayInt(Zanna.Result.UnwrapI64(ok));
+    Say(Zanna.Result.UnwrapErrStr(err));
+    Say(Zanna.Option.UnwrapStr(some));
     SayBool(ok.IsOk);
     SayBool(none.IsNone);
     Say("done");

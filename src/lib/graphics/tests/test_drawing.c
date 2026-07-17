@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_drawing.c
-// Purpose: Unit tests for ViperGFX drawing primitives and rendering pipeline.
+// Purpose: Unit tests for ZannaGFX drawing primitives and rendering pipeline.
 // Key invariants: Tests are deterministic; validate pixel output where
 //                 applicable; avoid environment-specific assumptions.
 // Ownership/Lifetime: Test binary; creates and destroys windows/textures as
@@ -16,7 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Drawing Tests (T7-T13)
+ * ZannaGFX - Drawing Tests (T7-T13)
  * Tests drawing primitives (lines, rectangles, circles)
  */
 
@@ -474,7 +474,7 @@ void test_extreme_circle_coordinates_do_not_overflow(void) {
 /// How:  Creates a surface/window, issues draw calls, then validates output.
 int main(void) {
     printf("========================================\n");
-    printf("ViperGFX Drawing Tests (T7-T13)\n");
+    printf("ZannaGFX Drawing Tests (T7-T13)\n");
     printf("========================================\n");
 
     test_line_horizontal();
@@ -497,13 +497,13 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/test_drawing.c
-// Purpose: Unit tests for ViperGFX drawing primitives and rendering pipeline.
+// Purpose: Unit tests for ZannaGFX drawing primitives and rendering pipeline.
 // Key invariants: Tests are deterministic; validate pixel output where
 //                 applicable; avoid environment-specific assumptions.
 // Ownership/Lifetime: Test binary; creates and destroys windows/textures as

@@ -1,16 +1,16 @@
 module openworld_slice_streaming_hitch_probe;
 
-bind Viper.Collections as Collections;
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.IO as IO;
-bind Viper.Math;
-bind Viper.System.Environment as Environment;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Threads.Thread as Thread;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Collections as Collections;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.IO as IO;
+bind Zanna.Math;
+bind Zanna.System.Environment as Environment;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Threads.Thread as Thread;
+bind Zanna.Time.Clock as Clock;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);
@@ -48,14 +48,14 @@ func reductionPct(compressedBytes: Integer, rawBytes: Integer) -> Integer {
     return ((rawBytes - compressedBytes) * 100) / rawBytes;
 }
 
-func writeU32LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+func writeU32LE(data: Zanna.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
     Collections.Bytes.Set(data, pos + 2, (value / 65536) % 256);
     Collections.Bytes.Set(data, pos + 3, (value / 16777216) % 256);
 }
 
-func writeSmallU64LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+func writeSmallU64LE(data: Zanna.Collections.Bytes, pos: Integer, value: Integer) {
     writeU32LE(data, pos, value);
     writeU32LE(data, pos + 4, 0);
 }
@@ -120,10 +120,10 @@ func writeNativeKtx2(path: String, vkFormat: Integer) {
 }
 
 func nativeProbeRequested() -> Boolean {
-    if (Environment.HasVariable("VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE") == false) {
+    if (Environment.HasVariable("ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE") == false) {
         return false;
     }
-    return Environment.GetVariable("VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE") != "0";
+    return Environment.GetVariable("ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE") != "0";
 }
 
 func runNativeCompressedUploadProbe() -> String {

@@ -4,11 +4,11 @@ audience: contributors
 last-verified: 2026-06-20
 ---
 
-# Zia vs Viper BASIC: Feature Parity Matrix
+# Zia vs Zanna BASIC: Feature Parity Matrix
 
 ## Context
 
-This document is a comprehensive feature parity audit between the two Viper frontends: **Zia** (modern, Swift/Kotlin-influenced) and **Viper BASIC** (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn't wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.
+This document is a comprehensive feature parity audit between the two Zanna frontends: **Zia** (modern, Swift/Kotlin-influenced) and **Zanna BASIC** (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn't wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.
 
 ---
 
@@ -20,16 +20,16 @@ frontend-language parity:
 | Surface | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
 | Standalone LSP/MCP diagnostics | **Full** | **Full** | `zia-server` and `vbasic-server` both expose structured diagnostics through the shared handler. |
-| Completion / hover / document symbols | **Full** | **Full in `vbasic-server`; ViperIDE tracks server support separately from wired commands** | BASIC analysis exists at the server boundary, and ViperIDE exposes that distinction in disabled-command reasons. |
-| Definition / references / rename | **Full** | None | Zia uses `Viper.Zia.ProjectIndex`; BASIC has no equivalent project index yet. |
+| Completion / hover / document symbols | **Full** | **Full in `vbasic-server`; ZannaIDE tracks server support separately from wired commands** | BASIC analysis exists at the server boundary, and ZannaIDE exposes that distinction in disabled-command reasons. |
+| Definition / references / rename | **Full** | None | Zia uses `Zanna.Zia.ProjectIndex`; BASIC has no equivalent project index yet. |
 | Signature help | **Full** | None | BASIC server does not advertise this capability. |
 | Workspace symbols | **Full** | None | Zia LSP can answer from open/project-indexed documents; BASIC remains document-scoped. |
 | Semantic tokens | **Full** | None | `vbasic-server` intentionally does not advertise semantic tokens. |
-| ViperIDE semantic commands | **Full** | Disabled until BASIC adapters are wired | BASIC files can be edited/built in ViperIDE. Semantic commands stay capability-gated off, but disabled-command reasons now distinguish `vbasic-server` support from missing IDE adapters. |
+| ZannaIDE semantic commands | **Full** | Disabled until BASIC adapters are wired | BASIC files can be edited/built in ZannaIDE. Semantic commands stay capability-gated off, but disabled-command reasons now distinguish `vbasic-server` support from missing IDE adapters. |
 
 This split is intentional as of 2026-06-21. `vbasic-server` is the supported
 BASIC IDE-service surface for diagnostics, completion, hover, document symbols,
-and dumps. ViperIDE records those server capabilities separately from its
+and dumps. ZannaIDE records those server capabilities separately from its
 currently wired command capabilities, and should only enable BASIC commands
 after it has a non-blocking adapter to the server and matching probes. Project-wide BASIC
 navigation/refactoring needs a BASIC project index or equivalent semantic layer
@@ -99,7 +99,7 @@ before any definition/reference/rename flag is advertised.
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
 | Function declaration | **Full** (`func`) | **Full** (`FUNCTION/END FUNCTION`) | |
-| Async function declaration | **Full** (`async func`, `expose async func`) | None | Zia only; returns `Viper.Threads.Future` |
+| Async function declaration | **Full** (`async func`, `expose async func`) | None | Zia only; returns `Zanna.Threads.Future` |
 | Foreign function declaration | **Full** (`foreign func`, `expose foreign func`) | **Full interop target** | Zia can declare linked functions implemented elsewhere |
 | Void procedure | **Full** (returns `Void`) | **Full** (`SUB/END SUB`) | |
 | Return type annotation | **Full** (`-> Type`) | **Full** (`AS Type`) | |
@@ -148,8 +148,8 @@ before any definition/reference/rename flag is advertised.
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Dynamic list | **Full** (List literal `[1,2,3]`) | Via runtime (`Viper.Collections.List`) | Zia has literal syntax + sugar |
-| Map / Dictionary | **Full** (Map literal `{"a":1}`) | Via runtime (`Viper.Collections.Map`) | Zia has literal syntax + sugar |
+| Dynamic list | **Full** (List literal `[1,2,3]`) | Via runtime (`Zanna.Collections.List`) | Zia has literal syntax + sugar |
+| Map / Dictionary | **Full** (Map literal `{"a":1}`) | Via runtime (`Zanna.Collections.Map`) | Zia has literal syntax + sugar |
 | Set | **Full** (Set literal `{1,2,3}`) | Via runtime | Zia lowers set literals via `rt_set_new` + `rt_set_add` |
 | Seq (sequence snapshot) | **Full** | Via runtime | Zia has specific for-in integration; use LazySeq for lazy pipelines |
 | Native arrays | **Full** (FixedArray `T[N]`) | **Full** (`DIM arr(size)`) | Different models: Zia=fixed-size inline, BASIC=dynamic |
@@ -210,9 +210,9 @@ before any definition/reference/rename flag is advertised.
 | Module declaration | **Full** (`module M;`) | **Full** (implicit per-file) | |
 | Namespace blocks | **Full** (`namespace N { }`) | **Full** (`NAMESPACE N/END NAMESPACE`) | |
 | File imports | **Full** (`bind "./file"`) | **Full** (`ADDFILE "file.bas"`) | BASIC is textual inclusion |
-| Namespace imports | **Full** (`bind Viper.Terminal`) | **Full** (`USING Viper.Terminal`) | |
-| Selective imports | **Full** (`bind Viper.X { A, B }`) | None | Zia only |
-| Alias imports | **Full** (`bind Viper.Y as X`) | **Full** (`USING Viper.Y AS X`) | |
+| Namespace imports | **Full** (`bind Zanna.Terminal`) | **Full** (`USING Zanna.Terminal`) | |
+| Selective imports | **Full** (`bind Zanna.X { A, B }`) | None | Zia only |
+| Alias imports | **Full** (`bind Zanna.Y as X`) | **Full** (`USING Zanna.Y AS X`) | |
 | Import depth limits | **Full** (50 depth, 100 files) | None | Zia only |
 
 ### 1.10 Operators
@@ -253,7 +253,7 @@ before any definition/reference/rename flag is advertised.
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Console print | Via `bind Viper.Terminal` | **Full** (`PRINT`) | BASIC has built-in syntax |
+| Console print | Via `bind Zanna.Terminal` | **Full** (`PRINT`) | BASIC has built-in syntax |
 | Console input | Via runtime | **Full** (`INPUT`) | BASIC has built-in syntax |
 | File I/O statements | Via runtime | **Full** (`OPEN/CLOSE/PRINT#/INPUT#`) | BASIC has built-in file channel syntax |
 | File seek/position | Via runtime | **Full** (`SEEK`, `LOC`, `LOF`, `EOF`) | |
@@ -263,7 +263,7 @@ before any definition/reference/rename flag is advertised.
 | Random seed | Via runtime | **Full** (`RANDOMIZE seed`) | |
 | Sound/beep | Via runtime | **Full** (`BEEP`) | |
 | Command-line args | Via runtime | **Full** (`ARGC()`, `ARG$()`, `COMMAND$()`) | |
-| Math builtins | Via `bind Viper.Math` | **Full** (SQR, SIN, COS, etc.) | BASIC has 16+ built-in math functions |
+| Math builtins | Via `bind Zanna.Math` | **Full** (SQR, SIN, COS, etc.) | BASIC has 16+ built-in math functions |
 | Constant folding | None (runtime eval) | **Full** | BASIC folds arithmetic, casts, and logical ops at compile time |
 
 ---

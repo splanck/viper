@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -145,7 +145,7 @@ ActiveVMGuard::~ActiveVMGuard() {
 ///          delegate directly without incurring repeated lookups.
 /// @param vm VM whose helpers should be exposed via this context.
 VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm) {
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     config.enableOpcodeCounts = vm.enableOpcodeCounts;
 #else
     config.enableOpcodeCounts = false;
@@ -180,8 +180,8 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const {
         return state.hasPendingResult ? std::optional<Slot>(state.pendingResult) : std::nullopt;
 
     // Dispatch hook before executing the opcode (counts, etc.).
-#if VIPER_VM_OPCOUNTS
-    VIPER_VM_DISPATCH_BEFORE((*this), instr->op);
+#if ZANNA_VM_OPCOUNTS
+    ZANNA_VM_DISPATCH_BEFORE((*this), instr->op);
 #endif
 
     vmInstance->traceInstruction(*instr, state.fr);
@@ -398,10 +398,10 @@ Slot VM::eval(Frame &fr, const il::core::Value &value) {
             auto [insertIt, inserted] = inlineLiteralCache.try_emplace(value.str);
             if (inserted) {
                 if (value.str.find('\0') == std::string::npos)
-                    insertIt->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
+                    insertIt->second = ZannaStringHandle(rt_const_cstr(value.str.c_str()));
                 else
                     insertIt->second =
-                        ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
+                        ZannaStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
             s.str = insertIt->second.get();
             return s;

@@ -1,10 +1,10 @@
 module MinimalUnlitProbe;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Terminal;
 
 func start() {
     var canvas = Canvas3D.New("Minimal Unlit Probe", 800, 600);

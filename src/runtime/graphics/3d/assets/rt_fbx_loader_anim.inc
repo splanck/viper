@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_anim.inc  (#included from rt_fbx_loader.c; not
 // a standalone translation unit) Purpose: FBX animation extraction
 //===----------------------------------------------------------------------===//

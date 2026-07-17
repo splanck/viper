@@ -1,12 +1,12 @@
-// bloomfilter_demo.zia - Comprehensive API audit for Viper.Collections.BloomFilter
+// bloomfilter_demo.zia - Comprehensive API audit for Zanna.Collections.BloomFilter
 // Tests: New, Add, MightContain, Count, FalsePositiveRate, Clear, Merge
 
 module BloomFilterDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== BloomFilter API Audit ===");

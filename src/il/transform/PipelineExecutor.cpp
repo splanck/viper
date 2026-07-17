@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include "il/transform/PipelineExecutor.hpp"
 
 #include "il/core/Module.hpp"
-#include "viper/pass/PassManager.hpp"
+#include "zanna/pass/PassManager.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -253,17 +253,17 @@ std::uint64_t moduleStateFingerprint(const core::Module &module) {
 /// @brief Determine whether expensive pass-change auditing is enabled.
 /// @details Normal optimizer execution trusts each pass's PreservedAnalyses
 ///          result and therefore avoids hashing the complete module around every
-///          pass. Setting VIPER_VERIFY_PASS_CHANGE_REPORTS retains the historical
+///          pass. Setting ZANNA_VERIFY_PASS_CHANGE_REPORTS retains the historical
 ///          structural fingerprint check for optimizer development and converts
 ///          any under-reported mutation into a conservative changed result.
 /// @return True when structural change reports should be independently audited.
 bool verifyPassChangeReports() {
-    static const bool enabled = std::getenv("VIPER_VERIFY_PASS_CHANGE_REPORTS") != nullptr;
+    static const bool enabled = std::getenv("ZANNA_VERIFY_PASS_CHANGE_REPORTS") != nullptr;
     return enabled;
 }
 
 /// @brief Select a bounded worker count for function-parallel IL passes.
-/// @details VIPER_OPT_THREADS provides build orchestration with an explicit
+/// @details ZANNA_OPT_THREADS provides build orchestration with an explicit
 ///          per-process CPU budget. Invalid or absent values fall back to host
 ///          hardware concurrency, and non-empty workloads always receive at
 ///          least one worker.
@@ -274,7 +274,7 @@ std::size_t optimizerWorkerCount(std::size_t functionCount) {
         return 0;
     std::size_t cap =
         std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
-    if (const char *raw = std::getenv("VIPER_OPT_THREADS")) {
+    if (const char *raw = std::getenv("ZANNA_OPT_THREADS")) {
         std::size_t parsed = 0;
         const char *end = raw + std::strlen(raw);
         const auto result = std::from_chars(raw, end, parsed);
@@ -314,7 +314,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     AnalysisManager analysis(module, analysisRegistry_);
     const bool collectMetrics = static_cast<bool>(instrumentation_.passMetrics);
 
-    viper::pass::PassManager driver;
+    zanna::pass::PassManager driver;
     if (instrumentation_.printBefore)
         driver.setPrintBeforeHook(instrumentation_.printBefore);
     if (instrumentation_.printAfter)

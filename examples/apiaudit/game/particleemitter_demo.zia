@@ -1,9 +1,9 @@
-// API Audit: Viper.Game.ParticleEmitter (Zia)
+// API Audit: Zanna.Game.ParticleEmitter (Zia)
 module ParticleEmitterDemo;
-bind Viper.Terminal;
-bind Viper.Game.ParticleEmitter as PE;
+bind Zanna.Terminal;
+bind Zanna.Game.ParticleEmitter as PE;
 func start() {
-    Say("=== API Audit: Viper.Game.ParticleEmitter ===");
+    Say("=== API Audit: Zanna.Game.ParticleEmitter ===");
 
     // --- New ---
     Say("--- New ---");

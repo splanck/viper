@@ -3,10 +3,10 @@ module TestSeqNew;
 // Test: Just Seq.New
 
 func start() {
-    Viper.Terminal.Say("=== Seq New Test ===");
+    Zanna.Terminal.Say("=== Seq New Test ===");
 
-    var arr: Viper.Collections.Seq = Viper.Collections.Seq.New(5);
-    Viper.Terminal.Say("Created seq");
+    var arr: Zanna.Collections.Seq = Zanna.Collections.Seq.New(5);
+    Zanna.Terminal.Say("Created seq");
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: common/RunProcess.cpp
-// Purpose: Native subprocess launcher shared by Viper tools and linker helpers.
+// Purpose: Native subprocess launcher shared by Zanna tools and linker helpers.
 // Key invariants:
 //   - `run_process` launches argv directly without shell interpretation.
 //   - stdout and stderr are captured independently.
@@ -767,7 +767,7 @@ std::vector<char *> build_spawn_envp(std::vector<std::string> &env_strings) {
 /// @details macOS exposes the standardized
 ///          @c posix_spawn_file_actions_addchdir spelling, while glibc and
 ///          several BSD libcs expose the non-standard @c *_np extension.
-///          Viper uses these APIs to preserve cwd support without running
+///          Zanna uses these APIs to preserve cwd support without running
 ///          allocation-heavy code after @c fork.
 /// @param actions File actions object being prepared for @c posix_spawnp.
 /// @param cwd Working directory path.
@@ -943,7 +943,7 @@ bool capture_posix_pipes(int stdout_fd,
 
 } // namespace
 
-namespace viper::test_support {
+namespace zanna::test_support {
 struct ScopedEnvironmentAssignmentMoveResult {
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
@@ -988,7 +988,7 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
 
     return result;
 }
-} // namespace viper::test_support
+} // namespace zanna::test_support
 
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,

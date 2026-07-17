@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math.BigInt - Arbitrary Precision Integers
+// API Audit: Zanna.Math.BigInt - Arbitrary Precision Integers
 // =============================================================================
 // Tests: FromInt, FromStr, Zero, One, Add, Sub, Mul, Div, Mod, Neg, Abs,
 //        Cmp, Eq, IsZero, IsNegative, Sign, And, Or, Xor, Not, Shl, Shr,
@@ -8,11 +8,11 @@
 // =============================================================================
 
 module BigIntDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.BigInt ===");
+    Say("=== API Audit: Zanna.Math.BigInt ===");
 
     // --- Factory: FromInt ---
     Say("--- FromInt ---");

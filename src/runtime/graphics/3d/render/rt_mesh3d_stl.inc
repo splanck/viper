@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/render/rt_mesh3d_stl.inc  (#included from rt_mesh3d.c; not a
 // standalone translation unit) Purpose: Mesh3D STL loader (binary + ASCII)
 //===----------------------------------------------------------------------===//

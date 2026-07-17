@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -88,7 +88,7 @@ struct VMTestHook {
         return vm.execStack.size();
     }
 
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     static void setOpcodeCountsEnabled(VM &vm, bool enabled) {
         vm.enableOpcodeCounts = enabled;
     }

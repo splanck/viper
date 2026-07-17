@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,8 +17,8 @@
  */
 
 #include "il/build/IRBuilder.hpp"
-#include "viper/vm/RuntimeBridge.hpp"
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/RuntimeBridge.hpp"
+#include "zanna/vm/VM.hpp"
 #include <cstdint>
 #include <iostream>
 

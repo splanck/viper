@@ -1,4 +1,4 @@
-10 DIM PRESSED AS OBJECT = Viper.Input.Keyboard.GetPressed()
+10 DIM PRESSED AS OBJECT = Zanna.Input.Keyboard.GetPressed()
 20 DIM KEY AS INTEGER
 30 KEY = PRESSED.Get(0)
 40 END

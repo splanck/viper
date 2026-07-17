@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Validate extended runtime math operations in rt_math.c.
 // Key invariants: Math functions produce correct results, constants are
 //                 accurate, wrap/clamp handle edge cases correctly.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_math.h"
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Compute the Adler-32 checksum of a buffer (RFC 1950 trailer).
@@ -92,4 +92,4 @@ std::vector<uint8_t> zlibDecompress(const uint8_t *data, size_t len, size_t expe
     return out;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

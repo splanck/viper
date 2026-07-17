@@ -9,7 +9,7 @@ bind "./_support";
 // Pins the aggregate-return shapes that historically miscompiled on the
 // native AArch64 path (xenoscape MoveResult workaround; ridgebound BUG-006
 // family) and the struct-with-managed-field construction path
-// (Viper.Core.Box.ValueTypeAddField retain flag must lower as i1).
+// (Zanna.Core.Box.ValueTypeAddField retain flag must lower as i1).
 //
 // Shapes covered:
 //   - HFA {f64 x2} and {f64 x4} register returns

@@ -8,7 +8,7 @@ last-verified: 2026-05-31
 
 The Zia frontend (`src/frontends/zia/`) compiles Zia source to IL.
 
-Zia is Viper's native language with classes, structs, generics, lambdas, and imports.
+Zia is Zanna's native language with classes, structs, generics, lambdas, and imports.
 
 Last updated: 2026-04-25
 
@@ -81,7 +81,7 @@ Recent correctness notes:
 - `Sema_Stmt.cpp` requires guard `else` blocks to exit on every path and validates tuple `for a, b in ...` bindings against iterable pairs or 2-element tuples.
 - `Sema_Expr_Advanced.cpp` rejects direct member access on `Optional[T]` unless flow narrowing, force unwrap, or `?.` is used. Null-check narrowing now supports dotted field paths such as `self.child`.
 - `Sema_Expr_Call.cpp` enforces arity and element/key/value typing for List, Set, Map, and built-in String methods. `Map.keys()` and `Map.values()` return typed `Seq` values.
-- Async functions are typed as `Viper.Threads.Future[T]`, allowing `await` to recover payload type through future variables.
+- Async functions are typed as `Zanna.Threads.Future[T]`, allowing `await` to recover payload type through future variables.
 
 ## Import Resolution
 

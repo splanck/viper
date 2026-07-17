@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_password.c
 // Purpose: Implements secure password hashing and verification for the
-//          Viper.Crypto.Password class using scrypt-SHA256 in compatibility
+//          Zanna.Crypto.Password class using scrypt-SHA256 in compatibility
 //          mode or PBKDF2-HMAC-SHA256 in approved/explicit-iteration paths,
 //          with automatically generated random salts.
 //
@@ -357,7 +357,7 @@ static rt_string password_format_hash(const char *prefix,
     return result;
 }
 
-/// @brief Public Viper.Crypto.Password.Hash — hash under the active module policy.
+/// @brief Public Zanna.Crypto.Password.Hash — hash under the active module policy.
 /// @details Uses policy-default scrypt and the SCRYPT$ format in compatibility
 ///          mode, or PBKDF2-HMAC-SHA256 and the PBKDF2$ format in approved mode.
 rt_string rt_password_hash(rt_string password) {
@@ -366,7 +366,7 @@ rt_string rt_password_hash(rt_string password) {
     return rt_password_hash_scrypt(password);
 }
 
-/// @brief Public Viper.Crypto.Password.HashIters — legacy PBKDF2 hash with explicit iterations.
+/// @brief Public Zanna.Crypto.Password.HashIters — legacy PBKDF2 hash with explicit iterations.
 /// @details Generates a fresh 16-byte salt, runs PBKDF2-HMAC-SHA256, and
 ///          emits `PBKDF2$<iterations>$<salt_b64>$<hash_b64>`. Iteration
 ///          counts below MIN_ITERATIONS or above MAX_ITERATIONS trap so
@@ -406,7 +406,7 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     return result;
 }
 
-/// @brief Public Viper.Crypto.Password.HashScrypt — scrypt hash with policy-default params.
+/// @brief Public Zanna.Crypto.Password.HashScrypt — scrypt hash with policy-default params.
 /// @details Convenience wrapper that calls rt_password_hash_scrypt_params
 ///          with PASSWORD_SCRYPT_N_LOG2 / R / P (the v0.2.6 default
 ///          policy minimum, intended to be slow enough to deter
@@ -423,7 +423,7 @@ rt_string rt_password_hash_scrypt(rt_string password) {
                                           PASSWORD_SCRYPT_P);
 }
 
-/// @brief Public Viper.Crypto.Password.HashScryptParams — scrypt hash with caller-supplied N/r/p.
+/// @brief Public Zanna.Crypto.Password.HashScryptParams — scrypt hash with caller-supplied N/r/p.
 /// @details Generates a fresh salt, runs scrypt-SHA256, and emits
 ///          `SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>`. Validates that
 ///          parameters are positive, fit the runtime caps, and meet the
@@ -831,7 +831,7 @@ static int password_stored_pbkdf2_params(const char *hash_str, long long *iterat
     return 1;
 }
 
-/// @brief Public Viper.Crypto.Password.Verify — verify a password against either format.
+/// @brief Public Zanna.Crypto.Password.Verify — verify a password against either format.
 /// @details Inspects the `SCRYPT$` or `PBKDF2$` prefix and dispatches to
 ///          password_verify_scrypt or password_verify_pbkdf2. Returns 0
 ///          for any parse / format / mismatch failure — never traps, so
@@ -861,7 +861,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     return 0;
 }
 
-/// @brief Public Viper.Crypto.Password.NeedsRehash — does this stored hash need upgrading?
+/// @brief Public Zanna.Crypto.Password.NeedsRehash — does this stored hash need upgrading?
 /// @details In compatibility mode, returns 0 only for a fully valid scrypt
 ///          record whose N/r/p exactly equal the current defaults; PBKDF2 and
 ///          every different scrypt tuple (including stronger ones) return 1.

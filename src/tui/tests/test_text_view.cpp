@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,13 +19,13 @@
 
 #include "tests/TestHarness.hpp"
 
-using viper::tui::render::ScreenBuffer;
-using viper::tui::style::Role;
-using viper::tui::style::Theme;
-using viper::tui::term::KeyEvent;
-using viper::tui::text::TextBuffer;
-using viper::tui::ui::Event;
-using viper::tui::views::TextView;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::style::Role;
+using zanna::tui::style::Theme;
+using zanna::tui::term::KeyEvent;
+using zanna::tui::text::TextBuffer;
+using zanna::tui::ui::Event;
+using zanna::tui::views::TextView;
 
 TEST(TUI, TextView) {
     Theme theme;
@@ -77,6 +77,6 @@ TEST(TUI, TextView) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

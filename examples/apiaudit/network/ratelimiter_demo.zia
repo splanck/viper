@@ -1,8 +1,8 @@
 module RateLimiterDemo;
-bind Viper.Terminal;
-bind Viper.Network.RateLimiter as RateLimiter;
+bind Zanna.Terminal;
+bind Zanna.Network.RateLimiter as RateLimiter;
 func start() {
-    Say("=== API Audit: Viper.Network.RateLimiter ===");
+    Say("=== API Audit: Zanna.Network.RateLimiter ===");
 
     Say("--- New ---");
     var rl = RateLimiter.New(10, 5.0);

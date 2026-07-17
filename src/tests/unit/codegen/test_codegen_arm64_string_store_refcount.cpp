@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 #include <sstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -288,10 +288,10 @@ TEST(Arm64StringStore, ElisionHatchRestoresCallResultRetain) {
                            "  ret 0\n"
                            "}\n";
     writeFile(in, il);
-    setenv("VIPER_NO_RETAIN_ELIDE", "1", 1);
+    setenv("ZANNA_NO_RETAIN_ELIDE", "1", 1);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
-    unsetenv("VIPER_NO_RETAIN_ELIDE");
+    unsetenv("ZANNA_NO_RETAIN_ELIDE");
     ASSERT_EQ(rc, 0);
     const std::string asmText = readFile(out);
     // Hatch restores the historical behavior: load retain + result retain.
@@ -299,6 +299,6 @@ TEST(Arm64StringStore, ElisionHatchRestoresCallResultRetain) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

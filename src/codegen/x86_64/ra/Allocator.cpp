@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,7 +41,7 @@
 ///          implementation maintains per-class pools and active lists so live
 ///          ranges can be reconstituted on demand.
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 namespace {
 
@@ -230,9 +230,9 @@ AllocationResult LinearScanAllocator::run() {
     // Tier 1: pin the hottest cross-block vregs to callee-saved registers for
     // their entire lifetime so they never round-trip through spill slots at
     // block boundaries. Must run before the spill-home pre-pass below so
-    // pinned vregs are excluded from it. VIPER_NO_GLOBAL_RA=1 disables the
+    // pinned vregs are excluded from it. ZANNA_NO_GLOBAL_RA=1 disables the
     // tier for triage.
-    if (std::getenv("VIPER_NO_GLOBAL_RA") == nullptr) {
+    if (std::getenv("ZANNA_NO_GLOBAL_RA") == nullptr) {
         assignPinnedGlobals();
     }
 
@@ -389,12 +389,12 @@ void LinearScanAllocator::assignPinnedGlobals() {
     for (std::size_t bi = 0; bi < blockCount; ++bi) {
         succs[bi] = liveness_.successors(bi);
     }
-    const std::vector<unsigned> loopDepth = viper::codegen::ra::computeLoopDepths(succs);
+    const std::vector<unsigned> loopDepth = zanna::codegen::ra::computeLoopDepths(succs);
 
-    std::vector<viper::codegen::ra::GlobalPinCandidate> candidates;
+    std::vector<zanna::codegen::ra::GlobalPinCandidate> candidates;
     candidates.reserve(candidateSet.size());
     for (uint16_t vreg : candidateSet) {
-        viper::codegen::ra::GlobalPinCandidate candidate;
+        zanna::codegen::ra::GlobalPinCandidate candidate;
         candidate.vreg = vreg;
         candidate.liveBlocks.assign(blockCount, 0);
         const auto countsIt = useCounts.find(vreg);
@@ -409,7 +409,7 @@ void LinearScanAllocator::assignPinnedGlobals() {
             }
             candidate.liveBlocks[bi] = 1;
 
-            viper::codegen::ra::BlockSegment segment;
+            zanna::codegen::ra::BlockSegment segment;
             if (liveIn) {
                 segment.start = 0;
             } else if (accessed) {
@@ -434,9 +434,9 @@ void LinearScanAllocator::assignPinnedGlobals() {
 
     // Merge copy-connected chains (loop param <-> loop temp) so each chain
     // occupies a single register and the connecting copies become identities.
-    const auto alias = viper::codegen::ra::coalescePinChains(candidates, allCopyPairs);
+    const auto alias = zanna::codegen::ra::coalescePinChains(candidates, allCopyPairs);
 
-    auto assignment = viper::codegen::ra::assignGlobalPins(std::move(candidates), pool, blockCount);
+    auto assignment = zanna::codegen::ra::assignGlobalPins(std::move(candidates), pool, blockCount);
     if (assignment.pinned.empty()) {
         return;
     }
@@ -1270,4 +1270,4 @@ void LinearScanAllocator::releaseCallReserved() {
     reservedForCall_.clear();
 }
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

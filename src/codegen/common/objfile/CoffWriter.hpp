@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// COFF object file writer for Windows (x86_64 and AArch64).
 class CoffWriter : public ObjectFileWriter {
@@ -48,4 +48,4 @@ class CoffWriter : public ObjectFileWriter {
     ObjArch arch_;
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

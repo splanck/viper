@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -165,7 +165,7 @@ typedef enum vg_syntax_token_type {
 /// @brief Whitespace-marker rendering modes for CodeEditor.
 /// @details Controls rendering of faint dots (spaces) and arrows (tabs). The
 ///          integer values are an ABI contract shared with the Zia runtime
-///          binding Viper.GUI.CodeEditor.SetWhitespaceMode.
+///          binding Zanna.GUI.CodeEditor.SetWhitespaceMode.
 typedef enum vg_whitespace_mode {
     VG_WHITESPACE_NONE = 0,     ///< No whitespace markers (default; zero-cost).
     VG_WHITESPACE_BOUNDARY = 1, ///< Only leading and trailing whitespace on each line.

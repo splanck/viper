@@ -1,0 +1,62 @@
+module test_minimal;
+
+bind Zanna.GUI as GUI;
+bind Zanna.Terminal as Terminal;
+
+// ============================================================================
+// MODULE: test_minimal
+// PURPOSE: Smallest possible IDE-shaped GUI program — a window + menu bar
+//          + one menu item, with a basic event loop. Used during early
+//          GUI bring-up to isolate "does GUI work at all?" from
+//          full-shell construction.
+//
+// WHERE-THIS-FITS: Bench-test, not part of the normal IDE. Lives next to
+//          the IDE so its build dependencies are identical, which makes
+//          it easy to use as a bisection point when the full IDE breaks.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE-CLASS SHELL. No app_shell.AppShell — just a tiny class
+//     with the four widgets. Removes any module-resolution variability
+//     from the test.
+//   * BLOCKING LOOP. while(ShouldClose == 0) keeps the window open
+//     until the user closes it. This is intentional for interactive
+//     verification.
+// ============================================================================
+
+/// @brief Single-window single-menu shell for early GUI bring-up.
+class Shell {
+    expose GUI.App app;
+    expose GUI.VBox mainVBox;
+    expose GUI.MenuBar menuBar;
+    expose GUI.Menu fileMenu;
+
+    /// @brief Build the window + menu bar + one menu item.
+    expose func Build() {
+        app = GUI.App.New("Minimal", 800, 600);
+        GUI.Theme.SetDark();
+
+        mainVBox = GUI.VBox.New();
+        mainVBox.SetSpacing(0.0);
+        mainVBox.SetPadding(0.0);
+        var root: GUI.Widget = app.Root;
+        root.AddChild(mainVBox);
+
+        menuBar = GUI.MenuBar.New(mainVBox);
+        fileMenu = menuBar.AddMenu("File");
+        var mi: GUI.MenuItem = fileMenu.AddItem("Quit");
+
+        Terminal.Say("Build done, entering loop");
+    }
+}
+
+/// @brief Entry point. Build then loop until the user closes the window.
+func main() {
+    var s = new Shell();
+    s.Build();
+
+    while s.app.ShouldClose == false {
+        s.app.Poll();
+        s.app.Render();
+    }
+    s.app.Destroy();
+}

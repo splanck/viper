@@ -1,7 +1,7 @@
-REM Test E_NS_009: reserved root namespace "Viper" (declaration)
-REM User code cannot declare NAMESPACE Viper or Viper.*
+REM Test E_NS_009: reserved root namespace "Zanna" (declaration)
+REM User code cannot declare NAMESPACE Zanna or Zanna.*
 
-NAMESPACE Viper.MyLibrary
+NAMESPACE Zanna.MyLibrary
   CLASS Helper
     DIM value AS I64
   END CLASS

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,9 +14,9 @@
 #include <fstream>
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
-using namespace viper::tools::ilc;
+using namespace zanna::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -37,12 +37,12 @@ TEST(Arm64Bugfix, VoidMainExitZero) {
     // A void main that calls a runtime function leaving a non-zero value in x0.
     // Before the fix, this would exit with whatever rt_term_say left in x0.
     const std::string il = "il 0.3.0\n"
-                           "extern @Viper.Terminal.Say(str) -> void\n"
+                           "extern @Zanna.Terminal.Say(str) -> void\n"
                            "global const str @.msg = \"hello\"\n"
                            "func @main() -> void {\n"
                            "entry_0:\n"
                            "  %t0 = const_str @.msg\n"
-                           "  call @Viper.Terminal.Say(%t0)\n"
+                           "  call @Zanna.Terminal.Say(%t0)\n"
                            "  ret\n"
                            "}\n";
     writeFile(in, il);
@@ -58,14 +58,14 @@ TEST(Arm64Bugfix, BoolReturnMasked) {
     // Calls rt_str_eq which returns bool (i1). If the masking works,
     // the comparison and conditional branch should function correctly.
     const std::string il = "il 0.3.0\n"
-                           "extern @Viper.String.Equals(str, str) -> i1\n"
+                           "extern @Zanna.String.Equals(str, str) -> i1\n"
                            "global const str @.a = \"hello\"\n"
                            "global const str @.b = \"hello\"\n"
                            "func @main() -> i64 {\n"
                            "entry_0:\n"
                            "  %t0 = const_str @.a\n"
                            "  %t1 = const_str @.b\n"
-                           "  %t2 = call @Viper.String.Equals(%t0, %t1)\n"
+                           "  %t2 = call @Zanna.String.Equals(%t0, %t1)\n"
                            "  cbr %t2, yes_0, no_0\n"
                            "yes_0:\n"
                            "  ret 0\n"
@@ -409,6 +409,6 @@ TEST(Arm64Bugfix, SchedulerPreservesAliasedBaseRegisterStores) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

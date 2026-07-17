@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 
 #include <string>
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
 namespace {
 
@@ -85,7 +85,7 @@ int main() {
 #ifdef _WIN32
     // Windows x64 ABI doesn't use %al for varargs XMM count.
     // This test is SysV ABI specific.
-    VIPER_PLATFORM_SKIP("SysV-only varargs %al test");
+    ZANNA_PLATFORM_SKIP("SysV-only varargs %al test");
 #endif
     {
         const auto text = buildAsmWithCallee("rt_snprintf");

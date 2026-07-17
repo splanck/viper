@@ -1,13 +1,13 @@
-// multimap_demo.zia - Comprehensive API audit for Viper.Collections.MultiMap
+// multimap_demo.zia - Comprehensive API audit for Zanna.Collections.MultiMap
 // Tests: New, Add, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
 //        KeyCount, CountFor, Clear
 
 module MultiMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== MultiMap API Audit ===");

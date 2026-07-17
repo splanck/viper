@@ -1,8 +1,8 @@
 module HttpResDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Network.HttpRes ===");
+    Say("=== API Audit: Zanna.Network.HttpRes ===");
     Say("NOTE: HttpRes is returned from HttpReq.Send, Http.Get, or Result APIs such as HttpReq.SendResult. API surface test only.");
     Say("Methods: Status() -> i64, StatusText() -> str, Headers() -> str, Body() -> bytes, BodyStr() -> str, Header(key) -> str, IsOk() -> bool");
     Say("=== HttpRes Audit Complete (API surface only) ===");

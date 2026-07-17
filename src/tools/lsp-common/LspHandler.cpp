@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace viper::server {
+namespace zanna::server {
 namespace {
 
 /// @brief Return @p obj's member @p name only if it is itself an Object, else null.
@@ -179,7 +179,7 @@ std::string comparableSourcePath(const std::string &path) {
     if (!ec)
         p = absolute;
     std::string normalized = p.lexically_normal().generic_string();
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](char c) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     });
@@ -1592,4 +1592,4 @@ int LspHandler::symbolKindToLsp(const std::string &kind) {
     return 13;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,8 +25,8 @@
 
 namespace {
 std::filesystem::path repoRoot() {
-#ifdef VIPER_REPO_ROOT
-    return std::filesystem::path(VIPER_REPO_ROOT) / "src";
+#ifdef ZANNA_REPO_ROOT
+    return std::filesystem::path(ZANNA_REPO_ROOT) / "src";
 #else
     // Fallback: compute from __FILE__ (may not work with all compilers)
     const auto sourcePath = std::filesystem::absolute(std::filesystem::path(__FILE__));

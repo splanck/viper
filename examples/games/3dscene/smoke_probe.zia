@@ -1,11 +1,11 @@
 module smoke_probe;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.Math as Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.Math as Math;
+bind Zanna.Terminal as Terminal;
 bind "./game";
 
 func red(px: Integer) -> Integer {

@@ -280,14 +280,14 @@ This single JSON document represents complex, deeply nested data:
 
 ### Parsing JSON in Zia
 
-> **Note:** The examples in this chapter use `bind Json = Viper.Text.Json;` for JSON operations. Use `Json.GetStr()`, `Json.GetInt()`, `Json.GetBool()`, and the matching `Json.Set*()` helpers for object fields. See Appendix D for the complete runtime reference.
+> **Note:** The examples in this chapter use `bind Json = Zanna.Text.Json;` for JSON operations. Use `Json.GetStr()`, `Json.GetInt()`, `Json.GetBool()`, and the matching `Json.Set*()` helpers for object fields. See Appendix D for the complete runtime reference.
 
 Parsing means reading JSON text and creating program data structures from it:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func start() {
     var jsonText = "{\"name\": \"Alice\", \"score\": 100, \"active\": true}";
@@ -314,15 +314,15 @@ Let us trace through this step by step:
 
 3. **`Json.GetInt()` / `Json.GetBool()`**: Read integer and boolean fields with the expected type.
 
-For dynamic values, use the `Viper.Core.Box` conversion helpers or parse string fields explicitly with `Viper.Core.Parse`.
+For dynamic values, use the `Zanna.Core.Box` conversion helpers or parse string fields explicitly with `Zanna.Core.Parse`.
 
 ### Creating JSON in Zia
 
 To save program data as JSON, you build a JSON structure programmatically:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind Viper.Terminal as Terminal;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     // Create a JSON object
@@ -382,8 +382,8 @@ This is the same data, just formatted with indentation and newlines for human ey
 For clean code, add serialization methods to your entities:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind File = Viper.IO.File;
+bind Json = Zanna.Text.Json;
+bind File = Zanna.IO.File;
 
 class Player {
     expose name: String;
@@ -492,10 +492,10 @@ But CSV has significant limitations:
 ### Reading CSV
 
 ```rust
-bind Csv = Viper.Text.Csv;
-bind Viper.Terminal as Terminal;
-bind Convert = Viper.Core.Convert;
-bind Fmt = Viper.Text.Fmt;
+bind Csv = Zanna.Text.Csv;
+bind Zanna.Terminal as Terminal;
+bind Convert = Zanna.Core.Convert;
+bind Fmt = Zanna.Text.Fmt;
 
 func start() {
     var row = Csv.ParseLine("Hero,5,88");
@@ -515,9 +515,9 @@ Step by step:
 ### Writing CSV
 
 ```rust
-bind Csv = Viper.Text.Csv;
-bind Seq = Viper.Collections.Seq;
-bind Viper.Terminal as Terminal;
+bind Csv = Zanna.Text.Csv;
+bind Seq = Zanna.Collections.Seq;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     var fields = Seq.New();
@@ -812,11 +812,11 @@ Let us build a complete application that manages contacts, demonstrating seriali
 ```rust
 module ContactManager;
 
-bind Json = Viper.Text.Json;
-bind Seq = Viper.Collections.Seq;
-bind File = Viper.IO.File;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Json = Zanna.Text.Json;
+bind Seq = Zanna.Collections.Seq;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 // ============================================
 // Data Model
@@ -957,7 +957,7 @@ var name = JsonPath.GetStr(data, "$.player.stats.name");  // Empty if missing
 If `data` does not have a `"player"` key, or if `player` does not have `"stats"`, silently using an empty default can hide bad input. Always validate:
 
 ```rust
-bind JsonPath = Viper.Text.JsonPath;
+bind JsonPath = Zanna.Text.JsonPath;
 
 // SAFE: Check before using the nested value
 if JsonPath.Has(data, "$.player.stats.name") {
@@ -988,9 +988,9 @@ var level = Json.GetInt(data, "level");  // Returns 0 when the field is not nume
 Defensive approach:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind JsonPath = Viper.Text.JsonPath;
-bind Convert = Viper.Core.Convert;
+bind Json = Zanna.Text.Json;
+bind JsonPath = Zanna.Text.JsonPath;
+bind Convert = Zanna.Core.Convert;
 
 func safeGetInt(data: Any, key: String, defaultValue: Integer) -> Integer {
     if !Json.Has(data, key) {
@@ -1022,7 +1022,7 @@ var bytes = File.ReadAllBytes(filename);
 var text = File.ReadAllText(filename);
 ```
 
-Modern systems generally use UTF-8, and Viper's text file API reads UTF-8. Keep data as bytes until you know the encoding, especially for legacy formats like Latin-1 or Windows-1252.
+Modern systems generally use UTF-8, and Zanna's text file API reads UTF-8. Keep data as bytes until you know the encoding, especially for legacy formats like Latin-1 or Windows-1252.
 
 ### Mistake: Not Handling Missing Files
 
@@ -1075,7 +1075,7 @@ Solution: Include a version number:
 ```
 
 ```rust
-bind Json = Viper.Text.Json;
+bind Json = Zanna.Text.Json;
 
 func loadPlayer(data: Any) -> Player {
     var version = 1;  // Default for old files without version
@@ -1115,8 +1115,8 @@ var data = Json.Parse("this is { not valid json");
 Handle parse errors:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal;
 
 if !Json.IsValid(jsonText) {
     Terminal.Say("Invalid JSON");
@@ -1159,7 +1159,7 @@ When data does not parse correctly, systematic debugging helps.
 Before parsing, see exactly what you received:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var jsonText = File.ReadAllText("data.json");
 Terminal.Say("=== RAW JSON ===");
@@ -1185,8 +1185,8 @@ Paste your JSON into a validator to get precise error messages.
 After parsing, inspect what you got:
 
 ```rust
-bind Viper.Terminal;
-bind Json = Viper.Text.Json;
+bind Zanna.Terminal;
+bind Json = Zanna.Text.Json;
 
 func debugJSON(data: Any) {
     Terminal.Say("type: " + Json.TypeOf(data));
@@ -1229,8 +1229,8 @@ If round-trip works, your serialization is correct. If it fails, you know where 
 Instead of crashing on bad data, log the problem and continue:
 
 ```rust
-bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal;
 
 func loadPlayerSafe(filename: String) -> Player? {
     if !File.Exists(filename) {
@@ -1271,7 +1271,7 @@ func start() {
 
 **Zia**
 ```rust
-bind Json = Viper.Text.Json;
+bind Json = Zanna.Text.Json;
 
 var data = Json.Parse("{\"name\": \"test\", \"value\": 42}");
 var name = Json.GetStr(data, "name");
@@ -1295,7 +1295,7 @@ DIM json AS STRING
 json = JSON_TOSTRING(obj)
 ```
 
-The current JSON runtime is exposed through Zia under `Viper.Text.Json`. The BASIC-style block is conceptual pseudocode.
+The current JSON runtime is exposed through Zia under `Zanna.Text.Json`. The BASIC-style block is conceptual pseudocode.
 
 ---
 
@@ -1314,7 +1314,7 @@ Sometimes text formats are too slow or too large. Binary formats pack data effic
 
 A well-designed binary format includes:
 
-**1. Magic number** --- A unique identifier that tells you "this is a ViperSave file"
+**1. Magic number** --- A unique identifier that tells you "this is a ZannaSave file"
 ```rust
 final MAGIC = 0x56535631;  // "VSV1" in ASCII
 ```
@@ -1331,9 +1331,9 @@ final VERSION = 1;
 Here is a complete binary save example:
 
 ```rust
-bind Buffer = Viper.IO.BinaryBuffer;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind Buffer = Zanna.IO.BinaryBuffer;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 final MAGIC = 0x56535631;  // "VSV1"
 final VERSION = 1;
@@ -1414,10 +1414,10 @@ Here is a production-quality configuration system that demonstrates everything w
 ```rust
 module ConfigSystem;
 
-bind Json = Viper.Text.Json;
-bind File = Viper.IO.File;
-bind Fmt = Viper.Text.Fmt;
-bind Viper.Terminal as Terminal;
+bind Json = Zanna.Text.Json;
+bind File = Zanna.IO.File;
+bind Fmt = Zanna.Text.Fmt;
+bind Zanna.Terminal as Terminal;
 
 class Config {
     hide data: Any;

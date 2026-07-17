@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::ra {
+namespace zanna::codegen::ra {
 
 /// @brief Result of backward dataflow liveness analysis.
 /// @tparam VregId Type used to identify virtual registers (typically uint16_t).
@@ -66,7 +66,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
                                              std::size_t maxIter = 1000) {
     const std::size_t n = succs.size();
     if (gen.size() != n || kill.size() != n) {
-        VIPER_ICE("liveness dataflow input shape mismatch: succs=" + std::to_string(n) +
+        ZANNA_ICE("liveness dataflow input shape mismatch: succs=" + std::to_string(n) +
                   " gen=" + std::to_string(gen.size()) + " kill=" + std::to_string(kill.size()));
     }
 
@@ -79,7 +79,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
 
     while (changed) {
         if (++iteration > maxIter) {
-            VIPER_ICE("liveness dataflow did not converge after " + std::to_string(maxIter) +
+            ZANNA_ICE("liveness dataflow did not converge after " + std::to_string(maxIter) +
                       " iterations");
         }
         changed = false;
@@ -91,7 +91,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
             std::unordered_set<VregId> newOut;
             for (std::size_t s : succs[i]) {
                 if (s >= n) {
-                    VIPER_ICE("liveness dataflow successor index " + std::to_string(s) +
+                    ZANNA_ICE("liveness dataflow successor index " + std::to_string(s) +
                               " is out of range for " + std::to_string(n) + " blocks");
                 }
                 for (VregId v : result.liveIn[s])
@@ -129,7 +129,7 @@ inline std::vector<std::vector<std::size_t>> buildPredecessors(
     for (std::size_t i = 0; i < succs.size(); ++i)
         for (std::size_t s : succs[i]) {
             if (s >= succs.size()) {
-                VIPER_ICE("predecessor build successor index " + std::to_string(s) +
+                ZANNA_ICE("predecessor build successor index " + std::to_string(s) +
                           " is out of range for " + std::to_string(succs.size()) + " blocks");
             }
             preds[s].push_back(i);
@@ -137,4 +137,4 @@ inline std::vector<std::vector<std::size_t>> buildPredecessors(
     return preds;
 }
 
-} // namespace viper::codegen::ra
+} // namespace zanna::codegen::ra

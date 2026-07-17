@@ -8,10 +8,10 @@
 
 module palette_canvas_probe;
 
-bind Viper.Core.Diagnostics as Diag;
-bind Viper.Graphics;
-bind Viper.IO as IO;
-bind Viper.Terminal;
+bind Zanna.Core.Diagnostics as Diag;
+bind Zanna.Graphics;
+bind Zanna.IO as IO;
+bind Zanna.Terminal;
 bind "./colors";
 
 /// @brief Draw palette grid; screenshot; assert BMP write + pixel values.

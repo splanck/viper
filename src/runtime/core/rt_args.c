@@ -1,20 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_args.c
-// Purpose: Implements the Viper.System.Environment class - access to command-line
+// Purpose: Implements the Zanna.System.Environment class - access to command-line
 //          arguments (argc/argv) and environment variables. Provides argument
 //          count/value queries, lossy space-joined command-line display, and
 //          getenv/setenv/hasenv wrappers for the BASIC runtime ABI.
 //
 // Key invariants:
-//   - The store contains the program arguments exposed to Viper code. Tool
+//   - The store contains the program arguments exposed to Zanna code. Tool
 //     runners pass only arguments after "--"; index 0 is the first user
-//     argument, not the viper driver executable.
+//     argument, not the zanna driver executable.
 //   - Native legacy fallback may populate the store from the host process argv
 //     when no runner explicitly initialized or cleared arguments.
 //   - Out-of-range indices trap rather than fabricating values.
@@ -489,7 +489,7 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
 /// This is typically called during context cleanup or when reinitializing
 /// the argument state.
 ///
-/// @note Internal use - typically not called directly from Viper code.
+/// @note Internal use - typically not called directly from Zanna code.
 /// @note Releases references to all stored strings.
 void rt_args_clear(void) {
     int is_legacy = 0;
@@ -508,7 +508,7 @@ void rt_args_clear(void) {
 /// @brief Add a command-line argument to the argument store.
 ///
 /// Appends an argument string to the argument list. Used during program
-/// initialization to populate arguments supplied to the Viper program.
+/// initialization to populate arguments supplied to the Zanna program.
 ///
 /// @param s Argument string to add. NULL is stored as empty string.
 ///
@@ -710,13 +710,13 @@ static const char *rt_env_require_name(rt_string name, const char *context) {
 /// @return Newly allocated runtime string containing the value or empty when missing.
 rt_string rt_env_get_var(rt_string name) {
     const char *cname =
-        rt_env_require_name(name, "Viper.System.Environment.GetVariable: name must not be empty");
+        rt_env_require_name(name, "Zanna.System.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
         cname,
         (size_t)rt_str_len(name),
-        "Viper.System.Environment.GetVariable: invalid UTF-8 variable name");
+        "Zanna.System.Environment.GetVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     if (required == 0) {
@@ -725,7 +725,7 @@ rt_string rt_env_get_var(rt_string name) {
         if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
-        rt_trap("Viper.System.Environment.GetVariable: failed to query variable");
+        rt_trap("Zanna.System.Environment.GetVariable: failed to query variable");
         return rt_str_empty();
     }
 
@@ -737,7 +737,7 @@ rt_string rt_env_get_var(rt_string name) {
     wchar_t *buffer = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
     if (!buffer) {
         free(wname);
-        rt_trap("Viper.System.Environment.GetVariable: allocation failed");
+        rt_trap("Zanna.System.Environment.GetVariable: allocation failed");
         return rt_str_empty();
     }
 
@@ -750,12 +750,12 @@ rt_string rt_env_get_var(rt_string name) {
         if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
-        rt_trap("Viper.System.Environment.GetVariable: failed to read variable");
+        rt_trap("Zanna.System.Environment.GetVariable: failed to read variable");
         return rt_str_empty();
     }
 
     rt_string out = rt_env_wide_to_string_or_trap(
-        buffer, (int)written, "Viper.System.Environment.GetVariable: invalid UTF-16 value");
+        buffer, (int)written, "Zanna.System.Environment.GetVariable: invalid UTF-16 value");
     free(buffer);
     return out;
 #else
@@ -774,13 +774,13 @@ rt_string rt_env_get_var(rt_string name) {
 /// @return 1 if present, 0 if missing.
 int64_t rt_env_has_var(rt_string name) {
     const char *cname =
-        rt_env_require_name(name, "Viper.System.Environment.HasVariable: name must not be empty");
+        rt_env_require_name(name, "Zanna.System.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
         cname,
         (size_t)rt_str_len(name),
-        "Viper.System.Environment.HasVariable: invalid UTF-8 variable name");
+        "Zanna.System.Environment.HasVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     DWORD err = GetLastError();
@@ -802,17 +802,17 @@ int64_t rt_env_has_var(rt_string name) {
 /// @param value New value (NULL treated as empty string).
 void rt_env_set_var(rt_string name, rt_string value) {
     const char *cname =
-        rt_env_require_name(name, "Viper.System.Environment.SetVariable: name must not be empty");
+        rt_env_require_name(name, "Zanna.System.Environment.SetVariable: name must not be empty");
     const char *cvalue = value ? rt_string_cstr(value) : "";
 
     // Reject embedded null bytes: setenv/SetEnvironmentVariableA terminate at the
-    // first '\0', so a Viper String with internal nulls would be silently truncated.
+    // first '\0', so a Zanna String with internal nulls would be silently truncated.
     if (strlen(cname) != (size_t)rt_str_len(name)) {
-        rt_trap("Viper.System.Environment.SetVariable: name must not contain null bytes");
+        rt_trap("Zanna.System.Environment.SetVariable: name must not contain null bytes");
         return;
     }
     if (value && strlen(cvalue) != (size_t)rt_str_len(value)) {
-        rt_trap("Viper.System.Environment.SetVariable: value must not contain null bytes");
+        rt_trap("Zanna.System.Environment.SetVariable: value must not contain null bytes");
         return;
     }
 
@@ -820,20 +820,20 @@ void rt_env_set_var(rt_string name, rt_string value) {
     wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
         cname,
         (size_t)rt_str_len(name),
-        "Viper.System.Environment.SetVariable: invalid UTF-8 variable name");
+        "Zanna.System.Environment.SetVariable: invalid UTF-8 variable name");
     wchar_t *wvalue = rt_env_utf8_span_to_wide_or_trap(
         cvalue,
         value ? (size_t)rt_str_len(value) : 0,
-        "Viper.System.Environment.SetVariable: invalid UTF-8 variable value");
+        "Zanna.System.Environment.SetVariable: invalid UTF-8 variable value");
     int ok = SetEnvironmentVariableW(wname, wvalue) ? 1 : 0;
     free(wname);
     free(wvalue);
     if (!ok) {
-        rt_trap("Viper.System.Environment.SetVariable: failed to set variable");
+        rt_trap("Zanna.System.Environment.SetVariable: failed to set variable");
     }
 #else
     if (setenv(cname, cvalue, 1) != 0) {
-        rt_trap("Viper.System.Environment.SetVariable: failed to set variable");
+        rt_trap("Zanna.System.Environment.SetVariable: failed to set variable");
     }
 #endif
 }

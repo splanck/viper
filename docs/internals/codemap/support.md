@@ -37,7 +37,7 @@ Last updated: 2026-05-31
 | `diag_capture.hpp`  | Diagnostic buffer capture for tests                 |
 | `diag_catalog.cpp`  | Diagnostic-code catalog lookup implementation       |
 | `diag_catalog.def`  | Central diagnostic-code catalog (X-macro entries)   |
-| `diag_catalog.hpp`  | Diagnostic-code catalog for viper explain           |
+| `diag_catalog.hpp`  | Diagnostic-code catalog for zanna explain           |
 | `diag_expected.cpp` | Expected/diagnostic wrapper implementation          |
 | `diag_expected.hpp` | Expected/diagnostic wrapper for result-style errors |
 | `diagnostics.cpp`   | Diagnostic engine implementation                    |
@@ -82,10 +82,10 @@ Last updated: 2026-05-31
 
 | File         | Purpose                                                             |
 |--------------|---------------------------------------------------------------------|
-| `Cursor.cpp` | Source cursor utilities; C header at `include/viper/parse/Cursor.h` |
+| `Cursor.cpp` | Source cursor utilities; C header at `include/zanna/parse/Cursor.h` |
 
 ## Pass Framework (`src/pass/`)
 
 | File              | Purpose                                                                         |
 |-------------------|---------------------------------------------------------------------------------|
-| `PassManager.cpp` | Generic pass manager facade; public API at `include/viper/pass/PassManager.hpp` |
+| `PassManager.cpp` | Generic pass manager facade; public API at `include/zanna/pass/PassManager.hpp` |

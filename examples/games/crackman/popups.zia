@@ -18,9 +18,9 @@
 
 module popups;
 
-bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
-bind Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Color = Zanna.Graphics.Color;
+bind Zanna.Text.Fmt;
 
 bind "./config";
 bind "./ui/theme";

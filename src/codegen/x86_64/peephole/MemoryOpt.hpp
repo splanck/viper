@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Remove frame stores whose value is never loaded before being overwritten.
 /// @details Scans @p instrs forward looking for two consecutive `STORE`s to the
@@ -49,4 +49,4 @@ std::size_t eliminateDeadFrameStores(std::vector<MInstr> &instrs, PeepholeStats 
 /// @return Number of load instructions eliminated.
 std::size_t forwardFrameStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

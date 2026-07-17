@@ -1,0 +1,213 @@
+module file_tree_probe;
+
+// ============================================================================
+// MODULE: file_tree_probe
+// PURPOSE: Display-backed probe for project explorer and document close flows.
+//
+// WHERE-THIS-FITS: ProjectManager owns tree data and DocumentManager owns open
+//          buffers. This probe verifies explorer actions keep those models in
+//          sync through real temporary workspace paths.
+//
+// TEACHING-NOTE: File-tree behavior depends on path data stored on nodes, not on
+//          labels. Probe the path/model state rather than decorative text.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../core/project_manager";
+bind "../core/document_manager";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func RecentContains(docMgr: document_manager.DocumentManager, path: String) -> Boolean {
+    var i = 0;
+    while i < docMgr.RecentlyClosedCount() {
+        if docMgr.RecentlyClosedAt(i) == path {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ZannaIDE File Tree Probe", 960, 640);
+
+    var root = TempFile.CreateDirWithPrefix("zannaide_file_tree_");
+    var subdir = Path.Join(root, "folder with spaces");
+    var ignoredDir = Path.Join(root, "skipme");
+    Dir.MakeAll(subdir);
+    Dir.MakeAll(ignoredDir);
+    File.WriteAllText(Path.Join(subdir, "main.zia"), "module TreeProbe;\n");
+    File.WriteAllText(Path.Join(ignoredDir, "ignored.zia"), "module Ignored;\n");
+    File.WriteAllText(Path.Join(root, "zanna.project"), "project TreeProbe\nignore skipme/\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+    projMgr.OpenFolder(root);
+    if projMgr.project.ignorePatterns != "skipme/" {
+        fail(shell, "project ignore patterns");
+        return;
+    }
+    var cacheIdx = 0;
+    while cacheIdx < projMgr.CachedFileCount() {
+        if projMgr.CachedFileAt(cacheIdx) == Path.Join(ignoredDir, "ignored.zia") {
+            fail(shell, "ignored file cached");
+            return;
+        }
+        cacheIdx = cacheIdx + 1;
+    }
+
+    shell.Poll();
+    shell.Render();
+
+    var x = shell.workbench.sidebarTree.GetX() + 12;
+    var y = shell.workbench.sidebarTree.GetY() + 12;
+    var hit = shell.workbench.sidebarTree.GetNodeAt(x, y);
+    if hit == null {
+        fail(shell, "root hit-test");
+        return;
+    }
+
+    var data = GUI.TreeView.Node.GetData(hit);
+    if data != root {
+        fail(shell, "hit-test data");
+        return;
+    }
+
+    shell.workbench.sidebarTree.Select(hit);
+    if projMgr.SelectedPath() != root {
+        fail(shell, "selected path");
+        return;
+    }
+
+    var entryPath = Path.Join(subdir, "main.zia");
+    if projMgr.SetEntryFile(entryPath) == false {
+        fail(shell, "set project entry");
+        return;
+    }
+    if projMgr.project.entryFile != "folder with spaces/main.zia" {
+        fail(shell, "project entry relative path");
+        return;
+    }
+    if File.Exists(Path.Join(root, "zanna.project")) == false {
+        fail(shell, "project manifest created");
+        return;
+    }
+
+    var docMgr = new document_manager.DocumentManager();
+    var recentPath = Path.Join(subdir, "recent.zia");
+    File.WriteAllText(recentPath, "module Recent;\n");
+    docMgr.OpenFile(recentPath);
+    docMgr.CloseDocument(docMgr.FindByPath(recentPath));
+    var renamedRecent = projMgr.RenamePath(recentPath, "recent_renamed.zia", docMgr);
+    if renamedRecent != Path.Join(subdir, "recent_renamed.zia") {
+        fail(shell, "recent file rename path");
+        return;
+    }
+    if docMgr.RecentlyClosedAt(0) != renamedRecent {
+        fail(shell, "recent file follows rename");
+        return;
+    }
+
+    var openImporter = Path.Join(subdir, "open_importer.zia");
+    var closedImporter = Path.Join(subdir, "closed_importer.zia");
+    File.WriteAllText(openImporter, "module OpenImporter;\nbind \"./main\";\n");
+    File.WriteAllText(closedImporter, "module ClosedImporter;\nbind \"./main\";\n");
+    docMgr.OpenFile(openImporter);
+    if projMgr.PreviewBindRewriteCount(entryPath, "renamed.zia", docMgr) != 2 {
+        fail(shell, "file rename bind preview count");
+        return;
+    }
+    var renamedEntry = projMgr.RenamePath(entryPath, "renamed.zia", docMgr);
+    if renamedEntry != Path.Join(subdir, "renamed.zia") {
+        fail(shell, "file rename path");
+        return;
+    }
+    if projMgr.lastBindRewriteCount != 2 {
+        fail(shell, "file rename bind rewrite count");
+        return;
+    }
+    if projMgr.project.entryFile != "folder with spaces/renamed.zia" {
+        fail(shell, "entry file follows rename");
+        return;
+    }
+    if Str.IndexOf(docMgr.documents.get(0).content, "bind \"./renamed\";") == 0 {
+        fail(shell, "open importer bind rewritten");
+        return;
+    }
+    if Str.IndexOf(File.ReadAllText(closedImporter), "bind \"./renamed\";") == 0 {
+        fail(shell, "closed importer bind rewritten");
+        return;
+    }
+
+    var libDir = Path.Join(subdir, "lib");
+    Dir.MakeAll(libDir);
+    File.WriteAllText(Path.Join(libDir, "helper.zia"), "module Helper;\n");
+    var folderImporter = Path.Join(subdir, "folder_importer.zia");
+    File.WriteAllText(folderImporter, "module FolderImporter;\nbind \"./lib/helper\";\n");
+    if projMgr.PreviewBindRewriteCount(libDir, "renamed lib", docMgr) != 1 {
+        fail(shell, "folder rename bind preview count");
+        return;
+    }
+    var renamedLib = projMgr.RenamePath(libDir, "renamed lib", docMgr);
+    if renamedLib != Path.Join(subdir, "renamed lib") {
+        fail(shell, "folder rename path");
+        return;
+    }
+    if projMgr.lastBindRewriteCount != 1 {
+        fail(shell, "folder rename bind rewrite count");
+        return;
+    }
+    var recentHelper = Path.Join(renamedLib, "recent_helper.zia");
+    File.WriteAllText(recentHelper, "module RecentHelper;\n");
+    docMgr.OpenFile(recentHelper);
+    docMgr.CloseDocument(docMgr.FindByPath(recentHelper));
+    var renamedLibAgain = projMgr.RenamePath(renamedLib, "renamed lib again", docMgr);
+    if renamedLibAgain != Path.Join(subdir, "renamed lib again") {
+        fail(shell, "recent folder rename path");
+        return;
+    }
+    if docMgr.RecentlyClosedAt(0) != Path.Join(renamedLibAgain, "recent_helper.zia") {
+        fail(shell, "recent folder child follows rename");
+        return;
+    }
+    if Str.IndexOf(File.ReadAllText(folderImporter), "bind \"./renamed lib again/helper\";") == 0 {
+        fail(shell, "folder importer bind rewritten");
+        return;
+    }
+    var deleteRecent = Path.Join(subdir, "delete_recent.zia");
+    File.WriteAllText(deleteRecent, "module DeleteRecent;\n");
+    docMgr.OpenFile(deleteRecent);
+    docMgr.CloseDocument(docMgr.FindByPath(deleteRecent));
+    if RecentContains(docMgr, deleteRecent) == false {
+        fail(shell, "delete recent recorded");
+        return;
+    }
+    if projMgr.DeletePath(deleteRecent, docMgr) == false {
+        fail(shell, "delete recent path");
+        return;
+    }
+    if projMgr.lastTrashPath == "" or File.Exists(projMgr.lastTrashPath) == false {
+        fail(shell, "delete moved file to project trash");
+        return;
+    }
+    if RecentContains(docMgr, deleteRecent) {
+        fail(shell, "deleted recent path removed");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

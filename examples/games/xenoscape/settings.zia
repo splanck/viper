@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,8 +19,8 @@
 
 module settings;
 
-bind Viper.IO;
-bind Viper.Text.Fmt;
+bind Zanna.IO;
+bind Zanna.Text.Fmt;
 
 final SETTING_MASTER_VOLUME = 0;
 final SETTING_MUSIC_VOLUME = 1;

@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Threads.CancelToken
+// API Audit: Zanna.Threads.CancelToken
 // =============================================================================
 // Tests: New, IsCancelled, Cancel, Reset, Check, Linked
 // =============================================================================
 
 module CancelTokenDemo;
-bind Viper.Threads.CancelToken as CT;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.CancelToken as CT;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.CancelToken ===");
+    Say("=== API Audit: Zanna.Threads.CancelToken ===");
 
     // --- New ---
     Say("--- New ---");

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,9 +36,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             end = input.size();
         try {
             std::string_view line(input.data() + start, end - start);
-            auto value = viper::server::JsonValue::parse(line);
-            viper::server::JsonRpcRequest request;
-            (void)viper::server::parseRequest(value, request);
+            auto value = zanna::server::JsonValue::parse(line);
+            zanna::server::JsonRpcRequest request;
+            (void)zanna::server::parseRequest(value, request);
         } catch (const std::exception &) {
         }
         if (end == input.size())

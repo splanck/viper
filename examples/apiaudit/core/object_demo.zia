@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Core.Object - Base Object Operations
+// API Audit: Zanna.Core.Object - Base Object Operations
 // =============================================================================
 // Tests: Equals, HashCode, RefEquals, ToString, TypeName, TypeId, IsNull
 // =============================================================================
 
 module ObjectDemo;
-bind Viper.Terminal;
-bind Viper.Core.Object as Obj;
-bind Viper.Core.Box as Box;
+bind Zanna.Terminal;
+bind Zanna.Core.Object as Obj;
+bind Zanna.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.Core.Object ===");
+    Say("=== API Audit: Zanna.Core.Object ===");
 
     // Create test objects via boxing
     var a = Box.I64(42);

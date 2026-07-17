@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -238,7 +238,7 @@ TEST(ZiaDestructors, ExplicitReleaseInvokesDispatcher) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Runtime.Unsafe;
+bind Zanna.Runtime.Unsafe;
 
 class Resource {
     deinit { }
@@ -267,5 +267,5 @@ func start() {    var r = new Resource();
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

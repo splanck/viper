@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTThreadsMonitorTests.cpp
-// Purpose: Validate FIFO-fair, re-entrant monitor semantics for Viper.Threads.Monitor.
+// Purpose: Validate FIFO-fair, re-entrant monitor semantics for Zanna.Threads.Monitor.
 // Key invariants: PauseAll wakes waiters FIFO; WaitFor timeouts re-acquire fairly.
 // Ownership/Lifetime: Uses runtime library and OS threads; skip on Windows.
 //
@@ -87,12 +87,12 @@ static void test_wait_for_timeout() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_enter_null);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_enter_null);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Trap messages should be stable.
-    auto result = viper::tests::runIsolated(call_enter_null);
+    auto result = zanna::tests::runIsolated(call_enter_null);
     assert(result.stderrText.find("Monitor.Enter: null object") != std::string::npos);
 
     test_wait_for_timeout();

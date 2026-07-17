@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_pool.c
-// Purpose: Implements a slab allocator for the Viper runtime. Reduces
+// Purpose: Implements a slab allocator for the Zanna runtime. Reduces
 //          malloc/free overhead by pooling fixed-size allocations into
 //          four size classes (64, 128, 256, 512 bytes) and reusing freed
 //          blocks via spinlock-protected intrusive freelists.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <stdbool.h>
 
 /// @brief Opaque lower-toolkit font type returned by the platform adapter.
-/// @details The complete ViperGUI font definition is deliberately excluded
+/// @details The complete ZannaGUI font definition is deliberately excluded
 ///          from this narrow adapter contract so graphics-disabled runtime
 ///          sources do not acquire a backend include-path dependency.
 typedef struct vg_font vg_font_t;
@@ -39,7 +39,7 @@ extern "C" {
 
 /// @brief Load the regular or bold proportional system UI face for the host platform.
 /// @details Candidate files are tried in deterministic platform-preference order. The adapter
-///          uses only Viper's built-in TrueType parser and ordinary system font files; it never
+///          uses only Zanna's built-in TrueType parser and ordinary system font files; it never
 ///          links CoreText, DirectWrite, Fontconfig, or another external dependency. A missing or
 ///          unsupported host face is reported as NULL so the runtime can install its embedded
 ///          deterministic fallback.

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_log.c
-// Purpose: Implements the Viper.Diagnostics.Log namespace — a lightweight structured
+// Purpose: Implements the Zanna.Diagnostics.Log namespace — a lightweight structured
 //          logging system with five severity levels (DEBUG, INFO, WARN, ERROR,
 //          OFF). Log messages are written to stderr with a
 //          "[LEVEL] YYYY-MM-DD HH:MM:SS" timestamp prefix and are filtered by
@@ -252,7 +252,7 @@ static void log_write_escaped_message(FILE *stream, rt_string message) {
 ///
 /// @param level The severity level of this message (RT_LOG_DEBUG, etc.).
 /// @param level_str Human-readable level name ("DEBUG", "INFO", etc.).
-/// @param message The Viper string containing the log message text.
+/// @param message The Zanna string containing the log message text.
 ///                NULL or empty strings are handled gracefully.
 ///
 /// @note Messages below g_log_level are silently discarded.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -100,7 +100,7 @@ TEST(ZiaDocSymbols, OnlyActiveFileSymbols) {
 
     ASSERT_TRUE(out.find("Cat\t") != std::string::npos);
     ASSERT_TRUE(out.find("start\t") != std::string::npos);
-    ASSERT_TRUE(out.find("Viper.") == std::string::npos);
+    ASSERT_TRUE(out.find("Zanna.") == std::string::npos);
 
     // Small payload: a registry leak would produce thousands of rows.
     size_t lines = 0;
@@ -138,5 +138,5 @@ TEST(ZiaDocMirror, OversizedNumericLiteralRejected) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

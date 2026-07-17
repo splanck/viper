@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/il/runtime/test_runtime_name_map.cpp
-// Purpose: Ensure the canonical Viper.* runtime name map contains no duplicates
+// Purpose: Ensure the canonical Zanna.* runtime name map contains no duplicates
 //          and that descriptors are consistent when they exist.
 // Notes: Not all runtime functions require descriptors - many are called directly
 //        from native codegen via C ABI and don't need VM marshalling descriptors.
@@ -62,6 +62,6 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

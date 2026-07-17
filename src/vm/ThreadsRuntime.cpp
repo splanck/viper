@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/vm/ThreadsRuntime.cpp
-// Purpose: VM-side implementations for Viper.Threads runtime helpers that need
+// Purpose: VM-side implementations for Zanna.Threads runtime helpers that need
 //          VM-aware behavior (notably Thread.Start entry pointers).
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief VM-aware runtime helpers for Viper.Threads.
-/// @details Implements the Thread.Start bridge so Viper threads can invoke
+/// @brief VM-aware runtime helpers for Zanna.Threads.
+/// @details Implements the Thread.Start bridge so Zanna threads can invoke
 ///          IL entry functions directly when running inside the VM.
 
 #include "vm/RuntimeBridge.hpp"
@@ -228,7 +228,7 @@ static void validateAsyncEntrySignature(const il::core::Function &fn) {
     rt_trap("Async.Run: invalid entry signature");
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Thread.Start.
+/// @brief Runtime bridge handler for Zanna.Threads.Thread.Start.
 /// @details When running inside a VM, this handler validates the entry function
 ///          pointer, constructs a thread payload, and spawns a native thread
 ///          that executes the IL entry via the trampoline. Outside the VM it
@@ -278,7 +278,7 @@ static void threads_thread_start_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Thread.StartOwned.
+/// @brief Runtime bridge handler for Zanna.Threads.Thread.StartOwned.
 /// @details VM variant retains the managed argument until the IL entry returns.
 static void threads_thread_start_owned_handler(void **args, void *result) {
     void *entry = nullptr;
@@ -336,7 +336,7 @@ extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
         rt_trap(error[0] ? error : "Thread.StartSafe: trapped VM worker");
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafe.
+/// @brief Runtime bridge handler for Zanna.Threads.Thread.StartSafe.
 /// @details Like threads_thread_start_handler but uses the safe entry trampoline
 ///          that wraps execution in trap recovery via setjmp/longjmp.
 static void threads_thread_start_safe_handler(void **args, void *result) {
@@ -383,7 +383,7 @@ static void threads_thread_start_safe_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafeOwned.
+/// @brief Runtime bridge handler for Zanna.Threads.Thread.StartSafeOwned.
 /// @details VM variant combines safe trap capture with retaining the managed argument.
 static void threads_thread_start_safe_owned_handler(void **args, void *result) {
     void *entry = nullptr;
@@ -485,7 +485,7 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
     delete payload;
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Async.Run.
+/// @brief Runtime bridge handler for Zanna.Threads.Async.Run.
 /// @details Uses the native runtime helper outside the VM, but when an IL
 ///          function pointer is supplied from VM execution it spawns a child VM
 ///          and resolves a Future with that worker's returned object.
@@ -562,12 +562,12 @@ static void threads_async_run_impl(void **args, void *result, bool owned) {
         *reinterpret_cast<void **>(result) = future;
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Async.Run (borrowed arg).
+/// @brief Runtime bridge handler for Zanna.Threads.Async.Run (borrowed arg).
 static void threads_async_run_handler(void **args, void *result) {
     threads_async_run_impl(args, result, /*owned=*/false);
 }
 
-/// @brief Runtime bridge handler for Viper.Threads.Async.RunOwned (owned arg).
+/// @brief Runtime bridge handler for Zanna.Threads.Async.RunOwned (owned arg).
 static void threads_async_run_owned_handler(void **args, void *result) {
     threads_async_run_impl(args, result, /*owned=*/true);
 }
@@ -990,7 +990,7 @@ static void threads_parallel_reduce_pool_handler(void **args, void *result) {
 } // namespace
 
 /// @brief Register VM-aware thread externals with the runtime bridge.
-/// @details Installs the `Viper.Threads.Thread.Start`, `Thread.StartSafe`, and
+/// @details Installs the `Zanna.Threads.Thread.Start`, `Thread.StartSafe`, and
 ///          `Async.Run`
 ///          handlers so they use the VM trampoline when invoked from managed code.
 ///          When the BytecodeVM is linked, its unified handlers overwrite these
@@ -1033,14 +1033,14 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunOwned";
+        ext.name = "Zanna.Threads.Async.RunOwned";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_run_owned_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunCancellable";
+        ext.name = "Zanna.Threads.Async.RunCancellable";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_run_cancellable_handler);
@@ -1048,7 +1048,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunCancellableOwned";
+        ext.name = "Zanna.Threads.Async.RunCancellableOwned";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_run_cancellable_owned_handler);
@@ -1056,7 +1056,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Async.Map";
+        ext.name = "Zanna.Threads.Async.Map";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_map_handler);
@@ -1064,7 +1064,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Async.MapOwned";
+        ext.name = "Zanna.Threads.Async.MapOwned";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_map_owned_handler);
@@ -1072,7 +1072,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Pool.Submit";
+        ext.name = "Zanna.Threads.Pool.Submit";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&threads_pool_submit_handler);
@@ -1080,7 +1080,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Pool.SubmitOwned";
+        ext.name = "Zanna.Threads.Pool.SubmitOwned";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&threads_pool_submit_owned_handler);
@@ -1088,28 +1088,28 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForEach";
+        ext.name = "Zanna.Threads.Parallel.ForEach";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_foreach_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForEachPool";
+        ext.name = "Zanna.Threads.Parallel.ForEachPool";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_foreach_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Map";
+        ext.name = "Zanna.Threads.Parallel.Map";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_map_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.MapPool";
+        ext.name = "Zanna.Threads.Parallel.MapPool";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_map_pool_handler);
@@ -1117,28 +1117,28 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Invoke";
+        ext.name = "Zanna.Threads.Parallel.Invoke";
         ext.signature = make_signature(ext.name, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_invoke_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.InvokePool";
+        ext.name = "Zanna.Threads.Parallel.InvokePool";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_invoke_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.For";
+        ext.name = "Zanna.Threads.Parallel.For";
         ext.signature = make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_for_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForPool";
+        ext.name = "Zanna.Threads.Parallel.ForPool";
         ext.signature =
             make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_for_pool_handler);
@@ -1146,7 +1146,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Reduce";
+        ext.name = "Zanna.Threads.Parallel.Reduce";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_reduce_handler);
@@ -1154,7 +1154,7 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ReducePool";
+        ext.name = "Zanna.Threads.Parallel.ReducePool";
         ext.signature = make_signature(ext.name,
                                        {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
                                        {SigParam::Ptr});

@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_json.h
-// Purpose: JSON parsing and formatting utilities for Viper.Data.Json, handling all JSON types
+// Purpose: JSON parsing and formatting utilities for Zanna.Data.Json, handling all JSON types
 // (null, bool, number, string, array, object) and producing pretty-printed or compact output.
 //
 // Key invariants:
@@ -29,7 +29,7 @@
 extern "C" {
 #endif
 
-/// @brief Parse a JSON string into a Viper value.
+/// @brief Parse a JSON string into a Zanna value.
 /// @param text JSON text to parse.
 /// @return Parsed value: Map (object), Seq (array), String, boxed number/bool, or NULL for JSON
 /// null.
@@ -65,13 +65,13 @@ void *rt_json_parse_object(rt_string text);
 /// @note Traps if the root is not an array.
 void *rt_json_parse_array(rt_string text);
 
-/// @brief Format a Viper value as compact JSON.
+/// @brief Format a Zanna value as compact JSON.
 /// @param obj Value to format (Map, Seq, String, boxed number/bool, or null).
 /// @return Newly allocated JSON string.
 /// @details Produces compact JSON without extra whitespace.
 rt_string rt_json_format(void *obj);
 
-/// @brief Format a Viper value as pretty-printed JSON.
+/// @brief Format a Zanna value as pretty-printed JSON.
 /// @param obj Value to format (Map, Seq, String, boxed number/bool, or null).
 /// @param indent Number of spaces per indentation level (typically 2 or 4).
 /// @return Newly allocated JSON string with indentation and newlines.

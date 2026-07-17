@@ -1,12 +1,12 @@
 // test_frozen_default.zia — FrozenSet, FrozenMap, DefaultMap
 module TestFrozenDefault;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"));
+    var dm = Zanna.Collections.DefaultMap.New(Zanna.Core.Box.Str("N/A"));
     SayInt(dm.Count);
-    dm.Set("name", "viper");
+    dm.Set("name", "zanna");
     dm.Set("lang", "zia");
     SayInt(dm.Count);
     SayBool(dm.Has("name"));
@@ -16,10 +16,10 @@ func start() {
     dm.Clear();
     SayInt(dm.Count);
 
-    var emptySet = Viper.Collections.FrozenSet.Empty();
+    var emptySet = Zanna.Collections.FrozenSet.Empty();
     SayInt(emptySet.Count);
 
-    var emptyMap = Viper.Collections.FrozenMap.Empty();
+    var emptyMap = Zanna.Collections.FrozenMap.Empty();
     SayInt(emptyMap.Count);
 
     Say("done");

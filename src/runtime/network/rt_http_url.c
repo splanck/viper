@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -179,7 +179,7 @@ static int rt_url_component_is_valid(rt_string value, const char *forbidden, con
     return 1;
 }
 
-/// @brief Duplicate the C-string content of a Viper rt_string into a heap C buffer.
+/// @brief Duplicate the C-string content of a Zanna rt_string into a heap C buffer.
 /// @brief Duplicate an rt_string argument as a heap-owned C string; trap on OOM.
 static char *rt_url_dup_string_arg(rt_string value, const char *context) {
     const char *str = value ? rt_string_cstr(value) : NULL;
@@ -753,7 +753,7 @@ static void rt_url_finalize(void *obj) {
 //
 // Each accessor is null-safe via `rt_url_require_obj` (which traps
 // with `Err_InvalidOperation` if the URL is NULL). Setters accept
-// the canonical Viper rt_string and store a heap copy; getters
+// the canonical Zanna rt_string and store a heap copy; getters
 // return fresh rt_string objects.
 // ===========================================================================
 

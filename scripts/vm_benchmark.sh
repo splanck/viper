@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# VM benchmarking script for Viper
+# VM benchmarking script for Zanna
 # - Benchmarks stress test IL programs across VM dispatch modes
 # - Prints comparison table showing relative performance
 # - Requires a built `ilc` executable
@@ -38,8 +38,8 @@ find_ilc() {
     return 0
   fi
   local candidates=(
-    "$ROOT_DIR/build/src/tools/viper/viper"
-    "$ROOT_DIR/build/tools/viper/viper"
+    "$ROOT_DIR/build/src/tools/zanna/zanna"
+    "$ROOT_DIR/build/tools/zanna/zanna"
     "$ROOT_DIR/build/bin/ilc"
   )
   for c in "${candidates[@]}"; do
@@ -64,9 +64,9 @@ parse_instr() {
 bench_one() {
   local ilc="$1" mode="$2" il_file="$3" runs="$4"
 
-  export VIPER_ENABLE_OPCOUNTS=1
-  export VIPER_DEBUG_VM=1
-  export VIPER_DISPATCH="$mode"
+  export ZANNA_ENABLE_OPCOUNTS=1
+  export ZANNA_DEBUG_VM=1
+  export ZANNA_DISPATCH="$mode"
 
   local times=""
   local count=0
@@ -103,7 +103,7 @@ bench_one() {
 print_header() {
   log ""
   log "${BOLD}═══════════════════════════════════════════════════════════════════════════════${NC}"
-  log "${BOLD}                          VIPER VM DISPATCH BENCHMARK${NC}"
+  log "${BOLD}                          ZANNA VM DISPATCH BENCHMARK${NC}"
   log "${BOLD}═══════════════════════════════════════════════════════════════════════════════${NC}"
   log ""
   log "  Host:     $(uname -sm)"

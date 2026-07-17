@@ -13,8 +13,8 @@ Accepted
 ## Context
 
 Keyboard key-code constants were split across state/query classes and game
-mirrors. `Viper.Input.Keyboard` exposed `Key*` properties, while
-`Viper.Game3D.Keys` duplicated many of the same values for 3D examples. That
+mirrors. `Zanna.Input.Keyboard` exposed `Key*` properties, while
+`Zanna.Game3D.Keys` duplicated many of the same values for 3D examples. That
 made it harder to answer the simple public API question: "where do I get a key
 code?"
 
@@ -23,7 +23,7 @@ runtime needs a canonical namespace while preserving compatibility.
 
 ## Decision
 
-Add `Viper.Input.Key` as the canonical static constants class for keyboard key
+Add `Zanna.Input.Key` as the canonical static constants class for keyboard key
 codes:
 
 - letters: `A` through `Z`;
@@ -34,10 +34,10 @@ codes:
 - punctuation with readable names such as `LeftBracket`;
 - numpad keys with explicit `Numpad*` names.
 
-`Viper.Input.Keyboard` remains the owner of keyboard state/query behavior, and
-its existing `Key*` constants remain compatibility aliases. `Viper.Game3D.Keys`
+`Zanna.Input.Keyboard` remains the owner of keyboard state/query behavior, and
+its existing `Key*` constants remain compatibility aliases. `Zanna.Game3D.Keys`
 also remains available as a compatibility mirror, but new docs and examples
-should import `Viper.Input.Key`.
+should import `Zanna.Input.Key`.
 
 ## Consequences
 

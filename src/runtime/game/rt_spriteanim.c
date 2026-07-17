@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_spriteanim.c
-// Purpose: Frame-index animation controller for Viper sprite sheets. Advances
+// Purpose: Frame-index animation controller for Zanna sprite sheets. Advances
 //   an integer frame index through a configurable sequence at a per-update
 //   speed multiplier and configurable update ticks per displayed frame.
 //   Supports looping, ping-pong (forward then reverse), one-shot (stops at
@@ -34,7 +34,7 @@
 //
 // Links: src/runtime/game/rt_spriteanim.h (public API),
 //        src/runtime/graphics/rt_spritebatch.h (rendering),
-//        docs/viperlib/game.md (SpriteAnim section)
+//        docs/zannalib/game.md (SpriteAnim section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -176,7 +176,7 @@ rt_spriteanim rt_spriteanim_new(void) {
 
 /// @brief Release resources and destroy the spriteanim.
 void rt_spriteanim_destroy(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Destroy: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Destroy: expected Zanna.Game.SpriteAnimation");
     if (anim && rt_obj_release_check0(anim))
         rt_obj_free(anim);
 }
@@ -185,7 +185,7 @@ void rt_spriteanim_setup(rt_spriteanim anim,
                          int64_t start_frame,
                          int64_t end_frame,
                          int64_t frame_duration) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Setup: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Setup: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
 
@@ -207,7 +207,7 @@ void rt_spriteanim_setup(rt_spriteanim anim,
 
 /// @brief Enable or disable looping; when enabled, the animation restarts after the last frame.
 void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.SetLoop: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.SetLoop: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->loop = loop ? 1 : 0;
@@ -216,7 +216,7 @@ void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
 /// @brief Enable or disable ping-pong mode (forward then reverse, then forward again).
 void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
     anim = checked_spriteanim(anim,
-                              "SpriteAnimation.SetPingPong: expected Viper.Game.SpriteAnimation");
+                              "SpriteAnimation.SetPingPong: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->pingpong = pingpong ? 1 : 0;
@@ -224,20 +224,20 @@ void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
 
 /// @brief Return whether looping is enabled for this animation.
 int8_t rt_spriteanim_loop(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Loop: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Loop: expected Zanna.Game.SpriteAnimation");
     return anim ? anim->loop : 0;
 }
 
 /// @brief Return whether ping-pong mode is enabled for this animation.
 int8_t rt_spriteanim_pingpong(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.PingPong: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.PingPong: expected Zanna.Game.SpriteAnimation");
     return anim ? anim->pingpong : 0;
 }
 
 /// @brief Start playback from the first frame, resetting all internal counters.
 void rt_spriteanim_play(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Play: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Play: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -251,7 +251,7 @@ void rt_spriteanim_play(rt_spriteanim anim) {
 
 /// @brief Stop playback entirely (not paused — position is not preserved for resume).
 void rt_spriteanim_stop(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Stop: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Stop: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -266,7 +266,7 @@ void rt_spriteanim_stop(rt_spriteanim anim) {
 
 /// @brief Pause a playing animation so it can be resumed from the current frame.
 void rt_spriteanim_pause(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Pause: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Pause: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     if (anim->playing)
@@ -275,7 +275,7 @@ void rt_spriteanim_pause(rt_spriteanim anim) {
 
 /// @brief Resume a paused animation from the frame where it was paused.
 void rt_spriteanim_resume(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Resume: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Resume: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->paused = 0;
@@ -283,7 +283,7 @@ void rt_spriteanim_resume(rt_spriteanim anim) {
 
 /// @brief Reset the animation to its first frame without changing play/pause state.
 void rt_spriteanim_reset(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Reset: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Reset: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -295,7 +295,7 @@ void rt_spriteanim_reset(rt_spriteanim anim) {
 
 /// @brief Update the spriteanim state (called per frame/tick).
 int8_t rt_spriteanim_update(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Update: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Update: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
 
@@ -329,7 +329,7 @@ int8_t rt_spriteanim_update(rt_spriteanim anim) {
 
 /// @brief Return the current frame index within the sprite sheet.
 int64_t rt_spriteanim_frame(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Frame: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Frame: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->current_frame;
@@ -338,7 +338,7 @@ int64_t rt_spriteanim_frame(rt_spriteanim anim) {
 /// @brief Jump to a specific frame, clamped to [start_frame, end_frame].
 void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.SetFrame: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.SetFrame: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     if (frame < anim->start_frame)
@@ -352,7 +352,7 @@ void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
 /// @brief Return how many update ticks each frame is displayed before advancing.
 int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
     anim = checked_spriteanim(anim,
-                              "SpriteAnimation.FrameDuration: expected Viper.Game.SpriteAnimation");
+                              "SpriteAnimation.FrameDuration: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->frame_duration;
@@ -361,7 +361,7 @@ int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
 /// @brief Set how many update ticks each frame is displayed (minimum 1).
 void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
     anim = checked_spriteanim(
-        anim, "SpriteAnimation.SetFrameDuration: expected Viper.Game.SpriteAnimation");
+        anim, "SpriteAnimation.SetFrameDuration: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     if (duration < 1)
@@ -372,7 +372,7 @@ void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
 /// @brief Return the count of elements in the spriteanim.
 int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.FrameCount: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.FrameCount: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     int64_t diff = anim->end_frame - anim->start_frame;
@@ -384,7 +384,7 @@ int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
 /// @brief Check whether the animation is currently playing (not paused or stopped).
 int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.IsPlaying: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.IsPlaying: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->playing && !anim->paused;
@@ -393,7 +393,7 @@ int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
 /// @brief Check whether the animation is paused (can be resumed).
 int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.IsPaused: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.IsPaused: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->paused;
@@ -402,7 +402,7 @@ int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
 /// @brief Check whether a non-looping animation has reached its last frame.
 int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.IsFinished: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.IsFinished: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->finished;
@@ -411,7 +411,7 @@ int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
 /// @brief Return the animation progress as a percentage (0-100).
 int64_t rt_spriteanim_progress(rt_spriteanim anim) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.Progress: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.Progress: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     int64_t total = anim->end_frame - anim->start_frame;
@@ -424,7 +424,7 @@ int64_t rt_spriteanim_progress(rt_spriteanim anim) {
 /// @brief Set the playback speed multiplier, clamped to [0.0, 10.0] (1.0 = normal).
 void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
     anim =
-        checked_spriteanim(anim, "SpriteAnimation.SetSpeed: expected Viper.Game.SpriteAnimation");
+        checked_spriteanim(anim, "SpriteAnimation.SetSpeed: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return;
     if (!isfinite(speed) || speed < 0.0)
@@ -436,7 +436,7 @@ void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
 
 /// @brief Return the current playback speed multiplier.
 double rt_spriteanim_speed(rt_spriteanim anim) {
-    anim = checked_spriteanim(anim, "SpriteAnimation.Speed: expected Viper.Game.SpriteAnimation");
+    anim = checked_spriteanim(anim, "SpriteAnimation.Speed: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 1.0;
     return anim->speed;
@@ -445,7 +445,7 @@ double rt_spriteanim_speed(rt_spriteanim anim) {
 /// @brief Check whether the current frame changed during the last update call.
 int8_t rt_spriteanim_frame_changed(rt_spriteanim anim) {
     anim = checked_spriteanim(anim,
-                              "SpriteAnimation.FrameChanged: expected Viper.Game.SpriteAnimation");
+                              "SpriteAnimation.FrameChanged: expected Zanna.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->frame_changed;

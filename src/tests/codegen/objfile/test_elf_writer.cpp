@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,8 +34,8 @@
 #include <sstream>
 #include <vector>
 
-using namespace viper::codegen::objfile;
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::objfile;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -55,7 +55,7 @@ static const char *tmpPath(const char *name) {
     fs::path dir = fs::temp_directory_path(ec);
     if (ec || dir.empty())
         dir = fs::path(".");
-    dir /= "viper_objfile_tests";
+    dir /= "zanna_objfile_tests";
     fs::create_directories(dir, ec);
     path = (dir / name).string();
     return path.c_str();
@@ -162,7 +162,7 @@ static void testMinimalX64Elf() {
     text.emit8(0xC3); // ret
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_minimal_x64.o");
+    std::string path = tmpPath("zanna_test_minimal_x64.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -228,7 +228,7 @@ static void testMinimalA64Elf() {
     text.emit32LE(0xD65F03C0);
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_minimal_a64.o");
+    std::string path = tmpPath("zanna_test_minimal_a64.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::AArch64);
@@ -267,7 +267,7 @@ static void testX64Relocations() {
 
     text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_x64_relocs.o");
+    std::string path = tmpPath("zanna_test_x64_relocs.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -320,7 +320,7 @@ static void testA64Relocations() {
 
     text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
 
-    std::string path = tmpPath("viper_test_a64_relocs.o");
+    std::string path = tmpPath("zanna_test_a64_relocs.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::AArch64);
@@ -354,7 +354,7 @@ static void testSymbolTable() {
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
     text.findOrDeclareSymbol("external_func"); // external
 
-    std::string path = tmpPath("viper_test_symtab.o");
+    std::string path = tmpPath("zanna_test_symtab.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -422,7 +422,7 @@ static void testSectionNames() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
-    std::string path = tmpPath("viper_test_shstrtab.o");
+    std::string path = tmpPath("zanna_test_shstrtab.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -467,7 +467,7 @@ static void testRodataSection() {
     const char *str = "Hello, World!";
     rodata.emitBytes(str, std::strlen(str) + 1); // include NUL
 
-    std::string path = tmpPath("viper_test_rodata.o");
+    std::string path = tmpPath("zanna_test_rodata.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -503,7 +503,7 @@ static void testRodataSymbolType() {
     rodata.symbols().at(constSym).size = sizeof(bytes);
     rodata.emitBytes(bytes, sizeof(bytes));
 
-    std::string path = tmpPath("viper_test_rodata_symbol.o");
+    std::string path = tmpPath("zanna_test_rodata_symbol.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -555,7 +555,7 @@ static void testExplicitRodataRelocationHint() {
     rodata.defineSymbol("shared", SymbolBinding::Local, SymbolSection::Rodata);
     rodata.emit64LE(0x1122334455667788ULL);
 
-    std::string path = tmpPath("viper_test_elf_rodata_hint.o");
+    std::string path = tmpPath("zanna_test_elf_rodata_hint.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -591,7 +591,7 @@ static void testRodataRelocations() {
     rodata.addRelocation(RelocKind::Abs64, symIdx, 8, SymbolSection::Text);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_elf_rela_rodata.o");
+    std::string path = tmpPath("zanna_test_elf_rela_rodata.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -635,7 +635,7 @@ static void testA64Abs64RelocationUsesAArch64Type() {
     rodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_elf_a64_abs64.o");
+    std::string path = tmpPath("zanna_test_elf_a64_abs64.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::AArch64);
@@ -668,7 +668,7 @@ static void testSectionOffsetRelocationUsesSectionSymbol() {
     rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_elf_section_offset.o");
+    std::string path = tmpPath("zanna_test_elf_section_offset.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -697,7 +697,7 @@ static void testMultiSectionOffsetRelocationUsesSectionSymbol() {
     rodata.addSectionOffsetRelocation(RelocKind::Abs64, textA, SymbolSection::Text, 1);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_elf_multisection_offset.o");
+    std::string path = tmpPath("zanna_test_elf_multisection_offset.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -731,7 +731,7 @@ static void testMultiSectionOffsetRelocationRejectsAmbiguousLegacyTarget() {
     rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
     rodata.emit64LE(0);
 
-    std::string path = tmpPath("viper_test_elf_multisection_ambiguous_offset.o");
+    std::string path = tmpPath("zanna_test_elf_multisection_ambiguous_offset.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -750,7 +750,7 @@ static void testMalformedRelaSizeFails() {
     text.addRelocation(RelocKind::Branch32, target, -4);
     text.emit32LE(0);
 
-    std::string path = tmpPath("viper_test_elf_bad_rela_size.o");
+    std::string path = tmpPath("zanna_test_elf_bad_rela_size.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -777,7 +777,7 @@ static void testMalformedRelAddendFails() {
     text.addRelocation(RelocKind::Branch32, target, -4);
     text.emit32LE(0);
 
-    std::string path = tmpPath("viper_test_elf_bad_rel_addend.o");
+    std::string path = tmpPath("zanna_test_elf_bad_rel_addend.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -812,9 +812,9 @@ static void testAmbiguousCrossSectionRelocationFails() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_elf_ambiguous_cross.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_elf_ambiguous_cross.o"), text, rodata, errStream));
     CHECK(errStream.str().find("ambiguous cross-section target") != std::string::npos);
-    std::remove(tmpPath("viper_test_elf_ambiguous_cross.o"));
+    std::remove(tmpPath("zanna_test_elf_ambiguous_cross.o"));
 }
 
 static void testMissingCrossSectionRelocationFails() {
@@ -828,9 +828,9 @@ static void testMissingCrossSectionRelocationFails() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_elf_missing_cross.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_elf_missing_cross.o"), text, rodata, errStream));
     CHECK(errStream.str().find("missing cross-section target") != std::string::npos);
-    std::remove(tmpPath("viper_test_elf_missing_cross.o"));
+    std::remove(tmpPath("zanna_test_elf_missing_cross.o"));
 }
 
 static void testWrongArchRelocationFails() {
@@ -842,9 +842,9 @@ static void testWrongArchRelocationFails() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_elf_wrong_arch.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_elf_wrong_arch.o"), text, rodata, errStream));
     CHECK(errStream.str().find("not valid for this object architecture") != std::string::npos);
-    std::remove(tmpPath("viper_test_elf_wrong_arch.o"));
+    std::remove(tmpPath("zanna_test_elf_wrong_arch.o"));
 }
 
 static void testRelocationOffsetBoundsFails() {
@@ -856,9 +856,9 @@ static void testRelocationOffsetBoundsFails() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::X86_64);
-    CHECK(!writer.write(tmpPath("viper_test_elf_bad_reloc_offset.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_elf_bad_reloc_offset.o"), text, rodata, errStream));
     CHECK(errStream.str().find("extends beyond .text contents") != std::string::npos);
-    std::remove(tmpPath("viper_test_elf_bad_reloc_offset.o"));
+    std::remove(tmpPath("zanna_test_elf_bad_reloc_offset.o"));
 }
 
 static void testLogicalBiasSymbolsArePhysical() {
@@ -869,7 +869,7 @@ static void testLogicalBiasSymbolsArePhysical() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::X86_64);
-    const std::string path = tmpPath("viper_test_elf_biased_symbol.o");
+    const std::string path = tmpPath("zanna_test_elf_biased_symbol.o");
     CHECK(writer.write(path, text, rodata, errStream));
 
     ObjFile obj;
@@ -885,7 +885,7 @@ static void testMalformedSectionAlignmentFails() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
-    std::string path = tmpPath("viper_test_elf_bad_section_align.o");
+    std::string path = tmpPath("zanna_test_elf_bad_section_align.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -908,7 +908,7 @@ static void testMalformedSymbolPastSectionFails() {
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
     text.emit8(0xC3);
 
-    std::string path = tmpPath("viper_test_elf_bad_symbol_offset.o");
+    std::string path = tmpPath("zanna_test_elf_bad_symbol_offset.o");
     std::ostringstream errStream;
 
     ElfWriter writer(ObjArch::X86_64);
@@ -936,9 +936,9 @@ static void testA64RelocationShapeValidationFails() {
 
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::AArch64);
-    CHECK(!writer.write(tmpPath("viper_test_elf_bad_a64_shape.o"), text, rodata, errStream));
+    CHECK(!writer.write(tmpPath("zanna_test_elf_bad_a64_shape.o"), text, rodata, errStream));
     CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
-    std::remove(tmpPath("viper_test_elf_bad_a64_shape.o"));
+    std::remove(tmpPath("zanna_test_elf_bad_a64_shape.o"));
 }
 
 static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
@@ -950,9 +950,9 @@ static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
 
         std::ostringstream errStream;
         ElfWriter writer(ObjArch::AArch64);
-        CHECK(!writer.write(tmpPath("viper_test_elf_bad_a64_sub_pageoff.o"), text, rodata, errStream));
+        CHECK(!writer.write(tmpPath("zanna_test_elf_bad_a64_sub_pageoff.o"), text, rodata, errStream));
         CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
-        std::remove(tmpPath("viper_test_elf_bad_a64_sub_pageoff.o"));
+        std::remove(tmpPath("zanna_test_elf_bad_a64_sub_pageoff.o"));
     }
 
     {
@@ -963,9 +963,9 @@ static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
 
         std::ostringstream errStream;
         ElfWriter writer(ObjArch::AArch64);
-        CHECK(!writer.write(tmpPath("viper_test_elf_bad_a64_ldst_scale.o"), text, rodata, errStream));
+        CHECK(!writer.write(tmpPath("zanna_test_elf_bad_a64_ldst_scale.o"), text, rodata, errStream));
         CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
-        std::remove(tmpPath("viper_test_elf_bad_a64_ldst_scale.o"));
+        std::remove(tmpPath("zanna_test_elf_bad_a64_ldst_scale.o"));
     }
 }
 
@@ -988,7 +988,7 @@ static void testDataSectionImpl(bool multiSection) {
     data.emit64LE(kInit);
 
     const std::string path =
-        tmpPath(multiSection ? "viper_test_elf_data_multi.o" : "viper_test_elf_data_single.o");
+        tmpPath(multiSection ? "zanna_test_elf_data_multi.o" : "zanna_test_elf_data_single.o");
     std::ostringstream errStream;
     ElfWriter writer(ObjArch::AArch64);
     writer.setDataSection(data);

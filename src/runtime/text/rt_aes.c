@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_aes.c
-// Purpose: Implements the Viper.Crypto.Aes runtime — AES-128 and AES-256 block
+// Purpose: Implements the Zanna.Crypto.Aes runtime — AES-128 and AES-256 block
 //          cipher in CBC mode with PKCS7 padding (FIPS-197), plus AES-GCM
 //          authenticated encryption (Aes.EncryptAuth / DecryptAuth) wrapping
 //          the GCM ciphertext in a 16-byte magic-plus-nonce header so plain-CBC and
@@ -253,7 +253,7 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *n
 }
 
 /// @brief Build the authenticated-data span for AES-GCM framed payloads.
-/// @details The GCM tag authenticates both the Viper magic header and the
+/// @details The GCM tag authenticates both the Zanna magic header and the
 ///          caller-provided AAD. When no user AAD is present, @p aad_out points
 ///          directly at @p header and @p alloc_out is NULL. When user AAD is
 ///          present, this helper allocates `[header || user_aad]`, stores it in
@@ -1028,7 +1028,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 /// @return Bytes object containing ciphertext
 void *rt_aes_encrypt(void *data, void *key, void *iv) {
     if (rt_crypto_module_is_approved_mode()) {
-        rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
+        rt_trap("AES.CBC is not an approved-mode Zanna service; use AES-GCM");
         return NULL;
     }
     if (!data) {
@@ -1160,7 +1160,7 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
 /// @return Bytes object containing plaintext, or NULL on decryption error
 void *rt_aes_decrypt(void *data, void *key, void *iv) {
     if (rt_crypto_module_is_approved_mode()) {
-        rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
+        rt_trap("AES.CBC is not an approved-mode Zanna service; use AES-GCM");
         return NULL;
     }
     if (!data) {
@@ -1282,7 +1282,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 /// @param data Bytes object containing ciphertext.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param iv Bytes object containing the 16-byte initialization vector.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_aes_decrypt_result(void *data, void *key, void *iv) {
     return aes_bytes_result(rt_aes_decrypt,
                             data,
@@ -1298,13 +1298,13 @@ void *rt_aes_decrypt_result(void *data, void *key, void *iv) {
 /// @param data Bytes object containing ciphertext.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param iv Bytes object containing the 16-byte initialization vector.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_aes_try_decrypt(void *data, void *key, void *iv) {
     return aes_bytes_option(rt_aes_decrypt, data, key, iv);
 }
 
 /// @brief AES-GCM authenticated encryption with magic-header framing.
-/// @details Implements `Viper.Crypto.Aes.EncryptAuth(data, key, aad)`. Generates
+/// @details Implements `Zanna.Crypto.Aes.EncryptAuth(data, key, aad)`. Generates
 ///          a fresh 12-byte nonce, prepends the AES_AUTH_HEADER and the nonce
 ///          to the output, runs AES-128-GCM or AES-256-GCM over the plaintext with
 ///          [magic_header || user_aad] as the AEAD AAD, and appends the
@@ -1542,7 +1542,7 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
 /// @param data Framed ciphertext produced by rt_aes_encrypt_auth.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad) {
     return aes_bytes_result(rt_aes_decrypt_auth,
                             data,
@@ -1558,7 +1558,7 @@ void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad) {
 /// @param data Framed ciphertext produced by rt_aes_encrypt_auth.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad) {
     return aes_bytes_option(rt_aes_decrypt_auth, data, key, aad);
 }
@@ -1585,7 +1585,7 @@ void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad) {
 /// first 256 bytes therefore derive the same legacy key. This math CANNOT be
 /// changed without breaking decryption of existing legacy ciphertexts; on a
 /// successful legacy decrypt, immediately re-encrypt with the current
-/// authenticated `VAG1`/`Viper.Crypto.Cipher` format.
+/// authenticated `VAG1`/`Zanna.Crypto.Cipher` format.
 static void derive_key_legacy(const uint8_t *password, size_t pass_len, uint8_t key[32]) {
     /* Fixed application-level domain separator (S-06) */
     static const uint8_t kSalt[16] = {0x56,
@@ -1913,7 +1913,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
 ///          as `Ok(str)`.
 /// @param data Bytes object containing encrypted string payload.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Result containing plaintext string or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext string or a diagnostic string.
 void *rt_aes_decrypt_str_result(void *data, rt_string password) {
     return aes_string_decrypt_result(rt_aes_decrypt_str, data, password, "AES.DecryptStr failed");
 }
@@ -1924,7 +1924,7 @@ void *rt_aes_decrypt_str_result(void *data, rt_string password) {
 ///          `Some(str)`.
 /// @param data Bytes object containing encrypted string payload.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Option containing plaintext string, or None.
+/// @return Opaque Zanna.Option containing plaintext string, or None.
 void *rt_aes_try_decrypt_str(void *data, rt_string password) {
     return aes_string_decrypt_option(rt_aes_decrypt_str, data, password);
 }

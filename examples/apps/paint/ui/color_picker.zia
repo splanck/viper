@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: examples/apps/paint/ui/color_picker.zia
 // Purpose: Modal in-canvas HSL colour picker. A saturation/lightness field +
 //          a hue bar, with a live preview swatch, hex + RGB readout, and
-//          OK/Cancel. Built on Viper.Graphics.Color HSL helpers.
+//          OK/Cancel. Built on Zanna.Graphics.Color HSL helpers.
 // Key invariants:
 //   - The S/L field and hue strip are rendered into cached Pixels buffers and
 //     blitted; the S/L field is rebuilt only when the hue changes.
@@ -19,11 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// color_picker.zia - Modal HSL colour picker for Viper Paint
+// color_picker.zia - Modal HSL colour picker for Zanna Paint
 module color_picker;
 
-bind Viper.Graphics;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics;
+bind Zanna.Core.Convert as Convert;
 
 bind "../config";
 

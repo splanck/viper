@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_collator.c
-// Purpose: Implementation of Viper.Localization.Collator. Generates weighted
+// Purpose: Implementation of Zanna.Localization.Collator. Generates weighted
 //          sort keys from UTF-8 input strings via the classifier in
 //          rt_collator_table.c, then performs byte-wise comparison on the
 //          key bytes. Three strength levels map to three concatenated weight
@@ -111,7 +111,7 @@ static void col_finalizer(void *obj) {
 static void *col_alloc(void *locale) {
     rt_collator_t *c = (rt_collator_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_collator_t));
     if (!c) {
-        rt_trap("Viper.Localization.Collator: allocation failed");
+        rt_trap("Zanna.Localization.Collator: allocation failed");
         return NULL;
     }
     c->locale = locale;
@@ -175,7 +175,7 @@ void rt_collator_set_strength(void *self, int64_t value) {
     if (value > 3) {
         // Strength 4 (quaternary) isn't supported in v1; clamp with a
         // diagnostic so callers see the downgrade.
-        col_warn("Viper.Localization.Collator: strength 4 unsupported; clamped to 3");
+        col_warn("Zanna.Localization.Collator: strength 4 unsupported; clamped to 3");
         value = 3;
     }
     as_col(self)->strength = (int)value;
@@ -323,17 +323,17 @@ static sort_weight_t *collect_weights(rt_collator_t *col,
                                       size_t len,
                                       size_t *out_count) {
     if (len > MAX_INPUT_BYTES) {
-        rt_trap("Viper.Localization.Collator: input exceeds 1 MiB cap");
+        rt_trap("Zanna.Localization.Collator: input exceeds 1 MiB cap");
         return NULL;
     }
     size_t cap = len > 0 ? len : 1;
     if (cap > SIZE_MAX / sizeof(sort_weight_t)) {
-        rt_trap("Viper.Localization.Collator: key allocation overflow");
+        rt_trap("Zanna.Localization.Collator: key allocation overflow");
         return NULL;
     }
     sort_weight_t *weights = (sort_weight_t *)malloc(cap * sizeof(sort_weight_t));
     if (!weights) {
-        rt_trap("Viper.Localization.Collator: key allocation failed");
+        rt_trap("Zanna.Localization.Collator: key allocation failed");
         return NULL;
     }
     size_t count = 0;
@@ -371,7 +371,7 @@ static sort_weight_t *collect_weights(rt_collator_t *col,
 /// @return Malloc'd byte buffer; caller frees. *out_len set to byte length.
 static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len, size_t *out_len) {
     if (len > MAX_INPUT_BYTES) {
-        rt_trap("Viper.Localization.Collator: input exceeds 1 MiB cap");
+        rt_trap("Zanna.Localization.Collator: input exceeds 1 MiB cap");
         return NULL;
     }
 
@@ -384,14 +384,14 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len, siz
     // plus 3 level separators (2 bytes each). Worst case ~7 bytes/cp + 6.
     if (n > (SIZE_MAX - 16) / 8) {
         free(weights);
-        rt_trap("Viper.Localization.Collator: key allocation overflow");
+        rt_trap("Zanna.Localization.Collator: key allocation overflow");
         return NULL;
     }
     size_t cap = n * 8 + 16;
     uint8_t *buf = (uint8_t *)malloc(cap);
     if (!buf) {
         free(weights);
-        rt_trap("Viper.Localization.Collator: key allocation failed");
+        rt_trap("Zanna.Localization.Collator: key allocation failed");
         return NULL;
     }
     size_t off = 0;
@@ -536,7 +536,7 @@ void *rt_collator_sort(void *self, void *items) {
 
     sort_item_t *arr = (sort_item_t *)calloc((size_t)n, sizeof(sort_item_t));
     if (!arr) {
-        rt_trap("Viper.Localization.Collator: Sort allocation failed");
+        rt_trap("Zanna.Localization.Collator: Sort allocation failed");
         return out;
     }
     for (int64_t i = 0; i < n; ++i) {

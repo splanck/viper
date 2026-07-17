@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@ struct Module;
 }
 } // namespace il
 
-namespace viper {
+namespace zanna {
 namespace tests {
 
 /// @brief Result from an isolated child process execution.
@@ -52,7 +52,7 @@ struct ChildResult {
 /// @brief Run a function in an isolated child process, capturing stderr.
 ///
 /// On POSIX: fork + pipe + waitpid. The lambda runs directly in the child.
-/// On Windows: CreateProcess self-relaunch with --viper-child-run flag.
+/// On Windows: CreateProcess self-relaunch with --zanna-child-run flag.
 ///   The childFn is called in the child via dispatchChild().
 ///
 /// @param childFn Code to run in the isolated child (may call exit/abort).
@@ -114,4 +114,4 @@ void setChildFunction(std::function<void()> fn);
 void registerChildFunction(std::function<void()> fn);
 
 } // namespace tests
-} // namespace viper
+} // namespace zanna

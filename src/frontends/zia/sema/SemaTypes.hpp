@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,7 +76,7 @@ struct Symbol {
     bool isFinal{false};
 
     /// @brief True if this is an external/runtime function.
-    /// @details For functions in the Viper.* namespace, this is true.
+    /// @details For functions in the Zanna.* namespace, this is true.
     /// The lowerer uses this to emit extern calls instead of direct calls.
     bool isExtern{false};
 

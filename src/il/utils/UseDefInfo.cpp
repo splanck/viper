@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::il {
+namespace zanna::il {
 
 UseDefInfo::UseDefInfo(::il::core::Function &F) {
     build(F);
@@ -97,4 +97,4 @@ std::size_t UseDefInfo::useCount(unsigned tempId) const {
     return it != useCounts_.end() ? it->second : 0;
 }
 
-} // namespace viper::il
+} // namespace zanna::il

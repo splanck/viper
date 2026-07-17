@@ -1,4 +1,4 @@
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func main() -> Int {
     Say("hello");

@@ -1,4 +1,4 @@
-add_library(viper_codegen_x86_64 STATIC
+add_library(zanna_codegen_x86_64 STATIC
         TargetX64.cpp
         MachineIR.cpp
         AsmEmitter.cpp
@@ -46,33 +46,33 @@ add_library(viper_codegen_x86_64 STATIC
         passes/BinaryEmitPass.cpp
 )
 
-target_include_directories(viper_codegen_x86_64 PUBLIC
+target_include_directories(zanna_codegen_x86_64 PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
 
-target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common viper_codegen_common il_transform PRIVATE viper_common_opts)
+target_link_libraries(zanna_codegen_x86_64 PUBLIC zanna_common zanna_codegen_common il_transform PRIVATE zanna_common_opts)
 
-set_target_properties(viper_codegen_x86_64 PROPERTIES
+set_target_properties(zanna_codegen_x86_64 PROPERTIES
         CXX_STANDARD 20
         CXX_STANDARD_REQUIRED ON
 )
 
 # --- Generate encoding tables from JSON (no Python dependency) ---
-set(VIPER_X64_SPEC "${PROJECT_SOURCE_DIR}/docs/specs/x86_64_encodings.json")
-set(VIPER_X64_OUTDIR "${PROJECT_SOURCE_DIR}/src/codegen/x86_64/generated")
-set(VIPER_X64_ENC "${VIPER_X64_OUTDIR}/EncodingTable.inc")
-set(VIPER_X64_OPFMT "${VIPER_X64_OUTDIR}/OpFmtTable.inc")
+set(ZANNA_X64_SPEC "${PROJECT_SOURCE_DIR}/docs/specs/x86_64_encodings.json")
+set(ZANNA_X64_OUTDIR "${PROJECT_SOURCE_DIR}/src/codegen/x86_64/generated")
+set(ZANNA_X64_ENC "${ZANNA_X64_OUTDIR}/EncodingTable.inc")
+set(ZANNA_X64_OPFMT "${ZANNA_X64_OUTDIR}/OpFmtTable.inc")
 
 add_custom_command(
-        OUTPUT ${VIPER_X64_ENC} ${VIPER_X64_OPFMT}
+        OUTPUT ${ZANNA_X64_ENC} ${ZANNA_X64_OPFMT}
         COMMAND ${CMAKE_COMMAND}
-        -DSPEC_FILE=${VIPER_X64_SPEC}
-        -DOUTPUT_DIR=${VIPER_X64_OUTDIR}
+        -DSPEC_FILE=${ZANNA_X64_SPEC}
+        -DOUTPUT_DIR=${ZANNA_X64_OUTDIR}
         -P ${PROJECT_SOURCE_DIR}/cmake/GenX86Encodings.cmake
-        DEPENDS ${VIPER_X64_SPEC} ${PROJECT_SOURCE_DIR}/cmake/GenX86Encodings.cmake
+        DEPENDS ${ZANNA_X64_SPEC} ${PROJECT_SOURCE_DIR}/cmake/GenX86Encodings.cmake
         COMMENT "Generating x86_64 encoding tables from JSON"
         VERBATIM)
 
-add_custom_target(gen_x86_64_encodings DEPENDS ${VIPER_X64_ENC} ${VIPER_X64_OPFMT})
-add_dependencies(viper_codegen_x86_64 gen_x86_64_encodings generate_runtime_registry)
+add_custom_target(gen_x86_64_encodings DEPENDS ${ZANNA_X64_ENC} ${ZANNA_X64_OPFMT})
+add_dependencies(zanna_codegen_x86_64 gen_x86_64_encodings generate_runtime_registry)

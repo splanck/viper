@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -59,7 +59,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
 
 using TargetPlatform = CodegenOptions::TargetPlatform;
@@ -122,7 +122,7 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
 [[nodiscard]] std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
-            if constexpr (viper::platform::kHostMacOS) {
+            if constexpr (zanna::platform::kHostMacOS) {
                 return {"cc", "-arch", "x86_64"};
             }
             return {"clang", "--target=x86_64-apple-macos11"};
@@ -324,7 +324,7 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
 ///          because Windows CRT startup expects them. Graphics and Audio
 ///          support libraries are appended when the corresponding runtime
 ///          components are present in the link context. The GUI support library
-///          also pulls in viper_text_core because CodeEditor uses the shared
+///          also pulls in zanna_text_core because CodeEditor uses the shared
 ///          text-buffer C ABI.
 void collectNativeLinkArchives(const common::LinkContext &ctx,
                                std::optional<bool> windowsDebugRuntime,
@@ -347,10 +347,10 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
         appendIfExists(entry.second);
 
     // The Windows runtime build does not preserve the Unix weak-link defaults
-    // used by viper_rt_base. Pull in the concrete component archives that
+    // used by zanna_rt_base. Pull in the concrete component archives that
     // satisfy those cross-component references without regressing to
     // "link every runtime archive".
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         if (common::hasComponent(ctx, RtComponent::Base)) {
             appendComponent(RtComponent::Oop);
             appendComponent(RtComponent::Arrays);
@@ -362,16 +362,16 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
     }
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
-        const auto guiLib = common::supportLibraryPath(ctx.buildDir, "vipergui");
-        const auto textCoreLib = common::supportLibraryPath(ctx.buildDir, "viper_text_core");
-        const auto gfxLib = common::supportLibraryPath(ctx.buildDir, "vipergfx");
+        const auto guiLib = common::supportLibraryPath(ctx.buildDir, "zannagui");
+        const auto textCoreLib = common::supportLibraryPath(ctx.buildDir, "zanna_text_core");
+        const auto gfxLib = common::supportLibraryPath(ctx.buildDir, "zannagfx");
         appendIfExists(guiLib);
         appendIfExists(textCoreLib);
         appendIfExists(gfxLib);
     }
 
     if (common::hasComponent(ctx, RtComponent::Audio)) {
-        const auto audLib = common::supportLibraryPath(ctx.buildDir, "viperaud");
+        const auto audLib = common::supportLibraryPath(ctx.buildDir, "zannaaud");
         appendIfExists(audLib);
     }
 
@@ -383,7 +383,7 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
             appendComponent(static_cast<RtComponent>(i));
     }
 
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         const bool useDebugRuntime =
             windowsDebugRuntime.value_or(common::windowsArchivePathsUseDebugRuntime(archives));
         for (const auto &archive :
@@ -505,8 +505,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         return finish();
     }
 
-    viper::codegen::common::lowerNativeEh(module);
-    if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(module)) {
+    zanna::codegen::common::lowerNativeEh(module);
+    if (const auto residualEh = zanna::codegen::common::findResidualStructuredEh(module)) {
         err << "error: " << *residualEh << "\n";
         result.exit_code = 1;
         return finish();
@@ -586,8 +586,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             return finish();
         }
 
-        const char *blobLabel = "viper_asset_blob";
-        const char *sizeLabel = "viper_asset_blob_size";
+        const char *blobLabel = "zanna_asset_blob";
+        const char *sizeLabel = "zanna_asset_blob_size";
         auto &rodata = *pipelineModule.binaryRodata;
         rodata.alignTo(16);
         rodata.defineSymbol(
@@ -886,4 +886,4 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     return finish();
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

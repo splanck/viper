@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -546,7 +546,7 @@ void rt_crypto_module_disable_approved_mode(void) {
 }
 
 /// @brief Zia-callable: is APPROVED mode active? Returns 1 or 0.
-int8_t rt_crypto_module_is_approved_mode_viper(void) {
+int8_t rt_crypto_module_is_approved_mode_zanna(void) {
     return rt_crypto_module_is_approved_mode() ? 1 : 0;
 }
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,12 +28,12 @@
 #include <stdexcept>
 #include <system_error>
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 #include <fcntl.h>
 #include <io.h>
 #endif
 
-namespace viper::server {
+namespace zanna::server {
 namespace {
 
 constexpr size_t kMaxProtocolMessageBytes = 16u * 1024u * 1024u;
@@ -55,7 +55,7 @@ void checkedWrite(FILE *out, const char *data, size_t size) {
 // --- Platform init ---
 
 void platformInitStdio() {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
@@ -230,4 +230,4 @@ void LspTransport::writeMessage(const std::string &json) {
         throw std::runtime_error("protocol flush failed");
 }
 
-} // namespace viper::server
+} // namespace zanna::server

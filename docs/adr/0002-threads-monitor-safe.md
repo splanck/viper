@@ -12,22 +12,22 @@ Status: Implemented; verified against source and runtime API on 2026-06-27.
 
 Context
 
-Before this ADR, Viper supported host/embedder-level concurrency by running multiple VM instances in parallel, but it did
-not expose language-level shared-memory threading to Viper programs. The runtime also needed thread-safe ownership and
+Before this ADR, Zanna supported host/embedder-level concurrency by running multiple VM instances in parallel, but it did
+not expose language-level shared-memory threading to Zanna programs. The runtime also needed thread-safe ownership and
 runtime-context behavior before shared heap objects could be used safely across worker threads.
 
-Viper now provides a `Viper.Threads` runtime namespace for shared-memory concurrency. It is implemented in
+Zanna now provides a `Zanna.Threads` runtime namespace for shared-memory concurrency. It is implemented in
 `src/runtime/threads/`, exposed through the runtime API registry, and bridged in both the tree-walking VM and BytecodeVM
 for VM function pointers.
 
 Decision
 
-Provide `Viper.Threads` with:
+Provide `Zanna.Threads` with:
 
 1. Shared-memory OS threads in the VM, BytecodeVM, and native backends.
-2. A re-entrant, FIFO-fair monitor primitive (`Viper.Threads.Monitor`) for explicit object locking.
-3. A monitor-backed safe integer type (`Viper.Threads.SafeI64`) for common atomic counter/state patterns.
-4. A separate runtime component library (`viper_rt_threads`) so native codegen can link thread support when referenced
+2. A re-entrant, FIFO-fair monitor primitive (`Zanna.Threads.Monitor`) for explicit object locking.
+3. A monitor-backed safe integer type (`Zanna.Threads.SafeI64`) for common atomic counter/state patterns.
+4. A separate runtime component library (`zanna_rt_threads`) so native codegen can link thread support when referenced
    by the program.
 
 Definitions
@@ -46,40 +46,40 @@ The live runtime API exposes these ADR-0002 core classes:
 
 Monitor (static)
 
-- `Viper.Threads.Monitor.Enter(obj) -> void`
-- `Viper.Threads.Monitor.TryEnter(obj) -> i1`
-- `Viper.Threads.Monitor.TryEnterFor(obj, i64 ms) -> i1`
-- `Viper.Threads.Monitor.Exit(obj) -> void`
-- `Viper.Threads.Monitor.Wait(obj) -> void`
-- `Viper.Threads.Monitor.WaitFor(obj, i64 ms) -> i1`
-- `Viper.Threads.Monitor.Pause(obj) -> void`
-- `Viper.Threads.Monitor.PauseAll(obj) -> void`
+- `Zanna.Threads.Monitor.Enter(obj) -> void`
+- `Zanna.Threads.Monitor.TryEnter(obj) -> i1`
+- `Zanna.Threads.Monitor.TryEnterFor(obj, i64 ms) -> i1`
+- `Zanna.Threads.Monitor.Exit(obj) -> void`
+- `Zanna.Threads.Monitor.Wait(obj) -> void`
+- `Zanna.Threads.Monitor.WaitFor(obj, i64 ms) -> i1`
+- `Zanna.Threads.Monitor.Pause(obj) -> void`
+- `Zanna.Threads.Monitor.PauseAll(obj) -> void`
 
 Thread
 
-- `Viper.Threads.Thread.Start(obj entry, obj arg) -> obj`
-- `Viper.Threads.Thread.StartOwned(obj entry, obj arg) -> obj`
-- `Viper.Threads.Thread.StartSafe(obj entry, obj arg) -> obj`
-- `Viper.Threads.Thread.StartSafeOwned(obj entry, obj arg) -> obj`
-- `Viper.Threads.Thread.Join(obj) -> void`
-- `Viper.Threads.Thread.TryJoin(obj) -> i1`
-- `Viper.Threads.Thread.JoinFor(obj, i64 ms) -> i1`
-- `Viper.Threads.Thread.Sleep(i64 ms) -> void`
-- `Viper.Threads.Thread.Yield() -> void`
-- `Viper.Threads.Thread.SafeJoin(obj) -> void`
-- `Viper.Threads.Thread.SafeGetId(obj) -> i64`
-- `Viper.Threads.Thread.SafeIsAlive(obj) -> i1`
+- `Zanna.Threads.Thread.Start(obj entry, obj arg) -> obj`
+- `Zanna.Threads.Thread.StartOwned(obj entry, obj arg) -> obj`
+- `Zanna.Threads.Thread.StartSafe(obj entry, obj arg) -> obj`
+- `Zanna.Threads.Thread.StartSafeOwned(obj entry, obj arg) -> obj`
+- `Zanna.Threads.Thread.Join(obj) -> void`
+- `Zanna.Threads.Thread.TryJoin(obj) -> i1`
+- `Zanna.Threads.Thread.JoinFor(obj, i64 ms) -> i1`
+- `Zanna.Threads.Thread.Sleep(i64 ms) -> void`
+- `Zanna.Threads.Thread.Yield() -> void`
+- `Zanna.Threads.Thread.SafeJoin(obj) -> void`
+- `Zanna.Threads.Thread.SafeGetId(obj) -> i64`
+- `Zanna.Threads.Thread.SafeIsAlive(obj) -> i1`
 - readonly properties: `Id: i64`, `IsAlive: i1`, `HasError: i1`, `Error: str`
 
 Safe variables
 
-- `Viper.Threads.SafeI64.New(i64 initial) -> obj`
-- `Viper.Threads.SafeI64.Get(obj) -> i64`
-- `Viper.Threads.SafeI64.Set(obj, i64) -> void`
-- `Viper.Threads.SafeI64.Add(obj, i64 delta) -> i64`
-- `Viper.Threads.SafeI64.CompareExchange(obj, i64 expected, i64 desired) -> i64`
+- `Zanna.Threads.SafeI64.New(i64 initial) -> obj`
+- `Zanna.Threads.SafeI64.Get(obj) -> i64`
+- `Zanna.Threads.SafeI64.Set(obj, i64) -> void`
+- `Zanna.Threads.SafeI64.Add(obj, i64 delta) -> i64`
+- `Zanna.Threads.SafeI64.CompareExchange(obj, i64 expected, i64 desired) -> i64`
 
-The live registry also includes additional `Viper.Threads` classes beyond this ADR's original scope: `Pool`, `Channel`,
+The live registry also includes additional `Zanna.Threads` classes beyond this ADR's original scope: `Pool`, `Channel`,
 `ConcurrentQueue`, `ConcurrentMap`, `Gate`, `Barrier`, `RwLock`, `Promise`, `Future`, `Async`, `Parallel`,
 `CancelToken`, `Debouncer`, `Throttler`, and `Scheduler`. `SafeF64`, `SafeStr`, and `SafeObj` are not present in the
 runtime API as of the verification date.
@@ -134,14 +134,14 @@ milliseconds.
 Determinism and Repeatability
 
 - FIFO fairness is guaranteed for monitor queues, providing repeatability for synchronized sections.
-- Viper does not attempt to control OS scheduling. A program that is data-race-free but still depends on timing, such as
+- Zanna does not attempt to control OS scheduling. A program that is data-race-free but still depends on timing, such as
   a busy loop without synchronization, is undefined for VM/native equivalence.
 
 Implementation Status
 
 Verified on 2026-06-27:
 
-- `src/runtime/CMakeLists.txt` builds `viper_rt_threads` from `src/runtime/threads/*` and selects POSIX or Win32 monitor
+- `src/runtime/CMakeLists.txt` builds `zanna_rt_threads` from `src/runtime/threads/*` and selects POSIX or Win32 monitor
   and thread implementations by platform.
 - `src/codegen/common/RuntimeComponents.hpp` maps `rt_monitor_*`, `rt_thread_*`, `rt_safe_*`, channels, futures,
   parallel, and related thread symbols to the Threads component for selective native linking.
@@ -179,6 +179,6 @@ Alternatives
 
 Spec Impact
 
-- Adds the `Viper.Threads` runtime namespace and runtime symbols.
+- Adds the `Zanna.Threads` runtime namespace and runtime symbols.
 - Does not add IL opcodes.
 - Defines data-race-free synchronization as the boundary for VM/native equivalence of threaded programs.

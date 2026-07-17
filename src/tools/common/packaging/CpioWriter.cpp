@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <filesystem>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Normalize an entry path to a safe "./"-prefixed relative form.
@@ -247,4 +247,4 @@ std::vector<uint8_t> CpioWriter::finish() const {
     return out;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

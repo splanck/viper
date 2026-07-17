@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/widgets/vg_popuplist.c
 // Purpose: Caret-anchored, filterable, keyboard-navigable popup list (exposed as
-//          Viper.GUI.PopupList). Renders in the overlay pass at an absolute anchor;
+//          Zanna.GUI.PopupList). Renders in the overlay pass at an absolute anchor;
 //          the host drives keyboard and visibility and supplies pre-ranked items.
 // Key invariants:
 //   - filtered[] holds the indices of items matching the (case-insensitive) filter;

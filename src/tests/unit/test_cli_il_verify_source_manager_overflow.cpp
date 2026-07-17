@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@ int main() {
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path tmpPath = fs::temp_directory_path();
-    tmpPath /= "viper-il-verify-overflow-" + std::to_string(stamp) + ".il";
+    tmpPath /= "zanna-il-verify-overflow-" + std::to_string(stamp) + ".il";
 
     {
         std::ofstream ofs(tmpPath);

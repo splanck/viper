@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Math.PerlinNoise - Perlin Noise Generation
+// API Audit: Zanna.Math.PerlinNoise - Perlin Noise Generation
 // =============================================================================
 // Tests: New, Noise2D, Noise3D, Octave2D, Octave3D
 // =============================================================================
 
 module PerlinDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.PerlinNoise ===");
+    Say("=== API Audit: Zanna.Math.PerlinNoise ===");
 
     // --- New ---
     Say("--- New ---");

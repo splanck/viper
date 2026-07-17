@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 //     root motion.
 //
 // Links: rt_animcontroller3d.c (implementation),
-//   rt_skeleton3d.h (underlying AnimPlayer3D), docs/viperlib/graphics/animation.md
+//   rt_skeleton3d.h (underlying AnimPlayer3D), docs/zannalib/graphics/animation.md
 //
 //===----------------------------------------------------------------------===//
 

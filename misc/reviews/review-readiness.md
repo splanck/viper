@@ -6,7 +6,7 @@ last-verified: 2026-04-16
 
 # Review Readiness Checklist
 
-Use this checklist before external review of Viper changes. It separates what
+Use this checklist before external review of Zanna changes. It separates what
 the local tree can verify immediately from cross-platform claims that require
 additional hosts or CI.
 

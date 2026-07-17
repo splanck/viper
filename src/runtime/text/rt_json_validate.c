@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_json_validate.c
-// Purpose: Non-allocating JSON syntax validation for the Viper.Text.Json class
+// Purpose: Non-allocating JSON syntax validation for the Zanna.Text.Json class
 //          per ECMA-404 / RFC 8259. Mirrors the structure of the recursive
 //          descent parser but never allocates and never traps — it returns a
 //          boolean verdict, so callers can cheaply test parseability before
@@ -14,7 +14,7 @@
 //
 // Key invariants:
 //   - Shares the json_parser cursor with rt_json_parse.c (rt_json_internal.h)
-//     but allocates no Viper objects.
+//     but allocates no Zanna objects.
 //   - Returns 0 on any malformed input; 1 only when a complete JSON value is
 //     consumed with no trailing content.
 //

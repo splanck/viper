@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,9 +25,9 @@
 #include "tests/TestHarness.hpp"
 
 using namespace il::core;
-using viper::analysis::AliasResult;
-using viper::analysis::BasicAA;
-using viper::analysis::ModRefResult;
+using zanna::analysis::AliasResult;
+using zanna::analysis::BasicAA;
+using zanna::analysis::ModRefResult;
 
 namespace {
 
@@ -319,6 +319,6 @@ TEST(BasicAA, BranchArgsPropagateAllocaEscapes) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

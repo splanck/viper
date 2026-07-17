@@ -1,8 +1,8 @@
-# Viper Runtime API Consistency Review — Class-By-Class
+# Zanna Runtime API Consistency Review — Class-By-Class
 
 Date: 2026-07-15
-Scope: the full frontend-visible `Viper.*` runtime surface as reported by
-`./build/src/tools/viper/viper --dump-runtime-api` on this checkout
+Scope: the full frontend-visible `Zanna.*` runtime surface as reported by
+`./build/src/tools/zanna/zanna --dump-runtime-api` on this checkout
 (**514 classes, 7,384 functions, 5,272 methods, 1,828 properties**), reviewed
 class by class for intuitiveness, internal consistency, sibling consistency,
 and naming quality, and checked against the conventions already decided in
@@ -79,7 +79,7 @@ The ten worst individual offenders:
 8. `UnionFind.SetSize` — a getter that reads as a setter; with
    `DateTime.ToLocal -> str` (formatting named as conversion) and
    `Math.Deg/Rad` (direction-less conversions).
-9. `*Result` means three shapes: `Viper.Result` (`Pty.OpenResult`), a
+9. `*Result` means three shapes: `Zanna.Result` (`Pty.OpenResult`), a
    bare Map (`ProcessHandle.ReadStdoutResult`), and typed objects
    (`Pathfinder.FindPathResult`).
 10. `Terminal` — three parallel typed print families (`PrintInt` ≠
@@ -149,41 +149,41 @@ row is explicitly tagged as an intentional cross-publication.
 
 ### CC-2 (P0) — whole classes exist twice under different names
 
-- `Viper.Input.Key.get_*` (97 constants) ≡ `Viper.Input.Keyboard.get_Key*`
+- `Zanna.Input.Key.get_*` (97 constants) ≡ `Zanna.Input.Keyboard.get_Key*`
   (97 constants). The decision (`02-naming`, Input) makes `Input.Key`
   canonical, and its spellings are better (`Digit0` vs `Key0`,
   `NumpadDivide` vs `KeyNumDiv`). `Keyboard` should keep state queries only.
-- `Viper.Memory.GC` ≡ `Viper.Runtime.GC` (all 7 members, same symbols).
-- `Viper.Memory.Retain/Release/RetainStr/ReleaseStr` ≡
-  `Viper.Runtime.Unsafe.*` — refcount mutation is the definition of unsafe;
-  the decision says `Viper.Memory` is safe-only.
-- `Viper.Error.SetThrowMsg/ClearThrowMsg/SetTrapFields/RaiseKind` ≡
-  `Viper.Runtime.Unsafe.*` — already decided (`05-failure`): trap mutation
+- `Zanna.Memory.GC` ≡ `Zanna.Runtime.GC` (all 7 members, same symbols).
+- `Zanna.Memory.Retain/Release/RetainStr/ReleaseStr` ≡
+  `Zanna.Runtime.Unsafe.*` — refcount mutation is the definition of unsafe;
+  the decision says `Zanna.Memory` is safe-only.
+- `Zanna.Error.SetThrowMsg/ClearThrowMsg/SetTrapFields/RaiseKind` ≡
+  `Zanna.Runtime.Unsafe.*` — already decided (`05-failure`): trap mutation
   belongs only under `Runtime.Unsafe`.
-- `Viper.Crypto.Hash.{MD5,SHA1,CRC32,HmacMD5,HmacSHA1}[Bytes]` ≡
-  `Viper.Crypto.Legacy.Hash.*` — the weak algorithms were copied into
+- `Zanna.Crypto.Hash.{MD5,SHA1,CRC32,HmacMD5,HmacSHA1}[Bytes]` ≡
+  `Zanna.Crypto.Legacy.Hash.*` — the weak algorithms were copied into
   `Legacy` but not removed from the stable `Crypto.Hash` class, defeating the
   point of the `Legacy` namespace.
-- `Viper.Core.Box.ValueType*` ≡ `Viper.Runtime.Unsafe.ValueType*`.
+- `Zanna.Core.Box.ValueType*` ≡ `Zanna.Runtime.Unsafe.ValueType*`.
 
 **Correction.** Keep exactly one home each: `Input.Key`, `Runtime.GC`
-(delete `Memory.GC`; `Viper.Memory` keeps only safe utilities per decision),
+(delete `Memory.GC`; `Zanna.Memory` keeps only safe utilities per decision),
 `Runtime.Unsafe` for retain/release/trap/valuetype rows (delete the `Memory`,
-`Error`, and `Box` copies; delete the `Viper.Error` class if nothing else
+`Error`, and `Box` copies; delete the `Zanna.Error` class if nothing else
 remains), `Crypto.Legacy.Hash` for MD5/SHA1/CRC32 (delete them from
 `Crypto.Hash`; CRC32 is a checksum, not a security hash — consider
 `Text.Checksum` or `IO.Checksum` instead of `Legacy`).
 
 ### CC-3 (P0) — the Text→Data namespace split is half-executed
 
-`Viper.Data` owns structured data per the decision, and `Xml`, `Yaml`,
+`Zanna.Data` owns structured data per the decision, and `Xml`, `Yaml`,
 `Serialize` already live there — but `Json`, `JsonStream`, `JsonPath`, `Csv`,
-`Toml`, `Ini` are still `Viper.Text.*`. Today a developer finds XML under
+`Toml`, `Ini` are still `Zanna.Text.*`. Today a developer finds XML under
 `Data` and JSON under `Text`. This is the single most disorienting namespace
 fact in the surface.
 
 **Correction.** Move `Text.{Json,JsonStream,JsonPath,Csv,Toml,Ini}` to
-`Viper.Data.*` in one commit. No facades (pre-alpha delete policy).
+`Zanna.Data.*` in one commit. No facades (pre-alpha delete policy).
 
 ### CC-4 (P0) — the decided failure model has barely landed
 
@@ -424,7 +424,7 @@ types themselves (`BigInt` 24, `Mat4` 22, `Mat3` 19, `Vec3` 19, `Vec2` 13,
 `Quat` 13 — every arithmetic op returns `obj`), `Graphics.Pixels` 20,
 `Game3D.Entity3D` 19, `Result`/`Option` (17/16 — `Result.Unwrap` returns
 `obj`, necessarily generic, fine). The typed-handle decision
-(`obj<Viper.Domain.Type>` whenever known) is unmet exactly where the types
+(`obj<Zanna.Domain.Type>` whenever known) is unmet exactly where the types
 are best known: `Vec3.Add` obviously returns `Vec3`.
 
 **Correction.** Annotate return handle types in `runtime.def` for all
@@ -504,10 +504,10 @@ mechanical move in the review (~45 classes) but it is a rename-only change.
 
 ### CC-23 (P2) — three different `Diagnostics`, and root names that collide with namespaces
 
-`Viper.Diagnostics` is simultaneously a root *class* (1 member) and a
-namespace (`Diagnostics.Log`, `Diagnostics.TrapInfo`); `Viper.Core.
-Diagnostics` is a third thing (assertion helpers). `Viper.Memory` is a root
-class *and* the `Memory.GC`/`Memory.WeakRef` namespace; `Viper.Math` is a
+`Zanna.Diagnostics` is simultaneously a root *class* (1 member) and a
+namespace (`Diagnostics.Log`, `Diagnostics.TrapInfo`); `Zanna.Core.
+Diagnostics` is a third thing (assertion helpers). `Zanna.Memory` is a root
+class *and* the `Memory.GC`/`Memory.WeakRef` namespace; `Zanna.Math` is a
 class and the `Math.*` namespace. `Aes`/`Hash` leaf-collide between `Crypto`
 and `Crypto.Legacy` (intentional); `SceneGraph`/`SceneNode` collide between
 `Graphics2D` and `Graphics3D` (pre-uniqueness-rule debt).
@@ -556,7 +556,7 @@ correction.
 
 ### 2.1 Root types
 
-**`Viper.String`**
+**`Zanna.String`**
 
 - **(P0)** `Contains(str)` and `Has(str)` are the same C function
   (`rt_str_has`) published as two instance methods. Keep `Contains`
@@ -588,11 +588,11 @@ correction.
   `IndexOf(needle, start)` (arity overload), `LastIndexOf(needle)`.
 - **(P2)** `Levenshtein`/`Jaro`/`JaroWinkler`/`Hamming` live on `String`
   while `Text.FuzzyMatch` and `Text.Diff` own the same problem space —
-  move to `Viper.Text` (algorithms namespace per the decided Text charter).
+  move to `Zanna.Text` (algorithms namespace per the decided Text charter).
 - Clean-but-doc-critical: `Count(needle)` = occurrence count adjacent to
   `Length`; summary must say "occurrences of needle" (CC-9 allowlist entry).
 
-**`Viper.Option` / `Viper.Result`**
+**`Zanna.Option` / `Zanna.Result`**
 
 - **(P0)** `Option.Value()` returns the payload or **NULL when None**
   (verified in `rt_option.c`) — a null sentinel on the very type that exists
@@ -611,7 +611,7 @@ correction.
 - **(P2)** Both classes are `class_kind: namespace-facade` (CC-16); they are
   value objects.
 
-**`Viper.Terminal`**
+**`Zanna.Terminal`**
 
 - **(P0)** Three parallel typed print families coexist:
   `Print/PrintInt/PrintNum/PrintBool`, `PrintStr/PrintI64/PrintF64`, and
@@ -630,8 +630,8 @@ correction.
 - **(P2)** `SetColor(i64,i64)` and `SetPosition(i64,i64)` have undocumented
   parameter meaning/order (fg,bg? x,y or row,col?) (CC-20).
 
-**`Viper.Memory` / `Memory.GC` / `Memory.WeakRef` / `Runtime.GC` /
-`Runtime.Unsafe` / `Viper.Error` (function rows)** — the mirrors are CC-2.
+**`Zanna.Memory` / `Memory.GC` / `Memory.WeakRef` / `Runtime.GC` /
+`Runtime.Unsafe` / `Zanna.Error` (function rows)** — the mirrors are CC-2.
 Additional:
 
 - **(P1)** `WeakRef` publishes each operation twice on one class: instance
@@ -643,7 +643,7 @@ Additional:
 - **(P2)** `Memory.Release(obj) -> i64` returns an undocumented value
   (refcount?) — declare or return void.
 
-**`Viper.Diagnostics` (root class) / `Diagnostics.Log` /
+**`Zanna.Diagnostics` (root class) / `Diagnostics.Log` /
 `Diagnostics.TrapInfo` / `Core.Diagnostics`**
 
 - **(P1)** Three different things answer to "Diagnostics" (CC-23):
@@ -733,10 +733,10 @@ Additional:
 
 - **(P0)** `ProcessHandle.ReadStdoutResult()` and `PtySession.ReadResult()`
   return a `Collections.Map`, while `Pty.OpenResult` returns
-  `Viper.Result` — the `*Result` suffix now denotes two unrelated shapes.
+  `Zanna.Result` — the `*Result` suffix now denotes two unrelated shapes.
   Rename the Map-returning forms (or better, make them return
   `Result<T>`); reserve the `*Result` suffix exclusively for
-  `Viper.Result` returns platform-wide.
+  `Zanna.Result` returns platform-wide.
 - **(P1)** `Exec` vs `Process` split (blocking capture vs streaming handles)
   is real but the names don't communicate it, and `Exec` piles four shapes
   (`Run` → exit code, `Capture` → stdout, `Shell`/`ShellCapture`,
@@ -1528,9 +1528,9 @@ is the CC-2 deletion.
 ### 2.14 Sound
 
 **Namespace decision unexecuted** — the 02-naming decision makes
-`Viper.Audio` the canonical root; all 9 classes still live under
-`Viper.Sound`, including `Viper.Sound.Sound` (namespace-stuttered leaf) and
-`Viper.Sound.Audio` (the future root name as a *member* class). Executing
+`Zanna.Audio` the canonical root; all 9 classes still live under
+`Zanna.Sound`, including `Zanna.Sound.Sound` (namespace-stuttered leaf) and
+`Zanna.Sound.Audio` (the future root name as a *member* class). Executing
 the rename dissolves both oddities (`Audio.Sound`, `Audio.System` or
 `Audio.Mixer` for today's `Sound.Audio`).
 
@@ -1809,9 +1809,9 @@ classes that haven't caught up to their own namespace's standard.
 
 **A third meaning for the `*Result` suffix** — **(P1)** `FindPathResult`
 returns `Game.PathResult` (a typed result object), while `Pty.OpenResult`
-returns `Viper.Result` and `ProcessHandle.ReadStdoutResult` returns a
+returns `Zanna.Result` and `ProcessHandle.ReadStdoutResult` returns a
 `Collections.Map`. Three shapes, one suffix (see 2.2). Platform rule
-needed: `*Result` ⇒ `Viper.Result<T>`; typed query objects use plain verbs
+needed: `*Result` ⇒ `Zanna.Result<T>`; typed query objects use plain verbs
 (`FindPath -> PathResult` once the legacy sentinel form is deleted — the
 suffix becomes unnecessary).
 
@@ -2110,7 +2110,7 @@ convention worth documenting), `Interactable3D`, `AmbientBed3D`
 |---|---:|---|
 | `stability: legacy` rows | 266 functions (147 class methods, 114 properties) | The CC-1/CC-18 sweep; every group's canonical survivor already exists |
 | Duplicate C-symbol publications | 176 symbols | CC-1 function-level + 58 same-class method pairs; keep the canonical name per CC-1/Part 2 |
-| Whole-class mirrors | ~10 classes | `Input.Keyboard.Key*` (97 props), `Memory.GC`, `Memory.Retain/Release*`, `Viper.Error.*` rows, `Crypto.Hash` weak-algo mirrors, `Core.Box.ValueType*`, `Core.ValueType` |
+| Whole-class mirrors | ~10 classes | `Input.Keyboard.Key*` (97 props), `Memory.GC`, `Memory.Retain/Release*`, `Zanna.Error.*` rows, `Crypto.Hash` weak-algo mirrors, `Core.Box.ValueType*`, `Core.ValueType` |
 | Duplicate classes (2D) | 6 classes | `Emitter2D`+`ParticleSystem2D` (keep one; `Game.ParticleEmitter` is the same symbols again), `ScreenScaler`, `Surface2D`, `SpriteFont`, `Physics2D.CircleBody` (→ `Body.NewCircle`), `GUI.ClipboardText` (→ `System.Clipboard`) |
 | Parallel implementations | 2 families | `rt_file_*` vs `rt_io_file_*` (`File.ReadBytes`/`ReadLines`/`WriteBytes`/`WriteLines`), `Dir.Dirs/Files/List` vs `*Seq` vs `Entries` (keep `All`-forms and `Entries`/`Files`/`Dirs`); `Url.Encode/Decode` vs `Codec.UrlEncode/UrlDecode` (keep Codec) |
 | Sentinel twins of Option forms | ~30 methods | `TryPop`/`Find`/`FindWhere`/`TryRecv`/`TryGet`/`TryParse`/`FindNext`… [legacy] rows; then rename `XOption` → `X` |
@@ -2145,8 +2145,8 @@ Grouped by rule; the long tail is in Part 2 per-namespace notes.
 | `Hash.Fast*` | move out of `Crypto` / `NonCrypto*` | misuse-resistant placement |
 | `SHA256/HmacSHA256/Pbkdf2SHA256`, `MD5`, `CRC32`, `GLTF`, `FBX`, `LoadKTX2`, `SetAOMap`, `AddSSAO/DOF/TAA/SSR/FXAA`, `AddLOD/LOD*`, `RGBA/RGB`, `RotateCW/CCW`, `IsRTL/IsLTR`, `LikeCI`, `MatchCIDR`, `FromOBJ/FromSTL` | word-cased per decision (`Sha256`, `Gltf`, `Lod`, `Rgba`, …) | CC-12 (decided) |
 | `Cap`, `Len/LenSq`, `Norm`, `Dist`, `Pos`, `SetPos/SetVel`, `Cmp`, `Eq`, `Neg`, `Trunc`, `Sgn`, `Ceil`, `Diff` (sets), `Prev`, `Inc/Dec`, `Bg/Fg`, `Dir` (paths), `Abs/Ext/Sep/WithExt` (Path), `Base64Enc/Dec`, `HexEnc/Dec`, `WriteLn`, `Del*`, `Dt`, `InvulnSeconds`, `RefDistance`, `Gen` (Scheduler), `Vol`, `Attr` (keep? Xml domain), `Pass` (Url) | full words (`Capacity`, `Length/LengthSquared`, `Normalize`, `Distance`, `Position`, `Compare`, `Equals`, `Negate`, `Truncate`, `Sign`, `Ceiling`, `Difference`, `Previous`, `Increment/Decrement`, `Background/Foreground`, `Directory`, …) | CC-13 with explicit exception list (`Mul/Div/Sub/Add/Dot/Cross/Lerp/Slerp/Min/Max/Abs/Sqrt/Id`) |
-| `Text.{Json,JsonStream,JsonPath,Csv,Toml,Ini}` | `Viper.Data.*` | CC-3 (decided) |
-| `Viper.Sound.*` | `Viper.Audio.*` (`Sound.Sound` → `Audio.Sound`, `Sound.Audio` → `Audio.Mixer`) | decided namespace |
+| `Text.{Json,JsonStream,JsonPath,Csv,Toml,Ini}` | `Zanna.Data.*` | CC-3 (decided) |
+| `Zanna.Sound.*` | `Zanna.Audio.*` (`Sound.Sound` → `Audio.Sound`, `Sound.Audio` → `Audio.Mixer`) | decided namespace |
 | `Game.UI.Hud*`, `Game.UI.GameButton` | drop prefixes (`Game.UI.Label`, `Game.UI.Button`) | namespace scopes |
 | `Game3D.Collision3DEvent` | `CollisionEvent3D` | one suffix pattern (CC-21) |
 | `Physics3DBody/Physics3DWorld` | `PhysicsBody3D/PhysicsWorld3D` | suffix, not infix (CC-21) |
@@ -2195,7 +2195,7 @@ Grouped by rule; the long tail is in Part 2 per-namespace notes.
    never a success flag for a mutation (Localization/Canvas3D/SceneGraph).
 3. `*For(…, timeoutMs)` is the timeout suffix; timeout-miss returns
    `Option`, not null (Threads).
-4. `*Result` returns `Viper.Result` — nothing else (System vs Game).
+4. `*Result` returns `Zanna.Result` — nothing else (System vs Game).
 5. Factory styles: bare noun = variant, `From*` = conversion, `With*` =
    configured constructor, `New` = allocation; `Create` unused (CC-14).
 6. Time: f64 seconds unmarked for gameplay; integer ms always `Ms`-suffixed;
@@ -2239,7 +2239,7 @@ Grouped by rule; the long tail is in Part 2 per-namespace notes.
    or a unit doc line.
 7. No new zero-arg instance `Get*` returning plain values; no `Set*`
    method where a writable property fits.
-8. `Try*` returns `Option`/`i1`-probe; `*Result` returns `Viper.Result`.
+8. `Try*` returns `Option`/`i1`-probe; `*Result` returns `Zanna.Result`.
 9. No bare `obj` returns where the concrete type is known (CC-17
    ratchet: count must not increase).
 10. Class summaries must not match the boilerplate template; acronym-initial
@@ -2247,7 +2247,7 @@ Grouped by rule; the long tail is in Part 2 per-namespace notes.
 
 ## Appendix — Method
 
-- Ground truth: `./build/src/tools/viper/viper --dump-runtime-api` from this
+- Ground truth: `./build/src/tools/zanna/zanna --dump-runtime-api` from this
   checkout (v0.2.99-snapshot; 514 classes / 7,384 functions / 5,272 methods
   / 1,828 properties), saved and analyzed with ten sweep scripts
   (vocabulary matrix, lifecycle symmetry, boolean naming, accessor/property
@@ -2265,7 +2265,7 @@ Grouped by rule; the long tail is in Part 2 per-namespace notes.
   `c_symbol` comparison, `String.Contains` ≡ `Has` via method targets.
 - Excluded: the C ABI naming layer (`rt_*` symbols — internal per
   `runtime.def`), doc prose quality beyond catalog summaries, and behavior
-  testing (no code was built or changed; the `viper` binary was only read).
+  testing (no code was built or changed; the `zanna` binary was only read).
 - Counts quoted in findings are recomputable from the saved dump with the
   sweep scripts; severity tags total 25 P0, 124 P1, 106 P2 sites (several
   tags cover multi-member groups).

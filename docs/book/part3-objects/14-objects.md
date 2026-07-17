@@ -219,7 +219,7 @@ Think of it like this:
 Both `fido` and `rex` are Dogs -- they follow the same template. But they're separate objects with their own data. When Fido barks, Rex doesn't bark. When Rex's age increases, Fido's age stays the same.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Dog {
     expose String name;
@@ -268,7 +268,7 @@ This distinction matters because:
 You create an object with `new` followed by the class initializer arguments:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var rect1 = new Rectangle(10.0, 5.0);
 var rect2 = new Rectangle(3.0, 4.0);
@@ -363,7 +363,7 @@ Multiple initializers let callers provide different levels of detail. Some objec
 Initializers are the perfect place to validate input and ensure objects start in valid states:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Rectangle {
     expose Number width;
@@ -428,7 +428,7 @@ class GameCharacter {
 Some fields have values that depend on other fields. The initializer is where you establish these relationships:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     expose Number radius;
@@ -446,7 +446,7 @@ class Circle {
 However, this pattern can be dangerous -- if `radius` changes later, `diameter` and `circumference` will be out of sync. It's often better to compute derived values in methods:
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     expose Number radius;
@@ -502,7 +502,7 @@ Think of it as the method's window into its own object's data. Without `self`, t
 Let's trace through exactly what happens:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counter = new Counter();   // Step 1: Create object
 counter.increment();           // Step 2: Call method
@@ -542,7 +542,7 @@ The variable `count` doesn't exist in the method's local scope. It's a field tha
 This becomes clearer with multiple objects:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counterA = new Counter();
 var counterB = new Counter();
@@ -635,7 +635,7 @@ class BankAccount {
 Now the balance is hidden -- external code cannot access it directly:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var account = new BankAccount("Alice", 100.0);
 account.deposit(50.0);
@@ -762,7 +762,7 @@ class Player {
 Methods define what objects can *do*. They're functions that belong to a class and operate on its data through `self`.
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     expose Number radius;
@@ -868,7 +868,7 @@ Sometimes you have a choice: should this be a method on a class, or a standalone
 - You want to take advantage of encapsulation (accessing hidden fields)
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Good as a method - operates on the circle's own data
 class Circle {
@@ -891,7 +891,7 @@ class Circle {
 - The operation doesn't need access to hidden state
 
 ```rust
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Good as a function - works with two objects equally
 func distance(p1: Point, p2: Point) -> Number {
@@ -970,7 +970,7 @@ State is the current condition of an object -- the values of all its fields at a
 - Determines how the object behaves
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class TrafficLight {
     hide color: String;
@@ -1149,8 +1149,8 @@ Following the principle of "hide by default":
 ### Step 5: Write the Entity
 
 ```rust
-bind Viper.Terminal;
-bind Viper.Time.DateTime as DateTime;
+bind Zanna.Terminal;
+bind Zanna.Time.DateTime as DateTime;
 
 class BankAccount {
     hide accountNumber: String;
@@ -1262,7 +1262,7 @@ class BankAccount {
 ### Step 6: Use the Entity
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Create an account
@@ -1303,8 +1303,8 @@ Let's put everything together with a more complete example:
 ```rust
 module TodoApp;
 
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 class TodoItem {
     hide text: String;
@@ -1477,7 +1477,7 @@ Notice how:
 **Zia**
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Dog {
     expose String name;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -39,7 +39,7 @@ namespace il::tools::verify {
 int runCLI(
     int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm) {
     if (argc == 2 && std::string(argv[1]) == "--version") {
-        out << "IL v" << VIPER_IL_VERSION_STR << "\n";
+        out << "IL v" << ZANNA_IL_VERSION_STR << "\n";
         return 0;
     }
     if (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
@@ -90,7 +90,7 @@ int runCLI(
 /// @param argv Argument vector pointing at UTF-8 encoded strings.
 /// @return Zero on success or when printing the version banner; otherwise one
 ///         to signal argument, I/O, parse, or verification failures.
-#ifndef VIPER_IL_VERIFY_SKIP_MAIN
+#ifndef ZANNA_IL_VERIFY_SKIP_MAIN
 int main(int argc, char **argv) {
     il::support::SourceManager sm;
     return il::tools::verify::runCLI(argc, argv, std::cout, std::cerr, sm);

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/rt_game3d_cache.inc  (#included from rt_game3d.c; not a standalone
 // translation unit) Purpose: Game3D model-cache lifecycle: keys, residency estimation, victim
 // selection and eviction
@@ -233,7 +233,7 @@ static int64_t game3d_i64_from_u64_saturating(uint64_t value) {
     return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
 }
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 /// @brief Convert an int64 to uint64, treating negative values as 0.
 static uint64_t game3d_u64_from_i64_nonnegative(int64_t value) {
     return value > 0 ? (uint64_t)value : 0;
@@ -355,7 +355,7 @@ static uint64_t game3d_count_material_texture_once(void *texture,
 ///   cubemaps do not inflate cache residency estimates.
 static uint64_t game3d_count_material_cubemap_once(void *cubemap,
                                                    game3d_seen_ptr_set *seen_textures) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_cubemap3d *cm = (rt_cubemap3d *)cubemap;
     uint64_t total = 0;
     if (!cubemap || !seen_textures || !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) ||

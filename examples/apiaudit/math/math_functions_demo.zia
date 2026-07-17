@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Math - Core Math Functions
+// API Audit: Zanna.Math - Core Math Functions
 // =============================================================================
 // Tests: Pi, E, Tau, Abs, AbsInt, Sgn, SgnInt, Floor, Ceil, Round, Trunc,
 //        Min, Max, MinInt, MaxInt, Clamp, ClampInt, Sqrt, Pow, Exp, Log,
@@ -8,11 +8,11 @@
 // =============================================================================
 
 module MathFunctionsDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math Functions ===");
+    Say("=== API Audit: Zanna.Math Functions ===");
 
     // --- Constants ---
     Say("--- Constants ---");

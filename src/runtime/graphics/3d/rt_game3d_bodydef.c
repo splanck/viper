@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_bodydef.c
-// Purpose: BodyDef3D builder for the Viper.Game3D layer — shape/material/layer
+// Purpose: BodyDef3D builder for the Zanna.Game3D layer — shape/material/layer
 //   setters and getters plus the BodyDef -> Physics3D body factory. Split out of
 //   rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Key invariants:

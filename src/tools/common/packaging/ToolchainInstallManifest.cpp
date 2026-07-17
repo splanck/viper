@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/ToolchainInstallManifest.cpp
-// Purpose: Gather and validate the Viper toolchain staged install tree, classify
+// Purpose: Gather and validate the Zanna toolchain staged install tree, classify
 //          each file by kind, and map files to platform-specific install paths.
 //
 // Key invariants:
@@ -19,7 +19,7 @@
 //   - ToolchainInstallManifest owns its file entries; no external references.
 //
 // Links: ToolchainInstallManifest.hpp, PkgUtils.hpp,
-//        viper/runtime/RuntimeComponentManifest.hpp
+//        zanna/runtime/RuntimeComponentManifest.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,7 @@
 
 #include "PkgUtils.hpp"
 
-#include "viper/runtime/RuntimeComponentManifest.hpp"
+#include "zanna/runtime/RuntimeComponentManifest.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -41,7 +41,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Replace every backslash in text with a forward slash.
@@ -64,7 +64,7 @@ std::string lowerCopy(std::string text) {
 
 /// @brief Strip the platform-specific extension and "lib" prefix from a filename to
 /// get the canonical base name used for manifest lookups.
-/// e.g. "libvipergfx.a" → "vipergfx", "viper.exe" → "viper".
+/// e.g. "libzannagfx.a" → "zannagfx", "zanna.exe" → "zanna".
 std::string toolchainBaseNameFromFilename(std::string filename) {
     filename = lowerCopy(filename);
     if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".lib")
@@ -79,16 +79,16 @@ std::string toolchainBaseNameFromFilename(std::string filename) {
 }
 
 /// @brief Return true if base (after toolchainBaseNameFromFilename) matches a known
-/// Viper runtime component archive as listed in RuntimeComponentManifest.hpp.
+/// Zanna runtime component archive as listed in RuntimeComponentManifest.hpp.
 bool isRuntimeArchiveBaseName(const std::string &base) {
     return std::find(runtime_manifest::kRuntimeComponentArchives.begin(),
                      runtime_manifest::kRuntimeComponentArchives.end(),
                      base) != runtime_manifest::kRuntimeComponentArchives.end();
 }
 
-/// @brief Return true if base is a Viper optional support library (graphics, GUI, audio).
+/// @brief Return true if base is a Zanna optional support library (graphics, GUI, audio).
 bool isSupportLibraryBaseName(const std::string &base) {
-    return base == "vipergfx" || base == "vipergui" || base == "viperaud";
+    return base == "zannagfx" || base == "zannagui" || base == "zannaaud";
 }
 
 /// @brief Thin wrapper around isPathWithin for stage-prefix boundary checks.
@@ -166,10 +166,10 @@ uint32_t unixModeFor(const fs::path &path, bool executable) {
 }
 
 /// @brief Scan text for a version string using two heuristic patterns:
-/// CMake: set(PACKAGE_VERSION "<version>"), C++ header: #define VIPER_VERSION_STR "<version>".
+/// CMake: set(PACKAGE_VERSION "<version>"), C++ header: #define ZANNA_VERSION_STR "<version>".
 /// Returns the extracted version or empty string if neither pattern is found.
 std::string parseVersionFromText(const std::string &text) {
-    const char *patterns[] = {"set(PACKAGE_VERSION \"", "#define VIPER_VERSION_STR \""};
+    const char *patterns[] = {"set(PACKAGE_VERSION \"", "#define ZANNA_VERSION_STR \""};
     for (const char *pattern : patterns) {
         const std::size_t start = text.find(pattern);
         if (start == std::string::npos)
@@ -206,16 +206,16 @@ struct StagedBuildProvenance {
 /// @brief Read immutable source provenance from the installed generated header.
 StagedBuildProvenance detectBuildProvenance(const fs::path &stagePrefix) {
     StagedBuildProvenance result;
-    const fs::path header = stagePrefix / "include" / "viper" / "version.hpp";
+    const fs::path header = stagePrefix / "include" / "zanna" / "version.hpp";
     std::ifstream input(header, std::ios::binary);
     if (!input)
         return result;
     std::ostringstream bytes;
     bytes << input.rdbuf();
     const std::string text = bytes.str();
-    result.snapshot = parseQuotedDefine(text, "VIPER_SNAPSHOT_STR");
-    result.commit = parseQuotedDefine(text, "VIPER_SOURCE_COMMIT_STR");
-    const std::string state = parseQuotedDefine(text, "VIPER_SOURCE_STATE_STR");
+    result.snapshot = parseQuotedDefine(text, "ZANNA_SNAPSHOT_STR");
+    result.commit = parseQuotedDefine(text, "ZANNA_SOURCE_COMMIT_STR");
+    const std::string state = parseQuotedDefine(text, "ZANNA_SOURCE_STATE_STR");
     if (!state.empty())
         result.state = state;
     return result;
@@ -226,8 +226,8 @@ StagedBuildProvenance detectBuildProvenance(const fs::path &stagePrefix) {
 /// first, then the C++ version header. Returns empty if neither file exists.
 std::string detectManifestVersion(const fs::path &stagePrefix) {
     const fs::path versionCandidates[] = {
-        stagePrefix / "lib" / "cmake" / "Viper" / "ViperConfigVersion.cmake",
-        stagePrefix / "include" / "viper" / "version.hpp",
+        stagePrefix / "lib" / "cmake" / "Zanna" / "ZannaConfigVersion.cmake",
+        stagePrefix / "include" / "zanna" / "version.hpp",
     };
     for (const auto &candidate : versionCandidates) {
         std::error_code ec;
@@ -248,7 +248,7 @@ std::string detectManifestVersion(const fs::path &stagePrefix) {
 /// @brief Platform/architecture identity read from a staged executable.
 /// @details Toolchain packages may be built from cross-staged trees, so host CPU
 ///          and OS are not reliable. This structure captures the payload identity
-///          detected from the staged `viper` binary instead.
+///          detected from the staged `zanna` binary instead.
 struct StagedToolchainIdentity {
     std::string platform; ///< Canonical package platform: windows, macos, or linux.
     std::string arch;     ///< Canonical package architecture: x64, arm64, or universal.
@@ -408,7 +408,7 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
     throw std::runtime_error("universal Mach-O has no supported slices: " + path.string());
 }
 
-/// @brief Detect payload platform and architecture from the staged `viper` binary.
+/// @brief Detect payload platform and architecture from the staged `zanna` binary.
 /// @details Supports PE (Windows), ELF (Linux), thin Mach-O, and universal Mach-O
 ///          headers. Throws when the executable format or CPU is unsupported so
 ///          cross-packaging cannot silently inherit the build host identity.
@@ -424,7 +424,7 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
             if (machine == 0xAA64)
                 return {"windows", "arm64"};
         }
-        throw std::runtime_error("unsupported Windows viper executable architecture: " +
+        throw std::runtime_error("unsupported Windows zanna executable architecture: " +
                                  path.string());
     }
     if (bytes.size() >= 20 && bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' &&
@@ -434,14 +434,14 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
             return {"linux", "x64"};
         if (machine == 183)
             return {"linux", "arm64"};
-        throw std::runtime_error("unsupported ELF viper executable architecture: " + path.string());
+        throw std::runtime_error("unsupported ELF zanna executable architecture: " + path.string());
     }
     if (const auto arch = detectMachOArchitecture(path, bytes))
         return {"macos", *arch};
-    throw std::runtime_error("cannot determine staged viper executable platform: " + path.string());
+    throw std::runtime_error("cannot determine staged zanna executable platform: " + path.string());
 }
 
-/// @brief Require every Mach-O payload file to match the staged viper architecture.
+/// @brief Require every Mach-O payload file to match the staged zanna architecture.
 void validateMacOSPayloadArchitectures(const fs::path &stagePrefix,
                                        const std::vector<fs::path> &files,
                                        const std::string &expectedArch) {
@@ -460,11 +460,11 @@ void validateMacOSPayloadArchitectures(const fs::path &stagePrefix,
         const fs::path relative = stagedLexicalRelativePath(stagePrefix, file);
         throw std::runtime_error("macOS payload architecture mismatch: '" +
                                  relative.generic_string() + "' is " + *arch +
-                                 " but staged viper is " + expectedArch);
+                                 " but staged zanna is " + expectedArch);
     }
 }
 
-/// @brief Find the staged `viper` executable and return its payload identity.
+/// @brief Find the staged `zanna` executable and return its payload identity.
 /// @param stagePrefix Canonical staging root.
 /// @param files Files gathered from the stage or install manifest.
 /// @return Platform and architecture detected from the executable header.
@@ -474,12 +474,12 @@ StagedToolchainIdentity detectStagedToolchainIdentity(const fs::path &stagePrefi
         const fs::path rel = stagedLexicalRelativePath(stagePrefix, file);
         const std::string relText = lowerCopy(toForwardSlashes(rel.generic_string()));
         const std::string filename = lowerCopy(file.filename().string());
-        if (relText == "bin/viper" || relText == "bin/viper.exe" || filename == "viper" ||
-            filename == "viper.exe") {
+        if (relText == "bin/zanna" || relText == "bin/zanna.exe" || filename == "zanna" ||
+            filename == "zanna.exe") {
             return detectStagedExecutableIdentity(file);
         }
     }
-    throw std::runtime_error("staged toolchain is missing a detectable viper executable");
+    throw std::runtime_error("staged toolchain is missing a detectable zanna executable");
 }
 
 /// @brief Map a staged relative path to a ToolchainFileKind by inspecting its directory
@@ -495,13 +495,13 @@ ToolchainFileKind classifyFileKind(const std::string &relativePath) {
         return ToolchainFileKind::Binary;
     if (rel.rfind("include/", 0) == 0)
         return ToolchainFileKind::Header;
-    if (rel.rfind("lib/cmake/viper/", 0) == 0)
+    if (rel.rfind("lib/cmake/zanna/", 0) == 0)
         return ToolchainFileKind::CMakeConfig;
     if (rel.rfind("share/man/", 0) == 0)
         return ToolchainFileKind::ManPage;
     if (rel == "license" || rel == "readme.md" || rel.rfind("share/doc/", 0) == 0)
         return ToolchainFileKind::Doc;
-    if (rel.rfind("share/viper/", 0) == 0 || rel.rfind("share/", 0) == 0)
+    if (rel.rfind("share/zanna/", 0) == 0 || rel.rfind("share/", 0) == 0)
         return ToolchainFileKind::Extra;
     if ((rel.rfind("lib/", 0) == 0 || rel.find('/') == std::string::npos) &&
         isRuntimeArchiveBaseName(filenameBase)) {
@@ -666,7 +666,7 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
 
 /// @brief Return true if the manifest contains an entry whose stagedRelativePath equals
 /// relPath. Used by validateToolchainInstallManifest to check for specific
-/// required files like ViperConfig.cmake and ViperTargets.cmake.
+/// required files like ZannaConfig.cmake and ZannaTargets.cmake.
 bool manifestHasRelativePath(const ToolchainInstallManifest &manifest, std::string_view relPath) {
     const std::string needle = lowerCopy(std::string(relPath));
     return std::any_of(
@@ -692,7 +692,7 @@ bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
 }
 
 /// @brief Scan every CMakeConfig entry in the manifest for needle (case-insensitive).
-/// Used to detect optional support-library components declared in ViperTargets.cmake
+/// Used to detect optional support-library components declared in ZannaTargets.cmake
 /// so validation can require their corresponding library archives to be present.
 bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest,
                                  std::string_view needle) {
@@ -820,14 +820,14 @@ uint64_t ToolchainInstallManifest::totalSizeBytes() const {
     return total;
 }
 
-/// @brief Return the canonical set of file type associations for the Viper toolchain:
-/// .zia (Zia source), .bas (BASIC source), .il (Viper IL module). These are
+/// @brief Return the canonical set of file type associations for the Zanna toolchain:
+/// .zia (Zia source), .bas (BASIC source), .il (Zanna IL module). These are
 /// registered with the OS by all platform package builders (deb, pkg, msi).
 std::vector<FileAssoc> defaultToolchainFileAssociations() {
     return {
         {".zia", "Zia Source File", "text/x-zia", ""},
         {".bas", "BASIC Source File", "text/x-basic", ""},
-        {".il", "Viper IL Module", "text/x-viper-il", ""},
+        {".il", "Zanna IL Module", "text/x-zanna-il", ""},
     };
 }
 
@@ -880,9 +880,9 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     return manifest;
 }
 
-/// @brief Return the canonical binary tools that every Viper toolchain installer ships.
+/// @brief Return the canonical binary tools that every Zanna toolchain installer ships.
 std::vector<std::string> requiredToolchainBinaryNames() {
-    return {"viper",
+    return {"zanna",
             "zia",
             "vbasic",
             "ilrun",
@@ -892,7 +892,7 @@ std::vector<std::string> requiredToolchainBinaryNames() {
             "vbasic-server",
             "basic-ast-dump",
             "basic-lex-dump",
-            "viperide"};
+            "zannaide"};
 }
 
 /// @brief Validate that the manifest contains a complete, shippable toolchain.
@@ -940,18 +940,18 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
 
     for (const std::string &binary : requiredToolchainBinaryNames()) {
         if (!hasBinary(binary.c_str())) {
-            if (binary == "viperide") {
-                throw std::runtime_error("staged toolchain is missing required binary viperide "
+            if (binary == "zannaide") {
+                throw std::runtime_error("staged toolchain is missing required binary zannaide "
                                          "(configure installer build trees with "
-                                         "VIPER_INSTALL_VIPERIDE=ON)");
+                                         "ZANNA_INSTALL_ZANNAIDE=ON)");
             }
             throw std::runtime_error("staged toolchain is missing required binary " + binary);
         }
     }
-    if (!manifestHasRelativePath(manifest, "lib/cmake/Viper/ViperConfig.cmake"))
-        throw std::runtime_error("staged toolchain is missing lib/cmake/Viper/ViperConfig.cmake");
-    if (!manifestHasRelativePath(manifest, "lib/cmake/Viper/ViperTargets.cmake"))
-        throw std::runtime_error("staged toolchain is missing lib/cmake/Viper/ViperTargets.cmake");
+    if (!manifestHasRelativePath(manifest, "lib/cmake/Zanna/ZannaConfig.cmake"))
+        throw std::runtime_error("staged toolchain is missing lib/cmake/Zanna/ZannaConfig.cmake");
+    if (!manifestHasRelativePath(manifest, "lib/cmake/Zanna/ZannaTargets.cmake"))
+        throw std::runtime_error("staged toolchain is missing lib/cmake/Zanna/ZannaTargets.cmake");
 
     for (std::string_view archive : runtime_manifest::kRuntimeComponentArchives) {
         if (!manifestHasBaseNameKind(manifest, ToolchainFileKind::RuntimeArchive, archive)) {
@@ -960,30 +960,30 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
         }
     }
 
-    if (stagedCMakeMetadataMentions(manifest, "vipergfx") &&
-        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "vipergfx")) {
-        throw std::runtime_error("staged toolchain is missing support library vipergfx");
+    if (stagedCMakeMetadataMentions(manifest, "zannagfx") &&
+        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "zannagfx")) {
+        throw std::runtime_error("staged toolchain is missing support library zannagfx");
     }
-    if (stagedCMakeMetadataMentions(manifest, "vipergui") &&
-        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "vipergui")) {
-        throw std::runtime_error("staged toolchain is missing support library vipergui");
+    if (stagedCMakeMetadataMentions(manifest, "zannagui") &&
+        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "zannagui")) {
+        throw std::runtime_error("staged toolchain is missing support library zannagui");
     }
-    if (stagedCMakeMetadataMentions(manifest, "viperaud") &&
-        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "viperaud")) {
-        throw std::runtime_error("staged toolchain is missing support library viperaud");
+    if (stagedCMakeMetadataMentions(manifest, "zannaaud") &&
+        !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "zannaaud")) {
+        throw std::runtime_error("staged toolchain is missing support library zannaaud");
     }
 }
 
 /// @brief Map a file's staged relative path to its final install destination under policy.
-/// Windows: "bin/viper.exe" → "C:\Program Files\Viper\bin\viper.exe";
-/// macOS: "bin/viper" → "/usr/local/viper/bin/viper";
-/// Linux: "bin/viper" → "/usr/bin/viper" (FHS merge); PortableArchive: unchanged.
+/// Windows: "bin/zanna.exe" → "C:\Program Files\Zanna\bin\zanna.exe";
+/// macOS: "bin/zanna" → "/usr/local/zanna/bin/zanna";
+/// Linux: "bin/zanna" → "/usr/bin/zanna" (FHS merge); PortableArchive: unchanged.
 std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy policy) {
     const std::string rel =
         sanitizePackageRelativePath(file.stagedRelativePath, "staged install path");
     switch (policy) {
         case InstallPathPolicy::WindowsProgramFilesRoot: {
-            std::string path = "C:\\Program Files\\Viper";
+            std::string path = "C:\\Program Files\\Zanna";
             if (!rel.empty()) {
                 path.push_back('\\');
                 for (char ch : rel)
@@ -991,12 +991,12 @@ std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy pol
             }
             return path;
         }
-        case InstallPathPolicy::MacOSUsrLocalViperRoot:
-            return rel.empty() ? "/usr/local/viper" : "/usr/local/viper/" + rel;
+        case InstallPathPolicy::MacOSUsrLocalZannaRoot:
+            return rel.empty() ? "/usr/local/zanna" : "/usr/local/zanna/" + rel;
         case InstallPathPolicy::LinuxUsrRoot:
             if (file.kind == ToolchainFileKind::Doc && rel.rfind("share/doc/", 0) != 0) {
                 const std::string name = fs::path(rel).filename().generic_string();
-                return name.empty() ? "/usr/share/doc/viper" : "/usr/share/doc/viper/" + name;
+                return name.empty() ? "/usr/share/doc/zanna" : "/usr/share/doc/zanna/" + name;
             }
             return rel.empty() ? "/usr" : "/usr/" + rel;
         case InstallPathPolicy::PortableArchive:
@@ -1005,4 +1005,4 @@ std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy pol
     }
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

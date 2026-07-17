@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,8 +38,8 @@ struct Point {
 func start() {    var p: Point;
     p.x = 10;
     p.y = 20;
-    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
 }
 )";
     CompilerInput input{.source = source, .path = "valuebasic.zia"};
@@ -73,7 +73,7 @@ struct Vector2D {
 func start() {    var v1: Vector2D;
     v1.x = 3;
     v1.y = 4;
-    Viper.Terminal.SayInt(v1.lengthSquared());
+    Zanna.Terminal.SayInt(v1.lengthSquared());
 }
 )";
     CompilerInput input{.source = source, .path = "valuemethods.zia"};
@@ -97,9 +97,9 @@ struct Config {
 }
 
 func start() {    var config: Config;
-    Viper.Terminal.SayInt(config.width);
-    Viper.Terminal.SayInt(config.height);
-    Viper.Terminal.SayBool(config.fullscreen);
+    Zanna.Terminal.SayInt(config.width);
+    Zanna.Terminal.SayInt(config.height);
+    Zanna.Terminal.SayBool(config.fullscreen);
 }
 )";
     CompilerInput input{.source = source, .path = "valuedefaults.zia"};
@@ -133,8 +133,8 @@ func start() {    var p1: Point;
     p2.x = 100;   // Modify copy
 
     // Original should be unchanged
-    Viper.Terminal.SayInt(p1.x);  // 10
-    Viper.Terminal.SayInt(p2.x);  // 100
+    Zanna.Terminal.SayInt(p1.x);  // 10
+    Zanna.Terminal.SayInt(p2.x);  // 100
 }
 )";
     CompilerInput input{.source = source, .path = "valuecopy.zia"};
@@ -156,8 +156,8 @@ struct Point {
     expose Integer y;
 }
 
-func printPoint(p: Point) {    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
+func printPoint(p: Point) {    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
 }
 
 func start() {    var p: Point;
@@ -192,8 +192,8 @@ func createPoint(x: Integer, y: Integer) -> Point {    var p: Point;
 }
 
 func start() {    var p = createPoint(15, 25);
-    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
 }
 )";
     CompilerInput input{.source = source, .path = "valuereturn.zia"};
@@ -236,8 +236,8 @@ func start() {    var rect: Rectangle;
     rect.bottomRight.x = 100;
     rect.bottomRight.y = 50;
 
-    Viper.Terminal.SayInt(rect.width());
-    Viper.Terminal.SayInt(rect.height());
+    Zanna.Terminal.SayInt(rect.width());
+    Zanna.Terminal.SayInt(rect.height());
 }
 )";
     CompilerInput input{.source = source, .path = "valuenested.zia"};
@@ -276,7 +276,7 @@ func start() {    var poly: Polygon;
     poly.yCoords.add(0);
     poly.yCoords.add(10);
 
-    Viper.Terminal.SayInt(poly.vertexCount());
+    Zanna.Terminal.SayInt(poly.vertexCount());
 }
 )";
     CompilerInput input{.source = source, .path = "valuelist.zia"};
@@ -320,9 +320,9 @@ func start() {    var player = new Player();
 
     player.moveTo(10, 20);
 
-    Viper.Terminal.Say(player.name);
-    Viper.Terminal.SayInt(player.pos.x);
-    Viper.Terminal.SayInt(player.pos.y);
+    Zanna.Terminal.Say(player.name);
+    Zanna.Terminal.SayInt(player.pos.x);
+    Zanna.Terminal.SayInt(player.pos.y);
 }
 )";
     CompilerInput input{.source = source, .path = "valuemixed.zia"};
@@ -372,13 +372,13 @@ class MoveGen {
 
 func start() {    var gen = new MoveGen();
     var list = gen.generate();
-    Viper.Terminal.SayInt(list.count());
+    Zanna.Terminal.SayInt(list.count());
     var m0 = list.get(0);
-    Viper.Terminal.SayInt(m0.from);
-    Viper.Terminal.SayInt(m0.to);
+    Zanna.Terminal.SayInt(m0.from);
+    Zanna.Terminal.SayInt(m0.to);
     var m1 = list.get(1);
-    Viper.Terminal.SayInt(m1.from);
-    Viper.Terminal.SayInt(m1.to);
+    Zanna.Terminal.SayInt(m1.from);
+    Zanna.Terminal.SayInt(m1.to);
 }
 )";
     CompilerInput input{.source = source, .path = "valuebox_ret.zia"};
@@ -404,5 +404,5 @@ func start() {    var gen = new MoveGen();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_threadpool.c
-// Purpose: Implements a fixed-size thread pool for the Viper.Threads.Pool class.
+// Purpose: Implements a fixed-size thread pool for the Zanna.Threads.Pool class.
 //          Worker threads dequeue tasks from a FIFO linked-list queue protected
 //          by a monitor. Supports Submit, Wait (drain all pending tasks), and
 //          Shutdown.
@@ -125,13 +125,13 @@ static __thread pool_impl *g_current_worker_pool = NULL;
 #endif
 
 /// @brief Compute the default pending-task limit for new thread pools.
-/// @details Uses VIPER_THREADPOOL_MAX_PENDING when it contains a positive
+/// @details Uses ZANNA_THREADPOOL_MAX_PENDING when it contains a positive
 ///          integer, otherwise falls back to a conservative fixed cap. The cap
 ///          prevents unbounded queue growth under load while preserving existing
 ///          asynchronous behavior for normal workloads.
 /// @return Maximum number of tasks allowed to wait in the queue.
 static int64_t pool_default_max_pending(void) {
-    const char *env = getenv("VIPER_THREADPOOL_MAX_PENDING");
+    const char *env = getenv("ZANNA_THREADPOOL_MAX_PENDING");
     if (env && env[0]) {
         char *end = NULL;
         long long value = strtoll(env, &end, 10);

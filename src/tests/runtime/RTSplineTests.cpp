@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTSplineTests.cpp
-// Purpose: Tests for Viper.Spline curve interpolation utilities.
+// Purpose: Tests for Zanna.Spline curve interpolation utilities.
 //
 //===----------------------------------------------------------------------===//
 
@@ -380,7 +380,7 @@ static void test_sample() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Spline Tests ===\n\n");
+    printf("=== Zanna.Spline Tests ===\n\n");
 
     /* Linear */
     test_linear_endpoints();

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,8 +22,8 @@
 
 #include <cstdint>
 
-namespace viper::tests {
+namespace zanna::tests {
 
 static constexpr uint32_t kIpv4LoopbackHostOrder = 0x7f000001u;
 
-} // namespace viper::tests
+} // namespace zanna::tests

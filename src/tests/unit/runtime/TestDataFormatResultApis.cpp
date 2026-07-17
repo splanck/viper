@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@ static void release_obj(void *obj) {
 }
 
 /// @brief Assert that a Result is Err and carries a non-empty string message.
-/// @param result Opaque Viper.Result object returned by a runtime API under test.
+/// @param result Opaque Zanna.Result object returned by a runtime API under test.
 static void expect_err_with_message(void *result) {
     ASSERT_TRUE(result != nullptr);
     EXPECT_EQ(rt_result_is_err(result), 1);
@@ -120,5 +120,5 @@ TEST(DataFormatResultApis, JsonStreamNextResultWrapsTokenErrors) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

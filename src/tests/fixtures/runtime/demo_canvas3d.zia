@@ -1,13 +1,13 @@
 // Demo: Multi-object scene with orbiting camera, OBJ model, wireframe toggle
 module DemoCanvas3D;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
-    var canvas = Canvas3D.New("Viper 3D Engine", 800, 600);
+    var canvas = Canvas3D.New("Zanna 3D Engine", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes

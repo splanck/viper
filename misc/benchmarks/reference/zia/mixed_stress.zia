@@ -21,5 +21,5 @@ func start() {
         }
         sum = sum + tmp;
     }
-    Viper.System.Environment.Exit(sum);
+    Zanna.System.Environment.Exit(sum);
 }

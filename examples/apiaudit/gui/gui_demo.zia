@@ -1,7 +1,7 @@
 module GuiDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.GUI (All Classes) ===");
+    Say("=== API Audit: Zanna.GUI (All Classes) ===");
     Say("NOTE: GUI requires windowed app. API surface documentation only.");
     Say("");
     Say("--- App ---");

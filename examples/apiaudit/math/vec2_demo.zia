@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Math.Vec2 - 2D Vector Operations
+// API Audit: Zanna.Math.Vec2 - 2D Vector Operations
 // =============================================================================
 // Tests: New, Zero, One, X, Y, Add, Sub, Mul, Div, Neg, Dot, Cross,
 //        Len, LenSq, Dist, Norm, Lerp, Angle, Rotate
 // =============================================================================
 
 module Vec2Demo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Vec2 ===");
+    Say("=== API Audit: Zanna.Math.Vec2 ===");
 
     // --- Factory: New ---
     Say("--- New ---");

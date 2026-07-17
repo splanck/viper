@@ -1,0 +1,430 @@
+module explorer_action_runner;
+
+bind "../app/context_menus";
+bind "../app/workspace_watcher";
+bind "../ui/app_shell";
+bind "../ui/explorer_actions";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../services/locations";
+bind "../commands/file_commands";
+
+bind Zanna.GUI;
+bind IO = Zanna.IO;
+bind Path = Zanna.IO.Path;
+bind Dir = Zanna.IO.Dir;
+
+// ============================================================================
+// MODULE: explorer_action_runner
+// PURPOSE: Execute Explorer overlay actions and shared file-open/session helpers.
+//          The overlay owns user input; this module owns the filesystem mutation,
+//          document retargeting, semantic-index refresh, and user feedback.
+//
+// WHERE-THIS-FITS: main.zia pumps the ExplorerActionOverlay and delegates the
+//          completed action here. File tree clicks, context-menu commands, and
+//          palette commands all flow through these helpers for consistent results.
+//
+// TEACHING-NOTE: Explorer actions have side effects across several subsystems.
+//          Keep that orchestration in one module so future developers can see
+//          the full checklist: save editor state, mutate disk, refresh tree,
+//          update open documents/tabs, refresh the index, clear stale locations,
+//          and record session history when a file opens.
+// ============================================================================
+
+/// @brief Record the active named document in the recent-file session list.
+/// @param sessionMgr Session manager that owns recent-file persistence.
+/// @param docMgr Document manager used to find the active document.
+/// @details Untitled/new documents are intentionally skipped because they have
+///          no durable path that can be reopened in a future session.
+expose func RecordActiveFile(sessionMgr: session.SessionManager,
+                      docMgr: document_manager.DocumentManager) {
+    if sessionMgr == null or docMgr == null { return; }
+    var doc = docMgr.GetActive();
+    if doc != null and doc!.filePath != "" and doc!.isNew == false {
+        sessionMgr.RecordRecentFile(doc!.filePath);
+    }
+}
+
+/// @brief Open a file path and add it to the recent-file session list.
+/// @param shell Workbench shell passed to the file command handler.
+/// @param docMgr Document manager receiving the opened file.
+/// @param engine Editor engine that loads the opened document.
+/// @param tabs Tab controller refreshed by the file command handler.
+/// @param sessionMgr Session manager used to record recent files.
+/// @param path Absolute path to open.
+expose func OpenFileAndRecord(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       tabs: editor_tabs.EditorTabs,
+                       sessionMgr: session.SessionManager,
+                       path: String) {
+    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    sessionMgr.RecordRecentFile(path);
+}
+
+/// @brief Apply a completed non-modal explorer action.
+/// @details The floating explorer overlay gathers user intent while this helper
+///          performs filesystem mutation, document retargeting, project-tree
+///          refresh, semantic-index invalidation, and status updates. Keeping
+///          that orchestration here gives right-click, palette, and shortcut
+///          paths identical behavior.
+/// @param shell Workbench shell for status, toasts, and overlay validation.
+/// @param overlay Completed explorer overlay carrying target and input state.
+/// @param action One of explorer_actions.ACTION_*.
+/// @param projMgr Project/file-tree manager.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param tabs Editor tab controller.
+/// @param sessionMgr Session manager used to record opened files.
+/// @param indexer Semantic project indexer.
+/// @param locStore Stored locations invalidated by tree moves.
+/// @return True when the action opened a file and the caller should suppress a
+///         pending reload prompt for that frame.
+expose func ApplyExplorerAction(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         action: Integer,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         sessionMgr: session.SessionManager,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) -> Boolean {
+    if action == explorer_actions.EXPLORER_ACTION_NEW_FILE {
+        return ApplyExplorerNewFile(shell, overlay, projMgr, docMgr, engine, tabs, sessionMgr, indexer);
+    }
+    if action == explorer_actions.EXPLORER_ACTION_NEW_FOLDER {
+        ApplyExplorerNewFolder(shell, overlay, projMgr);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_DUPLICATE {
+        ApplyExplorerDuplicate(shell, overlay, projMgr, indexer);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_RENAME {
+        ApplyExplorerRename(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_DELETE {
+        ApplyExplorerDelete(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
+        return false;
+    }
+    return false;
+}
+
+/// @brief Create a new file from the explorer overlay.
+/// @return True when the new file was opened in the editor.
+func ApplyExplorerNewFile(shell: app_shell.AppShell,
+                          overlay: explorer_actions.ExplorerActionOverlay,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          tabs: editor_tabs.EditorTabs,
+                          sessionMgr: session.SessionManager,
+                          indexer: project_index.ProjectIndexer) -> Boolean {
+    var name = overlay.ReadValue();
+    var dir = overlay.TargetDir();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return false; }
+    if dir == "" or Dir.Exists(dir) == false {
+        overlay.Reject(shell, "Choose an existing folder.");
+        return false;
+    }
+    var newPath = Path.Join(dir, name);
+    if IO.File.Exists(newPath) or Dir.Exists(newPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return false;
+    }
+    IO.File.Touch(newPath);
+    projMgr.RefreshTree();
+    indexer.UpdateFile(newPath);
+    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
+    GUI.Toast.Success("Created: " + name);
+    overlay.Finish();
+    return true;
+}
+
+/// @brief Create a new folder from the explorer overlay.
+func ApplyExplorerNewFolder(shell: app_shell.AppShell,
+                            overlay: explorer_actions.ExplorerActionOverlay,
+                            projMgr: project_manager.ProjectManager) {
+    var name = overlay.ReadValue();
+    var dir = overlay.TargetDir();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if dir == "" or Dir.Exists(dir) == false {
+        overlay.Reject(shell, "Choose an existing folder.");
+        return;
+    }
+    var newPath = Path.Join(dir, name);
+    if IO.File.Exists(newPath) or Dir.Exists(newPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return;
+    }
+    Dir.Make(newPath);
+    projMgr.RefreshTree();
+    shell.SetStatusLeft("Created folder: " + name);
+    GUI.Toast.Success("Created folder: " + name);
+    overlay.Finish();
+}
+
+/// @brief Duplicate an existing file from the explorer overlay.
+func ApplyExplorerDuplicate(shell: app_shell.AppShell,
+                            overlay: explorer_actions.ExplorerActionOverlay,
+                            projMgr: project_manager.ProjectManager,
+                            indexer: project_index.ProjectIndexer) {
+    var name = overlay.ReadValue();
+    var sourcePath = overlay.TargetPath();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if sourcePath == "" or IO.File.Exists(sourcePath) == false {
+        overlay.Reject(shell, "Duplicate is available for files.");
+        return;
+    }
+    var targetPath = Path.Join(Path.Directory(sourcePath), name);
+    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return;
+    }
+    IO.File.Copy(sourcePath, targetPath);
+    projMgr.RefreshTree();
+    indexer.UpdateFile(targetPath);
+    shell.SetStatusLeft("Duplicated: " + name);
+    GUI.Toast.Success("Duplicated: " + name);
+    overlay.Finish();
+}
+
+/// @brief Rename a file or folder from the explorer overlay.
+func ApplyExplorerRename(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    var name = overlay.ReadValue();
+    var selectedPath = overlay.TargetPath();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if selectedPath == "" {
+        overlay.Reject(shell, "Choose a file or folder to rename.");
+        return;
+    }
+    var targetPath = Path.Join(Path.Directory(selectedPath), name);
+    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return;
+    }
+    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Rename",
+                                                    selectedPath) == false {
+        shell.SetStatusLeft("Rename canceled");
+        overlay.Finish();
+        return;
+    }
+
+    var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, name, docMgr);
+    if rewritePreview > 0 {
+        var previewMsg = "Rename will update " + rewritePreview + " Zia bind path";
+        if rewritePreview != 1 { previewMsg = previewMsg + "s"; }
+        previewMsg = previewMsg + " for " + name + ". Press Rename again to continue.";
+        if overlay.validationMessage != previewMsg {
+            overlay.Reject(shell, previewMsg);
+            return;
+        }
+    }
+
+    file_commands.SaveEditorState(docMgr, engine);
+    var renamedPath = projMgr.RenamePath(selectedPath, name, docMgr);
+    if renamedPath == "" {
+        overlay.Reject(shell, "Rename failed.");
+        return;
+    }
+    tabs.RefreshFromDocuments(docMgr);
+    var activeAfterRename = docMgr.GetActive();
+    if activeAfterRename != null {
+        engine.LoadDocument(activeAfterRename);
+        shell.SetBreadcrumbPath(activeAfterRename.filePath);
+    }
+    indexer.RemoveFile(selectedPath);
+    workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    workspace_watcher.InvalidateWorkspaceLocations(shell, locStore, engine);
+    var status = "Renamed: " + Path.Name(renamedPath);
+    if projMgr.lastBindRewriteCount > 0 {
+        status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
+    }
+    shell.SetStatusLeft(status);
+    GUI.Toast.Success(status);
+    overlay.Finish();
+}
+
+/// @brief Move a file or folder to project trash from the explorer overlay.
+func ApplyExplorerDelete(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    var deletePath = overlay.TargetPath();
+    if deletePath == "" {
+        overlay.Reject(shell, "Choose a file or folder to move to trash.");
+        return;
+    }
+    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Move to Trash",
+                                                    deletePath) == false {
+        shell.SetStatusLeft("Move to trash canceled");
+        overlay.Finish();
+        return;
+    }
+    if projMgr.DeletePath(deletePath, docMgr) == false {
+        overlay.Reject(shell, "Move to trash failed.");
+        return;
+    }
+    indexer.RemoveFile(deletePath);
+    workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    workspace_watcher.InvalidateWorkspaceLocations(shell, locStore, engine);
+    tabs.RefreshFromDocuments(docMgr);
+    var activeAfterDelete = docMgr.GetActive();
+    if activeAfterDelete != null {
+        engine.LoadDocument(activeAfterDelete);
+    } else {
+        engine.SetText("");
+        engine.ClearModified();
+    }
+    if projMgr.lastTrashPath != "" {
+        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath)
+                            + " -> " + projMgr.RelativePath(projMgr.lastTrashPath));
+    } else {
+        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath));
+    }
+    overlay.Finish();
+}
+
+/// @brief Validate a user-entered explorer child name and keep the overlay open on failure.
+/// @return True when the name is safe to use as a single path component.
+func ValidateExplorerChildName(shell: app_shell.AppShell,
+                               overlay: explorer_actions.ExplorerActionOverlay,
+                               name: String) -> Boolean {
+    if context_menus.IsSafeChildName(name) {
+        return true;
+    }
+    overlay.Reject(shell, "Use a plain name, not a path.");
+    return false;
+}
+
+/// @brief Reopen the most recently closed named file, if one is available.
+/// @param shell Workbench shell for status/toast feedback.
+/// @param docMgr Document manager that tracks recently closed paths.
+/// @param engine Editor engine that loads the reopened document.
+/// @param tabs Tab controller refreshed by the file-open command.
+/// @param sessionMgr Session manager used to re-record the reopened file.
+expose func ReopenClosedFile(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      sessionMgr: session.SessionManager) {
+    var path = docMgr.PopRecentlyClosedPath();
+    if path == "" {
+        GUI.Toast.Info("No recently closed file");
+        shell.SetStatusLeft("No recently closed file");
+        return;
+    }
+    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path);
+    shell.SetStatusLeft("Reopened: " + Path.Name(path));
+}
+
+/// @brief Compatibility entry point that opens the integrated new-file overlay.
+/// @details Older tree command wiring called this helper directly. The active
+///          workbench now routes through ExplorerActionOverlay so file creation
+///          stays visually integrated with the IDE instead of opening a blocking
+///          message box.
+expose func TreeNewFile(shell: app_shell.AppShell,
+                 overlay: explorer_actions.ExplorerActionOverlay,
+                 projMgr: project_manager.ProjectManager) {
+    var dir = context_menus.ContextDirForPath(projMgr, projMgr.SelectedPath());
+    if dir == "" {
+        shell.SetStatusLeft("Choose a project folder first");
+        return;
+    }
+    overlay.OpenNewFile(shell, dir);
+}
+
+/// @brief Compatibility entry point that opens the integrated new-folder overlay.
+/// @details Keeps legacy command handlers on the same non-modal explorer action
+///          path used by the file tree context menu and command palette.
+expose func TreeNewFolder(shell: app_shell.AppShell,
+                   overlay: explorer_actions.ExplorerActionOverlay,
+                   projMgr: project_manager.ProjectManager) {
+    var dir = context_menus.ContextDirForPath(projMgr, projMgr.SelectedPath());
+    if dir == "" {
+        shell.SetStatusLeft("Choose a project folder first");
+        return;
+    }
+    overlay.OpenNewFolder(shell, dir);
+}
+
+/// @brief Compatibility entry point that opens the integrated rename overlay.
+/// @details Rename confirmation and bind-rewrite preview now stay inside the
+///          explorer overlay so the operation feels like an IDE interaction.
+expose func TreeRename(shell: app_shell.AppShell,
+                overlay: explorer_actions.ExplorerActionOverlay,
+                projMgr: project_manager.ProjectManager) {
+    var selectedPath = projMgr.SelectedPath();
+    if selectedPath == "" {
+        shell.SetStatusLeft("Choose a file or folder to rename");
+        return;
+    }
+    overlay.OpenRename(shell, selectedPath);
+}
+
+/// @brief Compatibility entry point that opens the integrated move-to-trash overlay.
+/// @details The active deletion path uses an inline confirmation panel and then
+///          delegates to ApplyExplorerDelete after the user confirms.
+expose func TreeDelete(shell: app_shell.AppShell,
+                overlay: explorer_actions.ExplorerActionOverlay,
+                projMgr: project_manager.ProjectManager) {
+    var deletePath = projMgr.SelectedPath();
+    if deletePath == "" {
+        shell.SetStatusLeft("Choose a file or folder to move to trash");
+        return;
+    }
+    overlay.OpenDelete(shell, deletePath);
+}
+
+/// @brief Per-frame: apply a completed file-tree drag-and-drop as a file move.
+/// @details Reads the latched drop (source/target node paths), moves the source
+///          into the target folder through ProjectManager.MovePathInto (which
+///          updates open documents and project binds), reindexes, refreshes the
+///          active editor, and reports the result. Invalid drops are rejected
+///          with a status message.
+expose func PumpTreeDrops(shell: app_shell.AppShell,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          indexer: project_index.ProjectIndexer) {
+    var tree = shell.workbench.sidebarTree;
+    if tree == null { return; }
+    if tree.WasDropReceived() == false { return; }
+    var src = tree.GetDropSourceData();
+    var dst = tree.GetDropTargetData();
+    tree.ClearDrop();
+    if src == "" or dst == "" { return; }
+
+    var movedPath = projMgr.MovePathInto(src, dst, docMgr);
+    if movedPath == "" {
+        shell.SetStatusLeft("Move canceled (invalid drop target)");
+        return;
+    }
+
+    var activeAfter = docMgr.GetActive();
+    if activeAfter != null {
+        engine.LoadDocument(activeAfter!);
+        if activeAfter!.isNew == false {
+            shell.SetBreadcrumbPath(activeAfter!.filePath);
+        }
+    }
+    workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    shell.SetStatusLeft("Moved " + Path.Name(movedPath) + " to folder");
+}

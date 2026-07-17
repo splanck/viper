@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt.hpp"
@@ -86,9 +86,9 @@ static int g_tests_total = 0;
 
 static void set_software_backend_env() {
 #if RT_PLATFORM_WINDOWS
-    _putenv_s("VIPER_3D_BACKEND", "software");
+    _putenv_s("ZANNA_3D_BACKEND", "software");
 #else
-    setenv("VIPER_3D_BACKEND", "software", 1);
+    setenv("ZANNA_3D_BACKEND", "software", 1);
 #endif
 }
 

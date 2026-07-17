@@ -21,5 +21,5 @@ func start() {
         var r3: Integer = mulPair(r2, 2);
         sum = sum + r3;
     }
-    Viper.System.Environment.Exit(sum);
+    Zanna.System.Environment.Exit(sum);
 }

@@ -1,14 +1,14 @@
-# Viper Runtime API Surface Review
+# Zanna Runtime API Surface Review
 
 Date: 2026-07-01
-Scope: frontend-visible `Viper.*` runtime API as reported by
-`./build/src/tools/viper/viper --dump-runtime-api`, correlated with
+Scope: frontend-visible `Zanna.*` runtime API as reported by
+`./build/src/tools/zanna/zanna --dump-runtime-api`, correlated with
 `src/il/runtime/runtime.def`, generated runtime classes, and `rtgen` behavior.
 
 > ## ✅ Confirmation Review — 2026-06-30 (independent)
 >
 > Every measured number, code reference, and representative example below was
-> re-derived from first principles: the live `viper` binary
+> re-derived from first principles: the live `zanna` binary
 > (`--dump-runtime-api`, `--dump-runtime-classes`), a direct parse of
 > `src/il/runtime/runtime.def` (all 6,279 `RT_FUNC` / 337 `RT_ALIAS` entries),
 > and the cited source lines. `rtgen` itself prints
@@ -24,7 +24,7 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 >   mismatches reproduce precisely.
 > - The Game3D lowercase-name total reproduces at 301 vs the reported 305
 >   (long-tail classifier edge); the per-class table is exact row-for-row.
-> - One illustrative example is imprecise: `Viper.Graphics3D.Material3D`
+> - One illustrative example is imprecise: `Zanna.Graphics3D.Material3D`
 >   Alpha/Metallic/Roughness/AmbientOcclusion are set via property setters (`set_*`), not
 >   `Set*` methods, so they are not accessor-duplication cases. Flagged inline.
 
@@ -46,7 +46,7 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 > - No lowercase/camelCase public class member names remain in the live class
 >   catalog. Excluding canonical `get_` / `set_` accessor function spellings, no
 >   lowercase public `RT_FUNC` leaves remain.
-> - `Viper.Math.Random.inst_*` implementation targets are now
+> - `Zanna.Math.Random.inst_*` implementation targets are now
 >   `RT_INTERNAL_FUNC` descriptors: callable by class-method lowering and native
 >   codegen, but hidden from standalone frontend externs and `--dump-runtime-api`.
 >   Zia runtime method binding derives the implicit-receiver skip from resolved
@@ -74,9 +74,9 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 >   these exact setter names and intentionally leaves selectors/counts such as
 >   `Dropdown.SetSelected(index)` and `Toast.SetMaxVisible(count)` as integers.
 > - `--dump-runtime-api` now emits public `runtime.def` signature text for
->   frontend-visible `Viper.*` descriptors rather than lowered IL ABI
+>   frontend-visible `Zanna.*` descriptors rather than lowered IL ABI
 >   signatures. The live dump has zero public `ptr` signature tokens, and
->   `test_runtime_registry` guards `Viper.*` descriptor signature text.
+>   `test_runtime_registry` guards `Zanna.*` descriptor signature text.
 > - Direct parse of the current public `RT_FUNC` rows finds no public
 >   same-C-symbol + same-signature duplicate groups. `RT_INTERNAL_FUNC` rows are
 >   deliberately excluded from that public API measurement.
@@ -90,27 +90,27 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 >   `Length` properties and rejects new cardinality `Length` drift.
 > - Descendant namespace functions are no longer synthesized onto parent classes.
 > - Cross-class constructor targets no longer synthesize public methods such as
->   `Viper.Core.ValueType.ValueType`.
+>   `Zanna.Core.ValueType.ValueType`.
 > - Constructor metadata now targets only canonical `Class.New` functions.
 >   Named factories such as `Open`, `Load`, `Parse`, `FromSeq`, `Some`, `Ok`,
 >   `Today`, `Range`, `Connect`, and `Build` are explicit factory methods only;
 >   Zia `new` no longer treats them as constructor aliases.
-> - `Viper.Functional.Lazy.New` was removed from the public runtime surface after
+> - `Zanna.Functional.Lazy.New` was removed from the public runtime surface after
 >   confirming there were no in-repo source, test, example, or doc call sites.
 >   `Lazy.Of*` remain the public value factories.
 > - Writable property plus `Set<Property>` duplicate methods are gone from the
->   live class catalog. The last five were `Viper.Game3D.Entity3D.Mesh`,
+>   live class catalog. The last five were `Zanna.Game3D.Entity3D.Mesh`,
 >   `Material`, `Name`, `Layer`, and `CollisionMask`; call sites now use
 >   property assignment.
 > - Removed stale C-only generic modifier key aliases
 >   (`rt_keyboard_key_shift`, `rt_keyboard_key_ctrl`, `rt_keyboard_key_alt`) after
 >   verifying the public `KeyShift`/`KeyCtrl`/`KeyAlt` aliases were gone.
-> - Concrete GUI widget classes no longer copy `Viper.GUI.Widget` methods into
+> - Concrete GUI widget classes no longer copy `Zanna.GUI.Widget` methods into
 >   their public class catalogs. Base widget methods remain on
->   `Viper.GUI.Widget`; shared runtime method resolution and Zia completion
+>   `Zanna.GUI.Widget`; shared runtime method resolution and Zia completion
 >   expose those inherited operations for concrete widget handles without
 >   duplicating the public API surface. The class-qualified surface audit now
->   rejects copied `Viper.GUI.Widget.*` targets on other GUI classes.
+>   rejects copied `Zanna.GUI.Widget.*` targets on other GUI classes.
 > - Current focused verification passes:
 >   `test_runtime_class_qualified_surface`, `test_runtime_classes_catalog`,
 >   `test_method_index_basic`, `test_basic_runtime_calls`, `test_zia_rt_new`,
@@ -121,23 +121,23 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 >   strict `rtgen` audit with header sync and unclassified-symbol checks.
 > - Final demo/IDE verification requested for this cleanup passes:
 >   `./scripts/build_demos_mac.sh` reports 17 passed / 0 failed, and
->   `./scripts/build_ide.sh` builds `viperide/bin/viperide`.
+>   `./scripts/build_ide.sh` builds `zannaide/bin/zannaide`.
 
 ## Executive Summary
 
 > ✅ **CONFIRMED.** Live dump = **6,620** functions / **461** classes; `rtgen`
 > audit prints **6,279** functions / **337** aliases / **461** classes verbatim;
 > audit + focused tests pass. All 8 highest-impact items reproduced below;
-> item 2's "168 methods on `Viper.Math`" sums exactly to 168.
+> item 2's "168 methods on `Zanna.Math`" sums exactly to 168.
 
 The current runtime API surface is not just large; it is polluted by aliases,
 generator side effects, mixed naming conventions, and type-shape inconsistencies.
-Because Viper is pre-alpha, the right policy is to delete compatibility aliases
+Because Zanna is pre-alpha, the right policy is to delete compatibility aliases
 and normalize the surface now rather than carrying migration debt forward.
 
 Measured surface:
 
-- Live dump: 6,620 public `Viper.*` functions and 461 runtime classes.
+- Live dump: 6,620 public `Zanna.*` functions and 461 runtime classes.
 - `rtgen` audit: 6,279 declared functions, 337 `RT_ALIAS` entries, 461 classes.
 - Surface audit and focused tests pass, which means the junk is consistently
   registered; it does not mean the surface is clean.
@@ -147,9 +147,9 @@ Highest-impact findings:
 1. Delete all 337 public `RT_ALIAS` entries. They are pre-alpha debt.
 2. Stop `rtgen` from auto-adding descendant namespace functions as parent-class
    methods. This creates 203 bogus class methods, including 168 methods on
-   `Viper.Math` copied from `Viper.Math.Bits`, `BigInt`, `Vec2`, `Vec3`, etc.
+   `Zanna.Math` copied from `Zanna.Math.Bits`, `BigInt`, `Vec2`, `Vec3`, etc.
 3. Stop constructor auto-method injection or constrain it to explicit `New`
-   factories. It creates odd methods such as `Viper.Core.ValueType.ValueType`.
+   factories. It creates odd methods such as `Zanna.Core.ValueType.ValueType`.
 4. Fix runtime method indexing or forbid same-name/same-arity overloads. Today
    `RuntimeRegistry` indexes methods by class, method, and arity only, so
    same-arity overloads overwrite each other.
@@ -194,17 +194,17 @@ Relevant code:
 - `src/il/runtime/runtime.def:142`
 - `src/il/runtime/runtime.def:151`
 - `src/il/runtime/runtime.def:162`
-- `src/tools/viper/main.cpp:292`
-- `src/tools/viper/main.cpp:300`
+- `src/tools/zanna/main.cpp:292`
+- `src/tools/zanna/main.cpp:300`
 
 ## P0: Delete All Compatibility Aliases
 
 > ✅ **CONFIRMED.** Exactly **337** `RT_ALIAS` entries (line-anchored count;
 > `rtgen` audit agrees). The alias-group table reproduces exactly when rolled up
-> to the first 3 namespace segments (`Viper.Game.UI` 72, `ParticleSystem2D` 28,
+> to the first 3 namespace segments (`Zanna.Game.UI` 72, `ParticleSystem2D` 28,
 > `Emitter2D` 28, `Lighting2D` 13, `System.Process` 10, … `System.Machine` 6).
-> Representative aliases all present: `Viper.Box.*` (16), `Viper.Parse.*` (13),
-> `Viper.Convert.*` (6), plus `String.Length`, `ConcatSelf`, `FromFloat`,
+> Representative aliases all present: `Zanna.Box.*` (16), `Zanna.Parse.*` (13),
+> `Zanna.Convert.*` (6), plus `String.Length`, `ConcatSelf`, `FromFloat`,
 > `List.Flip`, `List.Items`. `RuntimeSurfacePolicy.inc` exists as cited.
 
 There are 337 `RT_ALIAS` entries. In a pre-alpha surface, these should not be
@@ -215,45 +215,45 @@ Largest alias groups by public prefix:
 
 | Count | Prefix |
 |---:|---|
-| 72 | `Viper.Game.UI` |
-| 28 | `Viper.Graphics.ParticleSystem2D` |
-| 28 | `Viper.Graphics.Emitter2D` |
-| 13 | `Viper.Graphics.Lighting2D` |
-| 10 | `Viper.System.Process` |
-| 10 | `Viper.Graphics.ScreenScaler` |
-| 10 | `Viper.Game3D.Diagnostics` |
-| 8 | `Viper.Text.NumberFormat` |
-| 8 | `Viper.Graphics.GpuTexture2D` |
-| 8 | `Viper.Text.Json` |
-| 7 | `Viper.Graphics.Surface2D` |
-| 7 | `Viper.Math.Vec3` |
-| 7 | `Viper.Graphics3D.Material3D` |
-| 6 | `Viper.Graphics.SpriteFont` |
-| 6 | `Viper.System.Environment` |
-| 6 | `Viper.System.Machine` |
+| 72 | `Zanna.Game.UI` |
+| 28 | `Zanna.Graphics.ParticleSystem2D` |
+| 28 | `Zanna.Graphics.Emitter2D` |
+| 13 | `Zanna.Graphics.Lighting2D` |
+| 10 | `Zanna.System.Process` |
+| 10 | `Zanna.Graphics.ScreenScaler` |
+| 10 | `Zanna.Game3D.Diagnostics` |
+| 8 | `Zanna.Text.NumberFormat` |
+| 8 | `Zanna.Graphics.GpuTexture2D` |
+| 8 | `Zanna.Text.Json` |
+| 7 | `Zanna.Graphics.Surface2D` |
+| 7 | `Zanna.Math.Vec3` |
+| 7 | `Zanna.Graphics3D.Material3D` |
+| 6 | `Zanna.Graphics.SpriteFont` |
+| 6 | `Zanna.System.Environment` |
+| 6 | `Zanna.System.Machine` |
 
 Representative aliases to delete:
 
-- `Viper.Box.*` -> `Viper.Core.Box.*`
-- `Viper.Parse.*` -> `Viper.Core.Parse.*`
-- `Viper.Convert.*` -> `Viper.Core.Convert.*`
-- `Viper.String.Length` -> `Viper.String.get_Length`
-- `Viper.String.ConcatSelf` -> `Viper.String.Concat`
-- `Viper.String.FromFloat` -> `Viper.String.FromSingle`
-- `Viper.Collections.List.Flip` -> `Reverse`
-- `Viper.Collections.List.Items` -> `ToSeq`
-- `Viper.Collections.Bag.Merge/Common/Put/Drop` -> `Union/Intersect/Add/Remove`
-- `Viper.Collections.Set.Merge/Common` -> `Union/Intersect`
-- `Viper.Collections.SortedSet.Merge/Common/Put/Drop` -> canonical set verbs
-- `Viper.Collections.*.get_Count` aliases to `get_Length`
-- `Viper.Graphics.Surface2D.*` -> `RenderTarget2D.*`
-- `Viper.Graphics.GpuTexture2D.*` -> `Texture2D.*`
-- `Viper.Graphics.ScreenScaler.*` -> `Viewport2D.*`
-- `Viper.Graphics.ParticleSystem2D.*` and `Viper.Graphics.Emitter2D.*` ->
-  `Viper.Game.ParticleEmitter.*`
-- `Viper.Game.UI.*` -> `Viper.Game.UI.Hud*`
-- `Viper.Game3D.Environment.*` -> `Environment3D.*`
-- `Viper.Game3D.Diagnostics.*` -> `Diagnostics3D.*`
+- `Zanna.Box.*` -> `Zanna.Core.Box.*`
+- `Zanna.Parse.*` -> `Zanna.Core.Parse.*`
+- `Zanna.Convert.*` -> `Zanna.Core.Convert.*`
+- `Zanna.String.Length` -> `Zanna.String.get_Length`
+- `Zanna.String.ConcatSelf` -> `Zanna.String.Concat`
+- `Zanna.String.FromFloat` -> `Zanna.String.FromSingle`
+- `Zanna.Collections.List.Flip` -> `Reverse`
+- `Zanna.Collections.List.Items` -> `ToSeq`
+- `Zanna.Collections.Bag.Merge/Common/Put/Drop` -> `Union/Intersect/Add/Remove`
+- `Zanna.Collections.Set.Merge/Common` -> `Union/Intersect`
+- `Zanna.Collections.SortedSet.Merge/Common/Put/Drop` -> canonical set verbs
+- `Zanna.Collections.*.get_Count` aliases to `get_Length`
+- `Zanna.Graphics.Surface2D.*` -> `RenderTarget2D.*`
+- `Zanna.Graphics.GpuTexture2D.*` -> `Texture2D.*`
+- `Zanna.Graphics.ScreenScaler.*` -> `Viewport2D.*`
+- `Zanna.Graphics.ParticleSystem2D.*` and `Zanna.Graphics.Emitter2D.*` ->
+  `Zanna.Game.ParticleEmitter.*`
+- `Zanna.Game.UI.*` -> `Zanna.Game.UI.Hud*`
+- `Zanna.Game3D.Environment.*` -> `Environment3D.*`
+- `Zanna.Game3D.Diagnostics.*` -> `Diagnostics3D.*`
 
 Correction:
 
@@ -261,52 +261,52 @@ Correction:
 - Remove alias exceptions from `RuntimeSurfacePolicy.inc`.
 - Add an `rtgen` validation error for public `RT_ALIAS`.
 - If the backend needs an internal alias, model that outside the frontend-visible
-  `Viper.*` API.
+  `Zanna.*` API.
 
 ## P0: `rtgen` Synthesizes Bogus Parent-Class Methods
 
 > ✅ **CONFIRMED.** Exactly **203** descendant-namespace methods are injected into
-> parent classes; every row of the table matches (`Viper.Math`←BigInt 35, Easing
+> parent classes; every row of the table matches (`Zanna.Math`←BigInt 35, Easing
 > 28, Bits 18, … PerlinNoise 5 = 168 total on Math; Memory←GC 6/WeakRef 5;
 > Process←ProcessHandle 10; Pty←PtySession 10; TreeView←Node 4). Mechanism verified
 > at `rtgen.cpp:1469–1488`: `startsWith(fn.canonical, cls.name + ".")` with **no**
-> dot-remainder guard, so `Viper.Math.` matches `Viper.Math.Bits.And` et al.
+> dot-remainder guard, so `Zanna.Math.` matches `Zanna.Math.Bits.And` et al.
 
 `rtgen` auto-adds uncovered functions whose canonical name starts with
-`className + "."`. This also matches descendants. For class `Viper.Math`, the
-prefix `Viper.Math.` matches `Viper.Math.Bits.*`, `Viper.Math.BigInt.*`,
-`Viper.Math.Vec2.*`, and so on.
+`className + "."`. This also matches descendants. For class `Zanna.Math`, the
+prefix `Zanna.Math.` matches `Zanna.Math.Bits.*`, `Zanna.Math.BigInt.*`,
+`Zanna.Math.Vec2.*`, and so on.
 
 Measured damage: 203 descendant namespace methods are injected into parent
 classes.
 
 | Parent class | Descendant source | Count |
 |---|---|---:|
-| `Viper.Math` | `BigInt` | 35 |
-| `Viper.Math` | `Easing` | 28 |
-| `Viper.Math` | `Bits` | 18 |
-| `Viper.Math` | `Mat3` | 17 |
-| `Viper.Math` | `Random` | 14 |
-| `Viper.Math` | `Vec2` | 14 |
-| `Viper.Math` | `Vec3` | 11 |
-| `Viper.Math` | `Mat4` | 10 |
-| `Viper.Math` | `Quat` | 8 |
-| `Viper.Math` | `Spline` | 8 |
-| `Viper.Math` | `PerlinNoise` | 5 |
-| `Viper.Memory` | `GC` | 6 |
-| `Viper.Memory` | `WeakRef` | 5 |
-| `Viper.System.Process` | `ProcessHandle` | 10 |
-| `Viper.System.Pty` | `PtySession` | 10 |
-| `Viper.GUI.TreeView` | `Node` | 4 |
+| `Zanna.Math` | `BigInt` | 35 |
+| `Zanna.Math` | `Easing` | 28 |
+| `Zanna.Math` | `Bits` | 18 |
+| `Zanna.Math` | `Mat3` | 17 |
+| `Zanna.Math` | `Random` | 14 |
+| `Zanna.Math` | `Vec2` | 14 |
+| `Zanna.Math` | `Vec3` | 11 |
+| `Zanna.Math` | `Mat4` | 10 |
+| `Zanna.Math` | `Quat` | 8 |
+| `Zanna.Math` | `Spline` | 8 |
+| `Zanna.Math` | `PerlinNoise` | 5 |
+| `Zanna.Memory` | `GC` | 6 |
+| `Zanna.Memory` | `WeakRef` | 5 |
+| `Zanna.System.Process` | `ProcessHandle` | 10 |
+| `Zanna.System.Pty` | `PtySession` | 10 |
+| `Zanna.GUI.TreeView` | `Node` | 4 |
 
 Examples:
 
-- `Viper.Math.And` is synthesized from `Viper.Math.Bits.And`.
-- `Viper.Math.Abs(obj)` is synthesized from `Viper.Math.BigInt.Abs`.
-- `Viper.Math.New` is synthesized from `Viper.Math.Mat3.New`.
-- `Viper.Memory.New` is synthesized from `Viper.Memory.WeakRef.New`.
-- `Viper.System.Process.IsValid` is synthesized from
-  `Viper.System.Process.ProcessHandle.IsValid`.
+- `Zanna.Math.And` is synthesized from `Zanna.Math.Bits.And`.
+- `Zanna.Math.Abs(obj)` is synthesized from `Zanna.Math.BigInt.Abs`.
+- `Zanna.Math.New` is synthesized from `Zanna.Math.Mat3.New`.
+- `Zanna.Memory.New` is synthesized from `Zanna.Memory.WeakRef.New`.
+- `Zanna.System.Process.IsValid` is synthesized from
+  `Zanna.System.Process.ProcessHandle.IsValid`.
 
 Correction:
 
@@ -315,8 +315,8 @@ Correction:
   no dot.
 - Prefer deleting it entirely: every class method should be explicitly declared
   by `RT_METHOD`.
-- Add a test that `Viper.Math` does not contain methods whose target starts with
-  `Viper.Math.Bits.`, `Viper.Math.BigInt.`, etc.
+- Add a test that `Zanna.Math` does not contain methods whose target starts with
+  `Zanna.Math.Bits.`, `Zanna.Math.BigInt.`, etc.
 
 Relevant code:
 
@@ -326,7 +326,7 @@ Relevant code:
 
 ## P0: Same-Name/Same-Arity Method Overloads Are Unsafe
 
-> ✅ **CONFIRMED.** All 16 listed `Viper.Math` collisions reproduce with the exact
+> ✅ **CONFIRMED.** All 16 listed `Zanna.Math` collisions reproduce with the exact
 > `f64`/`obj` signature pairs (Abs, Lerp, Max, Min, Pow, Sqrt, And, Not, Or, Shl,
 > Shr, Xor, Linear, Mul, Div, Cross). `RuntimeClasses.cpp:499` keys methods on
 > `toLower(cls) '|' toLower(method) '#' arity` — **no parameter types** — and
@@ -337,7 +337,7 @@ Relevant code:
 method, and arity. It does not include parameter types. `buildIndexes` assigns
 into the map, so later entries overwrite earlier entries.
 
-Current same-name/same-arity collisions are all on `Viper.Math`, mostly caused
+Current same-name/same-arity collisions are all on `Zanna.Math`, mostly caused
 by the descendant namespace synthesis above:
 
 - `Abs`: `f64(f64)` and `obj(obj)`
@@ -353,7 +353,7 @@ Correction:
 
 - After removing synthetic parent-class methods, add an `rtgen` check that fails
   on same class + method + arity duplicates.
-- If Viper wants typed overloads in runtime classes, change the registry key and
+- If Zanna wants typed overloads in runtime classes, change the registry key and
   diagnostics to include parameter types before allowing them.
 
 Relevant code:
@@ -368,7 +368,7 @@ Relevant code:
 > `List.Push void(ptr,ptr)`, `Box.I64 ptr(i64)`, `Canvas.Clear void(ptr,i64)`.
 >
 > 2026-07-01 cleanup: fixed. `--dump-runtime-api` prints public descriptor
-> signature text for frontend-visible `Viper.*` functions, and the live dump now
+> signature text for frontend-visible `Zanna.*` functions, and the live dump now
 > has **zero** public raw `ptr` signature tokens.
 
 The live API dump exposes `ptr` in 5,601 public function signatures. Class
@@ -379,10 +379,10 @@ This contradicts `runtime.def`, which says `ptr` is runtime-internal only.
 
 Examples from `--dump-runtime-api`:
 
-- `Viper.Collections.BitSet.New ptr(i64)`
-- `Viper.Collections.List.Push void(ptr,ptr)`
-- `Viper.Core.Box.I64 ptr(i64)`
-- `Viper.Graphics.Canvas.Clear void(ptr,i64)`
+- `Zanna.Collections.BitSet.New ptr(i64)`
+- `Zanna.Collections.List.Push void(ptr,ptr)`
+- `Zanna.Core.Box.I64 ptr(i64)`
+- `Zanna.Graphics.Canvas.Clear void(ptr,i64)`
 
 Correction:
 
@@ -403,20 +403,20 @@ syntax. BASIC is case-insensitive, so these are especially risky.
 
 | Class | Property | Method |
 |---|---|---|
-| `Viper.Diagnostics.Log` | `DEBUG` | `Debug(str)` |
-| `Viper.Diagnostics.Log` | `INFO` | `Info(str)` |
-| `Viper.Diagnostics.Log` | `WARN` | `Warn(str)` |
-| `Viper.Diagnostics.Log` | `ERROR` | `Error(str)` |
-| `Viper.System.Machine` | `Arch` | `Arch()` |
-| `Viper.System.Machine` | `Endian` | `Endian()` |
-| `Viper.System.Machine` | `PageSize` | `PageSize()` |
-| `Viper.System.Machine` | `PointerSize` | `PointerSize()` |
-| `Viper.Math` | `E` | `E()` |
-| `Viper.Math` | `Pi` | `Pi()` |
-| `Viper.Math` | `Tau` | `Tau()` |
-| `Viper.Text.Version` | `Major` | `Major(str)` |
-| `Viper.Text.Version` | `Minor` | `Minor(str)` |
-| `Viper.Text.Version` | `Patch` | `Patch(str)` |
+| `Zanna.Diagnostics.Log` | `DEBUG` | `Debug(str)` |
+| `Zanna.Diagnostics.Log` | `INFO` | `Info(str)` |
+| `Zanna.Diagnostics.Log` | `WARN` | `Warn(str)` |
+| `Zanna.Diagnostics.Log` | `ERROR` | `Error(str)` |
+| `Zanna.System.Machine` | `Arch` | `Arch()` |
+| `Zanna.System.Machine` | `Endian` | `Endian()` |
+| `Zanna.System.Machine` | `PageSize` | `PageSize()` |
+| `Zanna.System.Machine` | `PointerSize` | `PointerSize()` |
+| `Zanna.Math` | `E` | `E()` |
+| `Zanna.Math` | `Pi` | `Pi()` |
+| `Zanna.Math` | `Tau` | `Tau()` |
+| `Zanna.Text.Version` | `Major` | `Major(str)` |
+| `Zanna.Text.Version` | `Minor` | `Minor(str)` |
+| `Zanna.Text.Version` | `Patch` | `Patch(str)` |
 
 Correction:
 
@@ -435,7 +435,7 @@ Correction:
 > with **zero** extras beyond the table below — the list is both complete and
 > accurate. Every one of the 44 rows was verified against the live registry.
 >
-> 2026-07-01 cleanup: the `Viper.Math.Random.inst_*` row is no longer part of the
+> 2026-07-01 cleanup: the `Zanna.Math.Random.inst_*` row is no longer part of the
 > public runtime API. Those descriptors are emitted through `RT_INTERNAL_FUNC`
 > so `rng.Next()` / `rng.Range(...)` keep working as class methods without
 > publishing implementation target names as standalone functions.
@@ -451,19 +451,19 @@ factory conveniences, but pre-alpha should still choose one public spelling.
 Notable groups to collapse:
 
 - `TryToI64` vs `ToI64Option` and the equivalent F64/I1/String box APIs.
-- `Viper.Core.Parse.Double`, `DoubleOption`, and `TryNum` all return
-  `obj<Viper.Option>(str)`. The plain `Double` name is misleading because it
+- `Zanna.Core.Parse.Double`, `DoubleOption`, and `TryNum` all return
+  `obj<Zanna.Option>(str)`. The plain `Double` name is misleading because it
   does not return `f64`.
-- `Viper.Core.Parse.Int64`, `Int64Option`, and `TryInt` have the same issue.
-- `Viper.Core.Convert.ToInt` and `ToInt64` are identical.
-- `Viper.String.SplitFields` and `SplitFieldsSeq` are identical.
-- `Viper.Graphics.Canvas.get_DeltaTime` and `get_DeltaTimeMs` are identical.
-- `Viper.Graphics3D.Canvas3D.get_DeltaTime` and `get_DeltaTimeMs` are identical.
-- `Viper.Graphics3D.Canvas3D.get_Backend` and `get_BackendName` are identical.
-- `Viper.Graphics.Canvas.Polyline` and `PolylinePath` are identical, as are
+- `Zanna.Core.Parse.Int64`, `Int64Option`, and `TryInt` have the same issue.
+- `Zanna.Core.Convert.ToInt` and `ToInt64` are identical.
+- `Zanna.String.SplitFields` and `SplitFieldsSeq` are identical.
+- `Zanna.Graphics.Canvas.get_DeltaTime` and `get_DeltaTimeMs` are identical.
+- `Zanna.Graphics3D.Canvas3D.get_DeltaTime` and `get_DeltaTimeMs` are identical.
+- `Zanna.Graphics3D.Canvas3D.get_Backend` and `get_BackendName` are identical.
+- `Zanna.Graphics.Canvas.Polyline` and `PolylinePath` are identical, as are
   `Polygon`/`PolygonPath` and `PolygonFrame`/`PolygonFramePath`.
-- `Viper.Game.ParticleEmitter.Get` and `ParticleAt` are identical.
-- `Viper.Terminal.Int` and `Viper.Text.Fmt.Int` are identical.
+- `Zanna.Game.ParticleEmitter.Get` and `ParticleAt` are identical.
+- `Zanna.Terminal.Int` and `Zanna.Text.Fmt.Int` are identical.
 - `set_Property` and `SetProperty` pairs exist for multiple 3D APIs.
 
 Correction:
@@ -478,72 +478,72 @@ Full duplicate `RT_FUNC` groups found:
 
 | C symbol | Signature | Public names |
 |---|---|---|
-| `rt_bag_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Bag.ToSeq`; `Viper.Collections.Seq.FromBag` |
-| `rt_box_to_f64_option` | `obj<Viper.Option>(obj)` | `Viper.Core.Box.TryToF64`; `Viper.Core.Box.ToF64Option` |
-| `rt_box_to_i1_option` | `obj<Viper.Option>(obj)` | `Viper.Core.Box.TryToI1`; `Viper.Core.Box.ToI1Option` |
-| `rt_box_to_i64_option` | `obj<Viper.Option>(obj)` | `Viper.Core.Box.TryToI64`; `Viper.Core.Box.ToI64Option` |
-| `rt_box_to_str_option` | `obj<Viper.Option>(obj)` | `Viper.Core.Box.TryToStr`; `Viper.Core.Box.ToStrOption` |
-| `rt_canvas3d_get_backend` | `str(obj)` | `Viper.Graphics3D.Canvas3D.get_Backend`; `Viper.Graphics3D.Canvas3D.get_BackendName` |
-| `rt_canvas3d_get_delta_time` | `i64(obj)` | `Viper.Graphics3D.Canvas3D.get_DeltaTime`; `Viper.Graphics3D.Canvas3D.get_DeltaTimeMs` |
-| `rt_canvas_get_delta_time` | `i64(obj)` | `Viper.Graphics.Canvas.get_DeltaTime`; `Viper.Graphics.Canvas.get_DeltaTimeMs` |
-| `rt_canvas_polygon_frame_path` | `void(obj,obj<Viper.Graphics.Path2D>,i64)` | `Viper.Graphics.Canvas.PolygonFrame`; `Viper.Graphics.Canvas.PolygonFramePath` |
-| `rt_canvas_polygon_path` | `void(obj,obj<Viper.Graphics.Path2D>,i64)` | `Viper.Graphics.Canvas.Polygon`; `Viper.Graphics.Canvas.PolygonPath` |
-| `rt_canvas_polyline_path` | `void(obj,obj<Viper.Graphics.Path2D>,i64)` | `Viper.Graphics.Canvas.Polyline`; `Viper.Graphics.Canvas.PolylinePath` |
-| `rt_container_set_padding` | `void(obj,f64)` | `Viper.GUI.VBox.SetPadding`; `Viper.GUI.HBox.SetPadding`; `Viper.GUI.Container.SetPadding` |
-| `rt_container_set_spacing` | `void(obj,f64)` | `Viper.GUI.VBox.SetSpacing`; `Viper.GUI.HBox.SetSpacing`; `Viper.GUI.Container.SetSpacing` |
-| `rt_deque_to_list` | `obj<Viper.Collections.List>(obj)` | `Viper.Collections.List.FromDeque`; `Viper.Collections.Deque.ToList` |
-| `rt_deque_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.FromDeque`; `Viper.Collections.Deque.ToSeq` |
-| `rt_fmt_int` | `str(i64)` | `Viper.Terminal.Int`; `Viper.Text.Fmt.Int` |
-| `rt_list_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.List.ToSeq`; `Viper.Collections.Seq.FromList` |
-| `rt_math_e` | `f64()` | `Viper.Math.get_Euler`; `Viper.Math.Euler` |
-| `rt_math_pi` | `f64()` | `Viper.Math.get_Pi`; `Viper.Math.Pi` |
-| `rt_math_tau` | `f64()` | `Viper.Math.get_Tau`; `Viper.Math.Tau` |
-| `rt_parse_double_option` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.Double`; `Viper.Core.Parse.DoubleOption`; `Viper.Core.Parse.TryNum` |
-| `rt_parse_int64_option` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.Int64`; `Viper.Core.Parse.Int64Option`; `Viper.Core.Parse.TryInt` |
-| `rt_particle_emitter_particle_at` | `obj<Viper.Option>(obj,i64)` | `Viper.Game.ParticleEmitter.Get`; `Viper.Game.ParticleEmitter.ParticleAt` |
-| `rt_rand_range_method` | `i64(obj,i64,i64)` | `Viper.Math.Random.inst_NextIntRange`; `Viper.Math.Random.inst_Range` |
-| `rt_seq_to_bag` | `obj<Viper.Collections.Bag>(obj)` | `Viper.Collections.Bag.FromSeq`; `Viper.Collections.Seq.ToBag` |
-| `rt_seq_to_deque` | `obj<Viper.Collections.Deque>(obj)` | `Viper.Collections.Seq.ToDeque`; `Viper.Collections.Deque.FromSeq` |
-| `rt_seq_to_list` | `obj<Viper.Collections.List>(obj)` | `Viper.Collections.List.FromSeq`; `Viper.Collections.Seq.ToList` |
-| `rt_seq_to_queue` | `obj<Viper.Collections.Queue>(obj)` | `Viper.Collections.Queue.FromSeq`; `Viper.Collections.Seq.ToQueue` |
-| `rt_seq_to_set` | `obj<Viper.Collections.Set>(obj)` | `Viper.Collections.Set.FromSeq`; `Viper.Collections.Seq.ToSet` |
-| `rt_seq_to_stack` | `obj<Viper.Collections.Stack>(obj)` | `Viper.Collections.Seq.ToStack`; `Viper.Collections.Stack.FromSeq` |
-| `rt_set_to_list` | `obj<Viper.Collections.List>(obj)` | `Viper.Collections.Set.ToList`; `Viper.Collections.List.FromSet` |
-| `rt_set_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Set.ToSeq`; `Viper.Collections.Seq.FromSet` |
-| `rt_soundlistener3d_set_forward` | `void(obj,obj)` | `Viper.Graphics3D.SoundListener3D.set_Forward`; `Viper.Graphics3D.SoundListener3D.SetForward` |
-| `rt_soundlistener3d_set_up` | `void(obj,obj)` | `Viper.Graphics3D.SoundListener3D.set_Up`; `Viper.Graphics3D.SoundListener3D.SetUp` |
-| `rt_soundlistener3d_set_velocity` | `void(obj,obj)` | `Viper.Graphics3D.SoundListener3D.set_Velocity`; `Viper.Graphics3D.SoundListener3D.SetVelocity` |
-| `rt_soundsource3d_set_position` | `void(obj,obj)` | `Viper.Graphics3D.SoundSource3D.set_Position`; `Viper.Graphics3D.SoundSource3D.SetPosition` |
-| `rt_soundsource3d_set_velocity` | `void(obj,obj)` | `Viper.Graphics3D.SoundSource3D.set_Velocity`; `Viper.Graphics3D.SoundSource3D.SetVelocity` |
-| `rt_str_split_fields_seq` | `seq<str>(str)` | `Viper.String.SplitFields`; `Viper.String.SplitFieldsSeq` |
-| `rt_to_int` | `i64(str)` | `Viper.Core.Convert.ToInt`; `Viper.Core.Convert.ToInt64` |
-| `rt_widget_was_clicked` | `i64(obj)` | `Viper.GUI.Widget.WasClicked`; `Viper.GUI.Button.WasClicked` |
-| `rt_world3d_set_contact_beta` | `void(obj,f64)` | `Viper.Graphics3D.Physics3DWorld.set_ContactBeta`; `Viper.Graphics3D.Physics3DWorld.SetContactBeta` |
-| `rt_world3d_set_position_iterations` | `void(obj,i64)` | `Viper.Graphics3D.Physics3DWorld.set_PositionIterations`; `Viper.Graphics3D.Physics3DWorld.SetPositionIterations` |
-| `rt_world3d_set_restitution_threshold` | `void(obj,f64)` | `Viper.Graphics3D.Physics3DWorld.set_RestitutionThreshold`; `Viper.Graphics3D.Physics3DWorld.SetRestitutionThreshold` |
-| `rt_world3d_set_solver_iterations` | `void(obj,i64)` | `Viper.Graphics3D.Physics3DWorld.set_SolverIterations`; `Viper.Graphics3D.Physics3DWorld.SetSolverIterations` |
+| `rt_bag_to_seq` | `obj<Zanna.Collections.Seq>(obj)` | `Zanna.Collections.Bag.ToSeq`; `Zanna.Collections.Seq.FromBag` |
+| `rt_box_to_f64_option` | `obj<Zanna.Option>(obj)` | `Zanna.Core.Box.TryToF64`; `Zanna.Core.Box.ToF64Option` |
+| `rt_box_to_i1_option` | `obj<Zanna.Option>(obj)` | `Zanna.Core.Box.TryToI1`; `Zanna.Core.Box.ToI1Option` |
+| `rt_box_to_i64_option` | `obj<Zanna.Option>(obj)` | `Zanna.Core.Box.TryToI64`; `Zanna.Core.Box.ToI64Option` |
+| `rt_box_to_str_option` | `obj<Zanna.Option>(obj)` | `Zanna.Core.Box.TryToStr`; `Zanna.Core.Box.ToStrOption` |
+| `rt_canvas3d_get_backend` | `str(obj)` | `Zanna.Graphics3D.Canvas3D.get_Backend`; `Zanna.Graphics3D.Canvas3D.get_BackendName` |
+| `rt_canvas3d_get_delta_time` | `i64(obj)` | `Zanna.Graphics3D.Canvas3D.get_DeltaTime`; `Zanna.Graphics3D.Canvas3D.get_DeltaTimeMs` |
+| `rt_canvas_get_delta_time` | `i64(obj)` | `Zanna.Graphics.Canvas.get_DeltaTime`; `Zanna.Graphics.Canvas.get_DeltaTimeMs` |
+| `rt_canvas_polygon_frame_path` | `void(obj,obj<Zanna.Graphics.Path2D>,i64)` | `Zanna.Graphics.Canvas.PolygonFrame`; `Zanna.Graphics.Canvas.PolygonFramePath` |
+| `rt_canvas_polygon_path` | `void(obj,obj<Zanna.Graphics.Path2D>,i64)` | `Zanna.Graphics.Canvas.Polygon`; `Zanna.Graphics.Canvas.PolygonPath` |
+| `rt_canvas_polyline_path` | `void(obj,obj<Zanna.Graphics.Path2D>,i64)` | `Zanna.Graphics.Canvas.Polyline`; `Zanna.Graphics.Canvas.PolylinePath` |
+| `rt_container_set_padding` | `void(obj,f64)` | `Zanna.GUI.VBox.SetPadding`; `Zanna.GUI.HBox.SetPadding`; `Zanna.GUI.Container.SetPadding` |
+| `rt_container_set_spacing` | `void(obj,f64)` | `Zanna.GUI.VBox.SetSpacing`; `Zanna.GUI.HBox.SetSpacing`; `Zanna.GUI.Container.SetSpacing` |
+| `rt_deque_to_list` | `obj<Zanna.Collections.List>(obj)` | `Zanna.Collections.List.FromDeque`; `Zanna.Collections.Deque.ToList` |
+| `rt_deque_to_seq` | `obj<Zanna.Collections.Seq>(obj)` | `Zanna.Collections.Seq.FromDeque`; `Zanna.Collections.Deque.ToSeq` |
+| `rt_fmt_int` | `str(i64)` | `Zanna.Terminal.Int`; `Zanna.Text.Fmt.Int` |
+| `rt_list_to_seq` | `obj<Zanna.Collections.Seq>(obj)` | `Zanna.Collections.List.ToSeq`; `Zanna.Collections.Seq.FromList` |
+| `rt_math_e` | `f64()` | `Zanna.Math.get_Euler`; `Zanna.Math.Euler` |
+| `rt_math_pi` | `f64()` | `Zanna.Math.get_Pi`; `Zanna.Math.Pi` |
+| `rt_math_tau` | `f64()` | `Zanna.Math.get_Tau`; `Zanna.Math.Tau` |
+| `rt_parse_double_option` | `obj<Zanna.Option>(str)` | `Zanna.Core.Parse.Double`; `Zanna.Core.Parse.DoubleOption`; `Zanna.Core.Parse.TryNum` |
+| `rt_parse_int64_option` | `obj<Zanna.Option>(str)` | `Zanna.Core.Parse.Int64`; `Zanna.Core.Parse.Int64Option`; `Zanna.Core.Parse.TryInt` |
+| `rt_particle_emitter_particle_at` | `obj<Zanna.Option>(obj,i64)` | `Zanna.Game.ParticleEmitter.Get`; `Zanna.Game.ParticleEmitter.ParticleAt` |
+| `rt_rand_range_method` | `i64(obj,i64,i64)` | `Zanna.Math.Random.inst_NextIntRange`; `Zanna.Math.Random.inst_Range` |
+| `rt_seq_to_bag` | `obj<Zanna.Collections.Bag>(obj)` | `Zanna.Collections.Bag.FromSeq`; `Zanna.Collections.Seq.ToBag` |
+| `rt_seq_to_deque` | `obj<Zanna.Collections.Deque>(obj)` | `Zanna.Collections.Seq.ToDeque`; `Zanna.Collections.Deque.FromSeq` |
+| `rt_seq_to_list` | `obj<Zanna.Collections.List>(obj)` | `Zanna.Collections.List.FromSeq`; `Zanna.Collections.Seq.ToList` |
+| `rt_seq_to_queue` | `obj<Zanna.Collections.Queue>(obj)` | `Zanna.Collections.Queue.FromSeq`; `Zanna.Collections.Seq.ToQueue` |
+| `rt_seq_to_set` | `obj<Zanna.Collections.Set>(obj)` | `Zanna.Collections.Set.FromSeq`; `Zanna.Collections.Seq.ToSet` |
+| `rt_seq_to_stack` | `obj<Zanna.Collections.Stack>(obj)` | `Zanna.Collections.Seq.ToStack`; `Zanna.Collections.Stack.FromSeq` |
+| `rt_set_to_list` | `obj<Zanna.Collections.List>(obj)` | `Zanna.Collections.Set.ToList`; `Zanna.Collections.List.FromSet` |
+| `rt_set_to_seq` | `obj<Zanna.Collections.Seq>(obj)` | `Zanna.Collections.Set.ToSeq`; `Zanna.Collections.Seq.FromSet` |
+| `rt_soundlistener3d_set_forward` | `void(obj,obj)` | `Zanna.Graphics3D.SoundListener3D.set_Forward`; `Zanna.Graphics3D.SoundListener3D.SetForward` |
+| `rt_soundlistener3d_set_up` | `void(obj,obj)` | `Zanna.Graphics3D.SoundListener3D.set_Up`; `Zanna.Graphics3D.SoundListener3D.SetUp` |
+| `rt_soundlistener3d_set_velocity` | `void(obj,obj)` | `Zanna.Graphics3D.SoundListener3D.set_Velocity`; `Zanna.Graphics3D.SoundListener3D.SetVelocity` |
+| `rt_soundsource3d_set_position` | `void(obj,obj)` | `Zanna.Graphics3D.SoundSource3D.set_Position`; `Zanna.Graphics3D.SoundSource3D.SetPosition` |
+| `rt_soundsource3d_set_velocity` | `void(obj,obj)` | `Zanna.Graphics3D.SoundSource3D.set_Velocity`; `Zanna.Graphics3D.SoundSource3D.SetVelocity` |
+| `rt_str_split_fields_seq` | `seq<str>(str)` | `Zanna.String.SplitFields`; `Zanna.String.SplitFieldsSeq` |
+| `rt_to_int` | `i64(str)` | `Zanna.Core.Convert.ToInt`; `Zanna.Core.Convert.ToInt64` |
+| `rt_widget_was_clicked` | `i64(obj)` | `Zanna.GUI.Widget.WasClicked`; `Zanna.GUI.Button.WasClicked` |
+| `rt_world3d_set_contact_beta` | `void(obj,f64)` | `Zanna.Graphics3D.Physics3DWorld.set_ContactBeta`; `Zanna.Graphics3D.Physics3DWorld.SetContactBeta` |
+| `rt_world3d_set_position_iterations` | `void(obj,i64)` | `Zanna.Graphics3D.Physics3DWorld.set_PositionIterations`; `Zanna.Graphics3D.Physics3DWorld.SetPositionIterations` |
+| `rt_world3d_set_restitution_threshold` | `void(obj,f64)` | `Zanna.Graphics3D.Physics3DWorld.set_RestitutionThreshold`; `Zanna.Graphics3D.Physics3DWorld.SetRestitutionThreshold` |
+| `rt_world3d_set_solver_iterations` | `void(obj,i64)` | `Zanna.Graphics3D.Physics3DWorld.set_SolverIterations`; `Zanna.Graphics3D.Physics3DWorld.SetSolverIterations` |
 
 ## P1: GUI Widget Methods Are Duplicated Across Concrete Classes
 
 > ✅ **CONFIRMED.** Exactly **58** target+signature groups are repeated in ≥3
-> class-method slots. `Viper.GUI.Widget.SetEnabled` / `SetPreferredSize` /
+> class-method slots. `Zanna.GUI.Widget.SetEnabled` / `SetPreferredSize` /
 > `SetMaxSize` / `SetFlex` / `SetMargin` appear in **24** slots each;
 > `IsHovered` / `IsPressed` / `WasClicked` / `GetWidth` / `GetX` in **23** each.
 >
 > 2026-07-01 cleanup: copied base widget methods have been removed from concrete
-> GUI class catalogs. `Viper.GUI.Widget` owns the shared widget operations;
+> GUI class catalogs. `Zanna.GUI.Widget` owns the shared widget operations;
 > concrete widget handles resolve those methods through shared frontend runtime
 > method lookup and Zia completion rather than duplicate public catalog entries.
 > The runtime class-qualified surface audit rejects future copied
-> `Viper.GUI.Widget.*` targets outside `Viper.GUI.Widget`.
+> `Zanna.GUI.Widget.*` targets outside `Zanna.GUI.Widget`.
 
 The class catalog repeats base widget methods into concrete widget classes by
-pointing every class method at `Viper.GUI.Widget.*`.
+pointing every class method at `Zanna.GUI.Widget.*`.
 
 Measured repeated target groups: 58 target+signature groups repeated in three
 or more class method slots. Top examples:
 
-- `Viper.GUI.Widget.SetEnabled` appears in 24 class method slots.
+- `Zanna.GUI.Widget.SetEnabled` appears in 24 class method slots.
 - `SetPreferredSize`, `SetMaxSize`, `SetFlex`, `SetMargin` appear in 24 slots.
 - `IsHovered`, `IsPressed`, `IsFocused`, `WasClicked`, `IsVisible`,
   `IsEnabled`, `GetWidth`, `GetHeight`, `GetX`, `GetY`, `GetFlex` appear in
@@ -555,7 +555,7 @@ Correction:
 
 - Model runtime class inheritance/mixins explicitly in the catalog instead of
   copying base methods into every class.
-- If inheritance is not available yet, expose `Viper.GUI.Widget` operations on
+- If inheritance is not available yet, expose `Zanna.GUI.Widget` operations on
   the base handle and do not publish copied methods as if they belong to each
   concrete class.
 - Use `i1` for boolean widget return values and setters while doing this.
@@ -571,19 +571,19 @@ Correction:
 >
 > 2026-07-01 cleanup: constructor auto-method synthesis is now constrained to
 > constructor targets that are immediate members of the same class namespace.
-> `Viper.Core.ValueType` no longer exposes the synthetic
-> `ValueType(obj(i64))` method for `Viper.Core.Box.ValueType`; catalog coverage
+> `Zanna.Core.ValueType` no longer exposes the synthetic
+> `ValueType(obj(i64))` method for `Zanna.Core.Box.ValueType`; catalog coverage
 > asserts this stays removed.
 >
 > 2026-07-01 cleanup: self-returning `New` methods now require matching
-> constructor metadata. `Viper.Math.Mat3`, `Viper.Math.Mat4`,
-> `Viper.Network.Udp`, `Viper.Network.HttpReq`, and `Viper.Network.Url` were
+> constructor metadata. `Zanna.Math.Mat3`, `Zanna.Math.Mat4`,
+> `Zanna.Network.Udp`, `Zanna.Network.HttpReq`, and `Zanna.Network.Url` were
 > marked with their existing canonical constructors. Zia `new` resolution now
 > uses constructor metadata instead of guessing from any `.New` function. The
 > remaining constructor-less `New` methods are intentional factories:
-> `Viper.Text.Uuid.New` returns `String`, and `Viper.Zia.ProjectIndex.New`
+> `Zanna.Text.Uuid.New` returns `String`, and `Zanna.Zia.ProjectIndex.New`
 > returns `ProjectIndexHandle`.
-> `Viper.Functional.Lazy.New` was removed from the public runtime surface after
+> `Zanna.Functional.Lazy.New` was removed from the public runtime surface after
 > confirming no tests, examples, docs, or source references used it; `Lazy.Of*`
 > remain the value factories.
 >
@@ -603,16 +603,16 @@ Constructor metadata is inconsistent with method naming:
 
 Examples:
 
-- `Viper.Core.ValueType` constructor -> `Viper.Core.Box.ValueType`
-- `Viper.Collections.FrozenSet` constructor -> `FromSeq`
-- `Viper.GUI.Font` constructor -> `Load`
-- `Viper.IO.BinFile` constructor -> `Open`
-- `Viper.String` constructor -> `FromStr`
-- `Viper.Result` constructor -> `Ok`
-- `Viper.Option` constructor -> `Some`
-- `Viper.Graphics3D.Light3D` constructor -> `NewDirectional`
-- `Viper.Graphics.ParticleSystem2D` constructor ->
-  `Viper.Game.ParticleEmitter.New`
+- `Zanna.Core.ValueType` constructor -> `Zanna.Core.Box.ValueType`
+- `Zanna.Collections.FrozenSet` constructor -> `FromSeq`
+- `Zanna.GUI.Font` constructor -> `Load`
+- `Zanna.IO.BinFile` constructor -> `Open`
+- `Zanna.String` constructor -> `FromStr`
+- `Zanna.Result` constructor -> `Ok`
+- `Zanna.Option` constructor -> `Some`
+- `Zanna.Graphics3D.Light3D` constructor -> `NewDirectional`
+- `Zanna.Graphics.ParticleSystem2D` constructor ->
+  `Zanna.Game.ParticleEmitter.New`
 
 Correction:
 
@@ -648,25 +648,25 @@ lowercase/camelCase names heavily.
 
 Measured nonstandard `Game3D` function names:
 
-- 65 under `Viper.Game3D.World3D`
-- 38 under `Viper.Game3D.WorldStream3D`
-- 36 under `Viper.Game3D.Entity3D`
-- 26 under `Viper.Game3D.BodyDef`
-- 16 under `Viper.Game3D.Sound3D`
-- 14 under `Viper.Game3D.Input3D`
-- 14 under `Viper.Game3D.Collision3DEvent`
-- 14 under `Viper.Game3D.Animator3D`
-- 11 under `Viper.Game3D.CharacterController3D`
-- 10 under `Viper.Game3D.FirstPersonController`
+- 65 under `Zanna.Game3D.World3D`
+- 38 under `Zanna.Game3D.WorldStream3D`
+- 36 under `Zanna.Game3D.Entity3D`
+- 26 under `Zanna.Game3D.BodyDef`
+- 16 under `Zanna.Game3D.Sound3D`
+- 14 under `Zanna.Game3D.Input3D`
+- 14 under `Zanna.Game3D.Collision3DEvent`
+- 14 under `Zanna.Game3D.Animator3D`
+- 11 under `Zanna.Game3D.CharacterController3D`
+- 10 under `Zanna.Game3D.FirstPersonController`
 
 Examples:
 
-- `Viper.Game3D.LayerMask.get_bits`, `set_bits`, `include`, `includes`
-- `Viper.Game3D.Input3D.update`, `isDown`, `mouseDelta`, `captureMouse`
-- `Viper.Game3D.Entity3D.setPosition`, `setScaleXYZ`, `attachBody`,
+- `Zanna.Game3D.LayerMask.get_bits`, `set_bits`, `include`, `includes`
+- `Zanna.Game3D.Input3D.update`, `isDown`, `mouseDelta`, `captureMouse`
+- `Zanna.Game3D.Entity3D.setPosition`, `setScaleXYZ`, `attachBody`,
   `worldPosition`
-- `Viper.Game3D.World3D.destroy`, `spawn`, `runFramesOnly`, `drawOverlay`
-- `Viper.Game3D.BodyDef.get_isStatic`, `set_isKinematic`, etc.
+- `Zanna.Game3D.World3D.destroy`, `spawn`, `runFramesOnly`, `drawOverlay`
+- `Zanna.Game3D.BodyDef.get_isStatic`, `set_isKinematic`, etc.
 
 Correction:
 
@@ -711,7 +711,7 @@ Function namespaces with cardinality accessors:
 
 Examples with both:
 
-- `Viper.Collections.BitSet` is the only intentional `Count` + `Length` class:
+- `Zanna.Collections.BitSet` is the only intentional `Count` + `Length` class:
   `Count` is set-bit population count; `Length` is bit capacity.
 
 Correction:
@@ -735,9 +735,9 @@ Correction:
 `i1` exists and is documented as boolean, but many APIs still use `i64`.
 
 > 2026-07-01 cleanup: the isolated sound cases are now fixed in the public
-> runtime surface: `Viper.Sound.Voice.IsPlaying` and
-> `Viper.Sound.Music.IsPlaying` return `i1`; `Viper.Sound.Music.SetLoop` and
-> `Viper.Sound.MusicGen.SetLoopable` take `i1`.
+> runtime surface: `Zanna.Sound.Voice.IsPlaying` and
+> `Zanna.Sound.Music.IsPlaying` return `i1`; `Zanna.Sound.Music.SetLoop` and
+> `Zanna.Sound.MusicGen.SetLoopable` take `i1`.
 >
 > 2026-07-01 cleanup: the four exact getter/setter mismatches listed below are
 > fixed, and the concrete GUI/Assets/Terminal examples from the original review
@@ -759,20 +759,20 @@ Measured suspicious cases:
 
 Original concrete examples, now fixed:
 
-- `Viper.GUI.Widget.IsHovered i1(obj)`
-- `Viper.GUI.Widget.WasClicked i1(obj)`
-- `Viper.GUI.App.WasCloseRequested i1(obj)`
-- `Viper.GUI.ClipboardText.HasText i1()`
-- `Viper.GUI.Shortcuts.IsEnabled i1(str)`
-- `Viper.IO.Assets.Exists i1(str)`
-- `Viper.Terminal.SetCursorVisible void(i1)`
+- `Zanna.GUI.Widget.IsHovered i1(obj)`
+- `Zanna.GUI.Widget.WasClicked i1(obj)`
+- `Zanna.GUI.App.WasCloseRequested i1(obj)`
+- `Zanna.GUI.ClipboardText.HasText i1()`
+- `Zanna.GUI.Shortcuts.IsEnabled i1(str)`
+- `Zanna.IO.Assets.Exists i1(str)`
+- `Zanna.Terminal.SetCursorVisible void(i1)`
 
 Original exact getter/setter type mismatches, now fixed:
 
-- `Viper.Graphics.Sprite.FlipX`: getter `i1`, setter `i1`
-- `Viper.Graphics.Sprite.FlipY`: getter `i1`, setter `i1`
-- `Viper.Graphics.TileLayer2D.Visible`: getter `i1`, setter `i1`
-- `Viper.Graphics.RenderPass2D.Enabled`: getter `i1`, setter `i1`
+- `Zanna.Graphics.Sprite.FlipX`: getter `i1`, setter `i1`
+- `Zanna.Graphics.Sprite.FlipY`: getter `i1`, setter `i1`
+- `Zanna.Graphics.TileLayer2D.Visible`: getter `i1`, setter `i1`
+- `Zanna.Graphics.RenderPass2D.Enabled`: getter `i1`, setter `i1`
 
 Correction:
 
@@ -793,7 +793,7 @@ Correction:
 > illustration is not an accessor-duplication case.
 >
 > 2026-07-01 cleanup: the live surface had only five remaining writable
-> property + `Set{P}` method pairs, all on `Viper.Game3D.Entity3D`:
+> property + `Set{P}` method pairs, all on `Zanna.Game3D.Entity3D`:
 > `Mesh`, `Material`, `Name`, `Layer`, and `CollisionMask`. The simple public
 > `Set*` methods were removed, call sites were migrated to property assignment,
 > and recursive/command methods such as `SetMeshRecursive`, `SetMaterialRecursive`,
@@ -805,12 +805,12 @@ useful fluent APIs, but most are duplicate ways to mutate the same state.
 
 Examples:
 
-- `Viper.Math.Vec3.X/Y/Z` and `SetX/SetY/SetZ`
-- `Viper.Graphics3D.Material3D.Alpha/Metallic/Roughness/AmbientOcclusion/...` and matching
+- `Zanna.Math.Vec3.X/Y/Z` and `SetX/SetY/SetZ`
+- `Zanna.Graphics3D.Material3D.Alpha/Metallic/Roughness/AmbientOcclusion/...` and matching
   `SetAlpha/SetMetallic/...`
-- `Viper.Graphics3D.Light3D.Enabled/CastsShadows/Direction/Position` and
+- `Zanna.Graphics3D.Light3D.Enabled/CastsShadows/Direction/Position` and
   matching setters
-- `Viper.Graphics3D.Camera3D.Fov/NearPlane/FarPlane/Position/Yaw/Pitch` and
+- `Zanna.Graphics3D.Camera3D.Fov/NearPlane/FarPlane/Position/Yaw/Pitch` and
   matching setters
 - Many `Game3D` data builder properties plus `setX` methods
 
@@ -840,11 +840,11 @@ Correction:
 
 Constants such as input key codes are represented as readonly properties:
 
-- `Viper.Input.Keyboard.KeyA`, `KeyB`, ...
-- `Viper.Input.Mouse.ButtonLeft`, ...
-- `Viper.Input.Pad.ButtonA`, ...
-- `Viper.IO.Watcher.EventCreated`, ...
-- `Viper.Graphics.Color.get_Red`, ...
+- `Zanna.Input.Keyboard.KeyA`, `KeyB`, ...
+- `Zanna.Input.Mouse.ButtonLeft`, ...
+- `Zanna.Input.Pad.ButtonA`, ...
+- `Zanna.IO.Watcher.EventCreated`, ...
+- `Zanna.Graphics.Color.get_Red`, ...
 
 This is not inherently broken, but it is inconsistent with the rest of the
 PascalCase API and looks odd in a class-property catalog.
@@ -900,8 +900,8 @@ rule and add an ADR.
 
 Commands run during this review:
 
-- `./build/src/tools/viper/viper --dump-runtime-api`
-- `./build/src/tools/viper/viper --dump-runtime-classes`
+- `./build/src/tools/zanna/zanna --dump-runtime-api`
+- `./build/src/tools/zanna/zanna --dump-runtime-classes`
 - `./scripts/audit_runtime_surface.sh`
 
 Result:

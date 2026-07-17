@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <unordered_set>
 
 using namespace il::core;
-using namespace viper::analysis;
+using namespace zanna::analysis;
 
 static void checkOrders(const CFGContext &ctx, Function &fn) {
     auto po = postOrder(ctx, fn);

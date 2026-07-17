@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -89,7 +89,7 @@ namespace {
     func.blocks.push_back(std::move(block));
 
     AsmEmitter::RoDataPool pool;
-    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::ELF);
+    AsmEmitter emitter(pool, zanna::codegen::objfile::ObjFormat::ELF);
 
     std::ostringstream os;
     emitter.emitFunction(os, func, hostTarget());

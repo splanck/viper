@@ -1,9 +1,9 @@
 module RuntimeTest52;
 
 bind "./_support";
-bind Viper.IO.Path as Path;
-bind Viper.IO.Dir as Dir;
-bind Viper.Input.Mouse as Mouse;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.Input.Mouse as Mouse;
 
 // EXPECT_OUT: RESULT: ok
 
@@ -14,14 +14,14 @@ bind Viper.Input.Mouse as Mouse;
 func start() {
     // DataDir returns an absolute path containing the app name and creates
     // the directory on demand.
-    var dir = Path.DataDir("viper_test_datadir");
+    var dir = Path.DataDir("zanna_test_datadir");
     assertTrue(dir.Length() > 0, "datadir_nonempty");
     assertTrue(Path.IsAbsolute(dir), "datadir_absolute");
-    assertTrue(dir.Contains("viper_test_datadir"), "datadir_contains_app");
+    assertTrue(dir.Contains("zanna_test_datadir"), "datadir_contains_app");
     assertTrue(Dir.Exists(dir), "datadir_created");
 
     // Idempotent: a second call resolves to the same path.
-    var dir2 = Path.DataDir("viper_test_datadir");
+    var dir2 = Path.DataDir("zanna_test_datadir");
     assertEqStr(dir2, dir, "datadir_idempotent");
 
     // Relative mouse mode defaults: off, no native raw deltas, zero deltas.

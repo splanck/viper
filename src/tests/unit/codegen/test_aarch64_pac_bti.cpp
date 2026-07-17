@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,8 +34,8 @@
 
 #include <sstream>
 
-using namespace viper::codegen::aarch64;
-using namespace viper::codegen::aarch64::binenc;
+using namespace zanna::codegen::aarch64;
+using namespace zanna::codegen::aarch64::binenc;
 
 namespace {
 
@@ -47,7 +47,7 @@ uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset) {
 }
 
 /// Check if a specific 32-bit instruction word appears anywhere in the code section.
-bool containsWord(const viper::codegen::objfile::CodeSection &cs, uint32_t word) {
+bool containsWord(const zanna::codegen::objfile::CodeSection &cs, uint32_t word) {
     const auto &bytes = cs.bytes();
     for (size_t i = 0; i + 3 < bytes.size(); i += 4) {
         if (readWord(bytes, i) == word)
@@ -110,8 +110,8 @@ constexpr uint32_t kRetInstr = 0xD65F03C0;
 // ---------------------------------------------------------------------------
 TEST(AArch64PacBti, BtiAtFunctionEntry) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeNonLeafFunc("test_bti");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
@@ -127,8 +127,8 @@ TEST(AArch64PacBti, BtiAtFunctionEntry) {
 // ---------------------------------------------------------------------------
 TEST(AArch64PacBti, PaciaspInPrologue) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeNonLeafFunc("test_pac");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
@@ -142,8 +142,8 @@ TEST(AArch64PacBti, PaciaspInPrologue) {
 // ---------------------------------------------------------------------------
 TEST(AArch64PacBti, AutoaspBeforeRet) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeNonLeafFunc("test_aut");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
@@ -174,8 +174,8 @@ TEST(AArch64PacBti, AutoaspBeforeRet) {
 // ---------------------------------------------------------------------------
 TEST(AArch64PacBti, LeafFuncGetsBti) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeLeafFunc("test_leaf_bti");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
@@ -191,8 +191,8 @@ TEST(AArch64PacBti, LeafFuncGetsBti) {
 // ---------------------------------------------------------------------------
 TEST(AArch64PacBti, LeafFuncNoPac) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeLeafFunc("test_leaf_nopac");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
@@ -252,8 +252,8 @@ TEST(AArch64PacBti, LinuxTextEmitterSkipsPacAndBti) {
 
 TEST(AArch64PacBti, LinuxBinaryEncoderSkipsPacAndBti) {
     A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     auto fn = makeNonLeafFunc("linux_no_hardening");
     encoder.encodeFunction(fn, text, rodata, ABIFormat::Linux);
@@ -264,6 +264,6 @@ TEST(AArch64PacBti, LinuxBinaryEncoderSkipsPacAndBti) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

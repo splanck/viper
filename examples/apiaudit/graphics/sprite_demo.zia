@@ -1,7 +1,7 @@
 module SpriteDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Graphics.Sprite ===");
+    Say("=== API Audit: Zanna.Graphics.Sprite ===");
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New(sheet, regionIdx)");
     Say("Properties: get_X, get_Y, get_Frame, get_Width, get_Height");

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/render/rt_model3d_core.inc  (#included from rt_model3d.c; not a
 // standalone translation unit) Purpose: Model3D types, lifecycle, node-tree, skeleton/animation
 // binding

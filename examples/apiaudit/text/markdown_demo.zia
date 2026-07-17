@@ -1,12 +1,12 @@
 module MarkdownDemo;
-bind Viper.Terminal;
-bind Viper.Text.Markdown as MD;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.Markdown as MD;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Text.Markdown API Audit ===");
+    Say("=== Zanna.Text.Markdown API Audit ===");
 
-    var md = "# Hello World\n\nThis is a **bold** paragraph with a [link](https://example.com).\n\n## Section Two\n\nA list:\n- item 1\n- item 2\n- item 3\n\n### Sub Section\n\nAnother [reference](https://viper.dev) here.\n\nSome `inline code` and text.";
+    var md = "# Hello World\n\nThis is a **bold** paragraph with a [link](https://example.com).\n\n## Section Two\n\nA list:\n- item 1\n- item 2\n- item 3\n\n### Sub Section\n\nAnother [reference](https://zanna.dev) here.\n\nSome `inline code` and text.";
 
     // --- ToHtml ---
     Say("--- ToHtml ---");

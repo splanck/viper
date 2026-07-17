@@ -1,8 +1,8 @@
 module test_game3d_runframes_probe;
 
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics as Graphics;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics as Graphics;
+bind Zanna.Terminal as Terminal;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);

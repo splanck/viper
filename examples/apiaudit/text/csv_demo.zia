@@ -1,10 +1,10 @@
 module CsvDemo;
-bind Viper.Terminal;
-bind Viper.Data.Csv as Csv;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Data.Csv as Csv;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Data.Csv API Audit ===");
+    Say("=== Zanna.Data.Csv API Audit ===");
 
     // --- ParseLine ---
     Say("--- ParseLine ---");

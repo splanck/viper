@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the compact bytecode format used by the Viper bytecode VM.
+// This file defines the compact bytecode format used by the Zanna bytecode VM.
 // Bytecode is compiled from IL at module load time and interpreted for fast
 // execution compared to direct IL interpretation.
 //
@@ -36,7 +36,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::bytecode {
+namespace zanna::bytecode {
 
 /// @brief Magic number for bytecode modules: "VBC\x01".
 /// @details Stored in little-endian byte order at the beginning of every
@@ -55,7 +55,7 @@ constexpr uint32_t kMaxCallDepth = 4096;
 /// @brief Maximum operand stack size (in BCSlot entries) per call frame.
 constexpr uint32_t kMaxStackSize = 1024;
 
-/// @brief Bytecode opcodes for the Viper bytecode VM.
+/// @brief Bytecode opcodes for the Zanna bytecode VM.
 /// @details Opcodes are organized by functional category and assigned to
 ///          contiguous ranges so that the interpreter's dispatch table
 ///          benefits from instruction-cache locality.
@@ -394,4 +394,4 @@ union BCSlot {
 
 static_assert(sizeof(BCSlot) == 8, "BCSlot must be 8 bytes");
 
-} // namespace viper::bytecode
+} // namespace zanna::bytecode

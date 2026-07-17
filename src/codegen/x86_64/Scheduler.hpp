@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Run conservative post-RA scheduling for a single function.
 /// @param fn Machine function whose basic blocks are reordered in place.
@@ -36,5 +36,5 @@ std::size_t scheduleFunction(MFunction &fn);
 /// @return Total number of reordered segments across all functions.
 std::size_t scheduleModule(std::vector<MFunction> &mir);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 

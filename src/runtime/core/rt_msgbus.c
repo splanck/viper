@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_msgbus.c
-// Purpose: Implements the Viper message bus (pub/sub event system) for the
+// Purpose: Implements the Zanna message bus (pub/sub event system) for the
 //          runtime. Topics are hashed into a fixed-size bucket array; each
 //          topic maintains a singly-linked list of subscriptions identified by
 //          unique integer IDs. Publishers dispatch to all matching subscribers.

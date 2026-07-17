@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -46,10 +46,10 @@
 // particles.zia — Particle effects plus skid / impact decals
 module particles;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Core.Convert as Convert;
 bind "../config";
 bind "../gameplay/feedback_model";
 

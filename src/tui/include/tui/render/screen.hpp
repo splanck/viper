@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the screen buffer and cell types for Viper's TUI
+// This file declares the screen buffer and cell types for Zanna's TUI
 // rendering system. The ScreenBuffer provides a 2D grid of styled character
 // cells that widgets paint into. The Renderer then diffs the current
 // buffer against a previous snapshot to compute minimal ANSI escape
@@ -35,7 +35,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 /// @brief 32-bit RGBA color value for terminal cell styling.
 /// @details Represents a color with red, green, blue, and alpha channels.
 ///          Alpha defaults to 255 (fully opaque). Used for both foreground
@@ -144,4 +144,4 @@ class ScreenBuffer {
     std::vector<Cell> prev_{};
 };
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

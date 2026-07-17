@@ -1,15 +1,15 @@
 // Test: Network API - URL parsing, DNS, TcpServer, RetryPolicy, RateLimiter
 module TestNetworkApi;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // === Test 1: URL parsing ===
-    var url = Viper.Network.Url.Parse("https://example.com:8080/path?q=1#frag");
-    var scheme = Viper.Network.Url.get_Scheme(url);
-    var host = Viper.Network.Url.get_Host(url);
-    var port = Viper.Network.Url.get_Port(url);
-    var path = Viper.Network.Url.get_Path(url);
+    var url = Zanna.Network.Url.Parse("https://example.com:8080/path?q=1#frag");
+    var scheme = Zanna.Network.Url.get_Scheme(url);
+    var host = Zanna.Network.Url.get_Host(url);
+    var port = Zanna.Network.Url.get_Port(url);
+    var path = Zanna.Network.Url.get_Path(url);
 
     if (port != 8080) {
         Say("FAIL: URL port should be 8080");
@@ -17,15 +17,15 @@ func start() {
     }
 
     // === Test 2: URL builder ===
-    var url2 = Viper.Network.Url.New();
-    Viper.Network.Url.set_Scheme(url2, "http");
-    Viper.Network.Url.set_Host(url2, "localhost");
-    Viper.Network.Url.set_Port(url2, 3000);
-    Viper.Network.Url.set_Path(url2, "/api");
+    var url2 = Zanna.Network.Url.New();
+    Zanna.Network.Url.set_Scheme(url2, "http");
+    Zanna.Network.Url.set_Host(url2, "localhost");
+    Zanna.Network.Url.set_Port(url2, 3000);
+    Zanna.Network.Url.set_Path(url2, "/api");
 
-    var s2 = Viper.Network.Url.get_Scheme(url2);
-    var h2 = Viper.Network.Url.get_Host(url2);
-    var p2 = Viper.Network.Url.get_Port(url2);
+    var s2 = Zanna.Network.Url.get_Scheme(url2);
+    var h2 = Zanna.Network.Url.get_Host(url2);
+    var p2 = Zanna.Network.Url.get_Port(url2);
 
     if (p2 != 3000) {
         Say("FAIL: built URL port should be 3000");
@@ -33,80 +33,80 @@ func start() {
     }
 
     // === Test 3: DNS utilities (no network needed) ===
-    var isIp = Viper.Network.Dns.IsIpv4("192.168.1.1");
+    var isIp = Zanna.Network.Dns.IsIpv4("192.168.1.1");
     if (isIp != true) {
         Say("FAIL: 192.168.1.1 should be valid IPv4");
         return;
     }
 
-    var notIp = Viper.Network.Dns.IsIpv4("not-an-ip");
+    var notIp = Zanna.Network.Dns.IsIpv4("not-an-ip");
     if (notIp != false) {
         Say("FAIL: 'not-an-ip' should not be IPv4");
         return;
     }
 
-    var isIp6 = Viper.Network.Dns.IsIpv6("::1");
+    var isIp6 = Zanna.Network.Dns.IsIpv6("::1");
     if (isIp6 != true) {
         Say("FAIL: ::1 should be valid IPv6");
         return;
     }
 
-    var isIP = Viper.Network.Dns.IsIP("10.0.0.1");
+    var isIP = Zanna.Network.Dns.IsIP("10.0.0.1");
     if (isIP != true) {
         Say("FAIL: 10.0.0.1 should be a valid IP");
         return;
     }
 
     // === Test 4: RetryPolicy ===
-    var retry = Viper.Network.RetryPolicy.New(3, 100);
-    var maxRetries = Viper.Network.RetryPolicy.get_MaxRetries(retry);
+    var retry = Zanna.Network.RetryPolicy.New(3, 100);
+    var maxRetries = Zanna.Network.RetryPolicy.get_MaxRetries(retry);
     if (maxRetries != 3) {
         Say("FAIL: max retries should be 3");
         return;
     }
 
-    var canRetry = Viper.Network.RetryPolicy.get_CanRetry(retry);
+    var canRetry = Zanna.Network.RetryPolicy.get_CanRetry(retry);
     if (canRetry != true) {
         Say("FAIL: should be able to retry initially");
         return;
     }
 
-    var attempt = Viper.Network.RetryPolicy.get_Attempt(retry);
+    var attempt = Zanna.Network.RetryPolicy.get_Attempt(retry);
     if (attempt != 0) {
         Say("FAIL: initial attempt should be 0");
         return;
     }
 
     // Consume retries
-    Viper.Network.RetryPolicy.NextDelay(retry);
-    Viper.Network.RetryPolicy.NextDelay(retry);
-    Viper.Network.RetryPolicy.NextDelay(retry);
+    Zanna.Network.RetryPolicy.NextDelay(retry);
+    Zanna.Network.RetryPolicy.NextDelay(retry);
+    Zanna.Network.RetryPolicy.NextDelay(retry);
 
-    var exhausted = Viper.Network.RetryPolicy.get_IsExhausted(retry);
+    var exhausted = Zanna.Network.RetryPolicy.get_IsExhausted(retry);
     if (exhausted != true) {
         Say("FAIL: should be exhausted after 3 retries");
         return;
     }
 
     // Reset
-    Viper.Network.RetryPolicy.Reset(retry);
-    var canRetryAfterReset = Viper.Network.RetryPolicy.get_CanRetry(retry);
+    Zanna.Network.RetryPolicy.Reset(retry);
+    var canRetryAfterReset = Zanna.Network.RetryPolicy.get_CanRetry(retry);
     if (canRetryAfterReset != true) {
         Say("FAIL: should be able to retry after reset");
         return;
     }
 
     // === Test 5: RateLimiter ===
-    var limiter = Viper.Network.RateLimiter.New(2, 1.0);
-    var maxLim = Viper.Network.RateLimiter.get_Max(limiter);
+    var limiter = Zanna.Network.RateLimiter.New(2, 1.0);
+    var maxLim = Zanna.Network.RateLimiter.get_Max(limiter);
     if (maxLim != 2) {
         Say("FAIL: rate limiter max should be 2");
         return;
     }
 
     // Acquire twice
-    var a1 = Viper.Network.RateLimiter.TryAcquire(limiter);
-    var a2 = Viper.Network.RateLimiter.TryAcquire(limiter);
+    var a1 = Zanna.Network.RateLimiter.TryAcquire(limiter);
+    var a2 = Zanna.Network.RateLimiter.TryAcquire(limiter);
     if (a1 != true) {
         Say("FAIL: first acquire should succeed");
         return;
@@ -117,7 +117,7 @@ func start() {
     }
 
     // Third should fail (exhausted)
-    var a3 = Viper.Network.RateLimiter.TryAcquire(limiter);
+    var a3 = Zanna.Network.RateLimiter.TryAcquire(limiter);
     if (a3 != false) {
         Say("FAIL: third acquire should fail");
         return;

@@ -1,0 +1,48 @@
+.TH zanna 7 "Zanna" "Project overview" "Miscellanea"
+.SH NAME
+zanna \- overview of the Zanna toolchain, frontends, and runtime
+.SH DESCRIPTION
+Zanna is a modular language and runtime stack built around Zanna IL.
+.IP \(bu 2
+Frontends include Zia and Zanna BASIC.
+.IP \(bu 2
+The VM executes textual IL and frontend-generated programs.
+.IP \(bu 2
+Native backends emit executables for supported targets.
+.IP \(bu 2
+The runtime library exposes the \fBZanna.*\fR namespace used by both frontends.
+.PP
+The main workflow is through \fBzanna\fR(1): build or run a \fC.zia\fR file,
+\fC.bas\fR file, project directory, or \fCzanna.project\fR.
+.SH COMMON TOOLS
+.TP
+\fBzanna\fR(1)
+Project driver for Zia, BASIC, IL, native builds, REPL, and packaging.
+.TP
+\fBzia\fR(1)
+Single-file Zia driver.
+.TP
+\fBvbasic\fR(1)
+Single-file BASIC driver.
+.TP
+\fBilrun\fR(1)
+Simple textual IL runner.
+.TP
+\fBil-verify\fR(1)
+IL verifier.
+.TP
+\fBil-dis\fR(1)
+IL-to-bytecode disassembler.
+.TP
+\fBbasic-ast-dump\fR(1), \fBbasic-lex-dump\fR(1)
+Developer utilities for BASIC parsing and lexing.
+.SH FILES
+Textual IL files typically end with \fC.il\fR.
+.PP
+Zia source files typically end with \fC.zia\fR.
+.PP
+BASIC source files typically end with \fC.bas\fR.
+.PP
+Project roots may contain a \fCzanna.project\fR file.
+.SH SEE ALSO
+\fBzanna\fR(1), \fBzia\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1), \fBil-verify\fR(1), \fBil-dis\fR(1)

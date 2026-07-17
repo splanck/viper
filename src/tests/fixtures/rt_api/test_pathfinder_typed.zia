@@ -3,21 +3,21 @@
 // returns, the `obj`/Any results could not be assigned to typed locals.
 module TestPathfinderTyped;
 
-bind Viper.Terminal;
-bind Viper.Game.Pathfinder as Pathfinder;
-bind Viper.Game.Grid2D as Grid2D;
+bind Zanna.Terminal;
+bind Zanna.Game.Pathfinder as Pathfinder;
+bind Zanna.Game.Grid2D as Grid2D;
 
 func start() {
     var g = Grid2D.New(4, 4, 0);
 
     // FromGrid2D returns a concrete Pathfinder, assignable to a typed local.
-    var pf: Viper.Game.Pathfinder = Pathfinder.FromGrid2D(g);
+    var pf: Zanna.Game.Pathfinder = Pathfinder.FromGrid2D(g);
     pf.SetWalkable(1, 1, false);
     SayBool(pf.IsWalkable(1, 1)); // false
 
-    // PathResult.Path is a concrete Viper.Collections.List, assignable directly.
+    // PathResult.Path is a concrete Zanna.Collections.List, assignable directly.
     var result = pf.FindPath(0, 0, 3, 3);
     SayBool(result.Found);
-    var path: Viper.Collections.List = result.Path;
+    var path: Zanna.Collections.List = result.Path;
     SayInt(path.Count); // number of waypoints
 }

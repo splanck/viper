@@ -1,4 +1,4 @@
-' countmap_demo.bas - Comprehensive API audit for Viper.Collections.CountMap
+' countmap_demo.bas - Comprehensive API audit for Zanna.Collections.CountMap
 ' Tests: New, Inc, IncBy, Dec, Get, Set, Has, Total, Keys,
 '        MostCommon, Remove, Clear, Len, IsEmpty
 
@@ -7,7 +7,7 @@ PRINT "=== CountMap API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM cm AS OBJECT
-cm = Viper.Collections.CountMap.New()
+cm = Zanna.Collections.CountMap.New()
 PRINT cm.Count       ' 0
 PRINT cm.IsEmpty   ' 1
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -247,11 +247,11 @@ TEST(ModuleLinker, InternalNameCollisionPrefixed) {
 TEST(ModuleLinker, ExternsMergedAndDeduplicated) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
-    a.externs.push_back({"Viper.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
+    a.externs.push_back({"Zanna.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
 
     Module b;
     b.functions.push_back(makeVoidFunc("lib", Linkage::Export));
-    b.externs.push_back({"Viper.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
+    b.externs.push_back({"Zanna.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
 
     std::vector<Module> modules;
     modules.push_back(std::move(a));
@@ -267,13 +267,13 @@ TEST(ModuleLinker, ExternsMergedAndDeduplicated) {
 TEST(ModuleLinker, ExternEffectAttributesAreIntersected) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
-    Extern readonlyExtern{"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
+    Extern readonlyExtern{"Zanna.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
     readonlyExtern.attrs().readonly = true;
     a.externs.push_back(readonlyExtern);
 
     Module b;
     b.functions.push_back(makeVoidFunc("lib", Linkage::Export));
-    Extern nothrowExtern{"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
+    Extern nothrowExtern{"Zanna.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
     nothrowExtern.attrs().nothrow = true;
     b.externs.push_back(nothrowExtern);
 
@@ -291,12 +291,12 @@ TEST(ModuleLinker, ExternEffectAttributesAreIntersected) {
 TEST(ModuleLinker, ExternSignatureMismatchFails) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
-    a.externs.push_back({"Viper.Foo", Type(Type::Kind::Void), {Type(Type::Kind::I64)}});
+    a.externs.push_back({"Zanna.Foo", Type(Type::Kind::Void), {Type(Type::Kind::I64)}});
 
     Module b;
     b.functions.push_back(makeVoidFunc("lib", Linkage::Export));
     // Same name but different return type
-    b.externs.push_back({"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::I64)}});
+    b.externs.push_back({"Zanna.Foo", Type(Type::Kind::I64), {Type(Type::Kind::I64)}});
 
     std::vector<Module> modules;
     modules.push_back(std::move(a));
@@ -585,5 +585,5 @@ TEST(ModuleLinker, InternalRenameUpdatesFunctionAddressesInBranchArgs) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

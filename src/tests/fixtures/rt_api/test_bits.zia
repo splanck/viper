@@ -1,6 +1,6 @@
 module TestBits;
-bind Viper.Math.Bits;
-bind Viper.Terminal;
+bind Zanna.Math.Bits;
+bind Zanna.Terminal;
 
 func start() {
     SayInt(And(12, 10));

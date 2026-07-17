@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-`Viper.Zia.SemanticJob.Error(job)` returns a string side channel for background
+`Zanna.Zia.SemanticJob.Error(job)` returns a string side channel for background
 language-service failures. An empty string means "no error", but an empty string
 is also a valid string value and does not communicate absence as clearly as the
 runtime's newer public APIs.
@@ -22,7 +22,7 @@ model used by other lookup/status APIs.
 
 ## Decision
 
-Add `Viper.Zia.SemanticJob.ErrorOption(job) -> Option[String]`.
+Add `Zanna.Zia.SemanticJob.ErrorOption(job) -> Option[String]`.
 
 The API returns `SomeStr(message)` when the job handle contains a non-empty
 error payload. It returns `None` when the handle is invalid, the job has no

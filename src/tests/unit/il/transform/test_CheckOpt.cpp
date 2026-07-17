@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -76,10 +76,10 @@ il::transform::AnalysisRegistry createRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fnRef) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fnRef);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",
@@ -87,9 +87,9 @@ il::transform::AnalysisRegistry createRegistry() {
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+    registry.registerFunctionAnalysis<zanna::analysis::IntRangeInfo>(
         "int-ranges",
-        [](Module &, Function &fnRef) { return viper::analysis::computeIntRanges(fnRef); });
+        [](Module &, Function &fnRef) { return zanna::analysis::computeIntRanges(fnRef); });
     return registry;
 }
 

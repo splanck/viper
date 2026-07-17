@@ -1,12 +1,12 @@
-' stack_demo.bas - Comprehensive API audit for Viper.Collections.Stack
+' stack_demo.bas - Comprehensive API audit for Zanna.Collections.Stack
 ' Tests: New, Push, Pop, Peek, Len, IsEmpty, Clear
 
 PRINT "=== Stack API Audit ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM stk AS Viper.Collections.Stack
-stk = Viper.Collections.Stack.New()
+DIM stk AS Zanna.Collections.Stack
+stk = Zanna.Collections.Stack.New()
 PRINT stk.Count       ' 0
 PRINT stk.IsEmpty   ' 1
 
@@ -32,11 +32,11 @@ PRINT stk.Peek()    ' first
 
 ' --- Push more and verify ---
 PRINT "--- Push more ---"
-stk.Push(Viper.Core.Box.I64(42))
-stk.Push(Viper.Core.Box.I64(99))
+stk.Push(Zanna.Core.Box.I64(42))
+stk.Push(Zanna.Core.Box.I64(99))
 PRINT stk.Count                          ' 3
-PRINT Viper.Core.Box.ToI64(stk.Pop()) ' 99
-PRINT Viper.Core.Box.ToI64(stk.Pop()) ' 42
+PRINT Zanna.Core.Box.ToI64(stk.Pop()) ' 99
+PRINT Zanna.Core.Box.ToI64(stk.Pop()) ' 42
 PRINT stk.Pop()                        ' first
 PRINT stk.Count                          ' 0
 PRINT stk.IsEmpty                      ' 1

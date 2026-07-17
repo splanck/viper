@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_yaml_format.c
-// Purpose: YAML emission (compact + indented) and type-of for Viper.Text.Yaml.
+// Purpose: YAML emission (compact + indented) and type-of for Zanna.Text.Yaml.
 //   Parsing lives in rt_yaml.c.
 //
 // Links: rt_yaml.h, rt_yaml_internal.h, rt_yaml.c
@@ -36,7 +36,7 @@
 // Formatting Helpers
 //=============================================================================
 
-/// @brief Forward declaration: serialise any Viper value as YAML.
+/// @brief Forward declaration: serialise any Zanna value as YAML.
 static void format_value(void *obj, int indent, int level, char **buf, size_t *cap, size_t *len);
 
 /// Maximum block nesting the formatter will emit; matches the parser's
@@ -217,7 +217,7 @@ static void format_string(
     buf_append_char(buf, cap, len, '"');
 }
 
-/// @brief Recursive YAML emitter for any Viper value.
+/// @brief Recursive YAML emitter for any Zanna value.
 ///
 /// Dispatches by runtime type:
 ///   - NULL                  → `null`
@@ -356,7 +356,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 // Public API - Formatting
 //=============================================================================
 
-/// @brief `Yaml.Format(obj)` — serialize a Viper value as a YAML string (2-space indent).
+/// @brief `Yaml.Format(obj)` — serialize a Zanna value as a YAML string (2-space indent).
 ///        Delegates to `rt_yaml_format_indent` with `indent=2`.
 rt_string rt_yaml_format(void *obj) {
     return rt_yaml_format_indent(obj, 2);

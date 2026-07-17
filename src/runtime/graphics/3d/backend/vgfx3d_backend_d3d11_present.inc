@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_present.inc  (#included from
 // vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 frame begin/end,
 // resize, readback, post-FX chain, present, shadow, and skybox

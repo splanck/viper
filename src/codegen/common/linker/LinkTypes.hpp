@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Target platform for the linker.
 enum class LinkPlatform : uint8_t {
@@ -47,9 +47,9 @@ enum class LinkArch : uint8_t {
 
 /// Detect host link platform.
 constexpr LinkPlatform detectLinkPlatform() {
-    if constexpr (viper::platform::kHostMacOS)
+    if constexpr (zanna::platform::kHostMacOS)
         return LinkPlatform::macOS;
-    if constexpr (viper::platform::kHostWindows)
+    if constexpr (zanna::platform::kHostWindows)
         return LinkPlatform::Windows;
     return LinkPlatform::Linux;
 }
@@ -61,7 +61,7 @@ constexpr LinkPlatform detectLinkPlatform() {
 ///          x86_64 as the historical conservative default; callers that need a
 ///          specific target architecture should set NativeLinkerOptions::arch.
 constexpr LinkArch detectLinkArch() {
-    if constexpr (viper::platform::kNativeLinkAArch64 && !viper::platform::kNativeLinkX86_64)
+    if constexpr (zanna::platform::kNativeLinkAArch64 && !zanna::platform::kNativeLinkX86_64)
         return LinkArch::AArch64;
     return LinkArch::X86_64;
 }
@@ -302,4 +302,4 @@ struct LinkLayout {
     std::vector<BindEntry> bindEntries;     ///< Non-GOT data pointers needing dyld bind.
 };
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

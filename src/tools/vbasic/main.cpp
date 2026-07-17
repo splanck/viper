@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,14 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Entry point for the vbasic tool - a simplified interface to Viper BASIC.
+/// @brief Entry point for the vbasic tool - a simplified interface to Zanna BASIC.
 /// @details Uses shared frontend tool infrastructure and delegates to ilc front basic.
 ///          When invoked with no arguments, launches the interactive BASIC REPL.
 
 #include "repl/BasicReplAdapter.hpp"
 #include "repl/ReplSession.hpp"
 #include "tools/common/frontend_tool.hpp"
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 #include "usage.hpp"
 
 #include <memory>
@@ -30,7 +30,7 @@
 /// @param argv Array of argument strings.
 /// @return Exit status: 0 on success, non-zero on error.
 ///
-/// @details Provides a simplified, user-friendly interface to Viper BASIC:
+/// @details Provides a simplified, user-friendly interface to Zanna BASIC:
 ///          - vbasic                      -> launches the BASIC REPL
 ///          - vbasic script.bas           -> runs the program
 ///          - vbasic script.bas --emit-il -> shows generated IL
@@ -38,12 +38,12 @@
 int main(int argc, char **argv) {
     // Zero-arg: launch the interactive BASIC REPL
     if (argc < 2) {
-        auto adapter = std::make_unique<viper::repl::BasicReplAdapter>();
-        viper::repl::ReplSession session(std::move(adapter));
+        auto adapter = std::make_unique<zanna::repl::BasicReplAdapter>();
+        zanna::repl::ReplSession session(std::move(adapter));
         return session.run();
     }
 
-    viper::tools::FrontendToolCallbacks callbacks{
+    zanna::tools::FrontendToolCallbacks callbacks{
         .fileExtension = ".bas",
         .languageName = "BASIC",
         .printUsage = vbasic::printUsage,
@@ -51,5 +51,5 @@ int main(int argc, char **argv) {
         .frontendCommand = cmdFrontBasic,
     };
 
-    return viper::tools::runFrontendTool(argc, argv, callbacks);
+    return zanna::tools::runFrontendTool(argc, argv, callbacks);
 }

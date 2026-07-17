@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-The runtime exposes low-level `Viper.Error.*` hooks for throw-message storage and
+The runtime exposes low-level `Zanna.Error.*` hooks for throw-message storage and
 trap fields. Those functions are useful to generated code and compatibility
 tests, but they make mutable runtime internals look like ordinary application
 APIs. The runtime overhaul plan calls for a modern, read-only diagnostics
@@ -21,10 +21,10 @@ public contract.
 
 ## Decision
 
-Add `Viper.Diagnostics.CurrentTrap() -> Option<TrapInfo>`.
+Add `Zanna.Diagnostics.CurrentTrap() -> Option<TrapInfo>`.
 
 `CurrentTrap()` returns `None` when the current thread has no recorded trap
-metadata. Otherwise it returns a `Viper.Diagnostics.TrapInfo` snapshot with
+metadata. Otherwise it returns a `Zanna.Diagnostics.TrapInfo` snapshot with
 read-only properties:
 
 - `Kind`
@@ -35,7 +35,7 @@ read-only properties:
 - `Message`
 - `Location`
 
-The existing `Viper.Error.SetThrowMsg`, `ClearThrowMsg`, `SetTrapFields`,
+The existing `Zanna.Error.SetThrowMsg`, `ClearThrowMsg`, `SetTrapFields`,
 `RaiseKind`, and field getters remain registered for compatibility and generated
 code paths. Documentation should prefer `CurrentTrap()` for application-facing
 diagnostics.

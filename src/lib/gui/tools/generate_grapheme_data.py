@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #===----------------------------------------------------------------------===//
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #
 #===----------------------------------------------------------------------===//
 
-"""Generate ViperGUI's Unicode 17 grapheme-break data.
+"""Generate ZannaGUI's Unicode 17 grapheme-break data.
 
 The normal build never runs this script. Maintainers run it only when updating
 the pinned Unicode version, then review and commit the deterministic outputs.
@@ -224,7 +224,7 @@ def render_data(
     lines = [
         "//===----------------------------------------------------------------------===//",
         "//",
-        "// Part of the Viper project, under the GNU GPL v3.",
+        "// Part of the Zanna project, under the GNU GPL v3.",
         "// See LICENSE for license information.",
         "//",
         "//===----------------------------------------------------------------------===//",

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,9 +21,9 @@
 
 module d3d11_rtt_readback_probe;
 
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal as Terminal;
 
 func channelR(color: Integer) -> Integer {
     return color / 16777216;

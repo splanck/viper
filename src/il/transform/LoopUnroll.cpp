@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@ std::optional<long long> checkedAdd(long long lhs, long long rhs) {
 }
 
 bool isSafeToCloneForFullUnroll(const Instr &instr) {
-    if (viper::il::isTerminator(instr))
+    if (zanna::il::isTerminator(instr))
         return false;
     if (const auto props = il::verify::lookup(instr.op); props && props->canTrap)
         return false;
@@ -494,7 +494,7 @@ bool fullyUnrollLoop(Function &function,
     std::vector<Instr> clonedInstrs;
     clonedInstrs.reserve(bodyInstrs.size() * counted.tripCount);
 
-    unsigned nextId = viper::il::nextTempId(function);
+    unsigned nextId = zanna::il::nextTempId(function);
 
     // Build value map: original temp id -> current value
     std::unordered_map<unsigned, Value> valueMap;

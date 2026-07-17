@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,10 +17,10 @@
 
 #include "tests/TestHarness.hpp"
 
-using viper::tui::config::Config;
-using viper::tui::config::loadFromFile;
-using viper::tui::render::RGBA;
-using viper::tui::term::KeyEvent;
+using zanna::tui::config::Config;
+using zanna::tui::config::loadFromFile;
+using zanna::tui::render::RGBA;
+using zanna::tui::term::KeyEvent;
 
 TEST(TUI, Config) {
     Config cfg;
@@ -54,6 +54,6 @@ TEST(TUI, Config) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

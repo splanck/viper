@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 // File: src/il/transform/ConstFold.cpp
@@ -493,7 +493,7 @@ void constFold(Module &m) {
     // occur at runtime, folding must not change behavior.
     for (auto &f : m.functions) {
         // Build initial use-count info once per function.
-        viper::il::UseDefInfo useInfo(f);
+        zanna::il::UseDefInfo useInfo(f);
 
         for (auto &b : f.blocks) {
             // Collect indices of instructions to erase (process in reverse later)

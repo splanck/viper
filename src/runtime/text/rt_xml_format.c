@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_xml_format.c
 // Purpose: XML serialization (compact + pretty) and entity escape/unescape for
-//   the Viper.Text.Xml class. Parsing and the DOM API live in rt_xml.c.
+//   the Zanna.Text.Xml class. Parsing and the DOM API live in rt_xml.c.
 //
 // Links: rt_xml.h (public API), rt_xml_internal.h (node struct), rt_xml.c
 //

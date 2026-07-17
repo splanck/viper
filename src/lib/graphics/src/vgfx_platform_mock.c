@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Mock Platform Backend (Testing Only)
+// ZannaGFX Mock Platform Backend (Testing Only)
 //
 // Provides an in-memory window simulation with NO OS dependencies.  Used for
 // unit testing and deterministic behavior verification.  This backend never
@@ -26,7 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Mock platform backend for unit testing ViperGFX.
+/// @brief Mock platform backend for unit testing ZannaGFX.
 /// @details Provides in-memory window simulation with manual event injection
 ///          and time control.  No real OS windows are created.
 
@@ -242,7 +242,7 @@ static void mock_apply_event(struct vgfx_window *win,
 ///          window.  Always succeeds unless allocation fails.  The framebuffer
 ///          remains in memory only (no display surface created).
 ///
-/// @param win    Pointer to the ViperGFX window structure
+/// @param win    Pointer to the ZannaGFX window structure
 /// @param params Window creation parameters (unused in mock backend)
 /// @return 1 on success, 0 on allocation failure
 ///
@@ -276,7 +276,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @details Frees the platform data structure.  No real window to close.
 ///          Safe to call even if init failed.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 ///
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
@@ -294,7 +294,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 ///          must manually inject events using vgfx_mock_inject_*() functions.
 ///          This function always succeeds and does nothing.
 ///
-/// @param win Pointer to the ViperGFX window structure (unused)
+/// @param win Pointer to the ZannaGFX window structure (unused)
 /// @return 1 (always succeeds)
 ///
 /// @note To simulate events, use vgfx_mock_inject_key_event(),
@@ -331,7 +331,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 ///          in memory and can be inspected directly via win->pixels.  This
 ///          function always succeeds and does nothing.
 ///
-/// @param win Pointer to the ViperGFX window structure (unused)
+/// @param win Pointer to the ZannaGFX window structure (unused)
 /// @return 1 (always succeeds)
 ///
 /// @note To verify rendering, tests can directly read win->pixels.

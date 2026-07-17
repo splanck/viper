@@ -67,7 +67,7 @@ events. Runtime entity/event identity replaces only the physics bridge.
 
 ### Slice 0 — Freeze complete baseline
 
-1. Run `viper check` and all 14 probes: assets, campaign, combat, core, enemy,
+1. Run `zanna check` and all 14 probes: assets, campaign, combat, core, enemy,
    level, manifest, menu, meta, movement, perf, render, smoke, stress combat.
 2. Capture fixed traces for:
    - player pose/velocity/ground/crouch and input settings;
@@ -230,7 +230,7 @@ procedural asset settings.
 
 ## Per-slice validation
 
-Run `viper check`, all 14 probes, focused runtime tests for the adopted layer,
+Run `zanna check`, all 14 probes, focused runtime tests for the adopted layer,
 deterministic trace comparison, and relevant captures after every slice. Run
 graphics3d/perf labels, surface audits, package/no-assets modes, and full
 platform builds before completion.

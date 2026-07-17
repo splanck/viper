@@ -11,12 +11,12 @@
 //            - pitcher batting under DH-on rules
 //            - no pitcher set
 //
-// Run via: viper run examples/games/baseball/human_legality_probe.zia
+// Run via: zanna run examples/games/baseball/human_legality_probe.zia
 // ============================================================================
 module human_legality_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/manager_layer";
 bind "./src/model/lineup_card";

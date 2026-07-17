@@ -7,14 +7,14 @@
 bind "../../games/lib/gamebase3d";
 bind "../../games/lib/iscene3d";
 
-bind Viper.Game3D;
-bind Viper.Input.Key as Key;
-bind Viper.Graphics3D;
-bind Viper.Game.UI.HudPanel as Panel;
-bind Viper.Game.UI.HudBar as Bar;
-bind Viper.Game.UI.HudLabel as HudLabel;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game3D;
+bind Zanna.Input.Key as Key;
+bind Zanna.Graphics3D;
+bind Zanna.Game.UI.HudPanel as Panel;
+bind Zanna.Game.UI.HudBar as Bar;
+bind Zanna.Game.UI.HudLabel as HudLabel;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 // --- Menu scene: widget-drawn title card ------------------------------------
 

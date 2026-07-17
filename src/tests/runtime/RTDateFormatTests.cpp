@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTDateFormatTests.cpp
-// Purpose: Validate Viper.Localization.DateFormat against the baked en-US
+// Purpose: Validate Zanna.Localization.DateFormat against the baked en-US
 //          locale using a fixed timestamp for reproducibility. Every pattern
 //          letter (y M d E H h m s a) is exercised across its supported
 //          repetition counts, plus the four canonical styles and the
@@ -86,7 +86,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_datefmt_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_datefmt_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -144,7 +144,7 @@ static void *fmt_for_tag(const char *tag) {
     return rt_dateformat_for_locale(loc);
 }
 
-// Fixed reference timestamp: use Viper's rt_datetime_create with
+// Fixed reference timestamp: use Zanna's rt_datetime_create with
 // UTC-aware components. The locale's baked data is in English, so we use
 // month = March (numeric 3) and day = 15, hour 14:30:05 to exercise AM/PM.
 static int64_t ref_ts() {

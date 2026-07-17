@@ -1,16 +1,16 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Pool (BASIC)
+' API Audit: Zanna.Threads.Pool (BASIC)
 ' =============================================================================
 ' Tests: New, Size, Pending, Active, IsShutdown, Shutdown
 ' Note: Pool.Submit requires function pointers, so we only test properties
 '       and lifecycle management here.
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Pool ==="
+PRINT "=== API Audit: Zanna.Threads.Pool ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM p AS OBJECT = Viper.Threads.Pool.New(2)
+DIM p AS OBJECT = Zanna.Threads.Pool.New(2)
 PRINT "Created pool with 2 workers"
 
 ' --- Size ---
@@ -36,7 +36,7 @@ PRINT "IsShutdown after Shutdown: "; p.IsShutdown
 
 ' --- New with 1 worker ---
 PRINT "--- New with 1 worker ---"
-DIM p2 AS OBJECT = Viper.Threads.Pool.New(1)
+DIM p2 AS OBJECT = Zanna.Threads.Pool.New(1)
 PRINT "Size: "; p2.Size
 PRINT "Pending: "; p2.Pending
 PRINT "Active: "; p2.Active
@@ -49,7 +49,7 @@ PRINT "IsShutdown after ShutdownNow: "; p2.IsShutdown
 
 ' --- New with 4 workers ---
 PRINT "--- New with 4 workers ---"
-DIM p3 AS OBJECT = Viper.Threads.Pool.New(4)
+DIM p3 AS OBJECT = Zanna.Threads.Pool.New(4)
 PRINT "Size: "; p3.Size
 p3.Shutdown()
 PRINT "Shutdown complete"

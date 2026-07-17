@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -347,14 +347,14 @@ int8_t rt_inputmgr_up(rt_inputmgr mgr) {
     (void)mgr;
 
     // Keyboard: Up arrow or W
-    if (rt_keyboard_is_down(VIPER_KEY_UP) || rt_keyboard_is_down(VIPER_KEY_W)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_UP) || rt_keyboard_is_down(ZANNA_KEY_W)) {
         return 1;
     }
 
     // Gamepad: D-pad up or left stick up
     for (int64_t i = 0; i < 4; i++) {
         if (rt_pad_is_connected(i)) {
-            if (rt_pad_is_down(i, VIPER_PAD_UP))
+            if (rt_pad_is_down(i, ZANNA_PAD_UP))
                 return 1;
             if (rt_pad_left_y(i) < -0.5)
                 return 1;
@@ -368,13 +368,13 @@ int8_t rt_inputmgr_up(rt_inputmgr mgr) {
 int8_t rt_inputmgr_down(rt_inputmgr mgr) {
     (void)mgr;
 
-    if (rt_keyboard_is_down(VIPER_KEY_DOWN) || rt_keyboard_is_down(VIPER_KEY_S)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_DOWN) || rt_keyboard_is_down(ZANNA_KEY_S)) {
         return 1;
     }
 
     for (int64_t i = 0; i < 4; i++) {
         if (rt_pad_is_connected(i)) {
-            if (rt_pad_is_down(i, VIPER_PAD_DOWN))
+            if (rt_pad_is_down(i, ZANNA_PAD_DOWN))
                 return 1;
             if (rt_pad_left_y(i) > 0.5)
                 return 1;
@@ -388,13 +388,13 @@ int8_t rt_inputmgr_down(rt_inputmgr mgr) {
 int8_t rt_inputmgr_left(rt_inputmgr mgr) {
     (void)mgr;
 
-    if (rt_keyboard_is_down(VIPER_KEY_LEFT) || rt_keyboard_is_down(VIPER_KEY_A)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_LEFT) || rt_keyboard_is_down(ZANNA_KEY_A)) {
         return 1;
     }
 
     for (int64_t i = 0; i < 4; i++) {
         if (rt_pad_is_connected(i)) {
-            if (rt_pad_is_down(i, VIPER_PAD_LEFT))
+            if (rt_pad_is_down(i, ZANNA_PAD_LEFT))
                 return 1;
             if (rt_pad_left_x(i) < -0.5)
                 return 1;
@@ -408,13 +408,13 @@ int8_t rt_inputmgr_left(rt_inputmgr mgr) {
 int8_t rt_inputmgr_right(rt_inputmgr mgr) {
     (void)mgr;
 
-    if (rt_keyboard_is_down(VIPER_KEY_RIGHT) || rt_keyboard_is_down(VIPER_KEY_D)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_RIGHT) || rt_keyboard_is_down(ZANNA_KEY_D)) {
         return 1;
     }
 
     for (int64_t i = 0; i < 4; i++) {
         if (rt_pad_is_connected(i)) {
-            if (rt_pad_is_down(i, VIPER_PAD_RIGHT))
+            if (rt_pad_is_down(i, ZANNA_PAD_RIGHT))
                 return 1;
             if (rt_pad_left_x(i) > 0.5)
                 return 1;
@@ -429,13 +429,13 @@ int8_t rt_inputmgr_confirm(rt_inputmgr mgr) {
     (void)mgr;
 
     // Keyboard: Enter or Space
-    if (rt_keyboard_was_pressed(VIPER_KEY_ENTER) || rt_keyboard_was_pressed(VIPER_KEY_SPACE)) {
+    if (rt_keyboard_was_pressed(ZANNA_KEY_ENTER) || rt_keyboard_was_pressed(ZANNA_KEY_SPACE)) {
         return 1;
     }
 
     // Gamepad: A button
     for (int64_t i = 0; i < 4; i++) {
-        if (rt_pad_is_connected(i) && rt_pad_was_pressed(i, VIPER_PAD_A)) {
+        if (rt_pad_is_connected(i) && rt_pad_was_pressed(i, ZANNA_PAD_A)) {
             return 1;
         }
     }
@@ -448,13 +448,13 @@ int8_t rt_inputmgr_cancel(rt_inputmgr mgr) {
     (void)mgr;
 
     // Keyboard: Escape
-    if (rt_keyboard_was_pressed(VIPER_KEY_ESCAPE)) {
+    if (rt_keyboard_was_pressed(ZANNA_KEY_ESCAPE)) {
         return 1;
     }
 
     // Gamepad: B button
     for (int64_t i = 0; i < 4; i++) {
-        if (rt_pad_is_connected(i) && rt_pad_was_pressed(i, VIPER_PAD_B)) {
+        if (rt_pad_is_connected(i) && rt_pad_was_pressed(i, ZANNA_PAD_B)) {
             return 1;
         }
     }
@@ -469,10 +469,10 @@ double rt_inputmgr_axis_x(rt_inputmgr mgr) {
     double value = 0.0;
 
     // Keyboard contribution
-    if (rt_keyboard_is_down(VIPER_KEY_LEFT) || rt_keyboard_is_down(VIPER_KEY_A)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_LEFT) || rt_keyboard_is_down(ZANNA_KEY_A)) {
         value -= 1.0;
     }
-    if (rt_keyboard_is_down(VIPER_KEY_RIGHT) || rt_keyboard_is_down(VIPER_KEY_D)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_RIGHT) || rt_keyboard_is_down(ZANNA_KEY_D)) {
         value += 1.0;
     }
 
@@ -487,9 +487,9 @@ double rt_inputmgr_axis_x(rt_inputmgr mgr) {
                 }
             }
             // D-pad
-            if (rt_pad_is_down(i, VIPER_PAD_LEFT) && value > -1.0)
+            if (rt_pad_is_down(i, ZANNA_PAD_LEFT) && value > -1.0)
                 value = -1.0;
-            if (rt_pad_is_down(i, VIPER_PAD_RIGHT) && value < 1.0)
+            if (rt_pad_is_down(i, ZANNA_PAD_RIGHT) && value < 1.0)
                 value = 1.0;
         }
     }
@@ -510,10 +510,10 @@ double rt_inputmgr_axis_y(rt_inputmgr mgr) {
     double value = 0.0;
 
     // Keyboard contribution
-    if (rt_keyboard_is_down(VIPER_KEY_UP) || rt_keyboard_is_down(VIPER_KEY_W)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_UP) || rt_keyboard_is_down(ZANNA_KEY_W)) {
         value -= 1.0;
     }
-    if (rt_keyboard_is_down(VIPER_KEY_DOWN) || rt_keyboard_is_down(VIPER_KEY_S)) {
+    if (rt_keyboard_is_down(ZANNA_KEY_DOWN) || rt_keyboard_is_down(ZANNA_KEY_S)) {
         value += 1.0;
     }
 
@@ -526,9 +526,9 @@ double rt_inputmgr_axis_y(rt_inputmgr mgr) {
                     value = pad_y;
                 }
             }
-            if (rt_pad_is_down(i, VIPER_PAD_UP) && value > -1.0)
+            if (rt_pad_is_down(i, ZANNA_PAD_UP) && value > -1.0)
                 value = -1.0;
-            if (rt_pad_is_down(i, VIPER_PAD_DOWN) && value < 1.0)
+            if (rt_pad_is_down(i, ZANNA_PAD_DOWN) && value < 1.0)
                 value = 1.0;
         }
     }

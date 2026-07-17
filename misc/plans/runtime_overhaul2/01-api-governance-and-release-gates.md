@@ -1,13 +1,13 @@
 # API Governance And Release Gates
 
 This document defines how the public runtime API should be stabilized. These
-rules apply to all `Viper.*` rows emitted by `viper --dump-runtime-api`.
+rules apply to all `Zanna.*` rows emitted by `zanna --dump-runtime-api`.
 
 ## Public Surface Definition
 
 The public API is:
 
-- every public `RT_FUNC` canonical name beginning with `Viper.`;
+- every public `RT_FUNC` canonical name beginning with `Zanna.`;
 - every emitted runtime class;
 - every emitted class method;
 - every emitted class property;

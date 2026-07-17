@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 // Key invariants:
 //   - Build metadata never changes precedence.
 //   - Numeric prerelease identifiers compare numerically and sort before text.
-//   - Dotted numeric cores retain compatibility with Viper's four-part builds.
+//   - Dotted numeric cores retain compatibility with Zanna's four-part builds.
 //
 // Ownership/Lifetime: Pure functions; no retained state.
 //
@@ -30,7 +30,7 @@
 #include <system_error>
 #include <vector>
 
-namespace viper::installer {
+namespace zanna::installer {
 namespace {
 
 struct ParsedVersion {
@@ -163,4 +163,4 @@ int compareInstallerVersions(std::string_view left, std::string_view right) {
     return comparePrerelease(parsedLeft.prerelease, parsedRight.prerelease);
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer

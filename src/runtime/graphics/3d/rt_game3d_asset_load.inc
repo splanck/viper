@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/rt_game3d_asset_load.inc  (#included from rt_game3d.c; not a
 // standalone translation unit) Purpose: Game3D async asset loading, model-template instantiation,
 // and the public Assets3D API

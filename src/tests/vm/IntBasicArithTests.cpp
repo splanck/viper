@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -47,7 +47,7 @@ void buildBinaryFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
 int64_t runBinary(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildBinaryFunction(module, op, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTPadTests.cpp
-// Purpose: Tests for Viper.Input.Pad static class.
+// Purpose: Tests for Zanna.Input.Pad static class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,19 +54,19 @@ static void test_initial_state() {
     rt_pad_poll();
 
     int64_t count = rt_pad_count();
-    assert(count >= 0 && count <= VIPER_PAD_MAX);
+    assert(count >= 0 && count <= ZANNA_PAD_MAX);
 
     // Invalid indices should return disconnected
     assert(rt_pad_is_connected(-1) == 0);
     assert(rt_pad_is_connected(4) == 0);
     assert(rt_pad_is_connected(999) == 0);
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         if (!rt_pad_is_connected(i)) {
-            assert(rt_pad_is_down(i, VIPER_PAD_A) == 0);
-            assert(rt_pad_is_up(i, VIPER_PAD_A) == 1);
-            assert(rt_pad_was_pressed(i, VIPER_PAD_A) == 0);
-            assert(rt_pad_was_released(i, VIPER_PAD_A) == 0);
+            assert(rt_pad_is_down(i, ZANNA_PAD_A) == 0);
+            assert(rt_pad_is_up(i, ZANNA_PAD_A) == 1);
+            assert(rt_pad_was_pressed(i, ZANNA_PAD_A) == 0);
+            assert(rt_pad_was_released(i, ZANNA_PAD_A) == 0);
             assert(rt_pad_left_x(i) == 0.0);
             assert(rt_pad_left_y(i) == 0.0);
             assert(rt_pad_right_x(i) == 0.0);
@@ -122,10 +122,10 @@ static void test_boundary_cases() {
     rt_pad_init();
 
     // Invalid controller indices should not crash
-    assert(rt_pad_is_down(-1, VIPER_PAD_A) == 0);
-    assert(rt_pad_is_down(999, VIPER_PAD_A) == 0);
-    assert(rt_pad_is_up(-1, VIPER_PAD_A) == 1);
-    assert(rt_pad_is_up(999, VIPER_PAD_A) == 1);
+    assert(rt_pad_is_down(-1, ZANNA_PAD_A) == 0);
+    assert(rt_pad_is_down(999, ZANNA_PAD_A) == 0);
+    assert(rt_pad_is_up(-1, ZANNA_PAD_A) == 1);
+    assert(rt_pad_is_up(999, ZANNA_PAD_A) == 1);
 
     // Invalid button indices should not crash
     assert(rt_pad_is_down(0, -1) == 0);
@@ -178,8 +178,8 @@ static void test_frame_reset() {
     rt_pad_begin_frame();
 
     // Nothing should be pressed/released after frame reset
-    assert(rt_pad_was_pressed(0, VIPER_PAD_A) == 0);
-    assert(rt_pad_was_released(0, VIPER_PAD_A) == 0);
+    assert(rt_pad_was_pressed(0, ZANNA_PAD_A) == 0);
+    assert(rt_pad_was_released(0, ZANNA_PAD_A) == 0);
 
     printf("test_frame_reset: PASSED\n");
 }
@@ -195,7 +195,7 @@ static void test_poll() {
     rt_pad_poll();
 
     // Controller count depends on hardware; just verify it's in valid range
-    assert(rt_pad_count() >= 0 && rt_pad_count() <= VIPER_PAD_MAX);
+    assert(rt_pad_count() >= 0 && rt_pad_count() <= ZANNA_PAD_MAX);
 
     printf("test_poll: PASSED\n");
 }
@@ -205,7 +205,7 @@ static void test_poll() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Input.Pad Tests ===\n\n");
+    printf("=== Zanna.Input.Pad Tests ===\n\n");
 
     test_button_constants();
     test_initial_state();

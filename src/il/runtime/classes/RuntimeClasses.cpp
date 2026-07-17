@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 /// @brief Builds the runtime class catalog and provides unified registry access.
 ///
 /// @details This file implements the runtime class catalog infrastructure that
-/// enables all Viper frontends to access runtime function signatures. It serves
+/// enables all Zanna frontends to access runtime function signatures. It serves
 /// two primary purposes:
 ///
 /// ## 1. Catalog Construction
@@ -190,8 +190,8 @@ const std::vector<RuntimeClass> &runtimeClassCatalog() {
 /// ## Case Insensitivity
 ///
 /// The comparison converts both the query and catalog names to uppercase
-/// character by character. This allows users to write `viper.string` or
-/// `Viper.STRING` and still match `Viper.String`.
+/// character by character. This allows users to write `zanna.string` or
+/// `Zanna.STRING` and still match `Zanna.String`.
 ///
 /// ## Performance
 ///
@@ -199,7 +199,7 @@ const std::vector<RuntimeClass> &runtimeClassCatalog() {
 /// For the current catalog size (~150 classes), this is fast enough. If the
 /// catalog grows significantly, consider adding a hash index.
 ///
-/// @param qname The fully-qualified class name to search for (e.g., "Viper.String").
+/// @param qname The fully-qualified class name to search for (e.g., "Zanna.String").
 ///
 /// @return Pointer to the matching RuntimeClass, or nullptr if not found.
 ///         The returned pointer is valid for the lifetime of the program.
@@ -415,7 +415,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
 
     // Check for parameterized return annotations:
     //   - "seq<str>" / "list<str>" carry element type information.
-    //   - "obj<Viper.Sound.Sound>" / "ptr<Viper.Sound.Sound>" carry the
+    //   - "obj<Zanna.Sound.Sound>" / "ptr<Zanna.Sound.Sound>" carry the
     //     concrete runtime class behind an otherwise opaque pointer return.
     ParsedTypeToken returnToken = parseTypeToken(retTok);
     result.returnType = returnToken.scalar;
@@ -457,9 +457,9 @@ std::string concreteRuntimeReturnClassQName(const ParsedSignature &sig) {
     if (!sig.objectTypeName.empty())
         return sig.objectTypeName;
     if (sig.containerTypeName == "seq")
-        return "Viper.Collections.Seq";
+        return "Zanna.Collections.Seq";
     if (sig.containerTypeName == "list")
-        return "Viper.Collections.List";
+        return "Zanna.Collections.List";
     return {};
 }
 
@@ -494,7 +494,7 @@ std::string RuntimeRegistry::toLower(std::string_view s) {
 /// overloading by arity. The pipe and hash separators are chosen to be
 /// unlikely to appear in identifiers.
 ///
-/// Example: "viper.string|substring#2" for String.Substring(start, length)
+/// Example: "zanna.string|substring#2" for String.Substring(start, length)
 ///
 /// @param cls The fully-qualified class name.
 /// @param method The method name.
@@ -518,7 +518,7 @@ std::string RuntimeRegistry::methodKey(std::string_view cls,
 ///
 /// @details Simpler than method keys since properties don't have overloads.
 ///
-/// Example: "viper.string.length" for String.Length
+/// Example: "zanna.string.length" for String.Length
 ///
 /// @param cls The fully-qualified class name.
 /// @param prop The property name.
@@ -538,7 +538,7 @@ std::string RuntimeRegistry::propertyKey(std::string_view cls, std::string_view 
 /// @details Simply lowercases the full function name for case-insensitive
 /// lookup. Used when callers know the exact extern target name.
 ///
-/// Example: "viper.string.substring" for direct lookup
+/// Example: "zanna.string.substring" for direct lookup
 ///
 /// @param name The canonical extern function name.
 /// @return The hash key string.
@@ -674,14 +674,14 @@ const RuntimeRegistry &RuntimeRegistry::instance() {
 /// ## Example
 ///
 /// ```cpp
-/// auto method = registry.findMethod("Viper.String", "Substring", 2);
+/// auto method = registry.findMethod("Zanna.String", "Substring", 2);
 /// if (method) {
 ///     // method->signature.returnType == ILScalarType::String
 ///     // method->signature.params == [ILScalarType::I64, ILScalarType::I64]
 /// }
 /// ```
 ///
-/// @param classQName The fully-qualified class name (e.g., "Viper.String").
+/// @param classQName The fully-qualified class name (e.g., "Zanna.String").
 /// @param methodName The method name (e.g., "Substring").
 /// @param arity The number of explicit parameters (excluding receiver).
 ///
@@ -704,10 +704,10 @@ std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQN
 /// ## Example
 ///
 /// ```cpp
-/// auto prop = registry.findProperty("Viper.String", "Length");
+/// auto prop = registry.findProperty("Zanna.String", "Length");
 /// if (prop) {
 ///     // prop->type == ILScalarType::I64
-///     // prop->getter == "Viper.String.get_Length"
+///     // prop->getter == "Zanna.String.get_Length"
 ///     // prop->readonly == true
 /// }
 /// ```
@@ -734,7 +734,7 @@ std::optional<ParsedProperty> RuntimeRegistry::findProperty(std::string_view cla
 /// ## Example
 ///
 /// ```cpp
-/// auto sig = registry.findFunction("Viper.String.Substring");
+/// auto sig = registry.findFunction("Zanna.String.Substring");
 /// if (sig) {
 ///     // sig->returnType == ILScalarType::String
 ///     // sig->params == [ILScalarType::I64, ILScalarType::I64]

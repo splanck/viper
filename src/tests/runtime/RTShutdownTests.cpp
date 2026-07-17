@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -245,7 +245,7 @@ static void test_legacy_context_shutdown() {
 static void test_audio_shutdown_detaches_loaded_handles() {
     printf("  test_audio_shutdown_detaches_loaded_handles ... ");
 
-    const char *path = "/tmp/viper_shutdown_handles.wav";
+    const char *path = "/tmp/zanna_shutdown_handles.wav";
     if (!write_test_wav_frames(path, 44100, 128)) {
         printf("SKIP (temp wav write failed)\n");
         return;

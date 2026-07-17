@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_random.c
 // Purpose: Implements the deterministic pseudo-random number generator (PRNG)
-//          for the Viper runtime. Mirrors BASIC RND semantics using a 64-bit
+//          for the Zanna runtime. Mirrors BASIC RND semantics using a 64-bit
 //          linear congruential generator (LCG) with fixed multiplier and
 //          increment. RNG state lives in the per-VM RtContext so multiple VMs
 //          maintain independent, isolated sequences.
@@ -265,8 +265,8 @@ int8_t rt_rand_chance_bool(double probability) {
 }
 
 /// @brief Create a Random object with independent RNG state.
-/// @details This enables `new Viper.Math.Random(seed)` without mutating the
-///          active runtime context's RNG used by static Viper.Math.Random functions.
+/// @details This enables `new Zanna.Math.Random(seed)` without mutating the
+///          active runtime context's RNG used by static Zanna.Math.Random functions.
 void *rt_random_new(long long seed) {
     rt_random_impl *rng =
         (rt_random_impl *)rt_obj_new_i64(RT_RANDOM_CLASS_ID, (int64_t)sizeof(rt_random_impl));

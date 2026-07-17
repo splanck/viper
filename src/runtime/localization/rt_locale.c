@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale.c
-// Purpose: Implementation of the Viper.Localization.Locale class: BCP-47
+// Purpose: Implementation of the Zanna.Localization.Locale class: BCP-47
 //          parsing, canonicalization, and the fallback-chain walk. Integrates
 //          with LocaleManager only loosely — registry lookup happens via
 //          rt_locale_manager_lookup_data which may return NULL for tags that
@@ -368,7 +368,7 @@ void rt_locale_internal_finalizer(void *obj) {
 static void *loc_alloc(void) {
     rt_locale_t *loc = (rt_locale_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_locale_t));
     if (!loc) {
-        rt_trap("Viper.Localization.Locale: memory allocation failed");
+        rt_trap("Zanna.Localization.Locale: memory allocation failed");
         return NULL; // unreachable after trap
     }
     memset(loc, 0, sizeof(*loc));
@@ -452,7 +452,7 @@ void *rt_locale_parse_internal(rt_string tag, int strict) {
     // when strict (matches the plan's "Parse traps, TryParse returns NULL").
     if (!bytes || sl <= 0) {
         if (strict) {
-            rt_trap("Viper.Localization.Locale: invalid BCP-47 tag '' (empty)");
+            rt_trap("Zanna.Localization.Locale: invalid BCP-47 tag '' (empty)");
             return NULL;
         }
         return NULL;
@@ -461,7 +461,7 @@ void *rt_locale_parse_internal(rt_string tag, int strict) {
     rt_locale_t parsed;
     if (rt_locale_internal_parse_into(bytes, (size_t)sl, &parsed) != 0) {
         if (strict) {
-            rt_trap("Viper.Localization.Locale: invalid BCP-47 tag (parse failed)");
+            rt_trap("Zanna.Localization.Locale: invalid BCP-47 tag (parse failed)");
             return NULL;
         }
         return NULL;
@@ -504,7 +504,7 @@ void *rt_locale_try_parse(rt_string tag) {
 ///          produced by @ref rt_locale_try_parse is released after the Option
 ///          has retained it.
 /// @param tag rt_string containing the BCP-47 tag; NULL or empty returns None.
-/// @return Opaque Viper.Option containing a Locale handle, or None.
+/// @return Opaque Zanna.Option containing a Locale handle, or None.
 void *rt_locale_try_parse_option(rt_string tag) {
     void *locale = rt_locale_try_parse(tag);
     if (!locale)
@@ -528,7 +528,7 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     const char *ls = language ? rt_string_cstr(language) : NULL;
     int64_t ll = language ? rt_str_len(language) : 0;
     if (!ls || ll <= 0) {
-        rt_trap("Viper.Localization.Locale: language subtag required");
+        rt_trap("Zanna.Localization.Locale: language subtag required");
         return NULL;
     }
 
@@ -536,7 +536,7 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     // separators would let a caller smuggle extra components through any
     // field (VDOC-066).
     if (loc_str_has_separator(ls, (size_t)ll)) {
-        rt_trap("Viper.Localization.Locale: language must be a single subtag");
+        rt_trap("Zanna.Localization.Locale: language must be a single subtag");
         return NULL;
     }
 
@@ -545,7 +545,7 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     char buf[RT_LOCALE_TAG_CAP];
     size_t pos = 0;
     if ((size_t)ll >= sizeof(buf)) {
-        rt_trap("Viper.Localization.Locale: language subtag too long");
+        rt_trap("Zanna.Localization.Locale: language subtag too long");
         return NULL;
     }
     memcpy(buf, ls, (size_t)ll);
@@ -558,12 +558,12 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
         int64_t sll = rt_str_len(script);
         if (ss && sll > 0) {
             if (loc_str_has_separator(ss, (size_t)sll)) {
-                rt_trap("Viper.Localization.Locale: script must be a single subtag");
+                rt_trap("Zanna.Localization.Locale: script must be a single subtag");
                 return NULL;
             }
             script_given = 1;
             if (pos + 1 + (size_t)sll >= sizeof(buf)) {
-                rt_trap("Viper.Localization.Locale: script subtag overflow");
+                rt_trap("Zanna.Localization.Locale: script subtag overflow");
                 return NULL;
             }
             buf[pos++] = '-';
@@ -576,12 +576,12 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
         int64_t rl = rt_str_len(region);
         if (rs && rl > 0) {
             if (loc_str_has_separator(rs, (size_t)rl)) {
-                rt_trap("Viper.Localization.Locale: region must be a single subtag");
+                rt_trap("Zanna.Localization.Locale: region must be a single subtag");
                 return NULL;
             }
             region_given = 1;
             if (pos + 1 + (size_t)rl >= sizeof(buf)) {
-                rt_trap("Viper.Localization.Locale: region subtag overflow");
+                rt_trap("Zanna.Localization.Locale: region subtag overflow");
                 return NULL;
             }
             buf[pos++] = '-';
@@ -593,21 +593,21 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
 
     rt_locale_t parsed;
     if (rt_locale_internal_parse_into(buf, pos, &parsed) != 0) {
-        rt_trap("Viper.Localization.Locale: invalid subtag combination");
+        rt_trap("Zanna.Localization.Locale: invalid subtag combination");
         return NULL;
     }
     // The parser classifies by shape; verify each supplied part landed in
     // the field the caller named (rejects FromParts("en", "US", "")).
     if (parsed.language[0] == '\0') {
-        rt_trap("Viper.Localization.Locale: language is not a valid language subtag");
+        rt_trap("Zanna.Localization.Locale: language is not a valid language subtag");
         return NULL;
     }
     if (script_given && parsed.script[0] == '\0') {
-        rt_trap("Viper.Localization.Locale: script is not a valid script subtag");
+        rt_trap("Zanna.Localization.Locale: script is not a valid script subtag");
         return NULL;
     }
     if (region_given && parsed.region[0] == '\0') {
-        rt_trap("Viper.Localization.Locale: region is not a valid region subtag");
+        rt_trap("Zanna.Localization.Locale: region is not a valid region subtag");
         return NULL;
     }
     rt_locale_t *loc = (rt_locale_t *)loc_alloc();

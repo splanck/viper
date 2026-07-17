@@ -13,12 +13,12 @@ Accepted (2026-07-03).
 ## Context
 
 Every 3D game hand-laid its HUD with raw `Canvas3D.DrawRect2D`/`DrawText2D`
-calls because the `Viper.Game.UI.*` widget set (HudLabel, Bar, Panel,
+calls because the `Zanna.Game.UI.*` widget set (HudLabel, Bar, Panel,
 NineSlice, MenuList, Modal, HudSlider, HudDropdown, HudTooltip, GameButton,
 Table, HudTextInput) drew exclusively through the 2D `rt_canvas_*`
 primitives. Duplicating the widget set for Canvas3D would fork ~4,600 lines
 of widget logic, and class-leaf-name uniqueness forbids re-registering the
-same classes under a `Viper.Game3D.UI.*` alias.
+same classes under a `Zanna.Game3D.UI.*` alias.
 
 Layering constraint: `runtime/game` must not depend on `runtime/graphics/3d`
 (the widgets are part of the 2D-facing game layer; the 3D stack sits beside

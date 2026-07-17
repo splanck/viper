@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Direct-call graph summary for a module.
 /// @details Tracks per-callee call counts, caller→callee edges, and strongly
@@ -71,4 +71,4 @@ struct CallGraph {
 /// @return CallGraph summary for the module, including SCCs.
 CallGraph buildCallGraph(il::core::Module &module);
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

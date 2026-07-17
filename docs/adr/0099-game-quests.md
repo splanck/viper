@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-07-11
 ---
 
-# ADR 0099: Viper.Game.Quests — Objective Tracker with SaveData Integration
+# ADR 0099: Zanna.Game.Quests — Objective Tracker with SaveData Integration
 
 Date: 2026-07-11
 
@@ -38,7 +38,7 @@ the runtime; `AchievementTracker` provides the structural template
   one-shot. `QuestState` / `QuestEventKind` static constants classes mirror
   the enum-accessor pattern (`Game3D.Layers`).
 - **Persistence:** `Save(saveData)`/`Load(saveData)` store one versioned
-  value under `"viper.quests.v1"` — a compact `q=id;s=state;g=stage;
+  value under `"zanna.quests.v1"` — a compact `q=id;s=state;g=stage;
   o=stageId.objId:progress` record string (ids need no escaping by the
   registration contract; SaveData's JSON layer handles the rest). Titles /
   texts / targets are **not** saved: games re-register at boot, then `Load`
@@ -65,4 +65,4 @@ the runtime; `AchievementTracker` provides the structural template
 
 - misc/plans/thirdpersonupgrade/29-quest-tracker.md
 - src/runtime/game/rt_quests.c, src/runtime/game/rt_achievement.c (template)
-- docs/viperlib/game/persistence.md, ADR 0097
+- docs/zannalib/game/persistence.md, ADR 0097

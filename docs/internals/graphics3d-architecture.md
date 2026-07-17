@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-07-16
 ---
 
-# Viper.Graphics3D — Architecture
+# Zanna.Graphics3D — Architecture
 
 ## System Overview
 
@@ -19,7 +19,7 @@ Canvas3D / Mesh3D / Camera3D / Material3D / Light3D  (rt_canvas3d.c, rt_mesh3d.c
 │ _sw.c       │ _metal.m   │ _d3d11.c  │ _opengl.c│
 └─────────────────────────────────────────────────┘
     ↓
-ViperGFX (vgfx.h) — window management, framebuffer, input
+ZannaGFX (vgfx.h) — window management, framebuffer, input
     ↓
 Platform (NSWindow / HWND / X11 Window)
 ```
@@ -97,11 +97,11 @@ readable.
 
 `examples/3d/openworld_slice/` is the current architecture smoke for the
 Game3D layer above the raw renderer. It keeps the runtime boundaries explicit:
-`Viper.Game3D.WorldStream3D` owns cell and terrain residency telemetry,
+`Zanna.Game3D.WorldStream3D` owns cell and terrain residency telemetry,
 manifest loading, deterministic per-update load budgeting, and editor/debug
-inspection hooks, `Viper.Game3D.AssetHandle3D`
+inspection hooks, `Zanna.Game3D.AssetHandle3D`
 owns deferred model completion, `World3D.bakeNavMesh` triggers a scene-derived
-editor bake, and lower-level `Viper.Graphics3D.NavMesh3D` / `NavAgent3D` remain
+editor bake, and lower-level `Zanna.Graphics3D.NavMesh3D` / `NavAgent3D` remain
 the navigation primitives. The sample's CTest runs on the
 software backend, moves a stream center through all four far-apart quadrants of
 a >4 km² stand-in, checks one-cell/one-tile bounded residency plus
@@ -588,12 +588,12 @@ later consumed by the backend.
 
 Public Canvas3D, SceneGraph, and Game3D handle mutation remains main-thread-only.
 No concurrent access to Canvas3D, no nested Begin/End, and no scene mutation
-during Draw traversal. Internal workers may use `Viper.Threads.Pool`,
-`Viper.Threads.Parallel`, plain copied data, and retained ordered-map results;
+during Draw traversal. Internal workers may use `Zanna.Threads.Pool`,
+`Zanna.Threads.Parallel`, plain copied data, and retained ordered-map results;
 they must not dereference or mutate renderer-facing handles directly.
 `World3D.workerCount` may enable internal throughput jobs; those jobs must merge
 results in deterministic order before they affect simulation or renderer state.
-`g3d_3dnext2_surface_probe` covers the ordered `Viper.Threads.Parallel` map
+`g3d_3dnext2_surface_probe` covers the ordered `Zanna.Threads.Parallel` map
 surface plus `World3D.runFramesOnly` replay parity across worker counts.
 `scripts/g3d_tsan_concurrency_lane.sh` configures a focused ThreadSanitizer
 build for the worker pool, ordered map/reduce, general runtime concurrency,
@@ -610,7 +610,7 @@ the queue directly.
 ## Integration with 2D
 
 Canvas3D coexists with the existing 2D Canvas system:
-- Both use the same ViperGFX window infrastructure
+- Both use the same ZannaGFX window infrastructure
 - GPU backends render via their own surface (CAMetalLayer / swap chain / GLX)
 - Software backend writes to the same vgfx framebuffer as 2D Canvas
 - Input handling (Keyboard, Mouse, Pad) is shared

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -259,7 +259,7 @@ TEST(IRCoreStructures, CFGContextIndexesInternedBlockLabels) {
     Module module = makeUninternedModule();
     module.internOwnedIdentifiers();
 
-    viper::analysis::CFGContext cfg(module);
+    zanna::analysis::CFGContext cfg(module);
     Function &fn = module.functions.front();
     BasicBlock &entry = fn.blocks.front();
     BasicBlock &exit = fn.blocks[1];
@@ -270,12 +270,12 @@ TEST(IRCoreStructures, CFGContextIndexesInternedBlockLabels) {
     ASSERT_TRUE(fnIt->second.contains(exit.labelSymbol));
     ASSERT_EQ(fnIt->second.at(exit.labelSymbol), &exit);
 
-    const auto &succ = viper::analysis::successors(cfg, entry);
+    const auto &succ = zanna::analysis::successors(cfg, entry);
     ASSERT_EQ(succ.size(), 1U);
     EXPECT_EQ(succ.front(), &exit);
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -23,5 +23,5 @@ FOR i = 0 TO 49999999
     live = a2 + b2 + k3 + c3 + d3
     sum = (sum + live) MOD 268435456
 NEXT i
-Viper.System.Environment.Exit(sum)
+Zanna.System.Environment.Exit(sum)
 END

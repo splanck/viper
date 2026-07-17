@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Base directory anchor for a file or directory entry in the installer.
 enum class WindowsInstallRoot : uint64_t {
@@ -92,7 +92,7 @@ struct WindowsFileAssociationEntry {
     std::string extension;            ///< Extension including leading dot (e.g. ".zia")
     std::string description;          ///< Human-readable type description
     std::string mimeType;             ///< MIME type string (e.g. "text/x-zia")
-    std::string progId;               ///< ProgID to register (e.g. "Viper.ZiaSource.1")
+    std::string progId;               ///< ProgID to register (e.g. "Zanna.ZiaSource.1")
     std::string openCommandArguments; ///< Arguments appended after the exe path in the Open command
 };
 
@@ -197,4 +197,4 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
 /// @return StubResult with .text bytes, data, and import list.
 StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::string &arch);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

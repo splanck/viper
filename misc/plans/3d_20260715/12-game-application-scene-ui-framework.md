@@ -5,7 +5,7 @@
 Upgrade `examples/games/lib/gamebase3d.zia` into a production-capable,
 fixed-step application framework using FrameDriver3D and SceneScope3D. It must
 support scene lifecycle, custom render phases, pause/resize/transitions,
-deterministic frame limits, and existing `Viper.Game.UI` widgets without adding
+deterministic frame limits, and existing `Zanna.Game.UI` widgets without adding
 another widget toolkit.
 
 ## Problem statement
@@ -32,7 +32,7 @@ engine or duplicate UI.
 - plan 04 SceneScope3D;
 - plan 05 environment integration is optional for first framework landing but
   required for final starter;
-- existing `Viper.Game.UI`, `Viper.GUI`, StateMachine, ScreenFX, Action input;
+- existing `Zanna.Game.UI`, `Zanna.GUI`, StateMachine, ScreenFX, Action input;
 - API register and risk R13.
 
 ## API/ADR decision
@@ -208,7 +208,7 @@ Add scene hooks around standard/environment draws. Ensure:
 ### Phase 5 — UI integration without duplication
 
 Create an optional example-library `UiLayer3D` organizer only if needed. It may
-hold and draw existing `Viper.Game.UI.Hud*` values, route Input3D/Action state,
+hold and draw existing `Zanna.Game.UI.Hud*` values, route Input3D/Action state,
 and manage focus/modal order. It must not implement duplicate widget visuals,
 text editing, layout, or hit testing already in Game.UI/GUI.
 
@@ -262,7 +262,7 @@ quality, UI, and custom render hook. Keep the smallest hello example on
 
 ## Validation
 
-Run `viper check` on all changed libraries/examples, scene/starter/docs fixtures,
+Run `zanna check` on all changed libraries/examples, scene/starter/docs fixtures,
 package dry run, FrameDriver/scope tests, UI widget/Canvas adapter tests,
 graphics3d label, and full build scripts.
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_lighting2d.c
@@ -130,14 +130,14 @@ rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
 
 /// @brief Release a Lighting2D handle; frees the inline structure when the refcount drops to zero.
 void rt_lighting2d_destroy(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.Destroy: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.Destroy: expected Zanna.Game.Lighting2D");
     if (lit && rt_obj_release_check0(lit))
         rt_obj_free(lit);
 }
 
 /// @brief Set the full-screen darkness overlay alpha (0=off, 255=opaque). Clamped to [0,255].
 void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha) {
-    lit = checked_lighting2d(lit, "Lighting2D.SetDarkness: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.SetDarkness: expected Zanna.Game.Lighting2D");
     if (!lit)
         return;
     lit->darkness = clamp_i64(alpha, 0, 255);
@@ -145,27 +145,27 @@ void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha) {
 
 /// @brief Read the current darkness overlay alpha; returns 0 for null handles.
 int64_t rt_lighting2d_get_darkness(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.GetDarkness: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.GetDarkness: expected Zanna.Game.Lighting2D");
     return lit ? lit->darkness : 0;
 }
 
 /// @brief Set the tint color (0xRRGGBB) used by the darkness overlay; alpha is supplied separately.
 void rt_lighting2d_set_tint_color(rt_lighting2d lit, int64_t color) {
-    lit = checked_lighting2d(lit, "Lighting2D.SetTintColor: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.SetTintColor: expected Zanna.Game.Lighting2D");
     if (lit)
         lit->tint_color = color & 0xFFFFFF;
 }
 
 /// @brief Read the darkness overlay tint color (0xRRGGBB).
 int64_t rt_lighting2d_get_tint_color(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.GetTintColor: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.GetTintColor: expected Zanna.Game.Lighting2D");
     return lit ? lit->tint_color : 0;
 }
 
 /// @brief Configure the always-on player light's base radius and color.
 /// Drawn at the screen-space player position passed to `draw()`; modulated by an internal pulse.
 void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t color) {
-    lit = checked_lighting2d(lit, "Lighting2D.SetPlayerLight: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.SetPlayerLight: expected Zanna.Game.Lighting2D");
     if (!lit)
         return;
     lit->player_radius = radius > 0 ? radius : 0;
@@ -178,7 +178,7 @@ void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t c
 /// is non-positive, or `lifetime` is negative.
 void rt_lighting2d_add_light(
     rt_lighting2d lit, int64_t x, int64_t y, int64_t radius, int64_t color, int64_t lifetime) {
-    lit = checked_lighting2d(lit, "Lighting2D.AddLight: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.AddLight: expected Zanna.Game.Lighting2D");
     if (!lit || lifetime < 0)
         return;
     if (radius <= 0)
@@ -206,7 +206,7 @@ void rt_lighting2d_add_light(
 /// loops do not expire them before they are visible.
 void rt_lighting2d_add_tile_light(
     rt_lighting2d lit, int64_t screen_x, int64_t screen_y, int64_t radius, int64_t color) {
-    lit = checked_lighting2d(lit, "Lighting2D.AddTileLight: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.AddTileLight: expected Zanna.Game.Lighting2D");
     if (!lit || radius <= 0 || lit->tile_count >= MAX_DYN_LIGHTS_CAP)
         return;
     struct rt_dyn_light *light = &lit->tile_lights[lit->tile_count++];
@@ -221,7 +221,7 @@ void rt_lighting2d_add_tile_light(
 
 /// @brief Deactivate every dynamic light slot at once; useful between scenes/levels.
 void rt_lighting2d_clear_lights(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.ClearLights: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.ClearLights: expected Zanna.Game.Lighting2D");
     if (!lit)
         return;
     for (int64_t i = 0; i < lit->max_lights; i++)
@@ -234,7 +234,7 @@ void rt_lighting2d_clear_lights(rt_lighting2d lit) {
 /// @brief Per-frame tick: advance the player-light pulse (mod 120) and decrement every active
 /// dynamic light's lifetime. Lights with `life <= 0` are returned to the pool.
 void rt_lighting2d_update(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.Update: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.Update: expected Zanna.Game.Lighting2D");
     if (!lit)
         return;
 
@@ -269,7 +269,7 @@ void rt_lighting2d_draw(rt_lighting2d lit,
                         int64_t cam_y,
                         int64_t player_sx,
                         int64_t player_sy) {
-    lit = checked_lighting2d(lit, "Lighting2D.Draw: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.Draw: expected Zanna.Game.Lighting2D");
     if (!lit)
         return;
     if (!canvas || lit->darkness <= 0) {
@@ -363,12 +363,12 @@ void rt_lighting2d_draw(rt_lighting2d lit,
 /// @brief Read the player light's base radius. A value of 0 means the player light is
 /// disabled — Draw renders no player glow at all (VDOC-271). Returns 0 for null handles.
 int64_t rt_lighting2d_get_player_radius(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.PlayerRadius: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.PlayerRadius: expected Zanna.Game.Lighting2D");
     return lit ? lit->player_radius : 0;
 }
 
 /// @brief Number of currently active dynamic lights (excludes the always-on player light).
 int64_t rt_lighting2d_get_light_count(rt_lighting2d lit) {
-    lit = checked_lighting2d(lit, "Lighting2D.LightCount: expected Viper.Game.Lighting2D");
+    lit = checked_lighting2d(lit, "Lighting2D.LightCount: expected Zanna.Game.Lighting2D");
     return lit ? lit->light_count : 0;
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_countdown.h
@@ -15,7 +15,7 @@
 //   - Instance methods trap when passed a NULL countdown pointer.
 //
 // Ownership/Lifetime:
-//   - Countdown objects are heap-allocated runtime objects managed through Viper's
+//   - Countdown objects are heap-allocated runtime objects managed through Zanna's
 //     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_countdown.c (implementation)

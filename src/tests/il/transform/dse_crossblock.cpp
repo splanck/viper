@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -43,17 +43,17 @@ static void verifyOrDie(const Module &module) {
 void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::DomTree>(
+    registry.registerFunctionAnalysis<zanna::analysis::DomTree>(
         "dominators", [](Module &mod, Function &fnRef) {
-            viper::analysis::CFGContext ctx(mod);
-            return viper::analysis::computeDominatorTree(ctx, fnRef);
+            zanna::analysis::CFGContext ctx(mod);
+            return zanna::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+    registry.registerFunctionAnalysis<zanna::analysis::BasicAA>(
         "basic-aa",
-        [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
+        [](Module &mod, Function &fnRef) { return zanna::analysis::BasicAA(mod, fnRef); });
 }
 
 size_t countStores(const Function &fn) {
@@ -322,6 +322,6 @@ TEST(IL, testDifferentLocations) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

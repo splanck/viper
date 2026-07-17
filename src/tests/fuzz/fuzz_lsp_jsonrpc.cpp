@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,12 +29,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
     try {
         std::string_view body(reinterpret_cast<const char *>(data), size);
-        auto value = viper::server::JsonValue::parse(body);
-        viper::server::JsonRpcRequest request;
-        if (viper::server::parseRequest(value, request) && request.hasId) {
-            (void)viper::server::buildResponse(request.id, viper::server::JsonValue());
-            (void)viper::server::buildError(request.id,
-                                           viper::server::kInvalidRequest,
+        auto value = zanna::server::JsonValue::parse(body);
+        zanna::server::JsonRpcRequest request;
+        if (zanna::server::parseRequest(value, request) && request.hasId) {
+            (void)zanna::server::buildResponse(request.id, zanna::server::JsonValue());
+            (void)zanna::server::buildError(request.id,
+                                           zanna::server::kInvalidRequest,
                                            "fuzz");
         }
     } catch (const std::exception &) {

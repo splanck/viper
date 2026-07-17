@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <sstream>
 #include <string>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -172,9 +172,9 @@ static std::string defaultExprForZiaType(const std::string &type) {
 // ---------------------------------------------------------------------------
 
 ZiaReplAdapter::ZiaReplAdapter() {
-    bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Viper.Text.Fmt as Fmt");
-    bindStatements_.push_back("bind Viper.Core.Object as Obj");
+    bindStatements_.push_back("bind Zanna.Terminal");
+    bindStatements_.push_back("bind Zanna.Text.Fmt as Fmt");
+    bindStatements_.push_back("bind Zanna.Core.Object as Obj");
 }
 
 std::string_view ZiaReplAdapter::languageName() const {
@@ -188,9 +188,9 @@ void ZiaReplAdapter::reset() {
     persistentVars_.clear();
     globalVarDecls_.clear();
 
-    bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Viper.Text.Fmt as Fmt");
-    bindStatements_.push_back("bind Viper.Core.Object as Obj");
+    bindStatements_.push_back("bind Zanna.Terminal");
+    bindStatements_.push_back("bind Zanna.Text.Fmt as Fmt");
+    bindStatements_.push_back("bind Zanna.Core.Object as Obj");
 }
 
 // ---------------------------------------------------------------------------
@@ -554,10 +554,10 @@ EvalResult ZiaReplAdapter::compileAndRun(const std::string &source) {
     }
 
     // Compile to bytecode and execute
-    viper::bytecode::BytecodeCompiler bcCompiler;
-    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(compileResult.module);
+    zanna::bytecode::BytecodeCompiler bcCompiler;
+    zanna::bytecode::BytecodeModule bcModule = bcCompiler.compile(compileResult.module);
 
-    viper::bytecode::BytecodeVM bcVm;
+    zanna::bytecode::BytecodeVM bcVm;
     bcVm.setThreadedDispatch(true);
     bcVm.setRuntimeBridgeEnabled(true);
     bcVm.load(&bcModule);
@@ -565,7 +565,7 @@ EvalResult ZiaReplAdapter::compileAndRun(const std::string &source) {
     ScopedReplOutputCapture outputCapture;
     bcVm.exec("main", {});
 
-    if (bcVm.state() == viper::bytecode::VMState::Trapped) {
+    if (bcVm.state() == zanna::bytecode::VMState::Trapped) {
         result.success = false;
         result.trapped = true;
         result.errorMessage = "Runtime error: " + bcVm.trapMessage();
@@ -1081,4 +1081,4 @@ std::vector<std::string> ZiaReplAdapter::listBinds() const {
     return bindStatements_;
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

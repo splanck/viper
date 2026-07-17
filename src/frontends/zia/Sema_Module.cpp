@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -87,7 +87,7 @@ std::string topLevelModuleScopedDeclName(const Decl &decl) {
 
 /// @brief Register built-in functions and runtime library functions.
 /// @details Registers print, println, input, toString as built-in symbols,
-///          then loads all Viper.* runtime functions from runtime.def.
+///          then loads all Zanna.* runtime functions from runtime.def.
 void Sema::registerBuiltins() {
     // print(String) -> Void
     {
@@ -129,7 +129,7 @@ void Sema::registerBuiltins() {
         defineSymbol("toString", sym);
     }
 
-    // Register all Viper.* runtime functions from runtime.def
+    // Register all Zanna.* runtime functions from runtime.def
     // Generated from src/il/runtime/runtime.def (1002 functions)
     initRuntimeFunctions();
 }

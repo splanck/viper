@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -263,7 +263,7 @@ static void make_temp_wav_path(char *path, size_t path_size, const char *tag) {
         dir = getenv("TEMP");
     if (!dir || !dir[0])
         dir = ".";
-    snprintf(path, path_size, "%s/viper_vaud_%s_%lu.wav", dir, tag, (unsigned long)rand());
+    snprintf(path, path_size, "%s/zanna_vaud_%s_%lu.wav", dir, tag, (unsigned long)rand());
 }
 
 static vaud_voice *find_voice_by_id(vaud_context_t ctx, vaud_voice_id id) {

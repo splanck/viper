@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -332,7 +332,7 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
         emitCall("rt_arr_f64_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
     } else {
-        // Integer/numeric array (all Viper integers are 64-bit)
+        // Integer/numeric array (all Zanna integers are 64-bit)
         lowerer_.requireArrayI64Retain();
         emitCall("rt_arr_i64_retain", {value});
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
@@ -377,7 +377,7 @@ bool Emitter::emitArrayRelease(Value handle,
         }
         emitCall("rt_arr_f64_release", {handle});
     } else {
-        // Integer/numeric array (all Viper integers are 64-bit)
+        // Integer/numeric array (all Zanna integers are 64-bit)
         if (!state.requestedI64) {
             lowerer_.requireArrayI64Release();
             state.requestedI64 = true;

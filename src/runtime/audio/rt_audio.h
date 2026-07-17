@@ -1,16 +1,16 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/audio/rt_audio.h
-// Purpose: Runtime bridge for the ViperAUD audio library, exposing sound effect and music playback
+// Purpose: Runtime bridge for the ZannaAUD audio library, exposing sound effect and music playback
 // controls (play, pause, stop, volume, loop) over opaque audio handles.
 //
 // Key invariants:
 //   - All sound and music pointers are opaque handles returned by rt_sound_new/rt_music_new.
 //   - Volume is in the range [0, 100]; values are clamped to this range.
-//   - Looping and channel multiplexing are managed by the underlying ViperAUD backend.
+//   - Looping and channel multiplexing are managed by the underlying ZannaAUD backend.
 //
 // Ownership/Lifetime:
 //   - Sounds must be freed via rt_sound_destroy; music via rt_music_destroy.

@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/arrays/rt_array_obj.h
 // Purpose: Dynamic array of opaque object references with element retain/release lifecycle, backing
-// collections that store boxed Viper values.
+// collections that store boxed Zanna values.
 //
 // Key invariants:
 //   - Elements are reference-managed: stored elements are retained on write and released on

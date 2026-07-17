@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_automation_bridge.h
@@ -41,7 +41,7 @@ typedef struct rt_gui_automation_app_view {
 ///          before validation so callers never observe stale native pointers after failure. The
 ///          timestamp follows the app's deterministic scheduler clock once initialized and falls
 ///          back to the GUI monotonic clock before its first rendered frame.
-/// @param app Candidate managed Viper.GUI.App handle.
+/// @param app Candidate managed Zanna.GUI.App handle.
 /// @param out_view Destination for borrowed window/root state and authored-event timestamp.
 /// @return 1 for a live app with a live window, otherwise 0.
 int8_t rt_gui_automation_snapshot_app(void *app, rt_gui_automation_app_view_t *out_view);

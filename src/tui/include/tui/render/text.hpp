@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <string_view>
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 
 /// @brief Render left-aligned text into a screen buffer row.
 /// @details Paints characters from the given text starting at position (y, x)
@@ -85,4 +85,4 @@ inline void renderTextCentered(
     }
 }
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-`Viper.Game.UI.Table.HandleClick(x, y)` returns three different meanings through
+`Zanna.Game.UI.Table.HandleClick(x, y)` returns three different meanings through
 one integer channel:
 
 - a row index for body-row hits
@@ -24,8 +24,8 @@ scale well as table interaction grows beyond row selection and sorting.
 
 ## Decision
 
-Add `Viper.Game.UI.Table.HandleClickResult(x, y) ->
-Viper.Game.UI.TableClickResult`.
+Add `Zanna.Game.UI.Table.HandleClickResult(x, y) ->
+Zanna.Game.UI.TableClickResult`.
 
 `TableClickResult` is an immutable click-outcome snapshot with:
 

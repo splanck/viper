@@ -1,21 +1,21 @@
 // =============================================================================
-// API Audit: Viper.IO.BinFile - Binary File I/O
+// API Audit: Zanna.IO.BinFile - Binary File I/O
 // =============================================================================
 // Tests: Open, Close, ReadByte, WriteByte, Read, Write, Seek, Pos, Size, Eof, Flush
 // =============================================================================
 
 module BinFileDemo;
-bind Viper.Terminal;
-bind Viper.IO.BinFile as BinFile;
-bind Viper.IO.Path as Path;
-bind Viper.IO.File as File;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.Collections.Bytes as Bytes;
+bind Zanna.Terminal;
+bind Zanna.IO.BinFile as BinFile;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.File as File;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.Collections.Bytes as Bytes;
 func start() {
-    Say("=== API Audit: Viper.IO.BinFile ===");
+    Say("=== API Audit: Zanna.IO.BinFile ===");
 
     var tmpDir = TempFile.Dir();
-    var testPath = Path.Join(tmpDir, "viper_binfile_audit.bin");
+    var testPath = Path.Join(tmpDir, "zanna_binfile_audit.bin");
 
     // --- Open (write mode) ---
     Say("--- Open (write) ---");

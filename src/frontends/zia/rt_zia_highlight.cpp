@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/frontends/zia/rt_zia_highlight.cpp
 // Purpose: extern "C" bridge that lets the GUI's syntax-highlighter callback
-//          (in viper_runtime/graphics/rt_gui_codeeditor.c) consult the *real*
+//          (in zanna_runtime/graphics/rt_gui_codeeditor.c) consult the *real*
 //          Zia keyword table from Lexer.cpp instead of maintaining its own
 //          drift-prone duplicate. The runtime highlighter calls
 //          rt_zia_is_keyword(name, len) for every identifier; this bridge
@@ -16,7 +16,7 @@
 //
 // Key invariants:
 //   - Strong-symbol implementation. Wins over the weak fallback in
-//     viper_runtime/core/rt_zia_highlight_stub.c when zia_editor_services is
+//     zanna_runtime/core/rt_zia_highlight_stub.c when zia_editor_services is
 //     linked and force-loaded by the zia binary.
 //   - Pure read-only lookup. No state, no allocation; safe to call from any
 //     thread.

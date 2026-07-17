@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # CODEMAP: BASIC Frontend
 
-The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
+The BASIC frontend (`src/frontends/basic/`) compiles Zanna BASIC source to IL.
 
 ## Overview
 
@@ -402,7 +402,7 @@ Recent correctness notes:
 | `BasicAnalysis.cpp`   | Partial-compilation API implementation for IDE tooling        |
 | `BasicAnalysis.hpp`   | Partial-compilation API for BASIC IDE tooling (completion, hover) |
 | `BasicCompletion.cpp` | Code-completion engine implementation                         |
-| `BasicCompletion.hpp` | Code-completion engine for the Viper BASIC language           |
+| `BasicCompletion.hpp` | Code-completion engine for the Zanna BASIC language           |
 
 ## Debugging and Inspection
 

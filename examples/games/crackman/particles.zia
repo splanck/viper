@@ -6,7 +6,7 @@
 //          shared ParticleEmitter.
 //
 // KEY-DESIGN-CHOICES:
-//   * SINGLE EMITTER, MANY PRESETS. One Viper.Game.ParticleEmitter
+//   * SINGLE EMITTER, MANY PRESETS. One Zanna.Game.ParticleEmitter
 //     with capacity 128. Each burst* method reconfigures the
 //     emitter's position / color / velocity / lifetime / size before
 //     firing — avoids allocating a new emitter per effect type.
@@ -18,8 +18,8 @@ module particles;
 
 bind "./config";
 
-bind Viper.Graphics;
-bind Viper.Game.ParticleEmitter as PE;
+bind Zanna.Graphics;
+bind Zanna.Game.ParticleEmitter as PE;
 
 /// @brief Shared ParticleEmitter + per-effect preset helpers.
 class ParticleSystem {

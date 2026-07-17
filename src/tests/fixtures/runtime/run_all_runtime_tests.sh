@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Viper Runtime Test Suite - Master Runner
+# Zanna Runtime Test Suite - Master Runner
 #
 # This script runs all runtime tests and reports results.
 # Tests are organized by logical area (math, string, collections, etc.)
@@ -11,7 +11,7 @@
 #   ./run_all_runtime_tests.sh --verbose # Show full test output
 #
 # Prerequisites:
-#   - Built Viper/Zia frontend in ../../build/src/tools/... or in PATH
+#   - Built Zanna/Zia frontend in ../../build/src/tools/... or in PATH
 #
 
 set -e
@@ -21,16 +21,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Find a runnable frontend
-if [ -x "$PROJECT_ROOT/build/src/tools/viper/viper" ]; then
-    RUNNER=("$PROJECT_ROOT/build/src/tools/viper/viper" run)
+if [ -x "$PROJECT_ROOT/build/src/tools/zanna/zanna" ]; then
+    RUNNER=("$PROJECT_ROOT/build/src/tools/zanna/zanna" run)
 elif [ -x "$PROJECT_ROOT/build/src/tools/zia/zia" ]; then
     RUNNER=("$PROJECT_ROOT/build/src/tools/zia/zia")
-elif command -v viper &> /dev/null; then
-    RUNNER=("$(command -v viper)" run)
+elif command -v zanna &> /dev/null; then
+    RUNNER=("$(command -v zanna)" run)
 elif command -v zia &> /dev/null; then
     RUNNER=("$(command -v zia)")
 else
-    echo "ERROR: Cannot find a runnable Zia/Viper frontend"
+    echo "ERROR: Cannot find a runnable Zia/Zanna frontend"
     echo "Build it with: cmake -S . -B build && cmake --build build -j"
     exit 1
 fi
@@ -121,7 +121,7 @@ run_test() {
 # Print header
 echo ""
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║              Viper Runtime Test Suite                     ║${NC}"
+echo -e "${BLUE}║              Zanna Runtime Test Suite                     ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo "Using frontend: ${RUNNER[*]}"

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_camera.c
-// Purpose: 2D camera transform for Viper game scenes. Maintains a world-space
+// Purpose: 2D camera transform for Zanna game scenes. Maintains a world-space
 //   viewport defined by a position, an integer zoom percentage, and an optional
 //   rotation angle. Provides coordinate conversion (world↔screen), optional
 //   world-bounds clamping, viewport culling, and a dirty flag to let renderers
@@ -35,7 +35,7 @@
 //     beyond the GC reclaiming the allocation.
 //
 // Links: src/runtime/graphics/rt_camera.h (public API),
-//        docs/viperlib/game.md (Camera section)
+//        docs/zannalib/game.md (Camera section)
 //
 //===----------------------------------------------------------------------===//
 

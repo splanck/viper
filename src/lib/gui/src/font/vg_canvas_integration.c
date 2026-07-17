@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/font/vg_canvas_integration.c
 // Purpose: Font-to-canvas integration — renders rasterised glyph alpha bitmaps
-//          onto ViperGFX canvas surfaces using per-pixel alpha blending.
+//          onto ZannaGFX canvas surfaces using per-pixel alpha blending.
 // Key invariants:
 //   - vg_canvas_draw_glyph uses direct framebuffer access; it respects the
 //     window's active clip rectangle when vgfx_get_clip reports one.

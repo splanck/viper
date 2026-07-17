@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::server {
+namespace zanna::server {
 namespace {
 
 /// @brief Return true when @p text begins with a Windows drive-letter path prefix.
@@ -259,4 +259,4 @@ std::string DocumentStore::uriToPath(const std::string &uri) {
     return path;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

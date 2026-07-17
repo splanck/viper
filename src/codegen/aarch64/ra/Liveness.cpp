@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 
 #include <algorithm>
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 void LivenessAnalysis::run(const MFunction &func) {
     const std::size_t n = func.blocks.size();
@@ -45,7 +45,7 @@ void LivenessAnalysis::run(const MFunction &func) {
 
     buildBlockIndex(func);
     buildCFG(func);
-    preds_ = viper::codegen::ra::buildPredecessors(succs_);
+    preds_ = zanna::codegen::ra::buildPredecessors(succs_);
     computeLiveOutSets(func);
 }
 
@@ -61,12 +61,12 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
         return nullptr;
     };
 
-    succs_ = viper::codegen::ra::extractSuccessors(
+    succs_ = zanna::codegen::ra::extractSuccessors(
         func.blocks,
         blockIndex_,
         [](const MBasicBlock &bb) -> const std::vector<MInstr> & { return bb.instrs; },
         [&](const MInstr &mi) {
-            using Desc = viper::codegen::ra::BranchDesc;
+            using Desc = zanna::codegen::ra::BranchDesc;
             switch (mi.opc) {
                 case MOpcode::Br:
                     if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
@@ -128,8 +128,8 @@ void LivenessAnalysis::computeLiveOutSets(const MFunction &func) {
     }
 
     // Step 2: Delegate to the shared dataflow solver.
-    auto gprResult = viper::codegen::ra::solveBackwardDataflow(succs_, genGPR, killGPR);
-    auto fprResult = viper::codegen::ra::solveBackwardDataflow(succs_, genFPR, killFPR);
+    auto gprResult = zanna::codegen::ra::solveBackwardDataflow(succs_, genGPR, killGPR);
+    auto fprResult = zanna::codegen::ra::solveBackwardDataflow(succs_, genFPR, killFPR);
 
     liveOutGPR_ = std::move(gprResult.liveOut);
     liveOutFPR_ = std::move(fprResult.liveOut);
@@ -151,4 +151,4 @@ const std::vector<std::size_t> &LivenessAnalysis::predecessors(std::size_t block
     return preds_[blockIdx];
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

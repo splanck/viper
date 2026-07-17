@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 //   - All functions are null-safe.
 // Ownership/Lifetime:
 //   - SaveData objects are GC-managed; tests rely on the runtime allocator.
-// Links: rt_savedata.c, rt_savedata.h, docs/viperlib/game/persistence.md
+// Links: rt_savedata.c, rt_savedata.h, docs/zannalib/game/persistence.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -90,12 +90,12 @@ static void configure_test_save_root() {
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = "C:\\Temp";
-    snprintf(root, sizeof(root), "%s\\viper_savedata_home_%d", tmp, (int)GETPID());
+    snprintf(root, sizeof(root), "%s\\zanna_savedata_home_%d", tmp, (int)GETPID());
     _mkdir(root);
     _putenv_s("APPDATA", root);
     _putenv_s("USERPROFILE", root);
 #else
-    snprintf(root, sizeof(root), "/tmp/viper_savedata_home_%d", (int)GETPID());
+    snprintf(root, sizeof(root), "/tmp/zanna_savedata_home_%d", (int)GETPID());
     mkdir(root, 0755);
     setenv("HOME", root, 1);
 #endif
@@ -336,7 +336,7 @@ static void test_path_contains_game_name() {
 static void test_save_load_round_trip() {
     /* Use a PID-unique game name to avoid collisions in parallel test runs */
     char game[64];
-    snprintf(game, sizeof(game), "viper-test-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-test-%d", (int)GETPID());
 
     void *sd1 = rt_savedata_new(S(game));
     assert(sd1 != nullptr);
@@ -345,7 +345,7 @@ static void test_save_load_round_trip() {
     rt_savedata_set_int(sd1, S("high_score"), 42000);
     rt_savedata_set_int(sd1, S("level"), 5);
     rt_savedata_set_string(sd1, S("player"), S("ACE"));
-    rt_savedata_set_string(sd1, S("guild"), S("Viper Knights"));
+    rt_savedata_set_string(sd1, S("guild"), S("Zanna Knights"));
     rt_savedata_set_int(sd1, S("negative"), -100);
 
     // Save
@@ -369,7 +369,7 @@ static void test_save_load_round_trip() {
     assert(strcmp(rt_string_cstr(p), "ACE") == 0);
 
     rt_string g = rt_savedata_get_string(sd2, S("guild"), S(""));
-    assert(strcmp(rt_string_cstr(g), "Viper Knights") == 0);
+    assert(strcmp(rt_string_cstr(g), "Zanna Knights") == 0);
 
     assert(rt_savedata_count(sd2) == 5);
 
@@ -395,7 +395,7 @@ static void test_load_nonexistent_returns_success_and_clears_entries() {
 
 static void test_save_overwrite() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-overwrite-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-overwrite-%d", (int)GETPID());
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
@@ -467,7 +467,7 @@ static void test_invalid_string_values_trap() {
 
 static void test_special_chars_in_values() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-special-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-special-%d", (int)GETPID());
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
@@ -514,7 +514,7 @@ static void test_large_int_values() {
 
 static void test_large_int_round_trip() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-int64-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-int64-%d", (int)GETPID());
 
     const int64_t above_double_exact = INT64_C(9007199254740993);
 
@@ -540,7 +540,7 @@ static void test_large_int_round_trip() {
 
 static void test_string_values_preserve_embedded_nul_round_trip() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-nul-value-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-nul-value-%d", (int)GETPID());
 
     char value_bytes[] = {'A', '\0', 'B', 0x01, 'C'};
     rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
@@ -565,7 +565,7 @@ static void test_string_values_preserve_embedded_nul_round_trip() {
 
 static void test_load_rejects_malformed_json() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-malformed-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-malformed-%d", (int)GETPID());
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
@@ -587,7 +587,7 @@ static void test_load_rejects_malformed_json() {
 
 static void test_load_rejects_non_int64_numbers() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-number-range-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-number-range-%d", (int)GETPID());
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
@@ -611,7 +611,7 @@ static void test_load_rejects_non_int64_numbers() {
 
 static void test_load_rejects_invalid_decoded_key() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-invalid-load-key-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "zanna-invalid-load-key-%d", (int)GETPID());
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
@@ -641,7 +641,7 @@ static void test_save_soft_fails_when_parent_dir_uncreatable() {
 
     // Point the per-user data root at a regular file so directory creation fails.
     char fileRoot[256];
-    snprintf(fileRoot, sizeof(fileRoot), "/tmp/viper_savedata_filehome_%d", (int)GETPID());
+    snprintf(fileRoot, sizeof(fileRoot), "/tmp/zanna_savedata_filehome_%d", (int)GETPID());
     std::remove(fileRoot);
     write_file_exact(fileRoot, "x", 1);
 #ifdef _WIN32

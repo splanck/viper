@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/io/rt_io_class_ids.h
-// Purpose: Runtime class-id tags for opaque Viper.IO heap handles.
+// Purpose: Runtime class-id tags for opaque Zanna.IO heap handles.
 //
 //===----------------------------------------------------------------------===//
 #pragma once

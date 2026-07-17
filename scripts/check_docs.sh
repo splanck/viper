@@ -76,7 +76,7 @@ fail("frontmatter", missing)
 # --- 3. Filename convention -------------------------------------------------
 print("--- [3] Filename convention (kebab-case) ---")
 name_re = re.compile(r'^[a-z0-9][a-z0-9.-]*\.md$')
-release_re = re.compile(r'^Viper_Release_Notes_[0-9_]+\.md$')
+release_re = re.compile(r'^Zanna_Release_Notes_[0-9_]+\.md$')
 bad_names = []
 for p in md_files:
     b = os.path.basename(p)

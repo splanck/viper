@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <cstring>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (!viper_fuzz3d::input_is_bounded(size) || size == 0)
+    if (!zanna_fuzz3d::input_is_bounded(size) || size == 0)
         return 0;
 
     uint8_t *copy = static_cast<uint8_t *>(std::malloc(size));

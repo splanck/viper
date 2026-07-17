@@ -22,12 +22,12 @@
 //               Any divergence means the substitution or pitching-change
 //               checkpoint is leaking non-default behavior into the AI path.
 //
-// Run via: viper run examples/games/baseball/human_pacing_probe.zia
+// Run via: zanna run examples/games/baseball/human_pacing_probe.zia
 // ============================================================================
 module human_pacing_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/season_model";

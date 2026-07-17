@@ -1,0 +1,80 @@
+// Test: Operators
+// Tests: arithmetic, comparison, logical, string
+module Test;
+
+func main() {
+    // Arithmetic operators
+    var a = 10;
+    var b = 3;
+
+    Zanna.Terminal.Say("Arithmetic:");
+    Zanna.Terminal.Say("  10 + 3 = " + Zanna.Text.Fmt.Int(a + b));
+    Zanna.Terminal.Say("  10 - 3 = " + Zanna.Text.Fmt.Int(a - b));
+    Zanna.Terminal.Say("  10 * 3 = " + Zanna.Text.Fmt.Int(a * b));
+    Zanna.Terminal.Say("  10 / 3 = " + Zanna.Text.Fmt.Int(a / b));
+    Zanna.Terminal.Say("  10 % 3 = " + Zanna.Text.Fmt.Int(a % b));
+    // Note: No integer division operator and no power operator in ZannaLang
+
+    // Comparison operators
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Comparison (5 vs 3):");
+    Zanna.Terminal.Say("  5 == 3: " + Zanna.Text.Fmt.Bool(5 == 3));
+    Zanna.Terminal.Say("  5 != 3: " + Zanna.Text.Fmt.Bool(5 != 3));
+    Zanna.Terminal.Say("  5 < 3: " + Zanna.Text.Fmt.Bool(5 < 3));
+    Zanna.Terminal.Say("  5 > 3: " + Zanna.Text.Fmt.Bool(5 > 3));
+    Zanna.Terminal.Say("  5 <= 3: " + Zanna.Text.Fmt.Bool(5 <= 3));
+    Zanna.Terminal.Say("  5 >= 3: " + Zanna.Text.Fmt.Bool(5 >= 3));
+    Zanna.Terminal.Say("  5 == 5: " + Zanna.Text.Fmt.Bool(5 == 5));
+
+    // Logical operators
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Logical:");
+    Zanna.Terminal.Say("  true && false: " + Zanna.Text.Fmt.Bool(true && false));
+    Zanna.Terminal.Say("  true || false: " + Zanna.Text.Fmt.Bool(true || false));
+    Zanna.Terminal.Say("  !true: " + Zanna.Text.Fmt.Bool(!true));
+    Zanna.Terminal.Say("  !false: " + Zanna.Text.Fmt.Bool(!false));
+
+    // Bitwise operators
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Bitwise:");
+    Zanna.Terminal.Say("  12 & 10 = " + Zanna.Text.Fmt.Int(12 & 10));
+    Zanna.Terminal.Say("  12 | 10 = " + Zanna.Text.Fmt.Int(12 | 10));
+    Zanna.Terminal.Say("  12 ^ 10 = " + Zanna.Text.Fmt.Int(12 ^ 10));
+
+    // String concatenation
+    var s1 = "Hello";
+    var s2 = "World";
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("String concat:");
+    Zanna.Terminal.Say("  Hello + World = " + s1 + " " + s2);
+
+    // String interpolation - test syntax
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("String interpolation:");
+    var name = "Alice";
+    var age = 30;
+    // Test if interpolation works
+    var msg = "Hello " + name + ", age " + Zanna.Text.Fmt.Int(age);
+    Zanna.Terminal.Say("  Using concat: " + msg);
+
+    // Operator precedence
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Precedence:");
+    Zanna.Terminal.Say("  2 + 3 * 4 = " + Zanna.Text.Fmt.Int(2 + 3 * 4));
+    Zanna.Terminal.Say("  (2 + 3) * 4 = " + Zanna.Text.Fmt.Int((2 + 3) * 4));
+
+    // Unary operators
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Unary:");
+    var x = 5;
+    Zanna.Terminal.Say("  -5 = " + Zanna.Text.Fmt.Int(-x));
+
+    // Null coalescing (ZannaLang specific)
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("Null operators:");
+    var maybeNull: String? = null;
+    var result = maybeNull ?? "default";
+    Zanna.Terminal.Say("  null ?? default = " + result);
+
+    Zanna.Terminal.Say("=== Operators test complete ===");
+}

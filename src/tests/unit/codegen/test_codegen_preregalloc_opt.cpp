@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,14 +20,14 @@
 
 namespace {
 
-const viper::codegen::x64::OpReg *x64Reg(const viper::codegen::x64::Operand &operand) {
-    return std::get_if<viper::codegen::x64::OpReg>(&operand);
+const zanna::codegen::x64::OpReg *x64Reg(const zanna::codegen::x64::Operand &operand) {
+    return std::get_if<zanna::codegen::x64::OpReg>(&operand);
 }
 
 } // namespace
 
 TEST(CodegenPreRegAllocOpt, X86RemovesIdentityAndForwardsSingleUseCopy) {
-    namespace x64 = viper::codegen::x64;
+    namespace x64 = zanna::codegen::x64;
 
     x64::MFunction fn;
     fn.name = "x86_pre_ra";
@@ -52,7 +52,7 @@ TEST(CodegenPreRegAllocOpt, X86RemovesIdentityAndForwardsSingleUseCopy) {
 }
 
 TEST(CodegenPreRegAllocOpt, X86DoesNotForwardAcrossSourceClobber) {
-    namespace x64 = viper::codegen::x64;
+    namespace x64 = zanna::codegen::x64;
 
     x64::MFunction fn;
     fn.name = "x86_pre_ra_clobber";
@@ -74,7 +74,7 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotForwardAcrossSourceClobber) {
 }
 
 TEST(CodegenPreRegAllocOpt, X86DoesNotEraseCopyNeededAfterCall) {
-    namespace x64 = viper::codegen::x64;
+    namespace x64 = zanna::codegen::x64;
 
     x64::MFunction fn;
     fn.name = "x86_pre_ra_call_live";
@@ -101,7 +101,7 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotEraseCopyNeededAfterCall) {
 }
 
 TEST(CodegenPreRegAllocOpt, X86DoesNotForwardPhysicalSourceBeforeRegAlloc) {
-    namespace x64 = viper::codegen::x64;
+    namespace x64 = zanna::codegen::x64;
 
     x64::MFunction fn;
     fn.name = "x86_pre_ra_phys_src";
@@ -127,7 +127,7 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotForwardPhysicalSourceBeforeRegAlloc) {
 }
 
 TEST(CodegenPreRegAllocOpt, AArch64RemovesIdentityAndForwardsSingleUseCopy) {
-    namespace a64 = viper::codegen::aarch64;
+    namespace a64 = zanna::codegen::aarch64;
 
     a64::MFunction fn;
     fn.name = "a64_pre_ra";
@@ -153,7 +153,7 @@ TEST(CodegenPreRegAllocOpt, AArch64RemovesIdentityAndForwardsSingleUseCopy) {
 }
 
 TEST(CodegenPreRegAllocOpt, AArch64DoesNotForwardPhysicalSourceBeforeRegAlloc) {
-    namespace a64 = viper::codegen::aarch64;
+    namespace a64 = zanna::codegen::aarch64;
 
     a64::MFunction fn;
     fn.name = "a64_pre_ra_phys_src";
@@ -175,7 +175,7 @@ TEST(CodegenPreRegAllocOpt, AArch64DoesNotForwardPhysicalSourceBeforeRegAlloc) {
 }
 
 TEST(CodegenPreRegAllocOpt, AArch64DoesNotEraseCopyNeededAfterCall) {
-    namespace a64 = viper::codegen::aarch64;
+    namespace a64 = zanna::codegen::aarch64;
 
     a64::MFunction fn;
     fn.name = "a64_pre_ra_call_live";
@@ -201,6 +201,6 @@ TEST(CodegenPreRegAllocOpt, AArch64DoesNotEraseCopyNeededAfterCall) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

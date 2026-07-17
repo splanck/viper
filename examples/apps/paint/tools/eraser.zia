@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,10 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// eraser.zia - Eraser tool for Viper Paint
+// eraser.zia - Eraser tool for Zanna Paint
 module eraser;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "../canvas";

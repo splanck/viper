@@ -1,4 +1,4 @@
-' pathfollower_demo.bas - Comprehensive API audit for Viper.Game.PathFollower
+' pathfollower_demo.bas - Comprehensive API audit for Zanna.Game.PathFollower
 ' Tests: New, AddPoint, PointCount, Mode, Speed, Start, Pause, Stop,
 '        IsActive, IsFinished, Update, X, Y, Progress, Segment, Angle, Clear
 
@@ -7,7 +7,7 @@ PRINT "=== PathFollower API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM pf AS OBJECT
-pf = Viper.Game.PathFollower.New()
+pf = Zanna.Game.PathFollower.New()
 PRINT pf.PointCount       ' 0
 PRINT pf.IsActive         ' 0
 PRINT pf.IsFinished       ' 0

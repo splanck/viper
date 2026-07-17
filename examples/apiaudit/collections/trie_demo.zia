@@ -1,13 +1,13 @@
-// trie_demo.zia - Comprehensive API audit for Viper.Collections.Trie
+// trie_demo.zia - Comprehensive API audit for Zanna.Collections.Trie
 // Tests: New, Put, Get, Has, HasPrefix, Remove, Clear, Len, IsEmpty,
 //        Keys, LongestPrefix, WithPrefix
 
 module TrieDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Trie API Audit ===");

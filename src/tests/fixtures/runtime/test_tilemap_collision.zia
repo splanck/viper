@@ -1,9 +1,9 @@
 // Test: Tilemap tile-based collision
 module TestTilemapCollision;
 
-bind Viper.Terminal;
-bind Viper.Graphics2D.Tilemap as Tilemap;
-bind Viper.Game.Physics2D.Body as Body;
+bind Zanna.Terminal;
+bind Zanna.Graphics2D.Tilemap as Tilemap;
+bind Zanna.Game.Physics2D.Body as Body;
 
 func start() {
     // Create a 10x10 tilemap with 16x16 tiles

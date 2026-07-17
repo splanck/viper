@@ -1,6 +1,6 @@
 // ============================================================================
 // MODULE: sound (SoundManager)
-// PURPOSE: Wraps Viper.Audio + SoundBank with named-channel mixing,
+// PURPOSE: Wraps Zanna.Audio + SoundBank with named-channel mixing,
 //          master/music/SFX volume, mute toggle, and graceful fall-
 //          through when audio isn't available.
 //
@@ -17,11 +17,11 @@
 
 module sound;
 
-bind Viper.Audio;
+bind Zanna.Audio;
 bind "./audio/sfx_bank";
 bind "./audio/music_tracks";
 
-/// @brief Named-channel sound/music mixer wrapping Viper.Mixer.SoundBank.
+/// @brief Named-channel sound/music mixer wrapping Zanna.Mixer.SoundBank.
 class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;

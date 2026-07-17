@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Target-independent base struct for backend ABI descriptions.
 /// @tparam PhysRegT   Backend-specific physical register enum type.
@@ -48,4 +48,4 @@ template <typename PhysRegT, std::size_t MaxIntArgs, std::size_t MaxFPArgs> stru
     unsigned stackAlignment{16U};
 };
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

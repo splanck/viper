@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTLocaleTests.cpp
-// Purpose: Validate Viper.Localization.Locale parsing, canonicalization, and
+// Purpose: Validate Zanna.Localization.Locale parsing, canonicalization, and
 //          fallback-chain behavior. Covers the positive path for common BCP-47
 //          shapes and the rejection path for malformed input.
 //

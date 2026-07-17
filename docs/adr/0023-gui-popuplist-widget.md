@@ -4,13 +4,13 @@ audience: contributors
 last-verified: 2026-06-30
 ---
 
-# ADR 0023: Caret-Anchored Filtered Popup (Viper.GUI.PopupList)
+# ADR 0023: Caret-Anchored Filtered Popup (Zanna.GUI.PopupList)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE's completion popup is the intended first
+Accepted (runtime implemented; ZannaIDE's completion popup is the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R6**
-(`misc/plans/viperide/gui-runtime-additions.md`).
+(`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
@@ -21,19 +21,19 @@ on edit/escape. The runtime has `Dropdown`, `ContextMenu`, `CommandPalette`, and
 `Tooltip`, but none is a *caret-anchored, filterable, keyboard-navigable list a host
 can drive*.
 
-So ViperIDE hand-rolls it: `editor/completion.zia` (1,288 LOC) builds a
+So ZannaIDE hand-rolls it: `editor/completion.zia` (1,288 LOC) builds a
 `FloatingPanel` + an embedded `ListBox`, then manages a state machine on top —
 `isVisible`, `selectedIndex`, `lastLine`/`lastCol`, anchor-at-caret, filtering,
 dismiss-on-edit, accept. The *positioning* is already supported (the caret-pixel
 methods from the editor), but the popup mechanics are re-implemented by hand. Any
-Viper app with autocomplete re-derives the same machine. This is missing runtime
+Zanna app with autocomplete re-derives the same machine. This is missing runtime
 infrastructure, not application logic.
 
 Adding a runtime class is a runtime C-ABI surface change, requiring an ADR.
 
 ## Decision
 
-Add `Viper.GUI.PopupList`, a caret-anchored filtered list rendered in the overlay
+Add `Zanna.GUI.PopupList`, a caret-anchored filtered list rendered in the overlay
 pass. The host supplies pre-ranked items and drives keyboard and visibility; the
 widget owns the popup mechanics.
 
@@ -61,7 +61,7 @@ highlight in the overlay pass.
 
 ### Naming / implementation
 
-`Viper.GUI.PopupList` — the leaf `PopupList` is globally unique. The widget is a new
+`Zanna.GUI.PopupList` — the leaf `PopupList` is globally unique. The widget is a new
 `VG_WIDGET_POPUPLIST` (`vg_popuplist` in `src/lib/gui`) with rt wrappers
 (`rt_popuplist_*` in `rt_gui_widgets_complex.c`, real + graphics-disabled twins) and
 a new `RTCLS_GuiPopupList` class id. It reuses the existing overlay mechanism (a
@@ -71,7 +71,7 @@ framework support; it draws its own items (no child widgets), so it is simpler t
 
 ## Consequences
 
-- **Adoption:** ViperIDE's completion popup collapses from "FloatingPanel + ListBox +
+- **Adoption:** ZannaIDE's completion popup collapses from "FloatingPanel + ListBox +
   hand-rolled state machine" to a single `PopupList` it populates, filters, and
   reads `WasAccepted` from. Any app gets autocomplete UI for free (search boxes,
   command inputs).

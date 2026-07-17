@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,7 +42,7 @@
 #include <intrin.h>
 #endif
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 namespace {
 
 /// @brief Check if a power of 2 and return the log2, or -1 if not.
@@ -65,8 +65,8 @@ namespace {
 /// The SMULH instruction computes the upper 64 bits of x * M, giving us
 /// floor(x * M / 2^64). Combined with a post-shift of S, this yields the
 /// quotient.
-using viper::codegen::MagicNumber;
-using viper::codegen::UnsignedMagicNumber;
+using zanna::codegen::MagicNumber;
+using zanna::codegen::UnsignedMagicNumber;
 
 /// @brief Select the first candidate register that does not conflict with any operand in @p avoid.
 /// @param candidates Ordered list of scratch register candidates to try.
@@ -123,7 +123,7 @@ using viper::codegen::UnsignedMagicNumber;
 /// @param d The divisor (must be >= 2).
 /// @return Magic number parameters, or empty if d is not suitable.
 [[maybe_unused]] [[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept {
-    return viper::codegen::computeSignedMagic(d);
+    return zanna::codegen::computeSignedMagic(d);
 }
 
 /// @brief Compute the magic number for unsigned division by a non-power-of-2 constant.
@@ -135,7 +135,7 @@ using viper::codegen::UnsignedMagicNumber;
 /// @param d The unsigned divisor; must be > 1 and not a power of 2.
 /// @return Magic number parameters, or nullopt if @p d is unsuitable.
 [[nodiscard]] std::optional<UnsignedMagicNumber> computeUnsignedMagic(uint64_t d) noexcept {
-    return viper::codegen::computeUnsignedMagic(d);
+    return zanna::codegen::computeUnsignedMagic(d);
 }
 
 } // namespace
@@ -641,4 +641,4 @@ bool tryRemainderFusion(std::vector<MInstr> &instrs,
     return true;
 }
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

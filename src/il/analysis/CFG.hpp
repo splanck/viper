@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@ struct BasicBlock;
 using Block = BasicBlock;
 } // namespace il::core
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Lightweight context bundling module information for CFG queries.
 ///
@@ -125,4 +125,4 @@ bool isAcyclic(const CFGContext &ctx, il::core::Function &F);
 /// @return Blocks in topological order; empty if @p F contains cycles.
 std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Function &F);
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

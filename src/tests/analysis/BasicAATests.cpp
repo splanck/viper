@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,9 +23,9 @@ using namespace il::core;
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::register_signature;
 using il::runtime::signatures::SigParam;
-using viper::analysis::AliasResult;
-using viper::analysis::BasicAA;
-using viper::analysis::ModRefResult;
+using zanna::analysis::AliasResult;
+using zanna::analysis::BasicAA;
+using zanna::analysis::ModRefResult;
 
 namespace {
 

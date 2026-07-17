@@ -128,7 +128,7 @@ Think of a country's president or prime minister. There's exactly one at any tim
 The Singleton pattern provides a single instance and global access:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class GameEngine {
     // The single instance, hidden from outside
@@ -166,7 +166,7 @@ The key elements:
 Using it:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Get the engine (creates it first time)
@@ -186,8 +186,8 @@ No matter how many times you call `getInstance()`, you get the same engine. The 
 ### A More Complete Example: Configuration Manager
 
 ```rust
-bind Viper.Terminal;
-bind File = Viper.IO.File;
+bind Zanna.Terminal;
+bind File = Zanna.IO.File;
 
 class Config {
     hide static instance: Config? = null;
@@ -326,8 +326,8 @@ A factory is like that kitchen. You ask for what you want; it handles the creati
 The Factory pattern centralizes object creation:
 
 ```text
-bind Viper.Terminal;
-bind Viper.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
 
 interface Enemy {
     func attack();
@@ -540,7 +540,7 @@ You build the order step by step, specifying only what matters to you, with sens
 The Builder pattern constructs objects step by step:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Character {
     expose String name;
@@ -817,7 +817,7 @@ Think of paying for something. You can use cash, credit card, mobile payment, or
 The Strategy pattern defines a family of algorithms, encapsulates each one, and makes them interchangeable:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> List[Point];
@@ -1101,9 +1101,9 @@ class Subject {
 Now let's build a stock price monitoring system:
 
 ```text
-bind Viper.Terminal;
-bind Viper.Math as Math;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Time;
 
 // The subject: stock price
 class StockPrice extends Subject {
@@ -1379,7 +1379,7 @@ The order ticket turns an action (make food) into an object (the written ticket)
 The Command pattern encapsulates actions as objects, enabling undo, queueing, and logging:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Command {
     func execute();
@@ -1547,7 +1547,7 @@ class CommandHistory {
 Using the editor:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var editor = TextEditor();
@@ -1563,9 +1563,9 @@ func start() {
     history.execute(InsertCommand(editor, 5, ","));
     editor.display();  // Document: "Hello, World"
 
-    // Replace "World" with "Viper"
-    history.execute(ReplaceCommand(editor, 7, 5, "Viper"));
-    editor.display();  // Document: "Hello, Viper"
+    // Replace "World" with "Zanna"
+    history.execute(ReplaceCommand(editor, 7, 5, "Zanna"));
+    editor.display();  // Document: "Hello, Zanna"
 
     Say("--- Undo ---");
 
@@ -1700,7 +1700,7 @@ Same action, completely different behavior based on state. The state determines 
 The State pattern represents each state as an object that handles behavior for that state:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer);
@@ -2021,7 +2021,7 @@ Think of a plain t-shirt. You can add things to it: iron-on patches, embroidery,
 The Decorator pattern wraps objects to add behavior dynamically:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Beverage {
     func cost() -> Number;
@@ -2141,7 +2141,7 @@ class ExtraShot extends BeverageDecorator {
 Now any combination is possible:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Simple espresso
@@ -2187,7 +2187,7 @@ Each decorator wraps a beverage, adds its own cost and description, and delegate
 Decorators work beyond pricing. Here's an I/O example:
 
 ```text
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface DataStream {
     func write(data: String);
@@ -2337,8 +2337,8 @@ Real systems don't use patterns in isolation. They combine multiple patterns to 
 This example combines Factory, Strategy, Observer, and State:
 
 ```text
-bind Viper.Terminal;
-bind Viper.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
 
 // Observer for game events
 interface GameObserver {

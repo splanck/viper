@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Physical register free-lists and callee-saved usage tracking for
 ///        one function's register allocation run.
@@ -82,4 +82,4 @@ struct RegPools {
     void releaseFPR(PhysReg r, const TargetInfo &ti);
 };
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

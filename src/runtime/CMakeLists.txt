@@ -210,7 +210,7 @@ set(RT_IO_FS_SOURCES
         io/rt_archive_fs.c
         io/rt_archive_read.c
         io/rt_savedata.c
-        io/rt_vpa_reader.c
+        io/rt_zpak_reader.c
         io/rt_path_exe.c
         io/rt_asset.c
         io/rt_asset_decode.c
@@ -520,7 +520,7 @@ if (WIN32)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_d3d11.c)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_win32.c)
 endif ()
-if (UNIX AND NOT APPLE AND NOT VIPERGFX_BACKEND STREQUAL "Headless")
+if (UNIX AND NOT APPLE AND NOT ZANNAGFX_BACKEND STREQUAL "Headless")
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_opengl.c)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_linux.c)
 endif ()
@@ -747,84 +747,84 @@ set(RT_PUBLIC_HEADERS
 
 find_package(Threads REQUIRED)
 
-add_library(viper_rt_base_obj OBJECT ${RT_BASE_SOURCES})
-add_library(viper_rt_arrays_obj OBJECT ${RT_ARRAY_SOURCES})
-add_library(viper_rt_oop_obj OBJECT ${RT_OOP_SOURCES})
-add_library(viper_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
-add_library(viper_rt_game_obj OBJECT ${RT_GAME_SOURCES})
-add_library(viper_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
-add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
-add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
-add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
-add_library(viper_rt_audio_obj OBJECT ${RT_AUDIO_SOURCES})
-add_library(viper_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
-add_library(viper_rt_network_obj OBJECT ${RT_NETWORK_SOURCES})
-add_library(viper_rt_localization_obj OBJECT ${RT_LOCALIZATION_SOURCES})
+add_library(zanna_rt_base_obj OBJECT ${RT_BASE_SOURCES})
+add_library(zanna_rt_arrays_obj OBJECT ${RT_ARRAY_SOURCES})
+add_library(zanna_rt_oop_obj OBJECT ${RT_OOP_SOURCES})
+add_library(zanna_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
+add_library(zanna_rt_game_obj OBJECT ${RT_GAME_SOURCES})
+add_library(zanna_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
+add_library(zanna_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
+add_library(zanna_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
+add_library(zanna_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
+add_library(zanna_rt_audio_obj OBJECT ${RT_AUDIO_SOURCES})
+add_library(zanna_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
+add_library(zanna_rt_network_obj OBJECT ${RT_NETWORK_SOURCES})
+add_library(zanna_rt_localization_obj OBJECT ${RT_LOCALIZATION_SOURCES})
 
-add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
-add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
-add_library(viper_rt_oop STATIC $<TARGET_OBJECTS:viper_rt_oop_obj>)
-add_library(viper_rt_collections STATIC $<TARGET_OBJECTS:viper_rt_collections_obj>)
-add_library(viper_rt_game STATIC $<TARGET_OBJECTS:viper_rt_game_obj>)
-add_library(viper_rt_text STATIC $<TARGET_OBJECTS:viper_rt_text_obj>)
-add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
-add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
-add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
-add_library(viper_rt_audio STATIC $<TARGET_OBJECTS:viper_rt_audio_obj>)
-add_library(viper_rt_threads STATIC $<TARGET_OBJECTS:viper_rt_threads_obj>)
-add_library(viper_rt_network STATIC $<TARGET_OBJECTS:viper_rt_network_obj>)
-add_library(viper_rt_localization STATIC $<TARGET_OBJECTS:viper_rt_localization_obj>)
+add_library(zanna_rt_base STATIC $<TARGET_OBJECTS:zanna_rt_base_obj>)
+add_library(zanna_rt_arrays STATIC $<TARGET_OBJECTS:zanna_rt_arrays_obj>)
+add_library(zanna_rt_oop STATIC $<TARGET_OBJECTS:zanna_rt_oop_obj>)
+add_library(zanna_rt_collections STATIC $<TARGET_OBJECTS:zanna_rt_collections_obj>)
+add_library(zanna_rt_game STATIC $<TARGET_OBJECTS:zanna_rt_game_obj>)
+add_library(zanna_rt_text STATIC $<TARGET_OBJECTS:zanna_rt_text_obj>)
+add_library(zanna_rt_io_fs STATIC $<TARGET_OBJECTS:zanna_rt_io_fs_obj>)
+add_library(zanna_rt_exec STATIC $<TARGET_OBJECTS:zanna_rt_exec_obj>)
+add_library(zanna_rt_graphics STATIC $<TARGET_OBJECTS:zanna_rt_graphics_obj>)
+add_library(zanna_rt_audio STATIC $<TARGET_OBJECTS:zanna_rt_audio_obj>)
+add_library(zanna_rt_threads STATIC $<TARGET_OBJECTS:zanna_rt_threads_obj>)
+add_library(zanna_rt_network STATIC $<TARGET_OBJECTS:zanna_rt_network_obj>)
+add_library(zanna_rt_localization STATIC $<TARGET_OBJECTS:zanna_rt_localization_obj>)
 
-add_library(viper_runtime STATIC
-        $<TARGET_OBJECTS:viper_rt_base_obj>
-        $<TARGET_OBJECTS:viper_rt_arrays_obj>
-        $<TARGET_OBJECTS:viper_rt_oop_obj>
-        $<TARGET_OBJECTS:viper_rt_collections_obj>
-        $<TARGET_OBJECTS:viper_rt_game_obj>
-        $<TARGET_OBJECTS:viper_rt_text_obj>
-        $<TARGET_OBJECTS:viper_rt_io_fs_obj>
-        $<TARGET_OBJECTS:viper_rt_exec_obj>
-        $<TARGET_OBJECTS:viper_rt_graphics_obj>
-        $<TARGET_OBJECTS:viper_rt_audio_obj>
-        $<TARGET_OBJECTS:viper_rt_threads_obj>
-        $<TARGET_OBJECTS:viper_rt_network_obj>
-        $<TARGET_OBJECTS:viper_rt_localization_obj>
+add_library(zanna_runtime STATIC
+        $<TARGET_OBJECTS:zanna_rt_base_obj>
+        $<TARGET_OBJECTS:zanna_rt_arrays_obj>
+        $<TARGET_OBJECTS:zanna_rt_oop_obj>
+        $<TARGET_OBJECTS:zanna_rt_collections_obj>
+        $<TARGET_OBJECTS:zanna_rt_game_obj>
+        $<TARGET_OBJECTS:zanna_rt_text_obj>
+        $<TARGET_OBJECTS:zanna_rt_io_fs_obj>
+        $<TARGET_OBJECTS:zanna_rt_exec_obj>
+        $<TARGET_OBJECTS:zanna_rt_graphics_obj>
+        $<TARGET_OBJECTS:zanna_rt_audio_obj>
+        $<TARGET_OBJECTS:zanna_rt_threads_obj>
+        $<TARGET_OBJECTS:zanna_rt_network_obj>
+        $<TARGET_OBJECTS:zanna_rt_localization_obj>
 )
 
-set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
-        viper_rt_base_obj
-        viper_rt_arrays_obj
-        viper_rt_oop_obj
-        viper_rt_collections_obj
-        viper_rt_game_obj
-        viper_rt_text_obj
-        viper_rt_io_fs_obj
-        viper_rt_exec_obj
-        viper_rt_graphics_obj
-        viper_rt_audio_obj
-        viper_rt_threads_obj
-        viper_rt_network_obj
-        viper_rt_localization_obj
+set(ZANNA_RUNTIME_COMPONENT_OBJECT_LIBS
+        zanna_rt_base_obj
+        zanna_rt_arrays_obj
+        zanna_rt_oop_obj
+        zanna_rt_collections_obj
+        zanna_rt_game_obj
+        zanna_rt_text_obj
+        zanna_rt_io_fs_obj
+        zanna_rt_exec_obj
+        zanna_rt_graphics_obj
+        zanna_rt_audio_obj
+        zanna_rt_threads_obj
+        zanna_rt_network_obj
+        zanna_rt_localization_obj
 )
 
-set(VIPER_RUNTIME_COMPONENT_LIBS
-        viper_rt_base
-        viper_rt_arrays
-        viper_rt_oop
-        viper_rt_collections
-        viper_rt_game
-        viper_rt_text
-        viper_rt_io_fs
-        viper_rt_exec
-        viper_rt_graphics
-        viper_rt_audio
-        viper_rt_threads
-        viper_rt_network
-        viper_rt_localization
-        viper_runtime
+set(ZANNA_RUNTIME_COMPONENT_LIBS
+        zanna_rt_base
+        zanna_rt_arrays
+        zanna_rt_oop
+        zanna_rt_collections
+        zanna_rt_game
+        zanna_rt_text
+        zanna_rt_io_fs
+        zanna_rt_exec
+        zanna_rt_graphics
+        zanna_rt_audio
+        zanna_rt_threads
+        zanna_rt_network
+        zanna_rt_localization
+        zanna_runtime
 )
 
-add_custom_target(viper_runtime_components DEPENDS ${VIPER_RUNTIME_COMPONENT_LIBS})
+add_custom_target(zanna_runtime_components DEPENDS ${ZANNA_RUNTIME_COMPONENT_LIBS})
 
 # Subdirectory list for include-path extension (all consumers get flat #include "rt_*.h" lookup)
 set(_RT_SUBDIRS
@@ -859,7 +859,7 @@ set(_RT_SUBDIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/localization
 )
 
-foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
+foreach (_rtobj IN LISTS ZANNA_RUNTIME_COMPONENT_OBJECT_LIBS)
     target_include_directories(${_rtobj} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}    # root: rt_internal.h, rt_platform.h
             ${_RT_SUBDIRS}
@@ -894,7 +894,7 @@ foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
     endif ()
 endforeach ()
 
-foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
+foreach (_rtlib IN LISTS ZANNA_RUNTIME_COMPONENT_LIBS)
     target_include_directories(${_rtlib}
             PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
@@ -928,149 +928,149 @@ foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/network>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/localization>
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/zanna_runtime>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/zanna/runtime>
     )
 endforeach ()
 
-target_link_libraries(viper_rt_arrays PUBLIC viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_oop PUBLIC viper_rt_base)
-target_link_libraries(viper_rt_collections PUBLIC viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_game PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_text PUBLIC viper_rt_collections viper_rt_base)
-target_link_libraries(viper_rt_io_fs PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)
-target_link_libraries(viper_rt_graphics PUBLIC viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_threads PUBLIC viper_rt_oop viper_rt_base)
-target_link_libraries(viper_rt_network PUBLIC viper_rt_collections viper_rt_base)
-target_link_libraries(viper_rt_localization PUBLIC viper_rt_collections viper_rt_oop viper_rt_threads viper_rt_base)
+target_link_libraries(zanna_rt_arrays PUBLIC zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_oop PUBLIC zanna_rt_base)
+target_link_libraries(zanna_rt_collections PUBLIC zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_game PUBLIC zanna_rt_collections zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_text PUBLIC zanna_rt_collections zanna_rt_base)
+target_link_libraries(zanna_rt_io_fs PUBLIC zanna_rt_collections zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_exec PUBLIC zanna_rt_collections zanna_rt_base)
+target_link_libraries(zanna_rt_graphics PUBLIC zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_threads PUBLIC zanna_rt_oop zanna_rt_base)
+target_link_libraries(zanna_rt_network PUBLIC zanna_rt_collections zanna_rt_base)
+target_link_libraries(zanna_rt_localization PUBLIC zanna_rt_collections zanna_rt_oop zanna_rt_threads zanna_rt_base)
 
 # Windows requires ws2_32 for sockets
 if (WIN32)
-    target_link_libraries(viper_rt_base PUBLIC shell32 advapi32)
-    target_link_libraries(viper_runtime PUBLIC shell32 advapi32)
-    target_link_libraries(viper_rt_network PUBLIC ws2_32)
-    target_link_libraries(viper_runtime PUBLIC ws2_32)
-    target_link_libraries(viper_rt_graphics PUBLIC Xinput9_1_0)
-    target_link_libraries(viper_runtime PUBLIC Xinput9_1_0)
+    target_link_libraries(zanna_rt_base PUBLIC shell32 advapi32)
+    target_link_libraries(zanna_runtime PUBLIC shell32 advapi32)
+    target_link_libraries(zanna_rt_network PUBLIC ws2_32)
+    target_link_libraries(zanna_runtime PUBLIC ws2_32)
+    target_link_libraries(zanna_rt_graphics PUBLIC Xinput9_1_0)
+    target_link_libraries(zanna_runtime PUBLIC Xinput9_1_0)
 endif ()
 
 if (NOT WIN32)
     # -lm is an implementation detail of the runtime; PRIVATE prevents it from
     # leaking into consumers' link lines (MED-7).
-    target_link_libraries(viper_runtime PRIVATE m)
-    target_link_libraries(viper_rt_base PRIVATE m)
+    target_link_libraries(zanna_runtime PRIVATE m)
+    target_link_libraries(zanna_rt_base PRIVATE m)
 endif ()
 
 # MSVC release linker flags: /OPT:REF removes unreferenced functions/data,
 # /OPT:ICF merges identical COMDAT sections — equivalent to GCC/Clang
 # --gc-sections + --icf=all (MED-6).
 if (MSVC)
-    target_link_options(viper_runtime PRIVATE
+    target_link_options(zanna_runtime PRIVATE
             $<$<CONFIG:Release>:/OPT:REF>
             $<$<CONFIG:Release>:/OPT:ICF>)
 endif ()
 
 if (APPLE)
-    target_link_libraries(viper_rt_graphics PUBLIC "-framework IOKit" "-framework CoreFoundation")
-    target_link_libraries(viper_runtime PUBLIC "-framework IOKit" "-framework CoreFoundation")
-    target_link_libraries(viper_rt_graphics PUBLIC "-framework ApplicationServices")
-    target_link_libraries(viper_runtime PUBLIC "-framework ApplicationServices")
+    target_link_libraries(zanna_rt_graphics PUBLIC "-framework IOKit" "-framework CoreFoundation")
+    target_link_libraries(zanna_runtime PUBLIC "-framework IOKit" "-framework CoreFoundation")
+    target_link_libraries(zanna_rt_graphics PUBLIC "-framework ApplicationServices")
+    target_link_libraries(zanna_runtime PUBLIC "-framework ApplicationServices")
     # Metal frameworks for 3D GPU backend
-    target_link_libraries(viper_rt_graphics PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
-    target_link_libraries(viper_runtime PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+    target_link_libraries(zanna_rt_graphics PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+    target_link_libraries(zanna_runtime PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
 endif ()
 
-target_link_libraries(viper_rt_threads PUBLIC Threads::Threads)
-target_link_libraries(viper_runtime PUBLIC Threads::Threads)
+target_link_libraries(zanna_rt_threads PUBLIC Threads::Threads)
+target_link_libraries(zanna_runtime PUBLIC Threads::Threads)
 
-# VIPER_RC_DEBUG can be manually enabled for refcount debugging:
-# cmake -DCMAKE_CXX_FLAGS="-DVIPER_RC_DEBUG=1" ...
-
-install(FILES ${RT_PUBLIC_HEADERS}
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime
-)
+# ZANNA_RC_DEBUG can be manually enabled for refcount debugging:
+# cmake -DCMAKE_CXX_FLAGS="-DZANNA_RC_DEBUG=1" ...
 
 install(FILES ${RT_PUBLIC_HEADERS}
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna_runtime
 )
 
-install(FILES ${PROJECT_SOURCE_DIR}/include/viper/runtime/rt.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
+install(FILES ${RT_PUBLIC_HEADERS}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna/runtime
 )
 
-set(VIPER_RUNTIME_COMPONENT_ARCHIVES
-        viper_rt_base
-        viper_rt_arrays
-        viper_rt_oop
-        viper_rt_collections
-        viper_rt_game
-        viper_rt_text
-        viper_rt_io_fs
-        viper_rt_exec
-        viper_rt_threads
-        viper_rt_graphics
-        viper_rt_audio
-        viper_rt_network
-        viper_rt_localization
+install(FILES ${PROJECT_SOURCE_DIR}/include/zanna/runtime/rt.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna/runtime
+)
+
+set(ZANNA_RUNTIME_COMPONENT_ARCHIVES
+        zanna_rt_base
+        zanna_rt_arrays
+        zanna_rt_oop
+        zanna_rt_collections
+        zanna_rt_game
+        zanna_rt_text
+        zanna_rt_io_fs
+        zanna_rt_exec
+        zanna_rt_threads
+        zanna_rt_graphics
+        zanna_rt_audio
+        zanna_rt_network
+        zanna_rt_localization
         PARENT_SCOPE)
 
-if (NOT DEFINED VIPER_GRAPHICS_MODE)
-    message(FATAL_ERROR "VIPER_GRAPHICS_MODE must be defined before configuring src/runtime")
+if (NOT DEFINED ZANNA_GRAPHICS_MODE)
+    message(FATAL_ERROR "ZANNA_GRAPHICS_MODE must be defined before configuring src/runtime")
 endif ()
-if (NOT DEFINED VIPER_AUDIO_MODE)
-    message(FATAL_ERROR "VIPER_AUDIO_MODE must be defined before configuring src/runtime")
+if (NOT DEFINED ZANNA_AUDIO_MODE)
+    message(FATAL_ERROR "ZANNA_AUDIO_MODE must be defined before configuring src/runtime")
 endif ()
 
-if (VIPER_GRAPHICS_MODE STREQUAL "OFF")
-    set(VIPER_ENABLE_GRAPHICS OFF)
+if (ZANNA_GRAPHICS_MODE STREQUAL "OFF")
+    set(ZANNA_ENABLE_GRAPHICS OFF)
 else ()
-    set(VIPER_ENABLE_GRAPHICS ON)
+    set(ZANNA_ENABLE_GRAPHICS ON)
 endif ()
 
-if (VIPER_AUDIO_MODE STREQUAL "OFF")
-    set(VIPER_ENABLE_AUDIO OFF)
+if (ZANNA_AUDIO_MODE STREQUAL "OFF")
+    set(ZANNA_ENABLE_AUDIO OFF)
 else ()
-    set(VIPER_ENABLE_AUDIO ON)
+    set(ZANNA_ENABLE_AUDIO ON)
 endif ()
 
-if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
-    message(STATUS "viper_runtime: Graphics support enabled")
-    target_sources(viper_rt_graphics_obj PRIVATE ${RT_GRAPHICS_PLATFORM_SOURCES})
-    target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
-    target_compile_definitions(viper_rt_audio_obj PRIVATE VIPER_ENABLE_GRAPHICS)
-    if (VIPERGFX_BACKEND STREQUAL "Headless")
-        target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_GRAPHICS_HEADLESS)
-        target_compile_definitions(viper_rt_audio_obj PRIVATE VIPER_GRAPHICS_HEADLESS)
+if (ZANNA_ENABLE_GRAPHICS AND TARGET zannagfx)
+    message(STATUS "zanna_runtime: Graphics support enabled")
+    target_sources(zanna_rt_graphics_obj PRIVATE ${RT_GRAPHICS_PLATFORM_SOURCES})
+    target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_ENABLE_GRAPHICS)
+    target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_ENABLE_GRAPHICS)
+    if (ZANNAGFX_BACKEND STREQUAL "Headless")
+        target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_GRAPHICS_HEADLESS)
+        target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_GRAPHICS_HEADLESS)
     endif ()
-    if (VIPER_BUILD_TESTING)
-        target_compile_definitions(viper_rt_graphics_obj PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)
+    if (ZANNA_BUILD_TESTING)
+        target_compile_definitions(zanna_rt_graphics_obj PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)
     endif ()
-    target_include_directories(viper_rt_graphics_obj PRIVATE
+    target_include_directories(zanna_rt_graphics_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
             ${PROJECT_SOURCE_DIR}/src/lib/gui/include
     )
-    target_link_libraries(viper_rt_graphics PUBLIC vipergfx)
-    target_link_libraries(viper_runtime PUBLIC vipergfx)
+    target_link_libraries(zanna_rt_graphics PUBLIC zannagfx)
+    target_link_libraries(zanna_runtime PUBLIC zannagfx)
     # Link GUI library if available
-    if (TARGET vipergui)
-        target_link_libraries(viper_rt_graphics PRIVATE vipergui)
-        target_link_libraries(viper_runtime PRIVATE vipergui)
+    if (TARGET zannagui)
+        target_link_libraries(zanna_rt_graphics PRIVATE zannagui)
+        target_link_libraries(zanna_runtime PRIVATE zannagui)
     endif ()
 else ()
-    message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
+    message(STATUS "zanna_runtime: Graphics support disabled (zannagfx not available)")
     # Replace backend-dependent sources with the no-backend runtime surface.
-    set_property(TARGET viper_rt_graphics_obj PROPERTY SOURCES ${RT_GRAPHICS_DISABLED_SOURCES})
+    set_property(TARGET zanna_rt_graphics_obj PROPERTY SOURCES ${RT_GRAPHICS_DISABLED_SOURCES})
 endif ()
 
-if (VIPER_ENABLE_AUDIO AND TARGET viperaud)
-    message(STATUS "viper_runtime: Audio support enabled")
-    target_compile_definitions(viper_rt_audio_obj PRIVATE VIPER_ENABLE_AUDIO)
-    target_include_directories(viper_rt_audio_obj PRIVATE
+if (ZANNA_ENABLE_AUDIO AND TARGET zannaaud)
+    message(STATUS "zanna_runtime: Audio support enabled")
+    target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_ENABLE_AUDIO)
+    target_include_directories(zanna_rt_audio_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/audio/include
     )
-    target_link_libraries(viper_rt_audio PUBLIC viperaud)
-    target_link_libraries(viper_runtime PUBLIC viperaud)
+    target_link_libraries(zanna_rt_audio PUBLIC zannaaud)
+    target_link_libraries(zanna_runtime PUBLIC zannaaud)
 else ()
-    message(STATUS "viper_runtime: Audio support disabled (viperaud not available)")
+    message(STATUS "zanna_runtime: Audio support disabled (zannaaud not available)")
 endif ()

@@ -1,4 +1,4 @@
-# Viper Bible Inventory
+# Zanna Bible Inventory
 
 | Chapter | File |
 |---------|------|
@@ -27,7 +27,7 @@
 | 22. Networking | `part4-applications/22-networking.md` |
 | 23. Data Formats | `part4-applications/23-data-formats.md` |
 | 24. Concurrency | `part4-applications/24-concurrency.md` |
-| 25. How Viper Works | `part5-mastery/25-how-viper-works.md` |
+| 25. How Zanna Works | `part5-mastery/25-how-zanna-works.md` |
 | 26. Performance | `part5-mastery/26-performance.md` |
 | 27. Testing | `part5-mastery/27-testing.md` |
 | 28. Architecture | `part5-mastery/28-architecture.md` |

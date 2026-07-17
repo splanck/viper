@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Diagnostic sink used by passes to surface errors and warnings.
 /// @details Errors are fatal and cause the pass manager to short-circuit.
@@ -66,4 +66,4 @@ class Diagnostics {
     std::vector<il::support::Diagnostic> diagnostics_{};
 };
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

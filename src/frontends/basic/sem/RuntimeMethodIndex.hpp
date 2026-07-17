@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 ///
 /// ## Architecture
 ///
-/// The Viper compiler uses a unified RuntimeRegistry at the IL layer to store
+/// The Zanna compiler uses a unified RuntimeRegistry at the IL layer to store
 /// parsed signatures for all runtime methods. Each frontend provides an adapter
 /// to map IL types to their native type system:
 ///
@@ -51,11 +51,11 @@
 /// index.seed();  // No-op, but kept for backward compatibility
 ///
 /// // Look up String.Substring(start, length)
-/// auto info = index.find("Viper.String", "Substring", 2);
+/// auto info = index.find("Zanna.String", "Substring", 2);
 /// if (info) {
 ///     // info->ret == BasicType::String
 ///     // info->args == [BasicType::Int, BasicType::Int]
-///     // info->target == "Viper.String.Substring"
+///     // info->target == "Zanna.String.Substring"
 /// }
 /// ```
 ///
@@ -139,17 +139,17 @@ BasicType toBasicType(il::runtime::ILScalarType t);
 ///   The receiver is handled separately at the call site.
 ///
 /// - **target**: The canonical extern function name to use in generated IL
-///   (e.g., "Viper.String.Substring"). This is used directly in the extern
+///   (e.g., "Zanna.String.Substring"). This is used directly in the extern
 ///   call instruction.
 ///
 /// ## Example
 ///
-/// For `Viper.String.Substring`:
+/// For `Zanna.String.Substring`:
 /// ```
 /// RuntimeMethodInfo {
 ///     ret: BasicType::String,
 ///     args: [BasicType::Int, BasicType::Int],
-///     target: "Viper.String.Substring"
+///     target: "Zanna.String.Substring"
 /// }
 /// ```
 ///
@@ -176,7 +176,7 @@ struct RuntimeMethodInfo {
     ///          receiver even though they are grouped under a runtime class.
     bool hasReceiver{true};
 
-    /// @brief Canonical extern name for IL generation (e.g., "Viper.String.Substring").
+    /// @brief Canonical extern name for IL generation (e.g., "Zanna.String.Substring").
     std::string target;
 };
 
@@ -201,7 +201,7 @@ struct RuntimeMethodInfo {
 /// ## Lookup Semantics
 ///
 /// Methods are looked up by:
-/// 1. **Class name**: Fully-qualified name (e.g., "Viper.String")
+/// 1. **Class name**: Fully-qualified name (e.g., "Zanna.String")
 /// 2. **Method name**: The method identifier (e.g., "Substring")
 /// 3. **Arity**: Number of explicit parameters (excludes receiver)
 ///
@@ -214,13 +214,13 @@ struct RuntimeMethodInfo {
 /// RuntimeMethodIndex& index = runtimeMethodIndex();
 ///
 /// // Look up a method
-/// auto info = index.find("Viper.String", "Substring", 2);
+/// auto info = index.find("Zanna.String", "Substring", 2);
 /// if (info) {
 ///     emit_call(info->target, ...);
 /// }
 ///
 /// // Get available overloads for error messages
-/// auto overloads = index.candidates("Viper.String", "Substring");
+/// auto overloads = index.candidates("Zanna.String", "Substring");
 /// // Returns ["Substring/1", "Substring/2"] if both arities exist
 /// ```
 ///
@@ -246,7 +246,7 @@ class RuntimeMethodIndex {
     /// The arity parameter excludes the implicit receiver—for a method call
     /// like `obj.Method(a, b)`, the arity is 2, not 3.
     ///
-    /// @param classQName The fully-qualified class name (e.g., "Viper.String").
+    /// @param classQName The fully-qualified class name (e.g., "Zanna.String").
     ///                   Lookup is case-insensitive.
     /// @param method The method name (e.g., "Substring").
     ///               Lookup is case-insensitive.
@@ -257,7 +257,7 @@ class RuntimeMethodIndex {
     /// @par Example
     /// ```cpp
     /// // Look up String.Substring with 2 parameters
-    /// auto info = index.find("Viper.String", "Substring", 2);
+    /// auto info = index.find("Zanna.String", "Substring", 2);
     /// if (info) {
     ///     assert(info->ret == BasicType::String);
     ///     assert(info->args.size() == 2);
@@ -298,7 +298,7 @@ class RuntimeMethodIndex {
     ///
     /// @par Example
     /// ```cpp
-    /// auto overloads = index.candidates("Viper.String", "Substring");
+    /// auto overloads = index.candidates("Zanna.String", "Substring");
     /// // If Substring has 1-arg and 2-arg versions:
     /// // overloads == ["Substring/1", "Substring/2"]
     /// ```

@@ -1,8 +1,8 @@
 // Test: Tilemap multi-layer support
 module TestTilemapLayers;
 
-bind Viper.Terminal;
-bind Viper.Graphics2D.Tilemap as Tilemap;
+bind Zanna.Terminal;
+bind Zanna.Graphics2D.Tilemap as Tilemap;
 
 func start() {
     // Create a 10x10 tilemap with 16x16 tiles

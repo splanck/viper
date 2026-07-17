@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_bigint.h
-// Purpose: Arbitrary-precision integer arithmetic for the Viper.Math.BigInt runtime class,
+// Purpose: Arbitrary-precision integer arithmetic for the Zanna.Math.BigInt runtime class,
 // providing creation, arithmetic, comparison, bitwise, and conversion operations on heap-allocated
 // big integer objects.
 //

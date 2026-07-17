@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,28 +20,28 @@
 // GUI WIDGET CLASSES
 //=============================================================================
 
-// Viper.GUI.System - GUI capability discovery
+// Zanna.GUI.System - GUI capability discovery
 /// @summary Reports whether GUI support is available in the current runtime build.
 /// @details
-/// `Viper.GUI.System` is a side-effect-free static capability surface. Querying it never opens a
-/// display connection or creates a window; use `Viper.GUI.App.TryNew` to report backend-specific
+/// `Zanna.GUI.System` is a side-effect-free static capability surface. Querying it never opens a
+/// display connection or creates a window; use `Zanna.GUI.App.TryNew` to report backend-specific
 /// construction failure.
-RT_CLASS_BEGIN("Viper.GUI.System", GuiSystem, "none", none)
+RT_CLASS_BEGIN("Zanna.GUI.System", GuiSystem, "none", none)
     RT_METHOD("IsAvailable", "i1()", GuiSystemIsAvailable)
     RT_METHOD("GetUnavailableReason", "str()", GuiSystemGetUnavailableReason)
 RT_CLASS_END()
 
-// Viper.GUI.App - application framework
+// Zanna.GUI.App - application framework
 /// @summary Owns a GUI application window, event loop, root widget, and rendering lifecycle.
 /// @details
-/// Create `Viper.GUI.App` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.App` values through its registered constructor and use the returned object
 /// with the instance members below. `RunFrame` integrates polling, scheduling, damage rendering,
 /// and presentation; `RunFrameWithDelta` supplies deterministic test time. `GetNextDeadlineMs`
 /// allows efficient waits, while the legacy `Poll`, `PollWait`, and `Render` calls remain intact.
-RT_CLASS_BEGIN("Viper.GUI.App", GuiApp, "obj", GuiAppNew)
-    RT_METHOD("TryNew", "obj<Viper.Result>(str,i64,i64)", GuiAppTryNew)
+RT_CLASS_BEGIN("Zanna.GUI.App", GuiApp, "obj", GuiAppNew)
+    RT_METHOD("TryNew", "obj<Zanna.Result>(str,i64,i64)", GuiAppTryNew)
     RT_PROP("ShouldClose", "i1", GuiAppShouldClose, none)
-    RT_PROP("Root", "obj<Viper.GUI.Widget>", GuiAppGetRoot, none)
+    RT_PROP("Root", "obj<Zanna.GUI.Widget>", GuiAppGetRoot, none)
     RT_METHOD("Poll", "void()", GuiAppPoll)
     RT_METHOD("PollWait", "i1(i64)", GuiAppPollWait)
     RT_METHOD("Render", "void()", GuiAppRender)
@@ -95,32 +95,32 @@ RT_CLASS_BEGIN("Viper.GUI.App", GuiApp, "obj", GuiAppNew)
     RT_METHOD("GetDroppedFile", "str(i64)", AppGetDroppedFile)
 RT_CLASS_END()
 
-// Viper.GUI.Font - font loading
+// Zanna.GUI.Font - font loading
 /// @summary Provides font loading.
 /// @details
-/// `Viper.GUI.Font` exposes managed file fonts plus zero-dependency regular and bold system UI
-/// roles. System-role construction returns `Viper.Result`, preserves the requested logical-point
-/// size across DPI changes, and falls back to Viper's embedded font when host faces are absent.
+/// `Zanna.GUI.Font` exposes managed file fonts plus zero-dependency regular and bold system UI
+/// roles. System-role construction returns `Zanna.Result`, preserves the requested logical-point
+/// size across DPI changes, and falls back to Zanna's embedded font when host faces are absent.
 /// `Destroy` is idempotent and uses presentation-generation retirement while retained GUI
 /// surfaces still reference the backing face. Legacy path loading remains available.
-RT_CLASS_BEGIN("Viper.GUI.Font", GuiFont, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.Font", GuiFont, "obj", none)
     RT_METHOD("Load", "obj(str)", GuiFontLoad)
-    RT_METHOD("LoadSystemUi", "obj<Viper.Result>(f64)", GuiFontLoadSystemUi)
-    RT_METHOD("LoadSystemUiBold", "obj<Viper.Result>(f64)", GuiFontLoadSystemUiBold)
+    RT_METHOD("LoadSystemUi", "obj<Zanna.Result>(f64)", GuiFontLoadSystemUi)
+    RT_METHOD("LoadSystemUiBold", "obj<Zanna.Result>(f64)", GuiFontLoadSystemUiBold)
     RT_METHOD("GetLogicalSize", "f64(obj)", GuiFontGetLogicalSize)
     RT_METHOD("Destroy", "void()", GuiFontDestroy)
 RT_CLASS_END()
 
-// Viper.GUI.Widget - base widget class
+// Zanna.GUI.Widget - base widget class
 /// @summary Provides safe widget geometry, hierarchy, identity, state, and accessibility APIs.
 /// @details
-/// `Viper.GUI.Widget` is the common borrowed handle for controls created by concrete GUI classes.
+/// `Zanna.GUI.Widget` is the common borrowed handle for controls created by concrete GUI classes.
 /// New layout and bounds operations use logical units while legacy integer getters retain their
-/// framebuffer-unit compatibility contract. Hierarchy lookup returns explicit `Viper.Option`
+/// framebuffer-unit compatibility contract. Hierarchy lookup returns explicit `Zanna.Option`
 /// values; removing or clearing children detaches without destroying them and transfers ownership
 /// back to the caller. IDs are stable for the live widget, names are copied UTF-8, and invalid or
 /// stale handles follow the documented empty/no-op contract.
-RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.Widget", GuiWidget, "obj", none)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i1)", GuiWidgetSetVisible)
     RT_METHOD("SetEnabled", "void(i1)", GuiWidgetSetEnabled)
@@ -133,9 +133,9 @@ RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
     RT_METHOD("SetFlex", "void(f64)", GuiWidgetSetFlex)
     RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
     RT_METHOD("AddChild", "void(obj)", GuiWidgetAddChild)
-    RT_METHOD("GetParentOption", "obj<Viper.Option>()", GuiWidgetGetParentOption)
+    RT_METHOD("GetParentOption", "obj<Zanna.Option>()", GuiWidgetGetParentOption)
     RT_METHOD("GetChildCount", "i64()", GuiWidgetGetChildCount)
-    RT_METHOD("GetChildAtOption", "obj<Viper.Option>(i64)", GuiWidgetGetChildAtOption)
+    RT_METHOD("GetChildAtOption", "obj<Zanna.Option>(i64)", GuiWidgetGetChildAtOption)
     RT_METHOD("RemoveChild", "i1(obj)", GuiWidgetRemoveChild)
     RT_METHOD("ClearChildren", "void()", GuiWidgetClearChildren)
     RT_METHOD("IsHovered", "i1()", GuiWidgetIsHovered)
@@ -169,8 +169,8 @@ RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
     RT_METHOD("SetName", "void(str)", GuiWidgetSetName)
     RT_METHOD("GetName", "str()", GuiWidgetGetName)
     RT_METHOD("GetId", "i64()", GuiWidgetGetId)
-    RT_METHOD("FindByIdOption", "obj<Viper.Option>(i64)", GuiWidgetFindByIdOption)
-    RT_METHOD("FindByNameOption", "obj<Viper.Option>(str)", GuiWidgetFindByNameOption)
+    RT_METHOD("FindByIdOption", "obj<Zanna.Option>(i64)", GuiWidgetFindByIdOption)
+    RT_METHOD("FindByNameOption", "obj<Zanna.Option>(str)", GuiWidgetFindByNameOption)
     RT_METHOD("HitTest", "i1(f64,f64)", GuiWidgetHitTest)
     RT_METHOD("InvalidatePaint", "void()", GuiWidgetInvalidatePaint)
     RT_METHOD("InvalidateLayout", "void()", GuiWidgetInvalidateLayout)
@@ -201,13 +201,13 @@ RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
     RT_METHOD("GetDropData", "str()", WidgetGetDropData)
 RT_CLASS_END()
 
-// Viper.GUI.Label - text label widget
+// Zanna.GUI.Label - text label widget
 /// @summary Provides text label widget.
 /// @details
-/// Create `Viper.GUI.Label` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Label` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetText`,
 /// `SetFont`, `SetColor`, `SetWordWrap`, alignment, truncation, and selectable text access.
-RT_CLASS_BEGIN("Viper.GUI.Label", GuiLabel, "obj", GuiLabelNew)
+RT_CLASS_BEGIN("Zanna.GUI.Label", GuiLabel, "obj", GuiLabelNew)
     RT_METHOD("SetText", "void(str)", GuiLabelSetText)
     RT_METHOD("SetFont", "void(obj,f64)", GuiLabelSetFont)
     RT_METHOD("SetColor", "void(i64)", GuiLabelSetColor)
@@ -220,13 +220,13 @@ RT_CLASS_BEGIN("Viper.GUI.Label", GuiLabel, "obj", GuiLabelNew)
     RT_METHOD("GetSelectedText", "str()", GuiLabelGetSelectedText)
 RT_CLASS_END()
 
-// Viper.GUI.Button - clickable button widget
+// Zanna.GUI.Button - clickable button widget
 /// @summary Provides clickable button widget.
 /// @details
-/// Create `Viper.GUI.Button` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Button` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetText`,
 /// `SetFont`, `SetStyle`, `SetIcon`.
-RT_CLASS_BEGIN("Viper.GUI.Button", GuiButton, "obj", GuiButtonNew)
+RT_CLASS_BEGIN("Zanna.GUI.Button", GuiButton, "obj", GuiButtonNew)
     RT_METHOD("SetText", "void(str)", GuiButtonSetText)
     RT_METHOD("SetFont", "void(obj,f64)", GuiButtonSetFont)
     RT_METHOD("SetStyle", "void(i64)", GuiButtonSetStyle)
@@ -234,15 +234,15 @@ RT_CLASS_BEGIN("Viper.GUI.Button", GuiButton, "obj", GuiButtonNew)
     RT_METHOD("SetIconPosition", "void(i64)", GuiButtonSetIconPosition)
 RT_CLASS_END()
 
-// Viper.GUI.TextInput - text input field widget
+// Zanna.GUI.TextInput - text input field widget
 /// @summary Provides text input field widget.
 /// @details
-/// Create `Viper.GUI.TextInput` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.TextInput` values through its registered constructor and use the returned
 /// object with the instance members below. Text positions and limits use Unicode extended
 /// grapheme clusters so user-perceived characters are never split. The editor supports selection,
 /// one-step-per-edit undo/redo, password/read-only/multiline modes, independent change and submit
 /// edges, monotonic revisions, and observable native IME preedit without exposing mutable buffers.
-RT_CLASS_BEGIN("Viper.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew)
+RT_CLASS_BEGIN("Zanna.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew)
     RT_PROP("Text", "str", GuiTextInputGetText, none)
     RT_METHOD("SetText", "void(str)", GuiTextInputSetText)
     RT_METHOD("SetPlaceholder", "void(str)", GuiTextInputSetPlaceholder)
@@ -277,13 +277,13 @@ RT_CLASS_BEGIN("Viper.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew)
     RT_METHOD("GetCompositionLength", "i64()", GuiTextInputGetCompositionLength)
 RT_CLASS_END()
 
-// Viper.GUI.Checkbox - checkbox widget
+// Zanna.GUI.Checkbox - checkbox widget
 /// @summary Provides checkbox widget.
 /// @details
-/// Create `Viper.GUI.Checkbox` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.Checkbox` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetChecked`, `IsChecked`, `SetIndeterminate`, `IsIndeterminate`.
-RT_CLASS_BEGIN("Viper.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew)
+RT_CLASS_BEGIN("Zanna.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew)
     RT_METHOD("SetChecked", "void(i1)", GuiCheckboxSetChecked)
     RT_METHOD("IsChecked", "i1()", GuiCheckboxIsChecked)
     RT_METHOD("SetIndeterminate", "void(i1)", GuiCheckboxSetIndeterminate)
@@ -293,28 +293,28 @@ RT_CLASS_BEGIN("Viper.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew)
     RT_METHOD("GetRevision", "i64()", GuiCheckboxGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.ScrollView - scrollable container widget
+// Zanna.GUI.ScrollView - scrollable container widget
 /// @summary Provides scrollable container widget.
 /// @details
-/// Create `Viper.GUI.ScrollView` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.ScrollView` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetScroll`, `SetContentSize`, `GetScrollX`, `GetScrollY`.
-RT_CLASS_BEGIN("Viper.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew)
+RT_CLASS_BEGIN("Zanna.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew)
     RT_METHOD("SetScroll", "void(f64,f64)", GuiScrollViewSetScroll)
     RT_METHOD("SetContentSize", "void(f64,f64)", GuiScrollViewSetContentSize)
     RT_METHOD("GetScrollX", "f64()", GuiScrollViewGetScrollX)
     RT_METHOD("GetScrollY", "f64()", GuiScrollViewGetScrollY)
 RT_CLASS_END()
 
-// Viper.GUI.TreeView - tree view widget
+// Zanna.GUI.TreeView - tree view widget
 /// @summary Provides tree view widget.
 /// @details
-/// Create `Viper.GUI.TreeView` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.TreeView` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and activation
-/// payload lookup. Node-returning event payloads use `Viper.Option`, remain independent from their
+/// payload lookup. Node-returning event payloads use `Zanna.Option`, remain independent from their
 /// compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
-RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
+RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
     RT_METHOD("AddNode", "obj(obj,str)", GuiTreeViewAddNode)
     RT_METHOD("RemoveNode", "void(obj)", GuiTreeViewRemoveNode)
     RT_METHOD("Clear", "void()", GuiTreeViewClear)
@@ -331,8 +331,8 @@ RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
     RT_METHOD("WasChanged", "i1()", GuiTreeViewWasChanged)
     RT_METHOD("WasActivated", "i1()", GuiTreeViewWasActivated)
     RT_METHOD("WasLoadChildrenRequested", "i1()", GuiTreeViewWasLoadChildrenRequested)
-    RT_METHOD("GetLoadRequestedNodeOption", "obj<Viper.Option>()", GuiTreeViewGetLoadRequestedNodeOption)
-    RT_METHOD("GetActivatedNodeOption", "obj<Viper.Option>()", GuiTreeViewGetActivatedNodeOption)
+    RT_METHOD("GetLoadRequestedNodeOption", "obj<Zanna.Option>()", GuiTreeViewGetLoadRequestedNodeOption)
+    RT_METHOD("GetActivatedNodeOption", "obj<Zanna.Option>()", GuiTreeViewGetActivatedNodeOption)
     RT_METHOD("GetRevision", "i64()", GuiTreeViewGetRevision)
     RT_METHOD("SetDragDropEnabled", "void(i1)", GuiTreeViewSetDragDropEnabled)
     RT_METHOD("WasDropReceived", "i1()", GuiTreeViewWasDropReceived)
@@ -344,15 +344,15 @@ RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
     RT_METHOD("ClearVirtualModel", "void()", GuiTreeViewClearVirtualModel)
 RT_CLASS_END()
 
-// Viper.GUI.TreeView.Node - tree view node (returned by AddNode)
+// Zanna.GUI.TreeView.Node - tree view node (returned by AddNode)
 /// @summary Provides tree view node (returned by AddNode).
 /// @details
-/// `Viper.GUI.TreeView.Node` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.GUI.TreeView.Node` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `GetText`,
 /// `SetText`, UTF-8 icon text, lazy-child/loading state, stable identifiers, string data, and
 /// expansion inspection. Nodes are borrowed tree-owned subobjects; removed or pruned handles stay
 /// safely inert and return empty/false values.
-RT_CLASS_BEGIN("Viper.GUI.TreeView.Node", GuiTreeNode, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.TreeView.Node", GuiTreeNode, "obj", none)
     RT_METHOD("GetText", "str()", GuiTreeViewNodeGetText)
     RT_METHOD("SetText", "void(str)", GuiTreeViewNodeSetText)
     RT_METHOD("SetIcon", "void(str)", GuiTreeViewNodeSetIcon)
@@ -368,14 +368,14 @@ RT_CLASS_BEGIN("Viper.GUI.TreeView.Node", GuiTreeNode, "obj", none)
     RT_METHOD("IsExpanded", "i1()", GuiTreeViewNodeIsExpanded)
 RT_CLASS_END()
 
-// Viper.GUI.TabBar - tab bar widget
+// Zanna.GUI.TabBar - tab bar widget
 /// @summary Provides tab bar widget.
 /// @details
-/// Create `Viper.GUI.TabBar` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.TabBar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `TabCount` and
 /// operations including lifecycle-safe tab access, font control, and independently observable
 /// active/close/reorder interactions.
-RT_CLASS_BEGIN("Viper.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
     RT_PROP("TabCount", "i64", GuiTabBarGetTabCount, none)
     RT_METHOD("AddTab", "obj(str,i64)", GuiTabBarAddTab)
     RT_METHOD("RemoveTab", "void(obj)", GuiTabBarRemoveTab)
@@ -387,7 +387,7 @@ RT_CLASS_BEGIN("Viper.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
     RT_METHOD("GetRevision", "i64()", GuiTabBarGetRevision)
     RT_METHOD("WasCloseClicked", "i1()", GuiTabBarWasCloseClicked)
     RT_METHOD("GetCloseClickedIndex", "i64()", GuiTabBarGetCloseClickedIdx)
-    RT_METHOD("GetTabAt", "obj<Viper.GUI.Tab>(i64)", GuiTabBarGetTabAt)
+    RT_METHOD("GetTabAt", "obj<Zanna.GUI.Tab>(i64)", GuiTabBarGetTabAt)
     RT_METHOD("GetTabIndexAt", "i64(i64,i64)", GuiTabBarGetTabIndexAt)
     RT_METHOD("SetAutoClose", "void(i1)", GuiTabBarSetAutoClose)
     RT_METHOD("SetFont", "void(obj,f64)", GuiTabBarSetFont)
@@ -397,13 +397,13 @@ RT_CLASS_BEGIN("Viper.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
     RT_METHOD("MoveTab", "i1(i64,i64)", GuiTabBarMoveTab)
 RT_CLASS_END()
 
-// Viper.GUI.Tab - tab item
+// Zanna.GUI.Tab - tab item
 /// @summary Provides tab item.
 /// @details
-/// `Viper.GUI.Tab` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.GUI.Tab` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Titles, byte-exact application data, close state, stable IDs, tooltips, and
 /// modified state remain available while the managed subhandle targets a live tab.
-RT_CLASS_BEGIN("Viper.GUI.Tab", GuiTab, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.Tab", GuiTab, "obj", none)
     RT_METHOD("SetTitle", "void(str)", GuiTabSetTitle)
     RT_METHOD("GetTitle", "str()", GuiTabGetTitle)
     RT_METHOD("SetData", "void(str)", GuiTabSetData)
@@ -416,16 +416,16 @@ RT_CLASS_BEGIN("Viper.GUI.Tab", GuiTab, "obj", none)
     RT_METHOD("SetModified", "void(i1)", GuiTabSetModified)
 RT_CLASS_END()
 
-// Viper.GUI.SplitPane - split pane container
+// Zanna.GUI.SplitPane - split pane container
 /// @summary Provides split pane container.
 /// @details
-/// Create `Viper.GUI.SplitPane` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.SplitPane` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `First`,
 /// `Second` and operations for logical-unit minimums, orientation, divider position, and
 /// reversible first/second collapse.
-RT_CLASS_BEGIN("Viper.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
-    RT_PROP("First", "obj<Viper.GUI.Widget>", GuiSplitPaneGetFirst, none)
-    RT_PROP("Second", "obj<Viper.GUI.Widget>", GuiSplitPaneGetSecond, none)
+RT_CLASS_BEGIN("Zanna.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
+    RT_PROP("First", "obj<Zanna.GUI.Widget>", GuiSplitPaneGetFirst, none)
+    RT_PROP("Second", "obj<Zanna.GUI.Widget>", GuiSplitPaneGetSecond, none)
     RT_METHOD("SetPosition", "void(f64)", GuiSplitPaneSetPosition)
     RT_METHOD("GetPosition", "f64()", GuiSplitPaneGetPosition)
     RT_METHOD("SetMinFirst", "void(f64)", GuiSplitPaneSetMinFirst)
@@ -439,27 +439,27 @@ RT_CLASS_BEGIN("Viper.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
     RT_METHOD("GetCollapsedSide", "i64()", GuiSplitPaneGetCollapsedSide)
 RT_CLASS_END()
 
-// Viper.GUI.EditorBuffer - detachable per-document editor state
+// Zanna.GUI.EditorBuffer - detachable per-document editor state
 /// @summary Provides detachable per-document editor state.
 /// @details
-/// Create `Viper.GUI.EditorBuffer` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.EditorBuffer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Text`,
 /// `Revision` and operations including `IsModified`, `ClearModified`.
-RT_CLASS_BEGIN("Viper.GUI.EditorBuffer", GuiEditorBuffer, "obj", GuiEditorBufferNew)
+RT_CLASS_BEGIN("Zanna.GUI.EditorBuffer", GuiEditorBuffer, "obj", GuiEditorBufferNew)
     RT_PROP("Text", "str", GuiEditorBufferGetText, none)
     RT_PROP("Revision", "i64", GuiEditorBufferGetRevision, none)
     RT_METHOD("IsModified", "i1()", GuiEditorBufferIsModified)
     RT_METHOD("ClearModified", "void()", GuiEditorBufferClearModified)
 RT_CLASS_END()
 
-// Viper.GUI.CodeEditor - code editor widget
+// Zanna.GUI.CodeEditor - code editor widget
 /// @summary Provides code editor widget.
 /// @details
-/// Create `Viper.GUI.CodeEditor` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.CodeEditor` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Text`,
 /// `Revision`, `LineCount` and operations including `SetText`, `SetCursor`, `ScrollToLine`,
 /// `IsModified`.
-RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
+RT_CLASS_BEGIN("Zanna.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_PROP("Text", "str", GuiCodeEditorGetText, none)
     RT_PROP("Revision", "i64", GuiCodeEditorGetRevision, none)
     RT_PROP("LineCount", "i64", GuiCodeEditorGetLineCount, none)
@@ -494,7 +494,7 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("ClearGutterIcon", "void(i64,i64)", CodeEditorClearGutterIcon)
     RT_METHOD("ClearGutterIcons", "void(i64)", CodeEditorClearAllGutterIcons)
     RT_METHOD("WasGutterClicked", "i1()", CodeEditorWasGutterClicked)
-    RT_METHOD("TakeGutterClick", "obj<Viper.Collections.Map>()", CodeEditorTakeGutterClick)
+    RT_METHOD("TakeGutterClick", "obj<Zanna.Collections.Map>()", CodeEditorTakeGutterClick)
     RT_METHOD("GetGutterClickLine", "i64()", CodeEditorGetGutterClickLine)
     RT_METHOD("GetGutterClickSlot", "i64()", CodeEditorGetGutterClickSlot)
     RT_METHOD("SetShowFoldGutter", "void(i1)", CodeEditorSetShowFoldGutter)
@@ -537,7 +537,7 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("GetWordWrap", "i64()", CodeEditorGetWordWrap)
     RT_METHOD("SetWhitespaceMode", "void(i64)", CodeEditorSetWhitespaceMode)
     RT_METHOD("GetWhitespaceMode", "i64()", CodeEditorGetWhitespaceMode)
-    RT_METHOD("AttachBuffer", "obj<Viper.GUI.EditorBuffer>(obj)", CodeEditorAttachBuffer)
+    RT_METHOD("AttachBuffer", "obj<Zanna.GUI.EditorBuffer>(obj)", CodeEditorAttachBuffer)
     RT_METHOD("SetShowIndentGuides", "void(i1)", CodeEditorSetShowIndentGuides)
     RT_METHOD("GetShowIndentGuides", "i64()", CodeEditorGetShowIndentGuides)
     RT_METHOD("SetReadOnly", "void(i1)", CodeEditorSetReadOnly)
@@ -552,7 +552,7 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("ReplaceWordAtCursor", "void(str)", CodeEditorReplaceWordAtCursor)
     RT_METHOD("GetLine", "str(i64)", CodeEditorGetLine)
     RT_METHOD("ResetPerfStats", "void()", CodeEditorResetPerfStats)
-    RT_METHOD("GetPerfStats", "obj<Viper.Collections.Map>()", CodeEditorGetPerfStats)
+    RT_METHOD("GetPerfStats", "obj<Zanna.Collections.Map>()", CodeEditorGetPerfStats)
     RT_METHOD("GetFullTextCopyCount", "i64()", CodeEditorGetFullTextCopyCount)
     RT_METHOD("GetLayoutLinearScanCount", "i64()", CodeEditorGetLayoutLinearScanCount)
     RT_METHOD("GetSyntaxHighlightCallCount", "i64()", CodeEditorGetSyntaxHighlightCallCount)
@@ -562,14 +562,14 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("GetSelectedText", "str()", GuiCodeEditorGetSelectedText)
 RT_CLASS_END()
 
-// Viper.GUI.Dropdown - dropdown select widget
+// Zanna.GUI.Dropdown - dropdown select widget
 /// @summary Provides dropdown select widget.
 /// @details
-/// Create `Viper.GUI.Dropdown` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.Dropdown` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Selected`, `SelectedText` and operations including `AddItem`, `RemoveItem`, `Clear`,
 /// `SetSelected`.
-RT_CLASS_BEGIN("Viper.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew)
+RT_CLASS_BEGIN("Zanna.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew)
     RT_PROP("Selected", "i64", GuiDropdownGetSelected, none)
     RT_PROP("SelectedText", "str", GuiDropdownGetSelectedText, none)
     RT_METHOD("AddItem", "i64(str)", GuiDropdownAddItem)
@@ -581,13 +581,13 @@ RT_CLASS_BEGIN("Viper.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew)
     RT_METHOD("GetRevision", "i64()", GuiDropdownGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.Slider - slider widget
+// Zanna.GUI.Slider - slider widget
 /// @summary Provides slider widget.
 /// @details
-/// Create `Viper.GUI.Slider` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Slider` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value` and
 /// operations including `SetValue`, `SetRange`, `SetStep`.
-RT_CLASS_BEGIN("Viper.GUI.Slider", GuiSlider, "obj", GuiSliderNew)
+RT_CLASS_BEGIN("Zanna.GUI.Slider", GuiSlider, "obj", GuiSliderNew)
     RT_PROP("Value", "f64", GuiSliderGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiSliderSetValue)
     RT_METHOD("SetRange", "void(f64,f64)", GuiSliderSetRange)
@@ -596,26 +596,26 @@ RT_CLASS_BEGIN("Viper.GUI.Slider", GuiSlider, "obj", GuiSliderNew)
     RT_METHOD("GetRevision", "i64()", GuiSliderGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.ProgressBar - progress bar widget
+// Zanna.GUI.ProgressBar - progress bar widget
 /// @summary Provides progress bar widget.
 /// @details
-/// Create `Viper.GUI.ProgressBar` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.ProgressBar` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Value`
 /// and operations including `SetValue`, `SetStyle`, `ShowPercentage`.
-RT_CLASS_BEGIN("Viper.GUI.ProgressBar", GuiProgressBar, "obj", GuiProgressBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.ProgressBar", GuiProgressBar, "obj", GuiProgressBarNew)
     RT_PROP("Value", "f64", GuiProgressBarGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiProgressBarSetValue)
     RT_METHOD("SetStyle", "void(i64)", GuiProgressBarSetStyle)
     RT_METHOD("ShowPercentage", "void(i64)", GuiProgressBarShowPercentage)
 RT_CLASS_END()
 
-// Viper.GUI.ListBox - list box widget
+// Zanna.GUI.ListBox - list box widget
 /// @summary Provides list box widget.
 /// @details
-/// Create `Viper.GUI.ListBox` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.ListBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Selected`,
 /// `Count`, `SelectedIndex` and operations including `AddItem`, `RemoveItem`, `Clear`, `Select`.
-RT_CLASS_BEGIN("Viper.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
     RT_PROP("Selected", "obj", GuiListBoxGetSelected, none)
     RT_PROP("Count", "i64", GuiListBoxGetCount, none)
     RT_PROP("SelectedIndex", "i64", GuiListBoxGetSelectedIndex, none)
@@ -644,13 +644,13 @@ RT_CLASS_BEGIN("Viper.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
     RT_METHOD("GetVisibleCount", "i64()", GuiListBoxGetVisibleCount)
 RT_CLASS_END()
 
-// Viper.GUI.OutputPane - append-only styled console/output pane
+// Zanna.GUI.OutputPane - append-only styled console/output pane
 /// @summary Provides append-only styled console/output pane.
 /// @details
-/// Create `Viper.GUI.OutputPane` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.OutputPane` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `LineCount` and operations including `Append`, `AppendLine`, `AppendStyled`, `Clear`.
-RT_CLASS_BEGIN("Viper.GUI.OutputPane", GuiOutputPane, "obj", GuiOutputPaneNew)
+RT_CLASS_BEGIN("Zanna.GUI.OutputPane", GuiOutputPane, "obj", GuiOutputPaneNew)
     RT_PROP("LineCount", "i64", GuiOutputPaneGetLineCount, none)
     RT_METHOD("Append", "void(str)", GuiOutputPaneAppend)
     RT_METHOD("AppendLine", "void(str)", GuiOutputPaneAppendLine)
@@ -674,11 +674,11 @@ RT_CLASS_END()
 
 /// @summary Provides Grid functionality for graphical user interfaces.
 /// @details
-/// Create `Viper.GUI.Grid` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Grid` values through its registered constructor and use the returned object
 /// with the instance members below. Dense compatibility tables remain display-only until selection,
 /// sorting, resizing, or editing is enabled. Sparse virtual rows materialize only supplied cells,
 /// while viewport, selection, sort, resize, edit, scroll, edge, and revision state remain queryable.
-RT_CLASS_BEGIN("Viper.GUI.Grid", GuiGrid, "obj", GuiGridNew)
+RT_CLASS_BEGIN("Zanna.GUI.Grid", GuiGrid, "obj", GuiGridNew)
     RT_PROP("RowCount", "i64", GuiGridGetRowCount, none)
     RT_PROP("ColumnCount", "i64", GuiGridGetColumnCount, none)
     RT_METHOD("SetColumns", "void(i64)", GuiGridSetColumns)
@@ -721,10 +721,10 @@ RT_CLASS_END()
 
 /// @summary Provides Popup List functionality for graphical user interfaces.
 /// @details
-/// Create `Viper.GUI.PopupList` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.PopupList` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `VisibleCount` and operations including `AddItem`, `Clear`, `SetFilter`, `NavigateUp`.
-RT_CLASS_BEGIN("Viper.GUI.PopupList", GuiPopupList, "obj", GuiPopupListNew)
+RT_CLASS_BEGIN("Zanna.GUI.PopupList", GuiPopupList, "obj", GuiPopupListNew)
     RT_PROP("VisibleCount", "i64", GuiPopupListVisibleCount, none)
     RT_METHOD("AddItem", "void(str)", GuiPopupListAddItem)
     RT_METHOD("Clear", "void()", GuiPopupListClear)
@@ -744,13 +744,13 @@ RT_CLASS_BEGIN("Viper.GUI.PopupList", GuiPopupList, "obj", GuiPopupListNew)
     RT_METHOD("IsVisible", "i1()", GuiPopupListIsVisible)
 RT_CLASS_END()
 
-// Viper.GUI.RadioGroup - radio button group
+// Zanna.GUI.RadioGroup - radio button group
 /// @summary Provides radio button group.
 /// @details
-/// Create `Viper.GUI.RadioGroup` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.RadioGroup` values through its registered constructor and use the returned
 /// object with the instance members below. Selected-index edges are independent from the
 /// non-consuming membership/selection revision.
-RT_CLASS_BEGIN("Viper.GUI.RadioGroup", GuiRadioGroup, "obj", GuiRadioGroupNew)
+RT_CLASS_BEGIN("Zanna.GUI.RadioGroup", GuiRadioGroup, "obj", GuiRadioGroupNew)
     RT_METHOD("Destroy", "void()", GuiRadioGroupDestroy)
     RT_METHOD("GetSelectedIndex", "i64()", GuiRadioGroupGetSelectedIndex)
     RT_METHOD("SetSelectedIndex", "i1(i64)", GuiRadioGroupSetSelectedIndex)
@@ -759,13 +759,13 @@ RT_CLASS_BEGIN("Viper.GUI.RadioGroup", GuiRadioGroup, "obj", GuiRadioGroupNew)
     RT_METHOD("GetRevision", "i64()", GuiRadioGroupGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.RadioButton - radio button widget
+// Zanna.GUI.RadioButton - radio button widget
 /// @summary Provides radio button widget.
 /// @details
-/// Create `Viper.GUI.RadioButton` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.RadioButton` values through its registered constructor and use the returned
 /// object with the instance members below. It exposes selected state, visible text, byte-exact
 /// application data, an independent change edge, and a non-consuming revision.
-RT_CLASS_BEGIN("Viper.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew)
+RT_CLASS_BEGIN("Zanna.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew)
     RT_METHOD("IsSelected", "i1()", GuiRadioButtonIsSelected)
     RT_METHOD("SetSelected", "void(i1)", GuiRadioButtonSetSelected)
     RT_METHOD("SetText", "void(str)", GuiRadioButtonSetText)
@@ -776,13 +776,13 @@ RT_CLASS_BEGIN("Viper.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew
     RT_METHOD("GetRevision", "i64()", GuiRadioButtonGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.Spinner - numeric spinner widget
+// Zanna.GUI.Spinner - numeric spinner widget
 /// @summary Provides numeric spinner widget.
 /// @details
-/// Create `Viper.GUI.Spinner` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Spinner` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value` and
 /// operations including `SetValue`, `SetRange`, `SetStep`, `SetDecimals`.
-RT_CLASS_BEGIN("Viper.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew)
+RT_CLASS_BEGIN("Zanna.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew)
     RT_PROP("Value", "f64", GuiSpinnerGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiSpinnerSetValue)
     RT_METHOD("SetRange", "void(f64,f64)", GuiSpinnerSetRange)
@@ -793,14 +793,14 @@ RT_CLASS_BEGIN("Viper.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew)
     RT_METHOD("GetRevision", "i64()", GuiSpinnerGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.ColorSwatch - focusable opaque RGB color chip
+// Zanna.GUI.ColorSwatch - focusable opaque RGB color chip
 /// @summary Displays and selects one opaque RGB color with keyboard and pointer parity.
 /// @details
 /// Colors use the stable public `0x00RRGGBB` representation; upper bits supplied to the
 /// constructor or setter are ignored. Color and selected-state transitions share an independent
 /// consumable change edge and advance a non-consuming revision. The control exposes a semantic
 /// button role, high-contrast focus visuals, and Space/Enter activation.
-RT_CLASS_BEGIN("Viper.GUI.ColorSwatch", GuiColorSwatch, "obj", GuiColorSwatchNew)
+RT_CLASS_BEGIN("Zanna.GUI.ColorSwatch", GuiColorSwatch, "obj", GuiColorSwatchNew)
     RT_METHOD("SetColor", "void(i64)", GuiColorSwatchSetColor)
     RT_METHOD("GetColor", "i64()", GuiColorSwatchGetColor)
     RT_METHOD("SetSelected", "void(i1)", GuiColorSwatchSetSelected)
@@ -809,14 +809,14 @@ RT_CLASS_BEGIN("Viper.GUI.ColorSwatch", GuiColorSwatch, "obj", GuiColorSwatchNew
     RT_METHOD("GetRevision", "i64()", GuiColorSwatchGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.ColorPalette - editable keyboard-navigable RGB swatch grid
+// Zanna.GUI.ColorPalette - editable keyboard-navigable RGB swatch grid
 /// @summary Stores, displays, and keyboard-navigates an editable palette of opaque RGB colors.
 /// @details
 /// Palette entries use `0x00RRGGBB`, are copied into owned storage, and retain insertion order.
 /// Removal compacts later entries and preserves a surviving selected color's logical selection.
 /// Arrow/Home/End navigation and Space/Enter activation match pointer behavior. Structural and
 /// selection changes share a consumable edge and advance the non-consuming revision.
-RT_CLASS_BEGIN("Viper.GUI.ColorPalette", GuiColorPalette, "obj", GuiColorPaletteNew)
+RT_CLASS_BEGIN("Zanna.GUI.ColorPalette", GuiColorPalette, "obj", GuiColorPaletteNew)
     RT_METHOD("AddColor", "void(i64)", GuiColorPaletteAddColor)
     RT_METHOD("RemoveColor", "i1(i64)", GuiColorPaletteRemoveColor)
     RT_METHOD("Clear", "void()", GuiColorPaletteClear)
@@ -828,14 +828,14 @@ RT_CLASS_BEGIN("Viper.GUI.ColorPalette", GuiColorPalette, "obj", GuiColorPalette
     RT_METHOD("GetRevision", "i64()", GuiColorPaletteGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.ColorPicker - composite RGB and optional-alpha editor
+// Zanna.GUI.ColorPicker - composite RGB and optional-alpha editor
 /// @summary Edits RGB color components and an independently represented optional alpha channel.
 /// @details
 /// The public color value is `0x00RRGGBB`; alpha remains a separate value in `[0,255]` and is
 /// preserved by `SetColor`. The picker renders channel labels and values using the app font,
 /// supports keyboard channel navigation and adjustment, exposes semantic color text, and keeps
 /// sliders and preview synchronized before publishing one component-change edge.
-RT_CLASS_BEGIN("Viper.GUI.ColorPicker", GuiColorPicker, "obj", GuiColorPickerNew)
+RT_CLASS_BEGIN("Zanna.GUI.ColorPicker", GuiColorPicker, "obj", GuiColorPickerNew)
     RT_METHOD("SetColor", "void(i64)", GuiColorPickerSetColor)
     RT_METHOD("GetColor", "i64()", GuiColorPickerGetColor)
     RT_METHOD("SetAlphaEnabled", "void(i1)", GuiColorPickerSetAlphaEnabled)
@@ -848,13 +848,13 @@ RT_CLASS_BEGIN("Viper.GUI.ColorPicker", GuiColorPicker, "obj", GuiColorPickerNew
     RT_METHOD("GetRevision", "i64()", GuiColorPickerGetRevision)
 RT_CLASS_END()
 
-// Viper.GUI.Image - image display widget
+// Zanna.GUI.Image - image display widget
 /// @summary Provides image display widget.
 /// @details
-/// Create `Viper.GUI.Image` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Image` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetPixels`,
 /// `Clear`, `SetScaleMode`, `SetOpacity`.
-RT_CLASS_BEGIN("Viper.GUI.Image", GuiImage, "obj", GuiImageNew)
+RT_CLASS_BEGIN("Zanna.GUI.Image", GuiImage, "obj", GuiImageNew)
     RT_METHOD("SetPixels", "void(obj,i64,i64)", GuiImageSetPixels)
     RT_METHOD("Clear", "void()", GuiImageClear)
     RT_METHOD("SetScaleMode", "void(i64)", GuiImageSetScaleMode)
@@ -862,13 +862,13 @@ RT_CLASS_BEGIN("Viper.GUI.Image", GuiImage, "obj", GuiImageNew)
     RT_METHOD("LoadFile", "i64(str)", GuiImageLoadFile)
 RT_CLASS_END()
 
-// Viper.GUI.Theme - theme control (static class)
+// Zanna.GUI.Theme - theme control (static class)
 /// @summary Selects built-in, system-following, or validated custom GUI themes.
 /// @details
-/// `Viper.GUI.Theme` is an app-scoped static surface. Dark and Light are deterministic; System
+/// `Zanna.GUI.Theme` is an app-scoped static surface. Dark and Light are deterministic; System
 /// follows the host appearance; Custom deep-copies a validated logical `ThemePalette`. Installed
 /// themes are DPI-scaled per app, accessibility-adjusted, revisioned, and invalidated immediately.
-RT_CLASS_BEGIN("Viper.GUI.Theme", GuiTheme, "none", none)
+RT_CLASS_BEGIN("Zanna.GUI.Theme", GuiTheme, "none", none)
     RT_METHOD("SetDark", "void()", GuiThemeSetDark)
     RT_METHOD("SetLight", "void()", GuiThemeSetLight)
     RT_METHOD("GetName", "str()", GuiThemeGetName)
@@ -888,7 +888,7 @@ RT_CLASS_END()
 /// diagnosable through `Validate`; unknown tokens return false. Palettes clone independently,
 /// borrow only live font roles, validate normal-text contrast, and are copied again when installed
 /// so later palette edits cannot mutate an active app implicitly.
-RT_CLASS_BEGIN("Viper.GUI.ThemePalette", GuiThemePalette, "obj", GuiThemePaletteNew)
+RT_CLASS_BEGIN("Zanna.GUI.ThemePalette", GuiThemePalette, "obj", GuiThemePaletteNew)
     RT_METHOD("FromDark", "obj()", GuiThemePaletteFromDark)
     RT_METHOD("FromLight", "obj()", GuiThemePaletteFromLight)
     RT_METHOD("Clone", "obj()", GuiThemePaletteClone)
@@ -898,16 +898,16 @@ RT_CLASS_BEGIN("Viper.GUI.ThemePalette", GuiThemePalette, "obj", GuiThemePalette
     RT_METHOD("GetMetric", "f64(str)", GuiThemePaletteGetMetric)
     RT_METHOD("SetMotionEnabled", "void(i1)", GuiThemePaletteSetMotionEnabled)
     RT_METHOD("SetFontRoles", "void(obj,obj,obj)", GuiThemePaletteSetFontRoles)
-    RT_METHOD("Validate", "obj<Viper.Result>()", GuiThemePaletteValidate)
+    RT_METHOD("Validate", "obj<Zanna.Result>()", GuiThemePaletteValidate)
 RT_CLASS_END()
 
-// Viper.GUI.VBox - vertical layout container
+// Zanna.GUI.VBox - vertical layout container
 /// @summary Provides vertical layout container.
 /// @details
-/// Create `Viper.GUI.VBox` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.VBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetSpacing`,
 /// `SetPadding`.
-RT_CLASS_BEGIN("Viper.GUI.VBox", GuiVBox, "obj", GuiVBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.VBox", GuiVBox, "obj", GuiVBoxNew)
     RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
     RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
     RT_METHOD("SetAlign", "void(i64)", GuiVBoxSetAlign)
@@ -916,13 +916,13 @@ RT_CLASS_BEGIN("Viper.GUI.VBox", GuiVBox, "obj", GuiVBoxNew)
     RT_METHOD("GetJustify", "i64()", GuiVBoxGetJustify)
 RT_CLASS_END()
 
-// Viper.GUI.HBox - horizontal layout container
+// Zanna.GUI.HBox - horizontal layout container
 /// @summary Provides horizontal layout container.
 /// @details
-/// Create `Viper.GUI.HBox` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.HBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetSpacing`,
 /// `SetPadding`.
-RT_CLASS_BEGIN("Viper.GUI.HBox", GuiHBox, "obj", GuiHBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.HBox", GuiHBox, "obj", GuiHBoxNew)
     RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
     RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
     RT_METHOD("SetAlign", "void(i64)", GuiHBoxSetAlign)
@@ -931,13 +931,13 @@ RT_CLASS_BEGIN("Viper.GUI.HBox", GuiHBox, "obj", GuiHBoxNew)
     RT_METHOD("GetJustify", "i64()", GuiHBoxGetJustify)
 RT_CLASS_END()
 
-// Viper.GUI.MenuBar - application menu bar
+// Zanna.GUI.MenuBar - application menu bar
 /// @summary Provides application menu bar.
 /// @details
-/// Create `Viper.GUI.MenuBar` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.MenuBar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `AddMenu`,
 /// `RemoveMenu`, `GetMenuCount`, `GetMenu`.
-RT_CLASS_BEGIN("Viper.GUI.MenuBar", GuiMenuBar, "obj", MenuBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.MenuBar", GuiMenuBar, "obj", MenuBarNew)
     RT_METHOD("AddMenu", "obj(str)", MenuBarAddMenu)
     RT_METHOD("RemoveMenu", "void(obj)", MenuBarRemoveMenu)
     RT_METHOD("GetMenuCount", "i64()", MenuBarGetMenuCount)
@@ -946,13 +946,13 @@ RT_CLASS_BEGIN("Viper.GUI.MenuBar", GuiMenuBar, "obj", MenuBarNew)
     RT_METHOD("Destroy", "void()", MenuBarDestroy)
 RT_CLASS_END()
 
-// Viper.GUI.Menu - dropdown menu
+// Zanna.GUI.Menu - dropdown menu
 /// @summary Provides dropdown menu.
 /// @details
-/// `Viper.GUI.Menu` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.GUI.Menu` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `AddItem`,
 /// `AddItemWithShortcut`, `AddSeparator`, `AddSubmenu`.
-RT_CLASS_BEGIN("Viper.GUI.Menu", GuiMenu, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.Menu", GuiMenu, "obj", none)
     RT_METHOD("AddItem", "obj(str)", MenuAddItem)
     RT_METHOD("AddItemWithShortcut", "obj(str,str)", MenuAddItemWithShortcut)
     RT_METHOD("AddSeparator", "obj()", MenuAddSeparator)
@@ -967,13 +967,13 @@ RT_CLASS_BEGIN("Viper.GUI.Menu", GuiMenu, "obj", none)
     RT_METHOD("IsEnabled", "i1()", MenuIsEnabled)
 RT_CLASS_END()
 
-// Viper.GUI.MenuItem - menu item
+// Zanna.GUI.MenuItem - menu item
 /// @summary Provides menu item.
 /// @details
-/// `Viper.GUI.MenuItem` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.GUI.MenuItem` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `SetText`,
 /// `GetText`, `SetEnabled`, `IsEnabled`.
-RT_CLASS_BEGIN("Viper.GUI.MenuItem", GuiMenuItem, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.MenuItem", GuiMenuItem, "obj", none)
     RT_METHOD("SetText", "void(str)", MenuItemSetText)
     RT_METHOD("GetText", "str()", MenuItemGetText)
     RT_METHOD("SetEnabled", "void(i1)", MenuItemSetEnabled)
@@ -989,13 +989,13 @@ RT_CLASS_BEGIN("Viper.GUI.MenuItem", GuiMenuItem, "obj", none)
     RT_METHOD("WasClicked", "i1()", MenuItemWasClicked)
 RT_CLASS_END()
 
-// Viper.GUI.Toolbar - application toolbar
+// Zanna.GUI.Toolbar - application toolbar
 /// @summary Provides application toolbar.
 /// @details
-/// Create `Viper.GUI.Toolbar` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.Toolbar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including
 /// `NewVertical`, `AddButton`, `AddButtonWithText`, `AddNamedButton`.
-RT_CLASS_BEGIN("Viper.GUI.Toolbar", GuiToolbar, "obj", ToolbarNew)
+RT_CLASS_BEGIN("Zanna.GUI.Toolbar", GuiToolbar, "obj", ToolbarNew)
     RT_METHOD("NewVertical", "obj(obj)", ToolbarNewVertical)
     RT_METHOD("AddButton", "obj(str,str)", ToolbarAddButton)
     RT_METHOD("AddButtonWithText", "obj(str,str,str)", ToolbarAddButtonText)
@@ -1017,13 +1017,13 @@ RT_CLASS_BEGIN("Viper.GUI.Toolbar", GuiToolbar, "obj", ToolbarNew)
     RT_METHOD("Destroy", "void()", ToolbarDestroy)
 RT_CLASS_END()
 
-// Viper.GUI.ToolbarItem - toolbar button item
+// Zanna.GUI.ToolbarItem - toolbar button item
 /// @summary Provides toolbar button item.
 /// @details
-/// `Viper.GUI.ToolbarItem` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.GUI.ToolbarItem` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `SetEnabled`,
 /// `IsEnabled`, `SetTooltip`, `SetIcon`.
-RT_CLASS_BEGIN("Viper.GUI.ToolbarItem", GuiToolbarItem, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.ToolbarItem", GuiToolbarItem, "obj", none)
     RT_METHOD("SetEnabled", "void(i1)", ToolbarItemSetEnabled)
     RT_METHOD("IsEnabled", "i1()", ToolbarItemIsEnabled)
     RT_METHOD("SetTooltip", "void(str)", ToolbarItemSetTooltip)
@@ -1036,13 +1036,13 @@ RT_CLASS_BEGIN("Viper.GUI.ToolbarItem", GuiToolbarItem, "obj", none)
     RT_METHOD("WasClicked", "i1()", ToolbarItemWasClicked)
 RT_CLASS_END()
 
-// Viper.GUI.StatusBar - application status bar
+// Zanna.GUI.StatusBar - application status bar
 /// @summary Provides application status bar.
 /// @details
-/// Create `Viper.GUI.StatusBar` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.StatusBar` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetLeftText`, `GetLeftText`, `SetCenterText`, `GetCenterText`.
-RT_CLASS_BEGIN("Viper.GUI.StatusBar", GuiStatusBar, "obj", StatusBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.StatusBar", GuiStatusBar, "obj", StatusBarNew)
     RT_METHOD("SetLeftText", "void(str)", StatusBarSetLeftText)
     RT_METHOD("GetLeftText", "str()", StatusBarGetLeftText)
     RT_METHOD("SetCenterText", "void(str)", StatusBarSetCenterText)
@@ -1061,13 +1061,13 @@ RT_CLASS_BEGIN("Viper.GUI.StatusBar", GuiStatusBar, "obj", StatusBarNew)
     RT_METHOD("Destroy", "void()", StatusBarDestroy)
 RT_CLASS_END()
 
-// Viper.GUI.StatusBarItem - status bar item
+// Zanna.GUI.StatusBarItem - status bar item
 /// @summary Provides status bar item.
 /// @details
-/// `Viper.GUI.StatusBarItem` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.GUI.StatusBarItem` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `SetText`,
 /// `GetText`, `SetTextColor`, `SetTooltip`.
-RT_CLASS_BEGIN("Viper.GUI.StatusBarItem", GuiStatusBarItem, "obj", none)
+RT_CLASS_BEGIN("Zanna.GUI.StatusBarItem", GuiStatusBarItem, "obj", none)
     RT_METHOD("SetText", "void(str)", StatusBarItemSetText)
     RT_METHOD("GetText", "str()", StatusBarItemGetText)
     RT_METHOD("SetTextColor", "void(i64)", StatusBarItemSetTextColor)
@@ -1078,13 +1078,13 @@ RT_CLASS_BEGIN("Viper.GUI.StatusBarItem", GuiStatusBarItem, "obj", none)
     RT_METHOD("WasClicked", "i1()", StatusBarItemWasClicked)
 RT_CLASS_END()
 
-// Viper.GUI.FindBar - search and replace bar widget
+// Zanna.GUI.FindBar - search and replace bar widget
 /// @summary Provides search and replace bar widget.
 /// @details
-/// Create `Viper.GUI.FindBar` values through its registered constructor and use the returned object
+/// Create `Zanna.GUI.FindBar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including
 /// `SetFindText`, `GetFindText`, `SetReplaceText`, `GetReplaceText`.
-RT_CLASS_BEGIN("Viper.GUI.FindBar", GuiFindBar, "obj", FindBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.FindBar", GuiFindBar, "obj", FindBarNew)
     RT_METHOD("SetFindText", "void(str)", FindBarSetFindText)
     RT_METHOD("GetFindText", "str()", FindBarGetFindText)
     RT_METHOD("SetReplaceText", "void(str)", FindBarSetReplaceText)
@@ -1099,8 +1099,8 @@ RT_CLASS_BEGIN("Viper.GUI.FindBar", GuiFindBar, "obj", FindBarNew)
     RT_METHOD("IsReplaceMode", "i1()", FindBarIsReplaceMode)
     RT_METHOD("SetVisible", "void(i1)", FindBarSetVisible)
     RT_METHOD("IsVisible", "i1()", FindBarIsVisible)
-    RT_METHOD("FindNext", "obj<Viper.Option>()", FindBarFindNextOption)
-    RT_METHOD("FindPrevious", "obj<Viper.Option>()", FindBarFindPrevOption)
+    RT_METHOD("FindNext", "obj<Zanna.Option>()", FindBarFindNextOption)
+    RT_METHOD("FindPrevious", "obj<Zanna.Option>()", FindBarFindPrevOption)
     RT_METHOD("Replace", "i64()", FindBarReplace)
     RT_METHOD("ReplaceAll", "i64()", FindBarReplaceAll)
     RT_METHOD("GetMatchCount", "i64()", FindBarGetMatchCount)
@@ -1111,13 +1111,13 @@ RT_CLASS_BEGIN("Viper.GUI.FindBar", GuiFindBar, "obj", FindBarNew)
     RT_METHOD("Destroy", "void()", FindBarDestroy)
 RT_CLASS_END()
 
-// Viper.GUI.ContextMenu - floating right-click context menu
+// Zanna.GUI.ContextMenu - floating right-click context menu
 /// @summary Provides floating right-click context menu.
 /// @details
-/// Create `Viper.GUI.ContextMenu` values through its registered constructor and use the returned
+/// Create `Zanna.GUI.ContextMenu` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `AddItem`, `AddItemWithShortcut`, `AddSeparator`, `AddSubmenu`.
-RT_CLASS_BEGIN("Viper.GUI.ContextMenu", GuiContextMenu, "obj", ContextMenuNew)
+RT_CLASS_BEGIN("Zanna.GUI.ContextMenu", GuiContextMenu, "obj", ContextMenuNew)
     RT_METHOD("AddItem", "obj(str)", ContextMenuAddItem)
     RT_METHOD("AddItemWithShortcut", "obj(str,str)", ContextMenuAddItemShortcut)
     RT_METHOD("AddSeparator", "obj()", ContextMenuAddSeparator)
@@ -1130,14 +1130,14 @@ RT_CLASS_BEGIN("Viper.GUI.ContextMenu", GuiContextMenu, "obj", ContextMenuNew)
     RT_METHOD("Destroy", "void()", ContextMenuDestroy)
 RT_CLASS_END()
 
-// Viper.Audio.Mixer - audio system control (static class)
+// Zanna.Audio.Mixer - audio system control (static class)
 /// @summary Provides audio system control.
 /// @details
-/// `Viper.Audio.Mixer` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Audio.Mixer` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `RenderCalls`,
 /// `MixerLockMisses`, `BackendWriteCalls` and operations including `IsAvailable`, `Init`,
 /// `Shutdown`, `SetMasterVolume`.
-RT_CLASS_BEGIN("Viper.Audio.Mixer", Audio, "obj", none)
+RT_CLASS_BEGIN("Zanna.Audio.Mixer", Audio, "obj", none)
     RT_METHOD("IsAvailable", "i1()", AudioIsAvailable)
     RT_METHOD("Init", "i64()", AudioInit)
     RT_METHOD("Shutdown", "void()", AudioShutdown)
@@ -1159,7 +1159,7 @@ RT_CLASS_BEGIN("Viper.Audio.Mixer", Audio, "obj", none)
     RT_METHOD("SetGroupVolume", "void(i64,i64)", AudioSetGroupVolume)
     RT_METHOD("GetGroupVolume", "i64(i64)", AudioGetGroupVolume)
     RT_METHOD("RegisterGroup", "i64(str)", AudioRegisterGroup)
-    RT_METHOD("FindGroup", "obj<Viper.Option>(str)", AudioFindGroupOption)
+    RT_METHOD("FindGroup", "obj<Zanna.Option>(str)", AudioFindGroupOption)
     RT_METHOD("SetGroupVolumeNamed", "void(str,i64)", AudioSetGroupNamed)
     RT_METHOD("GetGroupVolumeNamed", "i64(str)", AudioGetGroupNamed)
     RT_METHOD("GroupName", "str(i64)", AudioGroupName)
@@ -1179,14 +1179,14 @@ RT_CLASS_BEGIN("Viper.Audio.Mixer", Audio, "obj", none)
     RT_PROP("IsCrossfading", "i1", MusicIsCrossfading, none)
 RT_CLASS_END()
 
-// Viper.Audio.Sound - sound effect playback
+// Zanna.Audio.Sound - sound effect playback
 /// @summary Provides sound effect playback.
 /// @details
-/// `Viper.Audio.Sound` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Audio.Sound` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `LoadAsset`,
 /// `Play`, `Play`, `Play`.
-RT_CLASS_BEGIN("Viper.Audio.Sound", Sound, "obj", none)
-    RT_METHOD("LoadAsset", "obj<Viper.Audio.Sound>(str)", SoundLoadAsset)
+RT_CLASS_BEGIN("Zanna.Audio.Sound", Sound, "obj", none)
+    RT_METHOD("LoadAsset", "obj<Zanna.Audio.Sound>(str)", SoundLoadAsset)
     RT_METHOD("Play", "i64()", SoundPlay)
     RT_METHOD("Play", "i64(i64,i64)", SoundPlayEx)
 // PlayEx plus a playback-rate (pitch) multiplier (0.25–4.0; 1.0 = native).
@@ -1199,13 +1199,13 @@ RT_CLASS_BEGIN("Viper.Audio.Sound", Sound, "obj", none)
     RT_METHOD("PlayLoopGroup", "i64(i64,i64,i64)", SoundPlayLoopGroup)
 RT_CLASS_END()
 
-// Viper.Audio.Voice - voice control for playing sounds (static class)
+// Zanna.Audio.Voice - voice control for playing sounds (static class)
 /// @summary Provides voice control for playing sounds.
 /// @details
-/// `Viper.Audio.Voice` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Audio.Voice` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Stop`,
 /// `SetVolume`, `SetPan`, `IsPlaying`.
-RT_CLASS_BEGIN("Viper.Audio.Voice", Voice, "obj", none)
+RT_CLASS_BEGIN("Zanna.Audio.Voice", Voice, "obj", none)
     RT_METHOD("Stop", "void(i64)", VoiceStop)
     RT_METHOD("SetVolume", "void(i64,i64)", VoiceSetVolume)
     RT_METHOD("SetPan", "void(i64,i64)", VoiceSetPan)
@@ -1223,13 +1223,13 @@ RT_CLASS_BEGIN("Viper.Audio.Voice", Voice, "obj", none)
     RT_METHOD("GetLevel", "f64(i64)", VoiceGetLevel)
 RT_CLASS_END()
 
-// Viper.Audio.Music - music streaming playback
+// Zanna.Audio.Music - music streaming playback
 /// @summary Provides music streaming playback.
 /// @details
-/// `Viper.Audio.Music` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Audio.Music` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Volume`,
 /// `Position`, `Duration` and operations including `Play`, `Stop`, `Pause`, `Resume`.
-RT_CLASS_BEGIN("Viper.Audio.Music", Music, "obj", none)
+RT_CLASS_BEGIN("Zanna.Audio.Music", Music, "obj", none)
     RT_PROP("Volume", "i64", MusicGetVolume, MusicSetVolume)
     RT_PROP("Position", "i64", MusicGetPosition, none)
     RT_PROP("Duration", "i64", MusicGetDuration, none)
@@ -1241,39 +1241,39 @@ RT_CLASS_BEGIN("Viper.Audio.Music", Music, "obj", none)
     RT_METHOD("IsPlaying", "i1()", MusicIsPlaying)
     RT_METHOD("Seek", "void(i64)", MusicSeek)
     RT_METHOD("Destroy", "void()", MusicDestroy)
-    RT_METHOD("CrossfadeTo", "void(obj<Viper.Audio.Music>,i64)", MusicCrossfadeTo)
+    RT_METHOD("CrossfadeTo", "void(obj<Zanna.Audio.Music>,i64)", MusicCrossfadeTo)
 RT_CLASS_END()
 
-// Viper.Audio.Playlist - music playlist with queue management
-RT_FUNC(PlaylistNew, rt_playlist_new, "Viper.Audio.Playlist.New", "obj()")
-RT_FUNC(PlaylistAdd, rt_playlist_add, "Viper.Audio.Playlist.Add", "void(obj,str)")
-RT_FUNC(PlaylistInsert, rt_playlist_insert, "Viper.Audio.Playlist.Insert", "void(obj,i64,str)")
-RT_FUNC(PlaylistRemove, rt_playlist_remove, "Viper.Audio.Playlist.Remove", "void(obj,i64)")
-RT_FUNC(PlaylistClear, rt_playlist_clear, "Viper.Audio.Playlist.Clear", "void(obj)")
-RT_FUNC(PlaylistGet, rt_playlist_get, "Viper.Audio.Playlist.Get", "str(obj,i64)")
-RT_FUNC(PlaylistLen, rt_playlist_len, "Viper.Audio.Playlist.get_Count", "i64(obj)")
-RT_FUNC(PlaylistPlay, rt_playlist_play, "Viper.Audio.Playlist.Play", "void(obj)")
-RT_FUNC(PlaylistPause, rt_playlist_pause, "Viper.Audio.Playlist.Pause", "void(obj)")
-RT_FUNC(PlaylistStop, rt_playlist_stop, "Viper.Audio.Playlist.Stop", "void(obj)")
-RT_FUNC(PlaylistNext, rt_playlist_next, "Viper.Audio.Playlist.Next", "void(obj)")
-RT_FUNC(PlaylistPrev, rt_playlist_prev, "Viper.Audio.Playlist.Previous", "void(obj)")
-RT_FUNC(PlaylistJump, rt_playlist_jump, "Viper.Audio.Playlist.Jump", "void(obj,i64)")
-RT_FUNC(PlaylistUpdate, rt_playlist_update, "Viper.Audio.Playlist.Update", "void(obj)")
-RT_FUNC(PlaylistGetCurrent, rt_playlist_get_current, "Viper.Audio.Playlist.get_Current", "i64(obj)")
-RT_FUNC(PlaylistIsPlaying, rt_playlist_is_playing, "Viper.Audio.Playlist.get_IsPlaying", "i1(obj)")
-RT_FUNC(PlaylistIsPaused, rt_playlist_is_paused, "Viper.Audio.Playlist.get_IsPaused", "i1(obj)")
-RT_FUNC(PlaylistGetVolume, rt_playlist_get_volume, "Viper.Audio.Playlist.get_Volume", "i64(obj)")
-RT_FUNC(PlaylistSetVolume, rt_playlist_set_volume, "Viper.Audio.Playlist.set_Volume", "void(obj,i64)")
-RT_FUNC(PlaylistGetShuffle, rt_playlist_get_shuffle, "Viper.Audio.Playlist.get_Shuffle", "i1(obj)")
-RT_FUNC(PlaylistSetShuffle, rt_playlist_set_shuffle, "Viper.Audio.Playlist.set_Shuffle", "void(obj,i1)")
-RT_FUNC(PlaylistGetRepeat, rt_playlist_get_repeat, "Viper.Audio.Playlist.get_Repeat", "i64(obj)")
-RT_FUNC(PlaylistSetRepeat, rt_playlist_set_repeat, "Viper.Audio.Playlist.set_Repeat", "void(obj,i64)")
+// Zanna.Audio.Playlist - music playlist with queue management
+RT_FUNC(PlaylistNew, rt_playlist_new, "Zanna.Audio.Playlist.New", "obj()")
+RT_FUNC(PlaylistAdd, rt_playlist_add, "Zanna.Audio.Playlist.Add", "void(obj,str)")
+RT_FUNC(PlaylistInsert, rt_playlist_insert, "Zanna.Audio.Playlist.Insert", "void(obj,i64,str)")
+RT_FUNC(PlaylistRemove, rt_playlist_remove, "Zanna.Audio.Playlist.Remove", "void(obj,i64)")
+RT_FUNC(PlaylistClear, rt_playlist_clear, "Zanna.Audio.Playlist.Clear", "void(obj)")
+RT_FUNC(PlaylistGet, rt_playlist_get, "Zanna.Audio.Playlist.Get", "str(obj,i64)")
+RT_FUNC(PlaylistLen, rt_playlist_len, "Zanna.Audio.Playlist.get_Count", "i64(obj)")
+RT_FUNC(PlaylistPlay, rt_playlist_play, "Zanna.Audio.Playlist.Play", "void(obj)")
+RT_FUNC(PlaylistPause, rt_playlist_pause, "Zanna.Audio.Playlist.Pause", "void(obj)")
+RT_FUNC(PlaylistStop, rt_playlist_stop, "Zanna.Audio.Playlist.Stop", "void(obj)")
+RT_FUNC(PlaylistNext, rt_playlist_next, "Zanna.Audio.Playlist.Next", "void(obj)")
+RT_FUNC(PlaylistPrev, rt_playlist_prev, "Zanna.Audio.Playlist.Previous", "void(obj)")
+RT_FUNC(PlaylistJump, rt_playlist_jump, "Zanna.Audio.Playlist.Jump", "void(obj,i64)")
+RT_FUNC(PlaylistUpdate, rt_playlist_update, "Zanna.Audio.Playlist.Update", "void(obj)")
+RT_FUNC(PlaylistGetCurrent, rt_playlist_get_current, "Zanna.Audio.Playlist.get_Current", "i64(obj)")
+RT_FUNC(PlaylistIsPlaying, rt_playlist_is_playing, "Zanna.Audio.Playlist.get_IsPlaying", "i1(obj)")
+RT_FUNC(PlaylistIsPaused, rt_playlist_is_paused, "Zanna.Audio.Playlist.get_IsPaused", "i1(obj)")
+RT_FUNC(PlaylistGetVolume, rt_playlist_get_volume, "Zanna.Audio.Playlist.get_Volume", "i64(obj)")
+RT_FUNC(PlaylistSetVolume, rt_playlist_set_volume, "Zanna.Audio.Playlist.set_Volume", "void(obj,i64)")
+RT_FUNC(PlaylistGetShuffle, rt_playlist_get_shuffle, "Zanna.Audio.Playlist.get_Shuffle", "i1(obj)")
+RT_FUNC(PlaylistSetShuffle, rt_playlist_set_shuffle, "Zanna.Audio.Playlist.set_Shuffle", "void(obj,i1)")
+RT_FUNC(PlaylistGetRepeat, rt_playlist_get_repeat, "Zanna.Audio.Playlist.get_Repeat", "i64(obj)")
+RT_FUNC(PlaylistSetRepeat, rt_playlist_set_repeat, "Zanna.Audio.Playlist.set_Repeat", "void(obj,i64)")
 /// @summary Provides Playlist functionality for audio playback and synthesis.
 /// @details
-/// Create `Viper.Audio.Playlist` values through its registered constructor and use the returned
+/// Create `Zanna.Audio.Playlist` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
 /// `Current`, `IsPlaying` and operations including `Add`, `Insert`, `Remove`, `Clear`.
-RT_CLASS_BEGIN("Viper.Audio.Playlist", Playlist, "obj", PlaylistNew)
+RT_CLASS_BEGIN("Zanna.Audio.Playlist", Playlist, "obj", PlaylistNew)
 // Track management
     RT_METHOD("Add", "void(str)", PlaylistAdd)
     RT_METHOD("Insert", "void(i64,str)", PlaylistInsert)
@@ -1300,79 +1300,79 @@ RT_CLASS_BEGIN("Viper.Audio.Playlist", Playlist, "obj", PlaylistNew)
     RT_PROP("Crossfade", "i64", PlaylistGetCrossfade, PlaylistSetCrossfade)
 RT_CLASS_END()
 
-// Viper.Audio.SoundBank - named sound registry
-RT_FUNC(SoundBankNew, rt_soundbank_new, "Viper.Audio.SoundBank.New", "obj()")
-RT_FUNC(SoundBankRegister, rt_soundbank_register, "Viper.Audio.SoundBank.Register", "i64(obj,str,str)")
-RT_FUNC(SoundBankRegisterSound, rt_soundbank_register_sound, "Viper.Audio.SoundBank.RegisterSound", "i64(obj,str,obj<Viper.Audio.Sound>)")
-RT_FUNC(SoundBankPlay, rt_soundbank_play, "Viper.Audio.SoundBank.Play", "i64(obj,str)")
-RT_FUNC(SoundBankPlayEx, rt_soundbank_play_ex, "Viper.Audio.SoundBank.PlayWithVolumePan", "i64(obj,str,i64,i64)")
-RT_FUNC(SoundBankHas, rt_soundbank_has, "Viper.Audio.SoundBank.Has", "i1(obj,str)")
-RT_FUNC(SoundBankGet, rt_soundbank_get, "Viper.Audio.SoundBank.Get", "obj<Viper.Audio.Sound>(obj,str)")
-RT_FUNC(SoundBankRemove, rt_soundbank_remove, "Viper.Audio.SoundBank.Remove", "void(obj,str)")
-RT_FUNC(SoundBankClear, rt_soundbank_clear, "Viper.Audio.SoundBank.Clear", "void(obj)")
-RT_FUNC(SoundBankCount, rt_soundbank_count, "Viper.Audio.SoundBank.get_Count", "i64(obj)")
+// Zanna.Audio.SoundBank - named sound registry
+RT_FUNC(SoundBankNew, rt_soundbank_new, "Zanna.Audio.SoundBank.New", "obj()")
+RT_FUNC(SoundBankRegister, rt_soundbank_register, "Zanna.Audio.SoundBank.Register", "i64(obj,str,str)")
+RT_FUNC(SoundBankRegisterSound, rt_soundbank_register_sound, "Zanna.Audio.SoundBank.RegisterSound", "i64(obj,str,obj<Zanna.Audio.Sound>)")
+RT_FUNC(SoundBankPlay, rt_soundbank_play, "Zanna.Audio.SoundBank.Play", "i64(obj,str)")
+RT_FUNC(SoundBankPlayEx, rt_soundbank_play_ex, "Zanna.Audio.SoundBank.PlayWithVolumePan", "i64(obj,str,i64,i64)")
+RT_FUNC(SoundBankHas, rt_soundbank_has, "Zanna.Audio.SoundBank.Has", "i1(obj,str)")
+RT_FUNC(SoundBankGet, rt_soundbank_get, "Zanna.Audio.SoundBank.Get", "obj<Zanna.Audio.Sound>(obj,str)")
+RT_FUNC(SoundBankRemove, rt_soundbank_remove, "Zanna.Audio.SoundBank.Remove", "void(obj,str)")
+RT_FUNC(SoundBankClear, rt_soundbank_clear, "Zanna.Audio.SoundBank.Clear", "void(obj)")
+RT_FUNC(SoundBankCount, rt_soundbank_count, "Zanna.Audio.SoundBank.get_Count", "i64(obj)")
 /// @summary Provides Sound Bank functionality for audio playback and synthesis.
 /// @details
-/// Create `Viper.Audio.SoundBank` values through its registered constructor and use the returned
+/// Create `Zanna.Audio.SoundBank` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Register`, `RegisterSound`, `Play`, `PlayEx`.
-RT_CLASS_BEGIN("Viper.Audio.SoundBank", SoundBank, "obj", SoundBankNew)
+RT_CLASS_BEGIN("Zanna.Audio.SoundBank", SoundBank, "obj", SoundBankNew)
     RT_METHOD("Register", "i64(str,str)", SoundBankRegister)
-    RT_METHOD("RegisterSound", "i64(str,obj<Viper.Audio.Sound>)", SoundBankRegisterSound)
+    RT_METHOD("RegisterSound", "i64(str,obj<Zanna.Audio.Sound>)", SoundBankRegisterSound)
     RT_METHOD("Play", "i64(str)", SoundBankPlay)
     RT_METHOD("Play", "i64(str,i64,i64)", SoundBankPlayEx)
     RT_METHOD("Has", "i1(str)", SoundBankHas)
-    RT_METHOD("Get", "obj<Viper.Audio.Sound>(str)", SoundBankGet)
+    RT_METHOD("Get", "obj<Zanna.Audio.Sound>(str)", SoundBankGet)
     RT_METHOD("Remove", "void(str)", SoundBankRemove)
     RT_METHOD("Clear", "void()", SoundBankClear)
     RT_PROP("Count", "i64", SoundBankCount, none)
 RT_CLASS_END()
 
-// Viper.Audio.Synth - procedural sound synthesis (static class)
-RT_FUNC(SynthTone, rt_synth_tone, "Viper.Audio.Synth.Tone", "obj<Viper.Audio.Sound>(i64,i64,i64)")
-RT_FUNC(SynthSweep, rt_synth_sweep, "Viper.Audio.Synth.Sweep", "obj<Viper.Audio.Sound>(i64,i64,i64,i64)")
-RT_FUNC(SynthNoise, rt_synth_noise, "Viper.Audio.Synth.Noise", "obj<Viper.Audio.Sound>(i64,i64)")
-RT_FUNC(SynthSfx, rt_synth_sfx, "Viper.Audio.Synth.Sfx", "obj<Viper.Audio.Sound>(i64)")
+// Zanna.Audio.Synth - procedural sound synthesis (static class)
+RT_FUNC(SynthTone, rt_synth_tone, "Zanna.Audio.Synth.Tone", "obj<Zanna.Audio.Sound>(i64,i64,i64)")
+RT_FUNC(SynthSweep, rt_synth_sweep, "Zanna.Audio.Synth.Sweep", "obj<Zanna.Audio.Sound>(i64,i64,i64,i64)")
+RT_FUNC(SynthNoise, rt_synth_noise, "Zanna.Audio.Synth.Noise", "obj<Zanna.Audio.Sound>(i64,i64)")
+RT_FUNC(SynthSfx, rt_synth_sfx, "Zanna.Audio.Synth.Sfx", "obj<Zanna.Audio.Sound>(i64)")
 /// @summary Provides Synth functionality for audio playback and synthesis.
 /// @details
-/// `Viper.Audio.Synth` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Audio.Synth` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Tone`, `Sweep`,
 /// `Noise`, `Sfx`.
-RT_CLASS_BEGIN("Viper.Audio.Synth", Synth, "obj", none)
-    RT_METHOD("Tone", "obj<Viper.Audio.Sound>(i64,i64,i64)", SynthTone)
-    RT_METHOD("Sweep", "obj<Viper.Audio.Sound>(i64,i64,i64,i64)", SynthSweep)
-    RT_METHOD("Noise", "obj<Viper.Audio.Sound>(i64,i64)", SynthNoise)
-    RT_METHOD("Sfx", "obj<Viper.Audio.Sound>(i64)", SynthSfx)
+RT_CLASS_BEGIN("Zanna.Audio.Synth", Synth, "obj", none)
+    RT_METHOD("Tone", "obj<Zanna.Audio.Sound>(i64,i64,i64)", SynthTone)
+    RT_METHOD("Sweep", "obj<Zanna.Audio.Sound>(i64,i64,i64,i64)", SynthSweep)
+    RT_METHOD("Noise", "obj<Zanna.Audio.Sound>(i64,i64)", SynthNoise)
+    RT_METHOD("Sfx", "obj<Zanna.Audio.Sound>(i64)", SynthSfx)
 RT_CLASS_END()
 
-// Viper.Audio.MusicGen — procedural music composition (tracker-style sequencer)
-RT_FUNC(MusicGenNew, rt_musicgen_new, "Viper.Audio.MusicGen.New", "obj(i64)")
-RT_FUNC(MusicGenAddChannel, rt_musicgen_add_channel, "Viper.Audio.MusicGen.AddChannel", "i64(obj,i64)")
-RT_FUNC(MusicGenSetEnvelope, rt_musicgen_set_envelope, "Viper.Audio.MusicGen.SetEnvelope", "void(obj,i64,i64,i64,i64,i64)")
-RT_FUNC(MusicGenSetChannelVol, rt_musicgen_set_channel_vol, "Viper.Audio.MusicGen.SetChannelVolume", "void(obj,i64,i64)")
-RT_FUNC(MusicGenSetDuty, rt_musicgen_set_duty, "Viper.Audio.MusicGen.SetDuty", "void(obj,i64,i64)")
-RT_FUNC(MusicGenSetPan, rt_musicgen_set_pan, "Viper.Audio.MusicGen.SetPan", "void(obj,i64,i64)")
-RT_FUNC(MusicGenSetDetune, rt_musicgen_set_detune, "Viper.Audio.MusicGen.SetDetune", "void(obj,i64,i64)")
-RT_FUNC(MusicGenSetVibrato, rt_musicgen_set_vibrato, "Viper.Audio.MusicGen.SetVibrato", "void(obj,i64,i64,i64)")
-RT_FUNC(MusicGenSetTremolo, rt_musicgen_set_tremolo, "Viper.Audio.MusicGen.SetTremolo", "void(obj,i64,i64,i64)")
-RT_FUNC(MusicGenSetArpeggio, rt_musicgen_set_arpeggio, "Viper.Audio.MusicGen.SetArpeggio", "void(obj,i64,i64,i64,i64)")
-RT_FUNC(MusicGenSetPortamento, rt_musicgen_set_portamento, "Viper.Audio.MusicGen.SetPortamento", "void(obj,i64,i64)")
-RT_FUNC(MusicGenAddNote, rt_musicgen_add_note, "Viper.Audio.MusicGen.AddNote", "i64(obj,i64,i64,i64,i64)")
-RT_FUNC(MusicGenAddNoteVel, rt_musicgen_add_note_vel, "Viper.Audio.MusicGen.AddNoteVelocity", "i64(obj,i64,i64,i64,i64,i64)")
-RT_FUNC(MusicGenSetLength, rt_musicgen_set_length, "Viper.Audio.MusicGen.set_Length", "void(obj,i64)")
-RT_FUNC(MusicGenSetSwing, rt_musicgen_set_swing, "Viper.Audio.MusicGen.SetSwing", "void(obj,i64)")
-RT_FUNC(MusicGenSetLoopable, rt_musicgen_set_loopable, "Viper.Audio.MusicGen.SetLoopable", "void(obj,i1)")
-RT_FUNC(MusicGenBuild, rt_musicgen_build, "Viper.Audio.MusicGen.Build", "obj<Viper.Audio.Sound>(obj)")
-RT_FUNC(MusicGenGetBpm, rt_musicgen_get_bpm, "Viper.Audio.MusicGen.get_Bpm", "i64(obj)")
-RT_FUNC(MusicGenGetLength, rt_musicgen_get_length, "Viper.Audio.MusicGen.get_Length", "i64(obj)")
-RT_FUNC(MusicGenGetChannels, rt_musicgen_get_channel_count, "Viper.Audio.MusicGen.get_ChannelCount", "i64(obj)")
+// Zanna.Audio.MusicGen — procedural music composition (tracker-style sequencer)
+RT_FUNC(MusicGenNew, rt_musicgen_new, "Zanna.Audio.MusicGen.New", "obj(i64)")
+RT_FUNC(MusicGenAddChannel, rt_musicgen_add_channel, "Zanna.Audio.MusicGen.AddChannel", "i64(obj,i64)")
+RT_FUNC(MusicGenSetEnvelope, rt_musicgen_set_envelope, "Zanna.Audio.MusicGen.SetEnvelope", "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(MusicGenSetChannelVol, rt_musicgen_set_channel_vol, "Zanna.Audio.MusicGen.SetChannelVolume", "void(obj,i64,i64)")
+RT_FUNC(MusicGenSetDuty, rt_musicgen_set_duty, "Zanna.Audio.MusicGen.SetDuty", "void(obj,i64,i64)")
+RT_FUNC(MusicGenSetPan, rt_musicgen_set_pan, "Zanna.Audio.MusicGen.SetPan", "void(obj,i64,i64)")
+RT_FUNC(MusicGenSetDetune, rt_musicgen_set_detune, "Zanna.Audio.MusicGen.SetDetune", "void(obj,i64,i64)")
+RT_FUNC(MusicGenSetVibrato, rt_musicgen_set_vibrato, "Zanna.Audio.MusicGen.SetVibrato", "void(obj,i64,i64,i64)")
+RT_FUNC(MusicGenSetTremolo, rt_musicgen_set_tremolo, "Zanna.Audio.MusicGen.SetTremolo", "void(obj,i64,i64,i64)")
+RT_FUNC(MusicGenSetArpeggio, rt_musicgen_set_arpeggio, "Zanna.Audio.MusicGen.SetArpeggio", "void(obj,i64,i64,i64,i64)")
+RT_FUNC(MusicGenSetPortamento, rt_musicgen_set_portamento, "Zanna.Audio.MusicGen.SetPortamento", "void(obj,i64,i64)")
+RT_FUNC(MusicGenAddNote, rt_musicgen_add_note, "Zanna.Audio.MusicGen.AddNote", "i64(obj,i64,i64,i64,i64)")
+RT_FUNC(MusicGenAddNoteVel, rt_musicgen_add_note_vel, "Zanna.Audio.MusicGen.AddNoteVelocity", "i64(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(MusicGenSetLength, rt_musicgen_set_length, "Zanna.Audio.MusicGen.set_Length", "void(obj,i64)")
+RT_FUNC(MusicGenSetSwing, rt_musicgen_set_swing, "Zanna.Audio.MusicGen.SetSwing", "void(obj,i64)")
+RT_FUNC(MusicGenSetLoopable, rt_musicgen_set_loopable, "Zanna.Audio.MusicGen.SetLoopable", "void(obj,i1)")
+RT_FUNC(MusicGenBuild, rt_musicgen_build, "Zanna.Audio.MusicGen.Build", "obj<Zanna.Audio.Sound>(obj)")
+RT_FUNC(MusicGenGetBpm, rt_musicgen_get_bpm, "Zanna.Audio.MusicGen.get_Bpm", "i64(obj)")
+RT_FUNC(MusicGenGetLength, rt_musicgen_get_length, "Zanna.Audio.MusicGen.get_Length", "i64(obj)")
+RT_FUNC(MusicGenGetChannels, rt_musicgen_get_channel_count, "Zanna.Audio.MusicGen.get_ChannelCount", "i64(obj)")
 /// @summary Provides Music Gen functionality for audio playback and synthesis.
 /// @details
-/// Create `Viper.Audio.MusicGen` values through its registered constructor and use the returned
+/// Create `Zanna.Audio.MusicGen` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Bpm`,
 /// `Length`, `ChannelCount` and operations including `AddChannel`, `SetEnvelope`,
 /// `SetChannelVolume`, `SetDuty`.
-RT_CLASS_BEGIN("Viper.Audio.MusicGen", MusicGen, "obj", MusicGenNew)
+RT_CLASS_BEGIN("Zanna.Audio.MusicGen", MusicGen, "obj", MusicGenNew)
     RT_METHOD("AddChannel", "i64(i64)", MusicGenAddChannel)
     RT_METHOD("SetEnvelope", "void(i64,i64,i64,i64,i64)", MusicGenSetEnvelope)
     RT_METHOD("SetChannelVolume", "void(i64,i64)", MusicGenSetChannelVol)
@@ -1387,7 +1387,7 @@ RT_CLASS_BEGIN("Viper.Audio.MusicGen", MusicGen, "obj", MusicGenNew)
     RT_METHOD("AddNoteVelocity", "i64(i64,i64,i64,i64,i64)", MusicGenAddNoteVel)
     RT_METHOD("SetSwing", "void(i64)", MusicGenSetSwing)
     RT_METHOD("SetLoopable", "void(i1)", MusicGenSetLoopable)
-    RT_METHOD("Build", "obj<Viper.Audio.Sound>()", MusicGenBuild)
+    RT_METHOD("Build", "obj<Zanna.Audio.Sound>()", MusicGenBuild)
     RT_PROP("Bpm", "i64", MusicGenGetBpm, none)
     RT_PROP("Length", "i64", MusicGenGetLength, MusicGenSetLength)
     RT_PROP("ChannelCount", "i64", MusicGenGetChannels, none)

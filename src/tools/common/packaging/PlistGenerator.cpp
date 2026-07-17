@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <cctype>
 #include <sstream>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Escape XML special characters in a string value.
 static std::string xmlEscape(const std::string &s) {
@@ -213,4 +213,4 @@ std::string generatePkgInfo() {
     return "APPL????";
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

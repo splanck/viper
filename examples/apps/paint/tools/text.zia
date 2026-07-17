@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,22 +10,22 @@
 //          Keyboard.GetText), preview it live, and bake it into the active layer
 //          on Enter. Baking is done by the app (it renders the glyphs and
 //          captures them with Canvas.CopyRect) because Pixels has no text
-//          primitive — see misc/plans/demos/viper_bugs.md ISSUE-001.
+//          primitive — see misc/plans/demos/zanna_bugs.md ISSUE-001.
 // Key invariants:
 //   - Holds the caret (canvas coords) + typed buffer while active.
 //   - The app drives text input and performs the CopyRect bake; this tool only
 //     stores state and previews.
 // Ownership/Lifetime:
 //   - One shared instance, exposed by the registry so the app can feed input.
-// Links: tool.zia, app.zia (bakeText), Viper.Input.Keyboard.GetText
+// Links: tool.zia, app.zia (bakeText), Zanna.Input.Keyboard.GetText
 //
 //===----------------------------------------------------------------------===//
 
-// text.zia - Text tool for Viper Paint
+// text.zia - Text tool for Zanna Paint
 module text;
 
-bind Viper.Graphics;
-bind Str = Viper.String;
+bind Zanna.Graphics;
+bind Str = Zanna.String;
 
 bind "../config";
 bind "../canvas";

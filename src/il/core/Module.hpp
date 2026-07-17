@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //          definitions. Tracks version and optional target triple.
 // Key invariants:
 //   - Function, extern, and global names must be unique within the module.
-//   - version defaults to VIPER_IL_VERSION_STR for new modules.
+//   - version defaults to ZANNA_IL_VERSION_STR for new modules.
 // Ownership/Lifetime: Module owns all contained entities by value through
 //          std::vector containers. Movable efficiently; copying is expensive
 //          (deep copy of all functions). Most code works with Module by
@@ -27,7 +27,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
 #include "support/string_interner.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
@@ -41,7 +41,7 @@ struct Module {
     ///
     /// Defaults to configured IL spec version for newly constructed modules and
     /// may be overwritten by parsers when reading serialized IL.
-    std::string version = VIPER_IL_VERSION_STR;
+    std::string version = ZANNA_IL_VERSION_STR;
 
     /// @brief Optional target triple directive associated with the module.
     ///

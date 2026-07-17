@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,16 +25,16 @@ int main() {
     seedRuntimeTypeCatalog(ns);
 
     // Canonical types should be present under their fully-qualified names
-    assert(ns.typeExists("Viper.Core.Object"));
-    assert(ns.typeExists("Viper.String"));
-    assert(ns.typeExists("Viper.Text.StringBuilder"));
-    assert(ns.typeExists("Viper.IO.File"));
-    assert(ns.typeExists("Viper.Collections.List"));
+    assert(ns.typeExists("Zanna.Core.Object"));
+    assert(ns.typeExists("Zanna.String"));
+    assert(ns.typeExists("Zanna.Text.StringBuilder"));
+    assert(ns.typeExists("Zanna.IO.File"));
+    assert(ns.typeExists("Zanna.Collections.List"));
 
     // Namespaces should exist for imports
-    assert(ns.namespaceExists("Viper"));
-    assert(ns.namespaceExists("Viper.Text"));
-    assert(ns.namespaceExists("Viper.IO"));
-    assert(ns.namespaceExists("Viper.Collections"));
+    assert(ns.namespaceExists("Zanna"));
+    assert(ns.namespaceExists("Zanna.Text"));
+    assert(ns.namespaceExists("Zanna.IO"));
+    assert(ns.namespaceExists("Zanna.Collections"));
     return 0;
 }

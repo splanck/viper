@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,15 +22,15 @@
 
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 struct ILInstr;
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
 namespace IL {
-using Instr = viper::codegen::x64::ILInstr;
+using Instr = zanna::codegen::x64::ILInstr;
 } // namespace IL
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 class MIRBuilder;
 
@@ -48,7 +48,7 @@ struct LoweringRule {
 ///          registration order, which determines match priority.
 ///
 /// @return Const reference to the process-wide vector of lowering rules.
-[[nodiscard]] const std::vector<LoweringRule> &viper_get_lowering_rules();
+[[nodiscard]] const std::vector<LoweringRule> &zanna_get_lowering_rules();
 
 /// \brief Select the first rule whose match predicate accepts the instruction.
 ///
@@ -58,6 +58,6 @@ struct LoweringRule {
 ///
 /// @param instr The IL instruction to match against registered rules.
 /// @return Pointer to the first matching LoweringRule, or nullptr if none match.
-[[nodiscard]] const LoweringRule *viper_select_rule(const IL::Instr &instr);
+[[nodiscard]] const LoweringRule *zanna_select_rule(const IL::Instr &instr);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

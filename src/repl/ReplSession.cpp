@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,14 +20,14 @@
 #include "ReplSession.hpp"
 #include "ReplColorScheme.hpp"
 
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 ReplSession::ReplSession(std::unique_ptr<ReplAdapter> adapter) : adapter_(std::move(adapter)) {
     registerDefaultCommands();
@@ -54,7 +54,7 @@ std::filesystem::path ReplSession::historyFilePath() const {
         return {};
 
     std::filesystem::path dir(home);
-    dir /= ".viper";
+    dir /= ".zanna";
     std::string filename = "repl_history_";
     filename += adapter_->languageName();
     return dir / filename;
@@ -217,8 +217,8 @@ void ReplSession::registerDefaultCommands() {
 }
 
 void ReplSession::printBanner() {
-    std::cout << colors::bold() << "Viper " << adapter_->languageName() << " REPL"
-              << colors::reset() << " v" << VIPER_VERSION_STR << "\n";
+    std::cout << colors::bold() << "Zanna " << adapter_->languageName() << " REPL"
+              << colors::reset() << " v" << ZANNA_VERSION_STR << "\n";
     std::cout << "Type " << colors::prompt() << ".help" << colors::reset() << " for commands, "
               << colors::prompt() << ".quit" << colors::reset() << " to exit.\n\n";
 }
@@ -431,4 +431,4 @@ int ReplSession::run() {
     return exitCode;
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

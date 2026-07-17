@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Run dead-code elimination on a single basic block.
 /// @details Backward walk over @p instrs that tracks each operand's live set
@@ -49,4 +49,4 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs,
                         const TargetInfo &target,
                         bool preservePhysRegsAtExit = false);
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

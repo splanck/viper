@@ -1,8 +1,8 @@
 ' test_memstream.bas — IO.MemStream, IO.BinFile, IO.LineReader, IO.LineWriter, IO.Compress
 
 ' --- MemStream: integer read/write ---
-DIM ms AS Viper.IO.MemStream
-ms = Viper.IO.MemStream.New()
+DIM ms AS Zanna.IO.MemStream
+ms = Zanna.IO.MemStream.New()
 PRINT "ms pos: "; ms.Pos
 PRINT "ms len: "; ms.Length
 
@@ -50,13 +50,13 @@ PRINT "after skip pos: "; ms.Pos
 DIM textPath AS STRING
 DIM writer AS OBJECT
 DIM reader AS OBJECT
-textPath = "/tmp/viper_rt_api_memstream_lines.txt"
-writer = Viper.IO.LineWriter.Open(textPath)
+textPath = "/tmp/zanna_rt_api_memstream_lines.txt"
+writer = Zanna.IO.LineWriter.Open(textPath)
 writer.Write("alpha")
 writer.WriteLine("beta")
 writer.Close()
 
-reader = Viper.IO.LineReader.Open(textPath)
+reader = Zanna.IO.LineReader.Open(textPath)
 PRINT "peek char: "; reader.PeekChar()
 PRINT "line 1: "; reader.Read()
 PRINT "line 2: "; reader.Read()
@@ -67,13 +67,13 @@ reader.Close()
 DIM binPath AS STRING
 DIM wf AS OBJECT
 DIM rf AS OBJECT
-binPath = "/tmp/viper_rt_api_memstream.bin"
-wf = Viper.IO.BinFile.Open(binPath, "w")
+binPath = "/tmp/zanna_rt_api_memstream.bin"
+wf = Zanna.IO.BinFile.Open(binPath, "w")
 wf.WriteByte(65)
 wf.WriteByte(66)
 wf.Close()
 
-rf = Viper.IO.BinFile.Open(binPath, "r")
+rf = Zanna.IO.BinFile.Open(binPath, "r")
 PRINT "byte 1: "; rf.ReadByte()
 PRINT "byte 2: "; rf.ReadByte()
 PRINT "bin eof: "; rf.Eof
@@ -81,18 +81,18 @@ rf.Close()
 
 ' --- Compress: string deflate/inflate ---
 DIM compressed AS OBJECT
-compressed = Viper.IO.Compress.DeflateStr("hello world hello world hello world")
+compressed = Zanna.IO.Compress.DeflateStr("hello world hello world hello world")
 PRINT "compressed is obj: true"
 
 DIM decompressed AS STRING
-decompressed = Viper.IO.Compress.InflateStr(compressed)
+decompressed = Zanna.IO.Compress.InflateStr(compressed)
 PRINT "inflate: "; decompressed
 
 ' Gzip round-trip
 DIM gzipped AS OBJECT
-gzipped = Viper.IO.Compress.GzipStr("test data for gzip")
+gzipped = Zanna.IO.Compress.GzipStr("test data for gzip")
 DIM gunzipped AS STRING
-gunzipped = Viper.IO.Compress.GunzipStr(gzipped)
+gunzipped = Zanna.IO.Compress.GunzipStr(gzipped)
 PRINT "gunzip: "; gunzipped
 
 PRINT "done"

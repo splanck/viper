@@ -1,12 +1,12 @@
-// bag_demo.zia - Comprehensive API audit for Viper.Collections.StringSet
+// bag_demo.zia - Comprehensive API audit for Zanna.Collections.StringSet
 // Tests: New, Put, Has, Drop, Len, IsEmpty, Items, Clear, Common, Diff, Merge
 
 module BagDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Bag API Audit ===");

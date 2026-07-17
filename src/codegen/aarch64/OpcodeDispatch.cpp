@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 using il::core::Opcode;
 
@@ -89,7 +89,7 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     out.instrs.push_back(
         MInstr{MOpcode::MovRI,
                {MOperand::vregOp(RegClass::GPR, bitsGpr),
-                MOperand::immOp(static_cast<long long>(viper::codegen::common::f64Bits(value)))}});
+                MOperand::immOp(static_cast<long long>(zanna::codegen::common::f64Bits(value)))}});
     out.instrs.push_back(
         MInstr{MOpcode::FMovGR,
                {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, bitsGpr)}});
@@ -440,7 +440,7 @@ bool lowerInstruction(const il::core::Instr &ins,
 
             uint64_t bits = 0;
             if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat) {
-                bits = viper::codegen::common::f64Bits(ins.operands[0].f64);
+                bits = zanna::codegen::common::f64Bits(ins.operands[0].f64);
             } else if (ins.operands[0].kind == il::core::Value::Kind::ConstInt) {
                 // Integer operand holds IEEE-754 bit pattern directly.
                 bits = static_cast<uint64_t>(ins.operands[0].i64);
@@ -666,4 +666,4 @@ bool lowerInstruction(const il::core::Instr &ins,
     }
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

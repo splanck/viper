@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -201,7 +201,7 @@ func start() {
     try {
         throw "boom";
     } catch(e) {
-        Viper.Terminal.Say(e.message);
+        Zanna.Terminal.Say(e.message);
     }
 }
 )";
@@ -255,9 +255,9 @@ func start() {
     try {
         throw 1;
     } catch(e: RuntimeError) {
-        Viper.Terminal.Say("caught");
+        Zanna.Terminal.Say("caught");
     } finally {
-        Viper.Terminal.Say("done");
+        Zanna.Terminal.Say("done");
     }
 }
 )";
@@ -387,7 +387,7 @@ func bad() -> Integer {
 }
 
 func start() {
-    Viper.Terminal.SayInt(bad());
+    Zanna.Terminal.SayInt(bad());
 }
 )";
 
@@ -402,5 +402,5 @@ func start() {
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

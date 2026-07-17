@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include "il/verify/Verifier.hpp"
 #include "il/verify/VerifierTable.hpp"
 #include "tests/TestHarness.hpp"
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -636,7 +636,7 @@ entry:
 }
 
 TEST(ILCorrectness, RuntimeObjectParametersAcceptStringHandles) {
-    const auto *sig = il::runtime::findRuntimeSignature("Viper.Collections.Map.Set");
+    const auto *sig = il::runtime::findRuntimeSignature("Zanna.Collections.Map.Set");
     ASSERT_NE(sig, nullptr);
     ASSERT_EQ(sig->paramTypes.size(), 3u);
     EXPECT_EQ(sig->paramTypes[0].kind, Type::Kind::Ptr);
@@ -652,7 +652,7 @@ func @main() -> i64 {
 entry:
   %k = const_str @k
   %v = const_str @v
-  call @Viper.Collections.Map.Set(null, %k, %v)
+  call @Zanna.Collections.Map.Set(null, %k, %v)
   ret 0
 }
 )");
@@ -825,8 +825,8 @@ TEST(ILCorrectness, CSEExcludesPlainSignedArithmetic) {
 }
 
 TEST(ILCorrectness, BasicAAReportsOpaqueTypeSizes) {
-    EXPECT_EQ(viper::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::Error)), 24u);
-    EXPECT_EQ(viper::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::ResumeTok)), 8u);
+    EXPECT_EQ(zanna::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::Error)), 24u);
+    EXPECT_EQ(zanna::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::ResumeTok)), 8u);
 }
 
 TEST(ILCorrectness, AllocaIsClassifiedAsMemoryWriting) {
@@ -998,9 +998,9 @@ entry(%p:ptr):
 }
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
-    viper::analysis::BasicAA aa(module, module.functions.back());
+    zanna::analysis::BasicAA aa(module, module.functions.back());
     const Instr &readCall = module.functions.back().blocks.front().instructions[1];
-    EXPECT_EQ(aa.modRef(readCall), viper::analysis::ModRefResult::Ref);
+    EXPECT_EQ(aa.modRef(readCall), zanna::analysis::ModRefResult::Ref);
 
     il::transform::dce(module);
     EXPECT_EQ(countOpcode(module.functions.back(), Opcode::Call), 1u);
@@ -1203,6 +1203,6 @@ entry(%n:i64):
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

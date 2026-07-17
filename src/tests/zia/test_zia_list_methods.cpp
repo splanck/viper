@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -232,9 +232,9 @@ func start() {    var items: List[Integer] = new List[Integer]();
     }
 
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Has"));
-    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.SortDesc"));
-    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Shuffle"));
+    EXPECT_TRUE(moduleHasCall(result.module, "Zanna.Collections.List.Has"));
+    EXPECT_TRUE(moduleHasCall(result.module, "Zanna.Collections.List.SortDesc"));
+    EXPECT_TRUE(moduleHasCall(result.module, "Zanna.Collections.List.Shuffle"));
 }
 
 TEST(ZiaListMethods, ZeroArgListAndStringMethodsRejectExtraArguments) {
@@ -310,6 +310,6 @@ func start() {    var items: List[Item] = new List[Item]();
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

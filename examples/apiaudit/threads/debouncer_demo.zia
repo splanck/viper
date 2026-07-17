@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Threads.Debouncer
+// API Audit: Zanna.Threads.Debouncer
 // =============================================================================
 // Tests: New, Signal, IsReady, Reset, Delay, SignalCount
 // =============================================================================
 
 module DebouncerDemo;
-bind Viper.Threads.Debouncer as Debouncer;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Debouncer as Debouncer;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Debouncer ===");
+    Say("=== API Audit: Zanna.Threads.Debouncer ===");
 
     // --- New ---
     Say("--- New ---");

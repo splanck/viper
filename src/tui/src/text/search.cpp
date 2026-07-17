@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// @file
-/// @brief Search helpers for @ref viper::tui::text::TextBuffer.
+/// @brief Search helpers for @ref zanna::tui::text::TextBuffer.
 /// @details The functions offer simple literal scans and regular-expression
 ///          matches while constraining the scanned text to a configurable limit
 ///          to keep latency predictable.  Results are returned by value so the
@@ -23,7 +23,7 @@
 
 #include <regex>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 namespace {
 /// @brief Maximum number of characters a search considers before truncating.
 /// @details Keeps regex operations bounded so pathological patterns cannot freeze
@@ -112,4 +112,4 @@ std::optional<Match> findNext(const TextBuffer &buf,
     return std::nullopt;
 }
 
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

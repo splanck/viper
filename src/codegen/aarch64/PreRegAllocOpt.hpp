@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,11 +28,11 @@
 
 #include <cstddef>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Run conservative pre-register-allocation copy cleanup.
 /// @param fn Machine function to rewrite in place.
 /// @return Number of MIR instructions removed.
 std::size_t runPreRegAllocOpt(MFunction &fn);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

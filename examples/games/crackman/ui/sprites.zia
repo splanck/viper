@@ -25,7 +25,7 @@
 
 module sprites;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "./theme";

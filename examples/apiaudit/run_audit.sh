@@ -8,12 +8,12 @@ TIMEOUT=10
 RESULTS_DIR="/tmp/apiaudit_results"
 mkdir -p "$RESULTS_DIR"
 
-if [ -x "build/src/tools/viper/viper" ]; then
-    VIPER="build/src/tools/viper/viper"
-elif command -v viper >/dev/null 2>&1; then
-    VIPER="$(command -v viper)"
+if [ -x "build/src/tools/zanna/zanna" ]; then
+    ZANNA="build/src/tools/zanna/zanna"
+elif command -v zanna >/dev/null 2>&1; then
+    ZANNA="$(command -v zanna)"
 else
-    echo "ERROR: Cannot find viper runner"
+    echo "ERROR: Cannot find zanna runner"
     exit 1
 fi
 
@@ -60,10 +60,10 @@ run_demo() {
 
     if [ "$mode" = "native" ]; then
         local result
-        result=$(run_with_timeout "$TIMEOUT" "$VIPER" run --native "$file" 2>"$errfile")
+        result=$(run_with_timeout "$TIMEOUT" "$ZANNA" run --native "$file" 2>"$errfile")
     else
         local result
-        result=$(run_with_timeout "$TIMEOUT" "$VIPER" run "$file" 2>"$errfile")
+        result=$(run_with_timeout "$TIMEOUT" "$ZANNA" run "$file" 2>"$errfile")
     fi
     local exit_code=$?
 
@@ -83,7 +83,7 @@ run_demo() {
     fi
 }
 
-echo "=== Viper API Audit Test Runner ==="
+echo "=== Zanna API Audit Test Runner ==="
 echo "Mode: $MODE"
 echo ""
 

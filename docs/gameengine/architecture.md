@@ -8,13 +8,13 @@ last-verified: 2026-04-09
 
 > How all the game engine systems connect — and the zero-dependency philosophy behind them.
 
-**Part of [Viper Game Engine](README.md)**
+**Part of [Zanna Game Engine](README.md)**
 
 ---
 
 ## Zero Dependencies, From Scratch
 
-Every component of the Viper Game Engine is implemented in pure C with **no external libraries**. This is not a wrapper around SDL, GLFW, OpenAL, or any other framework. The engine implements:
+Every component of the Zanna Game Engine is implemented in pure C with **no external libraries**. This is not a wrapper around SDL, GLFW, OpenAL, or any other framework. The engine implements:
 
 | What | From Scratch |
 |------|-------------|
@@ -61,8 +61,8 @@ The engine is organized in layers. Each layer depends only on layers below it:
 ├─────────────────────────────────────────────────────────────┤
 │  Keyboard / Mouse / Pad / Action / InputManager  (Input)     │
 ├─────────────────────────────────────────────────────────────┤
-│  ViperGFX (platform layer)         SaveData / Assets (I/O)   │
-│  Window management, event loop     VPA archives, file I/O    │
+│  ZannaGFX (platform layer)         SaveData / Assets (I/O)   │
+│  Window management, event loop     ZPAK archives, file I/O    │
 ├─────────────────────────────────────────────────────────────┤
 │  Platform: Cocoa (macOS) │ Win32 (Windows) │ X11 (Linux)     │
 └─────────────────────────────────────────────────────────────┘
@@ -72,7 +72,7 @@ The engine is organized in layers. Each layer depends only on layers below it:
 
 ## Layer Descriptions
 
-### Platform Layer (ViperGFX)
+### Platform Layer (ZannaGFX)
 
 The lowest layer wraps platform-specific APIs into a common interface:
 
@@ -122,7 +122,7 @@ Most example games use GameBase + IScene. Simpler programs (demos, tests) use th
 
 ```text
 1. canvas.BeginFrame() / canvas.Poll()
-   └─ ViperGFX polls OS events → keyboard/mouse/gamepad state updated
+   └─ ZannaGFX polls OS events → keyboard/mouse/gamepad state updated
 
 2. Input phase
    └─ Game reads KeyHeld() / Action.Pressed() / Pad.Axis()
@@ -143,7 +143,7 @@ Most example games use GameBase + IScene. Simpler programs (demos, tests) use th
    └─ ScreenFX.Draw()            — draw overlays (fade, flash)
 
 5. canvas.Flip()
-   └─ ViperGFX presents the pixel buffer to the OS window
+   └─ ZannaGFX presents the pixel buffer to the OS window
    └─ DeltaTime computed for next frame
 ```
 
@@ -184,7 +184,7 @@ src/runtime/
 │   └── ...
 └── io/                 # File and asset I/O
     ├── rt_asset.c      #   Asset loading (embed/pack/filesystem)
-    ├── rt_vpa_reader.c #   VPA archive format
+    ├── rt_zpak_reader.c #   ZPAK archive format
     └── ...
 ```
 
@@ -228,7 +228,7 @@ platform-specific details.
 
 ## See Also
 
-- [Viper Architecture](../internals/architecture.md) — Full system architecture (compiler, IL, VM, codegen, runtime)
-- [Graphics Library (ViperGFX)](../graphics-library.md) — Low-level 2D platform API documentation
+- [Zanna Architecture](../internals/architecture.md) — Full system architecture (compiler, IL, VM, codegen, runtime)
+- [Graphics Library (ZannaGFX)](../graphics-library.md) — Low-level 2D platform API documentation
 - [3D Architecture](../internals/graphics3d-architecture.md) — GPU backend internals
 - [Code Map](../internals/codemap.md) — Complete source directory layout

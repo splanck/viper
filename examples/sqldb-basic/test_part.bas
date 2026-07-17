@@ -1,5 +1,5 @@
 ' SQLite Clone - Combined SQL Module
-' Viper Basic Implementation
+' Zanna Basic Implementation
 ' Using standalone functions to avoid class method limitations (Bugs #002, #004, #005)
 
 '=============================================================================

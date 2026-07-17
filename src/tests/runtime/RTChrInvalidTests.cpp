@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,11 +23,11 @@ static void call_chr_negative() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_chr_negative);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_chr_negative);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(call_chr_negative);
+    auto result = zanna::tests::runIsolated(call_chr_negative);
     bool ok = result.stderrText.find("CHR$: code must be 0-255") != std::string::npos;
     assert(ok);
     return 0;

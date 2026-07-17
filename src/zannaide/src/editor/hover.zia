@@ -1,0 +1,374 @@
+module hover;
+
+bind "../editor/editor_engine";
+bind "../editor/scheduler";
+
+bind ZiaCompletion = Zanna.Zia.Completion;
+bind BasicCompletion = Zanna.Basic.LanguageService;
+bind SemanticJob = Zanna.Zia.SemanticJob;
+bind "../editor/zia_query";
+bind Zanna.GUI;
+bind Str = Zanna.String;
+bind Map = Zanna.Collections.Map;
+
+// ============================================================================
+// MODULE: hover
+// PURPOSE: Mouse-hover tooltips that show type / signature info for the
+//          symbol under the cursor. The IDE equivalent of "wait, what
+//          type is this?".
+//
+// WHERE-THIS-FITS: Editor controller invoked once per frame from
+//          main.zia. Reads the editor's `IsHovered`, the mouse pixel
+//          coords, and uses `GetLineAtPixel` / `GetColAtPixel` to find
+//          the text position under the mouse. Queries
+//          `Zanna.Zia.Completion.HoverForFile` for the type info.
+//
+// KEY-DESIGN-CHOICES:
+//   * MOUSE-POSITION HOVER, NOT CURSOR HOVER. Earlier versions used
+//     `editor.CursorLine/Col` which only hovers at the caret. The
+//     pixel-based version follows the mouse independently of the
+//     caret — much more like a real IDE.
+//   * DWELL TIMER. The mouse must sit still for `HOVER_DELAY_MS` (300
+//     ms) before the tooltip appears. Without this, tooltips would
+//     fire on every mouse-move, which feels spammy. Dwell is reset
+//     whenever the mouse moves; tooltip hides on first move.
+//   * 4-STATE MACHINE. (lastMouseX/Y, waiting, isVisible) interlock to
+//     give: "mouse moved -> hide + start waiting" -> "mouse still &
+//     waiting & dwell elapsed -> query + show" -> "mouse moved while
+//     visible -> hide + restart". Mouse-leaves-editor (`IsHovered ==
+//     0`) takes the express path to hideTooltip.
+//   * PATH-AWARE QUERY. HoverForFile (not Hover) so relative bind paths
+//     resolve against the active file's directory.
+// ============================================================================
+
+final HOVER_DELAY_MS = 300;    // ms to dwell before showing tooltip
+final HOVER_TOOLTIP_DEFAULT_WIDTH = 600;
+final HOVER_TOOLTIP_MIN_WIDTH = 260;
+final HOVER_TOOLTIP_DEFAULT_HEIGHT = 72;
+final HOVER_TOOLTIP_TALL_HEIGHT = 104;
+final HOVER_TOOLTIP_MAX_HEIGHT = 180;
+
+/// @brief Mouse-position hover tooltip controller.
+class HoverController {
+    expose GUI.App appRoot;
+    expose GUI.FloatingPanel tooltip;
+    expose GUI.Label tooltipLabel;
+
+    expose Boolean isVisible;
+    expose Integer hoverStartMs;
+    expose Number lastMouseX;
+    expose Number lastMouseY;
+    expose Boolean waiting;
+    expose String sourcePath;
+    expose Boolean enabled;
+    expose Boolean isBasic;   // route to Zanna.Basic.LanguageService (sync) instead of Zia
+    expose scheduler.EditorScheduler workScheduler;
+    expose Any pendingJob;
+    expose Integer pendingRevision;
+    expose String pendingPath;
+    expose Integer pendingLine;
+    expose Integer pendingCol;
+    expose Integer pendingMouseX;
+    expose Integer pendingMouseY;
+    expose Number tooltipWidth;
+    expose Number tooltipHeight;
+
+    /// @brief Initialize as hidden, with no dwell in progress.
+    expose func init() {
+        appRoot = null;
+        isVisible = false;
+        hoverStartMs = 0;
+        lastMouseX = -1.0;
+        lastMouseY = -1.0;
+        waiting = false;
+        sourcePath = "";
+        enabled = true;
+        isBasic = false;
+        workScheduler = null;
+        pendingJob = null;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingLine = -1;
+        pendingCol = -1;
+        pendingMouseX = -1;
+        pendingMouseY = -1;
+        tooltipWidth = HOVER_TOOLTIP_DEFAULT_WIDTH;
+        tooltipHeight = HOVER_TOOLTIP_DEFAULT_HEIGHT;
+    }
+
+    expose func SetScheduler(value: scheduler.EditorScheduler) {
+        workScheduler = value;
+    }
+
+    /// @brief Build the FloatingPanel + Label that render the tooltip.
+    /// @note Panel attaches to appRoot (must be top-level for floating
+    ///       z-order); Label is created unattached and reparented into
+    ///       the panel via AddChild.
+    expose func setup(appRoot: GUI.App) {
+        self.appRoot = appRoot;
+        tooltip = GUI.FloatingPanel.New(appRoot);
+        tooltip.SetSize(tooltipWidth, tooltipHeight);
+        tooltip.SetVisible(false);
+
+        // Create unattached, then reparent it into the FloatingPanel via AddChild.
+        tooltipLabel = GUI.Label.New(null, "");
+        tooltipLabel.SetWordWrap(true);
+        tooltip.AddChild(tooltipLabel);
+    }
+
+    /// @brief Set the active file's path for HoverForFile lookups.
+    expose func setSourcePath(path: String) {
+        sourcePath = path;
+    }
+
+    expose func setEnabled(value: Boolean) {
+        if enabled == value {
+            return;
+        }
+        enabled = value;
+        if enabled == false {
+            hideTooltip();
+        }
+    }
+
+    /// @brief Per-frame mouse-hover state machine (see module header).
+    expose func update(engine: editor_engine.EditorEngine) {
+        if enabled == false { return; }
+        if engine == null or engine.editor == null { return; }
+
+        var mx = Zanna.Input.Mouse.X();
+        var my = Zanna.Input.Mouse.Y();
+
+        if !engine.editor.IsHovered() {
+            hideTooltip();
+            return;
+        }
+
+        // Mouse moved — reset dwell timer
+        if mx != lastMouseX or my != lastMouseY {
+            hideTooltip();
+            lastMouseX = mx;
+            lastMouseY = my;
+            hoverStartMs = Zanna.Time.Clock.NowMs();
+            if workScheduler != null {
+                workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, engine.GetRevision(), -1);
+            }
+            waiting = true;
+            return;
+        }
+
+        if PollPendingJob(engine, mx, my) {
+            return;
+        }
+
+        // Not waiting for a hover
+        if waiting == false { return; }
+
+        // Already showing
+        if isVisible { return; }
+
+        // Check if dwell time reached
+        if workScheduler != null {
+            var revision = engine.GetRevision();
+            if workScheduler.IsQueued(scheduler.JOB_HOVER, sourcePath, revision) == false {
+                workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, revision, -1);
+                return;
+            }
+            if workScheduler.IsDue(scheduler.JOB_HOVER, sourcePath, revision) == false {
+                return;
+            }
+            workScheduler.Complete(scheduler.JOB_HOVER);
+        } else {
+            var now = Zanna.Time.Clock.NowMs();
+            if now - hoverStartMs < HOVER_DELAY_MS { return; }
+        }
+
+        // Dwell time reached — query hover info
+        waiting = false;
+        StartHoverJob(engine, mx, my);
+    }
+
+    hide func StartHoverJob(engine: editor_engine.EditorEngine, mx: Integer, my: Integer) {
+        var source = engine.GetTextSnapshot();
+        var hoverLine = engine.editor.GetLineAtPixel(my);
+        var hoverCol = engine.editor.GetColAtPixel(mx, my);
+        if hoverLine < 0 or hoverCol < 0 { return; }
+
+        // BASIC: synchronous in-process hover (raw source, 1-based line, no offset).
+        if isBasic {
+            CancelPendingJob();
+            var binfo = BasicCompletion.HoverInfoForFile(source, sourcePath, hoverLine + 1, hoverCol);
+            ApplyHoverInfo(binfo, mx, my);
+            return;
+        }
+
+        // Synthetic-module prefix for buffers without a `module` line; hover
+        // returns a type string (no line number) so only the outbound shift.
+        var qsource = zia_query.WrapForQuery(source);
+        var curLine = hoverLine + 1 + zia_query.LineOffset(source);  // 1-based + shift
+        var curCol  = hoverCol;       // 0-based
+
+        CancelPendingJob();
+        var job = ZiaCompletion.BeginHoverInfoForFile(qsource, sourcePath, curLine, curCol);
+        if job != null {
+            pendingJob = job;
+            pendingRevision = engine.GetRevision();
+            pendingPath = sourcePath;
+            pendingLine = hoverLine;
+            pendingCol = hoverCol;
+            pendingMouseX = mx;
+            pendingMouseY = my;
+            return;
+        }
+
+        var info = ZiaCompletion.HoverInfoForFile(qsource, sourcePath, curLine, curCol);
+        ApplyHoverInfo(info, mx, my);
+    }
+
+    hide func ApplyHoverInfo(info: Any, mx: Integer, my: Integer) {
+        if info == null { return; }
+        if Map.GetBool(info, "available") == false { return; }
+
+        // Show tooltip
+        var display = FormatHoverDisplay(info);
+        tooltipLabel.SetText(display);
+        ApplyTooltipSize(display);
+        PositionTooltip(mx, my);
+        tooltip.SetVisible(true);
+        isVisible = true;
+    }
+
+    /// @brief Resize the hover tooltip to fit short and medium documentation.
+    /// @details The hover label still wraps text, but the containing floating
+    ///          panel no longer has a single hard-coded height. Width is capped
+    ///          by the current app window so the subsequent positioning clamp
+    ///          can keep the tooltip fully visible.
+    /// @param display Text about to be shown in the hover tooltip.
+    hide func ApplyTooltipSize(display: String) {
+        tooltipWidth = HOVER_TOOLTIP_DEFAULT_WIDTH;
+        if appRoot != null {
+            var maxWidth = appRoot.GetWidth() - 16;
+            if maxWidth < HOVER_TOOLTIP_MIN_WIDTH {
+                maxWidth = HOVER_TOOLTIP_MIN_WIDTH;
+            }
+            if tooltipWidth > maxWidth {
+                tooltipWidth = maxWidth;
+            }
+        }
+
+        var len = Str.get_Length(display);
+        tooltipHeight = HOVER_TOOLTIP_DEFAULT_HEIGHT;
+        if len > 220 {
+            tooltipHeight = HOVER_TOOLTIP_MAX_HEIGHT;
+        } else if len > 120 or Str.IndexOf(display, "\n") != 0 {
+            tooltipHeight = HOVER_TOOLTIP_TALL_HEIGHT;
+        }
+        tooltip.SetSize(tooltipWidth, tooltipHeight);
+    }
+
+    /// @brief Position the hover tooltip near the pointer and inside the window.
+    /// @details FloatingPanel coordinates are window-relative. The tooltip
+    ///          prefers right/above the pointer, then clamps to the app bounds
+    ///          so it remains visible near the screen edges.
+    /// @param mx Mouse X coordinate in window space.
+    /// @param my Mouse Y coordinate in window space.
+    hide func PositionTooltip(mx: Integer, my: Integer) {
+        var width = tooltipWidth;
+        var height = tooltipHeight;
+        var margin = 8.0;
+        var x = mx + 10.0;
+        var y = my - 25.0;
+        if appRoot != null {
+            var winW = appRoot.GetWidth();
+            var winH = appRoot.GetHeight();
+            if x + width + margin > winW {
+                x = winW - width - margin;
+            }
+            if x < margin { x = margin; }
+            if y + height + margin > winH {
+                y = winH - height - margin;
+            }
+            if y < margin { y = margin; }
+        }
+        tooltip.SetPosition(x, y);
+    }
+
+    hide func PollPendingJob(engine: editor_engine.EditorEngine, mx: Integer, my: Integer) -> Boolean {
+        if pendingJob == null { return false; }
+        if SemanticJob.IsDone(pendingJob) == false { return false; }
+
+        var job = pendingJob;
+        pendingJob = null;
+        if SemanticJob.IsError(job) {
+            return true;
+        }
+        if engine == null or engine.editor == null { return true; }
+        if engine.GetRevision() != pendingRevision or sourcePath != pendingPath {
+            return true;
+        }
+        if mx != pendingMouseX or my != pendingMouseY {
+            return true;
+        }
+        if engine.editor.GetLineAtPixel(my) != pendingLine
+           or engine.editor.GetColAtPixel(mx, my) != pendingCol {
+            return true;
+        }
+        ApplyHoverInfo(SemanticJob.HoverInfo(job), mx, my);
+        return true;
+    }
+
+    /// @brief Hide the tooltip and reset the dwell state.
+    expose func hideTooltip() {
+        CancelPendingJob();
+        if isVisible {
+            tooltip.SetVisible(false);
+            isVisible = false;
+        }
+        waiting = false;
+    }
+
+    hide func CancelPendingJob() {
+        if pendingJob != null {
+            SemanticJob.Cancel(pendingJob);
+            pendingJob = null;
+        }
+    }
+}
+
+func FormatHoverDisplay(info: Any) -> String {
+    if info == null { return ""; }
+    var display = Map.GetStr(info, "display");
+    if display == "" {
+        display = Map.GetStr(info, "title");
+        var typ = Map.GetStr(info, "type");
+        if typ != "" {
+            if display != "" {
+                display = display + ": " + typ;
+            } else {
+                display = typ;
+            }
+        }
+    }
+
+    var source = Map.GetStr(info, "source");
+    if source != "" {
+        display = display + "  [" + source + "]";
+    }
+
+    var doc = ShortInlineText(Map.GetStr(info, "documentation"), 320);
+    if doc != "" {
+        display = display + "\n" + doc;
+    }
+    return display;
+}
+
+func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.get_Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
+}

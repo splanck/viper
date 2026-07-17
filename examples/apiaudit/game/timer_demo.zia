@@ -1,11 +1,11 @@
-// timer_demo.zia - Comprehensive API audit for Viper.Game.Timer
+// timer_demo.zia - Comprehensive API audit for Zanna.Game.Timer
 // Tests: New, Start, StartRepeating, Stop, Reset, Update,
 //        IsRunning, IsExpired, IsRepeating, Elapsed, Remaining, Progress, Duration
 
 module TimerDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Timer API Audit ===");

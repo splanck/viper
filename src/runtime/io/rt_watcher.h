@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_watcher.h
-// Purpose: Poll-based file system watcher for Viper.IO.Watcher, monitoring files and directories
+// Purpose: Poll-based file system watcher for Zanna.IO.Watcher, monitoring files and directories
 // for changes via native OS facilities and exposing queued events through Poll/PollFor.
 //
 // Key invariants:

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //          calls that are stripped in NDEBUG builds.
 //
 // Key invariants:
-//   - VIPER_ICE always executes (not gated on NDEBUG).
+//   - ZANNA_ICE always executes (not gated on NDEBUG).
 //   - Reports file, line, and a human-readable message.
 //   - Terminates via std::abort() for clean debugger attachment.
 //
@@ -27,7 +27,7 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Report an internal compiler error with file/line context, then abort.
 ///
@@ -40,14 +40,14 @@ namespace viper::codegen::common {
 /// @param msg  Human-readable description of the internal failure.
 [[noreturn]] inline void reportICE(const char *file, int line, const std::string &msg) {
     std::cerr << "internal compiler error at " << file << ":" << line << ": " << msg << "\n"
-              << "This is a bug in the Viper compiler. Please report it.\n";
+              << "This is a bug in the Zanna compiler. Please report it.\n";
     std::abort();
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common
 
 /// @brief Report an internal compiler error with automatic file/line capture.
 /// @details Always fires regardless of NDEBUG. Use instead of assert(false)
 ///          when the fallthrough would produce silently wrong code.
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define VIPER_ICE(msg) ::viper::codegen::common::reportICE(__FILE__, __LINE__, (msg))
+#define ZANNA_ICE(msg) ::zanna::codegen::common::reportICE(__FILE__, __LINE__, (msg))

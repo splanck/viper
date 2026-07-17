@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_dateformat.c
-// Purpose: Implementation of Viper.Localization.DateFormat. Delegates the
+// Purpose: Implementation of Zanna.Localization.DateFormat. Delegates the
 //          heavy lifting to rt_dateformat_patterns.c's emit engine; this
 //          file wires the class lifecycle, resolves style-name patterns
 //          from the bound Locale's table, and exposes the MonthName/
@@ -99,7 +99,7 @@ static void *df_alloc(void *locale) {
     rt_dateformat_inst_t *fmt =
         (rt_dateformat_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dateformat_inst_t));
     if (!fmt) {
-        rt_trap("Viper.Localization.DateFormat: allocation failed");
+        rt_trap("Zanna.Localization.DateFormat: allocation failed");
         return NULL;
     }
     fmt->locale = locale;
@@ -244,7 +244,7 @@ rt_string rt_dateformat_datetime_medium(void *self, int64_t ts) {
 
 rt_string rt_dateformat_custom(void *self, int64_t ts, rt_string pattern) {
     if (!self || !pattern) {
-        rt_trap("Viper.Localization.DateFormat: Custom requires non-null pattern");
+        rt_trap("Zanna.Localization.DateFormat: Custom requires non-null pattern");
         return rt_string_from_bytes("", 0);
     }
     rt_dateformat_inst_t *fmt = as_fmt(self);
@@ -277,7 +277,7 @@ extern int64_t rt_dateonly_day(void *handle);
 
 rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
     if (!self || !dateonly) {
-        rt_trap("Viper.Localization.DateFormat: DateOnly requires non-null arguments");
+        rt_trap("Zanna.Localization.DateFormat: DateOnly requires non-null arguments");
         return rt_string_from_bytes("", 0);
     }
     rt_dateformat_inst_t *fmt = as_fmt(self);
@@ -296,7 +296,7 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
             pattern = fmt->data->dates.patterns.full_p;
         else {
             rt_trap(
-                "Viper.Localization.DateFormat: unknown style (expected short/medium/long/full)");
+                "Zanna.Localization.DateFormat: unknown style (expected short/medium/long/full)");
             return rt_string_from_bytes("", 0);
         }
     }
@@ -325,7 +325,7 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
 
 rt_string rt_dateformat_month_name(void *self, int64_t month, int8_t abbreviated) {
     if (!self || month < 1 || month > 12) {
-        rt_trap("Viper.Localization.DateFormat: month out of range (1..12)");
+        rt_trap("Zanna.Localization.DateFormat: month out of range (1..12)");
         return rt_string_from_bytes("", 0);
     }
     const rt_locale_data_t *data = as_fmt(self)->data;
@@ -338,7 +338,7 @@ rt_string rt_dateformat_month_name(void *self, int64_t month, int8_t abbreviated
 
 rt_string rt_dateformat_day_name(void *self, int64_t dow, int8_t abbreviated) {
     if (!self || dow < 0 || dow > 6) {
-        rt_trap("Viper.Localization.DateFormat: weekday out of range (0..6)");
+        rt_trap("Zanna.Localization.DateFormat: weekday out of range (0..6)");
         return rt_string_from_bytes("", 0);
     }
     const rt_locale_data_t *data = as_fmt(self)->data;

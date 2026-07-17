@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Options controlling backend emission behaviour.
 struct CodegenOptions {
@@ -127,4 +127,4 @@ struct BinaryEmitResult {
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.
 [[nodiscard]] BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

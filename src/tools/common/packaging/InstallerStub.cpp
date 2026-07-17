@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,7 +41,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -519,7 +519,7 @@ std::string powershellRelPath(std::string path) {
 
 /// @brief Return the child-process environment variable carrying one component selection.
 std::string componentEnvironmentName(const std::string &componentId) {
-    std::string name = "VIPER_INSTALLER_COMPONENT_";
+    std::string name = "ZANNA_INSTALLER_COMPONENT_";
     for (char c : componentId) {
         if (c == '-')
             name.push_back('_');
@@ -670,7 +670,7 @@ std::string arm64CleanupEncodedCommand() {
 ///          replacement, and retains its backup until the native x64 bootstrap explicitly commits.
 ///          ARM64 runs the same transaction and commits only after its metadata work succeeds.
 void appendWindowsInstallTransaction(std::ostringstream &ps, bool durableExtraction) {
-    ps << R"VIPERPS(
+    ps << R"ZANNAPS(
 function RelOk([string]$s){
  if([string]::IsNullOrWhiteSpace($s) -or [IO.Path]::IsPathRooted($s) -or $s.Contains(':')){return $false}
  foreach($part in ($s -split '[\\/]+')){if($part -eq '' -or $part -eq '.' -or $part -eq '..'){return $false}}
@@ -711,12 +711,12 @@ function SnapshotState(){
  $regDir=Join-Path $txn 'registry';[IO.Directory]::CreateDirectory($regDir)|Out-Null;$i=0;foreach($rk in $regKeys){$dir=Join-Path $regDir ([string]$i);[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir 'provider'),$rk[0]);[IO.File]::WriteAllText((Join-Path $dir 'native'),$rk[1]);if(Test-Path -LiteralPath $rk[0]){& $regExe export $rk[1] (Join-Path $dir 'backup.reg') /y | Out-Null;if($LASTEXITCODE -ne 0){throw 'failed to snapshot Windows installer registry state'};[IO.File]::WriteAllText((Join-Path $dir 'state'),'present')}else{[IO.File]::WriteAllText((Join-Path $dir 'state'),'absent')};$i++}
 }
 function CopyOverlay($fs,$f,[string]$dst){
- Parent $dst;$tmp=$dst+'.viper-new-'+[Guid]::NewGuid().ToString('N');$out=[IO.File]::Open($tmp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);$hash=$null;$actual='';$left=[int64]$f[3];try{if($f[4]){$hash=[Security.Cryptography.SHA256]::Create()};$null=$fs.Seek($baseOffset+[int64]$f[2],[IO.SeekOrigin]::Begin);$buf=New-Object byte[] 65536;while($left -gt 0){$want=$buf.Length;if($left -lt $want){$want=[int]$left};$n=$fs.Read($buf,0,$want);if($n -le 0){throw 'installer overlay ended early'};if($hash){$null=$hash.TransformBlock($buf,0,$n,$buf,0)};$out.Write($buf,0,$n);$left-=$n};if($hash){$null=$hash.TransformFinalBlock([byte[]]@(),0,0);$actual=[BitConverter]::ToString($hash.Hash).Replace('-','').ToLowerInvariant()}}finally{$out.Dispose();if($hash){$hash.Dispose()};if($left -gt 0){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}};if($f[4] -and $actual -ne $f[4]){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue;throw 'installer overlay checksum mismatch'};return $tmp
+ Parent $dst;$tmp=$dst+'.zanna-new-'+[Guid]::NewGuid().ToString('N');$out=[IO.File]::Open($tmp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);$hash=$null;$actual='';$left=[int64]$f[3];try{if($f[4]){$hash=[Security.Cryptography.SHA256]::Create()};$null=$fs.Seek($baseOffset+[int64]$f[2],[IO.SeekOrigin]::Begin);$buf=New-Object byte[] 65536;while($left -gt 0){$want=$buf.Length;if($left -lt $want){$want=[int]$left};$n=$fs.Read($buf,0,$want);if($n -le 0){throw 'installer overlay ended early'};if($hash){$null=$hash.TransformBlock($buf,0,$n,$buf,0)};$out.Write($buf,0,$n);$left-=$n};if($hash){$null=$hash.TransformFinalBlock([byte[]]@(),0,0);$actual=[BitConverter]::ToString($hash.Hash).Replace('-','').ToLowerInvariant()}}finally{$out.Dispose();if($hash){$hash.Dispose()};if($left -gt 0){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}};if($f[4] -and $actual -ne $f[4]){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue;throw 'installer overlay checksum mismatch'};return $tmp
 }
 function ReplaceTemp([string]$tmp,[string]$dst){try{if(Test-Path -LiteralPath $dst){Remove-Item -LiteralPath $dst -Force -ErrorAction Stop};Move-Item -LiteralPath $tmp -Destination $dst -Force -ErrorAction Stop}finally{if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}}}
-)VIPERPS";
+)ZANNAPS";
     if (durableExtraction) {
-        ps << R"VIPERPS(
+        ps << R"ZANNAPS(
 function ReportProgress([int]$percent,[string]$status){
  if(-not $progressPath){return};if($percent -lt 0){$percent=0};if($percent -gt 100){$percent=100};if($script:lastProgress -eq $percent -and $script:lastStatus -eq $status){return};$script:lastProgress=$percent;$script:lastStatus=$status
  try{$safe=$status.Replace("`r",' ').Replace("`n",' ');[IO.File]::WriteAllText($progressPath,"[progress]`r`npercent=$percent`r`nstatus=$safe`r`n",(New-Object Text.UTF8Encoding($false)))}catch{}
@@ -724,16 +724,16 @@ function ReportProgress([int]$percent,[string]$status){
 function ExtractPayload([string]$zipPath,[string]$dstRoot){
  Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop;Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
  $archive=[IO.Compression.ZipFile]::OpenRead($zipPath);try{$rootFull=[IO.Path]::GetFullPath($dstRoot).TrimEnd('\')+'\';$entries=@($archive.Entries|Where-Object{-not [string]::IsNullOrEmpty($_.Name)});[int64]$total=0;foreach($entry in $entries){$total+=[int64]$entry.Length};if($total -lt 1){$total=1};[int64]$done=0;$seen=@{}
-  foreach($entry in $archive.Entries){$raw=$entry.FullName.Replace('/','\');if([string]::IsNullOrEmpty($entry.Name)){$dirRel=NormRel $raw.TrimEnd('\');$dir=[IO.Path]::GetFullPath((Join-Path $dstRoot $dirRel));if(-not $dir.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw 'compressed installer directory escapes staging root: '+$raw};[IO.Directory]::CreateDirectory($dir)|Out-Null;continue};$rel=NormRel $raw;$key=$rel.ToLowerInvariant();if($seen.ContainsKey($key)){throw 'compressed installer payload contains a duplicate file: '+$rel};$seen[$key]=$true;$dst=[IO.Path]::GetFullPath((Join-Path $dstRoot $rel));if(-not $dst.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw 'compressed installer file escapes staging root: '+$rel};Parent $dst;$input=$entry.Open();$output=[IO.File]::Open($dst,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$buf=New-Object byte[] 131072;while(($n=$input.Read($buf,0,$buf.Length)) -gt 0){$output.Write($buf,0,$n);$done+=$n;ReportProgress (5+[int][Math]::Floor(55.0*$done/$total)) 'Extracting and verifying the Viper toolchain...'}}finally{$output.Dispose();$input.Dispose()}}
+  foreach($entry in $archive.Entries){$raw=$entry.FullName.Replace('/','\');if([string]::IsNullOrEmpty($entry.Name)){$dirRel=NormRel $raw.TrimEnd('\');$dir=[IO.Path]::GetFullPath((Join-Path $dstRoot $dirRel));if(-not $dir.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw 'compressed installer directory escapes staging root: '+$raw};[IO.Directory]::CreateDirectory($dir)|Out-Null;continue};$rel=NormRel $raw;$key=$rel.ToLowerInvariant();if($seen.ContainsKey($key)){throw 'compressed installer payload contains a duplicate file: '+$rel};$seen[$key]=$true;$dst=[IO.Path]::GetFullPath((Join-Path $dstRoot $rel));if(-not $dst.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw 'compressed installer file escapes staging root: '+$rel};Parent $dst;$input=$entry.Open();$output=[IO.File]::Open($dst,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$buf=New-Object byte[] 131072;while(($n=$input.Read($buf,0,$buf.Length)) -gt 0){$output.Write($buf,0,$n);$done+=$n;ReportProgress (5+[int][Math]::Floor(55.0*$done/$total)) 'Extracting and verifying the Zanna toolchain...'}}finally{$output.Dispose();$input.Dispose()}}
  }finally{$archive.Dispose()}
 }
-)VIPERPS";
+)ZANNAPS";
     } else {
-        ps << R"VIPERPS(
+        ps << R"ZANNAPS(
 function BeginTransaction(){
  if(Test-Path -LiteralPath $txn){$item=Get-Item -LiteralPath $txn -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'refusing reparse-point Windows installer transaction: '+$txn};RestoreTransaction}
  [IO.Directory]::CreateDirectory($txn)|Out-Null;[IO.File]::WriteAllText($txnMarker,$identifier);[IO.Directory]::CreateDirectory($txnBackup)|Out-Null;SnapshotState
- $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$legacyOwned=(-not $hadOld) -and (LegacyInstallOwned);if($legacyOwned){WriteInstallerLog 'INFO' ('migrating generated legacy installation at '+$install)};$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'VAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.VAPSShortcutPaths;$oldShortcuts=@{};if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true}}}
+ $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$legacyOwned=(-not $hadOld) -and (LegacyInstallOwned);if($legacyOwned){WriteInstallerLog 'INFO' ('migrating generated legacy installation at '+$install)};$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'ZAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.ZAPSShortcutPaths;$oldShortcuts=@{};if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true}}}
  $items=@();$newLines=@();$newSet=@{};$stage=Join-Path $txn 'stage';[IO.Directory]::CreateDirectory($stage)|Out-Null;$fs=[IO.File]::OpenRead($self)
  try{
   if($payloadRel){$payloadRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$payloadRel,'OrdinalIgnoreCase')}|Select-Object -First 1;$manifestRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$nextManifestRel,'OrdinalIgnoreCase')}|Select-Object -First 1;if(-not $payloadRecord -or -not $manifestRecord){throw 'compressed installer bootstrap records are missing'};$payloadInput=Join-Path $txn 'payload.zip';$manifestInput=Join-Path $txn 'next.manifest';ReplaceTemp (CopyOverlay $fs $payloadRecord $payloadInput) $payloadInput;ReplaceTemp (CopyOverlay $fs $manifestRecord $manifestInput) $manifestInput;$newLines=@(LoadManifest $manifestInput $true);foreach($n in $newLines){$newSet[$n.ToLowerInvariant()]=$true};Expand-Archive -LiteralPath $payloadInput -DestinationPath $stage -Force
@@ -746,17 +746,17 @@ function BeginTransaction(){
   foreach($o in $oldLines){if(-not $newSet.ContainsKey($o.ToLowerInvariant())){$null=AssertSafe 'I' $o}}
   $slot=0;foreach($item in $items){$dst=OwnedPath $item.R $item.P;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' $item.R $item.P $backup;$slot++}else{Journal 'N' $item.R $item.P ''}}
   foreach($o in $oldLines){if(-not $newSet.ContainsKey($o.ToLowerInvariant())){$dst=OwnedPath 'I' $o;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' 'I' $o $backup;$slot++;Remove-Item -LiteralPath $dst -Force -ErrorAction Stop}}}
-  foreach($item in $items){$dst=AssertSafe $item.R $item.P;Parent $dst;if($item.S){$tmp=$dst+'.viper-new-'+[Guid]::NewGuid().ToString('N');Copy-Item -LiteralPath $item.S -Destination $tmp -Force;ReplaceTemp $tmp $dst}else{ReplaceTemp (CopyOverlay $fs $item.F $dst) $dst}}
+  foreach($item in $items){$dst=AssertSafe $item.R $item.P;Parent $dst;if($item.S){$tmp=$dst+'.zanna-new-'+[Guid]::NewGuid().ToString('N');Copy-Item -LiteralPath $item.S -Destination $tmp -Force;ReplaceTemp $tmp $dst}else{ReplaceTemp (CopyOverlay $fs $item.F $dst) $dst}}
  }finally{$fs.Dispose()}
 }
-)VIPERPS";
+)ZANNAPS";
         return;
     }
-    ps << R"VIPERPS(
+    ps << R"ZANNAPS(
 function BeginTransaction(){
  if(Test-Path -LiteralPath $txn){$item=Get-Item -LiteralPath $txn -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'refusing reparse-point Windows installer transaction: '+$txn};RestoreTransaction}
  ReportProgress 4 'Preparing a recoverable installation transaction...';[IO.Directory]::CreateDirectory($txn)|Out-Null;[IO.File]::WriteAllText($txnMarker,$identifier);[IO.Directory]::CreateDirectory($txnBackup)|Out-Null;SnapshotState
- $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$legacyOwned=(-not $hadOld) -and (LegacyInstallOwned);if($legacyOwned){WriteInstallerLog 'INFO' ('migrating generated legacy installation at '+$install)};$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'VAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.VAPSShortcutPaths;$oldShortcuts=@{};$oldShortcutLines=@();if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true;$oldShortcutLines+=,$line}}}elseif($legacyOwned){foreach($f in $files){if($f[0] -eq 'I'){continue};$line=$f[0]+'|'+(NormRel $f[1]);$p=$line -split '\|',2;$dst=OwnedPath $p[0] $p[1];if((Test-Path -LiteralPath $dst -PathType Leaf) -and (LegacyShortcutOwned $dst)){$oldShortcuts[$line.ToLowerInvariant()]=$true;$oldShortcutLines+=,$line}}}
+ $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$legacyOwned=(-not $hadOld) -and (LegacyInstallOwned);if($legacyOwned){WriteInstallerLog 'INFO' ('migrating generated legacy installation at '+$install)};$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'ZAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.ZAPSShortcutPaths;$oldShortcuts=@{};$oldShortcutLines=@();if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true;$oldShortcutLines+=,$line}}}elseif($legacyOwned){foreach($f in $files){if($f[0] -eq 'I'){continue};$line=$f[0]+'|'+(NormRel $f[1]);$p=$line -split '\|',2;$dst=OwnedPath $p[0] $p[1];if((Test-Path -LiteralPath $dst -PathType Leaf) -and (LegacyShortcutOwned $dst)){$oldShortcuts[$line.ToLowerInvariant()]=$true;$oldShortcutLines+=,$line}}}
  $items=@();$newLines=@();$newSet=@{};$stage=Join-Path $txn 'stage';[IO.Directory]::CreateDirectory($stage)|Out-Null;$fs=[IO.File]::OpenRead($self)
  try{
   if($payloadRel){$payloadRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$payloadRel,'OrdinalIgnoreCase')}|Select-Object -First 1;$manifestRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$nextManifestRel,'OrdinalIgnoreCase')}|Select-Object -First 1;if(-not $payloadRecord -or -not $manifestRecord){throw 'compressed installer bootstrap records are missing'};$payloadInput=Join-Path $txn 'payload.zip';$manifestInput=Join-Path $txn 'next.manifest';ReplaceTemp (CopyOverlay $fs $payloadRecord $payloadInput) $payloadInput;ReplaceTemp (CopyOverlay $fs $manifestRecord $manifestInput) $manifestInput;$allLines=@(LoadManifest $manifestInput $true);$allSet=@{};foreach($n in $allLines){$allSet[$n.ToLowerInvariant()]=$true};ExtractPayload $payloadInput $stage
@@ -774,16 +774,16 @@ function BeginTransaction(){
   $slot=0;foreach($item in $items){$dst=OwnedPath $item.R $item.P;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' $item.R $item.P $backup;$slot++}else{Journal 'N' $item.R $item.P ''}}
   foreach($o in $oldLines){if(-not $newSet.ContainsKey($o.ToLowerInvariant())){$dst=OwnedPath 'I' $o;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' 'I' $o $backup;$slot++;Remove-Item -LiteralPath $dst -Force -ErrorAction Stop}}}
   foreach($line in $oldShortcutLines){if(-not $newExternal.ContainsKey($line.ToLowerInvariant())){$p=$line -split '\|',2;if($p.Length -eq 2){$dst=OwnedPath $p[0] $p[1];if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' $p[0] $p[1] $backup;$slot++;Remove-Item -LiteralPath $dst -Force -ErrorAction Stop}}}}
-  ReportProgress 72 'Installing the selected developer tools...';$itemIndex=0;$itemCount=[Math]::Max(1,$items.Count);foreach($item in $items){$dst=AssertSafe $item.R $item.P;Parent $dst;if($item.S){$tmp=$dst+'.viper-new-'+[Guid]::NewGuid().ToString('N');Copy-Item -LiteralPath $item.S -Destination $tmp -Force;ReplaceTemp $tmp $dst}else{ReplaceTemp (CopyOverlay $fs $item.F $dst) $dst};$itemIndex++;ReportProgress (72+[int][Math]::Floor(20.0*$itemIndex/$itemCount)) 'Installing the selected developer tools...'}
+  ReportProgress 72 'Installing the selected developer tools...';$itemIndex=0;$itemCount=[Math]::Max(1,$items.Count);foreach($item in $items){$dst=AssertSafe $item.R $item.P;Parent $dst;if($item.S){$tmp=$dst+'.zanna-new-'+[Guid]::NewGuid().ToString('N');Copy-Item -LiteralPath $item.S -Destination $tmp -Force;ReplaceTemp $tmp $dst}else{ReplaceTemp (CopyOverlay $fs $item.F $dst) $dst};$itemIndex++;ReportProgress (72+[int][Math]::Floor(20.0*$itemIndex/$itemCount)) 'Installing the selected developer tools...'}
  }finally{$fs.Dispose()}
 }
-)VIPERPS";
+)ZANNAPS";
 }
 
 std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool uninstallDialog) {
     const std::string installDir = installDirNameFor(layout);
     const std::string version = layout.version.empty() ? "0.0.0" : layout.version;
-    const std::string publisher = layout.publisher.empty() ? "Viper" : layout.publisher;
+    const std::string publisher = layout.publisher.empty() ? "Zanna" : layout.publisher;
     const std::string uninstallKey = uninstallKeyPathFor(layout);
     const std::string hive = layout.perUserInstall ? "HKCU:" : "HKLM:";
     const std::string nativeHive = layout.perUserInstall ? "HKCU" : "HKLM";
@@ -803,20 +803,20 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     const std::string shortcutOwnership = externalOwnershipManifest(layout);
     std::ostringstream ps;
     ps << "$ErrorActionPreference='Stop'\n";
-    ps << "$self=$env:VIPER_INSTALLER_SELF\n";
-    ps << "$mode=$env:VIPER_INSTALLER_MODE\n";
+    ps << "$self=$env:ZANNA_INSTALLER_SELF\n";
+    ps << "$mode=$env:ZANNA_INSTALLER_MODE\n";
     ps << "$defaultLog=Join-Path ([IO.Path]::GetTempPath()) "
-       << powershellSingleQuote("ViperInstaller-" + registryIdFor(layout) + ".log") << "\n";
-    ps << "$log=if($env:VIPER_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
-          "VIPER_INSTALLER_LOG)}else{$defaultLog}\n";
+       << powershellSingleQuote("ZannaInstaller-" + registryIdFor(layout) + ".log") << "\n";
+    ps << "$log=if($env:ZANNA_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
+          "ZANNA_INSTALLER_LOG)}else{$defaultLog}\n";
     ps << "function WriteInstallerLog([string]$level,[string]$message){try{$line=(Get-Date "
           "-Format 'o')+' ['+$level+'] '+$message+[Environment]::NewLine;[IO.File]::"
           "AppendAllText($log,$line,[Text.Encoding]::UTF8)}catch{}}\n";
     ps << "try{if($mode -eq 'install' -or $mode -eq 'install-files'){[IO.File]::WriteAllText("
           "$log,'',[Text.Encoding]::UTF8)};WriteInstallerLog 'INFO' ('backend mode: '+$mode)}"
           "catch{}\n";
-    ps << "if($mode -eq 'rollback' -and $env:VIPER_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
-          "'ERROR' ('native setup failed during '+$env:VIPER_INSTALLER_NATIVE_STAGE)}\n";
+    ps << "if($mode -eq 'rollback' -and $env:ZANNA_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
+          "'ERROR' ('native setup failed during '+$env:ZANNA_INSTALLER_NATIVE_STAGE)}\n";
     ps << "trap{$failure=$_;WriteInstallerLog 'ERROR' ('setup failed: '+$failure.Exception."
           "Message);try{[Console]::Error.WriteLine('setup failed: '+$failure.Exception.Message)}"
           "catch{};exit 1}\n";
@@ -834,8 +834,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "$identifier=" << powershellSingleQuote(registryIdFor(layout)) << "\n";
     ps << "$perUser=" << powershellBool(layout.perUserInstall) << "\n";
     ps << "$addPath=" << powershellBool(layout.addToPath) << "\n";
-    ps << "$quiet=($env:VIPER_INSTALLER_QUIET -eq '1')\n";
-    ps << "$noRestart=($env:VIPER_INSTALLER_NORESTART -eq '1')\n";
+    ps << "$quiet=($env:ZANNA_INSTALLER_QUIET -eq '1')\n";
+    ps << "$noRestart=($env:ZANNA_INSTALLER_NORESTART -eq '1')\n";
     if (uninstallDialog)
         ps << "$cleanupCommand=" << powershellSingleQuote(arm64CleanupEncodedCommand()) << "\n";
     ps << "$baseOffset=[int64]" << layout.overlayFileOffset << "\n";
@@ -859,7 +859,7 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "$installedManifestRel="
        << powershellSingleQuote(powershellRelPath(layout.installedManifestRelativePath)) << "\n";
     ps << "$shortcutOwnership=" << powershellSingleQuote(shortcutOwnership) << "\n";
-    ps << "$txn=$install+'.viper-transaction'\n";
+    ps << "$txn=$install+'.zanna-transaction'\n";
     ps << "$txnMarker=Join-Path $txn 'owner'\n";
     ps << "$txnJournal=Join-Path $txn 'journal'\n";
     ps << "$txnBackup=Join-Path $txn 'backup'\n";
@@ -890,22 +890,22 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
           "-eq $old){$old=''};$parts=@($old -split ';'|Where-Object{$_.Length -gt 0});$owned=-not "
           "($parts|Where-Object{[String]::Equals($_,$p,'OrdinalIgnoreCase')});if($owned){"
           "[Environment]::SetEnvironmentVariable('Path',(($parts+$p)-join ';'),$scope);SetS "
-          "'VAPSOriginalPath' $old;SetS 'VAPSPathEntry' $p}}\n";
+          "'ZAPSOriginalPath' $old;SetS 'ZAPSPathEntry' $p}}\n";
     ps << "function RemovePath(){if(-not $addPath){return};$entry=(Get-ItemProperty -Path "
-          "$uninstallReg -Name 'VAPSPathEntry' -ErrorAction "
-          "SilentlyContinue).VAPSPathEntry;if(-not $entry){return};$old=[Environment]::"
+          "$uninstallReg -Name 'ZAPSPathEntry' -ErrorAction "
+          "SilentlyContinue).ZAPSPathEntry;if(-not $entry){return};$old=[Environment]::"
           "GetEnvironmentVariable('Path',$scope);if($null -eq "
           "$old){return};$parts=@($old -split ';'|Where-Object{$_.Length -gt 0 -and -not "
           "[String]::Equals($_,$entry,'OrdinalIgnoreCase')});[Environment]::SetEnvironmentVariable("
           "'Path',($parts -join ';'),$scope)}\n";
     ps << "function BroadcastEnv(){try{Add-Type -TypeDefinition 'using System; using "
-          "System.Runtime.InteropServices; public static class ViperEnv { "
+          "System.Runtime.InteropServices; public static class ZannaEnv { "
           "[DllImport(\"user32.dll\", "
           "SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr "
           "SendMessageTimeout("
           "IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out "
           "UIntPtr "
-          "result); }' -ErrorAction SilentlyContinue|Out-Null;$r=[UIntPtr]::Zero;[void][ViperEnv]::"
+          "result); }' -ErrorAction SilentlyContinue|Out-Null;$r=[UIntPtr]::Zero;[void][ZannaEnv]::"
           "SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r)}"
           "catch{}}\n";
     ps << "function TrimDialog([string]$s){if(-not $s){return ''};if($s.Length -le 3800){return "
@@ -946,18 +946,18 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
           "$path -Value $value}\n";
     ps << "function RegisterAssoc(){foreach($a in $assocs){$ext=Join-Path $classRoot $a.Ext;"
           "New-Item -Path $ext -Force|Out-Null;if($a.Mime){$props=Get-ItemProperty -Path $ext "
-          "-ErrorAction SilentlyContinue;$owned=$props.VAPSContentTypeOwner;if(-not "
+          "-ErrorAction SilentlyContinue;$owned=$props.ZAPSContentTypeOwner;if(-not "
           "$props.'Content Type' -or $owned -eq $identifier){New-ItemProperty -Path $ext -Name "
           "'Content Type' -Value $a.Mime -PropertyType String -Force|Out-Null;New-ItemProperty "
           "-Path "
-          "$ext -Name 'VAPSContentTypeOwner' -Value $identifier -PropertyType String "
+          "$ext -Name 'ZAPSContentTypeOwner' -Value $identifier -PropertyType String "
           "-Force|Out-Null}}"
           "$owp=Join-Path $ext 'OpenWithProgids';New-Item -Path $owp -Force|Out-Null;"
           "(Get-Item -LiteralPath $owp).SetValue($a.Prog,[byte[]]@(),[Microsoft.Win32."
           "RegistryValueKind]::None);"
           "$prog=Join-Path $classRoot $a.Prog;RegDefault $prog $a.Desc;New-ItemProperty -Path "
           "$prog "
-          "-Name 'VAPSOwner' -Value $identifier -PropertyType String "
+          "-Name 'ZAPSOwner' -Value $identifier -PropertyType String "
           "-Force|Out-Null;$icon=Join-Path "
           "$prog 'DefaultIcon';RegDefault $icon $assocIcon;$cmd=Join-Path $prog "
           "'shell\\open\\command';"
@@ -966,12 +966,12 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "function UnregisterAssoc(){foreach($a in $assocs){$ext=Join-Path $classRoot $a.Ext;"
           "$owp=Join-Path $ext 'OpenWithProgids';Remove-ItemProperty -Path $owp -Name $a.Prog "
           "-ErrorAction SilentlyContinue;$props=Get-ItemProperty -Path $ext -ErrorAction "
-          "SilentlyContinue;if($props.VAPSContentTypeOwner -eq $identifier){Remove-ItemProperty "
+          "SilentlyContinue;if($props.ZAPSContentTypeOwner -eq $identifier){Remove-ItemProperty "
           "-Path "
           "$ext -Name 'Content Type' -ErrorAction SilentlyContinue;Remove-ItemProperty -Path $ext "
-          "-Name 'VAPSContentTypeOwner' -ErrorAction SilentlyContinue};$prog=Join-Path $classRoot "
-          "$a.Prog;$owner=(Get-ItemProperty -Path $prog -Name 'VAPSOwner' -ErrorAction "
-          "SilentlyContinue).VAPSOwner;if($owner -eq $identifier){Remove-Item -LiteralPath $prog "
+          "-Name 'ZAPSContentTypeOwner' -ErrorAction SilentlyContinue};$prog=Join-Path $classRoot "
+          "$a.Prog;$owner=(Get-ItemProperty -Path $prog -Name 'ZAPSOwner' -ErrorAction "
+          "SilentlyContinue).ZAPSOwner;if($owner -eq $identifier){Remove-Item -LiteralPath $prog "
           "-Recurse -Force -ErrorAction SilentlyContinue}}}\n";
 
     ps << "$remove=@(\n";
@@ -1067,7 +1067,7 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         ps << "SetS 'HelpLink' $homepage\n";
         ps << "SetS 'Comments' $comments\n";
         ps << "SetS 'Contact' $contact\n";
-        ps << "New-ItemProperty -Path $uninstallReg -Name 'VAPSShortcutPaths' -Value "
+        ps << "New-ItemProperty -Path $uninstallReg -Name 'ZAPSShortcutPaths' -Value "
               "$shortcutOwnership -PropertyType String -Force|Out-Null\n";
         ps << "AddPath " << pathEntryExpr << "\n";
         ps << "RegisterAssoc\n";
@@ -1098,22 +1098,22 @@ std::string buildNativeTransactionPowerShellScript(const WindowsPackageLayout &l
 
     std::ostringstream ps;
     ps << "$ErrorActionPreference='Stop'\n";
-    ps << "$self=$env:VIPER_INSTALLER_SELF\n";
-    ps << "$mode=$env:VIPER_INSTALLER_MODE\n";
+    ps << "$self=$env:ZANNA_INSTALLER_SELF\n";
+    ps << "$mode=$env:ZANNA_INSTALLER_MODE\n";
     ps << "$defaultLog=Join-Path ([IO.Path]::GetTempPath()) "
-       << powershellSingleQuote("ViperInstaller-" + registryIdFor(layout) + ".log") << "\n";
-    ps << "$log=if($env:VIPER_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
-          "VIPER_INSTALLER_LOG)}else{$defaultLog}\n";
-    ps << "$progressPath=if($env:VIPER_INSTALLER_PROGRESS){[Environment]::"
-          "ExpandEnvironmentVariables($env:VIPER_INSTALLER_PROGRESS)}else{$null};"
+       << powershellSingleQuote("ZannaInstaller-" + registryIdFor(layout) + ".log") << "\n";
+    ps << "$log=if($env:ZANNA_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
+          "ZANNA_INSTALLER_LOG)}else{$defaultLog}\n";
+    ps << "$progressPath=if($env:ZANNA_INSTALLER_PROGRESS){[Environment]::"
+          "ExpandEnvironmentVariables($env:ZANNA_INSTALLER_PROGRESS)}else{$null};"
           "$script:lastProgress=-1;$script:lastStatus=''\n";
     ps << "function WriteInstallerLog([string]$level,[string]$message){try{$line=(Get-Date "
           "-Format 'o')+' ['+$level+'] '+$message+[Environment]::NewLine;[IO.File]::"
           "AppendAllText($log,$line,[Text.Encoding]::UTF8)}catch{}}\n";
     ps << "try{if($mode -eq 'install-files'){[IO.File]::WriteAllText($log,'',[Text.Encoding]::"
           "UTF8)};WriteInstallerLog 'INFO' ('backend mode: '+$mode)}catch{}\n";
-    ps << "if($mode -eq 'rollback' -and $env:VIPER_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
-          "'ERROR' ('native setup failed during '+$env:VIPER_INSTALLER_NATIVE_STAGE)}\n";
+    ps << "if($mode -eq 'rollback' -and $env:ZANNA_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
+          "'ERROR' ('native setup failed during '+$env:ZANNA_INSTALLER_NATIVE_STAGE)}\n";
     ps << "trap{$failure=$_;WriteInstallerLog 'ERROR' ('setup failed: '+$failure.Exception."
           "Message);try{[Console]::Error.WriteLine('setup failed: '+$failure.Exception.Message)}"
           "catch{};exit 1}\n";
@@ -1141,7 +1141,7 @@ std::string buildNativeTransactionPowerShellScript(const WindowsPackageLayout &l
        << "\n";
     ps << "$installedManifestRel="
        << powershellSingleQuote(powershellRelPath(layout.installedManifestRelativePath)) << "\n";
-    ps << "$txn=$install+'.viper-transaction'\n";
+    ps << "$txn=$install+'.zanna-transaction'\n";
     ps << "$txnMarker=Join-Path $txn 'owner'\n";
     ps << "$txnJournal=Join-Path $txn 'journal'\n";
     ps << "$txnBackup=Join-Path $txn 'backup'\n";
@@ -1149,11 +1149,11 @@ std::string buildNativeTransactionPowerShellScript(const WindowsPackageLayout &l
     ps << "function Parent($p){$d=[IO.Path]::GetDirectoryName($p);if($d){[IO.Directory]::"
           "CreateDirectory($d)|Out-Null}}\n";
     ps << "function BroadcastEnv(){try{Add-Type -TypeDefinition 'using System; using "
-          "System.Runtime.InteropServices; public static class ViperEnv { "
+          "System.Runtime.InteropServices; public static class ZannaEnv { "
           "[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static "
           "extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, "
           "uint flags, uint timeout, out UIntPtr result); }' -ErrorAction SilentlyContinue|"
-          "Out-Null;$r=[UIntPtr]::Zero;[void][ViperEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,"
+          "Out-Null;$r=[UIntPtr]::Zero;[void][ZannaEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,"
           "[UIntPtr]::Zero,'Environment',2,5000,[ref]$r)}catch{}}\n";
     ps << "$regKeys=@(\n";
     ps << ",@(" << powershellSingleQuote(hive + "\\" + uninstallKey) << ","
@@ -1184,7 +1184,7 @@ std::string buildNativeTransactionPowerShellScript(const WindowsPackageLayout &l
           "if(-not [String]::Equals($dst,$selfFull,[StringComparison]::OrdinalIgnoreCase) -and "
           "(Test-Path -LiteralPath $dst -PathType Leaf)){Remove-Item -LiteralPath $dst -Force "
           "-ErrorAction Stop}};$shortcutProps=Get-ItemProperty -LiteralPath $uninstallReg "
-          "-ErrorAction SilentlyContinue;$shortcutText=$shortcutProps.VAPSShortcutPaths;if("
+          "-ErrorAction SilentlyContinue;$shortcutText=$shortcutProps.ZAPSShortcutPaths;if("
           "$shortcutText){foreach($line in $shortcutText -split \"`n\"){$line=$line.TrimEnd("
           "\"`r\");if(-not $line){continue};$p=$line -split '\\|',2;if($p.Length -ne 2 -or "
           "($p[0] -ne 'D' -and $p[0] -ne 'M')){throw 'invalid installed shortcut ownership "
@@ -1584,7 +1584,7 @@ std::vector<uint8_t> buildProgressDialogTemplate(const WindowsPackageLayout &lay
                         18,
                         kDlgIdProgressStatus,
                         kStaticClass,
-                        "Preparing the Viper developer toolchain...");
+                        "Preparing the Zanna developer toolchain...");
     appendDialogControl(out,
                         kWsChildVisible | kPbsSmooth,
                         0,
@@ -2406,9 +2406,9 @@ void emitCreateProgressDialog(InstallerStubGen &gen,
                               uint32_t templateOff,
                               uint32_t dialogProcLabel,
                               uint32_t errorLabel) {
-    const uint32_t progressEnvironmentOff = gen.embedStringW("VIPER_INSTALLER_PROGRESS");
+    const uint32_t progressEnvironmentOff = gen.embedStringW("ZANNA_INSTALLER_PROGRESS");
     const uint32_t progressFileOff =
-        gen.embedStringW("ViperInstaller-" + registryIdFor(layout) + ".progress.ini");
+        gen.embedStringW("ZannaInstaller-" + registryIdFor(layout) + ".progress.ini");
     const auto lblSkipDialog = gen.newLabel();
     const auto lblDone = gen.newLabel();
     zeroLocalQword(gen, kProgressHwndOff);
@@ -2457,7 +2457,7 @@ void emitDestroyProgressDialog(InstallerStubGen &gen, const WindowsPackageLayout
     const auto lblNoWindow = gen.newLabel();
     const auto lblDone = gen.newLabel();
     const uint32_t progressFileOff =
-        gen.embedStringW("ViperInstaller-" + registryIdFor(layout) + ".progress.ini");
+        gen.embedStringW("ZannaInstaller-" + registryIdFor(layout) + ".progress.ini");
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kProgressHwndOff);
     gen.testRegReg(X64Reg::RCX, X64Reg::RCX);
     gen.jz(lblNoWindow);
@@ -3319,7 +3319,7 @@ void emitRegQueryValueExists(InstallerStubGen &gen,
 }
 
 /// @brief Emit code to delete the ProgID subtree only when owned by this application.
-/// Ownership is determined by comparing the VAPSOwner registry value against the
+/// Ownership is determined by comparing the ZAPSOwner registry value against the
 /// embedded identifier string; deletes shell/open/command, shell/open, shell, and
 /// the ProgID key itself. Silently skips if the key is absent or owned by another app.
 void emitDeleteProgIdTreeIfOwned(InstallerStubGen &gen,
@@ -3358,8 +3358,8 @@ void emitDeleteProgIdTreeIfOwned(InstallerStubGen &gen,
 
 /// @brief Emit code to register all file associations from layout.fileAssociations in the Windows
 /// registry. For each association creates: Software\Classes\.<ext> with Content Type and
-/// VAPSContentTypeOwner, Software\Classes\.<ext>\OpenWithProgids\<ProgID> = REG_NONE,
-/// Software\Classes\<ProgID> with VAPSOwner marker and description,
+/// ZAPSContentTypeOwner, Software\Classes\.<ext>\OpenWithProgids\<ProgID> = REG_NONE,
+/// Software\Classes\<ProgID> with ZAPSOwner marker and description,
 /// and Software\Classes\<ProgID>\shell\open\command = "&lt;exe&gt;" [args] "%1".
 void emitRegisterFileAssociations(InstallerStubGen &gen,
                                   const WindowsPackageLayout &layout,
@@ -3379,8 +3379,8 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
     const uint64_t rootHkey = registryRootFor(layout);
 
     const uint32_t regContentTypeOff = gen.embedStringW("Content Type");
-    const uint32_t regContentTypeOwnerOff = gen.embedStringW("VAPSContentTypeOwner");
-    const uint32_t regOwnerMarkerOff = gen.embedStringW("VAPSOwner");
+    const uint32_t regContentTypeOwnerOff = gen.embedStringW("ZAPSContentTypeOwner");
+    const uint32_t regOwnerMarkerOff = gen.embedStringW("ZAPSOwner");
     const std::string ownerMarker =
         layout.identifier.empty() ? layout.displayName : layout.identifier;
     const uint32_t ownerMarkerBytes = wideBytesFor(ownerMarker);
@@ -3482,8 +3482,8 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
 }
 
 /// @brief Emit code to unregister all file associations owned by this application.
-/// Removes OpenWithProgids entries, Content Type if VAPSContentTypeOwner matches,
-/// and the full ProgID subtree if the VAPSOwner marker matches our identifier.
+/// Removes OpenWithProgids entries, Content Type if ZAPSContentTypeOwner matches,
+/// and the full ProgID subtree if the ZAPSOwner marker matches our identifier.
 /// Silently skips any association whose key is missing or owned by another app.
 void emitUnregisterFileAssociations(InstallerStubGen &gen,
                                     const WindowsPackageLayout &layout,
@@ -3494,8 +3494,8 @@ void emitUnregisterFileAssociations(InstallerStubGen &gen,
                                     uint32_t deleteValueSlot,
                                     uint32_t deleteSlot) {
     const uint64_t rootHkey = registryRootFor(layout);
-    const uint32_t ownerMarkerOff = gen.embedStringW("VAPSOwner");
-    const uint32_t contentTypeOwnerOff = gen.embedStringW("VAPSContentTypeOwner");
+    const uint32_t ownerMarkerOff = gen.embedStringW("ZAPSOwner");
+    const uint32_t contentTypeOwnerOff = gen.embedStringW("ZAPSContentTypeOwner");
     const std::string ownerMarker =
         layout.identifier.empty() ? layout.displayName : layout.identifier;
     const uint32_t ownerMarkerValueOff = gen.embedStringW(ownerMarker);
@@ -3727,7 +3727,7 @@ void emitRemovePathEntryTokens(InstallerStubGen &gen,
                                uint32_t errorLabel);
 
 /// @brief Emit code to add the install path entry to the system PATH registry value.
-/// Idempotent: checks VAPSPathEntry in the uninstall key first and skips if already present.
+/// Idempotent: checks ZAPSPathEntry in the uninstall key first and skips if already present.
 /// Otherwise reads the current PATH, strips any stale entry via emitRemovePathEntryTokens,
 /// appends the new entry, writes back as REG_EXPAND_SZ, and broadcasts WM_SETTINGCHANGE.
 /// No-op when layout.addToPath is false.
@@ -3970,7 +3970,7 @@ void emitRemovePathEntryTokens(InstallerStubGen &gen,
 }
 
 /// @brief Emit code to remove our PATH entry during uninstall.
-/// Reads VAPSPathEntry from the uninstall registry key to recover the exact entry
+/// Reads ZAPSPathEntry from the uninstall registry key to recover the exact entry
 /// string that was added, strips it from the current system PATH via
 /// emitRemovePathEntryTokens, writes the cleaned PATH back as REG_EXPAND_SZ,
 /// and broadcasts WM_SETTINGCHANGE. No-op when layout.addToPath is false or
@@ -4328,20 +4328,20 @@ void emitRunPowerShellBackend(InstallerStubGen &gen,
     if (encodedCommand.size() + 512u >= 32767u)
         throw std::runtime_error("Windows installer PowerShell command line is too large");
 
-    const uint32_t selfEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_SELF");
-    const uint32_t modeEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_MODE");
+    const uint32_t selfEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_SELF");
+    const uint32_t modeEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_MODE");
     const uint32_t modeEnvironmentValueOff = gen.embedStringW(mode);
-    const uint32_t logEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_LOG");
+    const uint32_t logEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_LOG");
     const uint32_t logEnvironmentValueOff =
-        gen.embedStringW("%TEMP%\\ViperInstaller-" + registryIdFor(layout) + ".log");
-    const uint32_t progressEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_PROGRESS");
+        gen.embedStringW("%TEMP%\\ZannaInstaller-" + registryIdFor(layout) + ".log");
+    const uint32_t progressEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_PROGRESS");
     const uint32_t progressFileNameOff =
-        gen.embedStringW("ViperInstaller-" + registryIdFor(layout) + ".progress.ini");
+        gen.embedStringW("ZannaInstaller-" + registryIdFor(layout) + ".progress.ini");
     const uint32_t progressSectionOff = gen.embedStringW("progress");
     const uint32_t progressPercentKeyOff = gen.embedStringW("percent");
     const uint32_t progressStatusKeyOff = gen.embedStringW("status");
     const uint32_t progressDefaultStatusOff =
-        gen.embedStringW("Working on the Viper developer toolchain...");
+        gen.embedStringW("Working on the Zanna developer toolchain...");
     const uint32_t defaultProgress = mode == "commit" ? 98u : (mode == "rollback" ? 3u : 4u);
     const uint32_t commandQuoteOff = gen.embedStringW("\"");
     const uint32_t powershellTailOff =
@@ -4597,15 +4597,15 @@ StubResult buildArm64InstallerStub(const WindowsPackageLayout &layout, bool unin
     const uint32_t psSuffixOff = gen.embedStringW("\\WindowsPowerShell\\v1.0\\powershell.exe");
     const uint32_t afterExeOff = gen.embedStringW(
         "\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + encodedCommand);
-    const uint32_t selfEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_SELF");
-    const uint32_t modeEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_MODE");
+    const uint32_t selfEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_SELF");
+    const uint32_t modeEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_MODE");
     const uint32_t modeEnvironmentValueOff =
         gen.embedStringW(uninstallDialog ? "uninstall" : "install");
-    const uint32_t logEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_LOG");
+    const uint32_t logEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_LOG");
     const uint32_t logEnvironmentValueOff =
-        gen.embedStringW("%TEMP%\\ViperInstaller-" + registryIdFor(layout) + ".log");
-    const uint32_t quietEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_QUIET");
-    const uint32_t noRestartEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_NORESTART");
+        gen.embedStringW("%TEMP%\\ZannaInstaller-" + registryIdFor(layout) + ".log");
+    const uint32_t quietEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_QUIET");
+    const uint32_t noRestartEnvironmentNameOff = gen.embedStringW("ZANNA_INSTALLER_NORESTART");
     const uint32_t environmentOneOff = gen.embedStringW("1");
     const std::vector<uint32_t> quietSearchOffsets = {gen.embedStringW("/quiet"),
                                                       gen.embedStringW("/silent"),
@@ -4716,7 +4716,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
 
     const std::string installDir = installDirNameFor(layout);
     const std::string version = layout.version.empty() ? "0.0.0" : layout.version;
-    const std::string publisher = layout.publisher.empty() ? "Viper" : layout.publisher;
+    const std::string publisher = layout.publisher.empty() ? "Zanna" : layout.publisher;
     const std::string uninstallKey = uninstallKeyPathFor(layout);
     const uint64_t registryRoot = registryRootFor(layout);
 
@@ -4756,26 +4756,26 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t regHelpLinkOff = gen.embedStringW("HelpLink");
     const uint32_t regCommentsOff = gen.embedStringW("Comments");
     const uint32_t regContactOff = gen.embedStringW("Contact");
-    const uint32_t regShortcutPathsOff = gen.embedStringW("VAPSShortcutPaths");
+    const uint32_t regShortcutPathsOff = gen.embedStringW("ZAPSShortcutPaths");
     const uint32_t regPathValueOff = gen.embedStringW("Path");
-    const uint32_t regOriginalPathOff = gen.embedStringW("VAPSOriginalPath");
-    const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
+    const uint32_t regOriginalPathOff = gen.embedStringW("ZAPSOriginalPath");
+    const uint32_t regPathEntryOff = gen.embedStringW("ZAPSPathEntry");
     const uint32_t installDateFormatOff = gen.embedStringW("yyyyMMdd");
-    const uint32_t nativeStageNameOff = gen.embedStringW("VIPER_INSTALLER_NATIVE_STAGE");
+    const uint32_t nativeStageNameOff = gen.embedStringW("ZANNA_INSTALLER_NATIVE_STAGE");
     const uint32_t nativePathStageOff = gen.embedStringW("PATH registration");
     const uint32_t nativeUninstallStageOff = gen.embedStringW("Add/Remove Programs registration");
     const uint32_t nativeAssociationsStageOff = gen.embedStringW("file association registration");
     const uint32_t nativeCommitStageOff = gen.embedStringW("transaction commit");
     const uint32_t progressPreparingOff =
-        gen.embedStringW("Preparing the selected Viper developer components...");
+        gen.embedStringW("Preparing the selected Zanna developer components...");
     const uint32_t progressPathsOff =
         gen.embedStringW("Preparing installation paths and upgrade ownership...");
     const uint32_t progressPathRegistrationOff =
-        gen.embedStringW("Registering Viper tools on the developer PATH...");
+        gen.embedStringW("Registering Zanna tools on the developer PATH...");
     const uint32_t progressMetadataOff =
-        gen.embedStringW("Registering Viper in Windows Apps & Features...");
+        gen.embedStringW("Registering Zanna in Windows Apps & Features...");
     const uint32_t progressAssociationsOff =
-        gen.embedStringW("Registering Viper source and project file types...");
+        gen.embedStringW("Registering Zanna source and project file types...");
     const uint32_t progressFinalizingOff = gen.embedStringW("Finalizing installation...");
     const uint32_t progressRollbackOff =
         gen.embedStringW("Rolling back incomplete installation changes...");
@@ -4790,11 +4790,11 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const std::string successMessage =
         "Installation complete. " + layout.displayName +
         " has been installed.\r\n\r\nOpen a new terminal to use PATH updates, or launch "
-        "ViperIDE from the Start Menu if shortcuts were enabled.";
+        "ZannaIDE from the Start Menu if shortcuts were enabled.";
     const std::string errorTitle = "Setup Error";
     const std::string errorMessage =
         "Installation could not be completed. Any in-progress changes were rolled back.\r\n\r\n"
-        "Details were written to:\r\n%TEMP%\\ViperInstaller-" +
+        "Details were written to:\r\n%TEMP%\\ZannaInstaller-" +
         registryIdFor(layout) + ".log";
     const uint32_t darkThemeOff = gen.embedStringW("DarkMode_Explorer");
     const WizardDibData wizardDib = buildWizardDib(layout);
@@ -5390,7 +5390,7 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     const uint32_t environmentKeyOff = gen.embedStringW(environmentKeyPathFor(layout));
     const uint32_t environmentOff = gen.embedStringW("Environment");
     const uint32_t regPathValueOff = gen.embedStringW("Path");
-    const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
+    const uint32_t regPathEntryOff = gen.embedStringW("ZAPSPathEntry");
     const uint32_t quietSlashOff = gen.embedStringW("/quiet");
     const uint32_t silentSlashOff = gen.embedStringW("/silent");
     const uint32_t quietDashOff = gen.embedStringW("-quiet");
@@ -5624,4 +5624,4 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

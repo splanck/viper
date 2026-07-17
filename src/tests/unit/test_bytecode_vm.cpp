@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "tests/common/PosixCompat.h"
-#include "viper/vm/RuntimeBridge.hpp"
+#include "zanna/vm/RuntimeBridge.hpp"
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -38,7 +38,7 @@
 
 using namespace il::core;
 using namespace il::build;
-using namespace viper::bytecode;
+using namespace zanna::bytecode;
 
 using il::core::BasicBlock;
 using il::runtime::signatures::make_signature;
@@ -548,7 +548,7 @@ static void assertArrayFastOpcodesPresent(const BytecodeFunction &function, Arra
 }
 
 /// @brief Build a bytecode-only module that exercises owned string stack operations.
-/// @details Each function leaves an `i1` result from `Viper.String.Equals`; this
+/// @details Each function leaves an `i1` result from `Zanna.String.Equals`; this
 ///          keeps returned runtime strings inside the VM so argument release and
 ///          stack-helper ownership transfers must balance correctly before the
 ///          test can halt.
@@ -567,9 +567,9 @@ static BytecodeModule createStringStackOpsModule() {
     const uint16_t cabIdx = static_cast<uint16_t>(bcModule.addString("CAB"));
     const uint16_t ababIdx = static_cast<uint16_t>(bcModule.addString("ABAB"));
     const uint16_t concatIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.String.Concat", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.String.Concat", 2, true));
     const uint16_t equalsIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.String.Equals", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.String.Equals", 2, true));
 
     auto appendEqualsReturn = [&](BytecodeFunction &fn, uint16_t expectedIdx) {
         fn.code.push_back(encodeOp16(BCOpcode::LOAD_STR, expectedIdx));
@@ -792,7 +792,7 @@ static Module createStringFieldLifetimeModule() {
     eq.result = b.reserveTempId();
     eq.op = Opcode::Call;
     eq.type = Type(Type::Kind::I1);
-    eq.callee = "Viper.String.Equals";
+    eq.callee = "Zanna.String.Equals";
     eq.operands.push_back(Value::temp(*current.result));
     eq.operands.push_back(Value::temp(*expected.result));
     eq.loc = {1, 1, 1};
@@ -1335,7 +1335,7 @@ static void test_runtime_bridge_string_aliasing() {
     uint32_t baseIdx = bcModule.addString("Whiskers");
     uint32_t infixIdx = bcModule.addString(" says ");
     uint32_t bangIdx = bcModule.addString("!");
-    uint32_t concatIdx = bcModule.addNativeFunc("Viper.String.Concat", 2, true);
+    uint32_t concatIdx = bcModule.addNativeFunc("Zanna.String.Concat", 2, true);
     assert(concatIdx == 0);
 
     BytecodeFunction func;
@@ -1409,11 +1409,11 @@ static void test_string_release_call_lifetime() {
     Module m;
     IRBuilder b(m);
 
-    b.addExtern("Viper.String.Concat",
+    b.addExtern("Zanna.String.Concat",
                 Type(Type::Kind::Str),
                 {Type(Type::Kind::Str), Type(Type::Kind::Str)});
     b.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    b.addExtern("Viper.String.Equals",
+    b.addExtern("Zanna.String.Equals",
                 Type(Type::Kind::I1),
                 {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
@@ -1449,7 +1449,7 @@ static void test_string_release_call_lifetime() {
     joined.result = b.reserveTempId();
     joined.op = Opcode::Call;
     joined.type = Type(Type::Kind::Str);
-    joined.callee = "Viper.String.Concat";
+    joined.callee = "Zanna.String.Concat";
     joined.operands.push_back(Value::temp(*left.result));
     joined.operands.push_back(Value::temp(*right.result));
     joined.loc = {1, 1, 1};
@@ -1499,7 +1499,7 @@ static void test_string_release_call_lifetime() {
     eq.result = b.reserveTempId();
     eq.op = Opcode::Call;
     eq.type = Type(Type::Kind::I1);
-    eq.callee = "Viper.String.Equals";
+    eq.callee = "Zanna.String.Equals";
     eq.operands.push_back(Value::temp(*reloaded.result));
     eq.operands.push_back(Value::temp(*expected.result));
     eq.loc = {1, 1, 1};
@@ -1915,7 +1915,7 @@ static void test_runtime_bridge_trap_dispatch() {
     bcModule.flags = 0;
 
     const uint16_t trapIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Core.Diagnostics.Trap", 1, false));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Core.Diagnostics.Trap", 1, false));
     bcModule.stringPool.push_back("boom");
 
     BytecodeFunction func;
@@ -2478,11 +2478,11 @@ static void test_thread_start_safe_reports_bytecode_trap() {
     bcModule.flags = 0;
 
     const uint16_t startSafeIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.StartSafe", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Threads.Thread.StartSafe", 2, true));
     const uint16_t safeJoinIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.SafeJoin", 1, false));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Threads.Thread.SafeJoin", 1, false));
     const uint16_t hasErrorIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.get_HasError", 1, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Threads.Thread.get_HasError", 1, true));
 
     BytecodeFunction worker;
     worker.name = "worker_trap";
@@ -2544,9 +2544,9 @@ static void test_async_run_owned_retains_bytecode_argument() {
     bcModule.flags = 0;
 
     const uint16_t asyncRunIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.RunOwned", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Threads.Async.RunOwned", 2, true));
     const uint16_t futureGetIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Future.Get", 1, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Zanna.Threads.Future.Get", 1, true));
     const uint16_t makeMarkerIdx =
         static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.make", 0, true));
     const uint16_t releaseMarkerIdx =
@@ -2760,8 +2760,8 @@ static void test_thread_start_owned_retains_bytecode_argument() {
         }
     };
 
-    runCase("Viper.Threads.Thread.StartOwned", "Viper.Threads.Thread.Join");
-    runCase("Viper.Threads.Thread.StartSafeOwned", "Viper.Threads.Thread.SafeJoin");
+    runCase("Zanna.Threads.Thread.StartOwned", "Zanna.Threads.Thread.Join");
+    runCase("Zanna.Threads.Thread.StartSafeOwned", "Zanna.Threads.Thread.SafeJoin");
 
     std::cout << "PASSED\n";
 }
@@ -2788,7 +2788,7 @@ static void test_branch_arguments_are_atomic() {
 
 /// @brief Main.
 int main() {
-    VIPER_DISABLE_ABORT_DIALOG();
+    ZANNA_DISABLE_ABORT_DIALOG();
     std::cout << "Running bytecode VM tests...\n";
 
     test_bytecode_encoding();

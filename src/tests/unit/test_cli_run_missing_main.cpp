@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -36,7 +36,7 @@ int main() {
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path tmpPath = fs::temp_directory_path();
-    tmpPath /= "viper-ilc-missing-main-" + std::to_string(stamp) + ".il";
+    tmpPath /= "zanna-ilc-missing-main-" + std::to_string(stamp) + ".il";
     {
         std::ofstream ofs(tmpPath);
         ofs << kModuleSource;

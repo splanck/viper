@@ -13,7 +13,7 @@ Decisions:
 
 Work:
 
-- migrate `Viper.Error.Set*`, `Clear*`, and `Raise*`;
+- migrate `Zanna.Error.Set*`, `Clear*`, and `Raise*`;
 - move or mark `Memory.Retain/Release` unsafe;
 - type weak refs and boxed values;
 - document ownership for all returned objects.
@@ -47,7 +47,7 @@ Work:
 - canonicalize `Len`, `LenSq`, `Norm`, `Dist`, scalar `Mul`;
 - add `LengthSquared`, `Normalize`, `Distance`, `Scale`;
 - add row/array/config constructors for matrices;
-- type all math object returns as `obj<Viper.Math.*>`.
+- type all math object returns as `obj<Zanna.Math.*>`.
 
 ## Text And Data
 
@@ -161,7 +161,7 @@ Decisions:
 
 Work:
 
-- decide `Viper.Audio` migration path;
+- decide `Zanna.Audio` migration path;
 - type sound/music/voice handles;
 - define result-returning load/open APIs;
 - add capability metadata for audio availability.

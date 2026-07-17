@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 // =========================================================================
 // Pure utility functions
@@ -66,14 +66,14 @@ std::optional<std::filesystem::path> findBuildDir();
 /// @brief Return the canonical path to the current executable when available.
 std::optional<std::filesystem::path> currentExecutablePath();
 
-/// @brief Resolve the installed library directory for the current Viper executable.
+/// @brief Resolve the installed library directory for the current Zanna executable.
 /// @details Searches explicit environment overrides, executable-relative layouts,
 ///          and platform standard locations before falling back to build-tree logic.
 std::optional<std::filesystem::path> findInstalledLibDir();
 
 /// @brief Scan assembly text for referenced runtime symbols (rt_* / _rt_*).
 /// @details Parses the assembly source for call/reference instructions targeting
-///          symbols matching the Viper runtime naming convention.
+///          symbols matching the Zanna runtime naming convention.
 /// @param text The assembly source text to scan.
 /// @return A set of unique runtime symbol names found in the text.
 std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text);
@@ -82,14 +82,14 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text);
 /// @details Prefers a discovered installed layout when the archive exists there,
 ///          then falls back to build-tree locations and final fallback probes.
 /// @param buildDir The CMake build directory containing compiled libraries.
-/// @param libBaseName Base name of the library (e.g., "viper_rt_core").
+/// @param libBaseName Base name of the library (e.g., "zanna_rt_core").
 /// @return The full path to the archive file (.a or .lib).
 std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName);
 
 /// @brief Compute the filesystem path to a non-runtime support library archive.
-/// @details Used for companion graphics/audio libraries such as vipergfx,
-///          vipergui, and viperaud. Prefers discovered installed layouts before
+/// @details Used for companion graphics/audio libraries such as zannagfx,
+///          zannagui, and zannaaud. Prefers discovered installed layouts before
 ///          build-tree fallback paths.
 std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName);
@@ -99,7 +99,7 @@ std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
 ///          `__std_*` helpers are object-code members of msvcprt.lib/msvcprtd.lib.
 ///          Those helper objects can depend on C runtime support objects from
 ///          msvcrt.lib/msvcrtd.lib, such as CPU-dispatch state.
-///          Viper's in-process linker must search that archive before it
+///          Zanna's in-process linker must search that archive before it
 ///          generates import thunks, otherwise binaries can import non-exported
 ///          helper names and fail during Windows loader startup.
 std::vector<std::filesystem::path> windowsMsvcCxxRuntimeArchives(
@@ -130,7 +130,7 @@ struct LinkContext {
     std::vector<std::pair<std::string, std::filesystem::path>>
         requiredArchives; ///< (lib name, archive path) pairs.
     /// True when the program references the Zia completion bridge
-    /// (rt_zia_* / Viper.Zia.*). The editor-service archive must then be
+    /// (rt_zia_* / Zanna.Zia.*). The editor-service archive must then be
     /// force-loaded so its strong symbols override the weak runtime stubs.
     bool needsZiaFrontend = false;
 };
@@ -195,4 +195,4 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
 /// @return The executable's exit code.
 int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err);
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

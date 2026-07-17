@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <cstddef>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Greedy trace block layout — follow JMP targets to maximize fall-through.
 void traceBlockLayout(MFunction &fn, PeepholeStats &stats);
@@ -45,4 +45,4 @@ void invertConditionalBranches(MFunction &fn, PeepholeStats &stats);
 /// @brief Remove jumps to the immediately following block.
 void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats);
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

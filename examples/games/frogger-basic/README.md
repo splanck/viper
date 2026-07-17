@@ -1,6 +1,6 @@
-# Frogger - Text-Based Game in Viper BASIC
+# Frogger - Text-Based Game in Zanna BASIC
 
-A complete implementation of the classic Frogger game using Viper BASIC's OOP features, ANSI graphics, and modular file inclusion.
+A complete implementation of the classic Frogger game using Zanna BASIC's OOP features, ANSI graphics, and modular file inclusion.
 
 ## Features Demonstrated
 
@@ -35,7 +35,7 @@ Reach the goal to score 100 points. You have 3 lives.
 
 ## Technical Notes
 
-This game was created as a stress test for Viper BASIC during development to validate:
+This game was created as a stress test for Zanna BASIC during development to validate:
 
 1. **Nested objects**: Frog contains a Position object
 2. **Object lifetime management**: Proper reference counting with nested method calls
@@ -52,7 +52,7 @@ This game was created as a stress test for Viper BASIC during development to val
 ## Development
 
 Created: 2025-11-18
-Purpose: Comprehensive OOP and features stress test for Viper BASIC
+Purpose: Comprehensive OOP and features stress test for Zanna BASIC
 Lines of Code: ~450 across 3 modules
 Classes: 3 (Position, Frog, Car)
 Objects: 9 (1 frog + 8 cars)

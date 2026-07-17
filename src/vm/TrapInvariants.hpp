@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -93,7 +93,7 @@
 // In release builds, trap invariant violations terminate with a diagnostic
 // instead of silently continuing.  These checks run only on trap paths,
 // not in hot loops, so the performance cost is negligible.
-#define VIPER_TRAP_ASSERT(condition, message)                                                      \
+#define ZANNA_TRAP_ASSERT(condition, message)                                                      \
     do {                                                                                           \
         if (!(condition)) {                                                                        \
             std::fprintf(stderr, "TRAP INVARIANT VIOLATED: %s\n", (message));                      \
@@ -102,16 +102,16 @@
     } while (0)
 #else
 /// @brief Assert a trap invariant in debug builds.
-#define VIPER_TRAP_ASSERT(condition, message) assert((condition) && (message))
+#define ZANNA_TRAP_ASSERT(condition, message) assert((condition) && (message))
 
 /// @brief Assert that an active VM is installed when expected.
-#define VIPER_TRAP_REQUIRE_ACTIVE_VM()                                                             \
-    VIPER_TRAP_ASSERT(il::vm::VM::activeInstance() != nullptr,                                     \
+#define ZANNA_TRAP_REQUIRE_ACTIVE_VM()                                                             \
+    ZANNA_TRAP_ASSERT(il::vm::VM::activeInstance() != nullptr,                                     \
                       "Trap path requires an active VM via ActiveVMGuard")
 
 /// @brief Assert that no stale trap token exists.
-#define VIPER_TRAP_REQUIRE_NO_STALE_TOKEN()                                                        \
-    VIPER_TRAP_ASSERT(il::vm::vm_current_trap_token() == nullptr,                                  \
+#define ZANNA_TRAP_REQUIRE_NO_STALE_TOKEN()                                                        \
+    ZANNA_TRAP_ASSERT(il::vm::vm_current_trap_token() == nullptr,                                  \
                       "Stale trap token exists; call vm_clear_trap_token() first")
 #endif
 

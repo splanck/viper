@@ -1,4 +1,4 @@
-' timer_demo.bas - Comprehensive API audit for Viper.Game.Timer
+' timer_demo.bas - Comprehensive API audit for Zanna.Game.Timer
 ' Tests: New, Start, StartRepeating, Stop, Reset, Update,
 '        IsRunning, IsExpired, IsRepeating, Elapsed, Remaining, Progress, Duration
 
@@ -7,7 +7,7 @@ PRINT "=== Timer API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM t AS OBJECT
-t = Viper.Game.Timer.New()
+t = Zanna.Game.Timer.New()
 PRINT t.IsRunning    ' 0
 PRINT t.IsExpired    ' 0
 PRINT t.IsRepeating  ' 0

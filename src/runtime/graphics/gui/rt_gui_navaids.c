@@ -1,17 +1,17 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/gui/rt_gui_navaids.c
 // Purpose: Navigation/overview GUI widgets — Breadcrumb (path navigation) and
-//          Minimap (document overview) — for the Viper runtime. Split out of
+//          Minimap (document overview) — for the Zanna runtime. Split out of
 //          rt_gui_features.c; shares GUI types via rt_gui_internal.h.
 //
 // Key invariants:
-//   - Mirrors rt_gui_features.c's VIPER_ENABLE_GRAPHICS guard: real widgets
+//   - Mirrors rt_gui_features.c's ZANNA_ENABLE_GRAPHICS guard: real widgets
 //     when graphics is enabled, no-op stubs otherwise.
 //   - Widgets are self-contained — no cross-feature coupling (the command
 //     palette interaction stays with drag-and-drop in rt_gui_features.c).
@@ -27,7 +27,7 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 //=============================================================================
 // Phase 8: Breadcrumb Implementation
@@ -766,7 +766,7 @@ void rt_minimap_clear_markers(void *minimap) {
 
 //=============================================================================
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — no runtime minimaps require source synchronization.
 void rt_minimap_sync_app(void *app_ptr) {
@@ -953,4 +953,4 @@ void rt_minimap_clear_markers(void *minimap) {
     (void)minimap;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

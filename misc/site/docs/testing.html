@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Testing Guide — Viper</title>
-  <meta name="description" content="Viper documentation: Testing Guide">
+  <title>Testing Guide — Zanna</title>
+  <meta name="description" content="Zanna documentation: Testing Guide">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -52,7 +52,7 @@
   <main class="page-main prose">
     <h1>Testing Guide</h1>
 <h1 id="testing-guide">Testing Guide</h1>
-<p>This document describes the testing infrastructure for the Viper compiler stack. The test suite</p>
+<p>This document describes the testing infrastructure for the Zanna compiler stack. The test suite</p>
 <p>contains 1,300+ tests across unit, golden, end-to-end, differential, conformance, and fuzz</p>
 <p>categories.</p>
 <h2 id="test-suite-overview">Test Suite Overview</h2>
@@ -78,8 +78,8 @@ Fuzz Tests (src/tests/fuzz/)
 <h2 id="running-tests">Running Tests</h2>
 <pre><code data-lang="bash">
 # Build and run all tests
-./scripts/build_viper_unix.sh   # macOS &amp; Linux
-scripts\build_viper.cmd         # Windows
+./scripts/build_zanna_unix.sh   # macOS &amp; Linux
+scripts\build_zanna.cmd         # Windows
 
 # Run all tests (after building)
 ctest --test-dir build
@@ -248,10 +248,10 @@ ctest --test-dir build --print-labels
 #include &quot;common/ILGenerator.hpp&quot;
 
 // Create generator with specific seed for reproducibility
-viper::tests::ILGenerator generator(12345);
+zanna::tests::ILGenerator generator(12345);
 
 // Configure generation
-viper::tests::ILGeneratorConfig config;
+zanna::tests::ILGeneratorConfig config;
 config.minInstructions = 5;
 config.maxInstructions = 15;
 config.includeComparisons = true;
@@ -356,7 +356,7 @@ ctest --test-dir build -R diff_vm_native_property --output-on-failure
 </code></pre>
 <h3 id="test-iterations">Test Iterations</h3>
 <p>By default, the test runs 10 iterations per test case. You can override this with</p>
-<p><code>VIPER_DIFF_ITERATIONS</code> (e.g., <code>VIPER_DIFF_ITERATIONS=50</code> for local fuzzing). Each iteration:</p>
+<p><code>ZANNA_DIFF_ITERATIONS</code> (e.g., <code>ZANNA_DIFF_ITERATIONS=50</code> for local fuzzing). Each iteration:</p>
 <ol>
 <li>Generates a new IL program from a unique seed</li>
 <li>Verifies the IL</li>
@@ -444,7 +444,7 @@ int64_t result = fixture.run(module);
 <td>No exception thrown</td>
 </tr>
 <tr>
-<td>`VIPER_TEST_SKIP(reason)`</td>
+<td>`ZANNA_TEST_SKIP(reason)`</td>
 <td>—</td>
 <td>Skip test with reason</td>
 </tr>
@@ -457,7 +457,7 @@ int64_t result = fixture.run(module);
 </ul>
 <h3 id="fixtures-test-f">Fixtures (TEST_F)</h3>
 <pre><code data-lang="cpp">
-class MyFixture : public viper_test::TestFixture {
+class MyFixture : public zanna_test::TestFixture {
 protected:
     void SetUp() override { /* before each test */ }
     void TearDown() override { /* after each test */ }
@@ -479,8 +479,8 @@ TEST(MySuite, MyTest) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&amp;argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&amp;argc, argv);
+    return zanna_test::run_all_tests();
 }
 </code></pre>
 <h3 id="golden-error-test">Golden Error Test</h3>
@@ -496,7 +496,7 @@ _golden_basic_run(my_run_test ${_DIR} my_program my_program.stdout)
 <h3 id="il-verifier-negative-test">IL Verifier Negative Test</h3>
 <p>Add a <code>.il</code> + <code>.expected</code> file pair in <code>src/tests/il/negatives/</code>, then register:</p>
 <pre><code data-lang="cmake">
-viper_add_ctest(il_verify_negative_my_case
+zanna_add_ctest(il_verify_negative_my_case
     ${CMAKE_COMMAND} -DIL_VERIFY=${IL_VERIFY}
     -DFILE=${_DIR}/my_case.il -DEXPECT_FILE=${_DIR}/my_case.expected
     -P ${_DIR}/check_negative.cmake)
@@ -537,18 +537,18 @@ func main() {
 <li>Runtime callbacks preserve thread-local context</li>
 <li>Trap reports include correct VM context</li>
 </ul>
-<p><code>Viper.Threads</code> adds additional tests that verify shared-memory threading semantics:</p>
+<p><code>Zanna.Threads</code> adds additional tests that verify shared-memory threading semantics:</p>
 <ul>
-<li>FIFO-fair, re-entrant monitor behavior (<code>Viper.Threads.Monitor</code>)</li>
-<li>Thread lifecycle and join timeouts (<code>Viper.Threads.Thread</code>)</li>
-<li>FIFO-serialized safe variables (<code>Viper.Threads.SafeI64</code>)</li>
-<li>VM thread start override (<code>Viper.Threads.Thread.Start</code>) and shared globals behavior</li>
+<li>FIFO-fair, re-entrant monitor behavior (<code>Zanna.Threads.Monitor</code>)</li>
+<li>Thread lifecycle and join timeouts (<code>Zanna.Threads.Thread</code>)</li>
+<li>FIFO-serialized safe variables (<code>Zanna.Threads.SafeI64</code>)</li>
+<li>VM thread start override (<code>Zanna.Threads.Thread.Start</code>) and shared globals behavior</li>
 </ul>
 <h3 id="stress-test">Stress Test</h3>
 <p>Located in <code>src/tests/unit/test_vm_concurrency_stress.cpp</code>. Exercises:</p>
 <ul>
 <li>Multiple VMs running concurrently across threads</li>
-<li>Runtime function callbacks (e.g., <code>Viper.Math.AbsInt</code>)</li>
+<li>Runtime function callbacks (e.g., <code>Zanna.Math.AbsInt</code>)</li>
 <li>Rapid VM creation and destruction</li>
 <li>Nested <code>ActiveVMGuard</code> usage</li>
 </ul>
@@ -618,8 +618,8 @@ TSAN_OPTIONS=&quot;suppressions=tsan.supp&quot; ./build-tsan/src/tests/test_vm_c
 <li>**Clean state**: After VM::run() completes, thread-local state is cleared</li>
 </ul>
 <h3 id="defined-vs-undefined-threaded-programs">Defined vs Undefined Threaded Programs</h3>
-<p>Viper’s VM/native determinism guarantee applies to <strong>defined</strong> threaded programs: shared mutable state must be accessed</p>
-<p>via <code>Viper.Threads.Monitor</code> (or the <code>Viper.Threads.Safe*</code> wrappers). Programs with data races are <strong>undefined</strong> (VM and</p>
+<p>Zanna’s VM/native determinism guarantee applies to <strong>defined</strong> threaded programs: shared mutable state must be accessed</p>
+<p>via <code>Zanna.Threads.Monitor</code> (or the <code>Zanna.Threads.Safe*</code> wrappers). Programs with data races are <strong>undefined</strong> (VM and</p>
 <p>native are not required to match).</p>
 <p>---</p>
 <h2 id="golden-file-update-workflow">Golden File Update Workflow</h2>
@@ -637,13 +637,13 @@ TSAN_OPTIONS=&quot;suppressions=tsan.supp&quot; ./build-tsan/src/tests/test_vm_c
 <p>The script runs each golden test, skips those already passing, and re-runs failures with</p>
 <p><code>UPDATE_GOLDEN=1</code> to overwrite expected output files with actual output.</p>
 <h2 id="fuzz-testing">Fuzz Testing</h2>
-<p>Fuzz harnesses are in <code>src/tests/fuzz/</code> (requires <code>VIPER_ENABLE_FUZZ=ON</code>):</p>
+<p>Fuzz harnesses are in <code>src/tests/fuzz/</code> (requires <code>ZANNA_ENABLE_FUZZ=ON</code>):</p>
 <ul>
 <li><code>fuzz_zia_lexer.cpp</code> — Zia lexer fuzzing via libFuzzer</li>
 <li><code>fuzz_zia_parser.cpp</code> — Zia parser fuzzing via libFuzzer</li>
 </ul>
 <pre><code data-lang="bash">
-cmake -S . -B build-fuzz -DVIPER_ENABLE_FUZZ=ON
+cmake -S . -B build-fuzz -DZANNA_ENABLE_FUZZ=ON
 cmake --build build-fuzz --target fuzz_zia_lexer
 ./build-fuzz/src/tests/fuzz_zia_lexer corpus/ -max_len=4096
 </code></pre>
@@ -680,13 +680,13 @@ cmake --build build-fuzz --target fuzz_zia_lexer
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

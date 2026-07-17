@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - All buffers are fixed-size thread-local storage owned by this module.
 //   - Getter functions allocate rt_string values for script-facing access.
-// Links: rt_asset_error.h, docs/viperlib/graphics/rendering3d.md
+// Links: rt_asset_error.h, docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 

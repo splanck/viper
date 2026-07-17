@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "MachineIR.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Lower a single IL instruction to MIR.
 /// @details This function handles a subset of opcodes that have been extracted
@@ -38,4 +38,4 @@ bool lowerInstruction(const il::core::Instr &ins,
                       LoweringContext &ctx,
                       std::size_t bbOutIdx);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

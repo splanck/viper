@@ -14,11 +14,11 @@
 // =============================================================================
 module savegame;
 
-bind Viper.IO.File as File;
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.Path as Path;
-bind Viper.Data.Json as Json;
-bind Viper.Collections.Map as Map;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.Path as Path;
+bind Zanna.Data.Json as Json;
+bind Zanna.Collections.Map as Map;
 bind "../config" as config;
 
 class SaveManager {

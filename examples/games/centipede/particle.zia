@@ -1,5 +1,5 @@
 // =============================================================================
-// CENTIPEDE - Particle System (using Viper.Game.ParticleEmitter)
+// CENTIPEDE - Particle System (using Zanna.Game.ParticleEmitter)
 // =============================================================================
 // Visual effects for explosions, sparks, and other game events.
 // Wraps the runtime ParticleEmitter API with named preset functions.
@@ -9,8 +9,8 @@ module particle;
 
 bind "./config";
 
-bind Viper.Graphics;
-bind Viper.Game.ParticleEmitter as PE;
+bind Zanna.Graphics;
+bind Zanna.Game.ParticleEmitter as PE;
 
 // =============================================================================
 // PARTICLE SYSTEM ENTITY - Runtime-backed particle effects

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //          hot loop blocks contain no frame traffic.
 // Key invariants:
 //   - Pinned vregs map to callee-saved registers and never spill.
-//   - VIPER_NO_GLOBAL_RA=1 restores the legacy spill-home behaviour.
+//   - ZANNA_NO_GLOBAL_RA=1 restores the legacy spill-home behaviour.
 // Ownership/Lifetime: Builds transient MFunctions per test invocation.
 // Links: src/codegen/common/ra/GlobalPinning.hpp,
 //        src/codegen/x86_64/ra/Allocator.cpp
@@ -31,7 +31,7 @@
 #include "codegen/x86_64/TargetX64.hpp"
 
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
 namespace {
 
@@ -120,10 +120,10 @@ TEST(X86GlobalRA, PinsLoopCarriedChainToOneCalleeSavedRegister) {
 }
 
 TEST(X86GlobalRA, EscapeHatchRestoresSpillHomes) {
-    setenv("VIPER_NO_GLOBAL_RA", "1", 1);
+    setenv("ZANNA_NO_GLOBAL_RA", "1", 1);
     struct EnvReset {
         ~EnvReset() {
-            unsetenv("VIPER_NO_GLOBAL_RA");
+            unsetenv("ZANNA_NO_GLOBAL_RA");
         }
     } envReset;
 
@@ -137,6 +137,6 @@ TEST(X86GlobalRA, EscapeHatchRestoresSpillHomes) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,8 +1,8 @@
 module RestClientDemo;
-bind Viper.Terminal;
-bind Viper.Network.RestClient as RestClient;
+bind Zanna.Terminal;
+bind Zanna.Network.RestClient as RestClient;
 func start() {
-    Say("=== API Audit: Viper.Network.RestClient ===");
+    Say("=== API Audit: Zanna.Network.RestClient ===");
 
     Say("--- New ---");
     var rc = RestClient.New("https://api.example.com");

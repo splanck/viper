@@ -1,7 +1,7 @@
 il 0.1
-extern @Viper.Memory.Alloc(i64) -> ptr
-extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Terminal.PrintStr(str) -> void
+extern @Zanna.Memory.Alloc(i64) -> ptr
+extern @Zanna.Terminal.PrintF64(f64) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
 
 global const str @.L0 = "DONE"
 
@@ -18,7 +18,7 @@ entry:
 
   %n0 = load i64, %n_slot
   %bytes = imul.ovf %n0, 8
-  %abase = call @Viper.Memory.Alloc(%bytes)
+  %abase = call @Zanna.Memory.Alloc(%bytes)
   store ptr, %a_slot, %abase
   br label loop_head
 
@@ -51,9 +51,9 @@ done:
   %fsum = sitofp %sum2
   %fn = sitofp %n2
   %avg = fdiv %fsum, %fn
-  call @Viper.Terminal.PrintF64(%avg)
+  call @Zanna.Terminal.PrintF64(%avg)
 
   %d = const_str @.L0
-  call @Viper.Terminal.PrintStr(%d)
+  call @Zanna.Terminal.PrintStr(%d)
   ret 0
 }

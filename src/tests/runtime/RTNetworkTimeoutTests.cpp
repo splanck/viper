@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -80,7 +80,7 @@ static void test_tcp_recv_timeout() {
 
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
+    addr.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0; // Let OS assign port
 
     int rc = bind(listener, (struct sockaddr *)&addr, sizeof(addr));

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include <string>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 /// Helper: build a JsonRpcRequest from method, params, and id.
 static JsonRpcRequest makeReq(const std::string &method,
@@ -226,7 +226,7 @@ TEST(McpHandler, ToolsCallCheck) {
          JsonValue::object({
              {"source",
               JsonValue("module Test;\nfunc start() {\n    var x = 42;\n    "
-                        "Viper.Terminal.SayInt(x);\n}\n")},
+                        "Zanna.Terminal.SayInt(x);\n}\n")},
          })},
     });
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
@@ -247,7 +247,7 @@ TEST(McpHandler, ToolsCallCheckEmitsStructuredDiagnostics) {
          JsonValue::object({
              {"source",
               JsonValue("module Test;\nfunc start() {\n    var count = 1;\n    var x = cout;\n"
-                        "    Viper.Terminal.SayInt(x + count);\n}\n")},
+                        "    Zanna.Terminal.SayInt(x + count);\n}\n")},
          })},
     });
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
@@ -290,7 +290,7 @@ TEST(McpHandler, ToolsCallCompile) {
          JsonValue::object({
              {"source",
               JsonValue("module Test;\nfunc start() {\n    var x = 42;\n    "
-                        "Viper.Terminal.SayInt(x);\n}\n")},
+                        "Zanna.Terminal.SayInt(x);\n}\n")},
          })},
     });
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
@@ -308,7 +308,7 @@ TEST(McpHandler, ToolsCallCompletions) {
         {"name", JsonValue("zia/completions")},
         {"arguments",
          JsonValue::object({
-             {"source", JsonValue("module Test;\nfunc start() {\n    Viper.\n}\n")},
+             {"source", JsonValue("module Test;\nfunc start() {\n    Zanna.\n}\n")},
              {"line", JsonValue(3)},
              {"col", JsonValue(11)},
          })},
@@ -340,7 +340,7 @@ TEST(McpHandler, ToolsCallSymbols) {
          JsonValue::object({
              {"source",
               JsonValue("module Test;\nfunc start() {\n    var x = 42;\n    "
-                        "Viper.Terminal.SayInt(x);\n}\n")},
+                        "Zanna.Terminal.SayInt(x);\n}\n")},
          })},
     });
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
@@ -451,12 +451,12 @@ TEST(McpHandler, ToolsCallRuntimeClasses) {
     const auto &classes = parsed["classes"];
     for (std::size_t i = 0; i < classes.size(); ++i) {
         const auto &runtimeClass = classes.at(i);
-        if (runtimeClass["qname"].asString() != "Viper.Terminal")
+        if (runtimeClass["qname"].asString() != "Zanna.Terminal")
             continue;
         EXPECT_EQ(runtimeClass["documentation"]["format"].asString(), "markdown");
         EXPECT_TRUE(runtimeClass["documentation"]["summary"].asString().find(
                         "terminal input, output, styling") != std::string::npos);
-        EXPECT_TRUE(runtimeClass["documentation"]["details"].asString().find("`Viper.Terminal`") !=
+        EXPECT_TRUE(runtimeClass["documentation"]["details"].asString().find("`Zanna.Terminal`") !=
                     std::string::npos);
         foundAuthoredDocumentation = true;
         break;
@@ -471,7 +471,7 @@ TEST(McpHandler, ToolsCallRuntimeMethods) {
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/runtime-methods")},
-        {"arguments", JsonValue::object({{"className", JsonValue("Viper.Terminal")}})},
+        {"arguments", JsonValue::object({{"className", JsonValue("Zanna.Terminal")}})},
     });
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     auto text = resp["result"]["content"].at(0)["text"].asString();
@@ -531,6 +531,6 @@ TEST(McpHandler, ToolsCallMissingSourceRejected) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

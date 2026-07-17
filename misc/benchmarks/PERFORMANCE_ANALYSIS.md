@@ -1,4 +1,4 @@
-# Viper Performance Deep Dive Analysis
+# Zanna Performance Deep Dive Analysis
 
 **Date:** 2025-01-13
 **Revision:** Comprehensive investigation with code-level analysis
@@ -94,7 +94,7 @@ cmp x0, #1       ; cset removed by DCE
 
 ## Executive Summary
 
-Viper native code is **3.7x slower than C -O2** and **1.8x slower than C -O0** (improved from 4.9x and 2.4x). The VM is **~750x slower than native**. This analysis identifies the root causes and provides prioritized recommendations.
+Zanna native code is **3.7x slower than C -O2** and **1.8x slower than C -O0** (improved from 4.9x and 2.4x). The VM is **~750x slower than native**. This analysis identifies the root causes and provides prioritized recommendations.
 
 ### Performance Hierarchy (fib(45))
 
@@ -102,9 +102,9 @@ Viper native code is **3.7x slower than C -O2** and **1.8x slower than C -O0** (
 |----------------|------|----------|
 | C -O2 | 2.02s | 1.0x |
 | C -O0 | 4.11s | 2.0x |
-| **Viper Native** | **7.50s** | **3.7x** |
+| **Zanna Native** | **7.50s** | **3.7x** |
 | Python | 83.08s | 41x |
-| Viper VM | ~1500s* | ~750x |
+| Zanna VM | ~1500s* | ~750x |
 
 *Estimated from fib(35) scaling
 
@@ -114,9 +114,9 @@ Viper native code is **3.7x slower than C -O2** and **1.8x slower than C -O0** (
 
 ### 1.1 Generated Code Quality Analysis
 
-Comparing Viper's fib() output to Clang -O2:
+Comparing Zanna's fib() output to Clang -O2:
 
-| Metric | Viper | Clang -O2 | Impact |
+| Metric | Zanna | Clang -O2 | Impact |
 |--------|-------|-----------|--------|
 | Stack frame | 112 bytes | 32 bytes | 3.5x more stack pressure |
 | Callee-saved regs | 5 (x19-x23) | 2 (x19-x20) | 2.5x more saves/restores |
@@ -125,7 +125,7 @@ Comparing Viper's fib() output to Clang -O2:
 
 ### 1.2 Specific Code Issues
 
-**Viper's fib() prologue/epilogue (25 instructions):**
+**Zanna's fib() prologue/epilogue (25 instructions):**
 ```asm
 _fib:
   stp x29, x30, [sp, #-16]!      ; Save FP/LR
@@ -159,7 +159,7 @@ _fib:
 
 #### Issue 1: Excessive Register Spilling
 ```asm
-; Viper stores EVERY intermediate to stack:
+; Zanna stores EVERY intermediate to stack:
 entry_0_fib:
   str x0, [x29, #-24]           ; Store argument
   ldr x8, [x29, #-24]           ; Load it back immediately!
@@ -199,7 +199,7 @@ The second recursive call `return fib(n-1) + fib(n-2)` could use tail-call for f
 **Cost:** Full frame setup/teardown for every call
 
 #### Issue 6: No Loop Conversion
-Clang converts one recursive branch to a loop (LBB0_3). Viper does naive double recursion.
+Clang converts one recursive branch to a loop (LBB0_3). Zanna does naive double recursion.
 
 **Potential savings:** 30-40% for this specific pattern
 
@@ -413,7 +413,7 @@ The IL optimizer and runtime are **not the problem**. The VM is slow but that's 
 |----------------|-------------------------|
 | C -O2 | 14 |
 | C -O0 | 28 |
-| **Viper** | **52** |
+| **Zanna** | **52** |
 
 ### Stack Memory per Call
 
@@ -421,12 +421,12 @@ The IL optimizer and runtime are **not the problem**. The VM is slow but that's 
 |----------------|-------|
 | C -O2 | 32 |
 | C -O0 | 48 |
-| **Viper** | **112** |
+| **Zanna** | **112** |
 
 ---
 
 ## Conclusion
 
-Viper native performance can realistically reach **1.5-2x of C -O0** (currently 2.4x slower) with Tier 1 fixes. Reaching C -O2 parity would require Tier 2-3 investments.
+Zanna native performance can realistically reach **1.5-2x of C -O0** (currently 2.4x slower) with Tier 1 fixes. Reaching C -O2 parity would require Tier 2-3 investments.
 
 **Recommended immediate action:** Start with register allocator fixes (Tier 1, items 1-3) for fastest ROI.

@@ -22,7 +22,7 @@ and apply live unless a transition is explicitly documented.
 | HUD Detail | Minimal, Standard, Full; minimap appears only in Full |
 | Aim Assist | Off, Standard, Strong; expands projectile target tolerance without changing damage |
 
-Linux currently treats controller vibration as a no-op through Viper's platform
+Linux currently treats controller vibration as a no-op through Zanna's platform
 adapter. This does not affect input or progression.
 
 ## Difficulty profiles

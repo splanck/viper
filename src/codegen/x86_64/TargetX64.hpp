@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <array>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Enumerates the physical registers recognised by the SysV AMD64 ABI.
 /// \details Covers the 64-bit general-purpose registers and the XMM vector register file.
@@ -137,7 +137,7 @@ inline constexpr std::size_t kMaxFPArgs = kMaxFPArgsSysV;
 
 /// \brief Captures the architectural contract for an x86-64 ABI.
 /// \invariant Vectors are populated once during singleton creation and remain constant.
-struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, 6, 8> {
+struct TargetInfo : zanna::codegen::common::TargetInfoBase<PhysReg, 6, 8> {
     /// \brief Whether the ABI specifies a red zone.
     /// Phase A: do not rely on red zone.
     bool hasRedZone{true};
@@ -168,4 +168,4 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, 6, 8> {
 /// \brief Provides the canonical AT&T name of a physical register.
 [[nodiscard]] const char *regName(PhysReg reg) noexcept;
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

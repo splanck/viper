@@ -1,0 +1,113 @@
+module zannaide_completion_native_probe;
+
+bind Zanna.Zia.Completion as ZiaCompletion;
+bind Zanna.Zia.Toolchain as ZiaToolchain;
+bind Zanna.Collections.Map as Map;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.String as Str;
+bind Zanna.Terminal as Terminal;
+
+// Regression probe for the ZannaIDE IntelliSense fix.
+//
+// Built via `zanna codegen arm64 --native-asm --native-link`, this binary
+// must resolve the STRONG rt_zia_* symbols from fe_zia (force-loaded), not
+// the weak "unavailable" stubs in zanna_rt_base. Before the fix the native
+// linker only pulled the weak stub, so completion returned a "link fe_zia"
+// payload and CheckForFile returned empty — i.e. dead IntelliSense.
+//
+// It also validates the premise the IDE-side module-synthesis fix relies on:
+// the Zia engine yields nothing for a buffer with no `module` declaration,
+// and real results once a synthetic `module` line is prepended.
+
+func contains(haystack: String, needle: String) -> Boolean {
+    return Str.IndexOf(haystack, needle) > 0;
+}
+
+func looksLikeStub(s: String) -> Boolean {
+    return contains(s, "link fe_zia") or contains(s, "completion unavailable")
+        or contains(s, "completion engine unavailable");
+}
+
+func start() {
+    // (1) Completion on a valid module must return real, non-stub items.
+    var goodSrc = "module Probe;\nfunc greet() -> Integer { return 1; }\n";
+    var r1 = ZiaCompletion.CompleteForFile(goodSrc, "probe.zia", 2, 30);
+    if Str.get_Length(r1) == 0 or looksLikeStub(r1) {
+        Terminal.Say("RESULT: fail completion");
+        return;
+    }
+
+    // (2) Checking invalid code must yield a diagnostic. The weak stub
+    //     returns an empty stream, so non-empty here proves the real
+    //     analyzer (fe_zia) is linked.
+    var badSrc = "module Probe;\nfunc f() -> Integer { return ; }\n";
+    var r2 = ZiaCompletion.CheckForFile(badSrc, "probe.zia");
+    if Str.get_Length(r2) == 0 {
+        Terminal.Say("RESULT: fail diagnostics");
+        return;
+    }
+
+    // (2b) Structured diagnostics and compile results must be available
+    //      without parsing display strings.
+    var structured = ZiaToolchain.CheckForFile(badSrc, "probe.zia");
+    if Seq.get_Count(structured) == 0 {
+        Terminal.Say("RESULT: fail structured diagnostics");
+        return;
+    }
+    var firstDiag = Seq.Get(structured, 0);
+    if Map.GetStr(firstDiag, "file") != "probe.zia" {
+        Terminal.Say("RESULT: fail structured diagnostic path");
+        return;
+    }
+    if Map.GetInt(firstDiag, "line") <= 0 or Map.GetInt(firstDiag, "column") <= 0 {
+        Terminal.Say("RESULT: fail structured diagnostic location");
+        return;
+    }
+    if Map.GetInt(firstDiag, "severity") != 0 {
+        Terminal.Say("RESULT: fail structured diagnostic severity");
+        return;
+    }
+    if Str.get_Length(Map.GetStr(firstDiag, "message")) == 0 {
+        Terminal.Say("RESULT: fail structured diagnostic message");
+        return;
+    }
+
+    var badCompile = ZiaToolchain.CompileForFile(badSrc, "probe.zia");
+    if Map.GetBool(badCompile, "success") != false {
+        Terminal.Say("RESULT: fail invalid compile success");
+        return;
+    }
+    var compileDiags = Map.Get(badCompile, "diagnostics");
+    if Seq.get_Count(compileDiags) == 0 {
+        Terminal.Say("RESULT: fail invalid compile diagnostics");
+        return;
+    }
+
+    var goodCompile = ZiaToolchain.CompileForFile(goodSrc, "probe.zia");
+    if Map.GetBool(goodCompile, "success") == false {
+        Terminal.Say("RESULT: fail valid compile success");
+        return;
+    }
+    if Str.get_Length(Map.GetStr(goodCompile, "il")) == 0 {
+        Terminal.Say("RESULT: fail valid compile il");
+        return;
+    }
+
+    // (3) Module-synthesis premise: a bare buffer with no `module` line
+    //     yields no completion from the real engine; prepending a synthetic
+    //     `module` line (what the IDE's zia_query helper does) restores it.
+    var bare = "func g() -> Integer { return 2; }\n";
+    var rb = ZiaCompletion.CompleteForFile(bare, "p.zia", 1, 10);
+    if looksLikeStub(rb) {
+        Terminal.Say("RESULT: fail stub-on-bare");
+        return;
+    }
+    var wrapped = "module __ide__;\n" + bare;
+    var rw = ZiaCompletion.CompleteForFile(wrapped, "p.zia", 2, 10);
+    if Str.get_Length(rw) == 0 or looksLikeStub(rw) {
+        Terminal.Say("RESULT: fail wrap");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

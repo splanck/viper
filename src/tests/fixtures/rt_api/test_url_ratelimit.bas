@@ -1,8 +1,8 @@
 ' test_url_ratelimit.bas — Network.Url, Network.RateLimiter
 
 ' --- Url: parse ---
-DIM u AS Viper.Network.Url
-u = Viper.Network.Url.Parse("https://user:pass@example.com:8080/path/to?key=val&a=b#frag")
+DIM u AS Zanna.Network.Url
+u = Zanna.Network.Url.Parse("https://user:pass@example.com:8080/path/to?key=val&a=b#frag")
 PRINT "scheme: "; u.Scheme
 PRINT "host: "; u.Host
 PRINT "port: "; u.Port
@@ -21,21 +21,21 @@ PRINT "get key: "; u.GetQueryParam("key")
 PRINT "has miss: "; u.HasQueryParam("miss")
 
 ' --- Url: static methods ---
-PRINT "encode: "; Viper.Network.Url.Encode("hello world&foo=bar")
-PRINT "decode: "; Viper.Network.Url.Decode("hello%20world%26foo%3Dbar")
-PRINT "isvalid: "; Viper.Network.Url.IsValid("https://example.com")
-PRINT "isvalid bad: "; Viper.Network.Url.IsValid("not a url")
+PRINT "encode: "; Zanna.Network.Url.Encode("hello world&foo=bar")
+PRINT "decode: "; Zanna.Network.Url.Decode("hello%20world%26foo%3Dbar")
+PRINT "isvalid: "; Zanna.Network.Url.IsValid("https://example.com")
+PRINT "isvalid bad: "; Zanna.Network.Url.IsValid("not a url")
 
 ' --- Url: simple parse ---
-DIM u2 AS Viper.Network.Url
-u2 = Viper.Network.Url.Parse("http://localhost/api/v1")
+DIM u2 AS Zanna.Network.Url
+u2 = Zanna.Network.Url.Parse("http://localhost/api/v1")
 PRINT "u2 scheme: "; u2.Scheme
 PRINT "u2 host: "; u2.Host
 PRINT "u2 path: "; u2.Path
 
 ' --- RateLimiter ---
-DIM rl AS Viper.Network.RateLimiter
-rl = Viper.Network.RateLimiter.New(5, 10)
+DIM rl AS Zanna.Network.RateLimiter
+rl = Zanna.Network.RateLimiter.New(5, 10)
 PRINT "rl available: "; rl.Available
 PRINT "rl max: "; rl.Max
 PRINT "rl try1: "; rl.TryAcquire()

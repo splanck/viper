@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "il/core/Module.hpp"
 
-namespace viper::passes {
+namespace zanna::passes {
 
 /// @brief Statistics collected during memory-to-register promotion.
 /// @details Tracks the number of allocas promoted to SSA temporaries and
@@ -43,4 +43,4 @@ struct Mem2RegStats {
 ///        false so standalone calls follow the pass manager's deterministic policy.
 void mem2reg(il::core::Module &M, Mem2RegStats *stats = nullptr, bool enableParallel = false);
 
-} // namespace viper::passes
+} // namespace zanna::passes

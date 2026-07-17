@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -10,7 +10,7 @@
 // programs. The registry enables the compiler to generate type-correct IL for
 // runtime calls and provides optimization metadata for analysis passes.
 //
-// Viper's runtime library provides essential services: memory management, string
+// Zanna's runtime library provides essential services: memory management, string
 // operations, array access, file I/O, and mathematical functions. Each runtime
 // helper has a stable C ABI signature that IL programs must respect. This file
 // defines the canonical registry mapping helper names to their signatures and

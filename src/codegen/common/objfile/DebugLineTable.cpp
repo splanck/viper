@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 using linker::encoding::writeLE16;
 using linker::encoding::writeLE32;
@@ -297,4 +297,4 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
     return out;
 }
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

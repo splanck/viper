@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,8 +50,8 @@ void syncToStmtBoundary();
 
 /// @brief Check if a token kind is a "soft identifier" (identifier or contextual keyword).
 /// @details Keywords like COLOR, FLOOR, RANDOM, NEXT, BASE, COS, SIN, POW, and APPEND can be
-///          used as identifiers in contexts like qualified names (Viper.Terminal.Color,
-///          Viper.Random.Next) or as variable/field names (DIM base AS INTEGER).
+///          used as identifiers in contexts like qualified names (Zanna.Terminal.Color,
+///          Zanna.Random.Next) or as variable/field names (DIM base AS INTEGER).
 ///          This allows them to be treated as identifiers when not in keyword context.
 /// @param k Token kind to test.
 /// @return True if the token can be treated as an identifier in appropriate contexts.
@@ -61,7 +61,7 @@ static bool isSoftIdentToken(TokenKind k) {
         case TokenKind::KeywordColor:
         case TokenKind::KeywordFloor:
         case TokenKind::KeywordRandom:
-        case TokenKind::KeywordNext: // BUG-OOP-040: For Viper.Random.Next()
+        case TokenKind::KeywordNext: // BUG-OOP-040: For Zanna.Random.Next()
         case TokenKind::KeywordBase: // BUG-OOP-042: Allow "base" as variable/field name
         case TokenKind::KeywordCos:
         case TokenKind::KeywordSin:
@@ -75,7 +75,7 @@ static bool isSoftIdentToken(TokenKind k) {
 
 /// @brief Check if a token kind can appear as a member/qualified name segment.
 /// @details This accepts identifiers and keywords after a dot to support runtime
-///          namespaces like Viper.IO.File.Delete or Viper.Threads.Thread.Sleep.
+///          namespaces like Zanna.IO.File.Delete or Zanna.Threads.Thread.Sleep.
 /// @param k Token kind to test.
 /// @return True if the token can be treated as an identifier after '.'.
 static bool isMemberIdentToken(TokenKind k) {

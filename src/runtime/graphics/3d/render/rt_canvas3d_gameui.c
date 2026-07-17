@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 //   misc/plans/3d_overhaul/08-ui-toolkit-3d.md
 //
 //===----------------------------------------------------------------------===//
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -136,4 +136,4 @@ void canvas3d_register_gameui_ops(void) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard_canvas3d_gameui;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

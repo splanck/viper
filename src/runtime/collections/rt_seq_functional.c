@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -96,7 +96,7 @@ void *rt_seq_find_where_wrapper(void *seq, void *pred) {
 /// @brief IL trampoline for sentinel-free `Seq.FindWhereOption`.
 /// @param seq Sequence object.
 /// @param pred Opaque predicate function pointer.
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_seq_find_where_option_wrapper(void *seq, void *pred) {
     return rt_seq_find_where_option(seq, (predicate_fn)pred);
 }

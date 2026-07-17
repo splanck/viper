@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,8 +25,8 @@
 /// @brief Runtime class metadata and unified signature registry for all frontends.
 ///
 /// @details This file defines the data structures and interfaces for runtime
-/// class metadata, enabling all Viper frontends to access type information
-/// about runtime library classes like Viper.String, Viper.File, etc.
+/// class metadata, enabling all Zanna frontends to access type information
+/// about runtime library classes like Zanna.String, Zanna.File, etc.
 ///
 /// ## Architecture Overview
 ///
@@ -56,7 +56,7 @@
 ///
 /// The catalog is a statically-initialized vector of RuntimeClass descriptors.
 /// Each descriptor contains:
-/// - Qualified name (e.g., "Viper.String")
+/// - Qualified name (e.g., "Zanna.String")
 /// - Type ID for runtime type identification
 /// - Properties with getter/setter targets
 /// - Methods with signature strings
@@ -683,7 +683,7 @@ enum class RuntimeTypeId : std::size_t {
 struct RuntimeProperty {
     const char *name{nullptr};   ///< Property name (e.g., "Length").
     const char *type{nullptr};   ///< IL scalar type (e.g., "i64", "i1").
-    const char *getter{nullptr}; ///< Canonical extern target (e.g., "Viper.String.get_Length").
+    const char *getter{nullptr}; ///< Canonical extern target (e.g., "Zanna.String.get_Length").
     const char *setter{nullptr}; ///< Canonical extern target or nullptr if read-only.
     bool readonly{false};        ///< True if setter is nullptr.
 };
@@ -692,12 +692,12 @@ struct RuntimeProperty {
 struct RuntimeMethod {
     const char *name{nullptr};      ///< Method name (e.g., "Substring").
     const char *signature{nullptr}; ///< Signature string in compact IL grammar.
-    const char *target{nullptr};    ///< Canonical extern target (e.g., "Viper.String.Substring").
+    const char *target{nullptr};    ///< Canonical extern target (e.g., "Zanna.String.Substring").
 };
 
 /// @brief Describes a runtime class and its members.
 struct RuntimeClass {
-    const char *qname{nullptr};   ///< Fully-qualified name (e.g., "Viper.String").
+    const char *qname{nullptr};   ///< Fully-qualified name (e.g., "Zanna.String").
     const char *layout{nullptr};  ///< Layout descriptor (opaque until object model defined).
     const char *ctor{nullptr};    ///< Optional ctor helper extern; may be nullptr.
     const char *summary{nullptr}; ///< Short authored class description.
@@ -744,8 +744,8 @@ struct ParsedSignature {
     /// a typed sequence/collection type instead of an opaque pointer.
     std::string elementTypeName;
 
-    /// @brief Runtime class name for typed object returns (e.g. "Viper.Audio.Sound"
-    /// from "obj<Viper.Sound.Sound>").
+    /// @brief Runtime class name for typed object returns (e.g. "Zanna.Audio.Sound"
+    /// from "obj<Zanna.Sound.Sound>").
     /// @details Empty for plain obj/ptr returns. When non-empty, frontends should surface
     /// the return value as that concrete runtime class instead of an opaque pointer.
     std::string objectTypeName;
@@ -784,7 +784,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig);
 
 /// @brief Recover a concrete runtime class name from a parsed object-return signature.
 /// @details Returns the fully-qualified runtime class for signatures that carry
-///          object or container annotations such as `obj<Viper.Result>(...)`
+///          object or container annotations such as `obj<Zanna.Result>(...)`
 ///          and `seq<str>(...)`. Returns an empty string when the signature
 ///          does not identify a concrete runtime class.
 /// @param sig Parsed runtime signature to inspect.
@@ -804,7 +804,7 @@ ILScalarType mapILToken(std::string_view tok);
 /// ## Usage
 /// ```cpp
 /// const auto& reg = RuntimeRegistry::instance();
-/// auto method = reg.findMethod("Viper.String", "Substring", 2);
+/// auto method = reg.findMethod("Zanna.String", "Substring", 2);
 /// if (method) {
 ///     // method->signature.returnType, method->signature.params
 /// }
@@ -815,7 +815,7 @@ class RuntimeRegistry {
     static const RuntimeRegistry &instance();
 
     /// @brief Find a method by class, name, and arity.
-    /// @param classQName Fully-qualified class name (e.g., "Viper.String").
+    /// @param classQName Fully-qualified class name (e.g., "Zanna.String").
     /// @param methodName Method name (e.g., "Substring").
     /// @param arity Number of parameters (excluding receiver).
     /// @return Parsed method info if found, nullopt otherwise.
@@ -833,7 +833,7 @@ class RuntimeRegistry {
                                                              std::string_view propertyName) const;
 
     /// @brief Find a function signature by canonical extern name.
-    /// @param canonicalName Full extern name (e.g., "Viper.String.Substring").
+    /// @param canonicalName Full extern name (e.g., "Zanna.String.Substring").
     /// @return Parsed signature if found, nullopt otherwise.
     /// @note Comparison is case-insensitive.
     [[nodiscard]] std::optional<ParsedSignature> findFunction(std::string_view canonicalName) const;
@@ -875,7 +875,7 @@ class RuntimeRegistry {
 const std::vector<RuntimeClass> &runtimeClassCatalog();
 
 /// @brief Find a runtime class by its fully-qualified name.
-/// @param qname Fully-qualified class name (e.g., "Viper.String").
+/// @param qname Fully-qualified class name (e.g., "Zanna.String").
 /// @returns Pointer to the matching RuntimeClass, or nullptr if not found.
 /// @note Comparison is case-insensitive.
 const RuntimeClass *findRuntimeClassByQName(std::string_view qname);

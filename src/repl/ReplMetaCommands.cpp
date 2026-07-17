@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <cctype>
 #include <iostream>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 void ReplMetaCommands::registerCommand(
     const std::string &name,
@@ -99,4 +99,4 @@ void ReplMetaCommands::printHelp() const {
     }
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

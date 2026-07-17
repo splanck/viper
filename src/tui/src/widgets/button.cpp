@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 /// @brief Construct a button with label text, callback, and theme reference.
 ///
 /// @details The label is stored by value while the click handler and theme are
@@ -86,4 +86,4 @@ bool Button::wantsFocus() const {
     return true;
 }
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

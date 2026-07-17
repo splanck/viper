@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # CODEMAP: Tools
 
-Command-line tools (`src/tools/`) for the Viper toolchain.
+Command-line tools (`src/tools/`) for the Zanna toolchain.
 
 ## Overview
 
@@ -18,7 +18,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 | File             | Purpose                                  |
 |------------------|------------------------------------------|
-| `cli_compat.cpp` | Compatibility shim for viper integration |
+| `cli_compat.cpp` | Compatibility shim for zanna integration |
 | `main.cpp`       | BASIC VM/compiler entry point            |
 | `usage.cpp`      | Help text implementation                 |
 | `usage.hpp`      | Help text and usage information          |
@@ -27,7 +27,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 | File             | Purpose                                  |
 |------------------|------------------------------------------|
-| `cli_compat.cpp` | Compatibility shim for viper integration |
+| `cli_compat.cpp` | Compatibility shim for zanna integration |
 | `main.cpp`       | Zia VM/compiler entry point              |
 | `usage.cpp`      | Help text implementation                 |
 | `usage.hpp`      | Help text and usage information          |
@@ -36,7 +36,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 | File             | Purpose                                  |
 |------------------|------------------------------------------|
-| `cli_compat.cpp` | Compatibility shim for viper integration |
+| `cli_compat.cpp` | Compatibility shim for zanna integration |
 | `main.cpp`       | IL program runner entry point            |
 
 ### il-verify (`il-verify/`)
@@ -94,7 +94,7 @@ BASIC language server (reuses lsp-common infrastructure).
 
 ## Advanced Tools
 
-### viper (`viper/`)
+### zanna (`zanna/`)
 
 | File                    | Purpose                             |
 |-------------------------|-------------------------------------|
@@ -114,7 +114,7 @@ BASIC language server (reuses lsp-common infrastructure).
 | `cmd_explain.cpp`       | Diagnostic-code catalog subcommand  |
 | `cmd_init.cpp`          | Init subcommand implementation      |
 | `cmd_install_package.cpp` | Toolchain installer packaging CLI |
-| `cmd_package.cpp`       | Package subcommand (VAPS)           |
+| `cmd_package.cpp`       | Package subcommand (ZAPS)           |
 | `cmd_repl.cpp`          | Interactive REPL subcommand         |
 | `cmd_run.cpp`           | Run/build/check subcommand implementation |
 | `cmd_run_il.cpp`        | IL execution subcommand             |
@@ -241,7 +241,7 @@ BASIC language server (reuses lsp-common infrastructure).
 
 | File                | Purpose                                            |
 |---------------------|----------------------------------------------------|
-| `AssetCompiler.cpp` | Project asset → VPA compilation impl               |
+| `AssetCompiler.cpp` | Project asset → ZPAK compilation impl               |
 | `AssetCompiler.hpp` | Project asset compiler (`embed`/`pack` directives) |
-| `VpaWriter.cpp`     | VPA (Viper Pack Archive) writer impl               |
-| `VpaWriter.hpp`     | VPA pack archive writer                            |
+| `ZpakWriter.cpp`     | ZPAK (Zanna Pack Archive) writer impl               |
+| `ZpakWriter.hpp`     | ZPAK pack archive writer                            |

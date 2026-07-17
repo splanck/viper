@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_seq.h
-// Purpose: Runtime-backed dynamic sequence for Viper.Collections.Seq, providing O(1) amortized
+// Purpose: Runtime-backed dynamic sequence for Zanna.Collections.Seq, providing O(1) amortized
 // append, O(1) indexed access, and functional operations (map, filter, reduce).
 //
 // Key invariants:
@@ -172,7 +172,7 @@ int64_t rt_seq_find(void *obj, void *val);
 ///          is absent or @p obj is NULL.
 /// @param obj Opaque Seq object pointer, or NULL.
 /// @param val Element to find (compared by pointer equality).
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_seq_find_option(void *obj, void *val);
 
 /// @brief Check if the sequence contains an element.
@@ -187,7 +187,7 @@ void rt_seq_reverse(void *obj);
 
 /// @brief Shuffle the elements in the sequence in place.
 /// @details Uses an in-place Fisher–Yates shuffle driven by the same deterministic RNG as
-///          Viper.Random.NextInt (so Viper.Random.Seed influences the result).
+///          Zanna.Random.NextInt (so Zanna.Random.Seed influences the result).
 /// @param obj Opaque Seq object pointer.
 void rt_seq_shuffle(void *obj);
 
@@ -314,7 +314,7 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *));
 ///          conflating it with absence.
 /// @param obj Opaque Seq object pointer. If NULL, returns None.
 /// @param pred Predicate function. If NULL, returns first element as Some or None when empty.
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_seq_find_where_option(void *obj, int8_t (*pred)(void *));
 
 /// @brief Create a new Seq with the first N elements.

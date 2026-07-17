@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::installer {
+namespace zanna::installer {
 namespace {
 
 constexpr int kIdUserScope = 1101;
@@ -270,7 +270,7 @@ std::wstring dependencySummary() {
         result += dependency.label;
         result += dependency.available ? L" detected\r\n" : L" not detected\r\n";
     }
-    result += L"\r\nViper itself is self-contained. Setup never downloads optional companions.";
+    result += L"\r\nZanna itself is self-contained. Setup never downloads optional companions.";
     return result;
 }
 
@@ -315,7 +315,7 @@ int showTaskDialog(HINSTANCE instance,
     } else {
         config.dwFlags |= TDF_USE_HICON_MAIN;
         config.hMainIcon = static_cast<HICON>(LoadImageW(instance,
-                                                         MAKEINTRESOURCEW(IDI_VIPER_INSTALLER),
+                                                         MAKEINTRESOURCEW(IDI_ZANNA_INSTALLER),
                                                          IMAGE_ICON,
                                                          0,
                                                          0,
@@ -373,18 +373,18 @@ void checkUpdatesInteractive(HINSTANCE instance, const HostPackage &package) {
     try {
         showUpdateResult(instance, package, checkForUpdates(package));
     } catch (const std::exception &error) {
-        const std::wstring message = L"Viper could not check for updates.\r\n\r\n" +
+        const std::wstring message = L"Zanna could not check for updates.\r\n\r\n" +
                                      utf8ToWide(error.what()) +
                                      L"\r\n\r\nNo files were downloaded or changed.";
         MessageBoxW(nullptr,
                     message.c_str(),
-                    L"Viper Update Check",
+                    L"Zanna Update Check",
                     MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
 }
 
 struct ComponentControl {
-    const viper::pkg::WindowsInstallerComponentMetadata *metadata{nullptr};
+    const zanna::pkg::WindowsInstallerComponentMetadata *metadata{nullptr};
     HWND checkbox{nullptr};
 };
 
@@ -467,7 +467,7 @@ void browseForDestination(CustomDialogContext &context) {
     if (FAILED(dialog->GetOptions(&flags)) ||
         FAILED(dialog->SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
                                   FOS_PATHMUSTEXIST | FOS_DONTADDTORECENT)) ||
-        FAILED(dialog->SetTitle(L"Choose the Viper installation folder"))) {
+        FAILED(dialog->SetTitle(L"Choose the Zanna installation folder"))) {
         throw std::runtime_error("cannot configure the Windows folder picker");
     }
     fs::path initial(current);
@@ -515,7 +515,7 @@ void updateAssociationControl(CustomDialogContext &context) {
     const std::string associationPath = context.package->metadata.associationExecutable;
     const auto payload = std::find_if(context.package->metadata.payloadFiles.begin(),
                                       context.package->metadata.payloadFiles.end(),
-                                      [&](const viper::pkg::WindowsInstallerPayloadMetadata &file) {
+                                      [&](const zanna::pkg::WindowsInstallerPayloadMetadata &file) {
                                           return file.path == associationPath;
                                       });
     if (payload != context.package->metadata.payloadFiles.end() && !payload->componentId.empty()) {
@@ -556,7 +556,7 @@ void acceptCustomDialog(CustomDialogContext &context) {
     if (destination.empty()) {
         MessageBoxW(context.window,
                     L"Choose an installation folder.",
-                    L"Viper Tools Setup",
+                    L"Zanna Tools Setup",
                     MB_OK | MB_ICONWARNING);
         return;
     }
@@ -778,14 +778,14 @@ ATOM registerCustomWindowClass(HINSTANCE instance) {
     windowClass.lpfnWndProc = customWindowProcedure;
     windowClass.hInstance = instance;
     windowClass.hIcon = static_cast<HICON>(LoadImageW(instance,
-                                                      MAKEINTRESOURCEW(IDI_VIPER_INSTALLER),
+                                                      MAKEINTRESOURCEW(IDI_ZANNA_INSTALLER),
                                                       IMAGE_ICON,
                                                       0,
                                                       0,
                                                       LR_DEFAULTSIZE | LR_SHARED));
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    windowClass.lpszClassName = L"ViperInstallerOptionsWindowV2";
+    windowClass.lpszClassName = L"ZannaInstallerOptionsWindowV2";
     windowClass.hIconSm = windowClass.hIcon;
     const ATOM atom = RegisterClassExW(&windowClass);
     if (!atom && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
@@ -843,8 +843,8 @@ bool showCustomDialog(HINSTANCE instance,
     const int windowWidth = std::min(requestedWidth, maximumWidth);
     const int windowHeight = std::min(requestedHeight, maximumHeight);
     context.window = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT,
-                                     L"ViperInstallerOptionsWindowV2",
-                                     L"Customize Viper Tools Setup",
+                                     L"ZannaInstallerOptionsWindowV2",
+                                     L"Customize Zanna Tools Setup",
                                      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX |
                                          WS_MAXIMIZEBOX | WS_VSCROLL | WS_HSCROLL,
                                      CW_USEDEFAULT,
@@ -866,7 +866,7 @@ bool showCustomDialog(HINSTANCE instance,
     SendMessageW(brandIcon,
                  STM_SETICON,
                  reinterpret_cast<WPARAM>(LoadImageW(instance,
-                                                     MAKEINTRESOURCEW(IDI_VIPER_INSTALLER),
+                                                     MAKEINTRESOURCEW(IDI_ZANNA_INSTALLER),
                                                      IMAGE_ICON,
                                                      scaled(32, dpi),
                                                      scaled(32, dpi),
@@ -1005,7 +1005,7 @@ bool showCustomDialog(HINSTANCE instance,
     HWND pathOption = createControl(context,
                                     0,
                                     L"BUTTON",
-                                    L"Add the Viper bin folder to PATH (owned and reversible)",
+                                    L"Add the Zanna bin folder to PATH (owned and reversible)",
                                     BS_AUTOCHECKBOX | WS_TABSTOP,
                                     30,
                                     integrationY,
@@ -1016,7 +1016,7 @@ bool showCustomDialog(HINSTANCE instance,
     HWND associationOption = createControl(context,
                                            0,
                                            L"BUTTON",
-                                           L"Add safe Open With entries for Viper source files",
+                                           L"Add safe Open With entries for Zanna source files",
                                            BS_AUTOCHECKBOX | WS_TABSTOP,
                                            30,
                                            integrationY + 29,
@@ -1199,15 +1199,15 @@ bool configureInstallerWizard(HINSTANCE instance,
                 {kMaintenanceModify,
                  L"Modify installed features\nChoose components and developer integrations."},
                 {kMaintenanceRepair,
-                 L"Repair Viper\nVerify and restore all selected files and registrations."},
+                 L"Repair Zanna\nVerify and restore all selected files and registrations."},
                 {kMaintenanceRemove,
-                 L"Uninstall Viper\nRemove every Viper-owned file and registration."}};
+                 L"Uninstall Zanna\nRemove every Zanna-owned file and registration."}};
             if (!package.metadata.updateManifestUrl.empty())
                 actions.push_back({kMaintenanceUpdate,
                                    L"Check for updates\nQuery the pinned signed update service."});
             const int selected = showTaskDialog(instance,
                                                 title,
-                                                L"Maintain your Viper installation",
+                                                L"Maintain your Zanna installation",
                                                 L"Choose an operation. Files you added inside the "
                                                 L"installation folder are preserved during repair "
                                                 L"and removal.",
@@ -1262,7 +1262,7 @@ bool configureInstallerWizard(HINSTANCE instance,
                            L"\">Project website</a>";
             const int selected = showTaskDialog(instance,
                                                 title,
-                                                L"Welcome to Viper",
+                                                L"Welcome to Zanna",
                                                 content,
                                                 choices,
                                                 TDCBF_CANCEL_BUTTON,
@@ -1299,7 +1299,7 @@ bool configureInstallerWizard(HINSTANCE instance,
         PCWSTR icon = nullptr;
         if (options.operation == Operation::Uninstall) {
             instruction = L"Ready to remove " + utf8ToWide(package.metadata.displayName);
-            content = L"Viper-owned files, shortcuts, PATH registration, and Open With entries "
+            content = L"Zanna-owned files, shortcuts, PATH registration, and Open With entries "
                       L"will be removed. Unowned files are preserved.";
             icon = TD_WARNING_ICON;
         } else if (options.operation == Operation::Repair) {
@@ -1329,7 +1329,7 @@ bool configureInstallerWizard(HINSTANCE instance,
             bool licenseAccepted = false;
             const std::wstring verification =
                 options.operation == Operation::Install && !package.licenseText.empty()
-                    ? L"I have read and accept the Viper license terms."
+                    ? L"I have read and accept the Zanna license terms."
                     : L"";
             const int ready = showTaskDialog(instance,
                                              title,
@@ -1369,16 +1369,16 @@ int runInstallerProgress(HINSTANCE instance,
     std::wstring action;
     switch (operation) {
         case Operation::Uninstall:
-            action = L"Removing Viper";
+            action = L"Removing Zanna";
             break;
         case Operation::Repair:
-            action = L"Repairing Viper";
+            action = L"Repairing Zanna";
             break;
         case Operation::Modify:
             action = L"Updating selected features";
             break;
         default:
-            action = L"Installing Viper";
+            action = L"Installing Zanna";
             break;
     }
     ProgressContext context{work, &logger};
@@ -1394,7 +1394,7 @@ int runInstallerProgress(HINSTANCE instance,
     config.dwFlags = TDF_SHOW_MARQUEE_PROGRESS_BAR | TDF_CAN_BE_MINIMIZED | TDF_SIZE_TO_CONTENT |
                      TDF_USE_HICON_MAIN;
     config.hMainIcon = static_cast<HICON>(LoadImageW(instance,
-                                                     MAKEINTRESOURCEW(IDI_VIPER_INSTALLER),
+                                                     MAKEINTRESOURCEW(IDI_ZANNA_INSTALLER),
                                                      IMAGE_ICON,
                                                      0,
                                                      0,
@@ -1432,14 +1432,14 @@ void showInstallerFinish(HINSTANCE instance,
     const fs::path primary = installRoot / utf8ToWide(launchRelative);
     if (fs::is_regular_file(primary)) {
         actionLabels.push_back(package.metadata.productKind == "toolchain"
-                                   ? L"Launch ViperIDE"
+                                   ? L"Launch ZannaIDE"
                                    : L"Launch " + utf8ToWide(package.metadata.displayName));
         actions.push_back({kFinishLaunch, actionLabels.back().c_str()});
     }
     if (package.metadata.productKind == "toolchain") {
-        actions.push_back({kFinishPrompt, L"Open Viper Developer Prompt"});
+        actions.push_back({kFinishPrompt, L"Open Zanna Developer Prompt"});
         actions.push_back({kFinishQuickstart, L"Open the Windows quick start"});
-        if (fs::is_directory(installRoot / L"share" / L"viper" / L"samples"))
+        if (fs::is_directory(installRoot / L"share" / L"zanna" / L"samples"))
             actions.push_back({kFinishSamples, L"Explore installed samples"});
         actions.push_back(
             {kFinishCopyVerification, L"Copy verification command\nUse it in any new terminal."});
@@ -1450,22 +1450,22 @@ void showInstallerFinish(HINSTANCE instance,
     for (;;) {
         const int selected = showTaskDialog(instance,
                                             utf8ToWide(package.metadata.displayName) + L" Setup",
-                                            L"Viper is ready",
+                                            L"Zanna is ready",
                                             content,
                                             actions,
                                             static_cast<TASKDIALOG_COMMON_BUTTON_FLAGS>(0),
                                             TDF_USE_COMMAND_LINKS,
                                             nullptr);
         if (selected == kFinishCopyVerification) {
-            const fs::path viper = installRoot / L"bin" / L"viper.exe";
+            const fs::path zanna = installRoot / L"bin" / L"zanna.exe";
             try {
-                copyTextToClipboard(quoteCommandLineArgument(viper.wstring()) + L" --version");
+                copyTextToClipboard(quoteCommandLineArgument(zanna.wstring()) + L" --version");
                 content = L"Verification command copied to the clipboard. Paste it into a new "
                           L"terminal to confirm the installation.";
             } catch (const std::exception &error) {
                 content = L"Windows could not copy the verification command: " +
                           utf8ToWide(error.what()) + L"\r\n\r\nRun this command manually:\r\n" +
-                          quoteCommandLineArgument(viper.wstring()) + L" --version";
+                          quoteCommandLineArgument(zanna.wstring()) + L" --version";
             }
             continue;
         }
@@ -1477,4 +1477,4 @@ void showInstallerFinish(HINSTANCE instance,
     }
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer

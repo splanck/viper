@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_timeline.c
-// Purpose: Viper.Game3D.Timeline3D — the in-engine cutscene sequencer: camera
+// Purpose: Zanna.Game3D.Timeline3D — the in-engine cutscene sequencer: camera
 //   cuts and spline moves, FOV ramps, entity animation, audio, subtitles,
 //   letterbox/fade overlays, and polled event markers, ticked by the world's
 //   scaled time with skip/stop semantics and camera-controller suspension.

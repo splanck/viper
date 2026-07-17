@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Threads.Scheduler
+// API Audit: Zanna.Threads.Scheduler
 // =============================================================================
 // Tests: New, Schedule, Cancel, IsDue, Poll, Pending, Clear
 // =============================================================================
 
 module SchedulerDemo;
-bind Viper.Threads.Scheduler as Scheduler;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Scheduler as Scheduler;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Scheduler ===");
+    Say("=== API Audit: Zanna.Threads.Scheduler ===");
 
     // --- New ---
     Say("--- New ---");

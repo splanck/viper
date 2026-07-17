@@ -15,7 +15,7 @@
 '     redraws any mushroom that was underneath, so actors and terrain
 '     interleave correctly. This keeps the frame paint cost proportional
 '     to actors-in-motion rather than to field area.
-'   * NON-BLOCKING INPUT. `Viper.Terminal.PollKey()` returns "" when no key
+'   * NON-BLOCKING INPUT. `Zanna.Terminal.PollKey()` returns "" when no key
 '     is queued, so the loop ticks even when the player is idle — the
 '     centipede still advances. This is the canonical "real-time action
 '     game" input pattern. Contrast with the menu code below which uses
@@ -71,125 +71,125 @@ Dim SpiderSpawnTimer As Integer
 ' Pure rendering — does not consume input. The main program below reads
 ' the keypress after this returns.
 Sub ShowMainMenu()
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
 
     ' Title in bright green
-    Viper.Terminal.SetColor(10, 0)
-    Viper.Terminal.SetPosition(3, 15)
+    Zanna.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetPosition(3, 15)
     PRINT "+=================================+"
-    Viper.Terminal.SetPosition(4, 15)
+    Zanna.Terminal.SetPosition(4, 15)
     PRINT "|                                 |"
-    Viper.Terminal.SetPosition(5, 15)
+    Zanna.Terminal.SetPosition(5, 15)
     PRINT "|";
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT "       C E N T I P E D E       ";
-    Viper.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetColor(10, 0)
     PRINT "|"
-    Viper.Terminal.SetPosition(6, 15)
+    Zanna.Terminal.SetPosition(6, 15)
     PRINT "|                                 |"
-    Viper.Terminal.SetPosition(7, 15)
+    Zanna.Terminal.SetPosition(7, 15)
     PRINT "+=================================+"
 
     ' Centipede ASCII art
-    Viper.Terminal.SetColor(14, 0)
-    Viper.Terminal.SetPosition(9, 22)
+    Zanna.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(9, 22)
     PRINT "  <@@@@@@@@@@>"
-    Viper.Terminal.SetColor(6, 0)
-    Viper.Terminal.SetPosition(10, 22)
+    Zanna.Terminal.SetColor(6, 0)
+    Zanna.Terminal.SetPosition(10, 22)
     PRINT "  /|||||||||||\\"
 
     ' Menu options
-    Viper.Terminal.SetPosition(13, 22)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(13, 22)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "[1] ";
-    Viper.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetColor(10, 0)
     PRINT "NEW GAME"
 
-    Viper.Terminal.SetPosition(15, 22)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(15, 22)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "[2] ";
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT "INSTRUCTIONS"
 
-    Viper.Terminal.SetPosition(17, 22)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(17, 22)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "[3] ";
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "HIGH SCORES"
 
-    Viper.Terminal.SetPosition(19, 22)
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetPosition(19, 22)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT "[Q] ";
-    Viper.Terminal.SetColor(12, 0)
+    Zanna.Terminal.SetColor(12, 0)
     PRINT "QUIT"
 
     ' Footer
-    Viper.Terminal.SetColor(8, 0)
-    Viper.Terminal.SetPosition(22, 17)
-    PRINT "      Viper BASIC Demo 2024      "
+    Zanna.Terminal.SetColor(8, 0)
+    Zanna.Terminal.SetPosition(22, 17)
+    PRINT "      Zanna BASIC Demo 2024      "
 
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 End Sub
 
 ' === SHOW INSTRUCTIONS ===
 ' Static help screen: controls, objectives, scoring. Pure render — caller
 ' waits for a keypress via `WaitForKey` afterwards.
 Sub ShowInstructions()
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
 
     ' Title
-    Viper.Terminal.SetColor(11, 0)
-    Viper.Terminal.SetPosition(2, 20)
+    Zanna.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetPosition(2, 20)
     PRINT "=== INSTRUCTIONS ==="
 
     ' Controls section
-    Viper.Terminal.SetColor(14, 0)
-    Viper.Terminal.SetPosition(5, 10)
+    Zanna.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(5, 10)
     PRINT "CONTROLS:"
-    Viper.Terminal.SetColor(7, 0)
-    Viper.Terminal.SetPosition(7, 12)
+    Zanna.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetPosition(7, 12)
     PRINT "W / Up Arrow    - Move up"
-    Viper.Terminal.SetPosition(8, 12)
+    Zanna.Terminal.SetPosition(8, 12)
     PRINT "S / Down Arrow  - Move down"
-    Viper.Terminal.SetPosition(9, 12)
+    Zanna.Terminal.SetPosition(9, 12)
     PRINT "A / Left Arrow  - Move left"
-    Viper.Terminal.SetPosition(10, 12)
+    Zanna.Terminal.SetPosition(10, 12)
     PRINT "D / Right Arrow - Move right"
-    Viper.Terminal.SetPosition(11, 12)
+    Zanna.Terminal.SetPosition(11, 12)
     PRINT "SPACE           - Fire bullet"
-    Viper.Terminal.SetPosition(12, 12)
+    Zanna.Terminal.SetPosition(12, 12)
     PRINT "Q               - Quit to menu"
 
     ' Objectives section
-    Viper.Terminal.SetColor(14, 0)
-    Viper.Terminal.SetPosition(15, 10)
+    Zanna.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(15, 10)
     PRINT "OBJECTIVE:"
-    Viper.Terminal.SetColor(7, 0)
-    Viper.Terminal.SetPosition(17, 12)
+    Zanna.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetPosition(17, 12)
     PRINT "Destroy the centipede before it reaches you!"
-    Viper.Terminal.SetPosition(18, 12)
+    Zanna.Terminal.SetPosition(18, 12)
     PRINT "Shoot mushrooms to clear a path."
-    Viper.Terminal.SetPosition(19, 12)
+    Zanna.Terminal.SetPosition(19, 12)
     PRINT "Watch out for the spider!"
 
     ' Scoring section
-    Viper.Terminal.SetColor(14, 0)
-    Viper.Terminal.SetPosition(22, 10)
+    Zanna.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(22, 10)
     PRINT "SCORING:"
-    Viper.Terminal.SetColor(10, 0)
-    Viper.Terminal.SetPosition(24, 12)
+    Zanna.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetPosition(24, 12)
     PRINT "Centipede Segment: 10 pts"
-    Viper.Terminal.SetPosition(25, 12)
+    Zanna.Terminal.SetPosition(25, 12)
     PRINT "Mushroom:           1 pt"
-    Viper.Terminal.SetPosition(26, 12)
+    Zanna.Terminal.SetPosition(26, 12)
     PRINT "Spider:            50 pts"
 
     ' Press any key prompt
-    Viper.Terminal.SetColor(12, 0)
-    Viper.Terminal.SetPosition(29, 15)
+    Zanna.Terminal.SetColor(12, 0)
+    Zanna.Terminal.SetPosition(29, 15)
     PRINT "Press any key to return to menu..."
 
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 End Sub
 
 ' === SHOW HIGH SCORES ===
@@ -197,23 +197,23 @@ End Sub
 ' prompt. The scoreboard data was loaded by `Scores = New ScoreBoard` in
 ' the main program at the bottom of this file.
 Sub ShowHighScores()
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
     Scores.Draw(3)
 
     ' Press any key prompt
-    Viper.Terminal.SetColor(12, 0)
-    Viper.Terminal.SetPosition(22, 15)
+    Zanna.Terminal.SetColor(12, 0)
+    Zanna.Terminal.SetPosition(22, 15)
     PRINT "Press any key to return to menu..."
-    Viper.Terminal.SetColor(7, 0)
+    Zanna.Terminal.SetColor(7, 0)
 End Sub
 
 ' === WAIT FOR KEY ===
 ' Blocking keypress wait. Used by menu screens that want to pause until
-' the user acknowledges. Distinct from `Viper.Terminal.PollKey()` used in
+' the user acknowledges. Distinct from `Zanna.Terminal.PollKey()` used in
 ' the main loop, which is non-blocking.
 Sub WaitForKey()
     Dim k As String
-    k = Viper.Terminal.ReadKey()
+    k = Zanna.Terminal.ReadKey()
 End Sub
 
 ' === GAME INPUT ===
@@ -226,13 +226,13 @@ Function ReadGameKey() As String
     Dim prefix As String
     Dim code As String
 
-    k = Viper.Terminal.PollKey()
+    k = Zanna.Terminal.PollKey()
     If k <> CHR(27) Then Return k
 
-    prefix = Viper.Terminal.ReadKeyFor(5)
+    prefix = Zanna.Terminal.ReadKeyFor(5)
     If prefix <> "[" And prefix <> "O" Then Return k
 
-    code = Viper.Terminal.ReadKeyFor(5)
+    code = Zanna.Terminal.ReadKeyFor(5)
     If code = "A" Then Return "UP"
     If code = "B" Then Return "DOWN"
     If code = "C" Then Return "RIGHT"
@@ -268,15 +268,15 @@ End Sub
 ' the field (borders + mushrooms), and stamp the level indicator in the
 ' corner. The main loop after this only does dirty updates.
 Sub DrawGameScreen()
-    Viper.Terminal.Clear()
+    Zanna.Terminal.Clear()
     ThePlayer.DrawHUD()
     TheField.DrawField()
 
     ' Level indicator
-    Viper.Terminal.SetPosition(1, FIELD_LEFT + 35)
-    Viper.Terminal.SetColor(14, 0)
+    Zanna.Terminal.SetPosition(1, FIELD_LEFT + 35)
+    Zanna.Terminal.SetColor(14, 0)
     PRINT "LVL:"
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT CurrentLevel
 End Sub
 
@@ -287,26 +287,26 @@ End Sub
 ' hardcoded for simplicity — a production version would prompt for a
 ' 3-letter arcade name.
 Sub ShowGameOver()
-    Viper.Terminal.SetPosition(12, FIELD_LEFT + 10)
-    Viper.Terminal.SetColor(12, 0)
+    Zanna.Terminal.SetPosition(12, FIELD_LEFT + 10)
+    Zanna.Terminal.SetColor(12, 0)
     PRINT "*** GAME OVER ***"
 
-    Viper.Terminal.SetPosition(14, FIELD_LEFT + 8)
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetPosition(14, FIELD_LEFT + 8)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT "Final Score: "
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT ThePlayer.Score
 
     ' Check for high score
     If Scores.IsHighScore(ThePlayer.Score) = 1 Then
-        Viper.Terminal.SetPosition(16, FIELD_LEFT + 5)
-        Viper.Terminal.SetColor(14, 0)
+        Zanna.Terminal.SetPosition(16, FIELD_LEFT + 5)
+        Zanna.Terminal.SetColor(14, 0)
         PRINT "NEW HIGH SCORE!"
         Scores.AddScore("YOU", ThePlayer.Score)
     End If
 
-    Viper.Terminal.SetPosition(18, FIELD_LEFT + 5)
-    Viper.Terminal.SetColor(8, 0)
+    Zanna.Terminal.SetPosition(18, FIELD_LEFT + 5)
+    Zanna.Terminal.SetColor(8, 0)
     PRINT "Press any key..."
     WaitForKey()
 End Sub
@@ -316,17 +316,17 @@ End Sub
 ' delay rather than waiting for input — the player shouldn't have to
 ' confirm; the game just advances.
 Sub ShowLevelComplete()
-    Viper.Terminal.SetPosition(12, FIELD_LEFT + 8)
-    Viper.Terminal.SetColor(10, 0)
+    Zanna.Terminal.SetPosition(12, FIELD_LEFT + 8)
+    Zanna.Terminal.SetColor(10, 0)
     PRINT "*** LEVEL COMPLETE ***"
 
-    Viper.Terminal.SetPosition(14, FIELD_LEFT + 10)
-    Viper.Terminal.SetColor(11, 0)
+    Zanna.Terminal.SetPosition(14, FIELD_LEFT + 10)
+    Zanna.Terminal.SetColor(11, 0)
     PRINT "Score: "
-    Viper.Terminal.SetColor(15, 0)
+    Zanna.Terminal.SetColor(15, 0)
     PRINT ThePlayer.Score
 
-    Viper.Time.Clock.Sleep(1500)
+    Zanna.Time.Clock.Sleep(1500)
 End Sub
 
 ' === MAIN GAME LOOP ===
@@ -500,7 +500,7 @@ Sub PlayGame()
         ThePlayer.Draw()
 
         ' Frame delay
-        Viper.Time.Clock.Sleep(30)
+        Zanna.Time.Clock.Sleep(30)
     Loop
 End Sub
 
@@ -535,7 +535,7 @@ running = 1
 
 Do While running = 1
     ShowMainMenu()
-    choice = Viper.Terminal.ReadKey()
+    choice = Zanna.Terminal.ReadKey()
 
     If choice = "1" Then
         PlayGame()
@@ -550,6 +550,6 @@ Do While running = 1
     End If
 Loop
 
-Viper.Terminal.Clear()
-Viper.Terminal.SetPosition(1, 1)
+Zanna.Terminal.Clear()
+Zanna.Terminal.SetPosition(1, 1)
 PRINT "Thanks for playing CENTIPEDE!"

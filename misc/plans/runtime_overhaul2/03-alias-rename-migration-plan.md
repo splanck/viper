@@ -42,9 +42,9 @@ Add an audit that fails on:
 
 | Current names | Decision |
 |---|---|
-| `Viper.Memory.Retain/Release` and `Viper.Runtime.Unsafe.Retain/Release` | Canonical under `Runtime.Unsafe`; make `Memory` names legacy or remove. |
-| `Viper.Error.SetThrowMsg/ClearThrowMsg/SetTrapFields/RaiseKind` and `Runtime.Unsafe.*` | Canonical mutation under `Runtime.Unsafe`; user-facing read-only diagnostics under `Diagnostics`. |
-| `Viper.Runtime.GC.*` and `Viper.Runtime.GC.*` | Pick one root. Prefer `Runtime.GC` for runtime machinery; keep `Memory.GC` only if docs position it as user memory tooling. |
+| `Zanna.Memory.Retain/Release` and `Zanna.Runtime.Unsafe.Retain/Release` | Canonical under `Runtime.Unsafe`; make `Memory` names legacy or remove. |
+| `Zanna.Error.SetThrowMsg/ClearThrowMsg/SetTrapFields/RaiseKind` and `Runtime.Unsafe.*` | Canonical mutation under `Runtime.Unsafe`; user-facing read-only diagnostics under `Diagnostics`. |
+| `Zanna.Runtime.GC.*` and `Zanna.Runtime.GC.*` | Pick one root. Prefer `Runtime.GC` for runtime machinery; keep `Memory.GC` only if docs position it as user memory tooling. |
 
 ### P0: Clear Full-Word Names
 
@@ -97,7 +97,7 @@ clarity, full names should be canonical.
 1. Add metadata support for `canonical`, `legacy`, and `migration_target`.
 2. Convert duplicate rows to canonical plus legacy metadata.
 3. Update generated docs to group legacy names under "Compatibility".
-4. Update `viper explain` or a new migration command to report replacements.
+4. Update `zanna explain` or a new migration command to report replacements.
 5. Update examples and tests to canonical names.
 6. Remove or hide legacy rows before release freeze if compatibility permits.
 

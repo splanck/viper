@@ -13,8 +13,8 @@ focused tests on 2026-06-27
 
 ## Context
 
-The 3dnextlevel3 work added and extended many public `Viper.Graphics3D` and
-`Viper.Game3D` runtime APIs. Public runtime APIs are registered through
+The 3dnextlevel3 work added and extended many public `Zanna.Graphics3D` and
+`Zanna.Game3D` runtime APIs. Public runtime APIs are registered through
 `src/il/runtime/runtime.def` and classified by
 `src/il/runtime/RuntimeSurfacePolicy.inc`, so broad 3D API work can touch the IL
 runtime registry even when it does not change IL instructions or VM execution.
@@ -44,8 +44,8 @@ codegen behavior still require their own ADR and proof note.
 
 Verified on 2026-06-27:
 
-- `build/install/bin/viper --dump-runtime-api` exposes 55
-  `Viper.Graphics3D.*` classes, 37 `Viper.Game3D.*` classes, and 1322 runtime
+- `build/install/bin/zanna --dump-runtime-api` exposes 55
+  `Zanna.Graphics3D.*` classes, 37 `Zanna.Game3D.*` classes, and 1322 runtime
   functions in those namespaces.
 - `src/il/runtime/runtime.def` and
   `src/il/runtime/RuntimeSurfacePolicy.inc` remain the registry and

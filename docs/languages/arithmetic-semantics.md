@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-06-11
 ---
 
-# Viper Arithmetic Semantics Reference
+# Zanna Arithmetic Semantics Reference
 
-This document specifies the exact arithmetic semantics that Viper guarantees across
+This document specifies the exact arithmetic semantics that Zanna guarantees across
 all execution layers (VM, AArch64 native, x86-64 native) and both frontends
 (Zia, BASIC). These guarantees are tested by the conformance test suite in
 `src/tests/conformance/`.
@@ -183,7 +183,7 @@ The VM and native backends trap `fptosi` on NaN and overflow (not UB).
 The public verifier currently directs source IL toward `cast.fp_to_si.rte.chk`;
 these `fptosi` rules apply to execution layers that receive the opcode.
 
-`Viper.Core.Convert.NumToInt` is a separate public conversion helper with
+`Zanna.Core.Convert.NumToInt` is a separate public conversion helper with
 saturating semantics for compatibility with existing library code: finite inputs
 truncate toward zero, `NaN` returns `0`, and values outside the signed 64-bit
 range clamp to `INT64_MIN` / `INT64_MAX`. Use checked IL casts when NaN or range

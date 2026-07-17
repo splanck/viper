@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>6 Native Targets — Viper</title>
-  <meta name="description" content="Viper generates native executables for 6 platform targets: ELF, Mach-O, and PE on both ARM64 and x86-64, with hand-written assemblers, linkers, and security hardening.">
+  <title>6 Native Targets — Zanna</title>
+  <meta name="description" content="Zanna generates native executables for 6 platform targets: ELF, Mach-O, and PE on both ARM64 and x86-64, with hand-written assemblers, linkers, and security hardening.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -48,7 +48,7 @@
   <main class="page-main prose">
     <h1 id="overview">6 Native Targets</h1>
 
-    <p>Viper compiles directly to native executables without calling any external assembler or linker. The entire pipeline &mdash; from IL to relocatable object files to linked executables &mdash; is built from scratch.</p>
+    <p>Zanna compiles directly to native executables without calling any external assembler or linker. The entire pipeline &mdash; from IL to relocatable object files to linked executables &mdash; is built from scratch.</p>
 
     <h2 id="targets">The Target Matrix</h2>
 
@@ -64,7 +64,7 @@
       </tbody>
     </table>
 
-    <p>macOS on ARM64 requires 16 KB page alignment &mdash; Apple's dynamic linker (dyld) rejects executables with incorrect alignment. Viper handles this correctly.</p>
+    <p>macOS on ARM64 requires 16 KB page alignment &mdash; Apple's dynamic linker (dyld) rejects executables with incorrect alignment. Zanna handles this correctly.</p>
 
     <h2 id="pipeline">Compilation Pipeline</h2>
 
@@ -181,7 +181,7 @@
     <h2 id="security">Security Hardening</h2>
 
     <h3>PAC/BTI on AArch64</h3>
-    <p>Viper emits ARM Pointer Authentication and Branch Target Identification instructions:</p>
+    <p>Zanna emits ARM Pointer Authentication and Branch Target Identification instructions:</p>
 
     <ul>
       <li><strong>PACIASP</strong> (HINT #25) &mdash; Signs the link register with the stack pointer at function entry, preventing ROP attacks</li>
@@ -221,13 +221,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

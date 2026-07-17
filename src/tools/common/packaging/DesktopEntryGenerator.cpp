@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -277,4 +277,4 @@ std::string generateMimeTypeXml(const std::string &packageName,
     return os.str();
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

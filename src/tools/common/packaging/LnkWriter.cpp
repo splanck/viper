@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -316,4 +316,4 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     return buf;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

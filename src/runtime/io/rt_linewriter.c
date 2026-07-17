@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_linewriter.c
-// Purpose: Implements buffered text file writing for the Viper.IO.LineWriter
+// Purpose: Implements buffered text file writing for the Zanna.IO.LineWriter
 //          class. Supports creating or overwriting files, appending to existing
 //          files, writing text with or without newlines, and writing single
 //          characters. The newline string is configurable and defaults to the
@@ -74,7 +74,7 @@ static int linewriter_require_string(rt_string text, const char *context) {
 
 /// @brief Finalizer callback invoked when a LineWriter is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// LineWriter object becomes unreachable. It performs two cleanup tasks:
 ///
 /// 1. **Closes the file**: If the file is still open, it is closed with fclose,
@@ -119,7 +119,7 @@ static void rt_linewriter_finalize(void *obj) {
 /// - newline = platform default ("\n" on Unix, "\r\n" on Windows)
 /// - A finalizer for automatic cleanup
 ///
-/// @param path Viper string containing the file path. Must not be NULL.
+/// @param path Zanna string containing the file path. Must not be NULL.
 /// @param mode The fopen mode string ("w" for write/truncate, "a" for append).
 ///
 /// @return A pointer to a new LineWriter object on success, or NULL on failure
@@ -133,7 +133,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
     }
 
     const char *path_str = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str) {
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &path_str) || !path_str) {
         rt_trap("LineWriter: invalid path");
         return NULL;
     }
@@ -178,7 +178,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
 /// already exists, its contents are truncated (erased). If the file doesn't
 /// exist, it is created.
 ///
-/// The LineWriter is managed by Viper's garbage collector and will automatically
+/// The LineWriter is managed by Zanna's garbage collector and will automatically
 /// close when collected if not explicitly closed.
 ///
 /// **Default newline:**
@@ -196,7 +196,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
 /// writer.Close()
 /// ```
 ///
-/// @param path Viper string containing the file path. Must not be NULL.
+/// @param path Zanna string containing the file path. Must not be NULL.
 ///
 /// @return A pointer to a new LineWriter object on success. On failure, traps
 ///         with an error message and returns NULL. Failure reasons include:
@@ -232,7 +232,7 @@ void *rt_linewriter_open(rt_string path) {
 /// log.Close()
 /// ```
 ///
-/// @param path Viper string containing the file path. Must not be NULL.
+/// @param path Zanna string containing the file path. Must not be NULL.
 ///
 /// @return A pointer to a new LineWriter object on success. On failure, traps
 ///         with an error message and returns NULL. Failure reasons include:
@@ -304,7 +304,7 @@ void rt_linewriter_close(void *obj) {
 /// ```
 ///
 /// @param obj Pointer to a LineWriter object. Must not be NULL and writer must be open.
-/// @param text The Viper string to write. If NULL, nothing is written (no error).
+/// @param text The Zanna string to write. If NULL, nothing is written (no error).
 ///
 /// @note Empty strings write nothing (no error).
 /// @note Data may be buffered by the OS. Use rt_linewriter_flush for immediate writes.
@@ -375,7 +375,7 @@ void rt_linewriter_write(void *obj, rt_string text) {
 /// - Use custom separators: `writer.set_NewLine("--RECORD--\n")`
 ///
 /// @param obj Pointer to a LineWriter object. Must not be NULL and writer must be open.
-/// @param text The Viper string to write before the newline. Must not be NULL.
+/// @param text The Zanna string to write before the newline. Must not be NULL.
 ///
 /// @note Data may be buffered by the OS. Use rt_linewriter_flush for immediate writes.
 /// @note Traps if obj is NULL or writer is closed.
@@ -539,7 +539,7 @@ void rt_linewriter_flush(void *obj) {
 ///
 /// @param obj Pointer to a LineWriter object. If NULL, returns the platform default.
 ///
-/// @return A Viper string containing the current newline sequence. The caller
+/// @return A Zanna string containing the current newline sequence. The caller
 ///         receives a new reference that must be managed appropriately.
 ///
 /// @note This returns a new reference to the newline string, not the internal copy.

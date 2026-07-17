@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -16,17 +16,17 @@
 #
 #===----------------------------------------------------------------------===#
 
-if (NOT DEFINED CMAKE_BIN OR NOT DEFINED VIPER_SOURCE_DIR OR NOT DEFINED TEST_WORK_DIR)
-    message(FATAL_ERROR "Headless graphics smoke requires CMAKE_BIN, VIPER_SOURCE_DIR, and TEST_WORK_DIR")
+if (NOT DEFINED CMAKE_BIN OR NOT DEFINED ZANNA_SOURCE_DIR OR NOT DEFINED TEST_WORK_DIR)
+    message(FATAL_ERROR "Headless graphics smoke requires CMAKE_BIN, ZANNA_SOURCE_DIR, and TEST_WORK_DIR")
 endif ()
 
 file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 execute_process(
         COMMAND "${CMAKE_BIN}"
-                -S "${VIPER_SOURCE_DIR}/src/lib/graphics"
+                -S "${ZANNA_SOURCE_DIR}/src/lib/graphics"
                 -B "${TEST_WORK_DIR}"
-                -DVIPER_GRAPHICS_MODE=REQUIRE
-                -DVIPER_GRAPHICS_BACKEND=HEADLESS
+                -DZANNA_GRAPHICS_MODE=REQUIRE
+                -DZANNA_GRAPHICS_BACKEND=HEADLESS
                 -DVGFX_BUILD_TESTS=ON
                 -DVGFX_BUILD_EXAMPLES=OFF
         RESULT_VARIABLE configure_result)

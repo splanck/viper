@@ -1,9 +1,9 @@
-' API Audit: Viper.Network.SmtpClient (BASIC)
-PRINT "=== API Audit: Viper.Network.SmtpClient ==="
+' API Audit: Zanna.Network.SmtpClient (BASIC)
+PRINT "=== API Audit: Zanna.Network.SmtpClient ==="
 PRINT "NOTE: SMTP sends require a real mail server. This demo checks the API surface only."
 
 DIM smtp AS OBJECT
-smtp = Viper.Network.SmtpClient.New("mail.example.test", 587)
+smtp = Zanna.Network.SmtpClient.New("mail.example.test", 587)
 smtp.SetTls(1)
 smtp.SetAuth("user@example.test", "password")
 

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTRingTests.cpp
-// Purpose: Comprehensive tests for Viper.Collections.Ring fixed-size circular
+// Purpose: Comprehensive tests for Zanna.Collections.Ring fixed-size circular
 //          buffer collection.
 //
 //===----------------------------------------------------------------------===//

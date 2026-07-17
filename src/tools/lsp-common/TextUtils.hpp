@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include <string>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Context extracted from cursor position for hover resolution.
 struct HoverContext {
@@ -39,4 +39,4 @@ bool isIdentChar(char c);
 /// @return HoverContext with extracted identifier and optional dot prefix.
 HoverContext extractIdentifierAtCursor(const std::string &source, int line, int col);
 
-} // namespace viper::server
+} // namespace zanna::server

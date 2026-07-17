@@ -1,0 +1,206 @@
+module comment_commands;
+
+bind "../services/text_utils";
+
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+
+// ============================================================================
+// MODULE: comment_commands
+// PURPOSE: Pure string transforms for line-comment and block-comment commands.
+//
+// WHERE-THIS-FITS: commands/edit_commands.zia owns editor interaction: reading
+//          selections, replacing text, marking documents dirty, and updating the
+//          status bar. This module owns only the text transformation rules, which
+//          makes the behavior easier to reason about and easier to probe without
+//          constructing a GUI editor.
+//
+// TEACHING-NOTE: Keep editor state and text algorithms separate. A command
+//          handler should answer "what did the user trigger?" while this module
+//          answers "what should the resulting text be?" That split is the model
+//          new Zia IDE features should follow.
+// ============================================================================
+
+/// @brief Toggle line comments over a zero-based inclusive line range.
+/// @details The transform preserves the file's existing newline style and clamps
+///          the requested range to the actual line count. If every nonblank line
+///          in the range already starts with `marker`, the range is uncommented;
+///          otherwise the marker is inserted after each line's indentation.
+/// @param source Complete document text.
+/// @param startLine Zero-based first line to toggle.
+/// @param endLine Zero-based last line to toggle, inclusive.
+/// @param marker Line-comment marker, usually `//` for Zia or `'` for BASIC.
+/// @return Complete document text after toggling the requested range.
+expose func ToggleLineCommentRangeText(source: String,
+                                       startLine: Integer,
+                                       endLine: Integer,
+                                       marker: String) -> String {
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Count(lines);
+    if count == 0 { return source; }
+    var rangeStart = startLine;
+    var rangeEnd = endLine;
+    if rangeStart < 0 { rangeStart = 0; }
+    if rangeEnd >= count { rangeEnd = count - 1; }
+    if rangeEnd < rangeStart { return source; }
+
+    var uncomment = ShouldUncommentLineRange(lines, rangeStart, rangeEnd, marker);
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.get_Length(line) - 1);
+        }
+        if i >= rangeStart and i <= rangeEnd {
+            line = ToggleSingleLineCommentText(line, marker, uncomment);
+        }
+        output.add(line);
+        i = i + 1;
+    }
+    return text_utils.JoinStringList(output, eol);
+}
+
+/// @brief Decide whether a line range should remove comments instead of adding.
+/// @details Blank lines do not participate in the decision. A selection
+///          uncomments only when at least one nonblank line exists and every
+///          nonblank line already has the marker after its indentation.
+/// @param lines Sequence returned by `Str.Split(source, "\n")`.
+/// @param startLine Zero-based first line to inspect.
+/// @param endLine Zero-based last line to inspect, inclusive.
+/// @param marker Line-comment marker to find.
+/// @return True when the toggle should remove line-comment markers.
+expose func ShouldUncommentLineRange(lines: Any,
+                                     startLine: Integer,
+                                     endLine: Integer,
+                                     marker: String) -> Boolean {
+    var sawContent = false;
+    var i = startLine;
+    while i <= endLine and i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.get_Length(line) - 1);
+        }
+        if Str.Trim(line) != "" {
+            sawContent = true;
+            var indentLen = text_utils.LeadingWhitespaceLength(line);
+            var rest = Str.Mid(line, indentLen + 1);
+            if Str.StartsWith(rest, marker) == false {
+                return false;
+            }
+        }
+        i = i + 1;
+    }
+    return sawContent;
+}
+
+/// @brief Toggle one already-split source line with a line-comment marker.
+/// @details Indentation is preserved. When uncommenting, both `marker + " "`
+///          and bare `marker` are accepted so old files remain tidy even if a
+///          user typed comments manually.
+/// @param line One source line without a trailing newline.
+/// @param marker Line-comment marker to add or remove.
+/// @param uncomment True to remove a marker; false to insert one.
+/// @return The transformed line.
+expose func ToggleSingleLineCommentText(line: String,
+                                        marker: String,
+                                        uncomment: Boolean) -> String {
+    var indentLen = text_utils.LeadingWhitespaceLength(line);
+    var before = "";
+    if indentLen > 0 {
+        before = Str.Left(line, indentLen);
+    }
+    var rest = Str.Mid(line, indentLen + 1);
+    if uncomment {
+        if Str.StartsWith(rest, marker + " ") {
+            return before + Str.Mid(rest, Str.get_Length(marker + " ") + 1);
+        }
+        if Str.StartsWith(rest, marker) {
+            return before + Str.Mid(rest, Str.get_Length(marker) + 1);
+        }
+        return line;
+    }
+    return before + marker + " " + rest;
+}
+
+/// @brief Toggle a Zia block comment around the supplied text.
+/// @details Existing block comments are unwrapped; otherwise multiline text is
+///          wrapped on separate delimiter lines and single-line text is wrapped
+///          inline. This function deliberately knows nothing about the editor
+///          selection that produced the text.
+/// @param text Selected text or one logical line segment.
+/// @return Text with a block comment added or removed.
+expose func ToggleBlockCommentText(text: String) -> String {
+    if IsBlockCommented(text) {
+        return RemoveBlockCommentText(text);
+    }
+    if Str.IndexOf(text, "\n") != 0 {
+        return "/*\n" + text + "\n*/";
+    }
+    return "/* " + text + " */";
+}
+
+/// @brief Test whether text is already wrapped in a block comment.
+/// @param text Text to inspect.
+/// @return True when trimmed text starts with `/*` and ends with `*/`.
+expose func IsBlockCommented(text: String) -> Boolean {
+    var trimmed = Str.Trim(text);
+    return Str.StartsWith(trimmed, "/*") and Str.EndsWith(trimmed, "*/");
+}
+
+/// @brief Remove the first outer block-comment delimiter pair from text.
+/// @details The function preserves any text before the opening delimiter and
+///          after the closing delimiter. Padding introduced by
+///          ToggleBlockCommentText is removed by StripSingleCommentPadding.
+/// @param text Text containing an outer block-comment pair.
+/// @return Text with that pair removed, or the original text when malformed.
+expose func RemoveBlockCommentText(text: String) -> String {
+    var first = Str.IndexOf(text, "/*");
+    var last = Str.LastIndexOf(text, "*/");
+    if first == 0 or last == 0 or last <= first {
+        return text;
+    }
+
+    var before = "";
+    if first > 1 {
+        before = Str.Left(text, first - 1);
+    }
+    var middleStart = first + 2;
+    var middleLen = last - middleStart;
+    var middle = "";
+    if middleLen > 0 {
+        middle = Str.MidLen(text, middleStart, middleLen);
+    }
+    middle = StripSingleCommentPadding(middle);
+
+    var after = "";
+    if last + 2 <= Str.get_Length(text) {
+        after = Str.Mid(text, last + 2);
+    }
+    return before + middle + after;
+}
+
+/// @brief Remove one layer of padding created by block-comment insertion.
+/// @details Inline comments create a leading/trailing space. Multiline comments
+///          create a leading/trailing newline. This helper strips at most one
+///          padding character from each side so user-authored indentation inside
+///          the comment is not destroyed.
+/// @param text Comment body text between `/*` and `*/`.
+/// @return Body text with one synthetic padding layer removed.
+expose func StripSingleCommentPadding(text: String) -> String {
+    var result = text;
+    if Str.StartsWith(result, "\n") {
+        result = Str.Mid(result, 2);
+    } else if Str.StartsWith(result, " ") {
+        result = Str.Mid(result, 2);
+    }
+    if Str.EndsWith(result, "\n") and Str.get_Length(result) > 0 {
+        result = Str.Left(result, Str.get_Length(result) - 1);
+    } else if Str.EndsWith(result, " ") and Str.get_Length(result) > 0 {
+        result = Str.Left(result, Str.get_Length(result) - 1);
+    }
+    return result;
+}

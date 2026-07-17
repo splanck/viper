@@ -1,10 +1,10 @@
 // test_set_deque.zia — Set, Deque, DefaultMap, SparseArray, WeakMap
 module TestSetDeque;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var s = new Viper.Collections.Set();
+    var s = new Zanna.Collections.Set();
     SayBool(s.IsEmpty);
     s.Add("apple");
     s.Add("banana");
@@ -15,7 +15,7 @@ func start() {
     s.Remove("banana");
     SayInt(s.Count);
 
-    var dq = new Viper.Collections.Deque();
+    var dq = new Zanna.Collections.Deque();
     SayBool(dq.IsEmpty);
     dq.PushBack("a");
     dq.PushBack("b");
@@ -32,7 +32,7 @@ func start() {
     dq.Clear();
     SayBool(dq.IsEmpty);
 
-    var sa = new Viper.Collections.SparseArray();
+    var sa = new Zanna.Collections.SparseArray();
     sa.Set(0, "zero");
     sa.Set(100, "hundred");
     sa.Set(999, "big");
@@ -42,7 +42,7 @@ func start() {
     sa.Remove(100);
     SayInt(sa.Count);
 
-    var wm = new Viper.Collections.WeakMap();
+    var wm = new Zanna.Collections.WeakMap();
     SayBool(wm.IsEmpty);
     wm.Set("key1", "val1");
     wm.Set("key2", "val2");

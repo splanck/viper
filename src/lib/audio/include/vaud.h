@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Public API
+// ZannaAUD Public API
 //
 // Provides a cross-platform audio library for sound effect playback and music
 // streaming. The library implements a simple immediate-mode API with a software
@@ -90,7 +90,7 @@ typedef int32_t vaud_voice_id;
 #define VAUD_INVALID_VOICE (-1)
 
 /// @brief Query whether a logical mix group has a registered effects processor.
-/// @details Called by the software mixer while it holds the ViperAUD state lock.
+/// @details Called by the software mixer while it holds the ZannaAUD state lock.
 ///          Implementations must not allocate and should return quickly. Returning
 ///          zero routes the group directly to the master mix.
 typedef int (*vaud_group_effects_query_fn)(void *userdata, int64_t group_id);
@@ -370,8 +370,8 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path);
 
 /// @brief Service streaming music buffers outside the audio render callback.
 /// @details Decodes/refills empty music buffers and processes pending loop rewinds.
-///          Applications using the high-level Viper runtime should call
-///          `Viper.Sound.Audio.Update()` each frame; it forwards here. The
+///          Applications using the high-level Zanna runtime should call
+///          `Zanna.Sound.Audio.Update()` each frame; it forwards here. The
 ///          realtime mixer consumes decoded buffers and never performs file I/O
 ///          or codec decode work.
 /// @param ctx Audio context.
@@ -485,7 +485,7 @@ void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats);
 /// @brief Install or clear the optional logical mix-group effects processor.
 /// @details Passing NULL for @p process_fn disables group processing. The
 ///          callbacks are invoked only from the software mixer while the audio
-///          context mutex is held, so they must not call back into ViperAUD,
+///          context mutex is held, so they must not call back into ZannaAUD,
 ///          perform allocation, blocking I/O, or context destruction.
 void vaud_set_group_effects_processor(vaud_context_t ctx,
                                       vaud_group_effects_query_fn query_fn,

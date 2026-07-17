@@ -1,0 +1,53 @@
+// Test: Primitive Types and Literals
+// Tests: integers, floats, strings, booleans
+module Test;
+
+func main() {
+    // Integer
+    var i: Integer = 42;
+    Zanna.Terminal.Say("Integer: " + Zanna.Text.Fmt.Int(i));
+
+    // Large integer
+    var lng: Integer = 1000000;
+    Zanna.Terminal.Say("Long: " + Zanna.Text.Fmt.Int(lng));
+
+    // Number (float)
+    var sng: Number = 3.14;
+    Zanna.Terminal.Say("Single: " + Zanna.Text.Fmt.Num(sng));
+
+    var dbl: Number = 3.14159265358979;
+    Zanna.Terminal.Say("Double: " + Zanna.Text.Fmt.Num(dbl));
+
+    // String
+    var s: String = "Hello, World!";
+    Zanna.Terminal.Say("String: " + s);
+
+    // Boolean
+    var b: Boolean = true;
+    Zanna.Terminal.Say("Boolean TRUE: " + Zanna.Text.Fmt.Bool(b));
+    b = false;
+    Zanna.Terminal.Say("Boolean FALSE: " + Zanna.Text.Fmt.Bool(b));
+
+    // Type inference
+    var x = 100;
+    Zanna.Terminal.Say("Inferred int: " + Zanna.Text.Fmt.Int(x));
+
+    var y = 2.718;
+    Zanna.Terminal.Say("Inferred float: " + Zanna.Text.Fmt.Num(y));
+
+    var z = "inferred string";
+    Zanna.Terminal.Say("Inferred string: " + z);
+
+    // Hex and binary literals (ZannaLang specific)
+    var hex = 0xFF;
+    Zanna.Terminal.Say("Hex 0xFF: " + Zanna.Text.Fmt.Int(hex));
+
+    var bin = 0b1010;
+    Zanna.Terminal.Say("Binary 0b1010: " + Zanna.Text.Fmt.Int(bin));
+
+    // Byte type
+    var bt: Byte = 255;
+    Zanna.Terminal.Say("Byte: " + Zanna.Text.Fmt.Int(bt));
+
+    Zanna.Terminal.Say("=== Primitives test complete ===");
+}

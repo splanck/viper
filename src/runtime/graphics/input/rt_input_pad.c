@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_input_pad.c
-// Purpose: Gamepad and controller input backend for Viper.Input. Manages state
-//   for up to VIPER_PAD_MAX (4) simultaneously connected controllers, polling
+// Purpose: Gamepad and controller input backend for Zanna.Input. Manages state
+//   for up to ZANNA_PAD_MAX (4) simultaneously connected controllers, polling
 //   button press/release/held edges, analog stick axes, and triggers each frame.
 //   Provides platform-specific backends for macOS (IOKit HID), Linux (evdev),
 //   and Windows (XInput), with a vibration API for force-feedback motors.
@@ -18,10 +18,10 @@
 //   - Analog stick values are in [-1.0, 1.0]; trigger values are in [0.0, 1.0].
 //   - A configurable deadzone (default 0.1) is applied to stick axes before
 //     returning values; inputs within the deadzone read as 0.0.
-//   - Controller indices are in [0, VIPER_PAD_MAX); out-of-range indices return
+//   - Controller indices are in [0, ZANNA_PAD_MAX); out-of-range indices return
 //     safe zero/false values without trapping.
-//   - Button codes map to the VIPER_PAD_BUTTON_* enum; axis codes to
-//     VIPER_PAD_AXIS_*.
+//   - Button codes map to the ZANNA_PAD_BUTTON_* enum; axis codes to
+//     ZANNA_PAD_AXIS_*.
 //
 // Ownership/Lifetime:
 //   - All state is stored in static globals (g_pads, g_pad_deadzone,
@@ -59,11 +59,11 @@ typedef struct {
     char name[64];
 
     // Current button state
-    bool buttons[VIPER_PAD_BUTTON_MAX];
+    bool buttons[ZANNA_PAD_BUTTON_MAX];
 
     // Button events this frame
-    bool pressed[VIPER_PAD_BUTTON_MAX];
-    bool released[VIPER_PAD_BUTTON_MAX];
+    bool pressed[ZANNA_PAD_BUTTON_MAX];
+    bool released[ZANNA_PAD_BUTTON_MAX];
 
     // Analog stick values (-1.0 to 1.0)
     double left_x;
@@ -81,7 +81,7 @@ typedef struct {
 } rt_pad_state;
 
 // Gamepad state for up to 4 controllers
-static rt_pad_state g_pads[VIPER_PAD_MAX];
+static rt_pad_state g_pads[ZANNA_PAD_MAX];
 
 // Deadzone radius for analog sticks (default 0.1)
 static double g_pad_deadzone = 0.1;
@@ -94,7 +94,7 @@ static bool g_pad_initialized = false;
 ///          backing device. Keeping the clear operation shared ensures stale buttons,
 ///          axes, names, and vibration values do not survive disconnects.
 static void pad_clear_logical_state(int index) {
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return;
     rt_pad_state zero = {0};
     g_pads[index] = zero;
@@ -161,11 +161,11 @@ typedef struct {
     IOHIDElementRef hat;
     CFIndex hat_min;
     CFIndex hat_max;
-    IOHIDElementRef buttons[VIPER_PAD_BUTTON_MAX];
+    IOHIDElementRef buttons[ZANNA_PAD_BUTTON_MAX];
 } mac_pad;
 
 static IOHIDManagerRef g_hid_manager = NULL;
-static mac_pad g_mac_pads[VIPER_PAD_MAX];
+static mac_pad g_mac_pads[ZANNA_PAD_MAX];
 static bool g_mac_initialized = false;
 
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ static void mac_clear_pad(mac_pad *pad) {
     pad->hat = NULL;
     pad->hat_min = 0;
     pad->hat_max = 0;
-    for (int i = 0; i < VIPER_PAD_BUTTON_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_BUTTON_MAX; ++i) {
         if (pad->buttons[i])
             CFRelease(pad->buttons[i]);
         pad->buttons[i] = NULL;
@@ -243,32 +243,32 @@ static void mac_store_axis(mac_axis *axis, IOHIDElementRef element) {
     axis->max = IOHIDElementGetLogicalMax(element);
 }
 
-/// @brief Map a HID Button usage code (1..11) to a Viper `VIPER_PAD_*` button index.
+/// @brief Map a HID Button usage code (1..11) to a Zanna `ZANNA_PAD_*` button index.
 /// Returns -1 for usages outside the standard 11-button gamepad layout.
 static int mac_button_index(uint32_t usage) {
     switch (usage) {
         case 1:
-            return VIPER_PAD_A;
+            return ZANNA_PAD_A;
         case 2:
-            return VIPER_PAD_B;
+            return ZANNA_PAD_B;
         case 3:
-            return VIPER_PAD_X;
+            return ZANNA_PAD_X;
         case 4:
-            return VIPER_PAD_Y;
+            return ZANNA_PAD_Y;
         case 5:
-            return VIPER_PAD_LB;
+            return ZANNA_PAD_LB;
         case 6:
-            return VIPER_PAD_RB;
+            return ZANNA_PAD_RB;
         case 7:
-            return VIPER_PAD_BACK;
+            return ZANNA_PAD_BACK;
         case 8:
-            return VIPER_PAD_START;
+            return ZANNA_PAD_START;
         case 9:
-            return VIPER_PAD_LSTICK;
+            return ZANNA_PAD_LSTICK;
         case 10:
-            return VIPER_PAD_RSTICK;
+            return ZANNA_PAD_RSTICK;
         case 11:
-            return VIPER_PAD_GUIDE;
+            return ZANNA_PAD_GUIDE;
         default:
             return -1;
     }
@@ -282,7 +282,7 @@ static int mac_button_index(uint32_t usage) {
 /// X/Y → left stick, Rx/Ry → right stick, Z/Rz → triggers, Hatswitch
 /// → D-pad, Slider → fallback trigger, Button N → button table.
 static void mac_scan_devices(void) {
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         mac_clear_pad(&g_mac_pads[i]);
         pad_clear_logical_state(i);
     }
@@ -312,7 +312,7 @@ static void mac_scan_devices(void) {
     CFSetGetValues(devices, (const void **)(void *)device_list);
 
     int pad_index = 0;
-    for (CFIndex i = 0; i < count && pad_index < VIPER_PAD_MAX; ++i) {
+    for (CFIndex i = 0; i < count && pad_index < ZANNA_PAD_MAX; ++i) {
         IOHIDDeviceRef device = device_list[i];
         if (!device)
             continue;
@@ -394,7 +394,7 @@ static void mac_scan_devices(void) {
                     }
                 } else if (page == kHIDPage_Button) {
                     int index = mac_button_index(usage);
-                    if (index >= 0 && index < VIPER_PAD_BUTTON_MAX && !pad->buttons[index]) {
+                    if (index >= 0 && index < ZANNA_PAD_BUTTON_MAX && !pad->buttons[index]) {
                         pad->buttons[index] = elem;
                         CFRetain(elem);
                     }
@@ -534,10 +534,10 @@ static void mac_apply_hat(rt_pad_state *pad, int hat_value) {
             break;
     }
 
-    pad->buttons[VIPER_PAD_UP] = up;
-    pad->buttons[VIPER_PAD_DOWN] = down;
-    pad->buttons[VIPER_PAD_LEFT] = left;
-    pad->buttons[VIPER_PAD_RIGHT] = right;
+    pad->buttons[ZANNA_PAD_UP] = up;
+    pad->buttons[ZANNA_PAD_DOWN] = down;
+    pad->buttons[ZANNA_PAD_LEFT] = left;
+    pad->buttons[ZANNA_PAD_RIGHT] = right;
 }
 
 /// @brief macOS IOKit HID implementation of platform_pad_poll.
@@ -558,7 +558,7 @@ static void platform_pad_poll(void) {
         return;
 
     bool has_free_slot = false;
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         if (!g_mac_pads[i].device) {
             has_free_slot = true;
             break;
@@ -568,7 +568,7 @@ static void platform_pad_poll(void) {
         mac_scan_devices();
 
     bool need_rescan = false;
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         mac_pad *pad = &g_mac_pads[i];
         if (!pad->device) {
             pad_clear_logical_state(i);
@@ -576,7 +576,7 @@ static void platform_pad_poll(void) {
         }
 
         g_pads[i].connected = true;
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b)
+        for (int b = 0; b < ZANNA_PAD_BUTTON_MAX; ++b)
             g_pads[i].buttons[b] = false;
         g_pads[i].left_x = 0.0;
         g_pads[i].left_y = 0.0;
@@ -619,7 +619,7 @@ static void platform_pad_poll(void) {
                       mac_normalize_trigger(value, pad->right_trigger.min, pad->right_trigger.max));
 #undef MAC_READ_AXIS
 
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b) {
+        for (int b = 0; b < ZANNA_PAD_BUTTON_MAX; ++b) {
             if (!pad->buttons[b])
                 continue;
             read_attempts++;
@@ -684,7 +684,7 @@ typedef struct {
     int abs_max[ABS_MAX + 1];
 } linux_pad;
 
-static linux_pad g_linux_pads[VIPER_PAD_MAX];
+static linux_pad g_linux_pads[ZANNA_PAD_MAX];
 static bool g_linux_initialized = false;
 
 // ---------------------------------------------------------------------------
@@ -755,7 +755,7 @@ static void linux_clear_logical_pad(int index) {
 /// @param ino Inode from stat/fstat.
 /// @return true if any open Linux pad slot already owns the same device.
 static bool linux_device_already_bound(dev_t rdev, ino_t ino) {
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         if (g_linux_pads[i].fd >= 0 && g_linux_pads[i].device_rdev == rdev &&
             g_linux_pads[i].device_ino == ino)
             return true;
@@ -764,9 +764,9 @@ static bool linux_device_already_bound(dev_t rdev, ino_t ino) {
 }
 
 /// @brief Find the first unbound Linux gamepad slot.
-/// @return Slot index in [0, VIPER_PAD_MAX), or -1 when all slots are occupied.
+/// @return Slot index in [0, ZANNA_PAD_MAX), or -1 when all slots are occupied.
 static int linux_find_free_pad_slot(void) {
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         if (g_linux_pads[i].fd < 0)
             return i;
     }
@@ -819,11 +819,11 @@ static double linux_normalize_trigger(int value, int min, int max) {
 /// `is_x` selects which axis: true → left/right, false → up/down.
 static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x) {
     if (is_x) {
-        pad->buttons[VIPER_PAD_LEFT] = value < 0;
-        pad->buttons[VIPER_PAD_RIGHT] = value > 0;
+        pad->buttons[ZANNA_PAD_LEFT] = value < 0;
+        pad->buttons[ZANNA_PAD_RIGHT] = value > 0;
     } else {
-        pad->buttons[VIPER_PAD_UP] = value < 0;
-        pad->buttons[VIPER_PAD_DOWN] = value > 0;
+        pad->buttons[ZANNA_PAD_UP] = value < 0;
+        pad->buttons[ZANNA_PAD_DOWN] = value > 0;
     }
 }
 
@@ -923,7 +923,7 @@ static void linux_pad_init(void) {
     if (g_linux_initialized)
         return;
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         g_linux_pads[i].fd = -1;
         linux_reset_pad(&g_linux_pads[i]);
         linux_clear_logical_pad(i);
@@ -950,7 +950,7 @@ static void platform_pad_poll(void) {
         linux_scan_gamepads();
     bool need_rescan = false;
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (int i = 0; i < ZANNA_PAD_MAX; ++i) {
         linux_pad *pad = &g_linux_pads[i];
         if (pad->fd < 0) {
             linux_clear_logical_pad(i);
@@ -966,49 +966,49 @@ static void platform_pad_poll(void) {
                 bool down = ev.value != 0;
                 switch (ev.code) {
                     case BTN_SOUTH:
-                        g_pads[i].buttons[VIPER_PAD_A] = down;
+                        g_pads[i].buttons[ZANNA_PAD_A] = down;
                         break;
                     case BTN_EAST:
-                        g_pads[i].buttons[VIPER_PAD_B] = down;
+                        g_pads[i].buttons[ZANNA_PAD_B] = down;
                         break;
                     case BTN_WEST:
-                        g_pads[i].buttons[VIPER_PAD_X] = down;
+                        g_pads[i].buttons[ZANNA_PAD_X] = down;
                         break;
                     case BTN_NORTH:
-                        g_pads[i].buttons[VIPER_PAD_Y] = down;
+                        g_pads[i].buttons[ZANNA_PAD_Y] = down;
                         break;
                     case BTN_TL:
-                        g_pads[i].buttons[VIPER_PAD_LB] = down;
+                        g_pads[i].buttons[ZANNA_PAD_LB] = down;
                         break;
                     case BTN_TR:
-                        g_pads[i].buttons[VIPER_PAD_RB] = down;
+                        g_pads[i].buttons[ZANNA_PAD_RB] = down;
                         break;
                     case BTN_SELECT:
-                        g_pads[i].buttons[VIPER_PAD_BACK] = down;
+                        g_pads[i].buttons[ZANNA_PAD_BACK] = down;
                         break;
                     case BTN_START:
-                        g_pads[i].buttons[VIPER_PAD_START] = down;
+                        g_pads[i].buttons[ZANNA_PAD_START] = down;
                         break;
                     case BTN_THUMBL:
-                        g_pads[i].buttons[VIPER_PAD_LSTICK] = down;
+                        g_pads[i].buttons[ZANNA_PAD_LSTICK] = down;
                         break;
                     case BTN_THUMBR:
-                        g_pads[i].buttons[VIPER_PAD_RSTICK] = down;
+                        g_pads[i].buttons[ZANNA_PAD_RSTICK] = down;
                         break;
                     case BTN_MODE:
-                        g_pads[i].buttons[VIPER_PAD_GUIDE] = down;
+                        g_pads[i].buttons[ZANNA_PAD_GUIDE] = down;
                         break;
                     case BTN_DPAD_UP:
-                        g_pads[i].buttons[VIPER_PAD_UP] = down;
+                        g_pads[i].buttons[ZANNA_PAD_UP] = down;
                         break;
                     case BTN_DPAD_DOWN:
-                        g_pads[i].buttons[VIPER_PAD_DOWN] = down;
+                        g_pads[i].buttons[ZANNA_PAD_DOWN] = down;
                         break;
                     case BTN_DPAD_LEFT:
-                        g_pads[i].buttons[VIPER_PAD_LEFT] = down;
+                        g_pads[i].buttons[ZANNA_PAD_LEFT] = down;
                         break;
                     case BTN_DPAD_RIGHT:
-                        g_pads[i].buttons[VIPER_PAD_RIGHT] = down;
+                        g_pads[i].buttons[ZANNA_PAD_RIGHT] = down;
                         break;
                     default:
                         break;
@@ -1073,7 +1073,7 @@ static void platform_pad_poll(void) {
 ///   short-circuit immediately.  Index bounds are validated before dereferencing
 ///   g_linux_pads.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return;
     linux_pad *pad = &g_linux_pads[index];
     if (!pad->has_rumble || pad->fd < 0)
@@ -1150,7 +1150,7 @@ static double xinput_normalize_thumb(SHORT value, SHORT deadzone) {
 }
 
 /// @brief Windows XInput implementation of platform_pad_poll.
-/// @details Calls XInputGetState for each pad slot in [0, VIPER_PAD_MAX).
+/// @details Calls XInputGetState for each pad slot in [0, ZANNA_PAD_MAX).
 ///   On ERROR_SUCCESS the pad is marked connected: all digital buttons are
 ///   extracted from the XINPUT_GAMEPAD.wButtons bitmask, analog sticks are
 ///   normalized from the signed 16-bit SHORT range to [-1, +1] (using -32768
@@ -1161,7 +1161,7 @@ static double xinput_normalize_thumb(SHORT value, SHORT deadzone) {
 ///   returns any other error the pad is marked disconnected and all state is
 ///   zeroed.
 static void platform_pad_poll(void) {
-    for (DWORD i = 0; i < VIPER_PAD_MAX; ++i) {
+    for (DWORD i = 0; i < ZANNA_PAD_MAX; ++i) {
         XINPUT_STATE state;
         DWORD result = XInputGetState(i, &state);
         if (result == ERROR_SUCCESS) {
@@ -1169,24 +1169,24 @@ static void platform_pad_poll(void) {
             snprintf(g_pads[i].name, sizeof(g_pads[i].name), "XInput Pad %lu", (unsigned long)i);
 
             WORD buttons = state.Gamepad.wButtons;
-            g_pads[i].buttons[VIPER_PAD_A] = (buttons & XINPUT_GAMEPAD_A) != 0;
-            g_pads[i].buttons[VIPER_PAD_B] = (buttons & XINPUT_GAMEPAD_B) != 0;
-            g_pads[i].buttons[VIPER_PAD_X] = (buttons & XINPUT_GAMEPAD_X) != 0;
-            g_pads[i].buttons[VIPER_PAD_Y] = (buttons & XINPUT_GAMEPAD_Y) != 0;
-            g_pads[i].buttons[VIPER_PAD_LB] = (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
-            g_pads[i].buttons[VIPER_PAD_RB] = (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-            g_pads[i].buttons[VIPER_PAD_BACK] = (buttons & XINPUT_GAMEPAD_BACK) != 0;
-            g_pads[i].buttons[VIPER_PAD_START] = (buttons & XINPUT_GAMEPAD_START) != 0;
-            g_pads[i].buttons[VIPER_PAD_LSTICK] = (buttons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
-            g_pads[i].buttons[VIPER_PAD_RSTICK] = (buttons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
-            g_pads[i].buttons[VIPER_PAD_UP] = (buttons & XINPUT_GAMEPAD_DPAD_UP) != 0;
-            g_pads[i].buttons[VIPER_PAD_DOWN] = (buttons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
-            g_pads[i].buttons[VIPER_PAD_LEFT] = (buttons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
-            g_pads[i].buttons[VIPER_PAD_RIGHT] = (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
+            g_pads[i].buttons[ZANNA_PAD_A] = (buttons & XINPUT_GAMEPAD_A) != 0;
+            g_pads[i].buttons[ZANNA_PAD_B] = (buttons & XINPUT_GAMEPAD_B) != 0;
+            g_pads[i].buttons[ZANNA_PAD_X] = (buttons & XINPUT_GAMEPAD_X) != 0;
+            g_pads[i].buttons[ZANNA_PAD_Y] = (buttons & XINPUT_GAMEPAD_Y) != 0;
+            g_pads[i].buttons[ZANNA_PAD_LB] = (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+            g_pads[i].buttons[ZANNA_PAD_RB] = (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+            g_pads[i].buttons[ZANNA_PAD_BACK] = (buttons & XINPUT_GAMEPAD_BACK) != 0;
+            g_pads[i].buttons[ZANNA_PAD_START] = (buttons & XINPUT_GAMEPAD_START) != 0;
+            g_pads[i].buttons[ZANNA_PAD_LSTICK] = (buttons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+            g_pads[i].buttons[ZANNA_PAD_RSTICK] = (buttons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+            g_pads[i].buttons[ZANNA_PAD_UP] = (buttons & XINPUT_GAMEPAD_DPAD_UP) != 0;
+            g_pads[i].buttons[ZANNA_PAD_DOWN] = (buttons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+            g_pads[i].buttons[ZANNA_PAD_LEFT] = (buttons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+            g_pads[i].buttons[ZANNA_PAD_RIGHT] = (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
 #ifdef XINPUT_GAMEPAD_GUIDE
-            g_pads[i].buttons[VIPER_PAD_GUIDE] = (buttons & XINPUT_GAMEPAD_GUIDE) != 0;
+            g_pads[i].buttons[ZANNA_PAD_GUIDE] = (buttons & XINPUT_GAMEPAD_GUIDE) != 0;
 #else
-            g_pads[i].buttons[VIPER_PAD_GUIDE] = false;
+            g_pads[i].buttons[ZANNA_PAD_GUIDE] = false;
 #endif
 
             SHORT lx = state.Gamepad.sThumbLX;
@@ -1216,7 +1216,7 @@ static void platform_pad_poll(void) {
 ///   preserves the conventional strong/weak semantics.  Index bounds are
 ///   validated before the XInput call.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return;
 
     double left_amp = pad_clamp_unit_finite(left);
@@ -1311,7 +1311,7 @@ void rt_pad_init(void) {
     if (g_pad_initialized)
         return;
 
-    for (int i = 0; i < VIPER_PAD_MAX; i++) {
+    for (int i = 0; i < ZANNA_PAD_MAX; i++) {
         pad_clear_logical_state(i);
     }
 
@@ -1323,8 +1323,8 @@ void rt_pad_init(void) {
 void rt_pad_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event flags
-    for (int i = 0; i < VIPER_PAD_MAX; i++) {
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
+    for (int i = 0; i < ZANNA_PAD_MAX; i++) {
+        for (int b = 0; b < ZANNA_PAD_BUTTON_MAX; b++) {
             g_pads[i].pressed[b] = false;
             g_pads[i].released[b] = false;
         }
@@ -1338,9 +1338,9 @@ void rt_pad_poll(void) {
         rt_pad_init();
 
     // Store previous button states for edge detection
-    bool prev_buttons[VIPER_PAD_MAX][VIPER_PAD_BUTTON_MAX];
-    for (int i = 0; i < VIPER_PAD_MAX; i++) {
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
+    bool prev_buttons[ZANNA_PAD_MAX][ZANNA_PAD_BUTTON_MAX];
+    for (int i = 0; i < ZANNA_PAD_MAX; i++) {
+        for (int b = 0; b < ZANNA_PAD_BUTTON_MAX; b++) {
             prev_buttons[i][b] = g_pads[i].buttons[b];
         }
     }
@@ -1349,8 +1349,8 @@ void rt_pad_poll(void) {
     platform_pad_poll();
 
     // Detect button press/release events
-    for (int i = 0; i < VIPER_PAD_MAX; i++) {
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
+    for (int i = 0; i < ZANNA_PAD_MAX; i++) {
+        for (int b = 0; b < ZANNA_PAD_BUTTON_MAX; b++) {
             bool was_down = prev_buttons[i][b];
             bool is_down = g_pads[i].buttons[b];
 
@@ -1370,7 +1370,7 @@ void rt_pad_poll(void) {
 int64_t rt_pad_count(void) {
     RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
-    for (int i = 0; i < VIPER_PAD_MAX; i++) {
+    for (int i = 0; i < ZANNA_PAD_MAX; i++) {
         if (g_pads[i].connected)
             count++;
     }
@@ -1380,7 +1380,7 @@ int64_t rt_pad_count(void) {
 /// @brief Check whether a gamepad is connected at the given slot index.
 int8_t rt_pad_is_connected(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0;
     return g_pads[index].connected ? 1 : 0;
 }
@@ -1388,7 +1388,7 @@ int8_t rt_pad_is_connected(int64_t index) {
 /// @brief Get the name of a connected gamepad (e.g., "Xbox Controller").
 rt_string rt_pad_name(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX || !g_pads[index].connected)
+    if (index < 0 || index >= ZANNA_PAD_MAX || !g_pads[index].connected)
         return rt_string_from_bytes("", 0);
 
     return rt_string_from_bytes(g_pads[index].name, strlen(g_pads[index].name));
@@ -1401,9 +1401,9 @@ rt_string rt_pad_name(int64_t index) {
 /// @brief Check whether a gamepad button is currently held down.
 int8_t rt_pad_is_down(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0;
-    if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_PAD_BUTTON_MAX)
         return 0;
     if (!g_pads[index].connected)
         return 0;
@@ -1414,9 +1414,9 @@ int8_t rt_pad_is_down(int64_t index, int64_t button) {
 /// @brief Check whether a gamepad button is currently not held down.
 int8_t rt_pad_is_up(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 1;
-    if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_PAD_BUTTON_MAX)
         return 1;
     if (!g_pads[index].connected)
         return 1;
@@ -1431,9 +1431,9 @@ int8_t rt_pad_is_up(int64_t index, int64_t button) {
 /// @brief Check whether a gamepad button was pressed this frame (edge-triggered).
 int8_t rt_pad_was_pressed(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0;
-    if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_PAD_BUTTON_MAX)
         return 0;
     if (!g_pads[index].connected)
         return 0;
@@ -1444,9 +1444,9 @@ int8_t rt_pad_was_pressed(int64_t index, int64_t button) {
 /// @brief Check whether a gamepad button was released this frame (edge-triggered).
 int8_t rt_pad_was_released(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0;
-    if (button < 0 || button >= VIPER_PAD_BUTTON_MAX)
+    if (button < 0 || button >= ZANNA_PAD_BUTTON_MAX)
         return 0;
     if (!g_pads[index].connected)
         return 0;
@@ -1461,7 +1461,7 @@ int8_t rt_pad_was_released(int64_t index, int64_t button) {
 /// @brief Get the left stick X axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_left_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1474,7 +1474,7 @@ double rt_pad_left_x(int64_t index) {
 /// @brief Get the left stick Y axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_left_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1487,7 +1487,7 @@ double rt_pad_left_y(int64_t index) {
 /// @brief Get the right stick X axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_right_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1500,7 +1500,7 @@ double rt_pad_right_x(int64_t index) {
 /// @brief Get the right stick Y axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_right_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1513,7 +1513,7 @@ double rt_pad_right_y(int64_t index) {
 /// @brief Get the left trigger value (0.0 = released, 1.0 = fully pressed).
 double rt_pad_left_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1524,7 +1524,7 @@ double rt_pad_left_trigger(int64_t index) {
 /// @brief Get the right trigger value (0.0 = released, 1.0 = fully pressed).
 double rt_pad_right_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return 0.0;
     if (!g_pads[index].connected)
         return 0.0;
@@ -1555,7 +1555,7 @@ double rt_pad_get_deadzone(void) {
 /// @brief Set gamepad vibration motor intensities (0.0 to 1.0; platform-dependent).
 void rt_pad_vibrate(int64_t index, double left_motor, double right_motor) {
     RT_ASSERT_MAIN_THREAD();
-    if (index < 0 || index >= VIPER_PAD_MAX)
+    if (index < 0 || index >= ZANNA_PAD_MAX)
         return;
     if (!g_pads[index].connected)
         return;
@@ -1582,80 +1582,80 @@ void rt_pad_stop_vibration(int64_t index) {
 // ===========================================================================
 // Button-constant getters — exposed to the language layer so user code
 // can write `Pad.IsButtonDown(0, Pad.ButtonA)` without hardcoding the
-// internal `VIPER_PAD_*` enum values. Each is a trivial constant return.
+// internal `ZANNA_PAD_*` enum values. Each is a trivial constant return.
 // ===========================================================================
 
 /// @brief Return the integer index for the A (south face) button.
 int64_t rt_pad_button_a(void) {
-    return VIPER_PAD_A;
+    return ZANNA_PAD_A;
 }
 
 /// @brief Return the integer index for the B (east face) button.
 int64_t rt_pad_button_b(void) {
-    return VIPER_PAD_B;
+    return ZANNA_PAD_B;
 }
 
 /// @brief Return the integer index for the X (west face) button.
 int64_t rt_pad_button_x(void) {
-    return VIPER_PAD_X;
+    return ZANNA_PAD_X;
 }
 
 /// @brief Return the integer index for the Y (north face) button.
 int64_t rt_pad_button_y(void) {
-    return VIPER_PAD_Y;
+    return ZANNA_PAD_Y;
 }
 
 /// @brief Return the integer index for the left bumper (LB / L1) button.
 int64_t rt_pad_button_lb(void) {
-    return VIPER_PAD_LB;
+    return ZANNA_PAD_LB;
 }
 
 /// @brief Return the integer index for the right bumper (RB / R1) button.
 int64_t rt_pad_button_rb(void) {
-    return VIPER_PAD_RB;
+    return ZANNA_PAD_RB;
 }
 
 /// @brief Return the integer index for the Back / Select button.
 int64_t rt_pad_button_back(void) {
-    return VIPER_PAD_BACK;
+    return ZANNA_PAD_BACK;
 }
 
 /// @brief Return the integer index for the Start / Menu button.
 int64_t rt_pad_button_start(void) {
-    return VIPER_PAD_START;
+    return ZANNA_PAD_START;
 }
 
 /// @brief Return the integer index for the left-stick click (L3) button.
 int64_t rt_pad_button_lstick(void) {
-    return VIPER_PAD_LSTICK;
+    return ZANNA_PAD_LSTICK;
 }
 
 /// @brief Return the integer index for the right-stick click (R3) button.
 int64_t rt_pad_button_rstick(void) {
-    return VIPER_PAD_RSTICK;
+    return ZANNA_PAD_RSTICK;
 }
 
 /// @brief Return the integer index for the D-pad Up button.
 int64_t rt_pad_button_up(void) {
-    return VIPER_PAD_UP;
+    return ZANNA_PAD_UP;
 }
 
 /// @brief Return the integer index for the D-pad Down button.
 int64_t rt_pad_button_down(void) {
-    return VIPER_PAD_DOWN;
+    return ZANNA_PAD_DOWN;
 }
 
 /// @brief Return the integer index for the D-pad Left button.
 int64_t rt_pad_button_left(void) {
-    return VIPER_PAD_LEFT;
+    return ZANNA_PAD_LEFT;
 }
 
 /// @brief Return the integer index for the D-pad Right button.
 int64_t rt_pad_button_right(void) {
-    return VIPER_PAD_RIGHT;
+    return ZANNA_PAD_RIGHT;
 }
 
 /// @brief Return the integer index for the Guide / Home / Xbox button.
 int64_t rt_pad_button_guide(void) {
-    return VIPER_PAD_GUIDE;
+    return ZANNA_PAD_GUIDE;
 }

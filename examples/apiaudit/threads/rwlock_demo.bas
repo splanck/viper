@@ -1,15 +1,15 @@
 ' =============================================================================
-' API Audit: Viper.Threads.RwLock (BASIC)
+' API Audit: Zanna.Threads.RwLock (BASIC)
 ' =============================================================================
 ' Tests: New, ReadEnter, ReadExit, WriteEnter, WriteExit, TryReadEnter,
 '        TryWriteEnter, Readers, IsWriteLocked
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.RwLock ==="
+PRINT "=== API Audit: Zanna.Threads.RwLock ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM lock AS OBJECT = Viper.Threads.RwLock.New()
+DIM lock AS OBJECT = Zanna.Threads.RwLock.New()
 PRINT "Created RwLock"
 
 ' --- Readers (initial) ---

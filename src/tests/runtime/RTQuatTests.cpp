@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTQuatTests.cpp
-// Purpose: Tests for Viper.Quat quaternion math utilities.
+// Purpose: Tests for Zanna.Quat quaternion math utilities.
 //
 //===----------------------------------------------------------------------===//
 
@@ -336,7 +336,7 @@ static void test_to_mat4_identity() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Quat Tests ===\n\n");
+    printf("=== Zanna.Quat Tests ===\n\n");
 
     /* Constructors */
     test_new();

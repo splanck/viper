@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.System.Environment - Environment Access
+// API Audit: Zanna.System.Environment - Environment Access
 // =============================================================================
 // Tests: GetArgumentCount, GetCommandLine, GetVariable, HasVariable,
 //        SetVariable, IsNative
@@ -7,10 +7,10 @@
 // =============================================================================
 
 module EnvironmentDemo;
-bind Viper.Terminal;
-bind Viper.System.Environment as Env;
+bind Zanna.Terminal;
+bind Zanna.System.Environment as Env;
 func start() {
-    Say("=== API Audit: Viper.System.Environment ===");
+    Say("=== API Audit: Zanna.System.Environment ===");
 
     // --- GetArgumentCount ---
     Say("--- GetArgumentCount ---");
@@ -31,17 +31,17 @@ func start() {
     Say("--- HasVariable ---");
     Say("HasVariable('PATH'):");
     SayBool(Env.HasVariable("PATH"));
-    Say("HasVariable('VIPER_TEST_NONEXISTENT_12345'):");
-    SayBool(Env.HasVariable("VIPER_TEST_NONEXISTENT_12345"));
+    Say("HasVariable('ZANNA_TEST_NONEXISTENT_12345'):");
+    SayBool(Env.HasVariable("ZANNA_TEST_NONEXISTENT_12345"));
 
     // --- SetVariable ---
     Say("--- SetVariable ---");
-    Env.SetVariable("VIPER_AUDIT_TEST", "hello_from_viper");
-    Say("SetVariable('VIPER_AUDIT_TEST', 'hello_from_viper')");
-    Say("GetVariable('VIPER_AUDIT_TEST'):");
-    Say(Env.GetVariable("VIPER_AUDIT_TEST"));
-    Say("HasVariable('VIPER_AUDIT_TEST'):");
-    SayBool(Env.HasVariable("VIPER_AUDIT_TEST"));
+    Env.SetVariable("ZANNA_AUDIT_TEST", "hello_from_zanna");
+    Say("SetVariable('ZANNA_AUDIT_TEST', 'hello_from_zanna')");
+    Say("GetVariable('ZANNA_AUDIT_TEST'):");
+    Say(Env.GetVariable("ZANNA_AUDIT_TEST"));
+    Say("HasVariable('ZANNA_AUDIT_TEST'):");
+    SayBool(Env.HasVariable("ZANNA_AUDIT_TEST"));
 
     // --- IsNative ---
     Say("--- IsNative ---");

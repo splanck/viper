@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,8 +28,8 @@ module Test;
 
 func start() {    var x: Integer = 5;
     match (x) {
-        1 => { Viper.Terminal.Say("one"); }
-        _ => { Viper.Terminal.Say("other"); }
+        1 => { Zanna.Terminal.Say("one"); }
+        _ => { Zanna.Terminal.Say("other"); }
     }
 }
 )";
@@ -72,7 +72,7 @@ func start() {    var x: Integer = 2;
         2 => 20,
         _ => 0
     };
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "match_expr.zia"};
@@ -120,9 +120,9 @@ func start() {    var a: Integer = clamp(5, 0, 10);
     var negative: Integer = 0 - 5;
     var b: Integer = clamp(negative, 0, 10);
     var c: Integer = clamp(15, 0, 10);
-    Viper.Terminal.SayInt(a);
-    Viper.Terminal.SayInt(b);
-    Viper.Terminal.SayInt(c);
+    Zanna.Terminal.SayInt(a);
+    Zanna.Terminal.SayInt(b);
+    Zanna.Terminal.SayInt(c);
 }
 )";
     CompilerInput input{.source = source, .path = "match_bool.zia"};
@@ -203,7 +203,7 @@ func start() {    var p: Point = new Point(1, 7);
     };
 
     var sum: Integer = fromPoint + fromTuple + (fromOpt ?? 0);
-    Viper.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(sum);
 }
 )";
     CompilerInput input{.source = source, .path = "match_patterns.zia"};
@@ -236,5 +236,5 @@ func start() {    var p: Point = new Point(1, 7);
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

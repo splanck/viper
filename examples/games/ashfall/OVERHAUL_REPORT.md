@@ -10,8 +10,8 @@ headless coverage and the software-renderer fallback while using the stronger
 public 3D features on capable window backends.
 
 The overhaul was implemented entirely inside `examples/games/ashfall`. It was
-validated with the installed Viper compiler and Ashfall's direct probe programs;
-Viper itself was not rebuilt and its ctest suite was not run.
+validated with the installed Zanna compiler and Ashfall's direct probe programs;
+Zanna itself was not rebuilt and its ctest suite was not run.
 
 ## Implemented recommendations
 
@@ -148,7 +148,7 @@ The source review produced the following action items. All are implemented.
 43. **Use the existing batching APIs.** Repeated structural props remain cached
     meshes drawn through `InstanceBatch3D`; hero and animated props remain
     retained entities.
-44. **Use the environment APIs already in Viper.** Terrain LOD, layered splat
+44. **Use the environment APIs already in Zanna.** Terrain LOD, layered splat
     materials, animated water, height fog, lens flares, decals, and ambient
     particle volumes all contribute without a new dependency.
 

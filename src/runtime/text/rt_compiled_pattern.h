@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_compiled_pattern.h
@@ -67,7 +67,7 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text);
 ///          match, and `None` when no match exists.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_compiled_pattern_find_option(void *obj, rt_string text);
 
 /// @brief Find first match starting at or after given position.
@@ -81,7 +81,7 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
 /// @param start Starting position (0-based).
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_compiled_pattern_find_from_option(void *obj, rt_string text, int64_t start);
 
 /// @brief Find position of first match.
@@ -93,7 +93,7 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text);
 /// @brief Find position of first match as an Option index.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
-/// @return Opaque Viper.Option containing the first position, or None.
+/// @return Opaque Zanna.Option containing the first position, or None.
 void *rt_compiled_pattern_find_pos_option(void *obj, rt_string text);
 
 /// @brief Find all non-overlapping matches.

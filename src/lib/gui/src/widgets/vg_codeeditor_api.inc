@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -128,12 +128,12 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
     }
 
     if (!editor->document_buffer)
-        editor->document_buffer = viper_text_buffer_new();
+        editor->document_buffer = zanna_text_buffer_new();
     if (editor->document_buffer) {
         const char *buffer_text = text ? text : "";
         size_t buffer_len = text ? len : 0;
-        if (!viper_text_buffer_load_bytes(
-                (viper_text_buffer_t *)editor->document_buffer, buffer_text, buffer_len)) {
+        if (!zanna_text_buffer_load_bytes(
+                (zanna_text_buffer_t *)editor->document_buffer, buffer_text, buffer_len)) {
             free_line_array(new_lines, new_count);
             return;
         }
@@ -368,7 +368,7 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     if (editor->document_buffer) {
         size_t len = 0;
         char *result =
-            viper_text_buffer_text_dup((const viper_text_buffer_t *)editor->document_buffer, &len);
+            zanna_text_buffer_text_dup((const zanna_text_buffer_t *)editor->document_buffer, &len);
         if (result) {
             codeeditor_perf_add(&editor->perf_stats.full_text_copies, 1);
             codeeditor_perf_add(&editor->perf_stats.full_text_copy_bytes, len);

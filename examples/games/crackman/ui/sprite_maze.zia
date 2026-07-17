@@ -8,7 +8,7 @@
 
 module sprite_maze;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "./theme";

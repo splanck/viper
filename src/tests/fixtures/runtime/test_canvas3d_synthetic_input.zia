@@ -1,10 +1,10 @@
 module test_canvas3d_synthetic_input;
 
-bind Viper.Graphics3D;
-bind Viper.Input.Keyboard as Keyboard;
-bind Viper.Input.Mouse as Mouse;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Input.Keyboard as Keyboard;
+bind Zanna.Input.Mouse as Mouse;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
 
 func near(a: Float, b: Float, eps: Float) -> Boolean {
     var d = a - b;
@@ -46,7 +46,7 @@ func start() {
     Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.1);
 
     var leftMask = 1;
-    var keyW = Viper.Input.Key.W;
+    var keyW = Zanna.Input.Key.W;
     var camA = setupCamera();
     var camB = setupCamera();
 
@@ -62,7 +62,7 @@ func start() {
         fail("synthetic mouse delta mismatch");
         return;
     }
-    if (Mouse.WasPressed(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) == false) {
+    if (Mouse.WasPressed(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft) == false) {
         fail("synthetic mouse button press mismatch");
         return;
     }
@@ -89,7 +89,7 @@ func start() {
         fail("synthetic key up did not reach Keyboard");
         return;
     }
-    if (Mouse.WasReleased(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Viper.Input.Mouse.ButtonLeft)) {
+    if (Mouse.WasReleased(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Zanna.Input.Mouse.ButtonLeft)) {
         fail("synthetic mouse button release mismatch");
         return;
     }

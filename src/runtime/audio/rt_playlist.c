@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/audio/rt_playlist.c
-// Purpose: Implements a music playlist for the Viper.Sound.Playlist class.
+// Purpose: Implements a music playlist for the Zanna.Sound.Playlist class.
 //          Supports sequential and shuffle playback, repeat modes (none/all/one),
 //          volume control, and track navigation (Next, Prev, Seek). Delegates
 //          actual audio decoding and playback to rt_audio.
@@ -252,7 +252,7 @@ static void *playlist_load_current_music(playlist_impl *pl) {
 ///          @ref rt_music_crossfade_to slot. Otherwise the old track
 ///          is stopped immediately and the new one starts at the front
 ///          of the foreground. Updates `playing`/`paused` flags to
-///          reflect ViperAUD's actual state.
+///          reflect ZannaAUD's actual state.
 /// @param pl        Playlist instance.
 /// @param new_music Newly-loaded music wrapper (NULL means "track ended,
 ///                  no replacement yet").
@@ -842,7 +842,7 @@ void rt_playlist_set_volume(void *obj, int64_t volume) {
 
 /// @brief Enable or disable shuffle mode.
 /// @details When enabled, generates a random permutation of track indices
-///          using the runtime RNG. `Viper.Math.Random.Seed` can make the
+///          using the runtime RNG. `Zanna.Math.Random.Seed` can make the
 ///          permutation deterministic. The permutation is regenerated each
 ///          time shuffle is toggled on.
 /// @param obj Playlist object pointer; no-op if NULL.

@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-04-22
 ---
 
-# Viper.Localization examples
+# Zanna.Localization examples
 
-Three Zia programs demonstrating the `Viper.Localization.*` namespace.
+Three Zia programs demonstrating the `Zanna.Localization.*` namespace.
 
 | Example | Shows |
 |---|---|
@@ -16,7 +16,7 @@ Three Zia programs demonstrating the `Viper.Localization.*` namespace.
 
 Run any of them with:
 ```sh
-viper run hello-localized.zia
+zanna run hello-localized.zia
 ```
 
-Locale data lives under `locales/`. For deployment, consider embedding the JSONs via VPA (see [Localization data files](../../docs/viperlib/localization/data-files.md)).
+Locale data lives under `locales/`. For deployment, consider embedding the JSONs via ZPAK (see [Localization data files](../../docs/zannalib/localization/data-files.md)).

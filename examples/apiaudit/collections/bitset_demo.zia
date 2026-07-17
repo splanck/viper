@@ -1,13 +1,13 @@
-// bitset_demo.zia - Comprehensive API audit for Viper.Collections.BitSet
+// bitset_demo.zia - Comprehensive API audit for Zanna.Collections.BitSet
 // Tests: New, Set, Get, Clear, Toggle, ClearAll, SetAll, Count, Len,
 //        IsEmpty, Not, And, Or, Xor, ToString
 
 module BitSetDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== BitSet API Audit ===");

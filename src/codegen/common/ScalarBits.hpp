@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Return the IEEE-754 bit pattern for a double without changing its value.
 inline std::uint64_t f64Bits(double value) noexcept {
@@ -24,4 +24,4 @@ inline std::uint64_t f64Bits(double value) noexcept {
     return bits;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

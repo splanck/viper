@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -93,12 +93,12 @@ TEST(BasicCompletion, ScopeProcedures) {
 
 TEST(BasicCompletion, RuntimeMemberCarriesAuthoredClassDocumentation) {
     BasicCompletionEngine engine;
-    auto items = engine.complete("Viper.Terminal.Sa\n", 1, 18, "test.bas", 0);
+    auto items = engine.complete("Zanna.Terminal.Sa\n", 1, 18, "test.bas", 0);
     const auto say = std::find_if(
         items.begin(), items.end(), [](const CompletionItem &item) { return item.label == "Say"; });
     ASSERT_NE(say, items.end());
     EXPECT_TRUE(say->documentation.find("terminal input, output, styling") != std::string::npos);
-    EXPECT_TRUE(say->documentation.find("`Viper.Terminal`") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("`Zanna.Terminal`") != std::string::npos);
 }
 
 // ===== No-crash edge cases =====
@@ -169,6 +169,6 @@ TEST(BasicCompletion, CacheKeyIncludesFilePath) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_quadtree.c
-// Purpose: Spatial quadtree for Viper games. Accelerates nearest-neighbour and
+// Purpose: Spatial quadtree for Zanna games. Accelerates nearest-neighbour and
 //   rectangular-region queries from O(n) linear scans to approximately
 //   O(n log n) by recursively subdividing a 2D world region into four equal
 //   quadrants (NW, NE, SW, SE). Typical use cases: enemy radar, player
@@ -45,7 +45,7 @@
 //     the finalizer for cleanup.
 //
 // Links: src/runtime/game/rt_quadtree.h (public API),
-//        docs/viperlib/game.md (Quadtree section, truncation notes)
+//        docs/zannalib/game.md (Quadtree section, truncation notes)
 //
 //===----------------------------------------------------------------------===//
 
@@ -782,14 +782,14 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 
 /// @brief Release resources and destroy the quadtree.
 void rt_quadtree_destroy(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.Destroy: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.Destroy: expected Zanna.Game.Quadtree");
     if (tree && rt_obj_release_check0(tree))
         rt_obj_free(tree);
 }
 
 /// @brief Remove all entries from the quadtree.
 void rt_quadtree_clear(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.Clear: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.Clear: expected Zanna.Game.Quadtree");
     if (!tree)
         return;
 
@@ -814,7 +814,7 @@ void rt_quadtree_clear(rt_quadtree tree) {
 /// already present (use `_update` to move an existing item instead).
 int8_t rt_quadtree_insert(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
-    tree = checked_quadtree(tree, "Quadtree.Insert: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.Insert: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
     if (width <= 0 || height <= 0)
@@ -870,7 +870,7 @@ int8_t rt_quadtree_insert(
 
 /// @brief Remove an entry from the quadtree.
 int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
-    tree = checked_quadtree(tree, "Quadtree.Remove: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.Remove: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -890,7 +890,7 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
 /// Returns 0 if the ID is not present.
 int8_t rt_quadtree_update(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
-    tree = checked_quadtree(tree, "Quadtree.Update: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.Update: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
     if (width <= 0 || height <= 0)
@@ -935,7 +935,7 @@ int8_t rt_quadtree_update(
 /// returns 1 only if allocation fails and a partial result had to be returned.
 int64_t rt_quadtree_query_rect(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
-    tree = checked_quadtree(tree, "Quadtree.QueryRect: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryRect: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -950,7 +950,7 @@ int64_t rt_quadtree_query_rect(
 
 void *rt_quadtree_query_rect_result(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
-    tree = checked_quadtree(tree, "Quadtree.QueryRectResult: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryRectResult: expected Zanna.Game.Quadtree");
     if (!tree)
         return query_result_from_ids(NULL, 0, 0);
     (void)rt_quadtree_query_rect(tree, x, y, width, height);
@@ -959,13 +959,13 @@ void *rt_quadtree_query_rect_result(
 
 /// @brief Check whether the last query hit the result capacity limit.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.QueryWasTruncated: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryWasTruncated: expected Zanna.Game.Quadtree");
     return tree ? tree->query_truncated : 0;
 }
 
 /// @brief Find all items within a circular area centered at (x, y) with given radius.
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
-    tree = checked_quadtree(tree, "Quadtree.QueryPoint: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryPoint: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
     if (radius < 0)
@@ -996,7 +996,7 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
 }
 
 void *rt_quadtree_query_point_result(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
-    tree = checked_quadtree(tree, "Quadtree.QueryPointResult: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryPointResult: expected Zanna.Game.Quadtree");
     if (!tree)
         return query_result_from_ids(NULL, 0, 0);
     (void)rt_quadtree_query_point(tree, x, y, radius);
@@ -1005,7 +1005,7 @@ void *rt_quadtree_query_point_result(rt_quadtree tree, int64_t x, int64_t y, int
 
 /// @brief Return the item ID at a given index in the most recent query result set.
 int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
-    tree = checked_quadtree(tree, "Quadtree.GetResult: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.GetResult: expected Zanna.Game.Quadtree");
     if (!tree || index < 0 || index >= tree->result_count)
         return -1;
     return tree->results[index];
@@ -1013,19 +1013,19 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
 
 /// @brief Get the number of results from the most recent query.
 int64_t rt_quadtree_result_count(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.ResultCount: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.ResultCount: expected Zanna.Game.Quadtree");
     return tree ? tree->result_count : 0;
 }
 
 int64_t rt_game_query_result_count(void *ptr) {
     struct rt_game_query_result_impl *result =
-        checked_query_result(ptr, "QueryResult.Count: expected Viper.Game.QueryResult");
+        checked_query_result(ptr, "QueryResult.Count: expected Zanna.Game.QueryResult");
     return result ? result->count : 0;
 }
 
 int64_t rt_game_query_result_get_id(void *ptr, int64_t index) {
     struct rt_game_query_result_impl *result =
-        checked_query_result(ptr, "QueryResult.GetId: expected Viper.Game.QueryResult");
+        checked_query_result(ptr, "QueryResult.GetId: expected Zanna.Game.QueryResult");
     if (!result || index < 0 || index >= result->count)
         return -1;
     return result->ids[index];
@@ -1033,7 +1033,7 @@ int64_t rt_game_query_result_get_id(void *ptr, int64_t index) {
 
 int8_t rt_game_query_result_contains(void *ptr, int64_t id) {
     struct rt_game_query_result_impl *result =
-        checked_query_result(ptr, "QueryResult.Contains: expected Viper.Game.QueryResult");
+        checked_query_result(ptr, "QueryResult.Contains: expected Zanna.Game.QueryResult");
     if (!result)
         return 0;
     for (int64_t i = 0; i < result->count; ++i) {
@@ -1045,13 +1045,13 @@ int8_t rt_game_query_result_contains(void *ptr, int64_t id) {
 
 int8_t rt_game_query_result_truncated(void *ptr) {
     struct rt_game_query_result_impl *result =
-        checked_query_result(ptr, "QueryResult.Truncated: expected Viper.Game.QueryResult");
+        checked_query_result(ptr, "QueryResult.Truncated: expected Zanna.Game.QueryResult");
     return result ? result->truncated : 0;
 }
 
 void *rt_game_query_result_ids(void *ptr) {
     struct rt_game_query_result_impl *result =
-        checked_query_result(ptr, "QueryResult.Ids: expected Viper.Game.QueryResult");
+        checked_query_result(ptr, "QueryResult.Ids: expected Zanna.Game.QueryResult");
     void *seq = rt_seq_new();
     if (!seq)
         return NULL;
@@ -1069,7 +1069,7 @@ void *rt_game_query_result_ids(void *ptr) {
 
 /// @brief Get the total number of active items in the quadtree.
 int64_t rt_quadtree_item_count(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.ItemCount: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.ItemCount: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -1084,7 +1084,7 @@ int64_t rt_quadtree_item_count(rt_quadtree tree) {
 /// @brief Compute all potentially-colliding pairs in the quadtree and return the count.
 /// @details Traverses the tree collecting pairs of items that share a leaf node.
 int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.GetPairs: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.GetPairs: expected Zanna.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -1108,7 +1108,7 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
 }
 
 void *rt_quadtree_query_pairs(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.QueryPairs: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.QueryPairs: expected Zanna.Game.Quadtree");
     if (!tree)
         return pair_result_from_pairs(NULL, 0, 0);
     (void)rt_quadtree_get_pairs(tree);
@@ -1117,7 +1117,7 @@ void *rt_quadtree_query_pairs(rt_quadtree tree) {
 
 /// @brief Return the first item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
-    tree = checked_quadtree(tree, "Quadtree.PairFirst: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.PairFirst: expected Zanna.Game.Quadtree");
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].first;
@@ -1125,7 +1125,7 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
 
 /// @brief Return the second item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
-    tree = checked_quadtree(tree, "Quadtree.PairSecond: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.PairSecond: expected Zanna.Game.Quadtree");
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].second;
@@ -1135,19 +1135,19 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
 /// @details Mirrors rt_quadtree_query_was_truncated() for the broad-phase pair
 ///          list: returns 1 if allocation failure prevented collecting every pair.
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree) {
-    tree = checked_quadtree(tree, "Quadtree.PairsWasTruncated: expected Viper.Game.Quadtree");
+    tree = checked_quadtree(tree, "Quadtree.PairsWasTruncated: expected Zanna.Game.Quadtree");
     return tree ? tree->pairs_truncated : 0;
 }
 
 int64_t rt_quadtree_pair_result_count(void *ptr) {
     struct rt_quadtree_pair_result_impl *result = checked_pair_result(
-        ptr, "QuadtreePairResult.Count: expected Viper.Game.QuadtreePairResult");
+        ptr, "QuadtreePairResult.Count: expected Zanna.Game.QuadtreePairResult");
     return result ? result->count : 0;
 }
 
 int64_t rt_quadtree_pair_result_first(void *ptr, int64_t index) {
     struct rt_quadtree_pair_result_impl *result = checked_pair_result(
-        ptr, "QuadtreePairResult.First: expected Viper.Game.QuadtreePairResult");
+        ptr, "QuadtreePairResult.First: expected Zanna.Game.QuadtreePairResult");
     if (!result || index < 0 || index >= result->count)
         return -1;
     return result->pairs[index].first;
@@ -1155,7 +1155,7 @@ int64_t rt_quadtree_pair_result_first(void *ptr, int64_t index) {
 
 int64_t rt_quadtree_pair_result_second(void *ptr, int64_t index) {
     struct rt_quadtree_pair_result_impl *result = checked_pair_result(
-        ptr, "QuadtreePairResult.Second: expected Viper.Game.QuadtreePairResult");
+        ptr, "QuadtreePairResult.Second: expected Zanna.Game.QuadtreePairResult");
     if (!result || index < 0 || index >= result->count)
         return -1;
     return result->pairs[index].second;
@@ -1163,6 +1163,6 @@ int64_t rt_quadtree_pair_result_second(void *ptr, int64_t index) {
 
 int8_t rt_quadtree_pair_result_truncated(void *ptr) {
     struct rt_quadtree_pair_result_impl *result = checked_pair_result(
-        ptr, "QuadtreePairResult.Truncated: expected Viper.Game.QuadtreePairResult");
+        ptr, "QuadtreePairResult.Truncated: expected Zanna.Game.QuadtreePairResult");
     return result ? result->truncated : 0;
 }

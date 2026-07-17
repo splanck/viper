@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_file_ext.c
-// Purpose: High-level file helpers backing the Viper.IO.File static methods.
+// Purpose: High-level file helpers backing the Zanna.IO.File static methods.
 //          Implements ReadAllText, WriteAllText, ReadAllBytes, WriteAllBytes,
 //          ReadAllLines, AppendAllText, Copy, Move, Delete, Exists, GetSize,
 //          and related operations by bridging OOP-style calls to the runtime
@@ -283,9 +283,9 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
-/// @brief Build the `.viper-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
+/// @brief Build the `.zanna-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
-    return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
+    return rt_fileext_make_parent_temp_path(path, ".zanna-tmp.", attempt);
 }
 
 /// @brief Atomically replace `dst` with `src` using MoveFileExW (Windows).
@@ -346,9 +346,9 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
-/// @brief Build the `.viper-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
+/// @brief Build the `.zanna-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
-    return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
+    return rt_fileext_make_parent_temp_path(path, ".zanna-tmp.", attempt);
 }
 
 /// @brief Atomically replace `dst` with `src` using `rename(2)` (POSIX).
@@ -398,7 +398,7 @@ static int rt_fileext_commit_utf8(const char *src, const char *dst, int replace)
 
 /// @brief Open an exclusive temp file beside `path` for atomic-write staging.
 ///
-/// Tries up to 128 distinct `.viper-tmp.<pid>.<attempt>` sidecar names
+/// Tries up to 128 distinct `.zanna-tmp.<pid>.<attempt>` sidecar names
 /// until O_EXCL succeeds. O_NOFOLLOW (when available) prevents a
 /// symlink attack that would redirect the write elsewhere. On success,
 /// writes the chosen temp path into `*out_tmp` for the caller to rename
@@ -650,7 +650,7 @@ static const char *rt_io_file_require_path(rt_string path, const char *context) 
 }
 
 /// What: Return 1 if the file at @p path exists, 0 otherwise.
-/// Why:  Support Viper.IO.File.Exists semantics from the runtime.
+/// Why:  Support Zanna.IO.File.Exists semantics from the runtime.
 /// How:  Converts @p path to a host path and calls stat().
 /// @brief Returns 1 if `path` exists (file or directory), 0 otherwise. Single `stat` call.
 int64_t rt_io_file_exists(rt_string path) {
@@ -675,41 +675,41 @@ int64_t rt_io_file_exists(rt_string path) {
 /// rt_string allocation. Traps on NULL path or read failure.
 rt_string rt_io_file_read_all_text(rt_string path) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.ReadAllText: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.ReadAllText: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.ReadAllText: failed to open file");
+        rt_trap("Zanna.IO.File.ReadAllText: failed to open file");
         return rt_str_empty();
     }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         close(fd);
-        rt_trap("Viper.IO.File.ReadAllText: failed to stat file");
+        rt_trap("Zanna.IO.File.ReadAllText: failed to stat file");
         return rt_str_empty();
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         close(fd);
-        rt_trap("Viper.IO.File.ReadAllText: path is not a regular file");
+        rt_trap("Zanna.IO.File.ReadAllText: path is not a regular file");
         return rt_str_empty();
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
-        rt_trap("Viper.IO.File.ReadAllText: file too large");
+        rt_trap("Zanna.IO.File.ReadAllText: file too large");
         return rt_str_empty();
     }
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     // Handle empty files
     if (size == 0) {
-        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllText: failed to close file");
+        rt_fileext_close_or_trap(fd, "Zanna.IO.File.ReadAllText: failed to close file");
         return rt_str_empty();
     }
 
     char *buf = (char *)malloc(size);
     if (!buf) {
         close(fd);
-        rt_trap("Viper.IO.File.ReadAllText: allocation failed");
+        rt_trap("Zanna.IO.File.ReadAllText: allocation failed");
         return rt_str_empty();
     }
 
@@ -721,26 +721,26 @@ rt_string rt_io_file_read_all_text(rt_string path) {
                 continue;
             free(buf);
             close(fd);
-            rt_trap("Viper.IO.File.ReadAllText: failed to read file");
+            rt_trap("Zanna.IO.File.ReadAllText: failed to read file");
             return rt_str_empty();
         }
         if (n == 0) {
             free(buf);
             close(fd);
-            rt_trap("Viper.IO.File.ReadAllText: file changed while reading");
+            rt_trap("Zanna.IO.File.ReadAllText: file changed while reading");
             return rt_str_empty();
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
-        rt_trap("Viper.IO.File.ReadAllText: failed to close file");
+        rt_trap("Zanna.IO.File.ReadAllText: failed to close file");
         return rt_str_empty();
     }
     rt_string s = rt_string_from_bytes(buf, size);
     free(buf);
     if (!s) {
-        rt_trap("Viper.IO.File.ReadAllText: allocation failed");
+        rt_trap("Zanna.IO.File.ReadAllText: allocation failed");
         return rt_str_empty();
     }
     return s;
@@ -754,17 +754,17 @@ rt_string rt_io_file_read_all_text(rt_string path) {
 /// see either the old file or the new file, never a partial write.
 void rt_io_file_write_all_text(rt_string path, rt_string contents) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.WriteAllText: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.WriteAllText: invalid file path");
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_require_view(
-        contents, &data, "Viper.IO.File.WriteAllText: invalid contents");
+        contents, &data, "Zanna.IO.File.WriteAllText: invalid contents");
     if (!rt_fileext_write_atomic_utf8(cpath, data, len, 1))
-        rt_trap("Viper.IO.File.WriteAllText: failed to write file");
+        rt_trap("Zanna.IO.File.WriteAllText: failed to write file");
 }
 
 /// What: Append @p text and a newline to @p path (creating it when missing).
-/// Why:  Provide a convenient "append line" helper for Viper.IO.File.
+/// Why:  Provide a convenient "append line" helper for Zanna.IO.File.
 /// How:  Opens with O_APPEND and writes the UTF-8 bytes plus '\n' as one buffer,
 ///       using a whole-file byte-range lock on Windows.
 /// @brief Append `text` and then an LF to the end of a file, creating it if absent.
@@ -783,27 +783,27 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents) {
 ///          protocol.
 void rt_io_file_append_line(rt_string path, rt_string text) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.AppendLine: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.AppendLine: failed to open file");
+        rt_trap("Zanna.IO.File.AppendLine: failed to open file");
         return;
     }
 
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
+    size_t len = rt_file_string_require_view(text, &data, "Zanna.IO.File.AppendLine: invalid text");
 
     // Combine the text and its LF so the common case is a single atomic append.
     if (len > SIZE_MAX - 1) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.AppendLine: text too large");
+        rt_trap("Zanna.IO.File.AppendLine: text too large");
         return;
     }
     uint8_t *line = (uint8_t *)malloc(len + 1);
     if (!line) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.AppendLine: memory allocation failed");
+        rt_trap("Zanna.IO.File.AppendLine: memory allocation failed");
         return;
     }
     if (len > 0)
@@ -815,7 +815,7 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
     if (!rt_fileext_lock_append(fd, &lock_state)) {
         free(line);
         (void)close(fd);
-        rt_trap("Viper.IO.File.AppendLine: failed to lock file");
+        rt_trap("Zanna.IO.File.AppendLine: failed to lock file");
         return;
     }
 #endif
@@ -845,55 +845,55 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
 
     if (write_failed) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.AppendLine: failed to write file");
+        rt_trap("Zanna.IO.File.AppendLine: failed to write file");
         return;
     }
 
-    rt_fileext_close_or_trap(fd, "Viper.IO.File.AppendLine: failed to close file");
+    rt_fileext_close_or_trap(fd, "Zanna.IO.File.AppendLine: failed to close file");
 }
 
 /// What: Read the entire file at @p path as a Bytes object.
-/// Why:  Provide binary file input for Viper.IO.File.ReadAllBytes.
+/// Why:  Provide binary file input for Zanna.IO.File.ReadAllBytes.
 /// How:  Reads the file into a temporary buffer and copies it into a new Bytes.
 /// @brief Read the entire file as raw Bytes (no text decoding). Returns a Bytes object sized to
 /// match the actual file length on disk.
 void *rt_io_file_read_all_bytes(rt_string path) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.ReadAllBytes: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.ReadAllBytes: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.ReadAllBytes: failed to open file");
+        rt_trap("Zanna.IO.File.ReadAllBytes: failed to open file");
         return NULL;
     }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllBytes: failed to stat file");
+        rt_trap("Zanna.IO.File.ReadAllBytes: failed to stat file");
         return NULL;
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllBytes: path is not a regular file");
+        rt_trap("Zanna.IO.File.ReadAllBytes: path is not a regular file");
         return NULL;
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllBytes: file too large");
+        rt_trap("Zanna.IO.File.ReadAllBytes: file too large");
         return NULL;
     }
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
-        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllBytes: failed to close file");
+        rt_fileext_close_or_trap(fd, "Zanna.IO.File.ReadAllBytes: failed to close file");
         return rt_bytes_new(0);
     }
 
     uint8_t *buf = (uint8_t *)malloc(size);
     if (!buf) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllBytes: allocation failed");
+        rt_trap("Zanna.IO.File.ReadAllBytes: allocation failed");
         return NULL;
     }
 
@@ -905,20 +905,20 @@ void *rt_io_file_read_all_bytes(rt_string path) {
                 continue;
             free(buf);
             (void)close(fd);
-            rt_trap("Viper.IO.File.ReadAllBytes: failed to read file");
+            rt_trap("Zanna.IO.File.ReadAllBytes: failed to read file");
             return NULL;
         }
         if (n == 0) {
             free(buf);
             (void)close(fd);
-            rt_trap("Viper.IO.File.ReadAllBytes: file changed while reading");
+            rt_trap("Zanna.IO.File.ReadAllBytes: file changed while reading");
             return NULL;
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
-        rt_trap("Viper.IO.File.ReadAllBytes: failed to close file");
+        rt_trap("Zanna.IO.File.ReadAllBytes: failed to close file");
         return NULL;
     }
 
@@ -926,7 +926,7 @@ void *rt_io_file_read_all_bytes(rt_string path) {
     void *bytes = rt_bytes_new((int64_t)size);
     if (!bytes) {
         free(buf);
-        rt_trap("Viper.IO.File.ReadAllBytes: memory allocation failed");
+        rt_trap("Zanna.IO.File.ReadAllBytes: memory allocation failed");
         return NULL;
     }
     uint8_t *dst = rt_bytes_data(bytes);
@@ -938,16 +938,16 @@ void *rt_io_file_read_all_bytes(rt_string path) {
 }
 
 /// What: Write an entire Bytes object to @p path, overwriting the file.
-/// Why:  Provide binary file output for Viper.IO.File.WriteAllBytes.
+/// Why:  Provide binary file output for Zanna.IO.File.WriteAllBytes.
 /// How:  Writes bytes in chunks to avoid per-byte syscalls.
 /// @brief Atomically write raw Bytes to `path`. Same atomic-replace semantics as `_write_all_text`
 /// but skips text encoding conversion.
 void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.WriteAllBytes: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.WriteAllBytes: invalid file path");
 
     if (!bytes) {
-        rt_trap("Viper.IO.File.WriteAllBytes: null Bytes");
+        rt_trap("Zanna.IO.File.WriteAllBytes: null Bytes");
         return;
     }
 
@@ -955,54 +955,54 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
        eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
     if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
-        rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes length");
+        rt_trap("Zanna.IO.File.WriteAllBytes: invalid Bytes length");
         return;
     }
     const uint8_t *src = rt_bytes_data_const(bytes);
     if (len > 0 && !src) {
-        rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes data");
+        rt_trap("Zanna.IO.File.WriteAllBytes: invalid Bytes data");
         return;
     }
     if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
-        rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
+        rt_trap("Zanna.IO.File.WriteAllBytes: failed to write file");
 }
 
 /// What: Read a text file and return a Seq of lines.
-/// Why:  Provide convenient line-based file input for Viper.IO.File.ReadAllLines.
+/// Why:  Provide convenient line-based file input for Zanna.IO.File.ReadAllLines.
 /// How:  Reads the file and splits on LF, CR, and CRLF, stripping line terminators.
 /// @brief Read a file, split on LF/CR/CRLF, return a Seq of rt_strings (one per line, no
 /// trailing newline). Empty trailing lines are preserved (a file ending in `\n\n` yields a
 /// trailing empty string).
 void *rt_io_file_read_all_lines(rt_string path) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.ReadAllLines: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.ReadAllLines: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.ReadAllLines: failed to open file");
+        rt_trap("Zanna.IO.File.ReadAllLines: failed to open file");
         return rt_seq_new();
     }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllLines: failed to stat file");
+        rt_trap("Zanna.IO.File.ReadAllLines: failed to stat file");
         return rt_seq_new();
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllLines: path is not a regular file");
+        rt_trap("Zanna.IO.File.ReadAllLines: path is not a regular file");
         return rt_seq_new();
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllLines: file too large");
+        rt_trap("Zanna.IO.File.ReadAllLines: file too large");
         return rt_seq_new();
     }
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
-        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllLines: failed to close file");
+        rt_fileext_close_or_trap(fd, "Zanna.IO.File.ReadAllLines: failed to close file");
         void *empty = rt_seq_new();
         if (!empty)
             return NULL;
@@ -1012,13 +1012,13 @@ void *rt_io_file_read_all_lines(rt_string path) {
 
     if (size > SIZE_MAX - 3) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllLines: file too large");
+        rt_trap("Zanna.IO.File.ReadAllLines: file too large");
         return rt_seq_new();
     }
     char *buf = (char *)malloc(size + 3);
     if (!buf) {
         (void)close(fd);
-        rt_trap("Viper.IO.File.ReadAllLines: allocation failed");
+        rt_trap("Zanna.IO.File.ReadAllLines: allocation failed");
         return rt_seq_new();
     }
 
@@ -1030,25 +1030,25 @@ void *rt_io_file_read_all_lines(rt_string path) {
                 continue;
             free(buf);
             (void)close(fd);
-            rt_trap("Viper.IO.File.ReadAllLines: failed to read file");
+            rt_trap("Zanna.IO.File.ReadAllLines: failed to read file");
             return rt_seq_new();
         }
         if (n == 0) {
             free(buf);
             (void)close(fd);
-            rt_trap("Viper.IO.File.ReadAllLines: file changed while reading");
+            rt_trap("Zanna.IO.File.ReadAllLines: file changed while reading");
             return rt_seq_new();
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
-        rt_trap("Viper.IO.File.ReadAllLines: failed to close file");
+        rt_trap("Zanna.IO.File.ReadAllLines: failed to close file");
         return rt_seq_new();
     }
     if (off > size) {
         free(buf);
-        rt_trap("Viper.IO.File.ReadAllLines: file changed while reading");
+        rt_trap("Zanna.IO.File.ReadAllLines: file changed while reading");
         return rt_seq_new();
     }
     buf[off] = '\0';
@@ -1068,7 +1068,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
     if (setjmp(recovery) != 0) {
         char saved_error[256];
         rt_fileext_save_trap_error(
-            saved_error, sizeof(saved_error), "Viper.IO.File.ReadAllLines: failed to split lines");
+            saved_error, sizeof(saved_error), "Zanna.IO.File.ReadAllLines: failed to split lines");
         rt_trap_clear_recovery();
         if (line)
             rt_string_unref((rt_string)line);
@@ -1120,9 +1120,9 @@ void *rt_io_file_read_all_lines(rt_string path) {
 /// How:  Converts to host path and calls unlink(); errors are ignored.
 /// @brief Delete a file. Trap if the path is null/empty; silently succeeds if the file is missing.
 void rt_io_file_delete(rt_string path) {
-    const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Delete: invalid file path");
+    const char *cpath = rt_io_file_require_path(path, "Zanna.IO.File.Delete: invalid file path");
     if (rt_fileext_unlink(cpath) != 0 && errno != ENOENT)
-        rt_trap("Viper.IO.File.Delete: failed to delete file");
+        rt_trap("Zanna.IO.File.Delete: failed to delete file");
 }
 
 /// @brief Core file-copy routine used by `File.Copy` and `File.CopyOver`.
@@ -1275,9 +1275,9 @@ void rt_file_copy(rt_string src, rt_string dst) {
 /// Why:  Allow file relocation without platform-specific APIs.
 /// How:  Uses rename(); falls back to copy+delete if needed.
 static void rt_file_move_impl(rt_string src, rt_string dst, int replace) {
-    const char *src_path = rt_io_file_require_path(src, "Viper.IO.File.Move: invalid source path");
+    const char *src_path = rt_io_file_require_path(src, "Zanna.IO.File.Move: invalid source path");
     const char *dst_path =
-        rt_io_file_require_path(dst, "Viper.IO.File.Move: invalid destination path");
+        rt_io_file_require_path(dst, "Zanna.IO.File.Move: invalid destination path");
 
     rt_fileext_stat_t src_st;
     if (rt_fileext_stat_path(src_path, &src_st) != 0 ||
@@ -1371,10 +1371,10 @@ void *rt_file_read_lines(rt_string path) {
 /// line; trailing newline is added to the final line so future appends concatenate correctly.
 void rt_file_write_lines(rt_string path, void *lines) {
     const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.WriteLines: invalid file path");
+        rt_io_file_require_path(path, "Zanna.IO.File.WriteLines: invalid file path");
 
     if (!lines) {
-        rt_trap("Viper.IO.File.WriteLines: null lines");
+        rt_trap("Zanna.IO.File.WriteLines: null lines");
         return;
     }
 
@@ -1382,13 +1382,13 @@ void rt_file_write_lines(rt_string path, void *lines) {
     for (int64_t i = 0; i < count; i++) {
         const uint8_t *unused = NULL;
         (void)rt_file_string_require_view(
-            (rt_string)rt_seq_get(lines, i), &unused, "Viper.IO.File.WriteLines: invalid line");
+            (rt_string)rt_seq_get(lines, i), &unused, "Zanna.IO.File.WriteLines: invalid line");
     }
 
     char *tmp_path = NULL;
     int fd = rt_fileext_open_temp_utf8(cpath, 1, &tmp_path);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.WriteLines: failed to open file");
+        rt_trap("Zanna.IO.File.WriteLines: failed to open file");
         return;
     }
 
@@ -1397,7 +1397,7 @@ void rt_file_write_lines(rt_string path, void *lines) {
         rt_string line = (rt_string)rt_seq_get(lines, i);
         const uint8_t *data = NULL;
         size_t len =
-            rt_file_string_require_view(line, &data, "Viper.IO.File.WriteLines: invalid line");
+            rt_file_string_require_view(line, &data, "Zanna.IO.File.WriteLines: invalid line");
         if (!rt_fileext_write_all_fd(fd, data, len)) {
             ok = 0;
             break;
@@ -1426,13 +1426,13 @@ void rt_file_write_lines(rt_string path, void *lines) {
     if (!ok) {
         (void)rt_fileext_unlink(tmp_path);
         free(tmp_path);
-        rt_trap("Viper.IO.File.WriteLines: failed to write file");
+        rt_trap("Zanna.IO.File.WriteLines: failed to write file");
         return;
     }
     free(tmp_path);
 }
 
-/// @brief Alias for `rt_file_write_lines` using the Viper.IO.File.WriteAllLines spelling.
+/// @brief Alias for `rt_file_write_lines` using the Zanna.IO.File.WriteAllLines spelling.
 void rt_io_file_write_all_lines(rt_string path, void *lines) {
     rt_file_write_lines(path, lines);
 }
@@ -1443,23 +1443,23 @@ void rt_io_file_write_all_lines(rt_string path, void *lines) {
 /// @brief Append `text` (no newline added) to the end of a file. Like `_append_line` but doesn't
 /// add a trailing LF — useful for binary-style appends.
 void rt_file_append(rt_string path, rt_string text) {
-    const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Append: invalid file path");
+    const char *cpath = rt_io_file_require_path(path, "Zanna.IO.File.Append: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.Append: failed to open file");
+        rt_trap("Zanna.IO.File.Append: failed to open file");
         return;
     }
 
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.Append: invalid text");
+    size_t len = rt_file_string_require_view(text, &data, "Zanna.IO.File.Append: invalid text");
     if (!rt_fileext_write_all_fd(fd, data, len)) {
         close(fd);
-        rt_trap("Viper.IO.File.Append: failed to write file");
+        rt_trap("Zanna.IO.File.Append: failed to write file");
         return;
     }
 
-    rt_fileext_close_or_trap(fd, "Viper.IO.File.Append: failed to close file");
+    rt_fileext_close_or_trap(fd, "Zanna.IO.File.Append: failed to close file");
 }
 
 /// What: Get file modification time as Unix timestamp.
@@ -1486,7 +1486,7 @@ int64_t rt_file_modified(rt_string path) {
 /// @brief Update the file's mtime+atime to "now" (`utime(NULL)`). Creates an empty file if it
 /// doesn't exist. Mirrors the Unix `touch` command.
 void rt_file_touch(rt_string path) {
-    const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Touch: invalid file path");
+    const char *cpath = rt_io_file_require_path(path, "Zanna.IO.File.Touch: invalid file path");
 
     // Touch is a FILE operation: reject an existing directory rather than
     // mutating its timestamps, matching the rest of the File surface which
@@ -1494,7 +1494,7 @@ void rt_file_touch(rt_string path) {
     rt_fileext_stat_t existing;
     if (rt_fileext_stat_path(cpath, &existing) == 0 &&
         !rt_fileext_is_regular_mode(existing.st_mode)) {
-        rt_trap("Viper.IO.File.Touch: path is not a regular file");
+        rt_trap("Zanna.IO.File.Touch: path is not a regular file");
         return;
     }
 
@@ -1502,15 +1502,15 @@ void rt_file_touch(rt_string path) {
     if (rt_fileext_utime(cpath, NULL) == 0)
         return;
     if (errno != ENOENT) {
-        rt_trap("Viper.IO.File.Touch: failed to update file time");
+        rt_trap("Zanna.IO.File.Touch: failed to update file time");
         return;
     }
 
     // File doesn't exist, create it
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | RT_FILE_O_BINARY, 0666);
     if (fd < 0) {
-        rt_trap("Viper.IO.File.Touch: failed to create file");
+        rt_trap("Zanna.IO.File.Touch: failed to create file");
         return;
     }
-    rt_fileext_close_or_trap(fd, "Viper.IO.File.Touch: failed to close file");
+    rt_fileext_close_or_trap(fd, "Zanna.IO.File.Touch: failed to close file");
 }

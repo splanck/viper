@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX macOS Cocoa Backend
+// ZannaGFX macOS Cocoa Backend
 //
 // Platform-specific implementation using macOS Cocoa APIs (Objective-C).
 // Provides window creation, event handling, framebuffer blitting, and timing
@@ -16,7 +16,7 @@
 //   - VGFXView (NSView): Custom view for framebuffer display via CGImage
 //   - VGFXWindowDelegate: Handles window lifecycle events (close, resize, focus)
 //   - Event Translation: NSEvent → vgfx_event_t mapping
-//   - Coordinate Conversion: Cocoa (bottom-left origin) → ViperGFX (top-left origin)
+//   - Coordinate Conversion: Cocoa (bottom-left origin) → ZannaGFX (top-left origin)
 //
 // Key macOS Concepts:
 //   - Autorelease pools: Required for Objective-C memory management
@@ -28,7 +28,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief macOS Cocoa backend implementation for ViperGFX.
+/// @brief macOS Cocoa backend implementation for ZannaGFX.
 /// @details Uses NSWindow, NSView, and Core Graphics to provide window
 ///          management and framebuffer presentation on macOS.
 
@@ -61,11 +61,11 @@ static int vgfx_macos_env_flag_enabled(const char *name) {
 }
 
 static int vgfx_macos_hide_windows(void) {
-    return vgfx_macos_env_flag_enabled("VIPER_GFX_HIDE_WINDOWS");
+    return vgfx_macos_env_flag_enabled("ZANNA_GFX_HIDE_WINDOWS");
 }
 
 static int vgfx_macos_no_activate_on_create(void) {
-    return vgfx_macos_env_flag_enabled("VIPER_GFX_NO_ACTIVATE") || vgfx_macos_hide_windows();
+    return vgfx_macos_env_flag_enabled("ZANNA_GFX_NO_ACTIVATE") || vgfx_macos_hide_windows();
 }
 
 /// @brief Allocate an aligned framebuffer buffer using POSIX allocation.
@@ -112,16 +112,16 @@ static void vgfx_macos_init_timebase(void) {
 // Forward Declarations
 //===----------------------------------------------------------------------===//
 
-/// @brief Custom NSView subclass for displaying the ViperGFX framebuffer.
+/// @brief Custom NSView subclass for displaying the ZannaGFX framebuffer.
 /// @details Overrides drawRect: to convert the raw RGBA framebuffer into a
 ///          CGImage and blit it to the screen.  Handles coordinate system
 ///          conversion (Cocoa uses bottom-left origin, we use top-left).
 @interface VGFXView : NSView <NSTextInputClient>
-/// @brief Pointer to the ViperGFX window structure (backlink for rendering).
+/// @brief Pointer to the ZannaGFX window structure (backlink for rendering).
 @property(nonatomic, assign) struct vgfx_window *vgfxWindow;
 /// @brief Timestamp assigned by the platform pump before native key interpretation.
 @property(nonatomic, assign) int64_t textInputTimestamp;
-/// @brief ViperGFX modifier mask assigned before native key interpretation.
+/// @brief ZannaGFX modifier mask assigned before native key interpretation.
 @property(nonatomic, assign) int textInputModifiers;
 /// @brief Current native marked string retained only while Cocoa owns preedit.
 @property(nonatomic, copy) NSString *markedText;
@@ -134,13 +134,13 @@ static void vgfx_macos_init_timebase(void) {
 ///          window close, resize, and focus change events.  Translates these
 ///          into vgfx_event_t and enqueues them.
 @interface VGFXWindowDelegate : NSObject <NSWindowDelegate>
-/// @brief Pointer to the ViperGFX window structure (backlink for events).
+/// @brief Pointer to the ZannaGFX window structure (backlink for events).
 @property(nonatomic, assign) struct vgfx_window *vgfxWindow;
 @end
 
 /// @brief Dispatcher for default macOS application-menu actions.
 /// @details Keeps Cmd+Q on the same close path as the window close button so
-///          Viper apps still see a CLOSE event instead of being hard-terminated.
+///          Zanna apps still see a CLOSE event instead of being hard-terminated.
 @interface VGFXMacAppMenuDispatcher : NSObject
 + (instancetype)shared;
 - (void)quitApplication:(id)sender;
@@ -257,13 +257,13 @@ static void macos_event_location_to_physical(struct vgfx_window *win,
         *out_y = y;
 }
 
-/// @brief Translate a Cocoa mouse event into a Viper mouse button.
+/// @brief Translate a Cocoa mouse event into a Zanna mouse button.
 /// @details Cocoa reports left and right mouse buttons through dedicated event
-///          types.  Other mouse events carry a button number; ViperGFX exposes
+///          types.  Other mouse events carry a button number; ZannaGFX exposes
 ///          only left/right/middle, so extra side buttons are ignored instead of
 ///          being incorrectly reported as middle-button input.
 /// @param event Cocoa mouse event to translate.
-/// @param out_button Receives the Viper button on success.
+/// @param out_button Receives the Zanna button on success.
 /// @return 1 when the event maps to a supported button; otherwise 0.
 static int macos_mouse_button_from_event(NSEvent *event, vgfx_mouse_button_t *out_button) {
     if (!event || !out_button)
@@ -290,7 +290,7 @@ static int macos_mouse_button_from_event(NSEvent *event, vgfx_mouse_button_t *ou
 }
 
 /// @brief Get the screen frame used to normalize Cocoa window coordinates.
-/// @details Cocoa window frames use a bottom-left origin.  Public ViperGFX
+/// @details Cocoa window frames use a bottom-left origin.  Public ZannaGFX
 ///          positioning APIs use top-left coordinates, so conversions need the
 ///          containing screen's frame.  If the window is not yet attached to a
 ///          screen, the main screen is used as a stable fallback.
@@ -389,7 +389,7 @@ static NSString *vgfx_macos_app_name(const char *preferred_title) {
     }
 
     NSString *process_name = [[NSProcessInfo processInfo] processName];
-    return process_name.length > 0 ? process_name : @ "Viper";
+    return process_name.length > 0 ? process_name : @ "Zanna";
 }
 
 static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name) {
@@ -748,7 +748,7 @@ static int32_t macos_codepoint_count_prefix(NSString *value, NSUInteger utf16_li
 
 /// @brief Enqueue one Cocoa NSTextInputClient composition lifecycle event.
 /// @details Converts AppKit UTF-16 selection offsets to codepoint units, stores valid UTF-8 inline,
-///          and uses the current-client-selection sentinel for replacement because ViperGFX does
+///          and uses the current-client-selection sentinel for replacement because ZannaGFX does
 ///          not retain application text. The focused GUI editor owns the authoritative selection.
 /// @param view Native framebuffer view receiving AppKit text callbacks.
 /// @param type Composition lifecycle discriminator.
@@ -797,7 +797,7 @@ static void macos_enqueue_composition_event(VGFXView *view,
 @implementation VGFXView
 
 /// @brief Initialize the view with the given frame rectangle.
-/// @details Creates an NSView subclass that will display the ViperGFX
+/// @details Creates an NSView subclass that will display the ZannaGFX
 ///          framebuffer.  Sets up the backlink to NULL (assigned later
 ///          by vgfx_platform_init_window).
 ///
@@ -901,7 +901,7 @@ static void macos_enqueue_composition_event(VGFXView *view,
 }
 
 /// @brief End native marking while preserving AppKit's intended text result.
-/// @details In the NSTextInputClient model marked text already lives in the document. Viper keeps
+/// @details In the NSTextInputClient model marked text already lives in the document. Zanna keeps
 ///          it separate, so a non-empty marked value is committed here; an empty marked value is
 ///          an explicit cancellation. Exactly one terminal event is emitted.
 - (void)unmarkText {
@@ -940,7 +940,7 @@ static void macos_enqueue_composition_event(VGFXView *view,
 }
 
 /// @brief Decline attributed committed-text substring queries.
-/// @details ViperGFX intentionally does not retain widget text. Returning nil instructs input
+/// @details ZannaGFX intentionally does not retain widget text. Returning nil instructs input
 ///          methods to use the current-selection replacement path without stale native copies.
 /// @param range Proposed native UTF-16 range.
 /// @param actualRange Receives NSNotFound when non-NULL.
@@ -954,7 +954,7 @@ static void macos_enqueue_composition_event(VGFXView *view,
 }
 
 /// @brief Return supported marked-text attributes.
-/// @return Empty array because ViperGUI derives preedit visuals from its theme.
+/// @return Empty array because ZannaGUI derives preedit visuals from its theme.
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
     return @[];
 }
@@ -1195,7 +1195,7 @@ static void macos_enqueue_composition_event(VGFXView *view,
 
 /// @brief Handle window resize.
 /// @details Called when the window's size changes (user drag, maximize, etc.).
-///          Updates the ViperGFX window dimensions and reallocates the
+///          Updates the ZannaGFX window dimensions and reallocates the
 ///          framebuffer to match the new size.  Enqueues a RESIZE event.
 ///
 /// @param notification Notification object with resize details (unused)
@@ -1374,7 +1374,7 @@ int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
 ///          the window with appropriate style mask, sets up the delegate, and
 ///          makes the window visible.
 ///
-/// @param win    Pointer to the ViperGFX window structure (framebuffer already allocated)
+/// @param win    Pointer to the ZannaGFX window structure (framebuffer already allocated)
 /// @param params Window creation parameters (title, dimensions, resizable flag)
 /// @return 1 on success, 0 on failure
 ///
@@ -1390,8 +1390,8 @@ int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
 ///            - Miniaturizable (yellow ⊖ button)
 ///            - Resizable (optional, based on params->resizable)
 ///            - Centered on screen
-///            - Made visible unless VIPER_GFX_HIDE_WINDOWS is set
-///            - Normally focused unless VIPER_GFX_NO_ACTIVATE is set
+///            - Made visible unless ZANNA_GFX_HIDE_WINDOWS is set
+///            - Normally focused unless ZANNA_GFX_NO_ACTIVATE is set
 int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
@@ -1485,7 +1485,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @details Closes the NSWindow, releases the delegate and view, and frees
 ///          the platform data structure.  Safe to call even if init failed.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 ///
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
@@ -1525,7 +1525,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
     }
 }
 
-/// @brief Process pending macOS events and translate to ViperGFX events.
+/// @brief Process pending macOS events and translate to ZannaGFX events.
 /// @details Polls the NSApplication event queue in non-blocking mode
 ///          (distantPast = don't wait).  For each NSEvent, sends it to the
 ///          application for normal processing, then translates it to a
@@ -1536,7 +1536,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 ///            - Mouse move: NSEventTypeMouseMoved/Dragged → MOUSE_MOVE
 ///            - Mouse buttons: NSEventTypeLeftMouse* → MOUSE_DOWN/MOUSE_UP
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL
@@ -1547,7 +1547,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 ///
 /// @details Coordinate conversion:
 ///            - NSEvent coordinates: origin at bottom-left
-///            - ViperGFX coordinates: origin at top-left
+///            - ZannaGFX coordinates: origin at top-left
 ///            - Conversion: vgfx_y = (view_height - ns_y - 1)
 static int macos_modifiers(NSEventModifierFlags flags) {
     int mods = 0;
@@ -1639,7 +1639,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             NSEventType eventType = [event type];
             if (eventType == NSEventTypeKeyDown) {
                 /* Let the native app menu consume real Command-based shortcuts
-                   before we translate the event into Viper input. Plain
+                   before we translate the event into Zanna input. Plain
                    navigation keys (arrows, tab, home/end, delete) must always
                    reach the game/runtime input path. */
                 NSEventModifierFlags flags = [event modifierFlags];
@@ -1652,13 +1652,13 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 }
             }
 
-            int dispatch_key_after_viper =
+            int dispatch_key_after_zanna =
                 (eventType == NSEventTypeKeyDown || eventType == NSEventTypeKeyUp);
-            if (!dispatch_key_after_viper) {
+            if (!dispatch_key_after_zanna) {
                 [NSApp sendEvent:event];
             }
 
-            /* Translate to ViperGFX events */
+            /* Translate to ZannaGFX events */
             int64_t timestamp = vgfx_platform_now_ms();
 
             switch ([event type]) {
@@ -1825,7 +1825,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     break;
             }
 
-            if (dispatch_key_after_viper) {
+            if (dispatch_key_after_zanna) {
                 [NSApp sendEvent:event];
             }
         }
@@ -1840,13 +1840,13 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 ///          method, which converts the framebuffer to a CGImage and blits it
 ///          to the screen.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL
 /// @pre  win->pixels != NULL (framebuffer valid)
 /// @pre  win->platform_data != NULL
-/// @post Framebuffer contents visible on screen unless VIPER_GFX_HIDE_WINDOWS is set
+/// @post Framebuffer contents visible on screen unless ZANNA_GFX_HIDE_WINDOWS is set
 int vgfx_platform_present(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;

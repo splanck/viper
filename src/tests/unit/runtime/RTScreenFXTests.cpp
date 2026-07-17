@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // RTScreenFXTests.cpp - Unit tests for rt_screenfx
 //===----------------------------------------------------------------------===//
 
@@ -311,7 +311,7 @@ TEST(grows_past_default_effect_slots) {
 }
 
 // VDOC-267: ScreenFX overlay/transition colors use their own byte orders, distinct
-// from the canonical Viper.Graphics.Color (0xAARRGGBB). The Rgba/Rgb constructors
+// from the canonical Zanna.Graphics.Color (0xAARRGGBB). The Rgba/Rgb constructors
 // pack the correct encodings so callers never hand-pack or pass an incompatible
 // Color value. A value built with Rgba must round-trip through Flash's alpha channel.
 TEST(color_constructors_pack_screenfx_byte_orders) {

@@ -4,7 +4,7 @@ last-updated: 2025-11-21
 version: 1.0.0
 ---
 
-# ViperGFX – Cross-Platform Software 2D Graphics Library
+# ZannaGFX – Cross-Platform Software 2D Graphics Library
 
 **Specification Version:** 1.0.0
 **Implementation Version:** 1.0.0
@@ -61,7 +61,7 @@ version: 1.0.0
 - [x] README.md with build instructions
 - [x] API documentation (comprehensive Doxygen comments in all source files)
 - [x] Example programs documented
-- [x] Integration guide for Viper runtime (INTEGRATION.md)
+- [x] Integration guide for Zanna runtime (INTEGRATION.md)
 - [x] User-facing documentation (`/docs/graphics-library.md`)
 - [x] Platform-specific notes (MACOS_BACKEND.md)
 - [x] Drawing algorithm details (DRAWING_PRIMITIVES.md)
@@ -80,10 +80,10 @@ version: 1.0.0
 
 ### Build Integration ✅ **COMPLETE**
 
-- [x] Integrated into Viper build system
+- [x] Integrated into Zanna build system
 - [x] Dual-mode CMake (standalone + integrated)
 - [x] Zero warnings compilation
-- [x] All 685 Viper tests pass (including 20 new graphics tests)
+- [x] All 685 Zanna tests pass (including 20 new graphics tests)
 
 ---
 
@@ -109,7 +109,7 @@ version: 1.0.0
 
 ### 1.1 Objective
 
-**ViperGFX** is a pure software-rendered, single-window, cross-platform 2D graphics library written in C.
+**ZannaGFX** is a pure software-rendered, single-window, cross-platform 2D graphics library written in C.
 
 **Implementation Status:** ✅ **Phase 1 Complete (macOS)**
 
@@ -143,17 +143,17 @@ version: 1.0.0
 ### 1.3 Integration Path
 
 ```text
-Phase 1: Standalone static library (libvipergfx.a) ✅ COMPLETE
+Phase 1: Standalone static library (libzannagfx.a) ✅ COMPLETE
           ↓
-Phase 2: Integration into Viper build system ✅ COMPLETE
+Phase 2: Integration into Zanna build system ✅ COMPLETE
           ↓
 Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.) ⏳ Planned
 ```
 
 **Current Status:**
 
-- ✅ Library builds as part of Viper (139 KB static library)
-- ✅ All 20 tests integrated into Viper test suite (100% pass rate)
+- ✅ Library builds as part of Zanna (139 KB static library)
+- ✅ All 20 tests integrated into Zanna test suite (100% pass rate)
 - ✅ User documentation at `/docs/graphics-library.md`
 - ✅ Examples compile and run successfully on macOS
 
@@ -232,7 +232,7 @@ Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.) ⏳ Planned
 
 // Default window title
 #ifndef VGFX_DEFAULT_TITLE
-#define VGFX_DEFAULT_TITLE   "ViperGFX"
+#define VGFX_DEFAULT_TITLE   "ZannaGFX"
 #endif
 
 // Default frame rate limit used when params.fps == 0.
@@ -429,7 +429,7 @@ vgfx_destroy_window(win);
 **Canonical semantics of `vgfx_update`:**
 
 > `vgfx_update` presents whatever is currently in the framebuffer (typically drawn during the previous loop iteration),
-> processes OS events and queues ViperGFX events, enforces FPS limiting, and then returns.
+> processes OS events and queues ZannaGFX events, enforces FPS limiting, and then returns.
 
 **Implications:**
 
@@ -587,7 +587,7 @@ if (vgfx_get_size(win, &width, &height)) {
 
 **Requirements:**
 
-- ViperGFX is **NOT thread-safe** for general API calls
+- ZannaGFX is **NOT thread-safe** for general API calls
 - All functions for a given window **MUST** be called from the same thread that created it
 - **macOS specific:** All calls **MUST** occur on the **main thread** (Cocoa requirement)
     - `vgfx_create_window` must be called on the main thread before the run loop starts or from the main run loop
@@ -600,7 +600,7 @@ if (vgfx_get_size(win, &width, &height)) {
 - The event queue uses a **synchronized ring buffer**
 - **Producer:** Platform event callbacks
 - **Consumer:** Application thread (via `vgfx_poll_event`)
-- This synchronization is limited to event production/polling; general ViperGFX APIs remain single-threaded
+- This synchronization is limited to event production/polling; general ZannaGFX APIs remain single-threaded
 
 **Error Handling Thread Safety:**
 
@@ -1098,7 +1098,7 @@ int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 //     - vgfx_destroy_window(window) is called
 //
 // Thread Safety:
-//   As with all ViperGFX functions, this must be called from the
+//   As with all ZannaGFX functions, this must be called from the
 //   window's owning thread only.
 int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_info);
 ```
@@ -1180,7 +1180,7 @@ void vgfx_set_log_callback(vgfx_log_fn fn); // NULL to disable callback
 // Storage:
 //   - Stored in thread-local storage (TLS)
 //   - String is owned by the library; caller must NOT free it
-//   - Valid until the next ViperGFX call on that thread OR thread exit
+//   - Valid until the next ZannaGFX call on that thread OR thread exit
 //
 // Usage:
 //   Functions that can fail meaningfully (e.g. vgfx_create_window,
@@ -1589,7 +1589,7 @@ vgfx_error_t vgfx_last_error_code(void);
 ### 8.1 File Structure
 
 ```text
-vipergfx/
+zannagfx/
 ├── include/
 │   ├── vgfx.h                    # Public API header
 │   └── vgfx_config.h             # Configuration macros
@@ -1672,7 +1672,7 @@ int vgfx_platform_init_window(vgfx_window* win,
 // Frees platform_data and destroys native window.
 void vgfx_platform_destroy_window(vgfx_window* win);
 
-// Process OS events and translate into ViperGFX events.
+// Process OS events and translate into ZannaGFX events.
 // Updates win->key_state, win->mouse_*, and enqueues events.
 // Returns 1 on success, 0 on fatal error.
 int vgfx_platform_process_events(vgfx_window* win);
@@ -1721,7 +1721,7 @@ int64_t vgfx_mock_get_time_ms(void);
 **Mock Backend Linkage:**
 
 - Only linked into test executables
-- Production `libvipergfx.a` never includes mock backend
+- Production `libzannagfx.a` never includes mock backend
 
 **Platform-Specific Notes**
 
@@ -1803,7 +1803,7 @@ int32_t vgfx_get_scale(vgfx_window_t window, float* scale_x, float* scale_y);
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(vipergfx C)
+project(zannagfx C)
 
 set(CMAKE_C_STANDARD 11)
 
@@ -1830,18 +1830,18 @@ elseif(WIN32)
 endif()
 
 # Library
-add_library(vipergfx STATIC
+add_library(zannagfx STATIC
     src/vgfx.c
     src/vgfx_draw.c
     ${PLATFORM_SOURCES}
 )
 
-target_include_directories(vipergfx PUBLIC
+target_include_directories(zannagfx PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(vipergfx PUBLIC ${PLATFORM_LIBS})
+target_link_libraries(zannagfx PUBLIC ${PLATFORM_LIBS})
 
 # Tests (optional)
 option(VGFX_BUILD_TESTS "Build test suite" ON)
@@ -1856,8 +1856,8 @@ if(VGFX_BUILD_EXAMPLES)
 endif()
 
 # Install targets
-install(TARGETS vipergfx
-    EXPORT vipergfx-targets
+install(TARGETS zannagfx
+    EXPORT zannagfx-targets
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
@@ -2087,7 +2087,7 @@ rm -rf build && cmake -S . -B build
 
 2. ✅ API reference (Doxygen or similar, generated from comments in `vgfx.h`)
 3. ✅ Comments in examples explaining API usage
-4. ✅ Integration guide for Viper runtime (`docs/VIPER_INTEGRATION.md`)
+4. ✅ Integration guide for Zanna runtime (`docs/ZANNA_INTEGRATION.md`)
 5. ✅ Changelog (`CHANGELOG.md`) for v1.0.0
 
 **Acceptance Criteria:**
@@ -2096,7 +2096,7 @@ rm -rf build && cmake -S . -B build
     - Build on all platforms
     - Run examples
     - Understand basic API usage
-    - Integrate with Viper
+    - Integrate with Zanna
 - API reference covers all public functions with descriptions, parameters, return values
 - Examples are well-commented
 - Changelog records all features and changes for v1.0.0
@@ -2113,9 +2113,9 @@ rm -rf build && cmake -S . -B build
 - **Alpha blending modes:** Porter-Duff compositing operators
 - **Palette support:** Optional 8-bit indexed color mode
 
-### Phase 3: Viper Integration
+### Phase 3: Zanna Integration
 
-- **Runtime bindings:** Viper runtime signatures for ViperGFX functions
+- **Runtime bindings:** Zanna runtime signatures for ZannaGFX functions
 - **BASIC frontend support:**
   ```basic
   SCREEN 800, 600, "My Game"
@@ -2123,8 +2123,8 @@ rm -rf build && cmake -S . -B build
   LINE (0, 0)-(100, 100), RGB(0, 255, 0)
   CIRCLE (200, 200), 50, RGB(0, 0, 255)
   ```
-- **Event loop integration:** Integrate with Viper's main loop and event model
-- **IL lowering:** BASIC graphics statements → IL → ViperGFX calls
+- **Event loop integration:** Integrate with Zanna's main loop and event model
+- **IL lowering:** BASIC graphics statements → IL → ZannaGFX calls
 
 ### Phase 4: Performance Optimization
 
@@ -2277,7 +2277,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
                                       inMode:NSDefaultRunLoopMode
                                      dequeue:YES])) {
     [NSApp sendEvent:event];
-    // Translate NSEvent to ViperGFX events
+    // Translate NSEvent to ZannaGFX events
     // Update key_state, mouse_x/y, enqueue events
 }
 ```
@@ -2468,13 +2468,13 @@ WNDCLASSEX wc = {0};
 wc.cbSize = sizeof(WNDCLASSEX);
 wc.lpfnWndProc = WndProc;
 wc.hInstance = GetModuleHandle(NULL);
-wc.lpszClassName = "ViperGFXClass";
+wc.lpszClassName = "ZannaGFXClass";
 wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 RegisterClassEx(&wc);
 
 HWND hwnd = CreateWindowEx(
     0,
-    "ViperGFXClass",
+    "ZannaGFXClass",
     title_utf8,
     WS_OVERLAPPEDWINDOW,
     CW_USEDEFAULT, CW_USEDEFAULT,
@@ -2531,7 +2531,7 @@ while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
     DispatchMessage(&msg);
 }
 
-// Window procedure translates WM_* messages to ViperGFX events
+// Window procedure translates WM_* messages to ZannaGFX events
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_KEYDOWN:

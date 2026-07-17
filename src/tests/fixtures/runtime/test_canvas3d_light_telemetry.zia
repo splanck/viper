@@ -1,8 +1,8 @@
 module TestCanvas3DLightTelemetry;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-03 E11/E12 coverage: previously-silent light budgets are observable.
 //   - 20 enabled lights on the fixed-forward path -> DroppedLightCount == 4.

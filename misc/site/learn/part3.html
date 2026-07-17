@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Part 3: Objects — Viper</title>
-  <meta name="description" content="Viper documentation: Part 3: Objects">
+  <title>Part 3: Objects — Zanna</title>
+  <meta name="description" content="Zanna documentation: Part 3: Objects">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/" class="active">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -319,7 +319,7 @@ class Rectangle {
 </ul>
 <p>Both <code>fido</code> and <code>rex</code> are Dogs -- they follow the same template. But they&#x27;re separate objects with their own data. When Fido barks, Rex doesn&#x27;t bark. When Rex&#x27;s age increases, Fido&#x27;s age stays the same.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Dog {
     name: String;
@@ -367,7 +367,7 @@ Say(rex.age);  // Still 7 - Rex didn&#x27;t age
 <h2 id="creating-objects">Creating Objects</h2>
 <p>You create an object by calling the class name like a function:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var rect1 = Rectangle(10.0, 5.0);
 var rect2 = Rectangle(3.0, 4.0);
@@ -445,7 +445,7 @@ var baby = Person(&quot;Baby&quot;);          // Just a name
 <h3 id="validation-in-initializers">Validation in Initializers</h3>
 <p>Initializers are the perfect place to validate input and ensure objects start in valid states:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Rectangle {
     width: Number;
@@ -503,7 +503,7 @@ class GameCharacter {
 <h3 id="default-values-and-computed-fields">Default Values and Computed Fields</h3>
 <p>Some fields have values that depend on other fields. The initializer is where you establish these relationships:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     radius: Number;
@@ -519,7 +519,7 @@ class Circle {
 </code></pre>
 <p>However, this pattern can be dangerous -- if <code>radius</code> changes later, <code>diameter</code> and <code>circumference</code> will be out of sync. It&#x27;s often better to compute derived values in methods:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     radius: Number;
@@ -564,7 +564,7 @@ class Counter {
 <h3 id="step-by-step-what-happens-when-you-call-a-method">Step-by-Step: What Happens When You Call a Method</h3>
 <p>Let&#x27;s trace through exactly what happens:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counter = Counter();       // Step 1: Create object
 counter.increment();           // Step 2: Call method
@@ -600,7 +600,7 @@ func increment() {
 <h3 id="self-with-multiple-objects">`self` with Multiple Objects</h3>
 <p>This becomes clearer with multiple objects:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counterA = Counter();
 var counterB = Counter();
@@ -677,7 +677,7 @@ class BankAccount {
 </code></pre>
 <p>Now the balance is hidden -- external code cannot access it directly:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var account = BankAccount(&quot;Alice&quot;, 100.0);
 account.deposit(50.0);
@@ -792,7 +792,7 @@ class Player {
 <h2 id="methods-behavior-that-belongs-to-objects">Methods: Behavior That Belongs to Objects</h2>
 <p>Methods define what objects can <em>do</em>. They&#x27;re functions that belong to a class and operate on its data through <code>self</code>.</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 class Circle {
     radius: Number;
@@ -884,7 +884,7 @@ func save() {
 <li>You want to take advantage of encapsulation (accessing hidden fields)</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Good as a method - operates on the circle&#x27;s own data
 class Circle {
@@ -900,7 +900,7 @@ class Circle {
 <li>The operation doesn&#x27;t need access to hidden state</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 // Good as a function - works with two objects equally
 func distance(p1: Point, p2: Point) -&gt; Number {
@@ -967,7 +967,7 @@ func increment() { self.count += 1; }
 <li>Determines how the object behaves</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class TrafficLight {
     hide color: String;
@@ -1128,8 +1128,8 @@ character.health = -50;      // Invalid health!
 </ul>
 <h3 id="step-5-write-the-class">Step 5: Write the Entity</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 class BankAccount {
     hide accountNumber: String;
@@ -1239,7 +1239,7 @@ class BankAccount {
 </code></pre>
 <h3 id="step-6-use-the-class">Step 6: Use the Entity</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Create an account
@@ -1276,8 +1276,8 @@ func start() {
 <pre><code data-lang="rust">
 module TodoApp;
 
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 class TodoItem {
     hide text: String;
@@ -1446,7 +1446,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Dog {
     name: String;
@@ -1671,7 +1671,7 @@ func setAge(age: Integer) {
 <h2 id="the-problem-without-inheritance">The Problem Without Inheritance</h2>
 <p>Imagine building a game with different enemies. You start with a goblin:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Goblin {
     x: Number;
@@ -1705,7 +1705,7 @@ class Goblin {
 </code></pre>
 <p>Great! Now you need an orc:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Orc {
     x: Number;
@@ -1754,7 +1754,7 @@ class Orc {
 <h2 id="inheritance-to-the-rescue">Inheritance to the Rescue</h2>
 <p>With inheritance, we extract the common parts into a <em>base class</em>:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     x: Number;
@@ -1788,7 +1788,7 @@ class Enemy {
 </code></pre>
 <p>Now we can create specialized enemies that <em>extend</em> this base:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
@@ -1846,7 +1846,7 @@ class Goblin extends Enemy {
 </ul>
 <p>Let&#x27;s see this in action:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var goblin = Goblin(10.0, 20.0);
 
@@ -1906,7 +1906,7 @@ class Goblin extends Enemy {
 <h3 id="calling-parent-methods">Calling Parent Methods</h3>
 <p>Sometimes you want to <em>extend</em> the parent&#x27;s behavior rather than completely replace it. The <code>super.methodName()</code> syntax lets you call the parent&#x27;s version of a method:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     func describe() {
@@ -1954,7 +1954,7 @@ dragon.describe();
 <li>**Correction** - The parent&#x27;s default behavior isn&#x27;t appropriate for this child. Perhaps most enemies make a sound when attacked, but ghosts are silent.</li>
 </ul>
 <h3 id="the-override-keyword">The `override` Keyword</h3>
-<p>In Viper, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the <code>override</code> keyword to make your intentions explicit:</p>
+<p>In Zanna, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the <code>override</code> keyword to make your intentions explicit:</p>
 <pre><code data-lang="rust">
 class Enemy {
     func attack() -&gt; Integer {
@@ -1999,7 +1999,7 @@ class Car extends Vehicle {
 <h2 id="inheritance-hierarchies">Inheritance Hierarchies</h2>
 <p>Inheritance can extend multiple levels, creating a <em>hierarchy</em> or <em>tree</em> of related classes:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     name: String;
@@ -2087,8 +2087,8 @@ Entity
 <pre><code data-lang="rust">
 module Shapes;
 
-bind Viper.Terminal;
-bind Viper.Math;
+bind Zanna.Terminal;
+bind Zanna.Math;
 
 class Shape {
     x: Number;
@@ -2226,7 +2226,7 @@ func start() {
 <h3 id="the-template-method-pattern">The Template Method Pattern</h3>
 <p>In this pattern, the parent defines the <em>structure</em> of an algorithm, but lets children fill in specific steps:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Report {
     title: String;
@@ -2293,7 +2293,7 @@ class InventoryReport extends Report {
 <h3 id="the-specialization-pattern">The Specialization Pattern</h3>
 <p>This pattern creates progressively more specific versions of a concept:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Account {
     balance: Number;
@@ -2422,7 +2422,7 @@ class Character {
 </code></pre>
 <p>With inheritance, a <code>SwordCharacter</code> is always a sword character. With composition, a character can switch from sword to bow to magic staff.</p>
 <p><strong>3. You need functionality from multiple sources</strong></p>
-<p>Viper (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:</p>
+<p>Zanna (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:</p>
 <pre><code data-lang="rust">
 // Can&#x27;t do this:
 class FlyingCar extends Car, Aircraft { }  // Error!
@@ -2519,7 +2519,7 @@ processEnemy(Dragon(0.0, 0.0));   // Works!
 </code></pre>
 <p>This seems obvious, but it&#x27;s easy to violate. Consider:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Bird {
     func fly() {
@@ -2551,7 +2551,7 @@ migrateSouth(Penguin(...));  // Broken! Violates substitutability
 <h3 id="the-fragile-base-class-problem">The Fragile Base Class Problem</h3>
 <p>The <em>fragile base class problem</em> occurs when changes to a parent class break child classes in unexpected ways.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class MediaPlayer {
     func play() {
@@ -2606,10 +2606,10 @@ class MediaPlayer {
 </ul>
 <p>---</p>
 <h2 id="the-two-languages">The Two Languages</h2>
-<p>Different Viper language styles express inheritance differently:</p>
+<p>Different Zanna language styles express inheritance differently:</p>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     name: String;
@@ -2850,7 +2850,7 @@ interface Calculator {
 <li>Match the exact signatures (names, parameters, return types)</li>
 </ul>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -2877,7 +2877,7 @@ class Rectangle implements Drawable {
 <h3 id="the-compiler-enforces-the-contract">The Compiler Enforces the Contract</h3>
 <p>If you claim to implement an interface but forget a method, the compiler will complain:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -3102,7 +3102,7 @@ class Report implements Printable { ... }
 <p>You can&#x27;t express this with single inheritance. A smartphone isn&#x27;t &quot;a type of phone that happens to also be a camera.&quot; It&#x27;s something that <em>can do</em> all these things.</p>
 <h3 id="implementing-multiple-interfaces">Implementing Multiple Interfaces</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -3171,7 +3171,7 @@ class InvisibleTrigger implements Movable, Clickable {
 <h2 id="interfaces-with-inheritance">Interfaces with Inheritance</h2>
 <p>You can combine inheritance and interfaces. This is common and powerful.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     health: Integer;
@@ -3216,7 +3216,7 @@ class Goblin implements Drawable extends Enemy { ... }
 </code></pre>
 <h3 id="a-richer-example">A Richer Example</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class GameObject {
     id: Integer;
@@ -3428,7 +3428,7 @@ interface EmailSender {
 class SmtpEmailSender implements EmailSender {
     func send(to: String, subject: String, body: String) {
         // Actually send email via SMTP
-        Viper.Net.SMTP.send(to, subject, body);
+        Zanna.Net.SMTP.send(to, subject, body);
     }
 }
 
@@ -3642,8 +3642,8 @@ interface Animatable extends Drawable {
 <pre><code data-lang="rust">
 module PluginSystem;
 
-bind Viper.Terminal;
-bind Viper.Text;
+bind Zanna.Terminal;
+bind Zanna.Text;
 
 // Interface that all plugins must implement
 interface Plugin {
@@ -3742,7 +3742,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Printable {
     func print();
@@ -4010,7 +4010,7 @@ vehicle.steer(angle);
 <h3 id="the-payment-analogy">The Payment Analogy</h3>
 <p>When you buy something, the cashier says &quot;How would you like to pay?&quot; You might use cash, credit card, debit card, mobile payment, or gift card. The cashier doesn&#x27;t need different training for each payment method. They just need to know: &quot;Can this payment method complete the transaction?&quot;</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface PaymentMethod {
     func pay(amount: Number) -&gt; Boolean;
@@ -4036,7 +4036,7 @@ class MobilePayment implements PaymentMethod {
 </code></pre>
 <p>The cashier&#x27;s checkout code doesn&#x27;t care which specific payment method you use:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func checkout(items: List[Item], payment: PaymentMethod) {
     var total = calculateTotal(items);
@@ -4092,7 +4092,7 @@ func processEntity(class: GameEntity) {
 <h3 id="problem-3-testing-and-flexibility">Problem 3: Testing and Flexibility</h3>
 <p>Want to test your payment processing without actually charging credit cards? With polymorphism, create a <code>MockPaymentMethod</code> that always succeeds:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class MockPayment implements PaymentMethod {
     func pay(amount: Number) -&gt; Boolean {
@@ -4112,7 +4112,7 @@ checkout(items, testPayment);  // No real money charged
 <h3 id="runtime-polymorphism-dynamic-dispatch">Runtime Polymorphism (Dynamic Dispatch)</h3>
 <p>This is what we&#x27;ve been discussing: the decision about which method to call happens <em>at runtime</em>, based on the actual object type.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     func speak() {
@@ -4146,7 +4146,7 @@ animal.speak();              // Output: &quot;Woof!&quot; - Dog&#x27;s method is
 <p>The answer: <strong>Dog&#x27;s version</strong>. The actual object type determines the method called, not the variable type.</p>
 <p>This is called <em>dynamic dispatch</em> or <em>late binding</em>. The decision is made at runtime because the compiler can&#x27;t always know what type an object will be. Consider:</p>
 <pre><code data-lang="rust">
-bind Viper.Random;
+bind Zanna.Random;
 
 func makeRandomAnimal() -&gt; Animal {
     var r = Int(0, 3);
@@ -4175,8 +4175,8 @@ mystery.speak();  // Which sound? We don&#x27;t know until runtime!
 <h3 id="compile-time-polymorphism-method-overloading">Compile-Time Polymorphism (Method Overloading)</h3>
 <p>The other form of polymorphism happens at compile time: <em>method overloading</em>.</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 class Printer {
     func print(text: String) {
@@ -4371,7 +4371,7 @@ class MarkdownExporter implements Exporter {
 </code></pre>
 <p>The export menu:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class ExportMenu {
     exporters: List[Exporter];
@@ -4420,7 +4420,7 @@ menu.addExporter(WordExporter());
 <h3 id="plugin-architecture">Plugin Architecture</h3>
 <p>This extensibility is the foundation of plugin systems:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Plugin {
     func getName() -&gt; String;
@@ -4512,7 +4512,7 @@ fastManager.save(&quot;data.bin&quot;, hugeData);
 <h3 id="event-handlers">Event Handlers</h3>
 <p>Polymorphism excels at event-driven systems:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface EventHandler {
     func handle(event: Event);
@@ -4796,7 +4796,7 @@ for m in movables { m.move(wind.x, wind.y); }  // Wind pushes things
 <pre><code data-lang="rust">
 module DrawingSystem;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Drawable {
     func draw();
@@ -4988,7 +4988,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Animal {
     func speak();
@@ -5036,7 +5036,7 @@ NEXT
 </code></pre>
 <p>---</p>
 <h2 id="enums-and-pattern-matching">Enums and Pattern Matching</h2>
-<p>Polymorphism isn&#x27;t limited to classes and interfaces. Viper also supports <strong>enumerations</strong> — fixed sets of named constants — with exhaustive pattern matching through <code>match</code>:</p>
+<p>Polymorphism isn&#x27;t limited to classes and interfaces. Zanna also supports <strong>enumerations</strong> — fixed sets of named constants — with exhaustive pattern matching through <code>match</code>:</p>
 <pre><code data-lang="rust">
 enum Direction { North, South, East, West }
 
@@ -5064,7 +5064,7 @@ var animal: Animal = Dog();
 // Wrong!
 interface Drawable {
     func draw() {
-        Viper.Terminal.Say(&quot;Drawing&quot;);  // Can&#x27;t do this
+        Zanna.Terminal.Say(&quot;Drawing&quot;);  // Can&#x27;t do this
     }
 }
 
@@ -5216,7 +5216,7 @@ if type == &quot;A&quot; {
 <h3 id="the-solution">The Solution</h3>
 <p>The Singleton pattern provides a single instance and global access:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class GameEngine {
     // The single instance, hidden from outside
@@ -5253,7 +5253,7 @@ class GameEngine {
 </ul>
 <p>Using it:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Get the engine (creates it first time)
@@ -5270,8 +5270,8 @@ func start() {
 <p>No matter how many times you call <code>getInstance()</code>, you get the same engine. The first call creates it; subsequent calls return the existing one.</p>
 <h3 id="a-more-complete-example-configuration-manager">A More Complete Example: Configuration Manager</h3>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind File = Viper.IO.File;
+bind Zanna.Terminal;
+bind File = Zanna.IO.File;
 
 class Config {
     hide static instance: Config? = null;
@@ -5391,8 +5391,8 @@ func loadLevel(data: String) {
 <h3 id="the-solution">The Solution</h3>
 <p>The Factory pattern centralizes object creation:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
 
 interface Enemy {
     func attack();
@@ -5586,7 +5586,7 @@ var hero = Character(
 <h3 id="the-solution">The Solution</h3>
 <p>The Builder pattern constructs objects step by step:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Character {
     name: String;
@@ -5847,7 +5847,7 @@ func calculateRoute(start: Point, end: Point, mode: String) {
 <h3 id="the-solution">The Solution</h3>
 <p>The Strategy pattern defines a family of algorithms, encapsulates each one, and makes them interchangeable:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface RouteStrategy {
     func calculateRoute(start: Point, end: Point) -&gt; List[Point];
@@ -6109,9 +6109,9 @@ class Subject {
 </code></pre>
 <p>Now let&#x27;s build a stock price monitoring system:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Math as Math;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
+bind Zanna.Time;
 
 // The subject: stock price
 class StockPrice extends Subject {
@@ -6370,7 +6370,7 @@ class AchievementSystem implements Observer {
 <h3 id="the-solution">The Solution</h3>
 <p>The Command pattern encapsulates actions as objects, enabling undo, queueing, and logging:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Command {
     func execute();
@@ -6536,7 +6536,7 @@ class CommandHistory {
 </code></pre>
 <p>Using the editor:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var editor = TextEditor();
@@ -6552,9 +6552,9 @@ func start() {
     history.execute(InsertCommand(editor, 5, &quot;,&quot;));
     editor.display();  // Document: &quot;Hello, World&quot;
 
-    // Replace &quot;World&quot; with &quot;Viper&quot;
-    history.execute(ReplaceCommand(editor, 7, 5, &quot;Viper&quot;));
-    editor.display();  // Document: &quot;Hello, Viper&quot;
+    // Replace &quot;World&quot; with &quot;Zanna&quot;
+    history.execute(ReplaceCommand(editor, 7, 5, &quot;Zanna&quot;));
+    editor.display();  // Document: &quot;Hello, Zanna&quot;
 
     Say(&quot;--- Undo ---&quot;);
 
@@ -6675,7 +6675,7 @@ func selectItem(item: String) {
 <h3 id="the-solution">The Solution</h3>
 <p>The State pattern represents each state as an object that handles behavior for that state:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer);
@@ -6977,7 +6977,7 @@ class CoffeeWithMilkAndSugarAndVanilla extends Coffee { ... }
 <h3 id="the-solution">The Solution</h3>
 <p>The Decorator pattern wraps objects to add behavior dynamically:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface Beverage {
     func cost() -&gt; Number;
@@ -7095,7 +7095,7 @@ class ExtraShot extends BeverageDecorator {
 </code></pre>
 <p>Now any combination is possible:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Simple espresso
@@ -7137,7 +7137,7 @@ func start() {
 <h3 id="decorator-for-feature-composition">Decorator for Feature Composition</h3>
 <p>Decorators work beyond pricing. Here&#x27;s an I/O example:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 interface DataStream {
     func write(data: String);
@@ -7282,8 +7282,8 @@ func start() {
 <h3 id="a-game-class-system">A Game Entity System</h3>
 <p>This example combines Factory, Strategy, Observer, and State:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
-bind Viper.Math as Math;
+bind Zanna.Terminal;
+bind Zanna.Math as Math;
 
 // Observer for game events
 interface GameObserver {
@@ -7639,13 +7639,13 @@ class ScoreTracker implements GameObserver {
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

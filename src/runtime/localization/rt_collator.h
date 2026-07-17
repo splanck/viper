@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_collator.h
-// Purpose: Public C API for Viper.Localization.Collator — locale-aware string
+// Purpose: Public C API for Zanna.Localization.Collator — locale-aware string
 //          comparison with configurable strength, case sensitivity, and
 //          accent sensitivity. Uses a DUCET-lite weight table (primary /
 //          secondary / tertiary) covering basic Latin, Latin-1 Supplement,
@@ -28,7 +28,7 @@
 //
 // Links: src/runtime/localization/rt_collator.c (implementation),
 //        src/runtime/localization/rt_collator_table.c (weight classifier),
-//        docs/viperlib/localization/collation.md (user documentation).
+//        docs/zannalib/localization/collation.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

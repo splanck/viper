@@ -1,43 +1,43 @@
 module TestJsonCsv;
-bind Viper.Data.Json;
-bind Viper.Text.Uuid;
-bind Viper.Text.Version;
-bind Viper.Collections.Map;
-bind Viper.Terminal;
+bind Zanna.Data.Json;
+bind Zanna.Text.Uuid;
+bind Zanna.Text.Version;
+bind Zanna.Collections.Map;
+bind Zanna.Terminal;
 
 func start() {
-    var j = Viper.Data.Json.Parse("{\"name\":\"viper\",\"ver\":1}");
-    Say(Viper.Collections.Map.GetStr(j, "name"));
-    SayInt(Viper.Collections.Map.GetInt(j, "ver"));
-    SayBool(Viper.Collections.Map.Has(j, "name"));
-    SayBool(Viper.Collections.Map.Has(j, "missing"));
-    var js = Viper.Data.Json.Format(j);
-    SayBool(Viper.String.Contains(js, "viper"));
+    var j = Zanna.Data.Json.Parse("{\"name\":\"zanna\",\"ver\":1}");
+    Say(Zanna.Collections.Map.GetStr(j, "name"));
+    SayInt(Zanna.Collections.Map.GetInt(j, "ver"));
+    SayBool(Zanna.Collections.Map.Has(j, "name"));
+    SayBool(Zanna.Collections.Map.Has(j, "missing"));
+    var js = Zanna.Data.Json.Format(j);
+    SayBool(Zanna.String.Contains(js, "zanna"));
 
-    var j2 = Viper.Data.Json.NewObject();
-    Viper.Collections.Map.SetStr(j2, "key", "value");
-    Viper.Collections.Map.SetInt(j2, "num", 42);
-    Viper.Collections.Map.SetBool(j2, "flag", true);
-    Say(Viper.Collections.Map.GetStr(j2, "key"));
-    SayInt(Viper.Collections.Map.GetInt(j2, "num"));
-    SayBool(Viper.Collections.Map.GetBool(j2, "flag"));
-    Say(Viper.Data.Json.Format(j2));
+    var j2 = Zanna.Data.Json.NewObject();
+    Zanna.Collections.Map.SetStr(j2, "key", "value");
+    Zanna.Collections.Map.SetInt(j2, "num", 42);
+    Zanna.Collections.Map.SetBool(j2, "flag", true);
+    Say(Zanna.Collections.Map.GetStr(j2, "key"));
+    SayInt(Zanna.Collections.Map.GetInt(j2, "num"));
+    SayBool(Zanna.Collections.Map.GetBool(j2, "flag"));
+    Say(Zanna.Data.Json.Format(j2));
 
     // Uuid
-    var u1 = Viper.Text.Uuid.Generate();
-    SayBool(Viper.String.Contains(u1, "-"));
-    var u2 = Viper.Text.Uuid.Generate();
+    var u1 = Zanna.Text.Uuid.Generate();
+    SayBool(Zanna.String.Contains(u1, "-"));
+    var u2 = Zanna.Text.Uuid.Generate();
     SayBool(u1 != u2);
 
     // Version
-    Say(Viper.Text.Version.Parse("1.2.3"));
-    SayInt(Viper.Text.Version.Compare("1.2.3", "1.3.0"));
-    SayInt(Viper.Text.Version.Compare("2.0.0", "1.9.9"));
-    SayBool(Viper.Text.Version.IsValid("1.2.3"));
-    SayBool(Viper.Text.Version.IsValid("abc"));
-    SayInt(Viper.Text.Version.ParseMajor("1.2.3"));
-    SayInt(Viper.Text.Version.ParseMinor("1.2.3"));
-    SayInt(Viper.Text.Version.ParsePatch("1.2.3"));
+    Say(Zanna.Text.Version.Parse("1.2.3"));
+    SayInt(Zanna.Text.Version.Compare("1.2.3", "1.3.0"));
+    SayInt(Zanna.Text.Version.Compare("2.0.0", "1.9.9"));
+    SayBool(Zanna.Text.Version.IsValid("1.2.3"));
+    SayBool(Zanna.Text.Version.IsValid("abc"));
+    SayInt(Zanna.Text.Version.ParseMajor("1.2.3"));
+    SayInt(Zanna.Text.Version.ParseMinor("1.2.3"));
+    SayInt(Zanna.Text.Version.ParsePatch("1.2.3"));
 
     Say("done");
 }

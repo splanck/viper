@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Result of cross-block liveness analysis.
 struct LivenessInfo {
@@ -53,4 +53,4 @@ LivenessInfo analyzeCrossBlockLiveness(const il::core::Function &fn,
                                        const std::unordered_set<unsigned> &allocaTemps,
                                        FrameBuilder &fb);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

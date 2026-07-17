@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Collections.BloomFilter.Fpr()` exposes the estimated false positive rate
+`Zanna.Collections.BloomFilter.Fpr()` exposes the estimated false positive rate
 using an abbreviation that is familiar to some probabilistic-data-structure
 users but not clear as a public method name. The runtime overhaul naming policy
 expands ambiguous abbreviations in user-facing leaves.
@@ -21,10 +21,10 @@ Existing code may already call `Fpr()`, so the change must be additive.
 
 ## Decision
 
-Add `Viper.Collections.BloomFilter.FalsePositiveRate() -> f64` as the canonical
+Add `Zanna.Collections.BloomFilter.FalsePositiveRate() -> f64` as the canonical
 public method.
 
-Keep `Viper.Collections.BloomFilter.Fpr()` as a compatibility alias. Both
+Keep `Zanna.Collections.BloomFilter.Fpr()` as a compatibility alias. Both
 methods call the same runtime implementation.
 
 ## Consequences

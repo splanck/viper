@@ -1,6 +1,6 @@
 # Linux Platform Implementation
 
-Viper's Linux support is split across small native adapters rather than hidden behind a third-party
+Zanna's Linux support is split across small native adapters rather than hidden behind a third-party
 portability library. The principal adapters are X11/GLX graphics, ALSA audio, inotify file
 watching, Linux/POSIX pseudo-terminals, Linux machine-information probes, and ELF native linking.
 
@@ -16,7 +16,7 @@ remain loaded for the process lifetime: unloading either library while Xlib or a
 callbacks into it is unsafe. XInput extension opcodes remain display-local because different X
 server connections are not required to assign the same opcode.
 
-`VIPER_GRAPHICS_BACKEND=HEADLESS` selects the dependency-free in-memory framebuffer backend while
+`ZANNA_GRAPHICS_BACKEND=HEADLESS` selects the dependency-free in-memory framebuffer backend while
 keeping the public graphics surface enabled. `AUTO`, `NATIVE`, and `X11` currently select X11 on
 Linux; Wayland desktops are supported through XWayland when `DISPLAY` is available. See
 [ADR 0106](adr/0106-linux-graphics-backend-selection.md) for the native-Wayland boundary and why a
@@ -25,7 +25,7 @@ failed desktop display connection does not silently become an invisible headless
 The ALSA backend does not replace `snd_lib_error_set_handler`. That handler is process-global and
 ALSA provides no operation for retrieving and restoring an embedding application's previous
 handler. Applications that want to redirect ALSA diagnostics should install their handler before
-creating Viper audio contexts.
+creating Zanna audio contexts.
 
 ## File watcher behavior
 
@@ -69,4 +69,4 @@ ctest --test-dir build -R linux_headless_graphics_smoke --output-on-failure
 ```
 
 Before proposing changes, run the complete Linux build and test pipeline with
-`./scripts/build_viper_linux.sh`.
+`./scripts/build_zanna_linux.sh`.

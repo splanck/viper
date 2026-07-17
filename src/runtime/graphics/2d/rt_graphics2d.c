@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/2d/rt_graphics2d.c
-// Purpose: Orchestrates the CPU-backed Viper.Graphics 2D runtime fragments.
+// Purpose: Orchestrates the CPU-backed Zanna.Graphics 2D runtime fragments.
 //
 // Key invariants:
 //   - Fragment include order preserves the original monolithic declaration

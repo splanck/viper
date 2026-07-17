@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_gltf.h"
 #include "rt_asset.h"
@@ -712,7 +712,7 @@ static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out)
     out->rotation = jnum(transform, "rotation", 0.0);
 }
 
-/// @brief Map a glTF sampler `wrapS`/`wrapT` integer to a Viper wrap-mode constant.
+/// @brief Map a glTF sampler `wrapS`/`wrapT` integer to a Zanna wrap-mode constant.
 /// @details glTF uses the original GL enum integers: 33071 = GL_CLAMP_TO_EDGE,
 ///   33648 = GL_MIRRORED_REPEAT. Anything else (including the default 10497 =
 ///   GL_REPEAT) maps to `RT_MATERIAL3D_TEXTURE_WRAP_REPEAT`.
@@ -726,8 +726,8 @@ static int32_t gltf_map_sampler_wrap(int64_t wrap) {
     return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
-/// @brief Map a glTF sampler min/mag filter pair to a Viper filter-mode constant.
-/// @details glTF separates min and mag filters; Viper uses a single constant. The mag filter
+/// @brief Map a glTF sampler min/mag filter pair to a Zanna filter-mode constant.
+/// @details glTF separates min and mag filters; Zanna uses a single constant. The mag filter
 ///   is preferred (it directly controls visible texel appearance). GL nearest constants:
 ///   9728 = GL_NEAREST, 9984 = GL_NEAREST_MIPMAP_NEAREST, 9986 = GL_NEAREST_MIPMAP_LINEAR.
 ///   All other values (including linear variants 9729, 9985, 9987) map to LINEAR. When
@@ -755,7 +755,7 @@ static void gltf_sampler_info_init(gltf_sampler_info_t *info) {
 /// @brief Parse a glTF sampler JSON object into a `gltf_sampler_info_t`.
 /// @details Reads `wrapS`, `wrapT`, `minFilter`, and `magFilter` using their glTF
 ///   default values (10497 = REPEAT for wrap; -1 = absent for filter) and maps them
-///   to Viper constants via `gltf_map_sampler_wrap` / `gltf_map_sampler_filter`.
+///   to Zanna constants via `gltf_map_sampler_wrap` / `gltf_map_sampler_filter`.
 ///   A NULL @p sampler_json leaves @p out at the glTF defaults (REPEAT / LINEAR).
 /// @param sampler_json  Parsed glTF sampler object JSON; may be NULL for default state.
 /// @param out           Output struct; always initialised before filling.
@@ -941,7 +941,7 @@ static int gltf_validate_node_graph(void *nodes_arr, int32_t node_count, int **o
 /// @param texture_samplers  Per-texture sampler state array resolved from the `"samplers"` array.
 /// @param texture_count     Length of @p texture_samplers.
 /// @param texture_index     glTF texture index into @p texture_samplers (and the image table).
-/// @param material          Viper material object to write the slot into.
+/// @param material          Zanna material object to write the slot into.
 /// @param slot              Destination slot index in `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)`.
 /// @param info              Optional UV-transform + texcoord override; NULL uses identity.
 static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
@@ -1922,4 +1922,4 @@ int rt_gltf_draco_decode_probe(const unsigned char *data, size_t size) {
     (void)size;
     return 0;
 }
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

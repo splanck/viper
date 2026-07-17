@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the TreeView widget and TreeNode data structure for
-// Viper's TUI framework. TreeView displays a hierarchical tree of labeled
+// Zanna's TUI framework. TreeView displays a hierarchical tree of labeled
 // nodes with expand/collapse functionality, similar to a file explorer.
 //
 // Each TreeNode contains a label, child nodes, and expansion state.
@@ -34,7 +34,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 
 /// @brief Node in a hierarchical tree structure with label, children, and expansion state.
 /// @details Each node contains a display label, a vector of child nodes owned via
@@ -83,4 +83,4 @@ class TreeView : public ui::Widget {
     static int depth(TreeNode *n);
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

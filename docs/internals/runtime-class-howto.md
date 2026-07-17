@@ -6,10 +6,10 @@ last-verified: 2026-05-13
 
 # Adding a New Runtime Class: Complete Guide
 
-Step-by-step deep dive for adding a new class to the Viper runtime, covering all 8 required touchpoints from C implementation through frontend consumption.
+Step-by-step deep dive for adding a new class to the Zanna runtime, covering all 8 required touchpoints from C implementation through frontend consumption.
 
 **Related documentation:**
-- [How to Extend the Viper Runtime](runtime-extend-howto.md) — broader overview covering both functions and classes
+- [How to Extend the Zanna Runtime](runtime-extend-howto.md) — broader overview covering both functions and classes
 - [Architecture](architecture.md) — system-level design
 - [IL Guide](../il/il-guide.md) — IL type system and instruction reference
 - [Codemap](codemap.md) — project directory structure
@@ -31,7 +31,7 @@ Step-by-step deep dive for adding a new class to the Viper runtime, covering all
 11. [Step 8 — Testing](#11-step-8--testing)
 12. [What Happens at Build Time](#12-what-happens-at-build-time)
 13. [How Frontends Consume the New Class](#13-how-frontends-consume-the-new-class)
-14. [Complete Worked Example — Viper.Utils.Gauge](#14-complete-worked-example--viperutilsgauge)
+14. [Complete Worked Example — Zanna.Utils.Gauge](#14-complete-worked-example--zannautilsgauge)
 15. [Common Patterns](#15-common-patterns)
 16. [Troubleshooting](#16-troubleshooting)
 17. [Validation Checklist](#17-validation-checklist)
@@ -45,7 +45,7 @@ Step-by-step deep dive for adding a new class to the Viper runtime, covering all
 
 ### Scope
 
-This guide covers adding a **new runtime class** — a type with a constructor, instance methods, and properties that Viper programs can instantiate and use. If you need to add a standalone function (e.g., `Viper.Math.Square`), see [How to Extend the Viper Runtime](runtime-extend-howto.md) instead.
+This guide covers adding a **new runtime class** — a type with a constructor, instance methods, and properties that Zanna programs can instantiate and use. If you need to add a standalone function (e.g., `Zanna.Math.Square`), see [How to Extend the Zanna Runtime](runtime-extend-howto.md) instead.
 
 ### This Guide vs runtime-extend-howto.md
 
@@ -61,9 +61,9 @@ This guide covers adding a **new runtime class** — a type with a constructor, 
 
 | Category | Constructor | Layout | Example |
 |----------|-------------|--------|---------|
-| **Instance class** | Has constructor (`ctor_id`) | `"obj"` | `Viper.Collections.Stack` |
-| **Static utility** | `none` | `"none"` | `Viper.Math` |
-| **Hybrid** | Has constructor + static factory methods | `"obj"` | `Viper.Collections.Map` |
+| **Instance class** | Has constructor (`ctor_id`) | `"obj"` | `Zanna.Collections.Stack` |
+| **Static utility** | `none` | `"none"` | `Zanna.Math` |
+| **Hybrid** | Has constructor + static factory methods | `"obj"` | `Zanna.Collections.Map` |
 
 Instance classes that allocate heap objects must use stable, unique runtime class IDs. Shared families should centralize those constants in one header, such as `src/runtime/collections/rt_collection_ids.h`, and every public method that downcasts an object should validate the ID before casting. Do not reuse small positive IDs or a family-wide zero ID; they collide with other runtime objects and disable typed-handle validation.
 
@@ -71,7 +71,7 @@ Instance classes that allocate heap objects must use stable, unique runtime clas
 
 - Familiarity with C programming
 - Basic understanding of CMake build system
-- Knowledge of Viper IL type system (see [IL Guide](../il/il-guide.md))
+- Knowledge of Zanna IL type system (see [IL Guide](../il/il-guide.md))
 
 ---
 
@@ -96,7 +96,7 @@ Adding a runtime class requires touching exactly 8 locations. Here is how data f
 │  ┌──────────────────────────────────────────────┐                          │
 │  │              runtime.def                      │                          │
 │  │  RT_FUNC(GaugeNew, rt_gauge_new, ...)        │                          │
-│  │  RT_CLASS_BEGIN("Viper.Utils.Gauge", ...)     │                          │
+│  │  RT_CLASS_BEGIN("Zanna.Utils.Gauge", ...)     │                          │
 │  └───────────────────────┬──────────────────────┘                          │
 │                           │                                                 │
 │              ┌────────────┼─────────────────────┐                          │
@@ -174,7 +174,7 @@ Choose the `src/runtime/` subdirectory that matches your class's domain:
 | C source file | `rt_<module>.c` | `rt_gauge.c` |
 | C header file | `rt_<module>.h` | `rt_gauge.h` |
 | C function | `rt_<module>_<action>` | `rt_gauge_new` |
-| Canonical name | `Viper.<Namespace>.<Class>.<Method>` | `Viper.Utils.Gauge.New` |
+| Canonical name | `Zanna.<Namespace>.<Class>.<Method>` | `Zanna.Utils.Gauge.New` |
 | Definition ID | PascalCase, globally unique | `GaugeNew` |
 | Type ID | `RTCLS_` + PascalCase | `RTCLS_Gauge` |
 
@@ -252,13 +252,13 @@ If a method returns a retained object or copied string, update `src/il/runtime/R
 ```c
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_gauge.h
-// Purpose: Bounded numeric gauge for Viper.Utils.Gauge, providing clamped
+// Purpose: Bounded numeric gauge for Zanna.Utils.Gauge, providing clamped
 //   integer values within a [min, max] range with percentage tracking.
 //
 // Key invariants:
@@ -347,7 +347,7 @@ typedef struct
     int64_t value;
     int64_t min;
     int64_t max;
-} ViperGauge;
+} ZannaGauge;
 ```
 
 ### GC Allocation
@@ -357,7 +357,7 @@ Use `rt_obj_new_i64()` to allocate GC-managed objects:
 ```c
 void *rt_gauge_new(int64_t min, int64_t max)
 {
-    ViperGauge *gauge = (ViperGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ViperGauge));
+    ZannaGauge *gauge = (ZannaGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ZannaGauge));
     if (!gauge)
     {
         rt_trap("Gauge: memory allocation failed");
@@ -382,14 +382,14 @@ If your struct contains `malloc`-managed buffers (arrays, strings, etc.), regist
 static void gauge_finalize(void *obj)
 {
     if (!obj) return;
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     free(g->internal_buffer);  // Free heap-allocated members
     g->internal_buffer = NULL;
 }
 
 void *rt_gauge_new(...)
 {
-    ViperGauge *gauge = (ViperGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ViperGauge));
+    ZannaGauge *gauge = (ZannaGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ZannaGauge));
     if (!gauge) { ... }
     rt_obj_set_finalizer(gauge, gauge_finalize);  // Register cleanup
     // ... initialize fields ...
@@ -412,7 +412,7 @@ Use `rt_trap()` for unrecoverable errors. It terminates execution with a descrip
 ```c
 void rt_gauge_set_value(void *obj, int64_t value)
 {
-    ViperGauge *gauge = (ViperGauge *)obj;
+    ZannaGauge *gauge = (ZannaGauge *)obj;
     if (value < gauge->min || value > gauge->max)
     {
         rt_trap("Gauge: value %lld out of bounds [%lld, %lld]",
@@ -428,13 +428,13 @@ void rt_gauge_set_value(void *obj, int64_t value)
 ```c
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_gauge.c
-// Purpose: Implements Viper.Utils.Gauge, a bounded numeric gauge that keeps
+// Purpose: Implements Zanna.Utils.Gauge, a bounded numeric gauge that keeps
 //   an integer value clamped within a [min, max] range. Useful for health bars,
 //   progress indicators, volume controls, and similar bounded-value scenarios.
 //
@@ -463,7 +463,7 @@ typedef struct
     int64_t value; ///< Current value, always in [min, max].
     int64_t min;   ///< Lower bound (inclusive).
     int64_t max;   ///< Upper bound (inclusive).
-} ViperGauge;
+} ZannaGauge;
 
 void *rt_gauge_new(int64_t min, int64_t max)
 {
@@ -474,7 +474,7 @@ void *rt_gauge_new(int64_t min, int64_t max)
         return NULL;
     }
 
-    ViperGauge *g = (ViperGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ViperGauge));
+    ZannaGauge *g = (ZannaGauge *)rt_obj_new_i64(0, (int64_t)sizeof(ZannaGauge));
     if (!g)
     {
         rt_trap("Gauge: memory allocation failed");
@@ -494,12 +494,12 @@ void *rt_gauge_new_default(void)
 
 int64_t rt_gauge_get_value(void *obj)
 {
-    return ((ViperGauge *)obj)->value;
+    return ((ZannaGauge *)obj)->value;
 }
 
 void rt_gauge_set_value(void *obj, int64_t value)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     if (value < g->min || value > g->max)
     {
         rt_trap("Gauge: value %lld out of bounds [%lld, %lld]",
@@ -511,17 +511,17 @@ void rt_gauge_set_value(void *obj, int64_t value)
 
 int64_t rt_gauge_get_min(void *obj)
 {
-    return ((ViperGauge *)obj)->min;
+    return ((ZannaGauge *)obj)->min;
 }
 
 int64_t rt_gauge_get_max(void *obj)
 {
-    return ((ViperGauge *)obj)->max;
+    return ((ZannaGauge *)obj)->max;
 }
 
 double rt_gauge_get_percentage(void *obj)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     if (g->max == g->min)
         return 1.0; // Avoid division by zero
     return (double)(g->value - g->min) / (double)(g->max - g->min);
@@ -529,39 +529,39 @@ double rt_gauge_get_percentage(void *obj)
 
 int8_t rt_gauge_is_at_min(void *obj)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     return g->value == g->min ? 1 : 0;
 }
 
 int8_t rt_gauge_is_at_max(void *obj)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     return g->value == g->max ? 1 : 0;
 }
 
 void rt_gauge_increment(void *obj, int64_t amount)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     int64_t newVal = g->value + amount;
     g->value = (newVal > g->max) ? g->max : newVal;
 }
 
 void rt_gauge_decrement(void *obj, int64_t amount)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     int64_t newVal = g->value - amount;
     g->value = (newVal < g->min) ? g->min : newVal;
 }
 
 void rt_gauge_reset(void *obj)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     g->value = g->min;
 }
 
 void rt_gauge_clamp(void *obj)
 {
-    ViperGauge *g = (ViperGauge *)obj;
+    ZannaGauge *g = (ZannaGauge *)obj;
     if (g->value < g->min)
         g->value = g->min;
     else if (g->value > g->max)
@@ -597,7 +597,7 @@ RT_FUNC(id, c_symbol, "canonical", "signature")
 |-----------|-------------|---------|
 | `id` | Unique PascalCase C++ identifier | `GaugeNew` |
 | `c_symbol` | Exact C function name from your `.h` | `rt_gauge_new` |
-| `canonical` | Viper namespace path | `"Viper.Utils.Gauge.New"` |
+| `canonical` | Zanna namespace path | `"Zanna.Utils.Gauge.New"` |
 | `signature` | IL type signature (receiver included) | `"obj(i64,i64)"` |
 
 ### Property Canonical Naming
@@ -605,11 +605,11 @@ RT_FUNC(id, c_symbol, "canonical", "signature")
 Properties use `get_` and `set_` prefixes in the canonical name:
 
 ```c
-// Getter: "Viper.Utils.Gauge.get_Value"
-RT_FUNC(GaugeGetValue, rt_gauge_get_value, "Viper.Utils.Gauge.get_Value", "i64(obj)")
+// Getter: "Zanna.Utils.Gauge.get_Value"
+RT_FUNC(GaugeGetValue, rt_gauge_get_value, "Zanna.Utils.Gauge.get_Value", "i64(obj)")
 
-// Setter: "Viper.Utils.Gauge.set_Value"
-RT_FUNC(GaugeSetValue, rt_gauge_set_value, "Viper.Utils.Gauge.set_Value", "void(obj,i64)")
+// Setter: "Zanna.Utils.Gauge.set_Value"
+RT_FUNC(GaugeSetValue, rt_gauge_set_value, "Zanna.Utils.Gauge.set_Value", "void(obj,i64)")
 ```
 
 ### Dual-Signature Convention (Detailed)
@@ -636,19 +636,19 @@ Every handler ID referenced in `RT_METHOD` or `RT_PROP` **must** have a correspo
 // GAUGE (Bounded Numeric Value)
 //=============================================================================
 
-RT_FUNC(GaugeNew,           rt_gauge_new,            "Viper.Utils.Gauge.New",            "obj(i64,i64)")
-RT_FUNC(GaugeNewDefault,    rt_gauge_new_default,    "Viper.Utils.Gauge.NewDefault",     "obj()")
-RT_FUNC(GaugeGetValue,      rt_gauge_get_value,      "Viper.Utils.Gauge.get_Value",      "i64(obj)")
-RT_FUNC(GaugeSetValue,      rt_gauge_set_value,      "Viper.Utils.Gauge.set_Value",      "void(obj,i64)")
-RT_FUNC(GaugeGetMin,        rt_gauge_get_min,        "Viper.Utils.Gauge.get_Min",        "i64(obj)")
-RT_FUNC(GaugeGetMax,        rt_gauge_get_max,        "Viper.Utils.Gauge.get_Max",        "i64(obj)")
-RT_FUNC(GaugeGetPercentage, rt_gauge_get_percentage, "Viper.Utils.Gauge.get_Percentage", "f64(obj)")
-RT_FUNC(GaugeIsAtMin,       rt_gauge_is_at_min,      "Viper.Utils.Gauge.get_IsAtMin",    "i1(obj)")
-RT_FUNC(GaugeIsAtMax,       rt_gauge_is_at_max,      "Viper.Utils.Gauge.get_IsAtMax",    "i1(obj)")
-RT_FUNC(GaugeIncrement,     rt_gauge_increment,      "Viper.Utils.Gauge.Increment",      "void(obj,i64)")
-RT_FUNC(GaugeDecrement,     rt_gauge_decrement,      "Viper.Utils.Gauge.Decrement",      "void(obj,i64)")
-RT_FUNC(GaugeReset,         rt_gauge_reset,          "Viper.Utils.Gauge.Reset",          "void(obj)")
-RT_FUNC(GaugeClamp,         rt_gauge_clamp,          "Viper.Utils.Gauge.Clamp",          "void(obj)")
+RT_FUNC(GaugeNew,           rt_gauge_new,            "Zanna.Utils.Gauge.New",            "obj(i64,i64)")
+RT_FUNC(GaugeNewDefault,    rt_gauge_new_default,    "Zanna.Utils.Gauge.NewDefault",     "obj()")
+RT_FUNC(GaugeGetValue,      rt_gauge_get_value,      "Zanna.Utils.Gauge.get_Value",      "i64(obj)")
+RT_FUNC(GaugeSetValue,      rt_gauge_set_value,      "Zanna.Utils.Gauge.set_Value",      "void(obj,i64)")
+RT_FUNC(GaugeGetMin,        rt_gauge_get_min,        "Zanna.Utils.Gauge.get_Min",        "i64(obj)")
+RT_FUNC(GaugeGetMax,        rt_gauge_get_max,        "Zanna.Utils.Gauge.get_Max",        "i64(obj)")
+RT_FUNC(GaugeGetPercentage, rt_gauge_get_percentage, "Zanna.Utils.Gauge.get_Percentage", "f64(obj)")
+RT_FUNC(GaugeIsAtMin,       rt_gauge_is_at_min,      "Zanna.Utils.Gauge.get_IsAtMin",    "i1(obj)")
+RT_FUNC(GaugeIsAtMax,       rt_gauge_is_at_max,      "Zanna.Utils.Gauge.get_IsAtMax",    "i1(obj)")
+RT_FUNC(GaugeIncrement,     rt_gauge_increment,      "Zanna.Utils.Gauge.Increment",      "void(obj,i64)")
+RT_FUNC(GaugeDecrement,     rt_gauge_decrement,      "Zanna.Utils.Gauge.Decrement",      "void(obj,i64)")
+RT_FUNC(GaugeReset,         rt_gauge_reset,          "Zanna.Utils.Gauge.Reset",          "void(obj)")
+RT_FUNC(GaugeClamp,         rt_gauge_clamp,          "Zanna.Utils.Gauge.Clamp",          "void(obj)")
 ```
 
 ---
@@ -667,7 +667,7 @@ RT_CLASS_BEGIN("name", type_id, "layout", ctor_id)
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `"name"` | Fully qualified class name | `"Viper.Utils.Gauge"` |
+| `"name"` | Fully qualified class name | `"Zanna.Utils.Gauge"` |
 | `type_id` | Must match the `RTCLS_` suffix in RuntimeTypeId | `Gauge` |
 | `"layout"` | Memory layout: `"obj"` for instance, `"none"` for static | `"obj"` |
 | `ctor_id` | Default constructor function ID, or `none` | `GaugeNew` |
@@ -702,7 +702,7 @@ RT_METHOD("name", "signature", target_id)
 For classes with no instances (all static methods), use `none` for both constructor and layout:
 
 ```c
-RT_CLASS_BEGIN("Viper.Math", Math, "none", none)
+RT_CLASS_BEGIN("Zanna.Math", Math, "none", none)
     RT_METHOD("Sin", "f64(f64)", MathSin)
     RT_METHOD("Cos", "f64(f64)", MathCos)
 RT_CLASS_END()
@@ -713,8 +713,8 @@ Static methods do not receive an implicit object. Their `RT_FUNC` signatures sho
 ### Complete Class Block
 
 ```c
-// Viper.Utils.Gauge - bounded numeric value with clamping
-RT_CLASS_BEGIN("Viper.Utils.Gauge", Gauge, "obj", GaugeNew)
+// Zanna.Utils.Gauge - bounded numeric value with clamping
+RT_CLASS_BEGIN("Zanna.Utils.Gauge", Gauge, "obj", GaugeNew)
     RT_PROP("Value", "i64", GaugeGetValue, GaugeSetValue)
     RT_PROP("Min", "i64", GaugeGetMin, none)
     RT_PROP("Max", "i64", GaugeGetMax, none)
@@ -808,13 +808,13 @@ Runtime tests are standalone executables (not GTest). They use `assert()` for ve
 ```cpp
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTGaugeTests.cpp
-// Purpose: Unit tests for Viper.Utils.Gauge bounded numeric gauge.
+// Purpose: Unit tests for Zanna.Utils.Gauge bounded numeric gauge.
 //
 //===----------------------------------------------------------------------===//
 
@@ -951,9 +951,9 @@ Add at the end of the runtime test section:
 
 ```cmake
 if (NOT TARGET test_rt_gauge)
-    viper_add_test(test_rt_gauge ${VIPER_TESTS_DIR}/runtime/RTGaugeTests.cpp)
-    target_link_libraries(test_rt_gauge PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_gauge test_rt_gauge)
+    zanna_add_test(test_rt_gauge ${ZANNA_TESTS_DIR}/runtime/RTGaugeTests.cpp)
+    target_link_libraries(test_rt_gauge PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    zanna_add_ctest(test_rt_gauge test_rt_gauge)
 endif ()
 ```
 
@@ -961,7 +961,7 @@ endif ()
 
 ```bash
 # Build and run all tests
-./scripts/build_viper.sh
+./scripts/build_zanna.sh
 
 # Run only the gauge tests
 ctest --test-dir build -R gauge --output-on-failure
@@ -989,26 +989,26 @@ After editing `runtime.def`, the build system automatically regenerates all gene
 **1. RuntimeNameMap.inc** — Maps canonical names to C symbols for native codegen:
 
 ```c
-RUNTIME_NAME_ALIAS("Viper.Utils.Gauge.New", "rt_gauge_new")
-RUNTIME_NAME_ALIAS("Viper.Utils.Gauge.NewDefault", "rt_gauge_new_default")
-RUNTIME_NAME_ALIAS("Viper.Utils.Gauge.get_Value", "rt_gauge_get_value")
-RUNTIME_NAME_ALIAS("Viper.Utils.Gauge.set_Value", "rt_gauge_set_value")
+RUNTIME_NAME_ALIAS("Zanna.Utils.Gauge.New", "rt_gauge_new")
+RUNTIME_NAME_ALIAS("Zanna.Utils.Gauge.NewDefault", "rt_gauge_new_default")
+RUNTIME_NAME_ALIAS("Zanna.Utils.Gauge.get_Value", "rt_gauge_get_value")
+RUNTIME_NAME_ALIAS("Zanna.Utils.Gauge.set_Value", "rt_gauge_set_value")
 // ... one entry per RT_FUNC
 ```
 
 **2. RuntimeClasses.inc** — OOP catalog (class structure with properties and methods):
 
 ```cpp
-RUNTIME_CLASS("Viper.Utils.Gauge",
-    RTCLS_Gauge, "obj", "Viper.Utils.Gauge.New",
+RUNTIME_CLASS("Zanna.Utils.Gauge",
+    RTCLS_Gauge, "obj", "Zanna.Utils.Gauge.New",
     RUNTIME_PROPS(
-        RUNTIME_PROP("Value", "i64", "Viper.Utils.Gauge.get_Value", "Viper.Utils.Gauge.set_Value"),
-        RUNTIME_PROP("Min", "i64", "Viper.Utils.Gauge.get_Min", nullptr),
+        RUNTIME_PROP("Value", "i64", "Zanna.Utils.Gauge.get_Value", "Zanna.Utils.Gauge.set_Value"),
+        RUNTIME_PROP("Min", "i64", "Zanna.Utils.Gauge.get_Min", nullptr),
         // ... more properties
     ),
     RUNTIME_METHODS(
-        RUNTIME_METHOD("Increment", "void(i64)", "Viper.Utils.Gauge.Increment"),
-        RUNTIME_METHOD("Decrement", "void(i64)", "Viper.Utils.Gauge.Decrement"),
+        RUNTIME_METHOD("Increment", "void(i64)", "Zanna.Utils.Gauge.Increment"),
+        RUNTIME_METHOD("Decrement", "void(i64)", "Zanna.Utils.Gauge.Decrement"),
         // ... more methods
     )
 )
@@ -1017,25 +1017,25 @@ RUNTIME_CLASS("Viper.Utils.Gauge",
 **3. RuntimeSignatures.inc** — VM descriptor rows with function pointers:
 
 ```cpp
-{ "Viper.Utils.Gauge.New", SigId::ObjI64I64, &DirectHandler<&rt_gauge_new, ...>::invoke, ... },
-{ "Viper.Utils.Gauge.get_Value", SigId::I64Obj, &DirectHandler<&rt_gauge_get_value, ...>::invoke, ... },
+{ "Zanna.Utils.Gauge.New", SigId::ObjI64I64, &DirectHandler<&rt_gauge_new, ...>::invoke, ... },
+{ "Zanna.Utils.Gauge.get_Value", SigId::I64Obj, &DirectHandler<&rt_gauge_get_value, ...>::invoke, ... },
 // ... one row per RT_FUNC
 ```
 
 **4. RuntimeNames.hpp** — C++ constants for frontends:
 
 ```cpp
-inline constexpr const char *kUtilsGaugeNew = "Viper.Utils.Gauge.New";
-inline constexpr const char *kUtilsGaugeGetValue = "Viper.Utils.Gauge.get_Value";
+inline constexpr const char *kUtilsGaugeNew = "Zanna.Utils.Gauge.New";
+inline constexpr const char *kUtilsGaugeGetValue = "Zanna.Utils.Gauge.get_Value";
 // ... one constant per RT_FUNC
 ```
 
 **5. ZiaRuntimeExterns.inc** — Zia extern declarations:
 
 ```cpp
-typeRegistry_["Viper.Utils.Gauge"] = types::runtimeClass("Viper.Utils.Gauge");
-defineExternFunction("Viper.Utils.Gauge.New", types::runtimeClass("Viper.Utils.Gauge"));
-defineExternFunction("Viper.Utils.Gauge.get_Value", types::integer());
+typeRegistry_["Zanna.Utils.Gauge"] = types::runtimeClass("Zanna.Utils.Gauge");
+defineExternFunction("Zanna.Utils.Gauge.New", types::runtimeClass("Zanna.Utils.Gauge"));
+defineExternFunction("Zanna.Utils.Gauge.get_Value", types::integer());
 // ... one entry per RT_FUNC
 ```
 
@@ -1063,17 +1063,17 @@ The BASIC frontend resolves runtime calls on demand via the `RuntimeRegistry` si
 BASIC code: gauge.Increment(5)
      │
      ▼
-RuntimeMethodIndex.find("Viper.Utils.Gauge", "Increment", 1)
+RuntimeMethodIndex.find("Zanna.Utils.Gauge", "Increment", 1)
      │  delegates to
      ▼
 RuntimeRegistry::instance().findMethod(...)
      │  O(1) hash lookup in methodIndex_
      ▼
-ParsedMethod { name="Increment", target="Viper.Utils.Gauge.Increment",
+ParsedMethod { name="Increment", target="Zanna.Utils.Gauge.Increment",
                signature={ ret=Void, params=[I64] } }
      │
      ▼
-Lowerer emits: b.addExtern("Viper.Utils.Gauge.Increment", Type::Void, {Type::I64})
+Lowerer emits: b.addExtern("Zanna.Utils.Gauge.Increment", Type::Void, {Type::I64})
 ```
 
 Key files:
@@ -1089,13 +1089,13 @@ Sema::initRuntimeFunctions() {
     Phase 1: Register class types
     ┌─────────────────────────────────────────────────────────────────┐
     │ for (cls : catalog)                                             │
-    │     typeRegistry_["Viper.Utils.Gauge"] = types::runtimeClass() │
+    │     typeRegistry_["Zanna.Utils.Gauge"] = types::runtimeClass() │
     └─────────────────────────────────────────────────────────────────┘
 
     Phase 2: Bulk extern declarations (coarse, return type only)
     ┌─────────────────────────────────────────────────────────────────┐
     │ #include "il/runtime/ZiaRuntimeExterns.inc"                     │
-    │ defineExternFunction("Viper.Utils.Gauge.Increment", void_type) │
+    │ defineExternFunction("Zanna.Utils.Gauge.Increment", void_type) │
     └─────────────────────────────────────────────────────────────────┘
 
     Phase 3: Full method/property registration (overrides Phase 2)
@@ -1115,7 +1115,7 @@ Key files:
 
 ### Why the Difference?
 
-**BASIC** uses a simpler, more permissive type system. It can resolve `Viper.Utils.Gauge.Increment` lazily via `RuntimeRegistry` at the point of use, only emitting extern declarations for functions the program actually calls.
+**BASIC** uses a simpler, more permissive type system. It can resolve `Zanna.Utils.Gauge.Increment` lazily via `RuntimeRegistry` at the point of use, only emitting extern declarations for functions the program actually calls.
 
 **Zia** is statically typed and needs all symbols registered in its symbol table before analysis begins. The `ZiaRuntimeExterns.inc` file gives it coarse type info for every `RT_FUNC` in one pass; Phase 3 then overrides with precise signatures from the `RuntimeClasses.inc` catalog.
 
@@ -1132,9 +1132,9 @@ Key files:
 
 ---
 
-## 14. Complete Worked Example — Viper.Utils.Gauge
+## 14. Complete Worked Example — Zanna.Utils.Gauge
 
-This section shows all 8 steps contiguously for the `Viper.Utils.Gauge` class — a bounded numeric gauge that keeps an integer value within `[min, max]`.
+This section shows all 8 steps contiguously for the `Zanna.Utils.Gauge` class — a bounded numeric gauge that keeps an integer value within `[min, max]`.
 
 ### API Surface
 
@@ -1205,9 +1205,9 @@ In `src/tests/unit/CMakeLists.txt`:
 
 ```cmake
 if (NOT TARGET test_rt_gauge)
-    viper_add_test(test_rt_gauge ${VIPER_TESTS_DIR}/runtime/RTGaugeTests.cpp)
-    target_link_libraries(test_rt_gauge PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_gauge test_rt_gauge)
+    zanna_add_test(test_rt_gauge ${ZANNA_TESTS_DIR}/runtime/RTGaugeTests.cpp)
+    target_link_libraries(test_rt_gauge PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    zanna_add_ctest(test_rt_gauge test_rt_gauge)
 endif ()
 ```
 
@@ -1215,7 +1215,7 @@ endif ()
 
 ```bash
 # Build (rtgen runs automatically)
-./scripts/build_viper.sh
+./scripts/build_zanna.sh
 
 # Verify generated output
 grep "Gauge" build/generated/il/runtime/RuntimeClasses.inc
@@ -1271,7 +1271,7 @@ No instances, all static methods. Constructor is `none`, layout is `"none"`:
 
 ```c
 // runtime.def
-RT_CLASS_BEGIN("Viper.Math", Math, "none", none)
+RT_CLASS_BEGIN("Zanna.Math", Math, "none", none)
     RT_METHOD("Sin", "f64(f64)", MathSin)
     RT_METHOD("Cos", "f64(f64)", MathCos)
     RT_METHOD("Sqrt", "f64(f64)", MathSqrt)
@@ -1284,10 +1284,10 @@ The primary constructor goes in `ctor_id`. Additional factories are regular meth
 
 ```c
 // runtime.def
-RT_FUNC(GaugeNew,        rt_gauge_new,         "Viper.Utils.Gauge.New",        "obj(i64,i64)")
-RT_FUNC(GaugeNewDefault, rt_gauge_new_default,  "Viper.Utils.Gauge.NewDefault", "obj()")
+RT_FUNC(GaugeNew,        rt_gauge_new,         "Zanna.Utils.Gauge.New",        "obj(i64,i64)")
+RT_FUNC(GaugeNewDefault, rt_gauge_new_default,  "Zanna.Utils.Gauge.NewDefault", "obj()")
 
-RT_CLASS_BEGIN("Viper.Utils.Gauge", Gauge, "obj", GaugeNew)
+RT_CLASS_BEGIN("Zanna.Utils.Gauge", Gauge, "obj", GaugeNew)
     // GaugeNewDefault is accessible as Gauge.NewDefault() via RT_FUNC canonical name
     // ... properties and methods ...
 RT_CLASS_END()
@@ -1333,8 +1333,8 @@ Usage: `builder.Append("Hello").Append(" World")`
 Create multiple RT_FUNC entries with different canonical names. Methods with the same user-facing name but different arities are resolved by the frontend:
 
 ```c
-RT_FUNC(SubstrFrom,  rt_substr_from,  "Viper.String.Substring", "str(obj,i64)")
-RT_FUNC(SubstrRange, rt_substr_range, "Viper.String.Substring", "str(obj,i64,i64)")
+RT_FUNC(SubstrFrom,  rt_substr_from,  "Zanna.String.Substring", "str(obj,i64)")
+RT_FUNC(SubstrRange, rt_substr_range, "Zanna.String.Substring", "str(obj,i64,i64)")
 ```
 
 ### Pattern 7: Error Handling with rt_trap
@@ -1344,7 +1344,7 @@ Use `rt_trap()` for precondition violations. Always include a descriptive messag
 ```c
 void *rt_list_get(void *obj, int64_t index)
 {
-    ViperList *list = (ViperList *)obj;
+    ZannaList *list = (ZannaList *)obj;
     if (index < 0 || index >= list->count)
     {
         rt_trap("List index out of bounds: %lld (size: %lld)",
@@ -1413,7 +1413,7 @@ void *rt_physics_add_body(void *world, void *body)
 }
 
 // runtime.def — both params are "obj" regardless of specific class
-RT_FUNC(PhysAddBody, rt_physics_add_body, "Viper.Physics2D.World.AddBody", "obj(obj,obj)")
+RT_FUNC(PhysAddBody, rt_physics_add_body, "Zanna.Physics2D.World.AddBody", "obj(obj,obj)")
 ```
 
 ---
@@ -1422,7 +1422,7 @@ RT_FUNC(PhysAddBody, rt_physics_add_body, "Viper.Physics2D.World.AddBody", "obj(
 
 ### 1. "Unknown runtime function" at compile time
 
-**Symptom:** Compiler reports unknown function when calling `Viper.Utils.Gauge.New`
+**Symptom:** Compiler reports unknown function when calling `Zanna.Utils.Gauge.New`
 
 **Causes:**
 1. Function not added to `runtime.def`
@@ -1482,7 +1482,7 @@ cmake --build build -j
 
 **Cause:** Canonical name does not follow the `get_`/`set_` convention.
 
-**Solution:** Property getters must use `"Viper.Class.get_PropName"` and setters must use `"Viper.Class.set_PropName"` as their canonical names in the `RT_FUNC` entry.
+**Solution:** Property getters must use `"Zanna.Class.get_PropName"` and setters must use `"Zanna.Class.set_PropName"` as their canonical names in the `RT_FUNC` entry.
 
 ---
 
@@ -1526,7 +1526,7 @@ cmake --build build -j
 ```bash
 # Clean generated files and rebuild
 rm -rf build/generated/il/runtime/
-./scripts/build_viper.sh
+./scripts/build_zanna.sh
 ```
 
 ---
@@ -1550,7 +1550,7 @@ After completing all 8 steps, run these commands to verify everything is wired u
 
 ```bash
 # 1. Build (rtgen runs automatically on runtime.def change)
-./scripts/build_viper.sh
+./scripts/build_zanna.sh
 
 # 2. Run completeness check (all RT_METHOD/RT_PROP handlers have RT_FUNC)
 ./scripts/check_runtime_completeness.sh
@@ -1614,14 +1614,14 @@ void     rt_myclass_do_thing(void *obj);
 
 **runtime.def (RT_FUNC):**
 ```c
-RT_FUNC(MyClassNew,      rt_myclass_new,       "Viper.NS.MyClass.New",       "obj()")
-RT_FUNC(MyClassGetValue, rt_myclass_get_value,  "Viper.NS.MyClass.get_Value", "i64(obj)")
-RT_FUNC(MyClassDoThing,  rt_myclass_do_thing,   "Viper.NS.MyClass.DoThing",   "void(obj)")
+RT_FUNC(MyClassNew,      rt_myclass_new,       "Zanna.NS.MyClass.New",       "obj()")
+RT_FUNC(MyClassGetValue, rt_myclass_get_value,  "Zanna.NS.MyClass.get_Value", "i64(obj)")
+RT_FUNC(MyClassDoThing,  rt_myclass_do_thing,   "Zanna.NS.MyClass.DoThing",   "void(obj)")
 ```
 
 **runtime.def (RT_CLASS):**
 ```c
-RT_CLASS_BEGIN("Viper.NS.MyClass", MyClass, "obj", MyClassNew)
+RT_CLASS_BEGIN("Zanna.NS.MyClass", MyClass, "obj", MyClassNew)
     RT_PROP("Value", "i64", MyClassGetValue, none)
     RT_METHOD("DoThing", "void()", MyClassDoThing)
 RT_CLASS_END()
@@ -1640,9 +1640,9 @@ ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_myclass.h  # in RT_PUBLIC_HEADERS
 
 **Test CMakeLists.txt:**
 ```cmake
-viper_add_test(test_rt_myclass ${VIPER_TESTS_DIR}/runtime/RTMyClassTests.cpp)
-target_link_libraries(test_rt_myclass PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-viper_add_ctest(test_rt_myclass test_rt_myclass)
+zanna_add_test(test_rt_myclass ${ZANNA_TESTS_DIR}/runtime/RTMyClassTests.cpp)
+target_link_libraries(test_rt_myclass PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+zanna_add_ctest(test_rt_myclass test_rt_myclass)
 ```
 
 ---
@@ -1679,7 +1679,7 @@ viper_add_ctest(test_rt_myclass test_rt_myclass)
 | Build: source | `src/runtime/CMakeLists.txt` | `.c` in `RT_*_SOURCES` |
 | Build: header | `src/runtime/CMakeLists.txt` | `.h` in `RT_PUBLIC_HEADERS` |
 | Test source | `src/tests/runtime/RTMyClassTests.cpp` | Test functions + main() |
-| Test registration | `src/tests/unit/CMakeLists.txt` | `viper_add_test(...)` block |
+| Test registration | `src/tests/unit/CMakeLists.txt` | `zanna_add_test(...)` block |
 | Generated: name map | `build/generated/il/runtime/RuntimeNameMap.inc` | (auto) |
 | Generated: classes | `build/generated/il/runtime/RuntimeClasses.inc` | (auto) |
 | Generated: signatures | `build/generated/il/runtime/RuntimeSignatures.inc` | (auto) |

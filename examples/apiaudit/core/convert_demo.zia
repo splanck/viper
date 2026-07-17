@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Core.Convert + Viper.Core.Parse
+// API Audit: Zanna.Core.Convert + Zanna.Core.Parse
 // =============================================================================
 // Tests Convert: ToDouble, ToInt, ToInt64, ToStringInt, ToStringDouble, NumToInt
 // Tests Parse: IntOr, DoubleOr, BoolOr, IsInt, IsNum, IntRadix
 // =============================================================================
 
 module ConvertDemo;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Conv;
-bind Viper.Core.Parse as Parse;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Conv;
+bind Zanna.Core.Parse as Parse;
 func start() {
-    Say("=== API Audit: Viper.Core.Convert + Parse ===");
+    Say("=== API Audit: Zanna.Core.Convert + Parse ===");
 
     // --- Convert.ToDouble ---
     Say("--- Convert.ToDouble ---");
@@ -65,7 +65,7 @@ func start() {
     SayInt(Conv.NumToInt(0.0));
 
     // =========================================
-    // Viper.Core.Parse
+    // Zanna.Core.Parse
     // =========================================
 
     // --- Parse.IntOr ---

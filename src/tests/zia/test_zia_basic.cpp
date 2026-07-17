@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -78,13 +78,13 @@ func start() {}
     EXPECT_TRUE(foundMainWithBlocks);
 }
 
-/// @brief Test that Hello World compiles and calls Viper.Terminal.Say.
+/// @brief Test that Hello World compiles and calls Zanna.Terminal.Say.
 TEST(ZiaBasic, HelloWorld) {
     SourceManager sm;
     const std::string source = R"(
 module Hello;
 
-func start() {    Viper.Terminal.Say("Hello, World!");
+func start() {    Zanna.Terminal.Say("Hello, World!");
 }
 )";
     CompilerInput input{.source = source, .path = "hello.zia"};
@@ -102,7 +102,7 @@ func start() {    Viper.Terminal.Say("Hello, World!");
             for (const auto &block : fn.blocks) {
                 for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call &&
-                        instr.callee == "Viper.Terminal.Say") {
+                        instr.callee == "Zanna.Terminal.Say") {
                         foundCall = true;
                     }
                 }
@@ -120,7 +120,7 @@ TEST(ZiaBasic, VariableDeclaration) {
 module Test;
 
 func start() {    var x: Integer = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "var.zia"};
@@ -154,7 +154,7 @@ TEST(ZiaBasic, FunctionCall) {
     const std::string source = R"(
 module Test;
 
-func greet() {    Viper.Terminal.Say("Hello");
+func greet() {    Zanna.Terminal.Say("Hello");
 }
 
 func start() {    greet();
@@ -186,18 +186,18 @@ TEST(ZiaBasic, TerminalFunctionsRecognized) {
     const std::string source = R"(
 module Test;
 
-func start() {    Viper.Terminal.Clear();
-    Viper.Terminal.SetPosition(1, 1);
-    Viper.Terminal.SetColor(1, 0);
-    Viper.Terminal.Print("Hello");
-    Viper.Terminal.SetCursorVisible(false);
-    Viper.Terminal.SetCursorVisible(true);
-    var key: String = Viper.Terminal.ReadKeyFor(1);
+func start() {    Zanna.Terminal.Clear();
+    Zanna.Terminal.SetPosition(1, 1);
+    Zanna.Terminal.SetColor(1, 0);
+    Zanna.Terminal.Print("Hello");
+    Zanna.Terminal.SetCursorVisible(false);
+    Zanna.Terminal.SetCursorVisible(true);
+    var key: String = Zanna.Terminal.ReadKeyFor(1);
     if (key != "") {
-        key = Viper.Terminal.ReadKey();
+        key = Zanna.Terminal.ReadKey();
     }
-    Viper.Time.Clock.Sleep(100);
-    Viper.Terminal.Say("Done");
+    Zanna.Time.Clock.Sleep(100);
+    Zanna.Terminal.Say("Done");
 }
 )";
     CompilerInput input{.source = source, .path = "terminal.zia"};
@@ -219,5 +219,5 @@ func start() {    Viper.Terminal.Clear();
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

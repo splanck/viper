@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,10 +17,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// line.zia - Line tool for Viper Paint
+// line.zia - Line tool for Zanna Paint
 module line;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "../canvas";

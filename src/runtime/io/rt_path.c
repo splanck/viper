@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_path.c
-// Purpose: Cross-platform path manipulation utilities backing the Viper.IO.Path
+// Purpose: Cross-platform path manipulation utilities backing the Zanna.IO.Path
 //          class. Provides Join, Dir, Name, Stem, Ext, Norm, IsAbs, WithExt,
 //          and related operations that work correctly on Unix and Windows,
 //          including drive-letter paths and UNC paths.
@@ -22,7 +22,7 @@
 //
 // Ownership/Lifetime:
 //   - Every returned rt_string is a fresh allocation owned by the caller.
-//   - Viper's garbage collector manages returned string lifetimes.
+//   - Zanna's garbage collector manages returned string lifetimes.
 //
 // Links: src/runtime/io/rt_path.h (public API),
 //        src/runtime/io/rt_dir.c (directory create/list/remove operations),

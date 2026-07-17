@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 /// @file Types.cpp
 /// @brief Implementation of Zia semantic type system.
 ///
-/// @details This file implements the ViperType class and type factory
+/// @details This file implements the ZannaType class and type factory
 /// functions. Key implementation details:
 ///
 /// ## Type Interning
@@ -60,7 +60,7 @@ std::mutex g_relationship_mutex;
 /// @param developerFacing When true, emit internal/developer detail; when
 ///        false, the user-facing form. Type arguments render as `[A, B]`,
 ///        with `?` for an unresolved argument.
-void appendTypeString(std::ostringstream &ss, const ViperType &type, bool developerFacing) {
+void appendTypeString(std::ostringstream &ss, const ZannaType &type, bool developerFacing) {
     // Guard against a pathologically deep type tree overflowing the stack during
     // formatting (mirrors the parser/sema nesting limits). thread_local keeps it
     // correct under concurrent formatting.
@@ -238,10 +238,10 @@ void appendTypeString(std::ostringstream &ss, const ViperType &type, bool develo
 } // namespace
 
 //=============================================================================
-// ViperType Implementation
+// ZannaType Implementation
 //=============================================================================
 
-bool ViperType::equals(const ViperType &other) const {
+bool ZannaType::equals(const ZannaType &other) const {
     if (kind != other.kind)
         return false;
     if (name != other.name)
@@ -257,7 +257,7 @@ bool ViperType::equals(const ViperType &other) const {
     return true;
 }
 
-bool ViperType::isAssignableFrom(const ViperType &source) const {
+bool ZannaType::isAssignableFrom(const ZannaType &source) const {
     // Exact match
     if (equals(source))
         return true;
@@ -356,7 +356,7 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
     return false;
 }
 
-bool ViperType::isConvertibleTo(const ViperType &target) const {
+bool ZannaType::isConvertibleTo(const ZannaType &target) const {
     // Assignment is conversion
     if (target.isAssignableFrom(*this))
         return true;
@@ -375,17 +375,17 @@ bool ViperType::isConvertibleTo(const ViperType &target) const {
     // String <-> scalar conversions are intentionally NOT `as` casts: there is
     // no defined failure behavior for parsing, and the previous rows compiled to
     // broken IL. Use string interpolation ("${x}") to format and the
-    // Viper.Core.Parse.* helpers to parse. analyzeAs() emits a targeted hint.
+    // Zanna.Core.Parse.* helpers to parse. analyzeAs() emits a targeted hint.
     return false;
 }
 
-std::string ViperType::toString() const {
+std::string ZannaType::toString() const {
     std::ostringstream ss;
     appendTypeString(ss, *this, false);
     return ss.str();
 }
 
-std::string ViperType::toDisplayString() const {
+std::string ZannaType::toDisplayString() const {
     std::ostringstream ss;
     appendTypeString(ss, *this, true);
     return ss.str();
@@ -476,18 +476,18 @@ struct TypeCache {
     /// @brief Eagerly construct the shared TypeRef instance for every
     ///        primitive kind so factory accessors return stable identities.
     TypeCache() {
-        integerType = std::make_shared<ViperType>(TypeKindSem::Integer);
-        numberType = std::make_shared<ViperType>(TypeKindSem::Number);
-        booleanType = std::make_shared<ViperType>(TypeKindSem::Boolean);
-        stringType = std::make_shared<ViperType>(TypeKindSem::String);
-        byteType = std::make_shared<ViperType>(TypeKindSem::Byte);
-        unitType = std::make_shared<ViperType>(TypeKindSem::Unit);
-        voidType = std::make_shared<ViperType>(TypeKindSem::Void);
-        errorType = std::make_shared<ViperType>(TypeKindSem::Error);
-        ptrType = std::make_shared<ViperType>(TypeKindSem::Ptr);
-        unknownType = std::make_shared<ViperType>(TypeKindSem::Unknown);
-        neverType = std::make_shared<ViperType>(TypeKindSem::Never);
-        anyType = std::make_shared<ViperType>(TypeKindSem::Any);
+        integerType = std::make_shared<ZannaType>(TypeKindSem::Integer);
+        numberType = std::make_shared<ZannaType>(TypeKindSem::Number);
+        booleanType = std::make_shared<ZannaType>(TypeKindSem::Boolean);
+        stringType = std::make_shared<ZannaType>(TypeKindSem::String);
+        byteType = std::make_shared<ZannaType>(TypeKindSem::Byte);
+        unitType = std::make_shared<ZannaType>(TypeKindSem::Unit);
+        voidType = std::make_shared<ZannaType>(TypeKindSem::Void);
+        errorType = std::make_shared<ZannaType>(TypeKindSem::Error);
+        ptrType = std::make_shared<ZannaType>(TypeKindSem::Ptr);
+        unknownType = std::make_shared<ZannaType>(TypeKindSem::Unknown);
+        neverType = std::make_shared<ZannaType>(TypeKindSem::Never);
+        anyType = std::make_shared<ZannaType>(TypeKindSem::Any);
     }
 };
 } // anonymous namespace
@@ -541,87 +541,87 @@ TypeRef any() {
 }
 
 TypeRef optional(TypeRef inner) {
-    return std::make_shared<ViperType>(TypeKindSem::Optional, std::vector<TypeRef>{inner});
+    return std::make_shared<ZannaType>(TypeKindSem::Optional, std::vector<TypeRef>{inner});
 }
 
 TypeRef result(TypeRef successType) {
-    return std::make_shared<ViperType>(TypeKindSem::Result, std::vector<TypeRef>{successType});
+    return std::make_shared<ZannaType>(TypeKindSem::Result, std::vector<TypeRef>{successType});
 }
 
 TypeRef list(TypeRef element) {
-    return std::make_shared<ViperType>(TypeKindSem::List, std::vector<TypeRef>{element});
+    return std::make_shared<ZannaType>(TypeKindSem::List, std::vector<TypeRef>{element});
 }
 
 TypeRef seqOf(TypeRef element) {
-    // Represent a typed rt_seq as Ptr{name="Viper.Collections.Seq", typeArgs=[element]}.
+    // Represent a typed rt_seq as Ptr{name="Zanna.Collections.Seq", typeArgs=[element]}.
     // This sentinel allows the lowerer to route to kSeqLen/kSeqGet rather than
     // kListCount/kListGet, since rt_seq and rt_list have incompatible layouts.
-    return std::make_shared<ViperType>(TypeKindSem::Ptr,
-                                       std::string("Viper.Collections.Seq"),
+    return std::make_shared<ZannaType>(TypeKindSem::Ptr,
+                                       std::string("Zanna.Collections.Seq"),
                                        std::vector<TypeRef>{std::move(element)});
 }
 
 TypeRef futureOf(TypeRef payload) {
-    return std::make_shared<ViperType>(TypeKindSem::Ptr,
-                                       std::string("Viper.Threads.Future"),
+    return std::make_shared<ZannaType>(TypeKindSem::Ptr,
+                                       std::string("Zanna.Threads.Future"),
                                        std::vector<TypeRef>{std::move(payload)});
 }
 
 TypeRef set(TypeRef element) {
-    return std::make_shared<ViperType>(TypeKindSem::Set, std::vector<TypeRef>{element});
+    return std::make_shared<ZannaType>(TypeKindSem::Set, std::vector<TypeRef>{element});
 }
 
 TypeRef map(TypeRef key, TypeRef value) {
-    return std::make_shared<ViperType>(TypeKindSem::Map, std::vector<TypeRef>{key, value});
+    return std::make_shared<ZannaType>(TypeKindSem::Map, std::vector<TypeRef>{key, value});
 }
 
 TypeRef function(std::vector<TypeRef> params, TypeRef ret) {
     params.push_back(ret); // Store return type at the end
-    return std::make_shared<ViperType>(TypeKindSem::Function, std::move(params));
+    return std::make_shared<ZannaType>(TypeKindSem::Function, std::move(params));
 }
 
 TypeRef tuple(std::vector<TypeRef> elements) {
-    return std::make_shared<ViperType>(TypeKindSem::Tuple, std::move(elements));
+    return std::make_shared<ZannaType>(TypeKindSem::Tuple, std::move(elements));
 }
 
 TypeRef structType(const std::string &name, std::vector<TypeRef> typeParams) {
-    return std::make_shared<ViperType>(TypeKindSem::Struct, name, std::move(typeParams));
+    return std::make_shared<ZannaType>(TypeKindSem::Struct, name, std::move(typeParams));
 }
 
 TypeRef classType(const std::string &name, std::vector<TypeRef> typeParams) {
-    return std::make_shared<ViperType>(TypeKindSem::Class, name, std::move(typeParams));
+    return std::make_shared<ZannaType>(TypeKindSem::Class, name, std::move(typeParams));
 }
 
 TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams) {
-    return std::make_shared<ViperType>(TypeKindSem::Interface, name, std::move(typeParams));
+    return std::make_shared<ZannaType>(TypeKindSem::Interface, name, std::move(typeParams));
 }
 
 TypeRef enumType(const std::string &name) {
-    return std::make_shared<ViperType>(TypeKindSem::Enum, name);
+    return std::make_shared<ZannaType>(TypeKindSem::Enum, name);
 }
 
 TypeRef typeParam(const std::string &name) {
-    return std::make_shared<ViperType>(TypeKindSem::TypeParam, name);
+    return std::make_shared<ZannaType>(TypeKindSem::TypeParam, name);
 }
 
 TypeRef runtimeClass(const std::string &name) {
     // Create a Ptr type with the runtime class name
     // This allows us to track the class name for method resolution
-    return std::make_shared<ViperType>(TypeKindSem::Ptr, name);
+    return std::make_shared<ZannaType>(TypeKindSem::Ptr, name);
 }
 
 TypeRef runtimeClass(const std::string &name, std::vector<TypeRef> typeArgs) {
-    return std::make_shared<ViperType>(TypeKindSem::Ptr, name, std::move(typeArgs));
+    return std::make_shared<ZannaType>(TypeKindSem::Ptr, name, std::move(typeArgs));
 }
 
 TypeRef module(const std::string &name) {
     // Create a Module type with the module name
     // This allows qualified access like moduleName.symbol
-    return std::make_shared<ViperType>(TypeKindSem::Module, name);
+    return std::make_shared<ZannaType>(TypeKindSem::Module, name);
 }
 
 TypeRef fixedArray(TypeRef elemType, size_t count) {
-    return std::make_shared<ViperType>(TypeKindSem::FixedArray, std::move(elemType), count);
+    return std::make_shared<ZannaType>(TypeKindSem::FixedArray, std::move(elemType), count);
 }
 
 } // namespace types
@@ -630,7 +630,7 @@ TypeRef fixedArray(TypeRef elemType, size_t count) {
 // IL Type Mapping
 //=============================================================================
 
-il::core::Type::Kind toILType(const ViperType &type) {
+il::core::Type::Kind toILType(const ZannaType &type) {
     switch (type.kind) {
         case TypeKindSem::Integer:
         case TypeKindSem::Enum:
@@ -721,7 +721,7 @@ il::core::Type::Kind toILType(const ViperType &type) {
     return il::core::Type::Kind::Void;
 }
 
-size_t typeSize(const ViperType &type) {
+size_t typeSize(const ZannaType &type) {
     switch (type.kind) {
         case TypeKindSem::Integer:
             return 8;
@@ -797,7 +797,7 @@ size_t typeSize(const ViperType &type) {
     return 0;
 }
 
-size_t typeAlignment(const ViperType &type) {
+size_t typeAlignment(const ZannaType &type) {
     switch (type.kind) {
         case TypeKindSem::Integer:
         case TypeKindSem::Number:

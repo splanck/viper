@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_list_format.c
-// Purpose: Implementation of Viper.Localization.ListFormat. Joins a list of
+// Purpose: Implementation of Zanna.Localization.ListFormat. Joins a list of
 //          rt_string items using the bound locale's list_format templates
 //          (pair / start / middle / end) per CLDR conventions.
 //
@@ -84,7 +84,7 @@ static void *lf_alloc(void *locale) {
     rt_list_format_inst_t *f =
         (rt_list_format_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_list_format_inst_t));
     if (!f) {
-        rt_trap("Viper.Localization.ListFormat: allocation failed");
+        rt_trap("Zanna.Localization.ListFormat: allocation failed");
         return NULL;
     }
     f->locale = locale;

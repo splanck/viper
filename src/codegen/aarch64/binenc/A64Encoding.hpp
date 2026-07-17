@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace viper::codegen::aarch64::binenc {
+namespace zanna::codegen::aarch64::binenc {
 
 // =============================================================================
 // Register Encoding
@@ -298,7 +298,7 @@ inline constexpr uint32_t kBtiC = 0xD503245F;    // HINT #34 — valid indirect 
 // Layout per Apple's compact_unwind_encoding.h: bits [27:24] carry the mode.
 // MODE_FRAME additionally defines saved-register pair FLAGS in bits [8:0] and
 // MODE_FRAMELESS a stack size in bits [23:12]; we emit neither because the
-// Viper prologue stores callee-saved pairs below the locals area (not at the
+// Zanna prologue stores callee-saved pairs below the locals area (not at the
 // canonical compact-unwind slots) and frameless functions always have a zero
 // local frame.
 
@@ -507,4 +507,4 @@ constexpr uint32_t encodePair(uint32_t tmpl, uint32_t rt, uint32_t rt2, uint32_t
     return tmpl | ((static_cast<uint32_t>(imm7) & 0x7F) << 15) | (rt2 << 10) | (rn << 5) | rt;
 }
 
-} // namespace viper::codegen::aarch64::binenc
+} // namespace zanna::codegen::aarch64::binenc

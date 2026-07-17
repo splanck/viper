@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -58,7 +58,7 @@ namespace il::vm {
 /// Performance optimizations:
 ///   - Strategy properties (requiresTrapCatch, handlesFinalizationInternally)
 ///     are cached at loop entry to avoid virtual call overhead per iteration.
-///   - VIPER_VM_DISPATCH_BEFORE/AFTER hooks are designed for zero-cost when unused.
+///   - ZANNA_VM_DISPATCH_BEFORE/AFTER hooks are designed for zero-cost when unused.
 ///   - Branch hints ([[likely]]/[[unlikely]]) guide code layout for hot paths.
 ///
 /// Note: The VMContext parameter is kept for handleTrapDispatch but could be
@@ -84,7 +84,7 @@ bool runSharedDispatchLoop(VM &vm,
         }
 
         // Step 3: Debug hook before execution (uses ExecState directly for efficiency)
-        VIPER_VM_DISPATCH_BEFORE(state, instr->op);
+        ZANNA_VM_DISPATCH_BEFORE(state, instr->op);
 
         // Step 4: Execute instruction via strategy (with optional trap handling)
         VM::ExecResult exec{};
@@ -214,7 +214,7 @@ class SwitchStrategy final : public DispatchStrategy {
     }
 };
 
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
 // =============================================================================
 // ThreadedStrategy: Computed Goto Dispatch
 // =============================================================================
@@ -235,7 +235,7 @@ class SwitchStrategy final : public DispatchStrategy {
 //   strategy class is a placeholder that falls back to function table.
 //
 // Performance: Fastest (no indirect call, direct jump)
-// Portability: GCC/Clang only (VIPER_THREADING_SUPPORTED)
+// Portability: GCC/Clang only (ZANNA_THREADING_SUPPORTED)
 // =============================================================================
 
 /// @brief Threaded (computed goto) dispatch strategy.
@@ -265,7 +265,7 @@ class ThreadedStrategy final : public DispatchStrategy {
         return vm.executeOpcode(state.fr, instr, *state.blocks, state.bb, state.ip);
     }
 };
-#endif // VIPER_THREADING_SUPPORTED
+#endif // ZANNA_THREADING_SUPPORTED
 
 } // namespace detail
 
@@ -281,7 +281,7 @@ std::unique_ptr<DispatchStrategy> createDispatchStrategy(VM::DispatchKind kind) 
         case VM::DispatchKind::Switch:
             return std::make_unique<detail::SwitchStrategy>();
         case VM::DispatchKind::Threaded:
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
             return std::make_unique<detail::ThreadedStrategy>();
 #else
             return std::make_unique<detail::SwitchStrategy>();

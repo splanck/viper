@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 
 #include <optional>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Centralizes AArch64 stack frame layout construction for codegen.
 /// @details Manages incremental allocation of local variable slots, register spill
@@ -182,4 +182,4 @@ class FrameBuilder : public common::FrameLayout {
     int assignAlignedSlot(int sizeBytes, int alignBytes);
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

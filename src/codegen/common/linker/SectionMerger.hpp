@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <ostream>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Recompute virtual addresses for the current output-section order.
 /// The caller is responsible for ensuring @p layout.sections is already in the
@@ -48,4 +48,4 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                    LinkLayout &layout,
                    std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

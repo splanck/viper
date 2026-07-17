@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 namespace {
 
@@ -120,7 +120,7 @@ class LinkTiming {
   public:
     explicit LinkTiming(std::ostream &err)
         : err_(err), enabled_([]() {
-              const char *value = std::getenv("VIPER_LINKER_STATS");
+              const char *value = std::getenv("ZANNA_LINKER_STATS");
               return value != nullptr && std::string_view(value) != "0";
           }()),
           last_(std::chrono::steady_clock::now()) {}
@@ -277,7 +277,7 @@ ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbo
 /// @details Embedding C++ frontend code (fe_zia) drags in libc++'s atexit
 ///          machinery, which references `__dso_handle` purely as a unique
 ///          per-image identity cookie passed to `__cxa_atexit` — its contents
-///          are never read. A normal crt provides it, but Viper's crt-less
+///          are never read. A normal crt provides it, but Zanna's crt-less
 ///          native binaries do not, so we define an 8-byte zero-filled symbol
 ///          ourselves. Both the C name and the Mach-O-mangled `_`-prefixed
 ///          form are exported so the reference resolves on every format.
@@ -497,7 +497,7 @@ static ObjSection makeWindowsHelpersDataSec() {
 ///          those archives we build a minimal "x64 helpers" COFF on the fly so
 ///          undefined references resolve cleanly.
 /// @param dynamicSyms     Currently undefined symbols — guides which helpers to emit.
-/// @param haveVmTrapDefault When true, Viper's runtime already provides vm_trap.
+/// @param haveVmTrapDefault When true, Zanna's runtime already provides vm_trap.
 /// @param needTlsIndex    When true, emit `_tls_index` and `_tls_used` placeholders.
 /// @param debugWindowsRuntime When false, suppress Debug-CRT-only report and validation hooks
 ///        retained by Debug-built archives so release-runtime package links stay redistributable.
@@ -1326,7 +1326,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 1c: Force-load archives — materialize every member so its strong
     // definitions participate in resolution unconditionally. Step 3's
     // demand-driven extraction would otherwise let weak runtime stubs (e.g.
-    // rt_zia_* in viper_rt_base) satisfy the symbols first, so the strong
+    // rt_zia_* in zanna_rt_base) satisfy the symbols first, so the strong
     // editor-service definitions would never be pulled. Loading them as
     // initial objects lets SymbolResolver's "Strong overrides Weak" rule make
     // them win. Special members (symbol/string tables) are already excluded
@@ -1352,7 +1352,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     if (!opts.entrySymbol.empty())
         initialObjects.push_back(makeUndefinedRootObject(userObj, opts.entrySymbol));
     // Embedding C++ editor services pulls in libc++ atexit code that references
-    // `__dso_handle`; crt-less Viper binaries must define it themselves.
+    // `__dso_handle`; crt-less Zanna binaries must define it themselves.
     if (!opts.forceLoadArchivePaths.empty())
         initialObjects.push_back(makeDsoHandleObject(userObj));
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;
@@ -1679,4 +1679,4 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     return 0;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

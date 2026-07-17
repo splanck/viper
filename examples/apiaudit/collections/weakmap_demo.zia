@@ -1,12 +1,12 @@
-// weakmap_demo.zia - Comprehensive API audit for Viper.Collections.WeakMap
+// weakmap_demo.zia - Comprehensive API audit for Zanna.Collections.WeakMap
 // Tests: New, Set, Get, Has, Remove, Keys, Len, IsEmpty, Clear, Compact
 
 module WeakMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== WeakMap API Audit ===");

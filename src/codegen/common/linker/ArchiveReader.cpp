@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <limits>
 #include <string_view>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 static constexpr const char *kArMagic = "!<arch>\n";
 static constexpr size_t kArMagicLen = 8;
@@ -530,4 +530,4 @@ ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member)
     return ArchiveMemberView{ar.data.data() + member.dataOffset, member.dataSize};
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

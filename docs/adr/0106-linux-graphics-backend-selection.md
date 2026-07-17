@@ -7,21 +7,21 @@ Status: Accepted
 
 Linux graphics currently means an X11 build whenever X11 development files are present. Runtime
 window creation then assumes `XOpenDisplay(NULL)` succeeds. This excludes display-less services and
-Wayland-only sessions without XWayland even though Viper already has a dependency-free in-memory
+Wayland-only sessions without XWayland even though Zanna already has a dependency-free in-memory
 graphics backend used by tests. It also conflates graphics capability with one window-system
 dependency.
 
-Changing backend selection affects the top-level build configuration, ViperGFX, ViperGUI, runtime
+Changing backend selection affects the top-level build configuration, ZannaGFX, ZannaGUI, runtime
 graphics capability, packaging dependencies, tests, and user documentation. The repository requires
 an ADR for that cross-layer dependency change.
 
 ## Decision
 
-Viper separates graphics capability mode from graphics backend selection:
+Zanna separates graphics capability mode from graphics backend selection:
 
-- `VIPER_GRAPHICS_MODE=AUTO|REQUIRE|OFF` continues to decide whether graphics is optional, required,
+- `ZANNA_GRAPHICS_MODE=AUTO|REQUIRE|OFF` continues to decide whether graphics is optional, required,
   or disabled.
-- `VIPER_GRAPHICS_BACKEND=AUTO|NATIVE|X11|HEADLESS` selects the implementation.
+- `ZANNA_GRAPHICS_BACKEND=AUTO|NATIVE|X11|HEADLESS` selects the implementation.
 - `AUTO` selects the native platform backend at configure time. On Linux that is currently X11.
 - `NATIVE` requires the platform's canonical windowed backend and fails when unavailable.
 - `X11` explicitly requires X11 and is valid only on Linux/Unix hosts.
@@ -37,12 +37,12 @@ select `HEADLESS` explicitly.
 
 The mock implementation is renamed in user-facing build output to the headless backend, but its
 deterministic event-injection entry points remain test-only conventions. Product callers receive the
-normal public ViperGFX surface.
+normal public ZannaGFX surface.
 
 ## Validation Requirements
 
-- Configure and build `vipergfx`, ViperGUI, and runtime graphics with `HEADLESS` and no X11 lookup.
-- Run the ViperGFX framebuffer, drawing, input, and window tests against the headless implementation.
+- Configure and build `zannagfx`, ZannaGUI, and runtime graphics with `HEADLESS` and no X11 lookup.
+- Run the ZannaGFX framebuffer, drawing, input, and window tests against the headless implementation.
 - Verify `AUTO`, `NATIVE`, and `X11` retain the Linux X11 backend when X11 is available.
 - Verify `REQUIRE` plus an unavailable requested backend fails with an actionable diagnostic.
 - Verify `OFF` continues to disable graphics regardless of backend selection.

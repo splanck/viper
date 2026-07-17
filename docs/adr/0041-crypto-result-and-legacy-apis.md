@@ -13,11 +13,11 @@ Accepted
 ## Context
 
 The public crypto runtime mixed modern authenticated primitives with older
-compatibility algorithms in the same visible classes. `Viper.Crypto.Hash`
+compatibility algorithms in the same visible classes. `Zanna.Crypto.Hash`
 advertised SHA-256 next to MD5, SHA-1, and CRC32, which made legacy algorithms
-look equally appropriate for new security-sensitive code. `Viper.Crypto.Aes`
+look equally appropriate for new security-sensitive code. `Zanna.Crypto.Aes`
 also exposed unauthenticated AES-CBC decrypt helpers under short modern names,
-while AES-GCM decrypt helpers and `Viper.Crypto.Cipher` decryption primarily
+while AES-GCM decrypt helpers and `Zanna.Crypto.Cipher` decryption primarily
 used null returns or traps for routine failure.
 
 Production applications need decryption failures to be ordinary values:
@@ -30,28 +30,28 @@ to remain callable.
 
 Add explicit failure-shape decrypt APIs:
 
-- `Viper.Crypto.Cipher.DecryptResult`, `DecryptAADResult`,
+- `Zanna.Crypto.Cipher.DecryptResult`, `DecryptAADResult`,
   `DecryptWithKeyResult`, and `DecryptWithKeyAADResult` return
-  `Viper.Result`.
-- `Viper.Crypto.Cipher.TryDecrypt`, `TryDecryptAAD`, `TryDecryptWithKey`, and
-  `TryDecryptWithKeyAAD` return `Viper.Option`.
-- `Viper.Crypto.Aes.DecryptAuthResult`, `TryDecryptAuth`,
+  `Zanna.Result`.
+- `Zanna.Crypto.Cipher.TryDecrypt`, `TryDecryptAAD`, `TryDecryptWithKey`, and
+  `TryDecryptWithKeyAAD` return `Zanna.Option`.
+- `Zanna.Crypto.Aes.DecryptAuthResult`, `TryDecryptAuth`,
   `DecryptStrResult`, and `TryDecryptStr` provide the same shape for AES-GCM
   and password-encrypted strings.
 - AES-CBC compatibility decrypt names remain callable and gain
-  `DecryptCBCResult` and `TryDecryptCBC` through `Viper.Crypto.Legacy.Aes`.
+  `DecryptCBCResult` and `TryDecryptCBC` through `Zanna.Crypto.Legacy.Aes`.
 
 Move compatibility-only algorithms into explicit legacy namespaces:
 
-- `Viper.Crypto.Legacy.Hash` owns CRC32, MD5, SHA-1, HMAC-MD5, and HMAC-SHA1
+- `Zanna.Crypto.Legacy.Hash` owns CRC32, MD5, SHA-1, HMAC-MD5, and HMAC-SHA1
   helpers for old wire formats, checksums, archives, and protocol
   compatibility.
-- `Viper.Crypto.Legacy.Aes` owns AES-CBC helpers.
+- `Zanna.Crypto.Legacy.Aes` owns AES-CBC helpers.
 
-The old `Viper.Crypto.Hash` legacy algorithm names and old AES-CBC names remain
+The old `Zanna.Crypto.Hash` legacy algorithm names and old AES-CBC names remain
 available for compatibility, but runtime API contract metadata marks them as
 legacy and provides migration targets. New docs and examples should use
-`Viper.Crypto.Hash` only for SHA-256, HMAC-SHA256, `Fast`, and
+`Zanna.Crypto.Hash` only for SHA-256, HMAC-SHA256, `Fast`, and
 `ConstantTimeEquals`, and should use Result/Option decrypt APIs for robust
 error handling.
 

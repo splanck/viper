@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_typewriter.c
@@ -137,7 +137,7 @@ rt_typewriter rt_typewriter_new(void) {
 /// @brief Destroy a typewriter and free its text buffers.
 void rt_typewriter_destroy(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Destroy: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Destroy: expected Zanna.Game.Typewriter");
     if (t && rt_obj_release_check0(t))
         rt_obj_free(t);
 }
@@ -145,7 +145,7 @@ void rt_typewriter_destroy(void *tw) {
 /// @brief Load new text and begin the typewriter reveal at the given character rate.
 void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Say: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Say: expected Zanna.Game.Typewriter");
     if (!t)
         return;
 
@@ -189,7 +189,7 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
 /// @brief Advance the typewriter by dt milliseconds. Returns 1 if it just completed.
 int8_t rt_typewriter_update(void *tw, int64_t dt) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Update: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Update: expected Zanna.Game.Typewriter");
     if (!t || !t->active || t->complete)
         return 0;
     if (dt <= 0 || !t->visible_buf || !t->full_text)
@@ -224,7 +224,7 @@ int8_t rt_typewriter_update(void *tw, int64_t dt) {
 /// @brief Instantly reveal all remaining text (skip the animation).
 void rt_typewriter_skip(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Skip: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Skip: expected Zanna.Game.Typewriter");
     if (!t || !t->full_text)
         return;
 
@@ -241,7 +241,7 @@ void rt_typewriter_skip(void *tw) {
 /// @brief Clear all text and reset to the initial idle state.
 void rt_typewriter_reset(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Reset: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Reset: expected Zanna.Game.Typewriter");
     if (!t)
         return;
     free(t->full_text);
@@ -260,7 +260,7 @@ void rt_typewriter_reset(void *tw) {
 /// @brief Get the currently revealed portion of the text.
 rt_string rt_typewriter_get_visible_text(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.GetVisibleText: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.GetVisibleText: expected Zanna.Game.Typewriter");
     if (!t || !t->visible_buf)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->visible_buf, (int64_t)strlen(t->visible_buf));
@@ -269,7 +269,7 @@ rt_string rt_typewriter_get_visible_text(void *tw) {
 /// @brief Get the complete text that was loaded with say().
 rt_string rt_typewriter_get_full_text(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.GetFullText: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.GetFullText: expected Zanna.Game.Typewriter");
     if (!t || !t->full_text)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->full_text, (int64_t)strlen(t->full_text));
@@ -278,21 +278,21 @@ rt_string rt_typewriter_get_full_text(void *tw) {
 /// @brief Check whether the typewriter is currently revealing text.
 int8_t rt_typewriter_is_active(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.IsActive: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.IsActive: expected Zanna.Game.Typewriter");
     return (t && t->active) ? 1 : 0;
 }
 
 /// @brief Check whether all text has been fully revealed.
 int8_t rt_typewriter_is_complete(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.IsComplete: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.IsComplete: expected Zanna.Game.Typewriter");
     return (t && t->complete) ? 1 : 0;
 }
 
 /// @brief Get the reveal progress as a percentage (0–100).
 int64_t rt_typewriter_progress(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.Progress: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.Progress: expected Zanna.Game.Typewriter");
     if (!t)
         return 0;
     if (t->total_chars == 0)
@@ -306,13 +306,13 @@ int64_t rt_typewriter_progress(void *tw) {
 /// @brief Get the number of characters revealed so far.
 int64_t rt_typewriter_char_count(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.CharCount: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.CharCount: expected Zanna.Game.Typewriter");
     return t ? t->visible_chars : 0;
 }
 
 /// @brief Get the total number of characters in the loaded text.
 int64_t rt_typewriter_total_chars(void *tw) {
     struct rt_typewriter_impl *t =
-        checked_typewriter(tw, "Typewriter.TotalChars: expected Viper.Game.Typewriter");
+        checked_typewriter(tw, "Typewriter.TotalChars: expected Zanna.Game.Typewriter");
     return t ? t->total_chars : 0;
 }

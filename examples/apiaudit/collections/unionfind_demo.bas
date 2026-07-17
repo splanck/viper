@@ -1,4 +1,4 @@
-' unionfind_demo.bas - Comprehensive API audit for Viper.Collections.UnionFind
+' unionfind_demo.bas - Comprehensive API audit for Zanna.Collections.UnionFind
 ' Tests: New, Find, FindRootOption, Union, Connected, Count, SetSize, Reset
 
 PRINT "=== UnionFind API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== UnionFind API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM uf AS OBJECT
-uf = Viper.Collections.UnionFind.New(6)
+uf = Zanna.Collections.UnionFind.New(6)
 PRINT uf.Count       ' 6
 
 ' --- Find ---

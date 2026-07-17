@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@ bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value) {
     for (const auto &instr : bb.instructions) {
         if (instr.op != il::core::Opcode::Call)
             continue;
-        if (instr.callee != "rt_print_i64" && instr.callee != "Viper.Terminal.PrintI64")
+        if (instr.callee != "rt_print_i64" && instr.callee != "Zanna.Terminal.PrintI64")
             continue;
         if (instr.operands.empty())
             continue;

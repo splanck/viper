@@ -5,8 +5,8 @@ Sibling files: `windows.md`, `linux.md`.
 
 ## Context
 
-Viper hand-builds every installer from scratch in C++ under `src/tools/common/packaging/`
-(zero external deps). `viper install-package` (`src/tools/viper/cmd_install_package.cpp`) is the
+Zanna hand-builds every installer from scratch in C++ under `src/tools/common/packaging/`
+(zero external deps). `zanna install-package` (`src/tools/zanna/cmd_install_package.cpp`) is the
 orchestrator. This file collects every part of the installer-hardening effort that we can both
 **implement and fully prove out on macOS**:
 
@@ -47,8 +47,8 @@ and live deb/rpm/desktop verification (`linux.md`).
    validate that referenced icons/entitlements/license/banner/DMG-background exist with clear errors.
 7. **WS-C — macOS `.dmg` drag-installer.** New `MacOSDmgBuilder.{hpp,cpp}` (or `buildMacOSDmg()` in
    `MacOSPackageBuilder.cpp`); new `MacOSDmg` target (enum:36, parse:518, usage:86, filename:699).
-   `hdiutil create ... -format UDZO -volname "Viper Toolchain"`, `/Applications` symlink, styled
-   background (`misc/images/viperwallpaper*.png`) + volume `.icns` (`IconGenerator`), window layout
+   `hdiutil create ... -format UDZO -volname "Zanna Toolchain"`, `/Applications` symlink, styled
+   background (`misc/images/zannawallpaper*.png`) + volume `.icns` (`IconGenerator`), window layout
    via `.DS_Store` template or `osascript`, then `codesign` (+ optional notarize/staple reusing
    M1/M2). `hdiutil`/`osascript` are Apple system tools — same category as the already-shelled
    `codesign`/`mkbom`/`lsregister`, so dependency policy holds.
@@ -58,7 +58,7 @@ and live deb/rpm/desktop verification (`linux.md`).
    legacy CPack block (`CMakeLists.txt:749-780`) to one-system-of-record.
 10. **Tests.** Golden for RPM spec (license from manifest), deb control (real maintainer), narrowed
     Depends; unit for new config parsing + asset validation; DMG structural check via `PkgVerify`
-    plus a mount test. Use the `viper_add_test`/`viper_add_ctest` pattern in `src/tests/CMakeLists.txt`.
+    plus a mount test. Use the `zanna_add_test`/`zanna_add_ctest` pattern in `src/tests/CMakeLists.txt`.
 
 ## Critical files
 
@@ -66,15 +66,15 @@ and live deb/rpm/desktop verification (`linux.md`).
 - `src/tools/common/packaging/LinuxPackageBuilder.{hpp,cpp}` (metadata)
 - `src/tools/common/packaging/MacOSPackageBuilder.{hpp,cpp}`, new `MacOSDmgBuilder.{hpp,cpp}`,
   `PlistGenerator.*`, `IconGenerator.*`
-- `src/tools/viper/cmd_install_package.cpp` (flags, target dispatch, asset validation)
-- `src/CMakeLists.txt:279-319` (`viper_packaging` sources), `src/tests/CMakeLists.txt`
+- `src/tools/zanna/cmd_install_package.cpp` (flags, target dispatch, asset validation)
+- `src/CMakeLists.txt:279-319` (`zanna_packaging` sources), `src/tests/CMakeLists.txt`
 - `src/buildmeta/VERSION` (SSOT)
 
-All new/modified files get the full Viper GPL-v3 header.
+All new/modified files get the full Zanna GPL-v3 header.
 
 ## Verification
 
-- Full `./scripts/build_viper_mac.sh` (Debug) + `ctest` green, zero warnings; then
+- Full `./scripts/build_zanna_mac.sh` (Debug) + `ctest` green, zero warnings; then
   `./scripts/lint_platform_policy.sh` and `./scripts/run_cross_platform_smoke.sh`.
 - DMG: build it, `hdiutil attach`, confirm `/Applications` symlink + layout, `codesign --verify`.
 - Each P0/P1 fix gets a test that fails before and passes after.
@@ -84,7 +84,7 @@ All new/modified files get the full Viper GPL-v3 header.
 
 - **X1, L1, L2, L4, M1, M2, X2(DMG assets), WS-C — DONE & verified.** Config/manifest SSOT
   (`license`/`maintainer`/`maintainerEmail`/`homepage` on `ToolchainInstallManifest`; matching
-  `PackageConfig` fields + `viper install-package` flags `--license/--maintainer/--maintainer-email/
+  `PackageConfig` fields + `zanna install-package` flags `--license/--maintainer/--maintainer-email/
   --homepage/--macos-notary-timeout`); deb/rpm now source license + maintainer from config and
   narrow the C++ runtime dep (`libstdc++6` vs `libc++1`) by scanning the staged ELF's SONAME with a
   safe fallback; macOS signing enables the hardened runtime by default for Developer ID and bounds
@@ -100,7 +100,7 @@ All new/modified files get the full Viper GPL-v3 header.
   fixed epoch in UTC by default (honoring `SOURCE_DATE_EPOCH`), removing wall-clock/timezone
   non-determinism — tar/cpio/ar/gzip already used `mtime=0`; covered by
   `ZipWriter.ProducesByteIdenticalArchivesForIdenticalInput`. The legacy CPack block is gated behind
-  `-DVIPER_ENABLE_LEGACY_CPACK=ON` (default OFF), verified by fresh configures both ways.
+  `-DZANNA_ENABLE_LEGACY_CPACK=ON` (default OFF), verified by fresh configures both ways.
 - **Pre-existing/unrelated:** `test_codegen_arm64_ovf` and `test_linker_reloc_edge_cases` fail at
   HEAD independent of this work (diff touches no codegen/linker).
 

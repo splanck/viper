@@ -1,0 +1,222 @@
+module debug_vars_probe;
+
+// ============================================================================
+// MODULE: debug_vars_probe
+// PURPOSE: End-to-end probe for structured variable expansion (plan 25). Drives
+//          the real `zanna run --debug-adapter` and asserts that composite locals
+//          advertise a varRef + childCount and expand one level at a time — for a
+//          flat list, a nested list, and the bad-ref / post-resume guards.
+//
+// WHERE-THIS-FITS: The VM (VMDebug.cpp) attaches a lazy child provider to each
+//          stop; DebugAdapter.cpp exposes it over the `variables` command;
+//          DebugSession.RequestVariables/VarChild* consume it. Requires
+//          `--zanna-bin <path>`.
+//
+// TEACHING-NOTE: Expansion is lazy and asynchronous. varRefs are valid only at
+//          the stop that produced them — this probe never assumes a ref survives
+//          a resume.
+// ============================================================================
+
+bind "../build/debug_session";
+bind "../build/breakpoints";
+
+bind Env = Zanna.System.Environment;
+bind Time = Zanna.Time;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+func argValue(name: String) -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() - 1 {
+        if Env.GetArgument(i) == name { return Env.GetArgument(i + 1); }
+        i = i + 1;
+    }
+    return "";
+}
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Poll until the session stops/terminates or the budget elapses.
+func pollUntilSettled(session: debug_session.DebugSession, budgetMs: Integer) {
+    var waited = 0;
+    while session.IsActive() and session.stopped == false and waited < budgetMs {
+        session.Poll();
+        if session.stopped or session.terminated { return; }
+        Time.Clock.Sleep(5);
+        waited = waited + 5;
+    }
+    session.Poll();
+}
+
+/// @brief Poll until the last `variables` reply is for @p wantRef, or budget ends.
+func pollVars(session: debug_session.DebugSession, wantRef: Integer, budgetMs: Integer) {
+    var waited = 0;
+    while waited < budgetMs and session.lastVarRef != wantRef {
+        session.Poll();
+        if session.lastVarRef == wantRef { return; }
+        Time.Clock.Sleep(5);
+        waited = waited + 5;
+    }
+}
+
+/// @brief Index of the first local whose name equals @p name, or -1.
+func findLocal(session: debug_session.DebugSession, name: String) -> Integer {
+    var i = 0;
+    while i < session.LocalCount() {
+        if Str.StartsWith(session.LocalLabel(i), name + " =") { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+func main() {
+    var zannaBin = argValue("--zanna-bin");
+    if zannaBin == "" {
+        fail("no --zanna-bin argument");
+        return;
+    }
+
+    var dir = TempFile.CreateDirWithPrefix("zannaide_dbgvars_");
+    var prog = Path.Join(dir, "vars.zia");
+    // nums = [10,20,30]; nested = [[7,8]] (a list holding a list). Break on line 11
+    // while all three list locals are live.
+    File.WriteAllText(prog,
+        "func main() -> Integer {\n"                 // 1
+        + "    var nums: List[Integer] = [];\n"       // 2
+        + "    nums.add(10);\n"                        // 3
+        + "    nums.add(20);\n"                        // 4
+        + "    nums.add(30);\n"                        // 5
+        + "    var inner: List[Integer] = [];\n"       // 6
+        + "    inner.add(7);\n"                         // 7
+        + "    inner.add(8);\n"                         // 8
+        + "    var nested: List[Any] = [];\n"          // 9
+        + "    nested.add(inner);\n"                    // 10
+        + "    var total = nums.count();\n"            // 11  <- breakpoint
+        + "    return total;\n"                         // 12
+        + "}\n");                                       // 13
+
+    var store = new breakpoints.BreakpointStore();
+    store.Toggle(prog, 11);
+
+    var session = new debug_session.DebugSession();
+    if session.Launch(zannaBin, prog, store) == false {
+        fail("Launch returned false");
+        return;
+    }
+
+    pollUntilSettled(session, 8000);
+    if session.stopped == false {
+        fail("did not stop at breakpoint (terminated=" + session.terminated + ")");
+        return;
+    }
+    if session.lastLine != 11 {
+        fail("stopped at wrong line: " + session.lastLine);
+        return;
+    }
+
+    // ── Flat list: nums advertises a varRef and 3 children ──────────────────
+    var numsIdx = findLocal(session, "nums");
+    if numsIdx < 0 {
+        fail("local 'nums' not found among locals");
+        return;
+    }
+    var numsRef = session.LocalVarRef(numsIdx);
+    if numsRef <= 0 {
+        fail("nums has no varRef (label=" + session.LocalLabel(numsIdx) + ")");
+        return;
+    }
+    if session.LocalChildCount(numsIdx) != 3 {
+        fail("nums childCount was " + session.LocalChildCount(numsIdx) + " (expected 3)");
+        return;
+    }
+    // A scalar local (total is not yet assigned; use the breakpoint's own frame):
+    // confirm a leaf never advertises a ref.
+    var totalIdx = findLocal(session, "total");
+    if totalIdx >= 0 and session.LocalVarRef(totalIdx) != 0 {
+        fail("scalar 'total' should be a leaf (varRef 0)");
+        return;
+    }
+
+    session.RequestVariables(numsRef, 0, 100);
+    pollVars(session, numsRef, 8000);
+    if session.VarChildCount() != 3 {
+        fail("expanded nums returned " + session.VarChildCount() + " children (expected 3)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "[0] = 10") < 0 {
+        fail("nums[0] label was '" + session.VarChildLabel(0) + "' (expected '[0] = 10')");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(2), "[2] = 30") < 0 {
+        fail("nums[2] label was '" + session.VarChildLabel(2) + "' (expected '[2] = 30')");
+        return;
+    }
+
+    // ── Nested list: nested[0] is itself an expandable list ─────────────────
+    var nestedIdx = findLocal(session, "nested");
+    if nestedIdx < 0 {
+        fail("local 'nested' not found");
+        return;
+    }
+    var nestedRef = session.LocalVarRef(nestedIdx);
+    if nestedRef <= 0 {
+        fail("nested has no varRef");
+        return;
+    }
+    session.RequestVariables(nestedRef, 0, 100);
+    pollVars(session, nestedRef, 8000);
+    if session.VarChildCount() != 1 {
+        fail("expanded nested returned " + session.VarChildCount() + " children (expected 1)");
+        return;
+    }
+    var innerRef = session.VarChildVarRef(0);
+    if innerRef <= 0 {
+        fail("nested[0] should itself be expandable (label=" + session.VarChildLabel(0) + ")");
+        return;
+    }
+    session.RequestVariables(innerRef, 0, 100);
+    pollVars(session, innerRef, 8000);
+    if session.VarChildCount() != 2 {
+        fail("expanded inner returned " + session.VarChildCount() + " children (expected 2)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "[0] = 7") < 0 {
+        fail("inner[0] label was '" + session.VarChildLabel(0) + "' (expected '[0] = 7')");
+        return;
+    }
+
+    // ── Unknown ref → empty child list (guard, deterministic) ───────────────
+    session.RequestVariables(999999, 0, 100);
+    pollVars(session, 999999, 8000);
+    if session.VarChildCount() != 0 {
+        fail("unknown varRef should return 0 children, got " + session.VarChildCount());
+        return;
+    }
+
+    // ── Refs die on resume: continue to termination, program returns 3 ──────
+    if session.Continue() == false {
+        fail("Continue rejected while stopped");
+        return;
+    }
+    pollUntilSettled(session, 8000);
+    if session.terminated == false {
+        fail("did not terminate after Continue");
+        return;
+    }
+    if session.exitCode != 3 {
+        fail("exit code was " + session.exitCode + " (expected 3 = nums.count())");
+        return;
+    }
+    // Requesting a variable after termination must be rejected (not stopped).
+    if session.RequestVariables(numsRef, 0, 100) {
+        fail("RequestVariables should be rejected after termination");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

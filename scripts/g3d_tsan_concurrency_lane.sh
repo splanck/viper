@@ -40,7 +40,7 @@ if ! command -v clang >/dev/null 2>&1 || ! command -v clang++ >/dev/null 2>&1; t
 fi
 
 TARGETS=(
-    viper
+    zanna
     test_rt_threadpool
     test_rt_parallel
     test_rt_parallel_reduce

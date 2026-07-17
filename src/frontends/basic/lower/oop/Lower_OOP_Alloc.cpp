@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -46,7 +46,7 @@ namespace il::frontends::basic {
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
     curLoc = expr.loc;
 
-    // Runtime class ctor mapping via catalog (e.g., Viper.String.FromStr)
+    // Runtime class ctor mapping via catalog (e.g., Zanna.String.FromStr)
     {
         std::string qname = qualify(expr.className);
         if (const auto *c = il::runtime::findRuntimeClassByQName(qname)) {
@@ -88,14 +88,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
         }
     }
 
-    // Minimal runtime type bridging: NEW Viper.Text.StringBuilder()
+    // Minimal runtime type bridging: NEW Zanna.Text.StringBuilder()
     if (FrontendOptions::enableRuntimeTypeBridging()) {
         if (expr.args.empty()) {
             // Match fully-qualified type
             bool isQualified = false;
             if (!expr.qualifiedType.empty()) {
                 const auto &q = expr.qualifiedType;
-                if (q.size() == 3 && string_utils::iequals(q[0], "Viper") &&
+                if (q.size() == 3 && string_utils::iequals(q[0], "Zanna") &&
                     string_utils::iequals(q[1], "Text") &&
                     string_utils::iequals(q[2], "StringBuilder")) {
                     isQualified = true;
@@ -109,7 +109,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
             }
             if (isQualified) {
                 // Emit direct call to the canonical Text ctor that returns an object pointer.
-                const char *ctorCanonical = "Viper.Text.StringBuilder.New";
+                const char *ctorCanonical = "Zanna.Text.StringBuilder.New";
                 if (builder)
                     builder->addExtern(ctorCanonical, Type(Type::Kind::Ptr), {});
                 Value obj = emitCallRet(Type(Type::Kind::Ptr), ctorCanonical, {});

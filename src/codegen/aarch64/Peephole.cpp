@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
@@ -1185,4 +1185,4 @@ void pruneUnusedCalleeSaved(MFunction &fn) {
                        fn.savedFPRs.end());
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

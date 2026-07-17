@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -121,7 +121,7 @@ DefMap buildDefMap(const Function &function) {
 /// @param depth Current recursion depth.
 /// @return True when @p ptr is an alloca or GEP chain rooted at a non-escaping alloca.
 bool isDerivedFromNonEscapingAlloca(const DefMap &defs,
-                                    const viper::analysis::BasicAA &aa,
+                                    const zanna::analysis::BasicAA &aa,
                                     const Value &ptr,
                                     unsigned depth = 0) {
     if (ptr.kind != Value::Kind::Temp || depth > 8)
@@ -261,7 +261,7 @@ bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &i
 /// @param order Output list of blocks in visitation order.
 void collectDominanceOrder(BasicBlock *block,
                            const Loop &loop,
-                           const viper::analysis::DomTree &domTree,
+                           const zanna::analysis::DomTree &domTree,
                            std::vector<BasicBlock *> &order) {
     if (!block)
         return;
@@ -345,9 +345,9 @@ std::string_view LICM::id() const {
 /// @return Preserved analysis set describing which analyses remain valid.
 PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
     auto &domTree =
-        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+        analysis.getFunctionResult<zanna::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
-    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, function);
+    auto &aa = analysis.getFunctionResult<zanna::analysis::BasicAA>(kAnalysisBasicAA, function);
     auto &cfg = analysis.getFunctionResult<CFGInfo>(kAnalysisCFG, function);
 
     std::unordered_map<std::string, BasicBlock *> blockLookup;
@@ -380,14 +380,14 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
             for (const auto &ins : blk->instructions) {
                 if (ins.op == Opcode::Store && !ins.operands.empty()) {
                     loopStores.push_back(
-                        {ins.operands[0], viper::analysis::BasicAA::typeSizeBytes(ins.type)});
+                        {ins.operands[0], zanna::analysis::BasicAA::typeSizeBytes(ins.type)});
                     continue;
                 }
 
                 if (ins.op == Opcode::Call || ins.op == Opcode::CallIndirect) {
                     auto mr = aa.modRef(ins);
-                    if (mr == viper::analysis::ModRefResult::Mod ||
-                        mr == viper::analysis::ModRefResult::ModRef) {
+                    if (mr == zanna::analysis::ModRefResult::Mod ||
+                        mr == zanna::analysis::ModRefResult::ModRef) {
                         loopHasMod = true;
                     }
                 }
@@ -417,10 +417,10 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                                      isDerivedFromNonEscapingAlloca(defs, aa, instr.operands[0]);
                     }
                     if (allowLoads && !instr.operands.empty()) {
-                        auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);
+                        auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(instr.type);
                         for (const auto &store : loopStores) {
                             if (aa.alias(instr.operands[0], store.ptr, loadSize, store.size) !=
-                                viper::analysis::AliasResult::NoAlias) {
+                                zanna::analysis::AliasResult::NoAlias) {
                                 allowLoads = false;
                                 break;
                             }
@@ -451,7 +451,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                 block->instructions.erase(block->instructions.begin() + idx);
 
                 std::size_t insertIndex = preheader->instructions.size();
-                if (viper::il::isTerminated(*preheader) && insertIndex > 0)
+                if (zanna::il::isTerminated(*preheader) && insertIndex > 0)
                     --insertIndex;
                 auto inserted = preheader->instructions.insert(
                     preheader->instructions.begin() + insertIndex, std::move(hoisted));

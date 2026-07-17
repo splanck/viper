@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the text search utilities for Viper's TUI editor,
+// This file declares the text search utilities for Zanna's TUI editor,
 // providing both literal and regex-based search over TextBuffer contents.
 //
 // The findAll() function returns all non-overlapping matches of a query
@@ -35,7 +35,7 @@
 
 #include "tui/text/text_buffer.hpp"
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Byte-range result of a text search operation.
 /// @details Represents a contiguous match within the text buffer, stored as
 ///          a starting byte offset and a length in bytes.
@@ -62,4 +62,4 @@ struct Match {
                                             std::string_view query,
                                             size_t from,
                                             bool useRegex);
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

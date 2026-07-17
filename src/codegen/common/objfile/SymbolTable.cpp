@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 SymbolTable::SymbolTable() {
     // Index 0 is the null symbol (ELF requirement, harmless for other formats).
@@ -105,4 +105,4 @@ void SymbolTable::reserve(size_t totalSymbols) {
         symbols_.reserve(totalSymbols);
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

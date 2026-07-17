@@ -1,7 +1,7 @@
 module TestMaterial3DPBR;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 func start() {
     var path = "src/tests/fixtures/runtime/_tmp_material3d_pbr.vscn";

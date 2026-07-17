@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 ///          the tool supports common flags, usage text, and version reporting.
 
 #include "tools/common/frontend_tool.hpp"
-#include "tools/viper/cli.hpp"
+#include "tools/zanna/cli.hpp"
 #include "usage.hpp"
 
 /// @brief Main entry point for the Zia compiler CLI.
@@ -26,7 +26,7 @@
 /// @param argv Argument vector passed to the process.
 /// @return Exit status propagated from the frontend tool runner.
 int main(int argc, char **argv) {
-    viper::tools::FrontendToolCallbacks callbacks{
+    zanna::tools::FrontendToolCallbacks callbacks{
         .fileExtension = ".zia",
         .languageName = "Zia",
         .printUsage = zia::printUsage,
@@ -34,5 +34,5 @@ int main(int argc, char **argv) {
         .frontendCommand = cmdFrontZia,
     };
 
-    return viper::tools::runFrontendTool(argc, argv, callbacks);
+    return zanna::tools::runFrontendTool(argc, argv, callbacks);
 }

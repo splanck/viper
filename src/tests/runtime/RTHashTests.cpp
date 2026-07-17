@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTHashTests.cpp
-// Purpose: Validate modern and legacy-compatible Viper crypto hash runtime functions.
+// Purpose: Validate modern and legacy-compatible Zanna crypto hash runtime functions.
 // Key invariants: Hash outputs match known test vectors; all outputs are lowercase hex.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_hash.h"
 #include "rt_string.h"

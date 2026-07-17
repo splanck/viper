@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include "rt_platform.h"
 #include "rt_trap.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 //=============================================================================
 // Phase 5: MessageBox Dialog
@@ -342,7 +342,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
 ///          released.
 /// @param title Dialog title.
 /// @param message Prompt label shown above the input.
-/// @return Managed `Viper.Option[str]` preserving empty acceptance.
+/// @return Managed `Zanna.Option[str]` preserving empty acceptance.
 void *rt_messagebox_prompt_option(rt_string title, rt_string message) {
     int accepted = 0;
     rt_string value = rt_messagebox_prompt_impl(title, message, &accepted);
@@ -947,7 +947,7 @@ void rt_messagebox_destroy(void *box) {
     rt_messagebox_dispose(data);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — no dialog shown; returns 0 immediately.
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
@@ -1118,4 +1118,4 @@ void rt_messagebox_destroy(void *box) {
     (void)box;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

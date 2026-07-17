@@ -4,21 +4,21 @@ audience: contributors
 last-verified: 2026-06-29
 ---
 
-# ADR 0018: GUI Command Binding (Viper.GUI.Command / CommandRegistry)
+# ADR 0018: GUI Command Binding (Zanna.GUI.Command / CommandRegistry)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE is the intended first consumer). Driven
+Accepted (runtime implemented; ZannaIDE is the intended first consumer). Driven
 by the GUI runtime-additions review, recommendation **R1**
-(`misc/plans/viperide/gui-runtime-additions.md`).
+(`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
 Every desktop-style GUI app exposes the same command (action) from several
 surfaces at once: a menu item, a toolbar button, a keyboard shortcut, and a
-command palette entry. The Viper runtime already ships the *pieces* —
-`Viper.GUI.Shortcuts` (keyboard), `Viper.GUI.CommandPalette` (palette), and
-`Viper.GUI.CommandState` (enabled/checked state) — but nothing binds them to each
+command palette entry. The Zanna runtime already ships the *pieces* —
+`Zanna.GUI.Shortcuts` (keyboard), `Zanna.GUI.CommandPalette` (palette), and
+`Zanna.GUI.CommandState` (enabled/checked state) — but nothing binds them to each
 other or to the `MenuItem` / `ToolbarItem` widgets, and no widget exposes a
 click callback (the toolkit is polled). As a result an application must:
 
@@ -27,9 +27,9 @@ click callback (the toolkit is polled). As a result an application must:
   frame and OR the results together, and
 - push enabled/checked state to each bound widget by hand.
 
-In ViperIDE this glue is `commands/command_registry.zia` (336 LOC) +
+In ZannaIDE this glue is `commands/command_registry.zia` (336 LOC) +
 `commands/main_command_dispatcher.zia` (486 LOC) + `app/dispatch_helpers.zia`
-(`Triggered`), and there are **65 `WasClicked()` poll sites**. Any Viper GUI app
+(`Triggered`), and there are **65 `WasClicked()` poll sites**. Any Zanna GUI app
 with menus + toolbars + shortcuts re-derives the same dispatcher. This is missing
 runtime infrastructure, not application logic.
 
@@ -39,14 +39,14 @@ Adding runtime classes is a runtime C-ABI surface change, which requires an ADR.
 
 Add two reference-counted runtime classes that unify the existing pieces.
 
-### `Viper.GUI.Command`
+### `Zanna.GUI.Command`
 
 A single command: identity + display + state + the widgets it drives.
 
 - `New(id: str, title: str) -> Command`
 - `GetId() -> str`, `GetTitle() -> str`
 - `SetShortcut(keys: str)` / `GetShortcut() -> str` — `SetShortcut` also registers
-  the chord with the global `Viper.GUI.Shortcuts` registry under `id`, so the
+  the chord with the global `Zanna.GUI.Shortcuts` registry under `id`, so the
   shortcut and the command share one identifier (best-effort: a no-op until a GUI
   app exists, exactly like `Shortcuts.Register` today).
 - `SetEnabled(b: i1)` / `IsEnabled() -> i1`
@@ -61,7 +61,7 @@ A single command: identity + display + state + the widgets it drives.
   (command-level or registry-level).
 - `Snapshot() -> Map` — `{id, title, shortcut, enabled, checkable, checked, invoked}`.
 
-### `Viper.GUI.CommandRegistry`
+### `Zanna.GUI.CommandRegistry`
 
 Owns a set of commands and routes all four input sources in one call.
 
@@ -79,7 +79,7 @@ Owns a set of commands and routes all four input sources in one call.
 ### Lifetime / ownership
 
 - `Command` and `CommandRegistry` are `rt_obj_new_i64` reference-counted objects
-  with finalizers, mirroring `Viper.GUI.CommandState`.
+  with finalizers, mirroring `Zanna.GUI.CommandState`.
 - The registry **retains** (`rt_obj_retain_known`) each added command and releases
   them in `Clear` / finalize, so a command stays alive while registered even if the
   script drops its handle. `Find` returns a retained (owned) reference.
@@ -108,7 +108,7 @@ so no `source_health` surface change. Two new class-id tags are added
 
 - **Adoption:** a command is declared once and bound to its widgets; one
   `registry.Poll()` replaces the per-widget `WasClicked()` polling and the
-  three-registry sync. ViperIDE can collapse much of `command_registry.zia` /
+  three-registry sync. ZannaIDE can collapse much of `command_registry.zia` /
   `main_command_dispatcher.zia`; other GUI apps get a dispatcher for free.
 - **Determinism / cross-platform:** pure bookkeeping over existing platform
   widgets; no new OS surface, no platform `#ifdef`. The disabled-graphics build
@@ -127,7 +127,7 @@ so no `source_health` surface change. Two new class-id tags are added
 - **Extend `CommandState` in place.** Rejected: `CommandState` is a pure state
   snapshot with no widget knowledge; overloading it with binding + polling would
   change its meaning and its existing surface. A new class keeps both focused.
-- **A Zia-only library in ViperIDE.** Rejected: that is exactly the status quo
-  (`command_registry.zia` + `main_command_dispatcher.zia`); every Viper GUI app
+- **A Zia-only library in ZannaIDE.** Rejected: that is exactly the status quo
+  (`command_registry.zia` + `main_command_dispatcher.zia`); every Zanna GUI app
   re-derives it, and a Zia layer still cannot read widget clicks without the
   per-widget polling this ADR removes.

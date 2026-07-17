@@ -1,8 +1,8 @@
 module CollisionEvent3DDemo;
 
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 func start() {
     Say("CollisionEvent3D demo");

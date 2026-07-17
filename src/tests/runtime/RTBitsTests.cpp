@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTBitsTests.cpp
-// Purpose: Tests for Viper.Bits bit manipulation utilities.
+// Purpose: Tests for Zanna.Bits bit manipulation utilities.
 //
 //===----------------------------------------------------------------------===//
 
@@ -283,7 +283,7 @@ static void test_edge_cases() {
 }
 
 int main() {
-    printf("=== Viper.Bits Tests ===\n\n");
+    printf("=== Zanna.Bits Tests ===\n\n");
 
     // Basic operations
     test_and();

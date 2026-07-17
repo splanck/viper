@@ -4,13 +4,13 @@ audience: contributors
 last-verified: 2026-07-01
 ---
 
-# ADR 0020: Revision-Aware Scheduling (Viper.Threads.Scheduler generations)
+# ADR 0020: Revision-Aware Scheduling (Zanna.Threads.Scheduler generations)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE's editor scheduler is the intended first
+Accepted (runtime implemented; ZannaIDE's editor scheduler is the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R3**
-(`misc/plans/viperide/gui-runtime-additions.md`).
+(`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
@@ -20,18 +20,18 @@ The hard part is **supersession** — work queued for `(document, revisionN)` mu
 be discarded the instant `revisionN+1` is queued, or a stale result paints over
 fresh input.
 
-The runtime already ships the timing primitives this needs under `Viper.Threads.*`:
+The runtime already ships the timing primitives this needs under `Zanna.Threads.*`:
 `Scheduler` (`Schedule(key, delayMs)` / `Cancel` / `IsDue` / `Poll` / `Pending` /
 `Clear`), `Debouncer`, and `Throttler`. The `Scheduler` is poll-based, uses the
 monotonic clock, and **already debounces** — re-scheduling the same key replaces
-its due time. ViperIDE *uses* these for simple cases (`semantic_tokens.zia`,
+its due time. ZannaIDE *uses* these for simple cases (`semantic_tokens.zia`,
 `inlay_hints.zia`, autosave, `workspace_watcher.zia`).
 
 But its core `editor/scheduler.zia` (435 LOC) can't be built on `Scheduler`,
 because the one thing it needs the API can't express: a key's due entry carries no
 **identity over time**. `IsDue("diag:foo")` tells you the timer elapsed, not
 *which* revision's work elapsed — so it can't tell a current result from a
-superseded one. ViperIDE therefore hand-rolls timing on raw `Viper.Time.Clock.Ticks()`,
+superseded one. ZannaIDE therefore hand-rolls timing on raw `Zanna.Time.Clock.Ticks()`,
 a pattern that recurs in `editor/hover.zia`, `editor/diagnostics.zia`,
 `editor/completion.zia` (15+ sites).
 
@@ -40,8 +40,8 @@ Adding runtime methods is a runtime C-ABI surface change, which requires an ADR.
 
 ## Decision
 
-Add a per-entry **generation** (an `int64_t` the caller supplies — ViperIDE passes
-the document revision) to `Viper.Threads.Scheduler`, with three new methods:
+Add a per-entry **generation** (an `int64_t` the caller supplies — ZannaIDE passes
+the document revision) to `Zanna.Threads.Scheduler`, with three new methods:
 
 - `ScheduleGen(key: str, delayMs: i64, generation: i64)` — schedule/reschedule
   `key` to fire after `delayMs`, tagged with `generation`. Re-scheduling a key
@@ -52,7 +52,7 @@ the document revision) to `Viper.Threads.Scheduler`, with three new methods:
   so a query for the old generation returns `0` (superseded).
 - `GenerationOf(key: str) -> i64` — the generation currently scheduled for `key`,
   or `-1` if `key` isn't scheduled. Lets a caller ask "is my revision still the
-  one queued?" (the `IsQueued` predicate ViperIDE needs).
+  one queued?" (the `IsQueued` predicate ZannaIDE needs).
 
 The existing `Schedule(key, delayMs)` is unchanged and tags entries with
 generation `0`; `IsDue`, `Poll`, `Cancel`, `Pending`, and `Clear` are unchanged
@@ -75,7 +75,7 @@ makes the new methods thread-safe like the rest.
 
 ## Consequences
 
-- **Adoption:** ViperIDE's revision-keyed job logic (`Queue` / `IsQueued` / `IsDue`
+- **Adoption:** ZannaIDE's revision-keyed job logic (`Queue` / `IsQueued` / `IsDue`
   with a `generation` token) maps directly onto `ScheduleGen` / `GenerationOf` /
   `IsDueGen`, letting `editor/scheduler.zia` and the 15+ raw-`GetTickCount` sites
   collapse onto the runtime primitive. Any responsive app (search-as-you-type,
@@ -87,7 +87,7 @@ makes the new methods thread-safe like the rest.
 
 ## Alternatives Considered
 
-- **A new `Viper.GUI.IdleScheduler` class.** Rejected — the report's central point:
+- **A new `Zanna.GUI.IdleScheduler` class.** Rejected — the report's central point:
   the `Scheduler`'s timing, locking, monotonic clock, and debounce are already
   correct; only identity was missing. A new class would duplicate all of that.
 - **Encode the revision into the key (`"diag:foo@5"`).** Rejected: each revision

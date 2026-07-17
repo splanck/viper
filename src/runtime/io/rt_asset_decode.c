@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -320,7 +320,7 @@ static void *load_via_tempfile(const uint8_t *data,
         }
         snprintf(dir_leaf,
                  sizeof(dir_leaf),
-                 "viper_asset_%016llx_%d",
+                 "zanna_asset_%016llx_%d",
                  (unsigned long long)random_value,
                  attempt);
         free(tmpdir_path);
@@ -396,7 +396,7 @@ static void *load_via_tempfile(const uint8_t *data,
     }
 #else
     const char *tmpdir = asset_posix_temp_base();
-    tmpdir_path = asset_join_temp_path(tmpdir, "viper_asset_XXXXXX");
+    tmpdir_path = asset_join_temp_path(tmpdir, "zanna_asset_XXXXXX");
     if (!tmpdir_path)
         return NULL;
     if (!mkdtemp(tmpdir_path)) {

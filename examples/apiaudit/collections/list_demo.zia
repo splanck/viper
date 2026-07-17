@@ -1,13 +1,13 @@
-// list_demo.zia - Comprehensive API audit for Viper.Collections.List
+// list_demo.zia - Comprehensive API audit for Zanna.Collections.List
 // Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, FindOption, Has, Insert,
 //        Remove, RemoveAt, Clear, Reverse, First, Last, Slice
 
 module ListDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== List API Audit ===");

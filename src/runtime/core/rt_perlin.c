@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_perlin.c
 // Purpose: Implements Ken Perlin's improved noise algorithm (2002) for the
-//          Viper runtime. Supports 2D and 3D noise evaluation and octave/fractal
+//          Zanna runtime. Supports 2D and 3D noise evaluation and octave/fractal
 //          layering (fBm) for procedural terrain, textures, and animations.
 //
 // Key invariants:

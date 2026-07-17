@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -942,7 +942,7 @@ final COL_UI_TEXT = 0xDDDDDD;
 final COL_UI_DIM = 0x666688;
 
 // =============================================================================
-// Action Names (for Viper.Input.Action)
+// Action Names (for Zanna.Input.Action)
 // =============================================================================
 final ACT_LEFT = "move_left";
 final ACT_RIGHT = "move_right";

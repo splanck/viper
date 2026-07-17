@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares Unicode utility functions for Viper's TUI framework,
+// This file declares Unicode utility functions for Zanna's TUI framework,
 // providing character width calculation and UTF-8 to UTF-32 conversion.
 //
 // char_width() determines how many terminal columns a Unicode code point
@@ -32,7 +32,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 /// @brief Determine the terminal display width of a Unicode code point.
 /// @details Returns the number of terminal columns the character occupies:
 ///          0 for combining marks and zero-width characters, 2 for wide CJK
@@ -50,4 +50,4 @@ namespace viper::tui::util {
 /// @return UTF-32 string of decoded code points.
 [[nodiscard]] std::u32string decode_utf8(std::string_view in);
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

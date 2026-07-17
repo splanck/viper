@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 enum class OperandOrder;
 enum class OperandKind;
@@ -335,4 +335,4 @@ struct EncodingRow {
 [[nodiscard]] const EncodingRow *find_encoding(MOpcode op,
                                                std::span<const Operand> operands) noexcept;
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

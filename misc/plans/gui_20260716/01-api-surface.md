@@ -6,7 +6,7 @@ members remain unchanged unless explicitly described as repaired semantics.
 
 ## 1. Capability, construction, and frame scheduling
 
-### `Viper.GUI.System`
+### `Zanna.GUI.System`
 
 - `IsAvailable() -> i1`
 - `GetUnavailableReason() -> str`
@@ -15,9 +15,9 @@ members remain unchanged unless explicitly described as repaired semantics.
 backend can be attempted. `GetUnavailableReason` is empty when available and
 otherwise returns the exact capability reason.
 
-### `Viper.GUI.App`
+### `Zanna.GUI.App`
 
-- `TryNew(title: str, width: i64, height: i64) -> Viper.Result`
+- `TryNew(title: str, width: i64, height: i64) -> Zanna.Result`
 - `RunFrame() -> i1`
 - `RunFrameWithDelta(deltaMs: f64) -> i1`
 - `GetNextDeadlineMs() -> i64`
@@ -36,28 +36,28 @@ The following static classes expose read-only `i64` properties. They replace
 magic integers in new documentation while legacy integer-taking methods remain
 compatible:
 
-- `Viper.GUI.Align`: `Start`, `Center`, `End`, `Stretch`.
-- `Viper.GUI.Justify`: `Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`,
+- `Zanna.GUI.Align`: `Start`, `Center`, `End`, `Stretch`.
+- `Zanna.GUI.Justify`: `Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`,
   `SpaceEvenly`.
-- `Viper.GUI.FlexDirection`: `Row`, `Column`, `RowReverse`, `ColumnReverse`.
-- `Viper.GUI.FlexWrap`: `NoWrap`, `Wrap`, `WrapReverse`.
-- `Viper.GUI.Dock`: `Left`, `Top`, `Right`, `Bottom`, `Fill`.
-- `Viper.GUI.ThemeMode`: `Dark`, `Light`, `System`, `Custom`.
-- `Viper.GUI.AccessibleRole`: `None`, `Application`, `Window`, `Group`, `Label`,
+- `Zanna.GUI.FlexDirection`: `Row`, `Column`, `RowReverse`, `ColumnReverse`.
+- `Zanna.GUI.FlexWrap`: `NoWrap`, `Wrap`, `WrapReverse`.
+- `Zanna.GUI.Dock`: `Left`, `Top`, `Right`, `Bottom`, `Fill`.
+- `Zanna.GUI.ThemeMode`: `Dark`, `Light`, `System`, `Custom`.
+- `Zanna.GUI.AccessibleRole`: `None`, `Application`, `Window`, `Group`, `Label`,
   `Button`, `CheckBox`, `RadioButton`, `TextBox`, `SearchBox`, `ComboBox`,
   `List`, `ListItem`, `Tree`, `TreeItem`, `TabList`, `Tab`, `Table`, `Row`,
   `Cell`, `Slider`, `ProgressBar`, `Dialog`, `Alert`, `Menu`, `MenuItem`,
   `ToolBar`, `StatusBar`, `Image`, `Video`, `Link`.
-- `Viper.GUI.LiveRegionMode`: `Off`, `Polite`, `Assertive`.
-- `Viper.GUI.DialogButtonRole`: `Normal`, `Default`, `Cancel`, `Destructive`,
+- `Zanna.GUI.LiveRegionMode`: `Off`, `Polite`, `Assertive`.
+- `Zanna.GUI.DialogButtonRole`: `Normal`, `Default`, `Cancel`, `Destructive`,
   `Accept`, `Reject`, `Help`.
-- `Viper.GUI.DialogStatus`: `Idle`, `Open`, `Accepted`, `Cancelled`, `Failed`.
-- `Viper.GUI.ImageFilter`: `Nearest`, `Bilinear`.
-- `Viper.GUI.SortDirection`: `None`, `Ascending`, `Descending`.
+- `Zanna.GUI.DialogStatus`: `Idle`, `Open`, `Accepted`, `Cancelled`, `Failed`.
+- `Zanna.GUI.ImageFilter`: `Nearest`, `Bilinear`.
+- `Zanna.GUI.SortDirection`: `None`, `Ascending`, `Descending`.
 
 ## 3. Widget geometry, identity, accessibility, and events
 
-### `Viper.GUI.Widget`
+### `Zanna.GUI.Widget`
 
 - `SetMinSize(width: f64, height: f64) -> void`
 - `GetMinWidth() -> f64`; `GetMinHeight() -> f64`
@@ -66,14 +66,14 @@ compatible:
 - `SetMarginEdges(left: f64, top: f64, right: f64, bottom: f64) -> void`
 - `GetLogicalX/Y/Width/Height() -> f64`
 - `GetScreenX/Y/Width/Height() -> f64`
-- `GetParentOption() -> Viper.Option`
+- `GetParentOption() -> Zanna.Option`
 - `GetChildCount() -> i64`
-- `GetChildAtOption(index: i64) -> Viper.Option`
+- `GetChildAtOption(index: i64) -> Zanna.Option`
 - `RemoveChild(child: Widget) -> i1`
 - `ClearChildren() -> void`
 - `SetName(name: str) -> void`; `GetName() -> str`; `GetId() -> i64`
-- `FindByIdOption(id: i64) -> Viper.Option`
-- `FindByNameOption(name: str) -> Viper.Option`
+- `FindByIdOption(id: i64) -> Zanna.Option`
+- `FindByNameOption(name: str) -> Zanna.Option`
 - `HitTest(screenX: f64, screenY: f64) -> i1`
 - `InvalidatePaint() -> void`; `InvalidateLayout() -> void`
 - `SetAccessibleRole(role: i64) -> void`; `GetAccessibleRole() -> i64`
@@ -87,9 +87,9 @@ compatible:
 New geometry operations use logical units. Legacy integer getters retain their
 documented physical-unit behavior.
 
-### `Viper.GUI.Accessibility`
+### `Zanna.GUI.Accessibility`
 
-- `Snapshot(root: Widget) -> Viper.Collections.Map`
+- `Snapshot(root: Widget) -> Zanna.Collections.Map`
 - `SetHighContrast(enabled: i1) -> void`; `IsHighContrast() -> i1`
 - `SetReducedMotion(enabled: i1) -> void`; `IsReducedMotion() -> i1`
 - `GetSystemHighContrast() -> i1`; `GetSystemReducedMotion() -> i1`
@@ -101,7 +101,7 @@ The snapshot schema is versioned and contains `schemaVersion`, `id`, `role`,
 
 ## 4. Theme and typography
 
-### `Viper.GUI.Theme`
+### `Zanna.GUI.Theme`
 
 - `SetMode(mode: i64) -> void`; `GetMode() -> i64`
 - `FollowSystem() -> void`
@@ -110,7 +110,7 @@ The snapshot schema is versioned and contains `schemaVersion`, `id`, `role`,
 - `ResetCustom() -> void`
 - `WasChanged() -> i1`; `GetRevision() -> i64`
 
-### `Viper.GUI.ThemePalette`
+### `Zanna.GUI.ThemePalette`
 
 - `New() -> ThemePalette`; `FromDark()`, `FromLight() -> ThemePalette`
 - `Clone() -> ThemePalette`
@@ -118,22 +118,22 @@ The snapshot schema is versioned and contains `schemaVersion`, `id`, `role`,
 - `SetMetric(token: str, value: f64) -> i1`; `GetMetric(token: str) -> f64`
 - `SetMotionEnabled(enabled: i1) -> void`
 - `SetFontRoles(regular: Font, bold: Font, mono: Font) -> void`
-- `Validate() -> Viper.Result`
+- `Validate() -> Zanna.Result`
 
 Token names are the canonical `vg_theme.h` field names using lower camel case,
 for example `bgPrimary`, `accentPrimary`, `buttonHeight`, `radiusMedium`, and
 `focusGlowWidth`. Unknown tokens return false; validation reports the first
 invalid token/value.
 
-### `Viper.GUI.Font`
+### `Zanna.GUI.Font`
 
-- `LoadSystemUi(size: f64) -> Viper.Result`
-- `LoadSystemUiBold(size: f64) -> Viper.Result`
+- `LoadSystemUi(size: f64) -> Zanna.Result`
+- `LoadSystemUiBold(size: f64) -> Zanna.Result`
 - `GetLogicalSize(font: Font) -> f64`
 
 ## 5. Text input and uniform control events
 
-### `Viper.GUI.TextInput`
+### `Zanna.GUI.TextInput`
 
 - `SetMaxLength(count: i64)`, `GetMaxLength() -> i64`
 - `SetPassword(enabled: i1)`, `IsPassword() -> i1`
@@ -160,19 +160,19 @@ gain `WasChanged() -> i1` and `GetRevision() -> i64`. Activatable controls gain
 
 ## 6. Layout containers
 
-### `Viper.GUI.VBox` and `Viper.GUI.HBox`
+### `Zanna.GUI.VBox` and `Zanna.GUI.HBox`
 
 - `SetAlign(align: i64)`, `GetAlign() -> i64`
 - `SetJustify(justify: i64)`, `GetJustify() -> i64`
 
-### `Viper.GUI.Flex`
+### `Zanna.GUI.Flex`
 
 - `New() -> Flex`
 - `SetDirection(direction: i64)`; `SetWrap(wrap: i64)`
 - `SetAlign(align: i64)`; `SetJustify(justify: i64)`
 - `SetGap(gap: f64)`; `SetPadding(padding: f64)`
 
-### `Viper.GUI.LayoutGrid`
+### `Zanna.GUI.LayoutGrid`
 
 - `New() -> LayoutGrid`
 - `SetRows(count: i64)`; `SetColumns(count: i64)`
@@ -183,7 +183,7 @@ gain `WasChanged() -> i1` and `GetRevision() -> i64`. Activatable controls gain
 Positive sizes are fixed logical units, zero means auto/content, and negative
 sizes are fractional weights whose magnitude is the weight.
 
-### `Viper.GUI.DockPanel`
+### `Zanna.GUI.DockPanel`
 
 - `New() -> DockPanel`
 - `SetPadding(padding: f64)`; `SetGap(gap: f64)`
@@ -198,8 +198,8 @@ sizes are fractional weights whose magnitude is the weight.
 - `Node.SetLoading(value: i1)`; `IsLoading() -> i1`
 - `Node.SetStableId(id: str)`; `GetStableId() -> str`
 - `Toggle(node)`; `ScrollTo(node)`; `WasActivated() -> i1`
-- `WasLoadChildrenRequested() -> i1`; `GetLoadRequestedNodeOption() -> Viper.Option`
-- `GetActivatedNodeOption() -> Viper.Option`; `GetRevision() -> i64`
+- `WasLoadChildrenRequested() -> i1`; `GetLoadRequestedNodeOption() -> Zanna.Option`
+- `GetActivatedNodeOption() -> Zanna.Option`; `GetRevision() -> i64`
 
 ### `TabBar` and `Tab`
 
@@ -246,7 +246,7 @@ the existing graphics color contract is extended deliberately.
 
 ## 9. Interactive data grid and virtual models
 
-### `Viper.GUI.Grid`
+### `Zanna.GUI.Grid`
 
 - `SetViewportRows(first: i64, count: i64)`
 - `SetVirtualRowCount(count: i64)`; `SetVirtualCell(row, col, text)`

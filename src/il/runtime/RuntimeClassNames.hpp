@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/il/runtime/RuntimeClassNames.hpp
-// Purpose: Canonical string constants for Viper runtime class names.
+// Purpose: Canonical string constants for Zanna runtime class names.
 //          These constants should be used instead of hardcoded string literals
 //          to ensure consistency and enable compile-time checking.
 // Links:
@@ -24,44 +24,44 @@
 
 namespace il::runtime {
 
-/// @brief Canonical runtime class name for Viper.String.
-inline constexpr std::string_view RTCLASS_STRING = "Viper.String";
-/// @brief Canonical runtime class name for Viper.Core.Object.
-inline constexpr std::string_view RTCLASS_OBJECT = "Viper.Core.Object";
-/// @brief Canonical runtime class name for Viper.Text.StringBuilder.
-inline constexpr std::string_view RTCLASS_STRINGBUILDER = "Viper.Text.StringBuilder";
-/// @brief Canonical runtime class name for Viper.IO.File.
-inline constexpr std::string_view RTCLASS_FILE = "Viper.IO.File";
-/// @brief Canonical runtime class name for Viper.Collections.List.
-inline constexpr std::string_view RTCLASS_LIST = "Viper.Collections.List";
-/// @brief Canonical runtime class name for Viper.Collections.Map.
-inline constexpr std::string_view RTCLASS_MAP = "Viper.Collections.Map";
-/// @brief Canonical runtime class name for Viper.Math.
-inline constexpr std::string_view RTCLASS_MATH = "Viper.Math";
-/// @brief Canonical runtime class name for Viper.Core.Convert.
-inline constexpr std::string_view RTCLASS_CONVERT = "Viper.Core.Convert";
-/// @brief Canonical runtime class name for Viper.Math.Random.
-inline constexpr std::string_view RTCLASS_RANDOM = "Viper.Math.Random";
-/// @brief Canonical runtime class name for Viper.System.Environment.
-inline constexpr std::string_view RTCLASS_ENVIRONMENT = "Viper.System.Environment";
-/// @brief Canonical runtime class name for Viper.DateTime.
-inline constexpr std::string_view RTCLASS_DATETIME = "Viper.DateTime";
-/// @brief Canonical runtime class name for Viper.Graphics.Window.
-inline constexpr std::string_view RTCLASS_GFX_WINDOW = "Viper.Graphics.Window";
-/// @brief Canonical runtime class name for Viper.Graphics.Color.
-inline constexpr std::string_view RTCLASS_GFX_COLOR = "Viper.Graphics.Color";
-/// @brief Canonical runtime class name for Viper.Terminal.
-inline constexpr std::string_view RTCLASS_TERMINAL = "Viper.Terminal";
-/// @brief Canonical runtime class name for Viper.Time.Clock.
-inline constexpr std::string_view RTCLASS_CLOCK = "Viper.Time.Clock";
-/// @brief Canonical runtime class name for Viper.Core.Diagnostics.Stopwatch.
-inline constexpr std::string_view RTCLASS_STOPWATCH = "Viper.Core.Diagnostics.Stopwatch";
-/// @brief Canonical runtime class name for Viper.Text.Uuid.
-inline constexpr std::string_view RTCLASS_UUID = "Viper.Text.Uuid";
+/// @brief Canonical runtime class name for Zanna.String.
+inline constexpr std::string_view RTCLASS_STRING = "Zanna.String";
+/// @brief Canonical runtime class name for Zanna.Core.Object.
+inline constexpr std::string_view RTCLASS_OBJECT = "Zanna.Core.Object";
+/// @brief Canonical runtime class name for Zanna.Text.StringBuilder.
+inline constexpr std::string_view RTCLASS_STRINGBUILDER = "Zanna.Text.StringBuilder";
+/// @brief Canonical runtime class name for Zanna.IO.File.
+inline constexpr std::string_view RTCLASS_FILE = "Zanna.IO.File";
+/// @brief Canonical runtime class name for Zanna.Collections.List.
+inline constexpr std::string_view RTCLASS_LIST = "Zanna.Collections.List";
+/// @brief Canonical runtime class name for Zanna.Collections.Map.
+inline constexpr std::string_view RTCLASS_MAP = "Zanna.Collections.Map";
+/// @brief Canonical runtime class name for Zanna.Math.
+inline constexpr std::string_view RTCLASS_MATH = "Zanna.Math";
+/// @brief Canonical runtime class name for Zanna.Core.Convert.
+inline constexpr std::string_view RTCLASS_CONVERT = "Zanna.Core.Convert";
+/// @brief Canonical runtime class name for Zanna.Math.Random.
+inline constexpr std::string_view RTCLASS_RANDOM = "Zanna.Math.Random";
+/// @brief Canonical runtime class name for Zanna.System.Environment.
+inline constexpr std::string_view RTCLASS_ENVIRONMENT = "Zanna.System.Environment";
+/// @brief Canonical runtime class name for Zanna.DateTime.
+inline constexpr std::string_view RTCLASS_DATETIME = "Zanna.DateTime";
+/// @brief Canonical runtime class name for Zanna.Graphics.Window.
+inline constexpr std::string_view RTCLASS_GFX_WINDOW = "Zanna.Graphics.Window";
+/// @brief Canonical runtime class name for Zanna.Graphics.Color.
+inline constexpr std::string_view RTCLASS_GFX_COLOR = "Zanna.Graphics.Color";
+/// @brief Canonical runtime class name for Zanna.Terminal.
+inline constexpr std::string_view RTCLASS_TERMINAL = "Zanna.Terminal";
+/// @brief Canonical runtime class name for Zanna.Time.Clock.
+inline constexpr std::string_view RTCLASS_CLOCK = "Zanna.Time.Clock";
+/// @brief Canonical runtime class name for Zanna.Core.Diagnostics.Stopwatch.
+inline constexpr std::string_view RTCLASS_STOPWATCH = "Zanna.Core.Diagnostics.Stopwatch";
+/// @brief Canonical runtime class name for Zanna.Text.Uuid.
+inline constexpr std::string_view RTCLASS_UUID = "Zanna.Text.Uuid";
 
 // Utility namespace prefixes
-/// @brief Namespace prefix for Viper.String helpers.
-inline constexpr std::string_view RTNS_STRINGS = "Viper.String";
+/// @brief Namespace prefix for Zanna.String helpers.
+inline constexpr std::string_view RTNS_STRINGS = "Zanna.String";
 
 // Helper to check if a type matches a specific runtime class
 /// @brief Check whether a qualified name matches a runtime class.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -115,7 +115,7 @@ inline bool isLoadKnownNonTrapping(const core::Function &fn, const core::Instr &
     if (load.op != core::Opcode::Load || load.operands.empty())
         return false;
 
-    auto accessSize = viper::analysis::BasicAA::typeSizeBytes(load.type);
+    auto accessSize = zanna::analysis::BasicAA::typeSizeBytes(load.type);
     if (!accessSize)
         return false;
 
@@ -129,7 +129,7 @@ inline bool isStoreKnownNonTrapping(const core::Function &fn, const core::Instr 
     if (store.op != core::Opcode::Store || store.operands.empty())
         return false;
 
-    auto accessSize = viper::analysis::BasicAA::typeSizeBytes(store.type);
+    auto accessSize = zanna::analysis::BasicAA::typeSizeBytes(store.type);
     if (!accessSize)
         return false;
 

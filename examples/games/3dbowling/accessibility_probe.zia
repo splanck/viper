@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,8 +24,8 @@
 
 module accessibility_probe;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal as Terminal;
 bind "./engine/camera";
 bind "./engine/hud";
 bind "./effects/celebrations";

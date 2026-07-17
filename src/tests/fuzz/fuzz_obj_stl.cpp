@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,31 +23,31 @@
 #include "rt_canvas3d.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (!viper_fuzz3d::input_is_bounded(size))
+    if (!zanna_fuzz3d::input_is_bounded(size))
         return 0;
 
-    std::string obj_path = viper_fuzz3d::write_temp_asset("viper_fuzz_obj_", ".obj", data, size);
+    std::string obj_path = zanna_fuzz3d::write_temp_asset("zanna_fuzz_obj_", ".obj", data, size);
     if (!obj_path.empty()) {
         rt_asset_error_clear();
-        rt_string runtime_path = viper_fuzz3d::runtime_string_from_path(obj_path);
+        rt_string runtime_path = zanna_fuzz3d::runtime_string_from_path(obj_path);
         if (runtime_path) {
             void *mesh = rt_mesh3d_from_obj(runtime_path);
-            viper_fuzz3d::release_runtime_object(mesh);
+            zanna_fuzz3d::release_runtime_object(mesh);
             rt_string_unref(runtime_path);
         }
-        viper_fuzz3d::remove_temp_asset(obj_path);
+        zanna_fuzz3d::remove_temp_asset(obj_path);
     }
 
-    std::string stl_path = viper_fuzz3d::write_temp_asset("viper_fuzz_stl_", ".stl", data, size);
+    std::string stl_path = zanna_fuzz3d::write_temp_asset("zanna_fuzz_stl_", ".stl", data, size);
     if (!stl_path.empty()) {
         rt_asset_error_clear();
-        rt_string runtime_path = viper_fuzz3d::runtime_string_from_path(stl_path);
+        rt_string runtime_path = zanna_fuzz3d::runtime_string_from_path(stl_path);
         if (runtime_path) {
             void *mesh = rt_mesh3d_from_stl(runtime_path);
-            viper_fuzz3d::release_runtime_object(mesh);
+            zanna_fuzz3d::release_runtime_object(mesh);
             rt_string_unref(runtime_path);
         }
-        viper_fuzz3d::remove_temp_asset(stl_path);
+        zanna_fuzz3d::remove_temp_asset(stl_path);
     }
     return 0;
 }

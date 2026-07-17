@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,8 +30,8 @@ struct DocCheck {
 };
 
 fs::path repoRoot() {
-#ifdef VIPER_REPO_ROOT
-    return fs::path(VIPER_REPO_ROOT);
+#ifdef ZANNA_REPO_ROOT
+    return fs::path(ZANNA_REPO_ROOT);
 #else
     return fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
 #endif
@@ -90,18 +90,18 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "throwStmt   ::= \"throw\" expr \";\"",
              "member      ::= [\"expose\" | \"hide\"] [\"static\" | \"override\"]",
              "A setter-only property is not currently supported",
-             "Zia programs have access to the full Viper Runtime through",
+             "Zia programs have access to the full Zanna Runtime through",
              "The following keyword is recognized by the lexer but has no current semantics",
              "| `Ptr` | Raw pointer / opaque handle",
              "Function references are stored as `Ptr` type",
              "func handler(arg: Ptr)",
              "function pointer at the correct slot",
-             "Viper.Memory.Release(handle)",
-             "```viper",
+             "Zanna.Memory.Release(handle)",
+             "```zanna",
          }},
         {"docs/tutorials/zia-tutorial.md",
          {
-             "```viper",
+             "```zanna",
          }},
         {"misc/reviews/feature-parity.md",
          {
@@ -113,12 +113,12 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "Both produce function pointers",
              "address-of (unary)",
          }},
-        {"docs/viperlib/collections/sequential.md",
+        {"docs/zannalib/collections/sequential.md",
          {
              "pointer value",
              "pointer equality",
          }},
-        {"docs/viperlib/network.md",
+        {"docs/zannalib/network.md",
          {
              "cache the pointer",
          }},
@@ -136,7 +136,7 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
         {"docs/book/part2-building-blocks/13-stdlib.md",
          {
              "GetOS(",
-             "Viper.Random",
+             "Zanna.Random",
              "createAll(",
              "listFiles(",
              "listDirs(",
@@ -156,7 +156,7 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
          }},
         {"docs/book/appendices/d-error-messages.md",
          {
-             "bind Viper.Json",
+             "bind Zanna.Json",
              "catch e:",
              "catch e {",
              "createNew(",
@@ -170,23 +170,23 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
          }},
         {"docs/book/part3-objects/17-polymorphism.md",
          {
-             "bind Viper.Random;",
+             "bind Zanna.Random;",
              "var r = Int(0, 3);",
          }},
-        {"docs/viperlib/game/physics.md",
+        {"docs/zannalib/game/physics.md",
          {
-             "Viper.Random.Chance(",
+             "Zanna.Random.Chance(",
          }},
-        {"docs/viperlib/collections/functional.md",
+        {"docs/zannalib/collections/functional.md",
          {
-             "Viper.Random.Seed(",
+             "Zanna.Random.Seed(",
          }},
-        {"docs/viperlib/core.md",
+        {"docs/zannalib/core.md",
          {
              "advanced Zia/BASIC code",
              "Wrap a native `void (*)(void*)` callback pointer as a managed handler",
          }},
-        {"docs/viperlib/threads.md",
+        {"docs/zannalib/threads.md",
          {
              "advanced Zia feature",
              "advanced Zia code",
@@ -305,5 +305,5 @@ func start() {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

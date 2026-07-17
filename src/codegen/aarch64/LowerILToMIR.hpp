@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "il/core/Function.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Lowers IL functions to AArch64 Machine IR (MIR).
 ///
@@ -78,4 +78,4 @@ class LowerILToMIR {
     std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts_{};
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

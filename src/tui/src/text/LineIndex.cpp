@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements @ref viper::tui::text::LineIndex bookkeeping operations.
+/// @brief Implements @ref zanna::tui::text::LineIndex bookkeeping operations.
 /// @details The index listens to insert and erase callbacks from the piece table
 ///          and updates cached line start offsets so that views can resolve
 ///          ``line → byte`` queries in O(1) time.
@@ -26,7 +26,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Rebuild the line index from the provided text snapshot.
 /// @details Clears any existing offsets, reinstates the leading zero entry, and
 ///          performs a single left-to-right scan that records the byte following
@@ -111,4 +111,4 @@ std::size_t LineIndex::count() const {
 std::size_t LineIndex::start(std::size_t line) const {
     return line_starts_.at(line);
 }
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

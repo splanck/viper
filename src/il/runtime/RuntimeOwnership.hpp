@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -88,14 +88,14 @@ namespace detail {
     if (name == "rt_print_str" || name == "rt_str_len" || name == "rt_str_eq" ||
         name == "rt_str_cmp" || name == "rt_str_cmp_nocase" || name == "rt_str_is_empty" ||
         name == "rt_str_starts_with" || name == "rt_str_ends_with" || name == "rt_str_index_of" ||
-        name == "Viper.Terminal.PrintStr" || name == "Viper.String.get_Length" ||
-        name == "Viper.String.Equals" || name == "Viper.String.Cmp" ||
-        name == "Viper.String.CmpNoCase") {
+        name == "Zanna.Terminal.PrintStr" || name == "Zanna.String.get_Length" ||
+        name == "Zanna.String.Equals" || name == "Zanna.String.Cmp" ||
+        name == "Zanna.String.CmpNoCase") {
         effects.knownNeutral = true;
         return effects;
     }
 
-    if (name == "rt_str_concat" || name == "Viper.String.Concat") {
+    if (name == "rt_str_concat" || name == "Zanna.String.Concat") {
         effects.consumedArgMask = 0b11;
         effects.returnsOwned = true;
         effects.mayAllocate = true;
@@ -103,27 +103,27 @@ namespace detail {
     }
 
     if (name == "rt_str_release" || name == "rt_str_release_maybe" ||
-        name == "rt_memory_release_str" || name == "Viper.String.ReleaseMaybe" ||
-        name == "Viper.Memory.ReleaseStr" || name == "Viper.Runtime.Unsafe.ReleaseStr") {
+        name == "rt_memory_release_str" || name == "Zanna.String.ReleaseMaybe" ||
+        name == "Zanna.Memory.ReleaseStr" || name == "Zanna.Runtime.Unsafe.ReleaseStr") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
     if (name == "rt_str_retain" || name == "rt_str_retain_maybe" ||
-        name == "rt_memory_retain_str" || name == "Viper.String.RetainMaybe" ||
-        name == "Viper.Memory.RetainStr" || name == "Viper.Runtime.Unsafe.RetainStr") {
+        name == "rt_memory_retain_str" || name == "Zanna.String.RetainMaybe" ||
+        name == "Zanna.Memory.RetainStr" || name == "Zanna.Runtime.Unsafe.RetainStr") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
 
-    if (name == "rt_memory_release" || name == "Viper.Memory.Release" ||
-        name == "Viper.Runtime.Unsafe.Release") {
+    if (name == "rt_memory_release" || name == "Zanna.Memory.Release" ||
+        name == "Zanna.Runtime.Unsafe.Release") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
-    if (name == "rt_memory_retain" || name == "Viper.Memory.Retain" ||
-        name == "Viper.Runtime.Unsafe.Retain") {
+    if (name == "rt_memory_retain" || name == "Zanna.Memory.Retain" ||
+        name == "Zanna.Runtime.Unsafe.Retain") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
@@ -143,16 +143,16 @@ namespace detail {
         name == "rt_cmdline" || name == "rt_getkey_str" || name == "rt_inkey_str" ||
         name == "rt_term_read_line" || name == "rt_term_ask" || name == "rt_term_try_read_line" ||
         name == "rt_term_try_ask" || name == "rt_term_read_line_result" ||
-        name == "rt_term_ask_result" || name == "Viper.Terminal.TryReadLine" ||
-        name == "Viper.Terminal.TryAsk" || name == "Viper.Terminal.ReadLineResult" ||
-        name == "Viper.Terminal.AskResult" || name == "rt_message_bundle_get_or" ||
-        name == "Viper.Localization.MessageBundle.GetOr" || name == "Viper.String.Left" ||
-        name == "Viper.String.Right" || name == "Viper.String.Mid2" ||
-        name == "Viper.String.Mid3" || name == "Viper.String.LTrim" ||
-        name == "Viper.String.RTrim" || name == "Viper.String.Trim" ||
-        name == "Viper.String.UCase" || name == "Viper.String.LCase" ||
-        name == "Viper.String.Chr" || name == "Viper.String.FromI64" ||
-        name == "Viper.String.FromF64") {
+        name == "rt_term_ask_result" || name == "Zanna.Terminal.TryReadLine" ||
+        name == "Zanna.Terminal.TryAsk" || name == "Zanna.Terminal.ReadLineResult" ||
+        name == "Zanna.Terminal.AskResult" || name == "rt_message_bundle_get_or" ||
+        name == "Zanna.Localization.MessageBundle.GetOr" || name == "Zanna.String.Left" ||
+        name == "Zanna.String.Right" || name == "Zanna.String.Mid2" ||
+        name == "Zanna.String.Mid3" || name == "Zanna.String.LTrim" ||
+        name == "Zanna.String.RTrim" || name == "Zanna.String.Trim" ||
+        name == "Zanna.String.UCase" || name == "Zanna.String.LCase" ||
+        name == "Zanna.String.Chr" || name == "Zanna.String.FromI64" ||
+        name == "Zanna.String.FromF64") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
@@ -183,38 +183,38 @@ namespace detail {
     }
 
     if (name == "rt_list_get" || name == "rt_list_first" || name == "rt_list_last" ||
-        name == "rt_list_pop" || name == "Viper.Collections.List.Get" ||
-        name == "Viper.Collections.List.First" || name == "Viper.Collections.List.Last" ||
-        name == "Viper.Collections.List.Pop" || name == "rt_deque_get" ||
+        name == "rt_list_pop" || name == "Zanna.Collections.List.Get" ||
+        name == "Zanna.Collections.List.First" || name == "Zanna.Collections.List.Last" ||
+        name == "Zanna.Collections.List.Pop" || name == "rt_deque_get" ||
         name == "rt_deque_peek_front" || name == "rt_deque_peek_back" ||
         name == "rt_deque_pop_front" || name == "rt_deque_pop_back" ||
         name == "rt_deque_try_pop_front" || name == "rt_deque_try_pop_back" ||
-        name == "Viper.Collections.Deque.Get" || name == "Viper.Collections.Deque.PeekFront" ||
-        name == "Viper.Collections.Deque.PeekBack" || name == "Viper.Collections.Deque.PopFront" ||
-        name == "Viper.Collections.Deque.PopBack" ||
-        name == "Viper.Collections.Deque.TryPopFront" ||
-        name == "Viper.Collections.Deque.TryPopBack" || name == "rt_stack_pop" ||
-        name == "rt_stack_try_pop" || name == "Viper.Collections.Stack.Pop" ||
-        name == "Viper.Collections.Stack.TryPop" || name == "rt_queue_pop" ||
-        name == "rt_queue_try_pop" || name == "Viper.Collections.Queue.Pop" ||
-        name == "Viper.Collections.Queue.TryPop" || name == "rt_seq_pop" ||
-        name == "rt_seq_remove" || name == "Viper.Collections.Seq.Pop" ||
-        name == "Viper.Collections.Seq.RemoveAt" || name == "rt_multimap_get_first" ||
-        name == "Viper.Collections.MultiMap.GetFirst" || name == "rt_pqueue_pop" ||
+        name == "Zanna.Collections.Deque.Get" || name == "Zanna.Collections.Deque.PeekFront" ||
+        name == "Zanna.Collections.Deque.PeekBack" || name == "Zanna.Collections.Deque.PopFront" ||
+        name == "Zanna.Collections.Deque.PopBack" ||
+        name == "Zanna.Collections.Deque.TryPopFront" ||
+        name == "Zanna.Collections.Deque.TryPopBack" || name == "rt_stack_pop" ||
+        name == "rt_stack_try_pop" || name == "Zanna.Collections.Stack.Pop" ||
+        name == "Zanna.Collections.Stack.TryPop" || name == "rt_queue_pop" ||
+        name == "rt_queue_try_pop" || name == "Zanna.Collections.Queue.Pop" ||
+        name == "Zanna.Collections.Queue.TryPop" || name == "rt_seq_pop" ||
+        name == "rt_seq_remove" || name == "Zanna.Collections.Seq.Pop" ||
+        name == "Zanna.Collections.Seq.RemoveAt" || name == "rt_multimap_get_first" ||
+        name == "Zanna.Collections.MultiMap.GetFirst" || name == "rt_pqueue_pop" ||
         name == "rt_pqueue_try_pop" || name == "rt_pqueue_peek" || name == "rt_pqueue_try_peek" ||
-        name == "Viper.Collections.Heap.Pop" || name == "Viper.Collections.Heap.TryPop" ||
-        name == "Viper.Collections.Heap.Peek" || name == "Viper.Collections.Heap.TryPeek") {
+        name == "Zanna.Collections.Heap.Pop" || name == "Zanna.Collections.Heap.TryPop" ||
+        name == "Zanna.Collections.Heap.Peek" || name == "Zanna.Collections.Heap.TryPeek") {
         effects.returnsOwned = true;
         return effects;
     }
 
     if (name == "rt_iter_next" || name == "rt_iter_peek" ||
-        name == "Viper.Collections.Iterator.Next" || name == "Viper.Collections.Iterator.Peek") {
+        name == "Zanna.Collections.Iterator.Next" || name == "Zanna.Collections.Iterator.Peek") {
         effects.returnsOwned = true;
         return effects;
     }
 
-    if (name == "rt_weakmap_get" || name == "Viper.Collections.WeakMap.Get") {
+    if (name == "rt_weakmap_get" || name == "Zanna.Collections.WeakMap.Get") {
         effects.returnsOwned = true;
         return effects;
     }
@@ -226,14 +226,14 @@ namespace detail {
 
     if (name == "rt_obj_new_i64" || name == "rt_box_i64" || name == "rt_box_f64" ||
         name == "rt_box_i1" || name == "rt_box_i1_bool" || name == "rt_box_value_type" ||
-        name == "Viper.Core.Box.I64" || name == "Viper.Core.Box.F64" ||
-        name == "Viper.Core.Box.I1" || name == "Viper.Core.Box.ValueType") {
+        name == "Zanna.Core.Box.I64" || name == "Zanna.Core.Box.F64" ||
+        name == "Zanna.Core.Box.I1" || name == "Zanna.Core.Box.ValueType") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_box_str" || name == "Viper.Core.Box.Str") {
+    if (name == "rt_box_str" || name == "Zanna.Core.Box.Str") {
         effects.retainedArgMask = 0b1;
         effects.returnsOwned = true;
         effects.mayAllocate = true;
@@ -257,14 +257,14 @@ namespace detail {
         name == "rt_sortedset_last" || name == "rt_sortedset_floor" ||
         name == "rt_sortedset_ceil" || name == "rt_sortedset_lower" ||
         name == "rt_sortedset_higher" || name == "rt_sortedset_at" ||
-        name == "Viper.Collections.BitSet.ToString" || name == "Viper.Collections.Bytes.ToStr" ||
-        name == "Viper.Collections.Bytes.ToHex" || name == "Viper.Collections.Bytes.ToBase64" ||
-        name == "Viper.Collections.OrderedMap.KeyAt" ||
-        name == "Viper.Collections.Trie.LongestPrefix" ||
-        name == "Viper.Collections.SortedSet.First" || name == "Viper.Collections.SortedSet.Last" ||
-        name == "Viper.Collections.SortedSet.Floor" || name == "Viper.Collections.SortedSet.Ceil" ||
-        name == "Viper.Collections.SortedSet.Lower" ||
-        name == "Viper.Collections.SortedSet.Higher" || name == "Viper.Collections.SortedSet.At") {
+        name == "Zanna.Collections.BitSet.ToString" || name == "Zanna.Collections.Bytes.ToStr" ||
+        name == "Zanna.Collections.Bytes.ToHex" || name == "Zanna.Collections.Bytes.ToBase64" ||
+        name == "Zanna.Collections.OrderedMap.KeyAt" ||
+        name == "Zanna.Collections.Trie.LongestPrefix" ||
+        name == "Zanna.Collections.SortedSet.First" || name == "Zanna.Collections.SortedSet.Last" ||
+        name == "Zanna.Collections.SortedSet.Floor" || name == "Zanna.Collections.SortedSet.Ceil" ||
+        name == "Zanna.Collections.SortedSet.Lower" ||
+        name == "Zanna.Collections.SortedSet.Higher" || name == "Zanna.Collections.SortedSet.At") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
@@ -299,94 +299,94 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_weakref_new" || name == "Viper.Memory.WeakRef.New") {
+    if (name == "rt_weakref_new" || name == "Zanna.Memory.WeakRef.New") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_weakref_get" || name == "Viper.Memory.WeakRef.Get") {
+    if (name == "rt_weakref_get" || name == "Zanna.Memory.WeakRef.Get") {
         effects.returnsOwned = true;
         return effects;
     }
 
-    if (name == "rt_weakref_free" || name == "Viper.Memory.WeakRef.Free") {
+    if (name == "rt_weakref_free" || name == "Zanna.Memory.WeakRef.Free") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
-    if (name == "rt_weakref_reset" || name == "Viper.Memory.WeakRef.Reset") {
+    if (name == "rt_weakref_reset" || name == "Zanna.Memory.WeakRef.Reset") {
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" ||
+    if (name == "rt_unbox_str" || name == "Zanna.Core.Box.ToStr" ||
         ((detail::startsWith(name, "rt_cipher_") || detail::startsWith(name, "rt_aes_")) &&
          (detail::contains(name, "_decrypt") &&
           (detail::endsWith(name, "_result") || detail::contains(name, "_try_")))) ||
-        (detail::startsWith(name, "Viper.Crypto.") &&
+        (detail::startsWith(name, "Zanna.Crypto.") &&
          (detail::contains(name, ".Decrypt") || detail::contains(name, ".TryDecrypt")) &&
          (detail::endsWith(name, "Result") || detail::contains(name, ".TryDecrypt"))) ||
         name == "rt_box_to_i64_option" || name == "rt_box_to_f64_option" ||
         name == "rt_box_to_i1_option" || name == "rt_box_to_str_option" ||
-        name == "Viper.Core.Box.ToI64Option" || name == "Viper.Core.Box.ToF64Option" ||
-        name == "Viper.Core.Box.ToI1Option" || name == "Viper.Core.Box.ToStrOption" ||
-        name == "rt_obj_to_string" || name == "Viper.Core.Object.ToString" ||
-        name == "rt_obj_type_name" || name == "Viper.Core.Object.TypeName" ||
-        name == "Viper.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
+        name == "Zanna.Core.Box.ToI64Option" || name == "Zanna.Core.Box.ToF64Option" ||
+        name == "Zanna.Core.Box.ToI1Option" || name == "Zanna.Core.Box.ToStrOption" ||
+        name == "rt_obj_to_string" || name == "Zanna.Core.Object.ToString" ||
+        name == "rt_obj_type_name" || name == "Zanna.Core.Object.TypeName" ||
+        name == "Zanna.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
         name == "rt_parse_int64_option" || name == "rt_parse_bool_option" ||
-        name == "Viper.Core.Parse.TryDouble" || name == "Viper.Core.Parse.TryDouble" ||
-        name == "Viper.Core.Parse.TryInt" || name == "Viper.Core.Parse.TryBool" ||
-        name == "rt_datetime_try_parse_option" || name == "Viper.Time.DateTime.TryParseOption" ||
-        name == "rt_queue_try_pop_option" || name == "Viper.Collections.Queue.TryPopOption" ||
-        name == "rt_stack_try_pop_option" || name == "Viper.Collections.Stack.TryPopOption" ||
-        name == "rt_pqueue_try_pop_option" || name == "Viper.Collections.Heap.TryPopOption" ||
-        name == "rt_pqueue_try_peek_option" || name == "Viper.Collections.Heap.TryPeekOption" ||
+        name == "Zanna.Core.Parse.TryDouble" || name == "Zanna.Core.Parse.TryDouble" ||
+        name == "Zanna.Core.Parse.TryInt" || name == "Zanna.Core.Parse.TryBool" ||
+        name == "rt_datetime_try_parse_option" || name == "Zanna.Time.DateTime.TryParseOption" ||
+        name == "rt_queue_try_pop_option" || name == "Zanna.Collections.Queue.TryPopOption" ||
+        name == "rt_stack_try_pop_option" || name == "Zanna.Collections.Stack.TryPopOption" ||
+        name == "rt_pqueue_try_pop_option" || name == "Zanna.Collections.Heap.TryPopOption" ||
+        name == "rt_pqueue_try_peek_option" || name == "Zanna.Collections.Heap.TryPeekOption" ||
         name == "rt_deque_try_pop_front_option" ||
-        name == "Viper.Collections.Deque.TryPopFrontOption" ||
+        name == "Zanna.Collections.Deque.TryPopFrontOption" ||
         name == "rt_deque_try_pop_back_option" ||
-        name == "Viper.Collections.Deque.TryPopBackOption" ||
+        name == "Zanna.Collections.Deque.TryPopBackOption" ||
         name == "rt_concqueue_try_dequeue_option" ||
-        name == "Viper.Threads.ConcurrentQueue.TryDequeueOption" ||
-        name == "rt_channel_try_recv_option" || name == "Viper.Threads.Channel.TryRecvOption" ||
-        name == "rt_future_try_get_option" || name == "Viper.Threads.Future.TryGetOption" ||
+        name == "Zanna.Threads.ConcurrentQueue.TryDequeueOption" ||
+        name == "rt_channel_try_recv_option" || name == "Zanna.Threads.Channel.TryRecvOption" ||
+        name == "rt_future_try_get_option" || name == "Zanna.Threads.Future.TryGetOption" ||
         name == "rt_locale_try_parse_option" ||
-        name == "Viper.Localization.Locale.TryParseOption" ||
+        name == "Zanna.Localization.Locale.TryParseOption" ||
         name == "rt_message_bundle_try_get_option" ||
-        name == "Viper.Localization.MessageBundle.TryGetOption" ||
+        name == "Zanna.Localization.MessageBundle.TryGetOption" ||
         name == "rt_numformat_try_parse_decimal" ||
-        name == "Viper.Localization.NumberFormat.TryParseDecimal" ||
+        name == "Zanna.Localization.NumberFormat.TryParseDecimal" ||
         name == "rt_numformat_try_parse_integer" ||
-        name == "Viper.Localization.NumberFormat.TryParseInteger" ||
+        name == "Zanna.Localization.NumberFormat.TryParseInteger" ||
         name == "rt_numformat_try_parse_currency" ||
-        name == "Viper.Localization.NumberFormat.TryParseCurrency" ||
-        name == "rt_promise_get_future" || name == "Viper.Threads.Promise.GetFuture" ||
-        name == "rt_async_run" || name == "Viper.Threads.Async.Run" ||
-        name == "rt_async_run_owned" || name == "Viper.Threads.Async.RunOwned" ||
-        name == "rt_async_run_cancellable" || name == "Viper.Threads.Async.RunCancellable" ||
+        name == "Zanna.Localization.NumberFormat.TryParseCurrency" ||
+        name == "rt_promise_get_future" || name == "Zanna.Threads.Promise.GetFuture" ||
+        name == "rt_async_run" || name == "Zanna.Threads.Async.Run" ||
+        name == "rt_async_run_owned" || name == "Zanna.Threads.Async.RunOwned" ||
+        name == "rt_async_run_cancellable" || name == "Zanna.Threads.Async.RunCancellable" ||
         name == "rt_async_run_cancellable_owned" ||
-        name == "Viper.Threads.Async.RunCancellableOwned" || name == "rt_async_delay" ||
-        name == "Viper.Threads.Async.Delay" || name == "rt_async_all" ||
-        name == "Viper.Threads.Async.All" || name == "rt_async_any" ||
-        name == "Viper.Threads.Async.Any" || name == "rt_async_map" ||
-        name == "Viper.Threads.Async.Map" || name == "rt_async_map_owned" ||
-        name == "Viper.Threads.Async.MapOwned" || name == "Viper.Core.Convert.ToString_Int" ||
-        name == "Viper.Core.Convert.ToString_Double" || name == "Viper.Core.Convert.ToStringInt" ||
-        name == "Viper.Core.Convert.ToStringDouble") {
+        name == "Zanna.Threads.Async.RunCancellableOwned" || name == "rt_async_delay" ||
+        name == "Zanna.Threads.Async.Delay" || name == "rt_async_all" ||
+        name == "Zanna.Threads.Async.All" || name == "rt_async_any" ||
+        name == "Zanna.Threads.Async.Any" || name == "rt_async_map" ||
+        name == "Zanna.Threads.Async.Map" || name == "rt_async_map_owned" ||
+        name == "Zanna.Threads.Async.MapOwned" || name == "Zanna.Core.Convert.ToString_Int" ||
+        name == "Zanna.Core.Convert.ToString_Double" || name == "Zanna.Core.Convert.ToStringInt" ||
+        name == "Zanna.Core.Convert.ToStringDouble") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_msgbus_new" || name == "Viper.Core.MessageBus.New" ||
-        name == "rt_msgbus_callback_new" || name == "Viper.Core.MessageBus.Callback" ||
-        name == "rt_msgbus_topics" || name == "Viper.Core.MessageBus.Topics") {
+    if (name == "rt_msgbus_new" || name == "Zanna.Core.MessageBus.New" ||
+        name == "rt_msgbus_callback_new" || name == "Zanna.Core.MessageBus.Callback" ||
+        name == "rt_msgbus_topics" || name == "Zanna.Core.MessageBus.Topics") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (detail::startsWith(name, "Viper.Collections.") &&
+    if (detail::startsWith(name, "Zanna.Collections.") &&
         (detail::endsWith(name, ".Items") || detail::endsWith(name, ".Keys") ||
          detail::endsWith(name, ".Values") || detail::endsWith(name, ".ToSeq") ||
          detail::endsWith(name, ".ToList") || detail::endsWith(name, ".ToSet") ||
@@ -404,7 +404,7 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_msgbus_subscribe" || name == "Viper.Core.MessageBus.Subscribe") {
+    if (name == "rt_msgbus_subscribe" || name == "Zanna.Core.MessageBus.Subscribe") {
         effects.retainedArgMask = 0b110;
         effects.mayAllocate = true;
         return effects;
@@ -428,7 +428,7 @@ namespace detail {
         return effects;
     }
 
-    if (detail::startsWith(name, "Viper.") &&
+    if (detail::startsWith(name, "Zanna.") &&
         (detail::endsWith(name, ".New") || detail::endsWith(name, ".Clone") ||
          detail::contains(name, ".From"))) {
         effects.returnsOwned = true;

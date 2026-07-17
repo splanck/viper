@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -60,13 +60,13 @@ static void verifyOrDie(const Module &module) {
 /// Build an AnalysisRegistry wired with BasicAA and MemorySSA.
 il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
-    registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+    registry.registerFunctionAnalysis<zanna::analysis::BasicAA>(
         "basic-aa",
-        [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
-    registry.registerFunctionAnalysis<viper::analysis::MemorySSA>(
+        [](Module &mod, Function &fnRef) { return zanna::analysis::BasicAA(mod, fnRef); });
+    registry.registerFunctionAnalysis<zanna::analysis::MemorySSA>(
         "memory-ssa", [](Module &mod, Function &fnRef) {
-            viper::analysis::BasicAA aa(mod, fnRef);
-            return viper::analysis::computeMemorySSA(fnRef, aa);
+            zanna::analysis::BasicAA aa(mod, fnRef);
+            return zanna::analysis::computeMemorySSA(fnRef, aa);
         });
     return registry;
 }
@@ -539,23 +539,23 @@ TEST(MemorySSA, AssignsDefAndUseNodes) {
 
     verifyOrDie(module);
 
-    viper::analysis::BasicAA aa(module, fn);
-    viper::analysis::MemorySSA mssa = viper::analysis::computeMemorySSA(fn, aa);
+    zanna::analysis::BasicAA aa(module, fn);
+    zanna::analysis::MemorySSA mssa = zanna::analysis::computeMemorySSA(fn, aa);
 
     // instrIdx=1 is the first Store → should be a Def
-    const viper::analysis::MemoryAccess *def1 = mssa.accessFor(&entry, 1);
+    const zanna::analysis::MemoryAccess *def1 = mssa.accessFor(&entry, 1);
     ASSERT_TRUE(def1 != nullptr);
-    EXPECT_EQ(def1->kind, viper::analysis::MemAccessKind::Def);
+    EXPECT_EQ(def1->kind, zanna::analysis::MemAccessKind::Def);
 
     // instrIdx=2 is the Load → should be a Use
-    const viper::analysis::MemoryAccess *use = mssa.accessFor(&entry, 2);
+    const zanna::analysis::MemoryAccess *use = mssa.accessFor(&entry, 2);
     ASSERT_TRUE(use != nullptr);
-    EXPECT_EQ(use->kind, viper::analysis::MemAccessKind::Use);
+    EXPECT_EQ(use->kind, zanna::analysis::MemAccessKind::Use);
 
     // instrIdx=3 is the second Store → MemoryDef
-    const viper::analysis::MemoryAccess *def2 = mssa.accessFor(&entry, 3);
+    const zanna::analysis::MemoryAccess *def2 = mssa.accessFor(&entry, 3);
     ASSERT_TRUE(def2 != nullptr);
-    EXPECT_EQ(def2->kind, viper::analysis::MemAccessKind::Def);
+    EXPECT_EQ(def2->kind, zanna::analysis::MemAccessKind::Def);
 
     // First store (def1) should NOT be dead because the load reads it.
     EXPECT_FALSE(mssa.isDeadStore(&entry, 1));
@@ -599,8 +599,8 @@ TEST(MemorySSA, SameBlockLoadUsesNearestAliasingStore) {
 
     verifyOrDie(module);
 
-    viper::analysis::BasicAA aa(module, fn);
-    viper::analysis::MemorySSA mssa = viper::analysis::computeMemorySSA(fn, aa);
+    zanna::analysis::BasicAA aa(module, fn);
+    zanna::analysis::MemorySSA mssa = zanna::analysis::computeMemorySSA(fn, aa);
 
     const auto *store1 = mssa.accessFor(&entry, 2);
     ASSERT_TRUE(store1 != nullptr);
@@ -655,8 +655,8 @@ TEST(MemorySSA, PhiIncomingArmsTrackPredecessorDefs) {
 
     verifyOrDie(module);
 
-    viper::analysis::BasicAA aa(module, fn);
-    viper::analysis::MemorySSA mssa = viper::analysis::computeMemorySSA(fn, aa);
+    zanna::analysis::BasicAA aa(module, fn);
+    zanna::analysis::MemorySSA mssa = zanna::analysis::computeMemorySSA(fn, aa);
 
     const auto *leftStore = mssa.accessFor(&left, 0);
     ASSERT_TRUE(leftStore != nullptr);
@@ -664,7 +664,7 @@ TEST(MemorySSA, PhiIncomingArmsTrackPredecessorDefs) {
     ASSERT_TRUE(rightStore != nullptr);
     const auto *joinPhi = mssa.accessFor(&join, static_cast<size_t>(-1));
     ASSERT_TRUE(joinPhi != nullptr);
-    EXPECT_EQ(joinPhi->kind, viper::analysis::MemAccessKind::Phi);
+    EXPECT_EQ(joinPhi->kind, zanna::analysis::MemAccessKind::Phi);
 
     const auto hasIncoming = [&](uint32_t id) {
         return std::find(joinPhi->incoming.begin(), joinPhi->incoming.end(), id) !=
@@ -679,6 +679,6 @@ TEST(MemorySSA, PhiIncomingArmsTrackPredecessorDefs) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

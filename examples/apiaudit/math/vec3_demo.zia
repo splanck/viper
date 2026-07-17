@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Math.Vec3 - 3D Vector Operations
+// API Audit: Zanna.Math.Vec3 - 3D Vector Operations
 // =============================================================================
 // Tests: New, Zero, One, X, Y, Z, Add, Sub, Mul, Div, Neg, Dot, Cross,
 //        Len, LenSq, Dist, Norm, Lerp
 // =============================================================================
 
 module Vec3Demo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Math.Vec3 ===");
+    Say("=== API Audit: Zanna.Math.Vec3 ===");
 
     // --- Factory: New ---
     Say("--- New ---");

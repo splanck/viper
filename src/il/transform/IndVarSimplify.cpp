@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -57,7 +57,7 @@ namespace il::transform {
 
 namespace {
 bool hasTerminator(const BasicBlock &block) {
-    return !block.instructions.empty() && viper::il::isTerminator(block.instructions.back());
+    return !block.instructions.empty() && zanna::il::isTerminator(block.instructions.back());
 }
 
 /// @brief Find a basic block by label within a function.
@@ -67,7 +67,7 @@ bool hasTerminator(const BasicBlock &block) {
 /// @param label Label to search for.
 /// @return Pointer to the matching block, or nullptr if not found.
 BasicBlock *findBlock(Function &function, const std::string &label) {
-    return viper::il::findBlock(function, label);
+    return zanna::il::findBlock(function, label);
 }
 
 /// @brief Locate the unique loop preheader that jumps to the loop header.
@@ -454,7 +454,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
     // Analyses
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
     (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG, function);
-    auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+    auto &dom = analysis.getFunctionResult<zanna::analysis::DomTree>(kAnalysisDominators, function);
     (void)dom;
 
     bool changed = false;
@@ -529,7 +529,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         if (!inc)
             continue;
 
-        unsigned nextId = viper::il::nextTempId(function);
+        unsigned nextId = zanna::il::nextTempId(function);
         Param addrParam{"addr", addrInstr->type, nextId++};
         const unsigned addrParamId = addrParam.id;
         setValueName(function, addrParamId, addrParam.name);
@@ -597,7 +597,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         latch->instructions.insert(latch->instructions.begin() + latchInsert, std::move(addInc));
 
         // Inside header, replace uses of computed addr with header param and erase the instructions
-        viper::il::UseDefInfo useInfo(function);
+        zanna::il::UseDefInfo useInfo(function);
         useInfo.replaceAllUses(addrExpr->addrId, Value::temp(addrParamId));
         // Erase the add and its mul if dead (single-use guaranteed earlier)
         // Remove add first

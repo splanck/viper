@@ -1,7 +1,7 @@
 module SoundDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Audio (All Classes) ===");
+    Say("=== API Audit: Zanna.Audio (All Classes) ===");
     Say("NOTE: Sound classes require audio hardware. API surface documentation only.");
     Say("");
     Say("--- Audio ---");

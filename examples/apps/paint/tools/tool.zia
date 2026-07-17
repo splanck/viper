@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,10 +22,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// tool.zia - Shared tool interface + context for Viper Paint
+// tool.zia - Shared tool interface + context for Zanna Paint
 module tool;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../canvas";
 bind "../colors";

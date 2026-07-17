@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTColorUtilsTests.cpp
-// Purpose: Tests for Viper.Graphics.Color utility functions.
+// Purpose: Tests for Zanna.Graphics.Color utility functions.
 //
 //===----------------------------------------------------------------------===//
 

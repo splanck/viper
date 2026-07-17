@@ -1,7 +1,7 @@
 module sierpinski;
 
 // ============================================================================
-// SIERPINSKI.VIPER - Fractal Demonstration
+// SIERPINSKI.ZANNA - Fractal Demonstration
 // ============================================================================
 // Shows various fractal patterns including Sierpinski triangle,
 // Mandelbrot set visualization, and recursive tree.
@@ -9,12 +9,12 @@ module sierpinski;
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Time;
 
 var SIERPINSKI_PI: Number;
 
@@ -506,6 +506,6 @@ func sierpinskiRun(canvas: Canvas) {
         canvas.TextBg(10, height - 25, hint, colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

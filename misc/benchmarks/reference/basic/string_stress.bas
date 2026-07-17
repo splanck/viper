@@ -6,5 +6,5 @@ FOR i = 0 TO 499999
     result = "Hello" + " " + "World" + "!"
     sum = sum + LEN(result)
 NEXT i
-Viper.System.Environment.Exit(sum)
+Zanna.System.Environment.Exit(sum)
 END

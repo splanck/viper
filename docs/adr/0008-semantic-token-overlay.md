@@ -13,23 +13,23 @@ focused tests on 2026-06-27
 
 ## Context
 
-The ViperIDE semantic-token overlay adds compiler-classified ("semantic")
+The ZannaIDE semantic-token overlay adds compiler-classified ("semantic")
 highlighting on top of the lexical highlighter introduced in ADR 0007. The
 lexical tokenizers cannot tell a parameter from a local, a field from a free
 identifier, or a lowercase type alias from a value; the Zia `Sema` pass can. Two
 public runtime surfaces deliver this:
 
-1. **A Zia `Tokens` semantic job.** `Viper.Zia.Completion.BeginTokensForFile`
+1. **A Zia `Tokens` semantic job.** `Zanna.Zia.Completion.BeginTokensForFile`
    starts a background `SemanticJobKind::Tokens` worker
    (`src/frontends/zia/rt_zia_completion.cpp`) that parses + analyzes the source
    and, for each identifier token, resolves its symbol via
    `Sema::findSymbolAtPosition` and emits a `line<TAB>start<TAB>end<TAB>kind`
-   row (0-based editor coordinates). `Viper.Zia.SemanticJob.Tokens` returns the
+   row (0-based editor coordinates). `Zanna.Zia.SemanticJob.Tokens` returns the
    serialized rows. This reuses the existing async semantic-job pool, the
    strong/weak `rt_zia_*` bridge, and the `symbolsForSource` analysis pattern —
    the worker runs pure compiler code off-thread (no runtime/GC).
 2. **A CodeEditor semantic-token overlay.**
-   `Viper.GUI.CodeEditor.AddSemanticToken(line, start, end, tokenType)` and
+   `Zanna.GUI.CodeEditor.AddSemanticToken(line, start, end, tokenType)` and
    `ClearSemanticTokens()` store resolved foreground colors on the editor
    (`vg_semantic_token` array) that `highlight_line()` applies on top of the
    lexical colors. The `tokenType` is the same `vg_syntax_token_type` enum ADR
@@ -46,11 +46,11 @@ additions**, the class established for Graphics3D (ADR 0004) and the CodeEditor
 lexical surface (ADR 0007). Specifically permitted under this note:
 
 - `rt_zia_completion_begin_tokens_for_file` / `rt_zia_semantic_job_tokens`
-  registered as `Viper.Zia.Completion.BeginTokensForFile` /
-  `Viper.Zia.SemanticJob.Tokens` (frontend extern-C in `zia_editor_services`,
+  registered as `Zanna.Zia.Completion.BeginTokensForFile` /
+  `Zanna.Zia.SemanticJob.Tokens` (frontend extern-C in `zia_editor_services`,
   with weak stubs in `rt_zia_completion_stub.c` for non-frontend builds).
 - `rt_codeeditor_add_semantic_token` / `rt_codeeditor_clear_semantic_tokens`
-  registered as `Viper.GUI.CodeEditor.AddSemanticToken` / `ClearSemanticTokens`,
+  registered as `Zanna.GUI.CodeEditor.AddSemanticToken` / `ClearSemanticTokens`,
   with headless stubs.
 
 These additions:
@@ -65,7 +65,7 @@ These additions:
   the compiler, and the lib layer (`vg_codeeditor`) only stores/applies resolved
   colors;
 - are covered by runtime completeness, ABI/surface, and a focused IDE probe
-  (`viperide/src/probes/semantic_tokens_probe.zia`).
+  (`zannaide/src/probes/semantic_tokens_probe.zia`).
 
 The overlay is advisory: unresolved identifiers are omitted so the lexical color
 stands, and the editor remains fully functional with no semantic tokens (offline
@@ -87,13 +87,13 @@ Verified on 2026-06-27:
   `rt_codeeditor_clear_semantic_tokens`; `src/lib/gui/src/widgets/vg_codeeditor_core.inc`
   sorts and applies semantic-token colors on top of lexical colors.
 - `src/il/runtime/runtime.def` registers
-  `Viper.Zia.Completion.BeginTokensForFile`, `Viper.Zia.SemanticJob.Tokens`,
-  `Viper.GUI.CodeEditor.AddSemanticToken`, and
-  `Viper.GUI.CodeEditor.ClearSemanticTokens`.
-- The current built CLI (`build/src/tools/viper/viper --dump-runtime-api`)
+  `Zanna.Zia.Completion.BeginTokensForFile`, `Zanna.Zia.SemanticJob.Tokens`,
+  `Zanna.GUI.CodeEditor.AddSemanticToken`, and
+  `Zanna.GUI.CodeEditor.ClearSemanticTokens`.
+- The current built CLI (`build/src/tools/zanna/zanna --dump-runtime-api`)
   exposes those four methods.
 - Focused checks pass: `test_rt_gui_runtime`, `test_rt_gui_ide`,
-  `zia_rt_api_test_viperide_primitives`, and `zia_viperide_semantic_tokens`.
+  `zia_rt_api_test_zannaide_primitives`, and `zia_zannaide_semantic_tokens`.
 
 ## Consequences
 

@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTClockTests.cpp
-// Purpose: Validate Viper.Time.Clock runtime functions.
+// Purpose: Validate Zanna.Time.Clock runtime functions.
 // Key invariants: Ticks are monotonic, sleep actually sleeps, TicksUs has
 //                 higher resolution than Ticks.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "tests/common/PlatformSkip.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <cassert>
 #include <cstdint>
@@ -222,7 +222,7 @@ int main() {
 
 #ifdef _WIN32
     // Skip on Windows: timing tests have platform-specific quirks that need investigation
-    VIPER_PLATFORM_SKIP("Clock tests need Windows-specific calibration");
+    ZANNA_PLATFORM_SKIP("Clock tests need Windows-specific calibration");
 #endif
     printf("=== RT Clock Tests ===\n\n");
 

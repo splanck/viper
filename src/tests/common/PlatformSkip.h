@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,10 +21,10 @@
 
 #include <stdio.h>
 
-#define VIPER_TEST_SKIP_CODE 77
+#define ZANNA_TEST_SKIP_CODE 77
 
-#define VIPER_PLATFORM_SKIP(reason)                                                                \
+#define ZANNA_PLATFORM_SKIP(reason)                                                                \
     do {                                                                                           \
         fprintf(stdout, "SKIP: %s\n", (reason));                                                   \
-        return VIPER_TEST_SKIP_CODE;                                                               \
+        return ZANNA_TEST_SKIP_CODE;                                                               \
     } while (0)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 /// @brief Compare two RGBA colours for equality.
 /// @details Performs a field-by-field comparison of the four colour channels.
 ///          The helper enables direct equality checks in algorithms without
@@ -182,4 +182,4 @@ void ScreenBuffer::computeDiff(std::vector<DiffSpan> &outSpans) const {
     }
 }
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

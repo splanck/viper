@@ -13,7 +13,7 @@ focused tests on 2026-06-27
 
 ## Context
 
-The ViperIDE syntax-rendering work makes code rendering richer for all three
+The ZannaIDE syntax-rendering work makes code rendering richer for all three
 languages. That work touches the GUI runtime C surface:
 
 - The CodeEditor syntax highlighter exposed only six overridable token types
@@ -21,9 +21,9 @@ languages. That work touches the GUI runtime C surface:
   `rt_codeeditor_set_token_color`), with `FUNCTION` hardcoded and operators /
   brackets falling through to the default color
   (`src/runtime/graphics/gui/rt_gui_codeeditor_syntax.c`).
-- `Viper.GUI.CodeEditor.SetLanguage` recognized only `"zia"` and `"basic"`, so
-  Viper (IL) source rendered as plain text.
-- The editor had no indent-guide toggle, and `Viper.GUI.TabBar` had no
+- `Zanna.GUI.CodeEditor.SetLanguage` recognized only `"zia"` and `"basic"`, so
+  Zanna (IL) source rendered as plain text.
+- The editor had no indent-guide toggle, and `Zanna.GUI.TabBar` had no
   point→index hit-test.
 
 Public GUI APIs are registered through `src/il/runtime/runtime.def` and
@@ -46,11 +46,11 @@ Specifically the following are permitted under this note:
   `SetTokenColor(0..5, …)` calls are unaffected; `FUNCTION` and the new types
   become overridable. This enum is the single classification contract shared by
   the lexical tokenizers and ADR 0008 semantic-token overlay.
-- A `rt_viper_syntax_cb` tokenizer for Viper/IL and `"viper"`/`"il"` mappings in
+- A `rt_zanna_syntax_cb` tokenizer for Zanna/IL and `"zanna"`/`"il"` mappings in
   `rt_codeeditor_set_language` (no new `runtime.def` entry — `SetLanguage`
   already exists).
 - New editor display methods (`SetShowIndentGuides`,
-  `GetShowIndentGuides`) and a `Viper.GUI.TabBar.GetTabIndexAt(x, y)` hit-test,
+  `GetShowIndentGuides`) and a `Zanna.GUI.TabBar.GetTabIndexAt(x, y)` hit-test,
   added as `RT_FUNC`/`RT_METHOD` pairs for GUI implementation functions. The
   internal `render_whitespace` field remains reserved and is not a public runtime
   API.
@@ -63,7 +63,7 @@ These additions:
   rules, VM call/heap/exception behavior, numeric semantics, or native codegen
   lowering;
 - are covered by runtime completeness, ABI/surface, and focused IDE probe tests
-  (`viperide/src/probes/syntax_render_probe.zia`).
+  (`zannaide/src/probes/syntax_render_probe.zia`).
 
 Compiler intelligence still reaches the runtime only through the existing
 strong/weak `rt_zia_*` bridge — the GUI runtime never links the compiler.
@@ -75,7 +75,7 @@ Verified on 2026-06-27:
 - `src/lib/gui/include/vg_ide_widgets_editor.h` defines
   `vg_syntax_token_type` with 13 token slots and `token_colors[VG_SYN_TOKEN_COUNT]`.
 - `src/runtime/graphics/gui/rt_gui_codeeditor_syntax.c` implements
-  `rt_viper_syntax_cb`, maps `"viper"`/`"il"` in
+  `rt_zanna_syntax_cb`, maps `"zanna"`/`"il"` in
   `rt_codeeditor_set_language`, and bounds token-color overrides by
   `VG_SYN_TOKEN_COUNT`.
 - `src/runtime/graphics/gui/rt_gui_codeeditor.c` implements
@@ -84,14 +84,14 @@ Verified on 2026-06-27:
   implements `rt_tabbar_get_tab_index_at`.
 - `src/il/runtime/runtime.def` registers `SetShowIndentGuides`,
   `GetShowIndentGuides`, and `TabBar.GetTabIndexAt`.
-- The current built CLI (`build/src/tools/viper/viper --dump-runtime-api`)
+- The current built CLI (`build/src/tools/zanna/zanna --dump-runtime-api`)
   exposes those three methods and does not expose `SetRenderWhitespace`.
 - Focused checks pass: `test_rt_gui_runtime`, `test_rt_gui_ide`,
-  `zia_rt_api_test_viperide_primitives`, and `zia_viperide_syntax_render`.
+  `zia_rt_api_test_zannaide_primitives`, and `zia_zannaide_syntax_render`.
 
 ## Consequences
 
-The richer token palette, the Viper/IL highlighter, indent guides, and the
+The richer token palette, the Zanna/IL highlighter, indent guides, and the
 TabBar hit-test are visible to interpreted and native execution through the same
 runtime registry, while IL and VM semantics remain unchanged. Changes that alter
 IL, VM, or native codegen semantics still require their own ADR.

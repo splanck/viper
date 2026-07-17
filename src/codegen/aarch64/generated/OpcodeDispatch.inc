@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,16 +25,16 @@ using K = MOpcode;
 auto reg = [](const MOperand &op)
 {
     if (op.kind != MOperand::Kind::Reg)
-        VIPER_ICE("expected register operand in AArch64 generated emitter");
+        ZANNA_ICE("expected register operand in AArch64 generated emitter");
     if (!op.reg.isPhys)
-        VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
+        ZANNA_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
                   " reached AArch64 generated emitter (register allocation bug)");
     return static_cast<PhysReg>(op.reg.idOrPhys);
 };
 auto imm = [](const MOperand &op)
 {
     if (op.kind != MOperand::Kind::Imm)
-        VIPER_ICE("expected immediate operand in AArch64 generated emitter");
+        ZANNA_ICE("expected immediate operand in AArch64 generated emitter");
     return op.imm;
 };
 

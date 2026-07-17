@@ -25,16 +25,16 @@
 // =============================================================================
 // CRACKMAN - Ghost Entity
 // =============================================================================
-// Uses new Viper runtime features:
+// Uses new Zanna runtime features:
 // - Timer for frightened mode countdown and flash animation
 // - Cleaner AI targeting logic
 // =============================================================================
 
 module ghost;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Math.Random;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Math.Random;
 
 bind "./config";
 bind "./utils";

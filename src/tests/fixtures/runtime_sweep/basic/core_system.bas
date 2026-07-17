@@ -1,87 +1,87 @@
 ' EXPECT_OUT: RESULT: ok
 ' EXPECT_ARGS: alpha beta
-' COVER: Viper.System.Environment.GetArgumentCount
-' COVER: Viper.System.Environment.GetArgument
-' COVER: Viper.System.Environment.GetCommandLine
-' COVER: Viper.System.Environment.GetVariable
-' COVER: Viper.System.Environment.HasVariable
-' COVER: Viper.System.Environment.SetVariable
-' COVER: Viper.System.Environment.IsNative
-' COVER: Viper.System.Exec.Capture
-' COVER: Viper.System.Exec.CaptureArgs
-' COVER: Viper.System.Exec.Run
-' COVER: Viper.System.Exec.RunArgs
-' COVER: Viper.System.Exec.Shell
-' COVER: Viper.System.Exec.ShellCapture
-' COVER: Viper.System.Machine.Cores
-' COVER: Viper.System.Machine.Endian
-' COVER: Viper.System.Machine.Home
-' COVER: Viper.System.Machine.Host
-' COVER: Viper.System.Machine.MemoryFree
-' COVER: Viper.System.Machine.MemoryTotal
-' COVER: Viper.System.Machine.Os
-' COVER: Viper.System.Machine.OsVersion
-' COVER: Viper.System.Machine.TempDir
-' COVER: Viper.System.Machine.User
-' COVER: Viper.Diagnostics.Log.LevelDebug
-' COVER: Viper.Diagnostics.Log.LevelInfo
-' COVER: Viper.Diagnostics.Log.LevelWarn
-' COVER: Viper.Diagnostics.Log.LevelError
-' COVER: Viper.Diagnostics.Log.LevelOff
-' COVER: Viper.Diagnostics.Log.Level
-' COVER: Viper.Diagnostics.Log.Debug
-' COVER: Viper.Diagnostics.Log.Info
-' COVER: Viper.Diagnostics.Log.Warn
-' COVER: Viper.Diagnostics.Log.Error
-' COVER: Viper.Diagnostics.Log.Enabled
+' COVER: Zanna.System.Environment.GetArgumentCount
+' COVER: Zanna.System.Environment.GetArgument
+' COVER: Zanna.System.Environment.GetCommandLine
+' COVER: Zanna.System.Environment.GetVariable
+' COVER: Zanna.System.Environment.HasVariable
+' COVER: Zanna.System.Environment.SetVariable
+' COVER: Zanna.System.Environment.IsNative
+' COVER: Zanna.System.Exec.Capture
+' COVER: Zanna.System.Exec.CaptureArgs
+' COVER: Zanna.System.Exec.Run
+' COVER: Zanna.System.Exec.RunArgs
+' COVER: Zanna.System.Exec.Shell
+' COVER: Zanna.System.Exec.ShellCapture
+' COVER: Zanna.System.Machine.Cores
+' COVER: Zanna.System.Machine.Endian
+' COVER: Zanna.System.Machine.Home
+' COVER: Zanna.System.Machine.Host
+' COVER: Zanna.System.Machine.MemoryFree
+' COVER: Zanna.System.Machine.MemoryTotal
+' COVER: Zanna.System.Machine.Os
+' COVER: Zanna.System.Machine.OsVersion
+' COVER: Zanna.System.Machine.TempDir
+' COVER: Zanna.System.Machine.User
+' COVER: Zanna.Diagnostics.Log.LevelDebug
+' COVER: Zanna.Diagnostics.Log.LevelInfo
+' COVER: Zanna.Diagnostics.Log.LevelWarn
+' COVER: Zanna.Diagnostics.Log.LevelError
+' COVER: Zanna.Diagnostics.Log.LevelOff
+' COVER: Zanna.Diagnostics.Log.Level
+' COVER: Zanna.Diagnostics.Log.Debug
+' COVER: Zanna.Diagnostics.Log.Info
+' COVER: Zanna.Diagnostics.Log.Warn
+' COVER: Zanna.Diagnostics.Log.Error
+' COVER: Zanna.Diagnostics.Log.Enabled
 
 DIM argc AS INTEGER
-argc = Viper.System.Environment.GetArgumentCount()
-Viper.Core.Diagnostics.Assert(argc >= 1, "env.argc")
+argc = Zanna.System.Environment.GetArgumentCount()
+Zanna.Core.Diagnostics.Assert(argc >= 1, "env.argc")
 IF argc >= 3 THEN
-    Viper.Core.Diagnostics.AssertEqStr(Viper.System.Environment.GetArgument(1), "alpha", "env.arg1")
-    Viper.Core.Diagnostics.AssertEqStr(Viper.System.Environment.GetArgument(2), "beta", "env.arg2")
+    Zanna.Core.Diagnostics.AssertEqStr(Zanna.System.Environment.GetArgument(1), "alpha", "env.arg1")
+    Zanna.Core.Diagnostics.AssertEqStr(Zanna.System.Environment.GetArgument(2), "beta", "env.arg2")
 END IF
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Environment.GetCommandLine()) > 0, "env.cmd")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Environment.GetCommandLine()) > 0, "env.cmd")
 
 DIM name AS STRING
-name = "VIPER_SWEEP_ENV"
-Viper.System.Environment.SetVariable(name, "ok")
-Viper.Core.Diagnostics.Assert(Viper.System.Environment.HasVariable(name), "env.has")
-Viper.Core.Diagnostics.AssertEqStr(Viper.System.Environment.GetVariable(name), "ok", "env.get")
-Viper.Core.Diagnostics.Assert(Viper.System.Environment.IsNative() = FALSE, "env.native")
+name = "ZANNA_SWEEP_ENV"
+Zanna.System.Environment.SetVariable(name, "ok")
+Zanna.Core.Diagnostics.Assert(Zanna.System.Environment.HasVariable(name), "env.has")
+Zanna.Core.Diagnostics.AssertEqStr(Zanna.System.Environment.GetVariable(name), "ok", "env.get")
+Zanna.Core.Diagnostics.Assert(Zanna.System.Environment.IsNative() = FALSE, "env.native")
 
-DIM args AS Viper.Collections.Seq
-args = Viper.Collections.Seq.New()
+DIM args AS Zanna.Collections.Seq
+args = Zanna.Collections.Seq.New()
 args.Push("hello")
 DIM out AS STRING
-out = Viper.System.Exec.CaptureArgs("/bin/echo", args)
-Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "hello", "exec.captureargs")
-Viper.Core.Diagnostics.AssertEq(Viper.System.Exec.Run("/bin/echo"), 0, "exec.run")
-Viper.Core.Diagnostics.AssertEq(Viper.System.Exec.RunArgs("/bin/echo", args), 0, "exec.runargs")
-Viper.Core.Diagnostics.AssertEq(Viper.System.Exec.Shell("echo shell"), 0, "exec.shell")
-out = Viper.System.Exec.ShellCapture("echo shellcap")
-Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "shellcap", "exec.shellcap")
-out = Viper.System.Exec.Capture("/bin/echo")
-Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "", "exec.capture")
+out = Zanna.System.Exec.CaptureArgs("/bin/echo", args)
+Zanna.Core.Diagnostics.Assert(Zanna.String.Trim(out) = "hello", "exec.captureargs")
+Zanna.Core.Diagnostics.AssertEq(Zanna.System.Exec.Run("/bin/echo"), 0, "exec.run")
+Zanna.Core.Diagnostics.AssertEq(Zanna.System.Exec.RunArgs("/bin/echo", args), 0, "exec.runargs")
+Zanna.Core.Diagnostics.AssertEq(Zanna.System.Exec.Shell("echo shell"), 0, "exec.shell")
+out = Zanna.System.Exec.ShellCapture("echo shellcap")
+Zanna.Core.Diagnostics.Assert(Zanna.String.Trim(out) = "shellcap", "exec.shellcap")
+out = Zanna.System.Exec.Capture("/bin/echo")
+Zanna.Core.Diagnostics.Assert(Zanna.String.Trim(out) = "", "exec.capture")
 
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Os) > 0, "machine.os")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.OsVersion) > 0, "machine.osver")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Host) > 0, "machine.host")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.User) > 0, "machine.user")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Home) > 0, "machine.home")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.TempDir) > 0, "machine.temp")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Cores > 0, "machine.cores")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemoryTotal > 0, "machine.memtotal")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemoryFree >= 0, "machine.memfree")
-Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Endian) > 0, "machine.endian")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.Os) > 0, "machine.os")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.OsVersion) > 0, "machine.osver")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.Host) > 0, "machine.host")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.User) > 0, "machine.user")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.Home) > 0, "machine.home")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.TempDir) > 0, "machine.temp")
+Zanna.Core.Diagnostics.Assert(Zanna.System.Machine.Cores > 0, "machine.cores")
+Zanna.Core.Diagnostics.Assert(Zanna.System.Machine.MemoryTotal > 0, "machine.memtotal")
+Zanna.Core.Diagnostics.Assert(Zanna.System.Machine.MemoryFree >= 0, "machine.memfree")
+Zanna.Core.Diagnostics.Assert(LEN(Zanna.System.Machine.Endian) > 0, "machine.endian")
 
-Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelInfo
-Viper.Diagnostics.Log.Debug("debug")
-Viper.Diagnostics.Log.Info("info")
-Viper.Diagnostics.Log.Warn("warn")
-Viper.Diagnostics.Log.Error("error")
-Viper.Core.Diagnostics.Assert(Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.LevelInfo), "log.enabled")
+Zanna.Diagnostics.Log.Level = Zanna.Diagnostics.Log.LevelInfo
+Zanna.Diagnostics.Log.Debug("debug")
+Zanna.Diagnostics.Log.Info("info")
+Zanna.Diagnostics.Log.Warn("warn")
+Zanna.Diagnostics.Log.Error("error")
+Zanna.Core.Diagnostics.Assert(Zanna.Diagnostics.Log.Enabled(Zanna.Diagnostics.Log.LevelInfo), "log.enabled")
 
 PRINT "RESULT: ok"
 END

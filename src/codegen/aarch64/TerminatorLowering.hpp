@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Lower control-flow terminators for all blocks in a function.
 /// @details This must be called AFTER all other instructions have been lowered,
@@ -58,4 +58,4 @@ void lowerTerminators(const il::core::Function &fn,
                       std::unordered_map<unsigned, RegClass> &tempRegClass,
                       uint16_t &nextVRegId);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

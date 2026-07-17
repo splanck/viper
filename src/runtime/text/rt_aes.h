@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_aes.h
@@ -56,7 +56,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv);
 /// @param data Bytes object containing ciphertext.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param iv Bytes object containing the 16-byte initialization vector.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_aes_decrypt_result(void *data, void *key, void *iv);
 
 /// @brief Attempt AES-CBC decryption and discard diagnostic details.
@@ -66,7 +66,7 @@ void *rt_aes_decrypt_result(void *data, void *key, void *iv);
 /// @param data Bytes object containing ciphertext.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param iv Bytes object containing the 16-byte initialization vector.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_aes_try_decrypt(void *data, void *key, void *iv);
 
 /// @brief Encrypt data using AES-128-GCM or AES-256-GCM with optional authenticated data.
@@ -85,7 +85,7 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad);
 /// @param data Framed ciphertext produced by @ref rt_aes_encrypt_auth.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+/// @return Opaque Zanna.Result containing plaintext bytes or a diagnostic string.
 void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad);
 
 /// @brief Attempt AES-GCM authenticated decryption and discard diagnostic details.
@@ -94,7 +94,7 @@ void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad);
 /// @param data Framed ciphertext produced by @ref rt_aes_encrypt_auth.
 /// @param key Bytes object containing a 16-byte or 32-byte AES key.
 /// @param aad Additional authenticated data; may be NULL.
-/// @return Opaque Viper.Option containing plaintext bytes, or None.
+/// @return Opaque Zanna.Option containing plaintext bytes, or None.
 void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad);
 
 /// @brief Encrypt string using PBKDF2-derived AES-128-GCM.
@@ -120,7 +120,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password);
 ///          format, password, or runtime-trap failures.
 /// @param data Bytes object containing encrypted string payload.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Result containing a plaintext string or diagnostic string.
+/// @return Opaque Zanna.Result containing a plaintext string or diagnostic string.
 void *rt_aes_decrypt_str_result(void *data, rt_string password);
 
 /// @brief Attempt AES encrypted string decryption and discard diagnostic details.
@@ -128,7 +128,7 @@ void *rt_aes_decrypt_str_result(void *data, rt_string password);
 ///          fails or the legacy decryptor traps.
 /// @param data Bytes object containing encrypted string payload.
 /// @param password Password string used for key derivation.
-/// @return Opaque Viper.Option containing plaintext string, or None.
+/// @return Opaque Zanna.Option containing plaintext string, or None.
 void *rt_aes_try_decrypt_str(void *data, rt_string password);
 
 #ifdef __cplusplus

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 
 #include "MachineIR.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Statistics from peephole optimization pass.
 struct PeepholeStats {
@@ -82,4 +82,4 @@ struct PeepholeStats {
 ///        entries that no longer appear as operands in the MIR.
 void pruneUnusedCalleeSaved(MFunction &fn);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

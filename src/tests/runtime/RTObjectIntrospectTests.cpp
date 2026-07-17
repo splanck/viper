@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -66,7 +66,7 @@ int main() {
     size_t ref_before = hdr->refcnt;
 
     rt_string type_name = rt_obj_type_name(s);
-    assert(strcmp(rt_string_cstr(type_name), "Viper.String") == 0);
+    assert(strcmp(rt_string_cstr(type_name), "Zanna.String") == 0);
     rt_string_unref(type_name);
     assert(rt_obj_type_id(s) == RT_STRING_CLASS_ID);
 
@@ -86,7 +86,7 @@ int main() {
     void *box_b = rt_box_i64(42);
     assert(rt_obj_type_id(box_a) == RT_BOX_CLASS_ID);
     rt_string box_name = rt_obj_type_name(box_a);
-    assert(strcmp(rt_string_cstr(box_name), "Viper.Core.Box") == 0);
+    assert(strcmp(rt_string_cstr(box_name), "Zanna.Core.Box") == 0);
     rt_string_unref(box_name);
     assert(rt_obj_equals(box_a, box_b) == 1);
     assert(rt_obj_get_hash_code(box_a) == rt_obj_get_hash_code(box_b));
@@ -128,40 +128,40 @@ int main() {
     void *opt = rt_option_some_i64(7);
     assert(rt_obj_type_id(opt) == RT_OPTION_CLASS_ID);
     rt_string opt_name = rt_obj_type_name(opt);
-    assert(strcmp(rt_string_cstr(opt_name), "Viper.Option") == 0);
+    assert(strcmp(rt_string_cstr(opt_name), "Zanna.Option") == 0);
     rt_string_unref(opt_name);
     rt_string opt_string = rt_obj_to_string(opt);
-    assert(strcmp(rt_string_cstr(opt_string), "Viper.Option") == 0);
+    assert(strcmp(rt_string_cstr(opt_string), "Zanna.Option") == 0);
     rt_string_unref(opt_string);
 
     void *value_type = rt_box_value_type(8);
     assert(rt_obj_type_id(value_type) == RT_VALUE_TYPE_CLASS_ID);
     rt_string value_name = rt_obj_type_name(value_type);
-    assert(strcmp(rt_string_cstr(value_name), "Viper.Core.ValueType") == 0);
+    assert(strcmp(rt_string_cstr(value_name), "Zanna.Core.ValueType") == 0);
     rt_string_unref(value_name);
     rt_string value_string = rt_obj_to_string(value_type);
-    assert(strcmp(rt_string_cstr(value_string), "Viper.Core.ValueType") == 0);
+    assert(strcmp(rt_string_cstr(value_string), "Zanna.Core.ValueType") == 0);
     rt_string_unref(value_string);
 
     rt_weakref *weak_ref = rt_weakref_new(value_type);
     assert(rt_obj_type_id(weak_ref) == RT_WEAKREF_CLASS_ID);
     rt_string weak_name = rt_obj_type_name(weak_ref);
-    assert(strcmp(rt_string_cstr(weak_name), "Viper.Memory.WeakRef") == 0);
+    assert(strcmp(rt_string_cstr(weak_name), "Zanna.Memory.WeakRef") == 0);
     rt_string_unref(weak_name);
 
     void *bus = rt_msgbus_new();
     assert(rt_obj_type_id(bus) == RT_MSGBUS_CLASS_ID);
     rt_string bus_name = rt_obj_type_name(bus);
-    assert(strcmp(rt_string_cstr(bus_name), "Viper.Core.MessageBus") == 0);
+    assert(strcmp(rt_string_cstr(bus_name), "Zanna.Core.MessageBus") == 0);
     rt_string_unref(bus_name);
     rt_string bus_string = rt_obj_to_string(bus);
-    assert(strcmp(rt_string_cstr(bus_string), "Viper.Core.MessageBus") == 0);
+    assert(strcmp(rt_string_cstr(bus_string), "Zanna.Core.MessageBus") == 0);
     rt_string_unref(bus_string);
 
     void *callback = rt_msgbus_callback_new(msgbus_test_callback);
     assert(rt_obj_type_id(callback) == RT_MSGBUS_CALLBACK_CLASS_ID);
     rt_string callback_name = rt_obj_type_name(callback);
-    assert(strcmp(rt_string_cstr(callback_name), "Viper.Core.MessageBus.Callback") == 0);
+    assert(strcmp(rt_string_cstr(callback_name), "Zanna.Core.MessageBus.Callback") == 0);
     rt_string_unref(callback_name);
 
     rt_obj_release_check0(obj);

@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Graphics.Pixels (headless operations)
+// API Audit: Zanna.Graphics.Pixels (headless operations)
 // =============================================================================
 // Tests: New, Get, Set, Width, Height, Fill, Clone, Clear, FlipH, FlipV,
 //        RotateCW, RotateCCW, Rotate180, Scale, Invert, Grayscale, Tint,
@@ -7,13 +7,13 @@
 // =============================================================================
 
 module PixelsDemo;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics.Color as Color;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics.Color as Color;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Graphics.Pixels ===");
+    Say("=== API Audit: Zanna.Graphics.Pixels ===");
 
     // --- New ---
     Say("--- New ---");

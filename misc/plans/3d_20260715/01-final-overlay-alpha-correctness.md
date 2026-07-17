@@ -22,7 +22,7 @@ not build transition behavior on a known-broken primitive.
 Confirmed repro:
 
 ```sh
-build/src/tools/viper/viper run examples/games/3dbowling/known_viper_issues/overlay_alpha_repro.zia
+build/src/tools/zanna/zanna run examples/games/3dbowling/known_zanna_issues/overlay_alpha_repro.zia
 ```
 
 Baseline input/background: `192,128,64`; overlay: black at `0.5`; observed

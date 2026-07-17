@@ -2,7 +2,7 @@
 // audio/mix.zia — procedural combat audio + adaptive music + spatial mix
 // =============================================================================
 //
-// Ashfall ships without external audio dependencies.  The public Viper.Audio
+// Ashfall ships without external audio dependencies.  The public Zanna.Audio
 // synthesizer builds a retained bank of distinct weapon, impact, movement and
 // UI cues, while World3D.Sound3D positions gameplay sounds, follows the camera,
 // attenuates by distance, applies geometry occlusion and feeds a mild reverb
@@ -11,10 +11,10 @@
 // =============================================================================
 module mix;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Audio;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Audio;
 bind "../config" as config;
 bind "../core/events" as events;
 bind "../core/mathutil" as M;

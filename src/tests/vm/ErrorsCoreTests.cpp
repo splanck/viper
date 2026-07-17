@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@ using namespace il::core;
 
 namespace {
 std::string captureTrap(il::vm::TrapKind kind, int line) {
-    viper::tests::TestIRBuilder il;
+    zanna::tests::TestIRBuilder il;
     const il::support::SourceLoc trapLoc = il.loc(static_cast<uint32_t>(line));
 
     switch (kind) {
@@ -69,7 +69,7 @@ std::string captureTrap(il::vm::TrapKind kind, int line) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     struct Sample {

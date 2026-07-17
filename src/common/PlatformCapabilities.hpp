@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,4 +20,4 @@
 
 #pragma once
 
-#include "viper/platform/Capabilities.hpp"
+#include "zanna/platform/Capabilities.hpp"

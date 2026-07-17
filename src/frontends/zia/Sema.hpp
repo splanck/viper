@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -261,7 +261,7 @@ class Sema {
 
     /// @brief Get the runtime function name for a call expression.
     /// @param expr The call expression to look up.
-    /// @return The dotted name (e.g., "Viper.Terminal.Say") or empty string.
+    /// @return The dotted name (e.g., "Zanna.Terminal.Say") or empty string.
     ///
     /// @details After analysis, call expressions that invoke runtime library
     /// functions have their resolved names stored. This is used during
@@ -318,7 +318,7 @@ class Sema {
 
     /// @brief Get the resolved getter function name for a field expression.
     /// @param expr The field expression to look up.
-    /// @return The getter name (e.g., "Viper.Math.get_Pi" or "Counter.get_count") or empty
+    /// @return The getter name (e.g., "Zanna.Math.get_Pi" or "Counter.get_count") or empty
     /// string.
     ///
     /// @details For field expressions that resolve to runtime or user-defined property
@@ -470,7 +470,7 @@ class Sema {
     }
 
     /// @brief Look up the return type of a function by name.
-    /// @param name The function name (e.g., "Viper.Random.NextInt" or "MyLib.helper").
+    /// @param name The function name (e.g., "Zanna.Random.NextInt" or "MyLib.helper").
     /// @return The return type, or nullptr if not found.
     ///
     /// @details Works for both runtime (extern) functions and user-defined functions.
@@ -483,11 +483,11 @@ class Sema {
         }
         if (type->kind != TypeKindSem::Ptr || type->name.empty())
             return type;
-        if (type->name == "Viper.Collections.List")
+        if (type->name == "Zanna.Collections.List")
             return types::list(types::unknown());
-        if (type->name == "Viper.Collections.Map")
+        if (type->name == "Zanna.Collections.Map")
             return types::map(types::string(), types::unknown());
-        if (type->name == "Viper.Collections.Set")
+        if (type->name == "Zanna.Collections.Set")
             return types::set(types::unknown());
         return type;
     }
@@ -506,7 +506,7 @@ class Sema {
     }
 
     /// @brief Find an extern (runtime) function by name.
-    /// @param name The function name (e.g., "Viper.GUI.App.get_ShouldClose").
+    /// @param name The function name (e.g., "Zanna.GUI.App.get_ShouldClose").
     /// @return The symbol if found and is extern, nullptr otherwise.
     ///
     /// @details Used by the lowerer to resolve runtime property getters.
@@ -648,13 +648,13 @@ class Sema {
     /// @param decl The bind declaration.
     ///
     /// @details Brings runtime functions into scope based on the bind path.
-    /// For example, `bind Viper.Terminal as Term;` makes Term.Say, Term.Ask, etc. available.
+    /// For example, `bind Zanna.Terminal as Term;` makes Term.Say, Term.Ask, etc. available.
     void analyzeBind(BindDecl &decl);
 
     /// @brief Analyze a namespace bind declaration.
     /// @param decl The bind declaration (must have isNamespaceBind=true).
     ///
-    /// @details Processes namespace binds like `bind Viper.Terminal;`:
+    /// @details Processes namespace binds like `bind Zanna.Terminal;`:
     /// - Full import: imports all symbols from the namespace
     /// - Alias import: creates module symbol for qualified access
     /// - Selective import: imports only specified symbols
@@ -751,17 +751,17 @@ class Sema {
                                    bool viaQualifiedModule = false);
 
     /// @brief Check if a namespace path refers to a valid runtime namespace.
-    /// @param ns The namespace path (e.g., "Viper.Terminal").
+    /// @param ns The namespace path (e.g., "Zanna.Terminal").
     /// @param loc Source location of the bind used for conflict diagnostics.
     /// @return True if the namespace exists in the runtime registry.
     bool isValidRuntimeNamespace(const std::string &ns);
 
     /// @brief Import all symbols from a runtime namespace into scope.
-    /// @param ns The namespace path (e.g., "Viper.Terminal").
+    /// @param ns The namespace path (e.g., "Zanna.Terminal").
     ///
     /// @details Walks through all registered extern symbols and imports
     /// those that match the namespace prefix. Nested namespaces are not
-    /// imported (e.g., binding Viper.Graphics doesn't import Viper.Graphics.Color.Red).
+    /// imported (e.g., binding Zanna.Graphics doesn't import Zanna.Graphics.Color.Red).
     void importNamespaceSymbols(const std::string &ns, SourceLoc loc = {});
 
     /// @brief Analyze a global variable declaration.
@@ -963,12 +963,12 @@ class Sema {
     StructDecl *lookupStructDeclForType(const std::string &typeName) const;
 
     /// @brief Initialize all runtime function type mappings.
-    /// @details Registers all Viper.* namespace functions as extern symbols
+    /// @details Registers all Zanna.* namespace functions as extern symbols
     /// in the global scope. Called once during Sema construction.
     void initRuntimeFunctions();
 
     /// @brief Register an external (runtime) function.
-    /// @param name The fully qualified function name (e.g., "Viper.Terminal.Say").
+    /// @param name The fully qualified function name (e.g., "Zanna.Terminal.Say").
     /// @param returnType The function's return type.
     /// @param paramTypes Optional vector of parameter types.
     ///
@@ -1192,7 +1192,7 @@ class Sema {
     ///          receiver's element / key / value type when known, so callers
     ///          see typed results instead of opaque pointers.
     /// @param expr        The call expression (used to look up arg/receiver types).
-    /// @param calleeName  Canonical runtime name (`Viper.Collections.Seq.Get`).
+    /// @param calleeName  Canonical runtime name (`Zanna.Collections.Seq.Get`).
     /// @param fallback    Return type to use when no specialisation applies.
     TypeRef refineRuntimeCallReturnType(const CallExpr *expr,
                                         const std::string &calleeName,
@@ -1218,7 +1218,7 @@ class Sema {
     TypeRef resolveStaticField(FieldExpr *expr, const std::string &ownerName);
 
     /// @brief Resolve a field access whose base is a Module type
-    ///        (e.g., `colors.initColors`, `Canvas.New`, `Viper.Graphics.X`).
+    ///        (e.g., `colors.initColors`, `Canvas.New`, `Zanna.Graphics.X`).
     /// @return The resolved member type, or `unknown` on error/not-found.
     TypeRef resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType);
 
@@ -1226,7 +1226,7 @@ class Sema {
     /// @return The resolved member type, or `unknown` on error/not-found.
     TypeRef resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType);
 
-    /// @brief Resolve a paren-less member access on a runtime class (a `Viper.`-
+    /// @brief Resolve a paren-less member access on a runtime class (a `Zanna.`-
     ///        prefixed Ptr base): an RT_PROP getter, a method accessed without
     ///        call parentheses (diagnosed with a fix-it), or a genuine unknown
     ///        member (diagnosed like every other field-access branch). Mirrors
@@ -1630,7 +1630,7 @@ class Sema {
     std::vector<Symbol> getMembersOf(const TypeRef &type) const;
 
     /// @brief Get all methods and properties of a runtime class.
-    /// @param className Fully-qualified runtime class name (e.g. "Viper.GUI.App").
+    /// @param className Fully-qualified runtime class name (e.g. "Zanna.GUI.App").
     /// @return Symbols for each RT_METHOD (Kind::Method) and RT_PROP (Kind::Field).
     ///         Returns an empty vector if the class is not found in the registry.
     std::vector<Symbol> getRuntimeMembers(const std::string &className) const;
@@ -1654,8 +1654,8 @@ class Sema {
     std::vector<std::string> getBoundFileModuleNames() const;
 
     /// @brief Resolve a bound alias to its full namespace path.
-    /// @param alias Short alias name (e.g., "Math" from `bind Viper.Math as Math;`).
-    /// @return Full namespace string (e.g., "Viper.Math"), or empty if not found.
+    /// @param alias Short alias name (e.g., "Math" from `bind Zanna.Math as Math;`).
+    /// @return Full namespace string (e.g., "Zanna.Math"), or empty if not found.
     std::string resolveModuleAlias(const std::string &alias) const;
 
     /// @brief Enumerate runtime class names that are direct children of a namespace.
@@ -1663,8 +1663,8 @@ class Sema {
     ///          name starts with `nsPrefix + "."` and returns the immediate child
     ///          identifier (the segment between the namespace and the next dot, or
     ///          the full suffix when there is no further nesting).
-    ///          Example: nsPrefix="Viper.GUI" → ["Canvas","App","ListBox",...]
-    /// @param nsPrefix Full dotted namespace prefix (e.g. "Viper.GUI").
+    ///          Example: nsPrefix="Zanna.GUI" → ["Canvas","App","ListBox",...]
+    /// @param nsPrefix Full dotted namespace prefix (e.g. "Zanna.GUI").
     /// @return De-duplicated list of direct child class names.
     std::vector<std::string> getNamespaceClasses(const std::string &nsPrefix) const;
 
@@ -1968,7 +1968,7 @@ class Sema {
 
     /// @brief Map from identifier expressions to zero-arg getter function names.
     /// @details Populated for property-like identifiers imported via bind
-    /// (e.g., Pi → Viper.Math.get_Pi). Lowerer emits a call instead of a load.
+    /// (e.g., Pi → Zanna.Math.get_Pi). Lowerer emits a call instead of a load.
     std::unordered_map<const Expr *, std::string> autoEvalGetters_;
 
     /// @brief Map from identifier expressions to resolved semantic top-level names.
@@ -2030,7 +2030,7 @@ class Sema {
     /// @brief Set of bind paths seen in the current module (file binds).
     std::unordered_set<std::string> binds_;
 
-    /// @brief Bound runtime namespaces (e.g., "Viper.Terminal").
+    /// @brief Bound runtime namespaces (e.g., "Zanna.Terminal").
     /// @details Maps namespace prefix to optional alias. Empty alias means
     /// full namespace import (all symbols imported without prefix).
     std::unordered_map<std::string, std::string> boundNamespaces_;
@@ -2041,7 +2041,7 @@ class Sema {
 
     /// @brief Symbols imported from bound namespaces.
     /// @details Maps short name (e.g., "Say") to full qualified name
-    /// (e.g., "Viper.Terminal.Say"). Used for unqualified function calls
+    /// (e.g., "Zanna.Terminal.Say"). Used for unqualified function calls
     /// and constructor resolution.
     std::unordered_map<std::string, std::string> importedSymbols_;
 

@@ -4,25 +4,25 @@ audience: contributors
 last-verified: 2026-06-30
 ---
 
-# ADR 0021: HiDPI Logical-Unit Helpers (Viper.GUI.App)
+# ADR 0021: HiDPI Logical-Unit Helpers (Zanna.GUI.App)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE's overlays are the intended first
+Accepted (runtime implemented; ZannaIDE's overlays are the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R4**
-(`misc/plans/viperide/gui-runtime-additions.md`).
+(`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
-On a HiDPI display `Viper.GUI.App.GetWidth()`/`GetHeight()` report **physical**
+On a HiDPI display `Zanna.GUI.App.GetWidth()`/`GetHeight()` report **physical**
 pixels (e.g. 2560 on a 1280-point 2× window), but floating panels and overlays are
 positioned and sized in **logical** (point) units. The runtime exposes the scale
 factor (`GetScale()`) but no conversion, so every consumer divides by hand.
 
-In ViperIDE this `physicalToLogical` helper is **duplicated across three files** —
+In ZannaIDE this `physicalToLogical` helper is **duplicated across three files** —
 `ui/ide_overlays.zia:717-728`, `ui/debug_breakpoint_overlay.zia:223-224`,
 `ui/explorer_actions.zia:346-347` — each re-deriving the same `value <= 0 ? value :
-scale <= 1.0 ? value : round(value / scale)` logic. Any Viper GUI app that places a
+scale <= 1.0 ? value : round(value / scale)` logic. Any Zanna GUI app that places a
 panel relative to the window hits the same friction. This is a missing convenience
 on an existing primitive, not application logic.
 
@@ -30,7 +30,7 @@ Adding runtime methods is a runtime C-ABI surface change, which requires an ADR.
 
 ## Decision
 
-Add four methods to `Viper.GUI.App`:
+Add four methods to `Zanna.GUI.App`:
 
 - `GetLogicalWidth() -> i64` — window width in logical units (`GetWidth() / GetScale()`).
 - `GetLogicalHeight() -> i64` — window height in logical units.

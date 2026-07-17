@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,10 +34,10 @@ std::string forbiddenValueTypeName(TypeRef type) {
 ///        (Seq/Queue/Stack/…) that supports element-typed for-iteration.
 bool isTypedRuntimeSequence(TypeRef type) {
     return type && type->kind == TypeKindSem::Ptr && type->elementType() &&
-           (type->name == "Viper.Collections.Seq" || type->name == "Viper.Collections.Queue" ||
-            type->name == "Viper.Collections.Stack" || type->name == "Viper.Collections.Deque" ||
-            type->name == "Viper.Collections.List" || type->name == "Viper.Collections.Ring" ||
-            type->name == "Viper.Collections.Heap");
+           (type->name == "Zanna.Collections.Seq" || type->name == "Zanna.Collections.Queue" ||
+            type->name == "Zanna.Collections.Stack" || type->name == "Zanna.Collections.Deque" ||
+            type->name == "Zanna.Collections.List" || type->name == "Zanna.Collections.Ring" ||
+            type->name == "Zanna.Collections.Heap");
 }
 
 /// @brief Return true when @p typeName is a runtime trap/catch type name accepted by Zia.
@@ -645,7 +645,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
     } else if (stmt->iterable && stmt->iterable->kind == ExprKind::Range) {
         elementType = types::integer();
     } else if (iterableType->kind == TypeKindSem::Ptr &&
-               iterableType->name == "Viper.Collections.Seq" && !iterableType->typeArgs.empty()) {
+               iterableType->name == "Zanna.Collections.Seq" && !iterableType->typeArgs.empty()) {
         // Typed seq (e.g. from Str.Split, Dir.FilesSeq) — element type is typeArgs[0]
         elementType = iterableType->typeArgs[0];
     } else if (isTypedRuntimeSequence(iterableType)) {

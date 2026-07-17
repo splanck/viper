@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Graphics Library — Viper</title>
-  <meta name="description" content="Viper documentation: Graphics Library">
+  <title>Graphics Library — Zanna</title>
+  <meta name="description" content="Zanna documentation: Graphics Library">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -39,7 +39,7 @@
         <li><a href="#api-quick-reference">API Quick Reference</a></li>
         <li><a href="#testing">Testing</a></li>
         <li><a href="#examples">Examples</a></li>
-        <li><a href="#integration-with-viper">Integration with Viper</a></li>
+        <li><a href="#integration-with-zanna">Integration with Zanna</a></li>
         <li><a href="#architecture">Architecture</a></li>
         <li><a href="#documentation">Documentation</a></li>
         <li><a href="#build-configuration">Build Configuration</a></li>
@@ -52,13 +52,13 @@
   </aside>
   <main class="page-main prose">
     <h1>Graphics Library</h1>
-<h1 id="vipergfx-graphics-library">ViperGFX Graphics Library</h1>
+<h1 id="zannagfx-graphics-library">ZannaGFX Graphics Library</h1>
 <p><strong>Version:</strong> 1.0.0</p>
 <p><strong>Location:</strong> <code>/src/lib/graphics</code></p>
-<p><strong>Status:</strong> ✅ Integrated into Viper build system</p>
+<p><strong>Status:</strong> ✅ Integrated into Zanna build system</p>
 <p>---</p>
 <h2 id="overview">Overview</h2>
-<p>ViperGFX is a cross-platform software 2D graphics library integrated into the Viper project. It provides window</p>
+<p>ZannaGFX is a cross-platform software 2D graphics library integrated into the Zanna project. It provides window</p>
 <p>management, pixel operations, drawing primitives, and input handling through a simple C API.</p>
 <h3 id="key-features">Key Features</h3>
 <ul>
@@ -107,10 +107,10 @@
 <p>---</p>
 <h2 id="quick-start">Quick Start</h2>
 <h3 id="building">Building</h3>
-<p>ViperGFX builds as part of the main Viper build:</p>
+<p>ZannaGFX builds as part of the main Zanna build:</p>
 <pre><code data-lang="bash">
-./scripts/build_viper_unix.sh   # macOS &amp; Linux
-scripts\build_viper.cmd         # Windows
+./scripts/build_zanna_unix.sh   # macOS &amp; Linux
+scripts\build_zanna.cmd         # Windows
 </code></pre>
 <p>Or build the graphics library standalone:</p>
 <pre><code data-lang="bash">
@@ -259,7 +259,7 @@ typedef enum {
 <p>---</p>
 <h2 id="testing">Testing</h2>
 <h3 id="unit-tests">Unit Tests</h3>
-<p>ViperGFX includes comprehensive unit tests using the mock backend:</p>
+<p>ZannaGFX includes comprehensive unit tests using the mock backend:</p>
 <pre><code data-lang="bash">
 # Build tests
 cmake --build build --target test_window test_pixels test_drawing test_input
@@ -289,11 +289,11 @@ cmake --build build --target basic_draw quick_test
 ./build/examples/basic_draw
 </code></pre>
 <p>---</p>
-<h2 id="integration-with-viper">Integration with Viper</h2>
+<h2 id="integration-with-zanna">Integration with Zanna</h2>
 <h3 id="using-from-cmake">Using from CMake</h3>
 <pre><code data-lang="cmake">
-# Link against ViperGFX
-target_link_libraries(your_target PRIVATE vipergfx)
+# Link against ZannaGFX
+target_link_libraries(your_target PRIVATE zannagfx)
 
 # Include headers
 target_include_directories(your_target PRIVATE
@@ -301,7 +301,7 @@ target_include_directories(your_target PRIVATE
 )
 </code></pre>
 <h3 id="future-basic-integration">Future: BASIC Integration</h3>
-<p>Graphics support will be added to Viper BASIC with statements like:</p>
+<p>Graphics support will be added to Zanna BASIC with statements like:</p>
 <pre><code data-lang="basic">
 &#x27; Planned BASIC graphics support (not yet implemented)
 SCREEN 13                      &#x27; Initialize graphics mode
@@ -309,7 +309,7 @@ PSET (100, 100), 15            &#x27; Set pixel at (100, 100) to color 15
 LINE (0, 0)-(319, 199), 12     &#x27; Draw line from (0,0) to (319,199)
 CIRCLE (160, 100), 50, 14      &#x27; Draw circle at center with radius 50
 </code></pre>
-<p>This will lower to calls to the ViperGFX runtime functions.</p>
+<p>This will lower to calls to the ZannaGFX runtime functions.</p>
 <p>---</p>
 <h2 id="architecture">Architecture</h2>
 <h3 id="component-structure">Component Structure</h3>
@@ -371,12 +371,12 @@ int64_t vgfx_platform_now_ms(void);
 <h3 id="cmake-options">CMake Options</h3>
 <pre><code data-lang="cmake">
 # Standalone build options
-option(VGFX_BUILD_TESTS &quot;Build ViperGFX tests&quot; ON)
-option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
+option(VGFX_BUILD_TESTS &quot;Build ZannaGFX tests&quot; ON)
+option(VGFX_BUILD_EXAMPLES &quot;Build ZannaGFX examples&quot; ON)
 </code></pre>
-<p>When building as part of Viper:</p>
+<p>When building as part of Zanna:</p>
 <ul>
-<li>Tests are controlled by <code>VIPER_BUILD_TESTING</code></li>
+<li>Tests are controlled by <code>ZANNA_BUILD_TESTING</code></li>
 <li>Examples are controlled by <code>BUILD_EXAMPLES</code></li>
 </ul>
 <h3 id="platform-detection">Platform Detection</h3>
@@ -389,11 +389,11 @@ option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
 <p>---</p>
 <h2 id="future-enhancements">Future Enhancements</h2>
 <h3 id="implemented-in-runtime-layer">Implemented in Runtime Layer</h3>
-<p>The following features have been implemented in the Viper runtime layer (<code>Viper.Graphics.*</code> and <code>Viper.Graphics2D.*</code>):</p>
+<p>The following features have been implemented in the Zanna runtime layer (<code>Zanna.Graphics.*</code> and <code>Zanna.Graphics2D.*</code>):</p>
 <ul>
-<li>✅ <strong>Sprites</strong> — <code>Viper.Graphics.Sprite</code> class with animation and collision detection</li>
-<li>✅ <strong>Tilemaps</strong> — <code>Viper.Graphics2D.Tilemap</code> class for tile-based game rendering</li>
-<li>✅ <strong>Camera</strong> — <code>Viper.Graphics.Camera</code> class for 2D viewport management</li>
+<li>✅ <strong>Sprites</strong> — <code>Zanna.Graphics.Sprite</code> class with animation and collision detection</li>
+<li>✅ <strong>Tilemaps</strong> — <code>Zanna.Graphics2D.Tilemap</code> class for tile-based game rendering</li>
+<li>✅ <strong>Camera</strong> — <code>Zanna.Graphics.Camera</code> class for 2D viewport management</li>
 <li>✅ <strong>Image processing</strong> — Invert, grayscale, tint, blur, bilinear resize</li>
 <li>✅ <strong>Color utilities</strong> — HSL conversion, lerp, brighten/darken</li>
 <li>✅ <strong>Gradients</strong> — Horizontal and vertical gradient drawing</li>
@@ -408,7 +408,7 @@ option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
 <p>---</p>
 <h2 id="performance-notes">Performance Notes</h2>
 <h3 id="rendering-performance">Rendering Performance</h3>
-<p>ViperGFX uses pure software rendering with the following characteristics:</p>
+<p>ZannaGFX uses pure software rendering with the following characteristics:</p>
 <ul>
 <li><strong>Framebuffer format</strong>: 32-bit RGBA (4 bytes per pixel)</li>
 <li><strong>Drawing algorithms</strong>: Integer-only Bresenham (lines) and midpoint (circles)</li>
@@ -424,16 +424,16 @@ option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
 </ul>
 <p>---</p>
 <h2 id="license">License</h2>
-<p>ViperGFX is part of the Viper project and distributed under the GNU GPL v3.</p>
+<p>ZannaGFX is part of the Zanna project and distributed under the GNU GPL v3.</p>
 <p>See [LICENSE](../LICENSE) for details.</p>
 <p>---</p>
 <h2 id="summary">Summary</h2>
-<p>ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution for the Viper project:</p>
-<p>✅ <strong>Integrated</strong> — Builds as part of Viper</p>
+<p>ZannaGFX provides a simple, deterministic, cross-platform 2D graphics solution for the Zanna project:</p>
+<p>✅ <strong>Integrated</strong> — Builds as part of Zanna</p>
 <p>✅ <strong>Tested</strong> — 20/20 tests passing (100%)</p>
 <p>✅ <strong>Documented</strong> — Complete API reference and examples</p>
 <p>✅ <strong>Cross-Platform</strong> — Fully implemented macOS (Cocoa) backend; Linux (X11) and Windows (Win32) backends are stubs</p>
-<p>For questions or contributions, see the [main Viper documentation](README.md).</p>
+<p>For questions or contributions, see the [main Zanna documentation](README.md).</p>
   </main>
 </div>
 
@@ -457,13 +457,13 @@ option(VGFX_BUILD_EXAMPLES &quot;Build ViperGFX examples&quot; ON)
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

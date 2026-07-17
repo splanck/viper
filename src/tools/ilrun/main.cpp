@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,8 +15,8 @@
 /// @details Wrapper around the existing ilc -run functionality with
 ///          cleaner, more intuitive command-line syntax.
 
-#include "tools/viper/cli.hpp"
-#include "viper/version.hpp"
+#include "tools/zanna/cli.hpp"
+#include "zanna/version.hpp"
 #include <iostream>
 #include <string_view>
 
@@ -24,7 +24,7 @@ namespace {
 
 /// @brief Print the ilrun usage/help text (options, examples, notes) to stderr.
 void printUsage() {
-    std::cerr << "ilrun v" << VIPER_VERSION_STR << " - IL Program Runner\n"
+    std::cerr << "ilrun v" << ZANNA_VERSION_STR << " - IL Program Runner\n"
               << "\n"
               << "Usage: ilrun [options] <file.il>\n"
               << "\n"
@@ -57,9 +57,9 @@ void printUsage() {
 
 /// @brief Print ilrun and IL version information to stdout.
 void printVersion() {
-    std::cout << "ilrun v" << VIPER_VERSION_STR << "\n";
+    std::cout << "ilrun v" << ZANNA_VERSION_STR << "\n";
     std::cout << "IL Program Runner\n";
-    std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "IL version: " << ZANNA_IL_VERSION_STR << "\n";
 }
 
 } // namespace

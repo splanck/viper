@@ -25,9 +25,9 @@
 // actions.zia - Named input actions for Paint
 module actions;
 
-bind Viper.Input.Action as Action;
-bind Viper.Input.Key as Key;
-bind Viper.Input.Keyboard as Keyboard;
+bind Zanna.Input.Action as Action;
+bind Zanna.Input.Key as Key;
+bind Zanna.Input.Keyboard as Keyboard;
 
 bind "./config";
 

@@ -1,7 +1,7 @@
 // ============================================================================
 // File: src/human/prompts.zia
 // Purpose: All user-facing render + prompt logic for the human-manager mode.
-//          Every `Viper.Terminal.Ask` / `ReadLine` in the project funnels
+//          Every `Zanna.Terminal.Ask` / `ReadLine` in the project funnels
 //          through this module so the rest of the codebase (policies,
 //          season-level manager, shell) stays free of direct I/O.
 //
@@ -29,9 +29,9 @@
 // ============================================================================
 module prompts;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Core.Parse as Parse;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Core.Parse as Parse;
 bind "../model/game_state";
 bind "../model/lineup_card";
 bind "../model/player";

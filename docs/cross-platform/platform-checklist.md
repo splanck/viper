@@ -6,7 +6,7 @@ last-verified: 2026-07-14
 
 # Cross-Platform Developer Checklist
 
-When adding or modifying platform-sensitive functionality in Viper, use this
+When adding or modifying platform-sensitive functionality in Zanna, use this
 reference to identify every file that must be touched. The codebase targets
 **Windows (x86-64)**, **macOS (x86-64 + ARM64)**, and **Linux (x86-64)**.
 
@@ -17,7 +17,7 @@ For a user-facing reference of runtime behavioral differences across platforms, 
 
 ## Platform Abstraction Layer
 
-Viper now uses two shared platform/capability layers:
+Zanna now uses two shared platform/capability layers:
 
 | Layer | Intended Users | Entry Point |
 |-------|----------------|-------------|
@@ -42,7 +42,7 @@ Viper now uses two shared platform/capability layers:
 ### C++ Capability Header
 
 `src/common/PlatformCapabilities.hpp` includes the generated
-`viper/platform/Capabilities.hpp` header from the build tree. Use it in normal
+`zanna/platform/Capabilities.hpp` header from the build tree. Use it in normal
 C++ code instead of introducing new raw `_WIN32` / `__APPLE__` /
 `__linux__` checks.
 
@@ -102,7 +102,7 @@ Important rule:
 | `src/runtime/network/rt_network.c`, `rt_tls.c`, `rt_netutils.c`, `rt_network_http.c` | Shared networking logic should call the socket/entropy adapters and use `RT_PLATFORM_*` only for non-adapter capability decisions. |
 | `src/runtime/network/rt_tls_verify_win.c` / `rt_tls_verify_posix.c` | Certificate verification backend split — CryptoAPI trust store on Windows, native/common verifier path elsewhere. |
 | `src/runtime/CMakeLists.txt` | Selects socket, entropy, and TLS verification backend sources per platform. |
-| `CMakeLists.txt` | Feature flag `VIPER_ENABLE_NETWORK` and `VIPER_ENABLE_TLS`. |
+| `CMakeLists.txt` | Feature flag `ZANNA_ENABLE_NETWORK` and `ZANNA_ENABLE_TLS`. |
 
 ---
 
@@ -155,7 +155,7 @@ Important rule:
 | `src/runtime/core/rt_term.c` | Terminal input — Windows: `<conio.h>`, `_kbhit()`, `_getch()`, `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. POSIX: `<termios.h>`, `select()` with zero timeout, raw mode caching. |
 | `src/repl/ReplLineEditor.cpp` | REPL terminal width — Windows: `GetConsoleScreenBufferInfo()`. POSIX: `ioctl(TIOCGWINSZ)`. Raw I/O: Windows `WriteConsoleA()` vs POSIX `::write()`. |
 
-Linux graphics availability is now controlled by `VIPER_GRAPHICS_MODE=AUTO|REQUIRE|OFF`. Missing X11 in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
+Linux graphics availability is now controlled by `ZANNA_GRAPHICS_MODE=AUTO|REQUIRE|OFF`. Missing X11 in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
 
 ---
 
@@ -169,9 +169,9 @@ Linux graphics availability is now controlled by `VIPER_GRAPHICS_MODE=AUTO|REQUI
 | `src/lib/audio/src/vaud_platform_linux.c` | Linux backend — ALSA: snd_pcm_t, snd_pcm_writei, pthread for audio thread. |
 | `src/lib/audio/src/vaud_platform_win32.c` | Windows backend — WASAPI: IMMDevice, IAudioClient, IAudioRenderClient, COM initialization. |
 | `src/lib/audio/CMakeLists.txt` | Platform source selection: `-framework AudioToolbox` (macOS), ALSA (Linux), `ole32` (Windows). FATAL_ERROR on unknown platform. |
-| `src/runtime/audio/rt_audio.c` | Runtime bridge — delegates to ViperAUD. Gated by `VIPER_ENABLE_AUDIO`; stubs provided when disabled. |
+| `src/runtime/audio/rt_audio.c` | Runtime bridge — delegates to ZannaAUD. Gated by `ZANNA_ENABLE_AUDIO`; stubs provided when disabled. |
 
-Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF`. Missing ALSA in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
+Linux audio availability is now controlled by `ZANNA_AUDIO_MODE=AUTO|REQUIRE|OFF`. Missing ALSA in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
 
 ---
 
@@ -193,11 +193,11 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 | File | Reason |
 |------|--------|
 | `CMakeLists.txt`, `src/CMakeLists.txt` | Installed toolchain layout, exported targets, generated package config, public runtime archives, man pages, docs, and staged ship-set completeness all flow from the install rules. |
-| `src/tools/viper/cmd_install_package.cpp` | Canonical CLI for packaging the staged Viper toolchain. Any new format or verification rule should surface here. |
+| `src/tools/zanna/cmd_install_package.cpp` | Canonical CLI for packaging the staged Zanna toolchain. Any new format or verification rule should surface here. |
 | `src/tools/common/packaging/ToolchainInstallManifest.*` | Shared manifest and install-path mapping for Windows/macOS/Linux installers. This is the single source of truth for staged file selection. |
 | `src/tools/common/packaging/WindowsPackageBuilder.*`, `MacOSPackageBuilder.*`, `LinuxPackageBuilder.*` | Platform-specific installer writers and payload layout policy. Keep staged-relative layout stable across all three. |
 | `src/tools/common/packaging/PkgVerify.*` | Structural verification for produced installer artifacts. Extend this rather than adding format-specific one-off verification scripts. |
-| `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper_win.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_FAST_DEBUG`, `VIPER_JOBS`, `VIPER_CTEST_JOBS`, `VIPER_RUN_SLOW_TESTS`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
+| `scripts/build_zanna_unix.sh`, `scripts/build_zanna_mac.sh`, `scripts/build_zanna_linux.sh`, `scripts/build_zanna_win.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `ZANNA_BUILD_DIR`, `ZANNA_BUILD_TYPE`, `ZANNA_FAST_DEBUG`, `ZANNA_JOBS`, `ZANNA_CTEST_JOBS`, `ZANNA_RUN_SLOW_TESTS`, `ZANNA_SKIP_INSTALL`, `ZANNA_SKIP_LINT`, `ZANNA_SKIP_AUDIT`, `ZANNA_SKIP_SMOKE`, `ZANNA_CMAKE_GENERATOR`, `ZANNA_EXTRA_CMAKE_ARGS`. |
 
 ---
 

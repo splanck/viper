@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,11 +24,11 @@
 // game_setup.zia — Game startup and subsystem construction.
 module game_setup;
 
-bind Viper.Graphics3D;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Audio;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Audio;
+bind Zanna.Terminal;
 bind "../config";
 bind "../menu";
 bind "./renderer";

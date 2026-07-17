@@ -11,7 +11,7 @@
 // ============================================================================
 module box_score_writer;
 
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 bind "../model/game_state";
 
 // Build the team's batting box as a List[String]. Header line plus one

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_sprite.c
-// Purpose: 2D sprite object for Viper games. Wraps a Pixels (or SpriteSheet
+// Purpose: 2D sprite object for Zanna games. Wraps a Pixels (or SpriteSheet
 //   region) reference with position, scale, rotation, color tint, and
 //   visibility attributes. Provides an Anchor system for offset-based
 //   placement (e.g. center the sprite on the entity position rather than
@@ -32,7 +32,7 @@
 //
 // Links: src/runtime/graphics/rt_sprite.h (public API),
 //        src/runtime/graphics/rt_spritesheet.h (atlas frames),
-//        docs/viperlib/game.md (Sprite section)
+//        docs/zannalib/game.md (Sprite section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -1553,7 +1553,7 @@ const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
     return animator->clips[animator->current_clip].name;
 }
 
-/// @brief Zia/BASIC bridge: `add_clip` taking a Viper `rt_string` for the name.
+/// @brief Zia/BASIC bridge: `add_clip` taking a Zanna `rt_string` for the name.
 /// @see rt_sprite_animator_add_clip
 int8_t rt_sprite_animator_add_clip_str(void *animator,
                                        rt_string name,
@@ -1571,7 +1571,7 @@ int8_t rt_sprite_animator_add_clip_str(void *animator,
     return ok ? 1 : 0;
 }
 
-/// @brief Zia/BASIC bridge: `play` taking a Viper `rt_string`.
+/// @brief Zia/BASIC bridge: `play` taking a Zanna `rt_string`.
 int8_t rt_sprite_animator_play_str(void *animator, rt_string name) {
     const char *clipName = name ? rt_string_cstr(name) : NULL;
     int8_t ok = rt_sprite_animator_play((rt_sprite_animator_t *)animator, clipName);

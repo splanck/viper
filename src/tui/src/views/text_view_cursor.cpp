@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances owned by
 //                     the application; this file only mutates TextView's own
 //                     bookkeeping fields.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,10 +35,10 @@
 #include <string_view>
 #include <utility>
 
-using viper::tui::util::char_width;
-using viper::tui::util::clampAdd;
+using zanna::tui::util::char_width;
+using zanna::tui::util::clampAdd;
 
-namespace viper::tui::views {
+namespace zanna::tui::views {
 
 /// @brief Construct a TextView bound to a text buffer and theme.
 /// @details Stores references to the backing @ref text::TextBuffer and
@@ -295,4 +295,4 @@ void TextView::setSyntax(syntax::SyntaxRuleSet *syntax) {
     syntax_ = syntax;
 }
 
-} // namespace viper::tui::views
+} // namespace zanna::tui::views

@@ -1,14 +1,14 @@
 // test_effects_lifecycle.zia — consistent constructor/cleanup metadata (VDOC-272)
 // ScreenFX, Lighting2D, and ParticleEmitter now share one lifecycle shape: New
-// returns a typed obj<Viper.Game.X> and Destroy is an instance method. Before the
+// returns a typed obj<Zanna.Game.X> and Destroy is an instance method. Before the
 // fix ScreenFX.New and Lighting2D.New returned a bare obj (not assignable to a
 // typed local) and ScreenFX had no instance Destroy.
 module TestEffectsLifecycle;
 
-bind Viper.Terminal;
-bind Viper.Game.ScreenFX as FX;
-bind Viper.Game.Lighting2D as Lighting;
-bind Viper.Game.ParticleEmitter as Emitter;
+bind Zanna.Terminal;
+bind Zanna.Game.ScreenFX as FX;
+bind Zanna.Game.Lighting2D as Lighting;
+bind Zanna.Game.ParticleEmitter as Emitter;
 
 func start() {
     // Typed-local assignment only compiles because New returns the concrete type.

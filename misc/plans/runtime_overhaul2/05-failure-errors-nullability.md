@@ -11,7 +11,7 @@ This document defines the public failure model.
 | Predicate | `i1` |
 | Programmer error | trap |
 | Capability unavailable | `Result` unavailable error or explicit capability trap |
-| Unsafe runtime mutation | `Viper.Runtime.Unsafe` |
+| Unsafe runtime mutation | `Zanna.Runtime.Unsafe` |
 | Debug telemetry | scoped diagnostics object |
 
 ## Traps
@@ -95,15 +95,15 @@ Replacement shape:
 ## Runtime Trap State
 
 Current public APIs expose trap-state mutation through both
-`Viper.Runtime.Unsafe` and `Viper.Error`.
+`Zanna.Runtime.Unsafe` and `Zanna.Error`.
 
 Decision:
 
 - `SetThrowMsg`, `ClearThrowMsg`, `SetTrapFields`, and `RaiseKind` belong only
-  under `Viper.Runtime.Unsafe` or internal runtime registration.
-- `Viper.Error` should expose formatting/description helpers only if they are
+  under `Zanna.Runtime.Unsafe` or internal runtime registration.
+- `Zanna.Error` should expose formatting/description helpers only if they are
   useful to application code.
-- `Viper.Diagnostics.CurrentTrap` should be the canonical read-only user API.
+- `Zanna.Diagnostics.CurrentTrap` should be the canonical read-only user API.
 
 ## Error Object Shape
 

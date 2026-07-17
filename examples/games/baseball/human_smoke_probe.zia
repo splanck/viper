@@ -18,12 +18,12 @@
 //              engine completes the game normally)
 //            - decision log captures both AI and human-manager entries
 //
-// Run via: viper run examples/games/baseball/human_smoke_probe.zia
+// Run via: zanna run examples/games/baseball/human_smoke_probe.zia
 // ============================================================================
 module human_smoke_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/manager_layer";

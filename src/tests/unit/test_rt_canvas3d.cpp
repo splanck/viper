@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_rt_canvas3d.cpp
-// Purpose: Unit tests for Viper.Graphics3D types — Mesh3D, Camera3D,
+// Purpose: Unit tests for Zanna.Graphics3D types — Mesh3D, Camera3D,
 //   Material3D, Light3D. Tests construction, properties, procedural mesh
 //   generation, OBJ loading, and camera math.
 //
@@ -22,8 +22,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt.hpp"
@@ -920,7 +920,7 @@ static void test_mesh_obj_loader() {
 
 static void test_mesh_obj_loader_flattens_material_groups() {
     TEST("Mesh3D.FromOBJ — flattens material/group directives");
-    const char *path = "/tmp/viper_obj_material_group_test.obj";
+    const char *path = "/tmp/zanna_obj_material_group_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("mtllib test.mtl\n"
@@ -948,7 +948,7 @@ static void test_mesh_obj_loader_flattens_material_groups() {
 
 static void test_mesh_obj_loader_fills_only_missing_normals() {
     TEST("Mesh3D.FromOBJ — preserves authored normals while filling missing normals");
-    const char *path = "/tmp/viper_obj_mixed_normals_test.obj";
+    const char *path = "/tmp/zanna_obj_mixed_normals_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v 0 0 0\n"
@@ -979,7 +979,7 @@ static void test_mesh_obj_loader_fills_only_missing_normals() {
 
 static void test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons() {
     TEST("Mesh3D.FromOBJ — deduplicates vertices and triangulates n-gons");
-    const char *path = "/tmp/viper_obj_dedup_ngon_test.obj";
+    const char *path = "/tmp/zanna_obj_dedup_ngon_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v 0 0 0\n"
@@ -1008,7 +1008,7 @@ static void test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons() {
 
 static void test_mesh_obj_loader_ear_clips_concave_ngons() {
     TEST("Mesh3D.FromOBJ — ear-clips concave n-gons");
-    const char *path = "/tmp/viper_obj_concave_ngon_test.obj";
+    const char *path = "/tmp/zanna_obj_concave_ngon_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v 0 0 0\n"
@@ -1039,7 +1039,7 @@ static void test_mesh_obj_loader_ear_clips_concave_ngons() {
 
 static void test_mesh_obj_loader_rejects_invalid_indices() {
     TEST("Mesh3D.FromOBJ — rejects invalid face indices");
-    const char *path = "/tmp/viper_obj_invalid_index_test.obj";
+    const char *path = "/tmp/zanna_obj_invalid_index_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v 0 0 0\n"
@@ -1059,7 +1059,7 @@ static void test_mesh_obj_loader_rejects_invalid_indices() {
 
 static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
     TEST("Mesh3D.FromOBJ — rejects invalid numeric tokens");
-    const char *path = "/tmp/viper_obj_invalid_numeric_test.obj";
+    const char *path = "/tmp/zanna_obj_invalid_numeric_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v nan 0 0\n"
@@ -1093,7 +1093,7 @@ static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
 
 static void test_mesh_obj_loader_rejects_empty_geometry() {
     TEST("Mesh3D.FromOBJ — rejects files without faces");
-    const char *path = "/tmp/viper_obj_empty_geometry_test.obj";
+    const char *path = "/tmp/zanna_obj_empty_geometry_test.obj";
     FILE *f = fopen(path, "w");
     assert(f);
     fputs("v 0 0 0\n"
@@ -1116,7 +1116,7 @@ struct BackendEnvGuard {
     std::string original;
 
     BackendEnvGuard() {
-        if (const char *value = getenv("VIPER_3D_BACKEND")) {
+        if (const char *value = getenv("ZANNA_3D_BACKEND")) {
             had_value = true;
             original = value;
         }
@@ -1124,9 +1124,9 @@ struct BackendEnvGuard {
 
     ~BackendEnvGuard() {
         if (had_value)
-            setenv("VIPER_3D_BACKEND", original.c_str(), 1);
+            setenv("ZANNA_3D_BACKEND", original.c_str(), 1);
         else
-            unsetenv("VIPER_3D_BACKEND");
+            unsetenv("ZANNA_3D_BACKEND");
     }
 };
 } // namespace
@@ -1134,7 +1134,7 @@ struct BackendEnvGuard {
 static void test_backend_select_software_override() {
     TEST("Backend selection - software override");
     BackendEnvGuard guard;
-    int env_status = setenv("VIPER_3D_BACKEND", "software", 1);
+    int env_status = setenv("ZANNA_3D_BACKEND", "software", 1);
     assert(env_status == 0);
     (void)env_status;
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
@@ -1158,7 +1158,7 @@ static void test_backend_select_platform_override() {
 
     TEST("Backend selection - platform override");
     BackendEnvGuard guard;
-    int env_status = setenv("VIPER_3D_BACKEND", expected, 1);
+    int env_status = setenv("ZANNA_3D_BACKEND", expected, 1);
     assert(env_status == 0);
     (void)env_status;
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
@@ -1403,8 +1403,8 @@ static void test_material_texture_setters_repair_stale_slots_before_rejecting_in
 
 static void test_textureasset3d_ktx2_material_bridge() {
     TEST("TextureAsset3D.LoadKTX2 — metadata and Material3D bridge");
-    const char *rgba_path = "/tmp/viper_textureasset3d_rgba8_test.ktx2";
-    const char *bc7_path = "/tmp/viper_textureasset3d_bc7_test.ktx2";
+    const char *rgba_path = "/tmp/zanna_textureasset3d_rgba8_test.ktx2";
+    const char *bc7_path = "/tmp/zanna_textureasset3d_bc7_test.ktx2";
     const uint8_t rgba_level0[] = {
         0x01,
         0x02,
@@ -1654,7 +1654,7 @@ static void test_textureasset3d_bc1_bc4_bc5_software_decode() {
     /* End-to-end: a BC1 KTX2 (VkFormat 133) loads with the bc1 format name and a
      * decoded RGBA fallback whose first texel matches the block decode. */
     {
-        const char *path = "/tmp/viper_textureasset3d_bc1_test.ktx2";
+        const char *path = "/tmp/zanna_textureasset3d_bc1_test.ktx2";
         uint8_t block[8];
         std::memset(block, 0, sizeof(block));
         block[0] = 0x00;
@@ -1902,8 +1902,8 @@ static void test_textureasset3d_bc7_software_decode() {
 
 static void test_textureasset3d_etc2_astc_software_decode() {
     TEST("TextureAsset3D ETC2/ASTC software decode fixtures");
-    const char *etc2_path = "/tmp/viper_textureasset3d_etc2_test.ktx2";
-    const char *astc_path = "/tmp/viper_textureasset3d_astc_test.ktx2";
+    const char *etc2_path = "/tmp/zanna_textureasset3d_etc2_test.ktx2";
+    const char *astc_path = "/tmp/zanna_textureasset3d_astc_test.ktx2";
     const uint8_t etc2_block[16] = {
         0x80,
         0x00,
@@ -1990,7 +1990,7 @@ static void test_textureasset3d_etc2_astc_software_decode() {
 
 static void test_textureasset3d_decode_failure_checker_fallback() {
     TEST("TextureAsset3D decode failure produces checker fallback");
-    const char *path = "/tmp/viper_textureasset3d_bc7_checker_fallback.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_bc7_checker_fallback.ktx2";
     const uint8_t reserved_bc7_block[16] = {0};
     rt_string path_s;
     void *asset;
@@ -2024,7 +2024,7 @@ static void test_textureasset3d_decode_failure_checker_fallback() {
 
 static void test_textureasset3d_bc7_partial_mip_fallback() {
     TEST("TextureAsset3D BC7 keeps decoded mips when a later mip is unsupported");
-    const char *path = "/tmp/viper_textureasset3d_bc7_partial_mip_fallback.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_bc7_partial_mip_fallback.ktx2";
     const uint8_t valid_block[16] = {
         0x11,
         0x22,
@@ -2079,7 +2079,7 @@ static void test_textureasset3d_bc7_partial_mip_fallback() {
 
 static void test_textureasset3d_mip_residency() {
     TEST("TextureAsset3D mip residency range telemetry");
-    const char *path = "/tmp/viper_textureasset3d_mips_test.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_mips_test.ktx2";
     uint8_t level0[64];
     uint8_t level1[16];
     uint8_t level2[4];
@@ -2229,7 +2229,7 @@ static void test_textureasset3d_mip_residency() {
 /// cadence, and a full-resolution demand must restore the window immediately.
 static void test_canvas3d_texture_streaming_residency() {
     TEST("Canvas3D texture streaming demotes far textures and restores near ones");
-    const char *path = "/tmp/viper_canvas3d_texture_stream.ktx2";
+    const char *path = "/tmp/zanna_canvas3d_texture_stream.ktx2";
     const uint8_t valid_block[16] = {
         0x11,
         0x22,
@@ -2598,9 +2598,9 @@ static void test_textureasset3d_supercompressed_ktx2_loads() {
     TEST("TextureAsset3D loads Zstd/ZLIB supercompressed KTX2");
     const char *fixtures[] = {"red_rgba8_zstd.ktx2", "red_rgba8_zlib.ktx2"};
     for (int i = 0; i < 2; i++) {
-#ifdef VIPER_SOURCE_DIR
+#ifdef ZANNA_SOURCE_DIR
         std::string path =
-            std::string(VIPER_SOURCE_DIR) + "/src/tests/unit/data/ktx2/" + fixtures[i];
+            std::string(ZANNA_SOURCE_DIR) + "/src/tests/unit/data/ktx2/" + fixtures[i];
 #else
         std::string path = std::string("src/tests/unit/data/ktx2/") + fixtures[i];
 #endif
@@ -2623,9 +2623,9 @@ static void test_textureasset3d_supercompressed_ktx2_loads() {
     }
     /* Compressed-format payloads inflate before block decode + native retention. */
     {
-#ifdef VIPER_SOURCE_DIR
+#ifdef ZANNA_SOURCE_DIR
         std::string path =
-            std::string(VIPER_SOURCE_DIR) + "/src/tests/unit/data/ktx2/red_bc1_zstd.ktx2";
+            std::string(ZANNA_SOURCE_DIR) + "/src/tests/unit/data/ktx2/red_bc1_zstd.ktx2";
 #else
         std::string path = "src/tests/unit/data/ktx2/red_bc1_zstd.ktx2";
 #endif
@@ -2646,9 +2646,9 @@ static void test_textureasset3d_supercompressed_ktx2_loads() {
 
 static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
     TEST("TextureAsset3D.LoadKTX2 rejects unsupported KTX2 headers");
-    const char *super_path = "/tmp/viper_textureasset3d_supercompressed_test.ktx2";
-    const char *implicit_path = "/tmp/viper_textureasset3d_implicit_mips_test.ktx2";
-    const char *short_mip_path = "/tmp/viper_textureasset3d_short_mip_payload_test.ktx2";
+    const char *super_path = "/tmp/zanna_textureasset3d_supercompressed_test.ktx2";
+    const char *implicit_path = "/tmp/zanna_textureasset3d_implicit_mips_test.ktx2";
+    const char *short_mip_path = "/tmp/zanna_textureasset3d_short_mip_payload_test.ktx2";
     uint8_t payload[16] = {0};
     uint8_t short_payload[8] = {0};
     rt_string path_s;
@@ -2695,7 +2695,7 @@ static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
 
 static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     TEST("TextureAsset3D native resident mips feed backend upload helpers");
-    const char *path = "/tmp/viper_textureasset3d_native_resident_mips_test.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_native_resident_mips_test.ktx2";
     uint8_t level0[64];
     uint8_t level1[16];
     uint8_t level2[16];
@@ -2791,7 +2791,7 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
                 "empty residency disables native compressed upload");
 
     {
-        const char *empty_path = "/tmp/viper_textureasset3d_empty_native_payload_test.ktx2";
+        const char *empty_path = "/tmp/zanna_textureasset3d_empty_native_payload_test.ktx2";
         const uint8_t *empty_levels[] = {nullptr};
         const uint64_t empty_level_bytes[] = {0};
         rt_string empty_path_s;
@@ -4331,7 +4331,7 @@ static void test_cubemap_load_hdr_panorama() {
     TEST("CubeMap3D.LoadHdrPanorama — Radiance decode, projection, exposure");
     /* Synthetic 32x16 flat-coded panorama: top half green (up), bottom half
      * red (down); linear value 1.0 encodes as RGBE (128, 0, 0, 129). */
-    const char *path = "/tmp/viper_cubemap_pano.hdr";
+    const char *path = "/tmp/zanna_cubemap_pano.hdr";
     {
         FILE *f = fopen(path, "wb");
         assert(f);
@@ -4382,7 +4382,7 @@ static void test_cubemap_load_hdr_panorama() {
     }
     {
         /* New-style RLE variant: 8x2, all red rows. */
-        const char *rle_path = "/tmp/viper_cubemap_pano_rle.hdr";
+        const char *rle_path = "/tmp/zanna_cubemap_pano_rle.hdr";
         FILE *f = fopen(rle_path, "wb");
         assert(f);
         fprintf(f, "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 8\n");
@@ -7410,7 +7410,7 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
 
 static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
     TEST("Canvas3D resolves TextureAsset3D material slots at draw time");
-    const char *path = "/tmp/viper_textureasset3d_draw_mips_test.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_draw_mips_test.ktx2";
     uint8_t level0[64];
     uint8_t level1[16];
     const uint8_t *levels[] = {level0, level1};
@@ -7485,7 +7485,7 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
 
 static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     TEST("Canvas3D forwards TextureAsset3D material slots with decode-failure checker");
-    const char *path = "/tmp/viper_textureasset3d_draw_native_astc_test.ktx2";
+    const char *path = "/tmp/zanna_textureasset3d_draw_native_astc_test.ktx2";
     const uint8_t astc_level0[] = {
         0x11,
         0x22,
@@ -8195,7 +8195,7 @@ static void test_terrain_splat_bake_uses_material_color_for_missing_layers() {
 
 static void test_terrain_splat_layers_resolve_texture_assets() {
     TEST("Terrain3D splat layers resolve TextureAsset3D sources");
-    const char *path = "/tmp/viper_terrain_splat_textureasset_layer.ktx2";
+    const char *path = "/tmp/zanna_terrain_splat_textureasset_layer.ktx2";
     const uint8_t rgba_level0[] = {
         0xAA,
         0x20,
@@ -8261,7 +8261,7 @@ static void test_terrain_splat_layers_resolve_texture_assets() {
 
 static void test_terrain_splat_bake_falls_back_when_textureasset_layer_loses_residency() {
     TEST("Terrain3D splat bake falls back when TextureAsset3D layer pixels are no longer resident");
-    const char *path = "/tmp/viper_terrain_splat_textureasset_layer_unresident.ktx2";
+    const char *path = "/tmp/zanna_terrain_splat_textureasset_layer_unresident.ktx2";
     const uint8_t rgba_level0[] = {
         0x11,
         0xEE,
@@ -8423,7 +8423,7 @@ static void test_terrain_draw_repairs_invalid_splat_map_and_restores_base_textur
 
 static void test_terrain_accepts_decode_failure_checker_textureasset_splat_layer() {
     TEST("Terrain3D accepts decode-failure checker TextureAsset3D splat layers");
-    const char *path = "/tmp/viper_terrain_splat_native_only_astc_layer.ktx2";
+    const char *path = "/tmp/zanna_terrain_splat_native_only_astc_layer.ktx2";
     const uint8_t astc_level0[] = {
         0x11,
         0x22,

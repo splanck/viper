@@ -35,7 +35,7 @@ Top-level container for a compilation unit. Owns all externs, globals, and funct
 - `functions` — `std::vector<Function>`: function definitions
 - `globals` — `std::vector<Global>`: global variable declarations
 - `target` — `std::optional<std::string>`: optional target triple directive
-- `version` — `std::string`: IL format version string (defaults to `VIPER_IL_VERSION_STR`)
+- `version` — `std::string`: IL format version string (defaults to `ZANNA_IL_VERSION_STR`)
 
 **Invariants:** Function, extern, and global names must be unique within the module.
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Tracks the allocation state of a virtual register.
 ///
@@ -45,4 +45,4 @@ struct VState {
     unsigned nextUse{UINT_MAX}; ///< Instruction index of next use (for furthest-end-point).
 };
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

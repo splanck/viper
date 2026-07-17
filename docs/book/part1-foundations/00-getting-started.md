@@ -44,7 +44,7 @@ Here are some excellent free options:
 
 **Visual Studio Code (VS Code)** — This is the most popular code editor in the world. It's free, works on Windows, macOS, and Linux, and has thousands of extensions to add new features. If you're unsure what to choose, choose this.
 - Download from: https://code.visualstudio.com
-- After installing, you can optionally install the "Viper" extension for better syntax highlighting
+- After installing, you can optionally install the "Zanna" extension for better syntax highlighting
 
 **Sublime Text** — A fast, elegant editor that many programmers love. It's technically paid software, but the free trial never expires.
 - Download from: https://www.sublimetext.com
@@ -74,9 +74,9 @@ You'll also use something called a *terminal*, *command line*, or *command promp
 
 Don't worry if the terminal looks intimidating. You'll only need a few basic commands, and I'll explain each one as we go.
 
-### The Viper Toolchain
+### The Zanna Toolchain
 
-Finally, you need *Viper* itself — the programming language you'll be learning.
+Finally, you need *Zanna* itself — the programming language you'll be learning.
 
 **What is a toolchain?** A "toolchain" is a collection of programs that work together to turn your code into something the computer can run. The most important part is the *compiler*.
 
@@ -84,12 +84,12 @@ Finally, you need *Viper* itself — the programming language you'll be learning
 
 Here's the flow:
 1. You write code in a text file (like `hello.zia`)
-2. You run the Viper compiler on that file
+2. You run the Zanna compiler on that file
 3. The compiler translates your code into machine instructions
 4. The computer runs those instructions
 5. You see the result
 
-The Viper toolchain handles all of this. Let's install it.
+The Zanna toolchain handles all of this. Let's install it.
 
 ---
 
@@ -176,7 +176,7 @@ After installation, you can open VS Code by typing `code` in your terminal or fi
 
 ## Understanding the Terminal
 
-Before we install Viper, let's get comfortable with the terminal. This is often the scariest part for beginners, but I promise it's not as complicated as it looks.
+Before we install Zanna, let's get comfortable with the terminal. This is often the scariest part for beginners, but I promise it's not as complicated as it looks.
 
 ### Opening the Terminal
 
@@ -265,13 +265,13 @@ If you ever feel stuck or want to cancel what you're doing, press Ctrl+C. This i
 
 ---
 
-## Installing Viper
+## Installing Zanna
 
-Now for the main event: installing the Viper toolchain. This is more involved than installing a regular application, but I'll guide you through every step.
+Now for the main event: installing the Zanna toolchain. This is more involved than installing a regular application, but I'll guide you through every step.
 
 ### Prerequisites: What You Need First
 
-Before installing Viper, you need a few other tools installed on your system. These are common development tools that many programming languages require.
+Before installing Zanna, you need a few other tools installed on your system. These are common development tools that many programming languages require.
 
 **On macOS:**
 
@@ -306,9 +306,9 @@ sudo dnf install git cmake
 
 You need Visual Studio Build Tools (or Visual Studio) with the C++ workload, plus CMake and Git. The [Windows setup guide](../../getting-started/windows.md) walks through each installer step by step.
 
-### Downloading Viper
+### Downloading Zanna
 
-Open your terminal and navigate to a folder where you want to keep the Viper source code. I recommend creating a folder for development tools:
+Open your terminal and navigate to a folder where you want to keep the Zanna source code. I recommend creating a folder for development tools:
 
 **On macOS/Linux:**
 ```bash
@@ -322,9 +322,9 @@ These commands:
 2. Create a folder called "dev" if it doesn't exist (the `-p` flag prevents an error if it already exists)
 3. Move into that folder
 
-Now, download Viper using Git:
+Now, download Zanna using Git:
 ```bash
-git clone https://github.com/splanck/viper.git
+git clone https://github.com/zannagames/zanna.git
 ```
 
 **What is Git?** Git is a version control system — it tracks changes to code over time and lets multiple people collaborate on the same project. The `git clone` command downloads a copy of a project from the internet. Almost all open-source software is distributed this way.
@@ -340,25 +340,25 @@ Git isn't installed. Install it:
 
 After installing Git, try the `git clone` command again.
 
-### Building Viper
+### Building Zanna
 
-Once the download completes, you need to *build* Viper — compile its source code into runnable programs.
+Once the download completes, you need to *build* Zanna — compile its source code into runnable programs.
 
-Enter the Viper directory:
+Enter the Zanna directory:
 ```bash
-cd viper
+cd zanna
 ```
 
 Now run the build script for your platform:
 ```bash
 # macOS
-./scripts/build_viper_mac.sh
+./scripts/build_zanna_mac.sh
 
 # Linux
-./scripts/build_viper_linux.sh
+./scripts/build_zanna_linux.sh
 ```
 
-On Windows, run `.\scripts\build_viper_win.cmd` from a Developer Command Prompt
+On Windows, run `.\scripts\build_zanna_win.cmd` from a Developer Command Prompt
 (see the [Windows setup guide](../../getting-started/windows.md)).
 
 **What does this do?**
@@ -389,13 +389,13 @@ If something goes wrong, you'll see error messages, often in red. Common issues:
 
 If you get stuck, try searching the error message online. Chances are someone else has encountered the same problem.
 
-### Making Viper Available Everywhere
+### Making Zanna Available Everywhere
 
 The build script installs the tools into `/usr/local/bin` on macOS and Linux, which is already on your PATH.
 
-**What is PATH?** When you type a command like `viper`, your computer searches through a list of folders to find a program with that name. This list is called the PATH. Because the installer places Viper's tools in a standard location, you normally don't have to configure anything.
+**What is PATH?** When you type a command like `zanna`, your computer searches through a list of folders to find a program with that name. This list is called the PATH. Because the installer places Zanna's tools in a standard location, you normally don't have to configure anything.
 
-If `viper --version` reports "command not found" after the build finishes, your shell may not include `/usr/local/bin`. Add it:
+If `zanna --version` reports "command not found" after the build finishes, your shell may not include `/usr/local/bin`. Add it:
 
 ```bash
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc on Linux
@@ -410,7 +410,7 @@ The platform setup guides cover this and other install issues in more depth: [ma
 
 Let's verify everything works. This is an important step — don't skip it!
 
-### Test 1: Check Viper Version
+### Test 1: Check Zanna Version
 
 Open a new terminal window (important: new window, to make sure your PATH changes took effect), and type:
 
@@ -425,7 +425,7 @@ Zia Compiler
 IL version: 0.3.0
 ```
 
-(The exact version number will vary depending on when you built Viper.)
+(The exact version number will vary depending on when you built Zanna.)
 
 **If you see "command not found":**
 
@@ -433,7 +433,7 @@ Let's debug:
 
 1. First, check if the tools were installed:
    ```bash
-   ls /usr/local/bin/zia /usr/local/bin/viper
+   ls /usr/local/bin/zia /usr/local/bin/zanna
    ```
 
    If this says "No such file or directory", the build didn't complete its install step. Go back to the building step and check for errors near the end of the output.
@@ -443,9 +443,9 @@ Let's debug:
    echo $PATH
    ```
 
-   If `/usr/local/bin` isn't in the output, add it (see "Making Viper Available Everywhere" above).
+   If `/usr/local/bin` isn't in the output, add it (see "Making Zanna Available Everywhere" above).
 
-3. As a workaround, you can always run Viper with the full path:
+3. As a workaround, you can always run Zanna with the full path:
    ```bash
    /usr/local/bin/zia --version
    ```
@@ -456,8 +456,8 @@ Let's write a tiny program to make sure the full workflow works.
 
 **Create a test folder:**
 ```bash
-mkdir -p ~/viper-projects
-cd ~/viper-projects
+mkdir -p ~/zanna-projects
+cd ~/zanna-projects
 ```
 
 **Create a test file:**
@@ -468,21 +468,21 @@ Open your text editor (VS Code or whichever you installed). Create a new file an
 module Test;
 
 func start() {
-    Viper.Terminal.Say("Setup complete!");
+    Zanna.Terminal.Say("Setup complete!");
 }
 ```
 
-Save this file as `test.zia` in your `viper-projects` folder.
+Save this file as `test.zia` in your `zanna-projects` folder.
 
 **How to save the file:**
-- In VS Code: File > Save (or Ctrl+S / Cmd+S), navigate to your `viper-projects` folder, name the file `test.zia`, and click Save
+- In VS Code: File > Save (or Ctrl+S / Cmd+S), navigate to your `zanna-projects` folder, name the file `test.zia`, and click Save
 - Make sure the filename ends with `.zia`, not `.zia.txt`
 
 **Run the program:**
 
-In your terminal (make sure you're in the viper-projects folder):
+In your terminal (make sure you're in the zanna-projects folder):
 ```bash
-viper run test.zia
+zanna run test.zia
 ```
 
 **What you should see:**
@@ -510,13 +510,13 @@ Here are solutions to problems that commonly trip up beginners:
 
 ### "command not found" (for zia)
 
-**What it means:** Your computer doesn't know where to find the Viper program.
+**What it means:** Your computer doesn't know where to find the Zanna program.
 
 **Solutions:**
 
-1. **Did you complete the build?** Make sure the platform build script (`./scripts/build_viper_mac.sh` or `./scripts/build_viper_linux.sh`) finished without errors, including its install step.
+1. **Did you complete the build?** Make sure the platform build script (`./scripts/build_zanna_mac.sh` or `./scripts/build_zanna_linux.sh`) finished without errors, including its install step.
 
-2. **Does your PATH include `/usr/local/bin`?** Check with `echo $PATH`; if it's missing, see "Making Viper Available Everywhere" above.
+2. **Does your PATH include `/usr/local/bin`?** Check with `echo $PATH`; if it's missing, see "Making Zanna Available Everywhere" above.
 
 3. **Are you in a new terminal window?** If you just edited your shell configuration, open a new terminal (or run `source ~/.zshrc` / `source ~/.bashrc`) so the change takes effect.
 
@@ -527,7 +527,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 ### "No such file or directory" (for your code file)
 
-**What it means:** Viper can't find the file you're trying to run.
+**What it means:** Zanna can't find the file you're trying to run.
 
 **Solutions:**
 
@@ -535,14 +535,14 @@ Here are solutions to problems that commonly trip up beginners:
 
 2. **Navigate to the right folder:** Use `cd` to move to the folder containing your file:
    ```bash
-   cd ~/viper-projects
+   cd ~/zanna-projects
    ```
 
 3. **Check the filename:** Make sure you saved the file with the `.zia` extension, not `.zia.txt`. In some editors (especially on Windows), you might need to select "All Files" in the save dialog to avoid this.
 
 4. **Use the full path to the file:**
    ```bash
-   zia ~/viper-projects/test.zia
+   zia ~/zanna-projects/test.zia
    ```
 
 ### "Permission denied"
@@ -555,7 +555,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 2. **On macOS**, if you see a security warning about an unidentified developer, go to System Preferences > Security & Privacy and click "Allow Anyway".
 
-3. **Don't use sudo with viper.** You shouldn't need administrator privileges to run your programs.
+3. **Don't use sudo with zanna.** You shouldn't need administrator privileges to run your programs.
 
 ### "Syntax error" when running your code
 
@@ -573,7 +573,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 ### Build errors (during cmake --build)
 
-**What it means:** Something went wrong while compiling Viper.
+**What it means:** Something went wrong while compiling Zanna.
 
 **Solutions:**
 
@@ -583,9 +583,9 @@ Here are solutions to problems that commonly trip up beginners:
 
 3. **Try a clean build:**
    ```bash
-   cd ~/dev/viper
+   cd ~/dev/zanna
    rm -rf build
-   ./scripts/build_viper_mac.sh   # or build_viper_linux.sh
+   ./scripts/build_zanna_mac.sh   # or build_zanna_linux.sh
    ```
 
 4. **Check available disk space.** Building software requires several gigabytes of free space.
@@ -635,7 +635,7 @@ One of the most common mistakes is forgetting to save before running. You make c
 As you work through this book, you'll create many programs. Keep them organized:
 
 ```text
-viper-projects/
+zanna-projects/
     chapter02/
         hello.zia
         greeting.zia
@@ -658,10 +658,10 @@ Let's recap what all these tools do and how they work together:
 |------|--------------|-----------------|
 | **Text Editor** (VS Code, etc.) | A program for writing and editing code | Every time you write or modify a program |
 | **Terminal** | A text-based interface for running commands | To navigate folders, run programs, and use developer tools |
-| **Git** | Downloads code from the internet and tracks changes | To download Viper (and later, to manage your own projects) |
-| **CMake** | Prepares software projects for building | Part of the Viper installation process |
-| **Compiler** (inside Viper) | Translates your code into instructions the computer can execute | Every time you run `zia yourfile.zia` |
-| **Viper** | The programming language and its toolchain | To run your Viper programs |
+| **Git** | Downloads code from the internet and tracks changes | To download Zanna (and later, to manage your own projects) |
+| **CMake** | Prepares software projects for building | Part of the Zanna installation process |
+| **Compiler** (inside Zanna) | Translates your code into instructions the computer can execute | Every time you run `zia yourfile.zia` |
+| **Zanna** | The programming language and its toolchain | To run your Zanna programs |
 
 The flow looks like this:
 
@@ -714,20 +714,20 @@ Let's create one more file to make sure everything is ready for Chapter 1.
 module Hello;
 
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Zanna.Terminal.Say("Hello, World!");
 }
 ```
 
-4. Save it as `hello.zia` in your `viper-projects` folder
+4. Save it as `hello.zia` in your `zanna-projects` folder
 
 5. Open your terminal and navigate to the folder:
 ```bash
-cd ~/viper-projects
+cd ~/zanna-projects
 ```
 
 6. Run the program:
 ```bash
-viper run hello.zia
+zanna run hello.zia
 ```
 
 You should see:
@@ -735,10 +735,10 @@ You should see:
 Hello, World!
 ```
 
-If you do — congratulations! You're ready to begin. Your development environment is set up, your tools are working, and you've just run your first real Viper program.
+If you do — congratulations! You're ready to begin. Your development environment is set up, your tools are working, and you've just run your first real Zanna program.
 
 If something went wrong, go back through the troubleshooting section above. The most common issues are:
-- Viper not in your PATH (see "command not found" section)
+- Zanna not in your PATH (see "command not found" section)
 - Not being in the right directory (see "No such file or directory" section)
 - Typos in the code (compare character by character)
 
@@ -750,8 +750,8 @@ You've accomplished a lot in this chapter:
 
 - **Installed a text editor** where you'll write your code
 - **Learned to use the terminal** to navigate folders and run commands
-- **Installed the Viper toolchain** including all its prerequisites
-- **Configured your PATH** so you can run Viper from anywhere
+- **Installed the Zanna toolchain** including all its prerequisites
+- **Configured your PATH** so you can run Zanna from anywhere
 - **Tested your setup** with a working program
 - **Learned the edit-save-run workflow** you'll use for every program
 - **Understood what each tool does** and how they work together

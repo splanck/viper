@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Time.Stopwatch - High-Precision Timing
+// API Audit: Zanna.Time.Stopwatch - High-Precision Timing
 // =============================================================================
 // Tests: New, StartNew, Start, Stop, Reset, Restart,
 //        ElapsedMs, ElapsedUs, ElapsedNs, IsRunning
 // =============================================================================
 
 module StopwatchDemo;
-bind Viper.Terminal;
-bind Viper.Time.Stopwatch as SW;
+bind Zanna.Terminal;
+bind Zanna.Time.Stopwatch as SW;
 func start() {
-    Say("=== API Audit: Viper.Time.Stopwatch ===");
+    Say("=== API Audit: Zanna.Time.Stopwatch ===");
 
     // --- New ---
     Say("--- New ---");

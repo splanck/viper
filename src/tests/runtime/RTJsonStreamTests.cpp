@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTJsonStreamTests.cpp
-// Purpose: Tests for Viper.Data.JsonStream SAX-style streaming JSON parser.
+// Purpose: Tests for Zanna.Data.JsonStream SAX-style streaming JSON parser.
 //
 //===----------------------------------------------------------------------===//
 

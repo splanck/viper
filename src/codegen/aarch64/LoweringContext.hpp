@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// ID range: [1, kPhiVRegStart) for normal vregs.
 inline constexpr uint16_t kFirstVirtualRegId = 1;
@@ -301,4 +301,4 @@ struct LoweredCall {
     std::vector<MInstr> postfix; ///< Post-call clean-up (e.g. stack restore).
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

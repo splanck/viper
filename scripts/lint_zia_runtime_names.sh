@@ -20,16 +20,16 @@ cd "$ROOT_DIR"
 
 matches=""
 if command -v rg >/dev/null 2>&1; then
-    matches="$(rg -n '"Viper\.' ${SCAN_PATHS[@]} || true)"
+    matches="$(rg -n '"Zanna\.' ${SCAN_PATHS[@]} || true)"
 else
-    matches="$(grep -R -n '"Viper\.' src/frontends/zia/Lowerer_*.cpp \
+    matches="$(grep -R -n '"Zanna\.' src/frontends/zia/Lowerer_*.cpp \
         src/frontends/zia/RuntimeNames.hpp || true)"
 fi
 
 if [[ -n "$matches" ]]; then
     cat >&2 <<'EOF'
 error: Zia lowerer runtime names must use generated RuntimeNames.hpp constants.
-Replace quoted Viper.* strings with il::runtime::names constants or Zia aliases.
+Replace quoted Zanna.* strings with il::runtime::names constants or Zia aliases.
 
 EOF
     printf '%s\n' "$matches" >&2

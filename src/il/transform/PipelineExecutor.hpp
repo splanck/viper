@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include "il/core/fwd.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/PassRegistry.hpp"
-#include "viper/pass/PassManager.hpp"
+#include "zanna/pass/PassManager.hpp"
 
 #include <chrono>
 #include <functional>
@@ -53,9 +53,9 @@ class PipelineExecutor {
 
     /// @brief Configuration for instrumentation hooks around pass execution.
     struct Instrumentation {
-        viper::pass::PassManager::PrintHook printBefore;
-        viper::pass::PassManager::PrintHook printAfter;
-        viper::pass::PassManager::VerifyHook verifyEach;
+        zanna::pass::PassManager::PrintHook printBefore;
+        zanna::pass::PassManager::PrintHook printAfter;
+        zanna::pass::PassManager::VerifyHook verifyEach;
         std::function<void(std::string_view id, const PassMetrics &metrics)> passMetrics;
     };
 

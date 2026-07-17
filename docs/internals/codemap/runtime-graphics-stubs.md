@@ -7,7 +7,7 @@ last-verified: 2026-05-31
 # CODEMAP: Runtime Graphics Stubs
 
 `src/runtime/graphics/common/rt_graphics_stubs.c` is compiled when
-`VIPER_ENABLE_GRAPHICS` is not defined. It preserves link compatibility for the
+`ZANNA_ENABLE_GRAPHICS` is not defined. It preserves link compatibility for the
 graphics/runtime surface while making unavailable stateful graphics operations
 fail deterministically.
 

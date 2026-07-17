@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/scene/rt_scene3d.h
-// Purpose: Viper.Graphics3D.Scene3D and SceneNode3D — hierarchical scene graph
+// Purpose: Zanna.Graphics3D.Scene3D and SceneNode3D — hierarchical scene graph
 //   with parent-child transform propagation. Nodes hold local TRS (translate,
 //   rotate, scale) and compute world matrices by multiplying up the hierarchy.
 //
@@ -76,7 +76,7 @@ int64_t rt_scene3d_get_node_count(void *scene);
 /// @brief Serialize the scene to a .vscn file. Returns 1 on success, 0 on failure.
 int64_t rt_scene3d_save(void *scene, rt_string path);
 /// @brief Deserialize a scene from a `.vscn` (JSON) file. NULL on failure.
-///   (glTF/FBX scenes load through Viper.Graphics3D.GLTF.Load / FBX.Load.)
+///   (glTF/FBX scenes load through Zanna.Graphics3D.GLTF.Load / FBX.Load.)
 void *rt_scene3d_load(rt_string path);
 /// @brief Deserialize a scene from already-read `.vscn` JSON text (internal streaming path).
 ///   @p path is diagnostics-only; the caller keeps ownership of @p text. NULL on failure.

@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Threads.Pool
+// API Audit: Zanna.Threads.Pool
 // =============================================================================
 // Tests: New, Size, Pending, Active, IsShutdown, Shutdown
 // Note: Pool.Submit requires function pointers, so we only test properties
@@ -7,12 +7,12 @@
 // =============================================================================
 
 module PoolDemo;
-bind Viper.Threads.Pool as Pool;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Pool as Pool;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Pool ===");
+    Say("=== API Audit: Zanna.Threads.Pool ===");
 
     // --- New ---
     Say("--- New ---");

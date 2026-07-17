@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_binfile.h
-// Purpose: Binary file stream operations for Viper.IO.BinFile, providing seekable stream-based I/O
+// Purpose: Binary file stream operations for Zanna.IO.BinFile, providing seekable stream-based I/O
 // with read/write modes, position queries, and EOF detection.
 //
 // Key invariants:

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,44 +18,44 @@
 //===----------------------------------------------------------------------===//
 
 
-RT_FUNC(Game3DBodyDefBox,           rt_game3d_body_def_box,            "Viper.Game3D.BodyDef.Box",              "obj(f64,f64,f64,f64)")
-RT_FUNC(Game3DBodyDefSphere,        rt_game3d_body_def_sphere,         "Viper.Game3D.BodyDef.Sphere",           "obj(f64,f64)")
-RT_FUNC(Game3DBodyDefCapsule,       rt_game3d_body_def_capsule,        "Viper.Game3D.BodyDef.Capsule",          "obj(f64,f64,f64)")
-RT_FUNC(Game3DBodyDefStaticBox,     rt_game3d_body_def_static_box,      "Viper.Game3D.BodyDef.StaticBox",        "obj(f64,f64,f64)")
-RT_FUNC(Game3DBodyDefStaticPlane,   rt_game3d_body_def_static_plane,    "Viper.Game3D.BodyDef.StaticPlane",      "obj(f64)")
-RT_FUNC(Game3DBodyDefGetShape,      rt_game3d_body_def_get_shape,       "Viper.Game3D.BodyDef.get_Shape",        "i64(obj)")
-RT_FUNC(Game3DBodyDefSetShape,      rt_game3d_body_def_set_shape,       "Viper.Game3D.BodyDef.set_Shape",        "void(obj,i64)")
-RT_FUNC(Game3DBodyDefGetMass,       rt_game3d_body_def_get_mass,        "Viper.Game3D.BodyDef.get_Mass",         "f64(obj)")
-RT_FUNC(Game3DBodyDefSetMass,       rt_game3d_body_def_set_mass,        "Viper.Game3D.BodyDef.set_Mass",         "void(obj,f64)")
-RT_FUNC(Game3DBodyDefGetFriction,   rt_game3d_body_def_get_friction,    "Viper.Game3D.BodyDef.get_Friction",     "f64(obj)")
-RT_FUNC(Game3DBodyDefSetFriction,   rt_game3d_body_def_set_friction,    "Viper.Game3D.BodyDef.set_Friction",     "void(obj,f64)")
-RT_FUNC(Game3DBodyDefGetRestitution, rt_game3d_body_def_get_restitution, "Viper.Game3D.BodyDef.get_Restitution", "f64(obj)")
-RT_FUNC(Game3DBodyDefSetRestitution, rt_game3d_body_def_set_restitution, "Viper.Game3D.BodyDef.set_Restitution", "void(obj,f64)")
-RT_FUNC(Game3DBodyDefGetStatic,     rt_game3d_body_def_get_static,      "Viper.Game3D.BodyDef.get_IsStatic",     "i1(obj)")
-RT_FUNC(Game3DBodyDefSetStatic,     rt_game3d_body_def_set_static,      "Viper.Game3D.BodyDef.set_IsStatic",     "void(obj,i1)")
-RT_FUNC(Game3DBodyDefGetKinematic,  rt_game3d_body_def_get_kinematic,   "Viper.Game3D.BodyDef.get_IsKinematic",  "i1(obj)")
-RT_FUNC(Game3DBodyDefSetKinematic,  rt_game3d_body_def_set_kinematic,   "Viper.Game3D.BodyDef.set_IsKinematic",  "void(obj,i1)")
-RT_FUNC(Game3DBodyDefGetTrigger,    rt_game3d_body_def_get_trigger,     "Viper.Game3D.BodyDef.get_IsTrigger",    "i1(obj)")
-RT_FUNC(Game3DBodyDefSetTrigger,    rt_game3d_body_def_set_trigger,     "Viper.Game3D.BodyDef.set_IsTrigger",    "void(obj,i1)")
-RT_FUNC(Game3DBodyDefGetUseCcd,     rt_game3d_body_def_get_use_ccd,     "Viper.Game3D.BodyDef.get_UseCcd",       "i1(obj)")
-RT_FUNC(Game3DBodyDefSetUseCcd,     rt_game3d_body_def_set_use_ccd,     "Viper.Game3D.BodyDef.set_UseCcd",       "void(obj,i1)")
-RT_FUNC(Game3DBodyDefGetLayer,      rt_game3d_body_def_get_layer,       "Viper.Game3D.BodyDef.get_Layer",        "i64(obj)")
-RT_FUNC(Game3DBodyDefSetLayer,      rt_game3d_body_def_set_layer_prop,  "Viper.Game3D.BodyDef.set_Layer",        "void(obj,i64)")
-RT_FUNC(Game3DBodyDefGetMask,       rt_game3d_body_def_get_mask,        "Viper.Game3D.BodyDef.get_Mask",         "obj<Viper.Game3D.LayerMask>(obj)")
-RT_FUNC(Game3DBodyDefSetMask,       rt_game3d_body_def_set_mask_prop,   "Viper.Game3D.BodyDef.set_Mask",         "void(obj,obj<Viper.Game3D.LayerMask>)")
-RT_FUNC(Game3DBodyDefGetSync,       rt_game3d_body_def_get_sync_mode,   "Viper.Game3D.BodyDef.get_SyncMode",     "i64(obj)")
-RT_FUNC(Game3DBodyDefSetSync,       rt_game3d_body_def_set_sync_mode_prop, "Viper.Game3D.BodyDef.set_SyncMode",  "void(obj,i64)")
-RT_FUNC(Game3DBodyDefWithLayer,     rt_game3d_body_def_with_layer,      "Viper.Game3D.BodyDef.WithLayer",        "obj(obj,i64)")
-RT_FUNC(Game3DBodyDefWithMask,      rt_game3d_body_def_with_mask,       "Viper.Game3D.BodyDef.WithMask",         "obj(obj,obj)")
-RT_FUNC(Game3DBodyDefAsTrigger,     rt_game3d_body_def_as_trigger,      "Viper.Game3D.BodyDef.AsTrigger",        "obj(obj)")
-RT_FUNC(Game3DBodyDefWithSync,      rt_game3d_body_def_with_sync,       "Viper.Game3D.BodyDef.WithSync",         "obj(obj,i64)")
+RT_FUNC(Game3DBodyDefBox,           rt_game3d_body_def_box,            "Zanna.Game3D.BodyDef.Box",              "obj(f64,f64,f64,f64)")
+RT_FUNC(Game3DBodyDefSphere,        rt_game3d_body_def_sphere,         "Zanna.Game3D.BodyDef.Sphere",           "obj(f64,f64)")
+RT_FUNC(Game3DBodyDefCapsule,       rt_game3d_body_def_capsule,        "Zanna.Game3D.BodyDef.Capsule",          "obj(f64,f64,f64)")
+RT_FUNC(Game3DBodyDefStaticBox,     rt_game3d_body_def_static_box,      "Zanna.Game3D.BodyDef.StaticBox",        "obj(f64,f64,f64)")
+RT_FUNC(Game3DBodyDefStaticPlane,   rt_game3d_body_def_static_plane,    "Zanna.Game3D.BodyDef.StaticPlane",      "obj(f64)")
+RT_FUNC(Game3DBodyDefGetShape,      rt_game3d_body_def_get_shape,       "Zanna.Game3D.BodyDef.get_Shape",        "i64(obj)")
+RT_FUNC(Game3DBodyDefSetShape,      rt_game3d_body_def_set_shape,       "Zanna.Game3D.BodyDef.set_Shape",        "void(obj,i64)")
+RT_FUNC(Game3DBodyDefGetMass,       rt_game3d_body_def_get_mass,        "Zanna.Game3D.BodyDef.get_Mass",         "f64(obj)")
+RT_FUNC(Game3DBodyDefSetMass,       rt_game3d_body_def_set_mass,        "Zanna.Game3D.BodyDef.set_Mass",         "void(obj,f64)")
+RT_FUNC(Game3DBodyDefGetFriction,   rt_game3d_body_def_get_friction,    "Zanna.Game3D.BodyDef.get_Friction",     "f64(obj)")
+RT_FUNC(Game3DBodyDefSetFriction,   rt_game3d_body_def_set_friction,    "Zanna.Game3D.BodyDef.set_Friction",     "void(obj,f64)")
+RT_FUNC(Game3DBodyDefGetRestitution, rt_game3d_body_def_get_restitution, "Zanna.Game3D.BodyDef.get_Restitution", "f64(obj)")
+RT_FUNC(Game3DBodyDefSetRestitution, rt_game3d_body_def_set_restitution, "Zanna.Game3D.BodyDef.set_Restitution", "void(obj,f64)")
+RT_FUNC(Game3DBodyDefGetStatic,     rt_game3d_body_def_get_static,      "Zanna.Game3D.BodyDef.get_IsStatic",     "i1(obj)")
+RT_FUNC(Game3DBodyDefSetStatic,     rt_game3d_body_def_set_static,      "Zanna.Game3D.BodyDef.set_IsStatic",     "void(obj,i1)")
+RT_FUNC(Game3DBodyDefGetKinematic,  rt_game3d_body_def_get_kinematic,   "Zanna.Game3D.BodyDef.get_IsKinematic",  "i1(obj)")
+RT_FUNC(Game3DBodyDefSetKinematic,  rt_game3d_body_def_set_kinematic,   "Zanna.Game3D.BodyDef.set_IsKinematic",  "void(obj,i1)")
+RT_FUNC(Game3DBodyDefGetTrigger,    rt_game3d_body_def_get_trigger,     "Zanna.Game3D.BodyDef.get_IsTrigger",    "i1(obj)")
+RT_FUNC(Game3DBodyDefSetTrigger,    rt_game3d_body_def_set_trigger,     "Zanna.Game3D.BodyDef.set_IsTrigger",    "void(obj,i1)")
+RT_FUNC(Game3DBodyDefGetUseCcd,     rt_game3d_body_def_get_use_ccd,     "Zanna.Game3D.BodyDef.get_UseCcd",       "i1(obj)")
+RT_FUNC(Game3DBodyDefSetUseCcd,     rt_game3d_body_def_set_use_ccd,     "Zanna.Game3D.BodyDef.set_UseCcd",       "void(obj,i1)")
+RT_FUNC(Game3DBodyDefGetLayer,      rt_game3d_body_def_get_layer,       "Zanna.Game3D.BodyDef.get_Layer",        "i64(obj)")
+RT_FUNC(Game3DBodyDefSetLayer,      rt_game3d_body_def_set_layer_prop,  "Zanna.Game3D.BodyDef.set_Layer",        "void(obj,i64)")
+RT_FUNC(Game3DBodyDefGetMask,       rt_game3d_body_def_get_mask,        "Zanna.Game3D.BodyDef.get_Mask",         "obj<Zanna.Game3D.LayerMask>(obj)")
+RT_FUNC(Game3DBodyDefSetMask,       rt_game3d_body_def_set_mask_prop,   "Zanna.Game3D.BodyDef.set_Mask",         "void(obj,obj<Zanna.Game3D.LayerMask>)")
+RT_FUNC(Game3DBodyDefGetSync,       rt_game3d_body_def_get_sync_mode,   "Zanna.Game3D.BodyDef.get_SyncMode",     "i64(obj)")
+RT_FUNC(Game3DBodyDefSetSync,       rt_game3d_body_def_set_sync_mode_prop, "Zanna.Game3D.BodyDef.set_SyncMode",  "void(obj,i64)")
+RT_FUNC(Game3DBodyDefWithLayer,     rt_game3d_body_def_with_layer,      "Zanna.Game3D.BodyDef.WithLayer",        "obj(obj,i64)")
+RT_FUNC(Game3DBodyDefWithMask,      rt_game3d_body_def_with_mask,       "Zanna.Game3D.BodyDef.WithMask",         "obj(obj,obj)")
+RT_FUNC(Game3DBodyDefAsTrigger,     rt_game3d_body_def_as_trigger,      "Zanna.Game3D.BodyDef.AsTrigger",        "obj(obj)")
+RT_FUNC(Game3DBodyDefWithSync,      rt_game3d_body_def_with_sync,       "Zanna.Game3D.BodyDef.WithSync",         "obj(obj,i64)")
 
 /// @summary Provides Body Def functionality for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.BodyDef` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Game3D.BodyDef` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Shape`, `Mass`,
 /// `Friction` and operations including `Box`, `Sphere`, `Capsule`, `StaticBox`.
-RT_CLASS_BEGIN("Viper.Game3D.BodyDef", Game3DBodyDef, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game3D.BodyDef", Game3DBodyDef, "obj", none)
     RT_PROP("Shape", "i64", Game3DBodyDefGetShape, Game3DBodyDefSetShape)
     RT_PROP("Mass", "f64", Game3DBodyDefGetMass, Game3DBodyDefSetMass)
     RT_PROP("Friction", "f64", Game3DBodyDefGetFriction, Game3DBodyDefSetFriction)
@@ -65,7 +65,7 @@ RT_CLASS_BEGIN("Viper.Game3D.BodyDef", Game3DBodyDef, "obj", none)
     RT_PROP("IsTrigger", "i1", Game3DBodyDefGetTrigger, Game3DBodyDefSetTrigger)
     RT_PROP("UseCcd", "i1", Game3DBodyDefGetUseCcd, Game3DBodyDefSetUseCcd)
     RT_PROP("Layer", "i64", Game3DBodyDefGetLayer, Game3DBodyDefSetLayer)
-    RT_PROP("Mask", "obj<Viper.Game3D.LayerMask>", Game3DBodyDefGetMask, Game3DBodyDefSetMask)
+    RT_PROP("Mask", "obj<Zanna.Game3D.LayerMask>", Game3DBodyDefGetMask, Game3DBodyDefSetMask)
     RT_PROP("SyncMode", "i64", Game3DBodyDefGetSync, Game3DBodyDefSetSync)
     RT_METHOD("Box", "obj(f64,f64,f64,f64)", Game3DBodyDefBox)
     RT_METHOD("Sphere", "obj(f64,f64)", Game3DBodyDefSphere)
@@ -78,32 +78,32 @@ RT_CLASS_BEGIN("Viper.Game3D.BodyDef", Game3DBodyDef, "obj", none)
     RT_METHOD("WithSync", "obj(i64)", Game3DBodyDefWithSync)
 RT_CLASS_END()
 
-RT_FUNC(Game3DCollisionEventGetPhase, rt_game3d_collision_event_get_phase, "Viper.Game3D.Collision3DEvent.get_Phase", "i64(obj)")
-RT_FUNC(Game3DCollisionEventGetA,     rt_game3d_collision_event_get_a,     "Viper.Game3D.Collision3DEvent.get_EntityA",     "obj<Viper.Game3D.Entity3D>(obj)")
-RT_FUNC(Game3DCollisionEventGetB,     rt_game3d_collision_event_get_b,     "Viper.Game3D.Collision3DEvent.get_EntityB",     "obj<Viper.Game3D.Entity3D>(obj)")
-RT_FUNC(Game3DCollisionEventGetRaw,   rt_game3d_collision_event_get_raw,   "Viper.Game3D.Collision3DEvent.get_Raw",   "obj<Viper.Graphics3D.CollisionEvent3D>(obj)")
-RT_FUNC(Game3DCollisionEventGetTrigger, rt_game3d_collision_event_get_is_trigger, "Viper.Game3D.Collision3DEvent.get_IsTrigger", "i1(obj)")
-RT_FUNC(Game3DCollisionEventGetSpeed, rt_game3d_collision_event_get_relative_speed, "Viper.Game3D.Collision3DEvent.get_RelativeSpeed", "f64(obj)")
-RT_FUNC(Game3DCollisionEventGetImpulse, rt_game3d_collision_event_get_normal_impulse, "Viper.Game3D.Collision3DEvent.get_NormalImpulse", "f64(obj)")
-RT_FUNC(Game3DCollisionEventGetContactCount, rt_game3d_collision_event_get_contact_count, "Viper.Game3D.Collision3DEvent.get_ContactCount", "i64(obj)")
-RT_FUNC(Game3DCollisionEventPoint,    rt_game3d_collision_event_point,     "Viper.Game3D.Collision3DEvent.Point",    "obj(obj)")
-RT_FUNC(Game3DCollisionEventNormal,   rt_game3d_collision_event_normal,    "Viper.Game3D.Collision3DEvent.Normal",   "obj(obj)")
-RT_FUNC(Game3DCollisionEventContactPoint, rt_game3d_collision_event_contact_point, "Viper.Game3D.Collision3DEvent.ContactPoint", "obj(obj,i64)")
-RT_FUNC(Game3DCollisionEventContactNormal, rt_game3d_collision_event_contact_normal, "Viper.Game3D.Collision3DEvent.ContactNormal", "obj(obj,i64)")
-RT_FUNC(Game3DCollisionEventContactSeparation, rt_game3d_collision_event_contact_separation, "Viper.Game3D.Collision3DEvent.ContactSeparation", "f64(obj,i64)")
-RT_FUNC(Game3DCollisionEventOther,    rt_game3d_collision_event_other,     "Viper.Game3D.Collision3DEvent.Other",    "obj(obj,obj)")
+RT_FUNC(Game3DCollisionEventGetPhase, rt_game3d_collision_event_get_phase, "Zanna.Game3D.Collision3DEvent.get_Phase", "i64(obj)")
+RT_FUNC(Game3DCollisionEventGetA,     rt_game3d_collision_event_get_a,     "Zanna.Game3D.Collision3DEvent.get_EntityA",     "obj<Zanna.Game3D.Entity3D>(obj)")
+RT_FUNC(Game3DCollisionEventGetB,     rt_game3d_collision_event_get_b,     "Zanna.Game3D.Collision3DEvent.get_EntityB",     "obj<Zanna.Game3D.Entity3D>(obj)")
+RT_FUNC(Game3DCollisionEventGetRaw,   rt_game3d_collision_event_get_raw,   "Zanna.Game3D.Collision3DEvent.get_Raw",   "obj<Zanna.Graphics3D.CollisionEvent3D>(obj)")
+RT_FUNC(Game3DCollisionEventGetTrigger, rt_game3d_collision_event_get_is_trigger, "Zanna.Game3D.Collision3DEvent.get_IsTrigger", "i1(obj)")
+RT_FUNC(Game3DCollisionEventGetSpeed, rt_game3d_collision_event_get_relative_speed, "Zanna.Game3D.Collision3DEvent.get_RelativeSpeed", "f64(obj)")
+RT_FUNC(Game3DCollisionEventGetImpulse, rt_game3d_collision_event_get_normal_impulse, "Zanna.Game3D.Collision3DEvent.get_NormalImpulse", "f64(obj)")
+RT_FUNC(Game3DCollisionEventGetContactCount, rt_game3d_collision_event_get_contact_count, "Zanna.Game3D.Collision3DEvent.get_ContactCount", "i64(obj)")
+RT_FUNC(Game3DCollisionEventPoint,    rt_game3d_collision_event_point,     "Zanna.Game3D.Collision3DEvent.Point",    "obj(obj)")
+RT_FUNC(Game3DCollisionEventNormal,   rt_game3d_collision_event_normal,    "Zanna.Game3D.Collision3DEvent.Normal",   "obj(obj)")
+RT_FUNC(Game3DCollisionEventContactPoint, rt_game3d_collision_event_contact_point, "Zanna.Game3D.Collision3DEvent.ContactPoint", "obj(obj,i64)")
+RT_FUNC(Game3DCollisionEventContactNormal, rt_game3d_collision_event_contact_normal, "Zanna.Game3D.Collision3DEvent.ContactNormal", "obj(obj,i64)")
+RT_FUNC(Game3DCollisionEventContactSeparation, rt_game3d_collision_event_contact_separation, "Zanna.Game3D.Collision3DEvent.ContactSeparation", "f64(obj,i64)")
+RT_FUNC(Game3DCollisionEventOther,    rt_game3d_collision_event_other,     "Zanna.Game3D.Collision3DEvent.Other",    "obj(obj,obj)")
 
 /// @summary Provides Collision 3D Event functionality for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Collision3DEvent` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Game3D.Collision3DEvent` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
 /// `Phase`, `EntityA`, `EntityB` and operations including `Point`, `Normal`, `ContactPoint`,
 /// `ContactNormal`.
-RT_CLASS_BEGIN("Viper.Game3D.Collision3DEvent", Game3DCollision3DEvent, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Collision3DEvent", Game3DCollision3DEvent, "obj", none)
     RT_PROP("Phase", "i64", Game3DCollisionEventGetPhase, none)
-    RT_PROP("EntityA", "obj<Viper.Game3D.Entity3D>", Game3DCollisionEventGetA, none)
-    RT_PROP("EntityB", "obj<Viper.Game3D.Entity3D>", Game3DCollisionEventGetB, none)
-    RT_PROP("Raw", "obj<Viper.Graphics3D.CollisionEvent3D>", Game3DCollisionEventGetRaw, none)
+    RT_PROP("EntityA", "obj<Zanna.Game3D.Entity3D>", Game3DCollisionEventGetA, none)
+    RT_PROP("EntityB", "obj<Zanna.Game3D.Entity3D>", Game3DCollisionEventGetB, none)
+    RT_PROP("Raw", "obj<Zanna.Graphics3D.CollisionEvent3D>", Game3DCollisionEventGetRaw, none)
     RT_PROP("IsTrigger", "i1", Game3DCollisionEventGetTrigger, none)
     RT_PROP("RelativeSpeed", "f64", Game3DCollisionEventGetSpeed, none)
     RT_PROP("NormalImpulse", "f64", Game3DCollisionEventGetImpulse, none)
@@ -116,41 +116,41 @@ RT_CLASS_BEGIN("Viper.Game3D.Collision3DEvent", Game3DCollision3DEvent, "obj", n
     RT_METHOD("Other", "obj(obj)", Game3DCollisionEventOther)
 RT_CLASS_END()
 
-RT_FUNC(Game3DAssetsLoadModel,              rt_game3d_assets_load_model,                "Viper.Game3D.Assets3D.LoadEntity",              "obj(str)")
-RT_FUNC(Game3DAssetsLoadModelAsset,         rt_game3d_assets_load_model_asset,          "Viper.Game3D.Assets3D.LoadEntityAsset",         "obj(str)")
-RT_FUNC(Game3DAssetsLoadAnimation,          rt_game3d_assets_load_animation,            "Viper.Game3D.Assets3D.LoadAnimation",          "obj<Viper.Graphics3D.Animation3D>(str,i64)")
-RT_FUNC(Game3DAssetsLoadAnimationAsset,     rt_game3d_assets_load_animation_asset,      "Viper.Game3D.Assets3D.LoadAnimationAsset",     "obj<Viper.Graphics3D.Animation3D>(str,i64)")
-RT_FUNC(Game3DAssetsLoadNodeAnimation,      rt_game3d_assets_load_node_animation,       "Viper.Game3D.Assets3D.LoadNodeAnimation",      "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
-RT_FUNC(Game3DAssetsLoadNodeAnimationAsset, rt_game3d_assets_load_node_animation_asset, "Viper.Game3D.Assets3D.LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
-RT_FUNC(Game3DAssetsLoadModelAsync,              rt_game3d_assets_load_model_async,                "Viper.Game3D.Assets3D.LoadEntityAsync",              "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsLoadModelAssetAsync,         rt_game3d_assets_load_model_asset_async,          "Viper.Game3D.Assets3D.LoadEntityAssetAsync",         "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsSetResidencyBudget,          rt_game3d_assets_set_residency_budget,            "Viper.Game3D.Assets3D.SetResidencyBudget",          "void(i64)")
-RT_FUNC(Game3DAssetsGetResidentBytes,            rt_game3d_assets_get_resident_bytes,              "Viper.Game3D.Assets3D.GetResidentBytes",            "i64()")
-RT_FUNC(Game3DAssetsSetResidencyHint,            rt_game3d_assets_set_residency_hint,              "Viper.Game3D.Assets3D.SetResidencyHint",            "void(obj,f64,f64)")
-RT_FUNC(Game3DAssetsSetUploadBudget,             rt_game3d_assets_set_upload_budget,               "Viper.Game3D.Assets3D.SetUploadBudget",             "void(i64)")
-RT_FUNC(Game3DAssetsEvict,                       rt_game3d_assets_evict,                           "Viper.Game3D.Assets3D.Evict",                       "void(obj)")
-RT_FUNC(Game3DAssetsPreload,                rt_game3d_assets_preload,                   "Viper.Game3D.Assets3D.Preload",                "void(str)")
-RT_FUNC(Game3DAssetsPreloadAsset,           rt_game3d_assets_preload_asset,             "Viper.Game3D.Assets3D.PreloadAsset",           "void(str)")
-RT_FUNC(Game3DAssetsClearCache,             rt_game3d_assets_clear_cache,               "Viper.Game3D.Assets3D.ClearCache",             "void()")
-RT_FUNC(Game3DAssetHandleGetReady,    rt_game3d_asset_handle_get_ready,    "Viper.Game3D.AssetHandle3D.get_IsReady",    "i1(obj)")
-RT_FUNC(Game3DAssetHandleGetProgress, rt_game3d_asset_handle_get_progress, "Viper.Game3D.AssetHandle3D.get_Progress", "f64(obj)")
-RT_FUNC(Game3DAssetHandleGetError,    rt_game3d_asset_handle_get_error,    "Viper.Game3D.AssetHandle3D.get_Error",    "str(obj)")
-RT_FUNC(Game3DAssetHandleCancel,      rt_game3d_asset_handle_cancel,       "Viper.Game3D.AssetHandle3D.Cancel",       "void(obj)")
-RT_FUNC(Game3DAssetHandleGetEntity,   rt_game3d_asset_handle_get_entity,   "Viper.Game3D.AssetHandle3D.GetEntity",    "obj<Viper.Game3D.Entity3D>(obj)")
-RT_FUNC(Game3DAssetHandleGetPrefab,   rt_game3d_asset_handle_get_template, "Viper.Game3D.AssetHandle3D.GetPrefab",    "obj<Viper.Game3D.SceneTemplate>(obj)")
+RT_FUNC(Game3DAssetsLoadModel,              rt_game3d_assets_load_model,                "Zanna.Game3D.Assets3D.LoadEntity",              "obj(str)")
+RT_FUNC(Game3DAssetsLoadModelAsset,         rt_game3d_assets_load_model_asset,          "Zanna.Game3D.Assets3D.LoadEntityAsset",         "obj(str)")
+RT_FUNC(Game3DAssetsLoadAnimation,          rt_game3d_assets_load_animation,            "Zanna.Game3D.Assets3D.LoadAnimation",          "obj<Zanna.Graphics3D.Animation3D>(str,i64)")
+RT_FUNC(Game3DAssetsLoadAnimationAsset,     rt_game3d_assets_load_animation_asset,      "Zanna.Game3D.Assets3D.LoadAnimationAsset",     "obj<Zanna.Graphics3D.Animation3D>(str,i64)")
+RT_FUNC(Game3DAssetsLoadNodeAnimation,      rt_game3d_assets_load_node_animation,       "Zanna.Game3D.Assets3D.LoadNodeAnimation",      "obj<Zanna.Graphics3D.NodeAnimation3D>(str,i64)")
+RT_FUNC(Game3DAssetsLoadNodeAnimationAsset, rt_game3d_assets_load_node_animation_asset, "Zanna.Game3D.Assets3D.LoadNodeAnimationAsset", "obj<Zanna.Graphics3D.NodeAnimation3D>(str,i64)")
+RT_FUNC(Game3DAssetsLoadModelAsync,              rt_game3d_assets_load_model_async,                "Zanna.Game3D.Assets3D.LoadEntityAsync",              "obj<Zanna.Game3D.AssetHandle3D>(str)")
+RT_FUNC(Game3DAssetsLoadModelAssetAsync,         rt_game3d_assets_load_model_asset_async,          "Zanna.Game3D.Assets3D.LoadEntityAssetAsync",         "obj<Zanna.Game3D.AssetHandle3D>(str)")
+RT_FUNC(Game3DAssetsSetResidencyBudget,          rt_game3d_assets_set_residency_budget,            "Zanna.Game3D.Assets3D.SetResidencyBudget",          "void(i64)")
+RT_FUNC(Game3DAssetsGetResidentBytes,            rt_game3d_assets_get_resident_bytes,              "Zanna.Game3D.Assets3D.GetResidentBytes",            "i64()")
+RT_FUNC(Game3DAssetsSetResidencyHint,            rt_game3d_assets_set_residency_hint,              "Zanna.Game3D.Assets3D.SetResidencyHint",            "void(obj,f64,f64)")
+RT_FUNC(Game3DAssetsSetUploadBudget,             rt_game3d_assets_set_upload_budget,               "Zanna.Game3D.Assets3D.SetUploadBudget",             "void(i64)")
+RT_FUNC(Game3DAssetsEvict,                       rt_game3d_assets_evict,                           "Zanna.Game3D.Assets3D.Evict",                       "void(obj)")
+RT_FUNC(Game3DAssetsPreload,                rt_game3d_assets_preload,                   "Zanna.Game3D.Assets3D.Preload",                "void(str)")
+RT_FUNC(Game3DAssetsPreloadAsset,           rt_game3d_assets_preload_asset,             "Zanna.Game3D.Assets3D.PreloadAsset",           "void(str)")
+RT_FUNC(Game3DAssetsClearCache,             rt_game3d_assets_clear_cache,               "Zanna.Game3D.Assets3D.ClearCache",             "void()")
+RT_FUNC(Game3DAssetHandleGetReady,    rt_game3d_asset_handle_get_ready,    "Zanna.Game3D.AssetHandle3D.get_IsReady",    "i1(obj)")
+RT_FUNC(Game3DAssetHandleGetProgress, rt_game3d_asset_handle_get_progress, "Zanna.Game3D.AssetHandle3D.get_Progress", "f64(obj)")
+RT_FUNC(Game3DAssetHandleGetError,    rt_game3d_asset_handle_get_error,    "Zanna.Game3D.AssetHandle3D.get_Error",    "str(obj)")
+RT_FUNC(Game3DAssetHandleCancel,      rt_game3d_asset_handle_cancel,       "Zanna.Game3D.AssetHandle3D.Cancel",       "void(obj)")
+RT_FUNC(Game3DAssetHandleGetEntity,   rt_game3d_asset_handle_get_entity,   "Zanna.Game3D.AssetHandle3D.GetEntity",    "obj<Zanna.Game3D.Entity3D>(obj)")
+RT_FUNC(Game3DAssetHandleGetPrefab,   rt_game3d_asset_handle_get_template, "Zanna.Game3D.AssetHandle3D.GetPrefab",    "obj<Zanna.Game3D.SceneTemplate>(obj)")
 
 /// @summary Provides Assets 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Assets3D` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Game3D.Assets3D` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `LoadEntity`, `LoadEntityAsset`,
 /// `LoadAnimation`, `LoadAnimationAsset`.
-RT_CLASS_BEGIN("Viper.Game3D.Assets3D", Game3DAssets3D, "none", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Assets3D", Game3DAssets3D, "none", none)
     RT_METHOD("LoadEntity", "obj(str)", Game3DAssetsLoadModel)
     RT_METHOD("LoadEntityAsset", "obj(str)", Game3DAssetsLoadModelAsset)
-    RT_METHOD("LoadAnimation", "obj<Viper.Graphics3D.Animation3D>(str,i64)", Game3DAssetsLoadAnimation)
-    RT_METHOD("LoadAnimationAsset", "obj<Viper.Graphics3D.Animation3D>(str,i64)", Game3DAssetsLoadAnimationAsset)
-    RT_METHOD("LoadNodeAnimation", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimation)
-    RT_METHOD("LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimationAsset)
+    RT_METHOD("LoadAnimation", "obj<Zanna.Graphics3D.Animation3D>(str,i64)", Game3DAssetsLoadAnimation)
+    RT_METHOD("LoadAnimationAsset", "obj<Zanna.Graphics3D.Animation3D>(str,i64)", Game3DAssetsLoadAnimationAsset)
+    RT_METHOD("LoadNodeAnimation", "obj<Zanna.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimation)
+    RT_METHOD("LoadNodeAnimationAsset", "obj<Zanna.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimationAsset)
     RT_METHOD("LoadEntityAsync", "obj(str)", Game3DAssetsLoadModelAsync)
     RT_METHOD("LoadEntityAssetAsync", "obj(str)", Game3DAssetsLoadModelAssetAsync)
     RT_METHOD("SetResidencyBudget", "void(i64)", Game3DAssetsSetResidencyBudget)
@@ -165,36 +165,36 @@ RT_CLASS_END()
 
 /// @summary Provides Asset Handle 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.AssetHandle3D` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Game3D.AssetHandle3D` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `IsReady`,
 /// `Progress`, `Error` and operations including `Cancel`, `GetEntity`, `GetPrefab`.
-RT_CLASS_BEGIN("Viper.Game3D.AssetHandle3D", Game3DAssetHandle3D, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game3D.AssetHandle3D", Game3DAssetHandle3D, "obj", none)
     RT_PROP("IsReady", "i1", Game3DAssetHandleGetReady, none)
     RT_PROP("Progress", "f64", Game3DAssetHandleGetProgress, none)
     RT_PROP("Error", "str", Game3DAssetHandleGetError, none)
     RT_METHOD("Cancel", "void()", Game3DAssetHandleCancel)
-    RT_METHOD("GetEntity", "obj<Viper.Game3D.Entity3D>()", Game3DAssetHandleGetEntity)
+    RT_METHOD("GetEntity", "obj<Zanna.Game3D.Entity3D>()", Game3DAssetHandleGetEntity)
     RT_METHOD("GetPrefab", "obj()", Game3DAssetHandleGetPrefab)
 RT_CLASS_END()
 
-RT_FUNC(Game3DModelTemplateGetModel,   rt_game3d_model_template_get_model,    "Viper.Game3D.SceneTemplate.get_Model",   "obj<Viper.Graphics3D.SceneAsset>(obj)")
-RT_FUNC(Game3DModelTemplateGetPath,    rt_game3d_model_template_get_path,     "Viper.Game3D.SceneTemplate.get_Path",    "str(obj)")
-RT_FUNC(Game3DModelTemplateGetIsAsset, rt_game3d_model_template_get_is_asset, "Viper.Game3D.SceneTemplate.get_IsAsset", "i1(obj)")
-RT_FUNC(Game3DModelTemplateGetSceneCount, rt_game3d_model_template_get_scene_count, "Viper.Game3D.SceneTemplate.get_SceneCount", "i64(obj)")
-RT_FUNC(Game3DModelTemplateGetSceneName, rt_game3d_model_template_get_scene_name, "Viper.Game3D.SceneTemplate.GetSceneName", "str(obj,i64)")
-RT_FUNC(Game3DModelTemplateGetCameraCount, rt_game3d_model_template_get_camera_count, "Viper.Game3D.SceneTemplate.GetCameraCount", "i64(obj,i64)")
-RT_FUNC(Game3DModelTemplateGetCamera, rt_game3d_model_template_get_camera, "Viper.Game3D.SceneTemplate.GetCamera", "obj<Viper.Graphics3D.Camera3D>(obj,i64,i64)")
-RT_FUNC(Game3DModelTemplateInstantiate, rt_game3d_model_template_instantiate, "Viper.Game3D.SceneTemplate.Instantiate", "obj<Viper.Game3D.Entity3D>(obj)")
-RT_FUNC(Game3DModelTemplateInstantiateSceneAt, rt_game3d_model_template_instantiate_scene_at, "Viper.Game3D.SceneTemplate.InstantiateSceneAt", "obj<Viper.Game3D.Entity3D>(obj,i64)")
+RT_FUNC(Game3DModelTemplateGetModel,   rt_game3d_model_template_get_model,    "Zanna.Game3D.SceneTemplate.get_Model",   "obj<Zanna.Graphics3D.SceneAsset>(obj)")
+RT_FUNC(Game3DModelTemplateGetPath,    rt_game3d_model_template_get_path,     "Zanna.Game3D.SceneTemplate.get_Path",    "str(obj)")
+RT_FUNC(Game3DModelTemplateGetIsAsset, rt_game3d_model_template_get_is_asset, "Zanna.Game3D.SceneTemplate.get_IsAsset", "i1(obj)")
+RT_FUNC(Game3DModelTemplateGetSceneCount, rt_game3d_model_template_get_scene_count, "Zanna.Game3D.SceneTemplate.get_SceneCount", "i64(obj)")
+RT_FUNC(Game3DModelTemplateGetSceneName, rt_game3d_model_template_get_scene_name, "Zanna.Game3D.SceneTemplate.GetSceneName", "str(obj,i64)")
+RT_FUNC(Game3DModelTemplateGetCameraCount, rt_game3d_model_template_get_camera_count, "Zanna.Game3D.SceneTemplate.GetCameraCount", "i64(obj,i64)")
+RT_FUNC(Game3DModelTemplateGetCamera, rt_game3d_model_template_get_camera, "Zanna.Game3D.SceneTemplate.GetCamera", "obj<Zanna.Graphics3D.Camera3D>(obj,i64,i64)")
+RT_FUNC(Game3DModelTemplateInstantiate, rt_game3d_model_template_instantiate, "Zanna.Game3D.SceneTemplate.Instantiate", "obj<Zanna.Game3D.Entity3D>(obj)")
+RT_FUNC(Game3DModelTemplateInstantiateSceneAt, rt_game3d_model_template_instantiate_scene_at, "Zanna.Game3D.SceneTemplate.InstantiateSceneAt", "obj<Zanna.Game3D.Entity3D>(obj,i64)")
 
 /// @summary Provides Scene Template functionality for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.SceneTemplate` exposes a registry-backed runtime surface without requiring callers
+/// `Zanna.Game3D.SceneTemplate` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Model`,
 /// `Path`, `IsAsset` and operations including `GetSceneName`, `GetCameraCount`, `GetCamera`,
 /// `Instantiate`.
-RT_CLASS_BEGIN("Viper.Game3D.SceneTemplate", Game3DModelTemplate, "obj", none)
-    RT_PROP("Model", "obj<Viper.Graphics3D.SceneAsset>", Game3DModelTemplateGetModel, none)
+RT_CLASS_BEGIN("Zanna.Game3D.SceneTemplate", Game3DModelTemplate, "obj", none)
+    RT_PROP("Model", "obj<Zanna.Graphics3D.SceneAsset>", Game3DModelTemplateGetModel, none)
     RT_PROP("Path", "str", Game3DModelTemplateGetPath, none)
     RT_PROP("IsAsset", "i1", Game3DModelTemplateGetIsAsset, none)
     RT_PROP("SceneCount", "i64", Game3DModelTemplateGetSceneCount, none)
@@ -205,30 +205,30 @@ RT_CLASS_BEGIN("Viper.Game3D.SceneTemplate", Game3DModelTemplate, "obj", none)
     RT_METHOD("InstantiateSceneAt", "obj(i64)", Game3DModelTemplateInstantiateSceneAt)
 RT_CLASS_END()
 
-RT_FUNC(Game3DAnimatorNew,           rt_game3d_animator_new,            "Viper.Game3D.Animator3D.New",            "obj(obj)")
-RT_FUNC(Game3DAnimatorGetController, rt_game3d_animator_get_controller, "Viper.Game3D.Animator3D.get_Controller", "obj<Viper.Graphics3D.AnimController3D>(obj)")
-RT_FUNC(Game3DAnimatorGetBoneMatrix, rt_game3d_animator_get_bone_matrix, "Viper.Game3D.Animator3D.GetBoneMatrix", "obj<Viper.Math.Mat4>(obj,i64)")
-RT_FUNC(Game3DAnimatorFindBone,      rt_game3d_animator_find_bone,       "Viper.Game3D.Animator3D.FindBone",      "i64(obj,str)")
-RT_FUNC(Game3DAnimatorGetNodeAnimator, rt_game3d_animator_get_node_animator, "Viper.Game3D.Animator3D.get_NodeAnimator", "obj<Viper.Graphics3D.NodeAnimator3D>(obj)")
-RT_FUNC(Game3DAnimatorPlay,          rt_game3d_animator_play,           "Viper.Game3D.Animator3D.Play",           "i1(obj,str)")
-RT_FUNC(Game3DAnimatorCrossfade,     rt_game3d_animator_crossfade,      "Viper.Game3D.Animator3D.Crossfade",      "i1(obj,str,f64)")
-RT_FUNC(Game3DAnimatorPlayLayerAdditive, rt_game3d_animator_play_layer_additive, "Viper.Game3D.Animator3D.PlayLayerAdditive", "i1(obj,i64,str)")
-RT_FUNC(Game3DAnimatorCrossfadeLayerAdditive, rt_game3d_animator_crossfade_layer_additive, "Viper.Game3D.Animator3D.CrossfadeLayerAdditive", "i1(obj,i64,str,f64)")
-RT_FUNC(Game3DAnimatorSetBlendTree,  rt_game3d_animator_set_blend_tree, "Viper.Game3D.Animator3D.SetBlendTree",   "i1(obj,obj)")
-RT_FUNC(Game3DAnimatorSetIKSolver,   rt_game3d_animator_set_ik_solver,  "Viper.Game3D.Animator3D.SetIKSolver",    "i1(obj,obj)")
-RT_FUNC(Game3DAnimatorSetSpeed,      rt_game3d_animator_set_speed,      "Viper.Game3D.Animator3D.SetSpeed",       "void(obj,str,f64)")
-RT_FUNC(Game3DAnimatorIsPlaying,     rt_game3d_animator_is_playing,     "Viper.Game3D.Animator3D.IsPlaying",      "i1(obj,str)")
-RT_FUNC(Game3DAnimatorStateTime,     rt_game3d_animator_state_time,     "Viper.Game3D.Animator3D.StateTime",      "f64(obj)")
-RT_FUNC(Game3DAnimatorEventCount,    rt_game3d_animator_event_count,    "Viper.Game3D.Animator3D.EventCount",     "i64(obj)")
-RT_FUNC(Game3DAnimatorEventName,     rt_game3d_animator_event_name,     "Viper.Game3D.Animator3D.EventName",      "str(obj,i64)")
-RT_FUNC(Game3DAnimatorUpdate,        rt_game3d_animator_update,         "Viper.Game3D.Animator3D.Update",         "void(obj,f64)")
+RT_FUNC(Game3DAnimatorNew,           rt_game3d_animator_new,            "Zanna.Game3D.Animator3D.New",            "obj(obj)")
+RT_FUNC(Game3DAnimatorGetController, rt_game3d_animator_get_controller, "Zanna.Game3D.Animator3D.get_Controller", "obj<Zanna.Graphics3D.AnimController3D>(obj)")
+RT_FUNC(Game3DAnimatorGetBoneMatrix, rt_game3d_animator_get_bone_matrix, "Zanna.Game3D.Animator3D.GetBoneMatrix", "obj<Zanna.Math.Mat4>(obj,i64)")
+RT_FUNC(Game3DAnimatorFindBone,      rt_game3d_animator_find_bone,       "Zanna.Game3D.Animator3D.FindBone",      "i64(obj,str)")
+RT_FUNC(Game3DAnimatorGetNodeAnimator, rt_game3d_animator_get_node_animator, "Zanna.Game3D.Animator3D.get_NodeAnimator", "obj<Zanna.Graphics3D.NodeAnimator3D>(obj)")
+RT_FUNC(Game3DAnimatorPlay,          rt_game3d_animator_play,           "Zanna.Game3D.Animator3D.Play",           "i1(obj,str)")
+RT_FUNC(Game3DAnimatorCrossfade,     rt_game3d_animator_crossfade,      "Zanna.Game3D.Animator3D.Crossfade",      "i1(obj,str,f64)")
+RT_FUNC(Game3DAnimatorPlayLayerAdditive, rt_game3d_animator_play_layer_additive, "Zanna.Game3D.Animator3D.PlayLayerAdditive", "i1(obj,i64,str)")
+RT_FUNC(Game3DAnimatorCrossfadeLayerAdditive, rt_game3d_animator_crossfade_layer_additive, "Zanna.Game3D.Animator3D.CrossfadeLayerAdditive", "i1(obj,i64,str,f64)")
+RT_FUNC(Game3DAnimatorSetBlendTree,  rt_game3d_animator_set_blend_tree, "Zanna.Game3D.Animator3D.SetBlendTree",   "i1(obj,obj)")
+RT_FUNC(Game3DAnimatorSetIKSolver,   rt_game3d_animator_set_ik_solver,  "Zanna.Game3D.Animator3D.SetIKSolver",    "i1(obj,obj)")
+RT_FUNC(Game3DAnimatorSetSpeed,      rt_game3d_animator_set_speed,      "Zanna.Game3D.Animator3D.SetSpeed",       "void(obj,str,f64)")
+RT_FUNC(Game3DAnimatorIsPlaying,     rt_game3d_animator_is_playing,     "Zanna.Game3D.Animator3D.IsPlaying",      "i1(obj,str)")
+RT_FUNC(Game3DAnimatorStateTime,     rt_game3d_animator_state_time,     "Zanna.Game3D.Animator3D.StateTime",      "f64(obj)")
+RT_FUNC(Game3DAnimatorEventCount,    rt_game3d_animator_event_count,    "Zanna.Game3D.Animator3D.EventCount",     "i64(obj)")
+RT_FUNC(Game3DAnimatorEventName,     rt_game3d_animator_event_name,     "Zanna.Game3D.Animator3D.EventName",      "str(obj,i64)")
+RT_FUNC(Game3DAnimatorUpdate,        rt_game3d_animator_update,         "Zanna.Game3D.Animator3D.Update",         "void(obj,f64)")
 
 /// @summary Provides Behavior 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Behavior3D` values through its registered constructor and use the returned
+/// Create `Zanna.Game3D.Behavior3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `AddSpin`, `AddOrbit`, `AddSineFloat`, `AddFaceTarget`.
-RT_CLASS_BEGIN("Viper.Game3D.Behavior3D", Game3DBehavior3D, "obj", Game3DBehaviorNew)
+RT_CLASS_BEGIN("Zanna.Game3D.Behavior3D", Game3DBehavior3D, "obj", Game3DBehaviorNew)
     RT_METHOD("AddSpin", "obj(f64,f64,f64,f64)", Game3DBehaviorAddSpin)
     RT_METHOD("AddOrbit", "obj(f64,f64,f64,f64,f64)", Game3DBehaviorAddOrbit)
     RT_METHOD("AddSineFloat", "obj(f64,f64)", Game3DBehaviorAddSineFloat)
@@ -242,13 +242,13 @@ RT_CLASS_END()
 
 /// @summary Provides Animator 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Animator3D` values through its registered constructor and use the returned
+/// Create `Zanna.Game3D.Animator3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Controller`, `NodeAnimator` and operations including `Play`, `Crossfade`,
 /// `PlayLayerAdditive`, `CrossfadeLayerAdditive`.
-RT_CLASS_BEGIN("Viper.Game3D.Animator3D", Game3DAnimator3D, "obj", Game3DAnimatorNew)
-    RT_PROP("Controller", "obj<Viper.Graphics3D.AnimController3D>", Game3DAnimatorGetController, none)
-    RT_PROP("NodeAnimator", "obj<Viper.Graphics3D.NodeAnimator3D>", Game3DAnimatorGetNodeAnimator, none)
+RT_CLASS_BEGIN("Zanna.Game3D.Animator3D", Game3DAnimator3D, "obj", Game3DAnimatorNew)
+    RT_PROP("Controller", "obj<Zanna.Graphics3D.AnimController3D>", Game3DAnimatorGetController, none)
+    RT_PROP("NodeAnimator", "obj<Zanna.Graphics3D.NodeAnimator3D>", Game3DAnimatorGetNodeAnimator, none)
     RT_METHOD("Play", "i1(str)", Game3DAnimatorPlay)
     RT_METHOD("Crossfade", "i1(str,f64)", Game3DAnimatorCrossfade)
     RT_METHOD("PlayLayerAdditive", "i1(i64,str)", Game3DAnimatorPlayLayerAdditive)
@@ -258,58 +258,58 @@ RT_CLASS_BEGIN("Viper.Game3D.Animator3D", Game3DAnimator3D, "obj", Game3DAnimato
     RT_METHOD("SetSpeed", "void(str,f64)", Game3DAnimatorSetSpeed)
     RT_METHOD("IsPlaying", "i1(str)", Game3DAnimatorIsPlaying)
     RT_METHOD("StateTime", "f64()", Game3DAnimatorStateTime)
-    RT_METHOD("GetBoneMatrix", "obj<Viper.Math.Mat4>(i64)", Game3DAnimatorGetBoneMatrix)
+    RT_METHOD("GetBoneMatrix", "obj<Zanna.Math.Mat4>(i64)", Game3DAnimatorGetBoneMatrix)
     RT_METHOD("FindBone", "i64(str)", Game3DAnimatorFindBone)
     RT_METHOD("EventCount", "i64()", Game3DAnimatorEventCount)
     RT_METHOD("EventName", "str(i64)", Game3DAnimatorEventName)
     RT_METHOD("Update", "void(f64)", Game3DAnimatorUpdate)
 RT_CLASS_END()
 
-RT_FUNC(Game3DEnvironmentOutdoor,  rt_game3d_environment_outdoor,  "Viper.Game3D.Environment3D.Outdoor",  "obj(obj)")
-RT_FUNC(Game3DEnvironmentSunset,   rt_game3d_environment_sunset,   "Viper.Game3D.Environment3D.Sunset",   "obj(obj)")
-RT_FUNC(Game3DEnvironmentOvercast, rt_game3d_environment_overcast, "Viper.Game3D.Environment3D.Overcast", "obj(obj)")
-RT_FUNC(Game3DEnvironmentNight,    rt_game3d_environment_night,    "Viper.Game3D.Environment3D.Night",    "obj(obj)")
+RT_FUNC(Game3DEnvironmentOutdoor,  rt_game3d_environment_outdoor,  "Zanna.Game3D.Environment3D.Outdoor",  "obj(obj)")
+RT_FUNC(Game3DEnvironmentSunset,   rt_game3d_environment_sunset,   "Zanna.Game3D.Environment3D.Sunset",   "obj(obj)")
+RT_FUNC(Game3DEnvironmentOvercast, rt_game3d_environment_overcast, "Zanna.Game3D.Environment3D.Overcast", "obj(obj)")
+RT_FUNC(Game3DEnvironmentNight,    rt_game3d_environment_night,    "Zanna.Game3D.Environment3D.Night",    "obj(obj)")
 
 /// @summary Provides Environment 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Environment3D` is a static runtime surface and does not require an instance.
+/// `Zanna.Game3D.Environment3D` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `Outdoor`, `Sunset`, `Overcast`, `Night`.
-RT_CLASS_BEGIN("Viper.Game3D.Environment3D", Game3DEnvironment3D, "none", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Environment3D", Game3DEnvironment3D, "none", none)
     RT_METHOD("Outdoor", "obj(obj)", Game3DEnvironmentOutdoor)
     RT_METHOD("Sunset", "obj(obj)", Game3DEnvironmentSunset)
     RT_METHOD("Overcast", "obj(obj)", Game3DEnvironmentOvercast)
     RT_METHOD("Night", "obj(obj)", Game3DEnvironmentNight)
 RT_CLASS_END()
 
-RT_FUNC(Game3DEnvHandleWithTerrain, rt_game3d_env_handle_with_terrain, "Viper.Game3D.EnvHandle.WithTerrain", "obj(obj,f64,f64)")
-RT_FUNC(Game3DEnvHandleWithWater,   rt_game3d_env_handle_with_water,   "Viper.Game3D.EnvHandle.WithWater",   "obj(obj,f64)")
-RT_FUNC(Game3DEnvHandleWithFog,     rt_game3d_env_handle_with_fog,     "Viper.Game3D.EnvHandle.WithFog",     "obj(obj,f64,f64)")
-RT_FUNC(Game3DEnvHandleWithHeightFog, rt_game3d_env_handle_with_height_fog, "Viper.Game3D.EnvHandle.WithHeightFog", "obj(obj,f64,f64,f64)")
+RT_FUNC(Game3DEnvHandleWithTerrain, rt_game3d_env_handle_with_terrain, "Zanna.Game3D.EnvHandle.WithTerrain", "obj(obj,f64,f64)")
+RT_FUNC(Game3DEnvHandleWithWater,   rt_game3d_env_handle_with_water,   "Zanna.Game3D.EnvHandle.WithWater",   "obj(obj,f64)")
+RT_FUNC(Game3DEnvHandleWithFog,     rt_game3d_env_handle_with_fog,     "Zanna.Game3D.EnvHandle.WithFog",     "obj(obj,f64,f64)")
+RT_FUNC(Game3DEnvHandleWithHeightFog, rt_game3d_env_handle_with_height_fog, "Zanna.Game3D.EnvHandle.WithHeightFog", "obj(obj,f64,f64,f64)")
 
 /// @summary Provides Env Handle functionality for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.EnvHandle` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Game3D.EnvHandle` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `WithTerrain`,
 /// `WithWater`, `WithFog`, `WithHeightFog`.
-RT_CLASS_BEGIN("Viper.Game3D.EnvHandle", Game3DEnvHandle, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game3D.EnvHandle", Game3DEnvHandle, "obj", none)
     RT_METHOD("WithTerrain", "obj(f64,f64)", Game3DEnvHandleWithTerrain)
     RT_METHOD("WithWater", "obj(f64)", Game3DEnvHandleWithWater)
     RT_METHOD("WithFog", "obj(f64,f64)", Game3DEnvHandleWithFog)
     RT_METHOD("WithHeightFog", "obj(f64,f64,f64)", Game3DEnvHandleWithHeightFog)
 RT_CLASS_END()
 
-RT_FUNC(Game3DDebugShowOverlay,     rt_game3d_debug_show_overlay,      "Viper.Game3D.Debug3D.ShowOverlay",      "void(obj,i1)")
-RT_FUNC(Game3DDebugDrawAxes,        rt_game3d_debug_draw_axes,         "Viper.Game3D.Debug3D.DrawAxes",         "void(obj,obj,f64)")
-RT_FUNC(Game3DDebugDrawPhysics,     rt_game3d_debug_draw_physics,      "Viper.Game3D.Debug3D.DrawPhysics",      "void(obj,i1)")
-RT_FUNC(Game3DDebugDrawCameraInfo,  rt_game3d_debug_draw_camera_info,  "Viper.Game3D.Debug3D.DrawCameraInfo",   "void(obj,i1)")
-RT_FUNC(Game3DDebugDrawCapabilities, rt_game3d_debug_draw_capabilities, "Viper.Game3D.Debug3D.DrawCapabilities", "void(obj,i1)")
+RT_FUNC(Game3DDebugShowOverlay,     rt_game3d_debug_show_overlay,      "Zanna.Game3D.Debug3D.ShowOverlay",      "void(obj,i1)")
+RT_FUNC(Game3DDebugDrawAxes,        rt_game3d_debug_draw_axes,         "Zanna.Game3D.Debug3D.DrawAxes",         "void(obj,obj,f64)")
+RT_FUNC(Game3DDebugDrawPhysics,     rt_game3d_debug_draw_physics,      "Zanna.Game3D.Debug3D.DrawPhysics",      "void(obj,i1)")
+RT_FUNC(Game3DDebugDrawCameraInfo,  rt_game3d_debug_draw_camera_info,  "Zanna.Game3D.Debug3D.DrawCameraInfo",   "void(obj,i1)")
+RT_FUNC(Game3DDebugDrawCapabilities, rt_game3d_debug_draw_capabilities, "Zanna.Game3D.Debug3D.DrawCapabilities", "void(obj,i1)")
 
 /// @summary Provides Debug 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Debug3D` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Game3D.Debug3D` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`,
 /// `DrawCameraInfo`.
-RT_CLASS_BEGIN("Viper.Game3D.Debug3D", Game3DDebug3D, "none", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Debug3D", Game3DDebug3D, "none", none)
     RT_METHOD("ShowOverlay", "void(obj,i1)", Game3DDebugShowOverlay)
     RT_METHOD("DrawAxes", "void(obj,obj,f64)", Game3DDebugDrawAxes)
     RT_METHOD("DrawPhysics", "void(obj,i1)", Game3DDebugDrawPhysics)
@@ -317,94 +317,94 @@ RT_CLASS_BEGIN("Viper.Game3D.Debug3D", Game3DDebug3D, "none", none)
     RT_METHOD("DrawCapabilities", "void(obj,i1)", Game3DDebugDrawCapabilities)
 RT_CLASS_END()
 
-RT_FUNC(Game3DDiagnosticsBroadphaseFallbackCount, rt_game3d_diagnostics_get_broadphase_fallback_count, "Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount", "i64()")
-RT_FUNC(Game3DDiagnosticsCcdClampedFrames, rt_game3d_diagnostics_get_ccd_clamped_frames, "Viper.Game3D.Diagnostics3D.get_CcdClampedFrames", "i64()")
-RT_FUNC(Game3DDiagnosticsCcdClampedBodies, rt_game3d_diagnostics_get_ccd_clamped_bodies, "Viper.Game3D.Diagnostics3D.get_CcdClampedBodies", "i64()")
-RT_FUNC(Game3DDiagnosticsAnimEventsDropped, rt_game3d_diagnostics_get_anim_events_dropped, "Viper.Game3D.Diagnostics3D.get_AnimEventsDropped", "i64()")
-RT_FUNC(Game3DDiagnosticsAudioVoicesEvicted, rt_game3d_diagnostics_get_audio_voices_evicted, "Viper.Game3D.Diagnostics3D.get_AudioVoicesEvicted", "i64()")
-RT_FUNC(Game3DDiagnosticsNavGridFallbacks, rt_game3d_diagnostics_get_nav_grid_fallbacks, "Viper.Game3D.Diagnostics3D.get_NavGridFallbacks", "i64()")
-RT_FUNC(Game3DDiagnosticsStaleEntityCalls, rt_game3d_diagnostics_get_stale_entity_calls, "Viper.Game3D.Diagnostics3D.get_StaleEntityCalls", "i64()")
-RT_FUNC(Game3DDiagnosticsStaleAsyncLoadsDropped, rt_game3d_diagnostics_get_stale_async_loads_dropped, "Viper.Game3D.Diagnostics3D.get_StaleAsyncLoadsDropped", "i64()")
-RT_FUNC(Game3DDiagnosticsStreamStagingErrors, rt_game3d_diagnostics_get_stream_staging_errors, "Viper.Game3D.Diagnostics3D.get_StreamStagingErrors", "i64()")
-RT_FUNC(Game3DDiagnosticsStreamStaleStagesDropped, rt_game3d_diagnostics_get_stream_stale_stages_dropped, "Viper.Game3D.Diagnostics3D.get_StreamStaleStagesDropped", "i64()")
-RT_FUNC(Game3DDiagnosticsEpaFallbacks, rt_game3d_diagnostics_get_epa_fallbacks, "Viper.Game3D.Diagnostics3D.get_EpaFallbacks", "i64()")
-RT_FUNC(Game3DDiagnosticsShadowSlotsReused, rt_game3d_diagnostics_get_shadow_slots_reused, "Viper.Game3D.Diagnostics3D.get_ShadowSlotsReused", "i64()")
-RT_FUNC(Game3DDiagnosticsAutoInstancedDraws, rt_game3d_diagnostics_get_auto_instanced_draws, "Viper.Game3D.Diagnostics3D.get_AutoInstancedDraws", "i64()")
-RT_FUNC(Game3DDiagnosticsReset, rt_game3d_diagnostics_reset, "Viper.Game3D.Diagnostics3D.Reset", "void()")
-RT_FUNC(Game3DDiagnosticsSummary, rt_game3d_diagnostics_summary, "Viper.Game3D.Diagnostics3D.Summary", "str()")
+RT_FUNC(Game3DDiagnosticsBroadphaseFallbackCount, rt_game3d_diagnostics_get_broadphase_fallback_count, "Zanna.Game3D.Diagnostics3D.get_BroadphaseFallbackCount", "i64()")
+RT_FUNC(Game3DDiagnosticsCcdClampedFrames, rt_game3d_diagnostics_get_ccd_clamped_frames, "Zanna.Game3D.Diagnostics3D.get_CcdClampedFrames", "i64()")
+RT_FUNC(Game3DDiagnosticsCcdClampedBodies, rt_game3d_diagnostics_get_ccd_clamped_bodies, "Zanna.Game3D.Diagnostics3D.get_CcdClampedBodies", "i64()")
+RT_FUNC(Game3DDiagnosticsAnimEventsDropped, rt_game3d_diagnostics_get_anim_events_dropped, "Zanna.Game3D.Diagnostics3D.get_AnimEventsDropped", "i64()")
+RT_FUNC(Game3DDiagnosticsAudioVoicesEvicted, rt_game3d_diagnostics_get_audio_voices_evicted, "Zanna.Game3D.Diagnostics3D.get_AudioVoicesEvicted", "i64()")
+RT_FUNC(Game3DDiagnosticsNavGridFallbacks, rt_game3d_diagnostics_get_nav_grid_fallbacks, "Zanna.Game3D.Diagnostics3D.get_NavGridFallbacks", "i64()")
+RT_FUNC(Game3DDiagnosticsStaleEntityCalls, rt_game3d_diagnostics_get_stale_entity_calls, "Zanna.Game3D.Diagnostics3D.get_StaleEntityCalls", "i64()")
+RT_FUNC(Game3DDiagnosticsStaleAsyncLoadsDropped, rt_game3d_diagnostics_get_stale_async_loads_dropped, "Zanna.Game3D.Diagnostics3D.get_StaleAsyncLoadsDropped", "i64()")
+RT_FUNC(Game3DDiagnosticsStreamStagingErrors, rt_game3d_diagnostics_get_stream_staging_errors, "Zanna.Game3D.Diagnostics3D.get_StreamStagingErrors", "i64()")
+RT_FUNC(Game3DDiagnosticsStreamStaleStagesDropped, rt_game3d_diagnostics_get_stream_stale_stages_dropped, "Zanna.Game3D.Diagnostics3D.get_StreamStaleStagesDropped", "i64()")
+RT_FUNC(Game3DDiagnosticsEpaFallbacks, rt_game3d_diagnostics_get_epa_fallbacks, "Zanna.Game3D.Diagnostics3D.get_EpaFallbacks", "i64()")
+RT_FUNC(Game3DDiagnosticsShadowSlotsReused, rt_game3d_diagnostics_get_shadow_slots_reused, "Zanna.Game3D.Diagnostics3D.get_ShadowSlotsReused", "i64()")
+RT_FUNC(Game3DDiagnosticsAutoInstancedDraws, rt_game3d_diagnostics_get_auto_instanced_draws, "Zanna.Game3D.Diagnostics3D.get_AutoInstancedDraws", "i64()")
+RT_FUNC(Game3DDiagnosticsReset, rt_game3d_diagnostics_reset, "Zanna.Game3D.Diagnostics3D.Reset", "void()")
+RT_FUNC(Game3DDiagnosticsSummary, rt_game3d_diagnostics_summary, "Zanna.Game3D.Diagnostics3D.Summary", "str()")
 
-RT_FUNC(Game3DSurfacesRegister, rt_game3d_surfaces_register, "Viper.Game3D.Surfaces.Register", "i64(str)")
-RT_FUNC(Game3DSurfacesNameOf,   rt_game3d_surfaces_name_of,  "Viper.Game3D.Surfaces.NameOf",   "str(i64)")
-RT_FUNC(Game3DSurfacesIdOf,     rt_game3d_surfaces_id_of,    "Viper.Game3D.Surfaces.IdOf",     "i64(str)")
-RT_FUNC(Game3DSurfacesCount,    rt_game3d_surfaces_count,    "Viper.Game3D.Surfaces.get_Count", "i64()")
+RT_FUNC(Game3DSurfacesRegister, rt_game3d_surfaces_register, "Zanna.Game3D.Surfaces.Register", "i64(str)")
+RT_FUNC(Game3DSurfacesNameOf,   rt_game3d_surfaces_name_of,  "Zanna.Game3D.Surfaces.NameOf",   "str(i64)")
+RT_FUNC(Game3DSurfacesIdOf,     rt_game3d_surfaces_id_of,    "Zanna.Game3D.Surfaces.IdOf",     "i64(str)")
+RT_FUNC(Game3DSurfacesCount,    rt_game3d_surfaces_count,    "Zanna.Game3D.Surfaces.get_Count", "i64()")
 
-RT_FUNC(Game3DSurfaceTableNew,      rt_game3d_surface_table_new,          "Viper.Game3D.SurfaceTable3D.New",          "obj()")
-RT_FUNC(Game3DSurfaceTableAddClip,  rt_game3d_surface_table_add_clip,     "Viper.Game3D.SurfaceTable3D.AddClip",      "obj(obj,i64,obj)")
-RT_FUNC(Game3DSurfaceTableLoudness, rt_game3d_surface_table_set_loudness, "Viper.Game3D.SurfaceTable3D.SetLoudness",  "obj(obj,i64,f64)")
-RT_FUNC(Game3DSurfaceTableClipCount, rt_game3d_surface_table_clip_count,  "Viper.Game3D.SurfaceTable3D.ClipCount",    "i64(obj,i64)")
+RT_FUNC(Game3DSurfaceTableNew,      rt_game3d_surface_table_new,          "Zanna.Game3D.SurfaceTable3D.New",          "obj()")
+RT_FUNC(Game3DSurfaceTableAddClip,  rt_game3d_surface_table_add_clip,     "Zanna.Game3D.SurfaceTable3D.AddClip",      "obj(obj,i64,obj)")
+RT_FUNC(Game3DSurfaceTableLoudness, rt_game3d_surface_table_set_loudness, "Zanna.Game3D.SurfaceTable3D.SetLoudness",  "obj(obj,i64,f64)")
+RT_FUNC(Game3DSurfaceTableClipCount, rt_game3d_surface_table_clip_count,  "Zanna.Game3D.SurfaceTable3D.ClipCount",    "i64(obj,i64)")
 
 /// @summary Provides Surface Table 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.SurfaceTable3D` values through its registered constructor and use the
+/// Create `Zanna.Game3D.SurfaceTable3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes operations
 /// including `AddClip`, `SetLoudness`, `ClipCount`.
-RT_CLASS_BEGIN("Viper.Game3D.SurfaceTable3D", Game3DSurfaceTable3D, "obj", Game3DSurfaceTableNew)
+RT_CLASS_BEGIN("Zanna.Game3D.SurfaceTable3D", Game3DSurfaceTable3D, "obj", Game3DSurfaceTableNew)
     RT_METHOD("AddClip", "obj(i64,obj)", Game3DSurfaceTableAddClip)
     RT_METHOD("SetLoudness", "obj(i64,f64)", Game3DSurfaceTableLoudness)
     RT_METHOD("ClipCount", "i64(i64)", Game3DSurfaceTableClipCount)
 RT_CLASS_END()
 
-RT_FUNC(Game3DPerceptionNew,        rt_game3d_perception_new,              "Viper.Game3D.Perception3D.New",                "obj(obj)")
-RT_FUNC(Game3DPerceptionSetSight,   rt_game3d_perception_set_sight,        "Viper.Game3D.Perception3D.SetSight",           "void(obj,f64,f64,f64)")
-RT_FUNC(Game3DPerceptionSetHearing, rt_game3d_perception_set_hearing,      "Viper.Game3D.Perception3D.SetHearing",         "void(obj,f64)")
-RT_FUNC(Game3DPerceptionTargetMask, rt_game3d_perception_set_target_mask,  "Viper.Game3D.Perception3D.SetTargetMask",      "void(obj,i64)")
-RT_FUNC(Game3DPerceptionLosMask,    rt_game3d_perception_set_los_mask,     "Viper.Game3D.Perception3D.SetLosMask",         "void(obj,i64)")
-RT_FUNC(Game3DPerceptionSeenCount,  rt_game3d_perception_seen_count,       "Viper.Game3D.Perception3D.SeenCount",          "i64(obj)")
-RT_FUNC(Game3DPerceptionSeenTarget, rt_game3d_perception_seen_target,      "Viper.Game3D.Perception3D.SeenTarget",         "obj(obj,i64)")
-RT_FUNC(Game3DPerceptionLastKnown,  rt_game3d_perception_last_known_position, "Viper.Game3D.Perception3D.LastKnownPosition", "obj<Viper.Math.Vec3>(obj,obj)")
-RT_FUNC(Game3DPerceptionSeenChanged, rt_game3d_perception_seen_changed,    "Viper.Game3D.Perception3D.SeenChanged",        "i1(obj)")
-RT_FUNC(Game3DPerceptionHeardCount, rt_game3d_perception_heard_count,      "Viper.Game3D.Perception3D.HeardCount",         "i64(obj)")
-RT_FUNC(Game3DPerceptionHeardPos,   rt_game3d_perception_heard_position,   "Viper.Game3D.Perception3D.HeardPosition",      "obj<Viper.Math.Vec3>(obj,i64)")
-RT_FUNC(Game3DPerceptionHeardTag,   rt_game3d_perception_heard_tag,        "Viper.Game3D.Perception3D.HeardTag",           "i64(obj,i64)")
-RT_FUNC(Game3DWorldReportSound,     rt_game3d_world_report_sound,          "Viper.Game3D.World3D.ReportSound",             "void(obj,obj<Viper.Math.Vec3>,f64,i64)")
+RT_FUNC(Game3DPerceptionNew,        rt_game3d_perception_new,              "Zanna.Game3D.Perception3D.New",                "obj(obj)")
+RT_FUNC(Game3DPerceptionSetSight,   rt_game3d_perception_set_sight,        "Zanna.Game3D.Perception3D.SetSight",           "void(obj,f64,f64,f64)")
+RT_FUNC(Game3DPerceptionSetHearing, rt_game3d_perception_set_hearing,      "Zanna.Game3D.Perception3D.SetHearing",         "void(obj,f64)")
+RT_FUNC(Game3DPerceptionTargetMask, rt_game3d_perception_set_target_mask,  "Zanna.Game3D.Perception3D.SetTargetMask",      "void(obj,i64)")
+RT_FUNC(Game3DPerceptionLosMask,    rt_game3d_perception_set_los_mask,     "Zanna.Game3D.Perception3D.SetLosMask",         "void(obj,i64)")
+RT_FUNC(Game3DPerceptionSeenCount,  rt_game3d_perception_seen_count,       "Zanna.Game3D.Perception3D.SeenCount",          "i64(obj)")
+RT_FUNC(Game3DPerceptionSeenTarget, rt_game3d_perception_seen_target,      "Zanna.Game3D.Perception3D.SeenTarget",         "obj(obj,i64)")
+RT_FUNC(Game3DPerceptionLastKnown,  rt_game3d_perception_last_known_position, "Zanna.Game3D.Perception3D.LastKnownPosition", "obj<Zanna.Math.Vec3>(obj,obj)")
+RT_FUNC(Game3DPerceptionSeenChanged, rt_game3d_perception_seen_changed,    "Zanna.Game3D.Perception3D.SeenChanged",        "i1(obj)")
+RT_FUNC(Game3DPerceptionHeardCount, rt_game3d_perception_heard_count,      "Zanna.Game3D.Perception3D.HeardCount",         "i64(obj)")
+RT_FUNC(Game3DPerceptionHeardPos,   rt_game3d_perception_heard_position,   "Zanna.Game3D.Perception3D.HeardPosition",      "obj<Zanna.Math.Vec3>(obj,i64)")
+RT_FUNC(Game3DPerceptionHeardTag,   rt_game3d_perception_heard_tag,        "Zanna.Game3D.Perception3D.HeardTag",           "i64(obj,i64)")
+RT_FUNC(Game3DWorldReportSound,     rt_game3d_world_report_sound,          "Zanna.Game3D.World3D.ReportSound",             "void(obj,obj<Zanna.Math.Vec3>,f64,i64)")
 
 /// @summary Provides Perception 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Perception3D` values through its registered constructor and use the
+/// Create `Zanna.Game3D.Perception3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes operations
 /// including `SetSight`, `SetHearing`, `SetTargetMask`, `SetLosMask`.
-RT_CLASS_BEGIN("Viper.Game3D.Perception3D", Game3DPerception3D, "obj", Game3DPerceptionNew)
+RT_CLASS_BEGIN("Zanna.Game3D.Perception3D", Game3DPerception3D, "obj", Game3DPerceptionNew)
     RT_METHOD("SetSight", "void(f64,f64,f64)", Game3DPerceptionSetSight)
     RT_METHOD("SetHearing", "void(f64)", Game3DPerceptionSetHearing)
     RT_METHOD("SetTargetMask", "void(i64)", Game3DPerceptionTargetMask)
     RT_METHOD("SetLosMask", "void(i64)", Game3DPerceptionLosMask)
     RT_METHOD("SeenCount", "i64()", Game3DPerceptionSeenCount)
     RT_METHOD("SeenTarget", "obj(i64)", Game3DPerceptionSeenTarget)
-    RT_METHOD("LastKnownPosition", "obj<Viper.Math.Vec3>(obj)", Game3DPerceptionLastKnown)
+    RT_METHOD("LastKnownPosition", "obj<Zanna.Math.Vec3>(obj)", Game3DPerceptionLastKnown)
     RT_METHOD("SeenChanged", "i1()", Game3DPerceptionSeenChanged)
     RT_METHOD("HeardCount", "i64()", Game3DPerceptionHeardCount)
-    RT_METHOD("HeardPosition", "obj<Viper.Math.Vec3>(i64)", Game3DPerceptionHeardPos)
+    RT_METHOD("HeardPosition", "obj<Zanna.Math.Vec3>(i64)", Game3DPerceptionHeardPos)
     RT_METHOD("HeardTag", "i64(i64)", Game3DPerceptionHeardTag)
 RT_CLASS_END()
 
-RT_FUNC(Game3DBTreeNew,        rt_game3d_btree_new,               "Viper.Game3D.BehaviorTree3D.New",             "obj()")
-RT_FUNC(Game3DBTreeSequence,   rt_game3d_btree_sequence,          "Viper.Game3D.BehaviorTree3D.Sequence",        "i64(obj)")
-RT_FUNC(Game3DBTreeSelector,   rt_game3d_btree_selector,          "Viper.Game3D.BehaviorTree3D.Selector",        "i64(obj)")
-RT_FUNC(Game3DBTreeInverter,   rt_game3d_btree_inverter,          "Viper.Game3D.BehaviorTree3D.Inverter",        "i64(obj)")
-RT_FUNC(Game3DBTreeCanSee,     rt_game3d_btree_can_see,           "Viper.Game3D.BehaviorTree3D.TargetVisible",   "i64(obj)")
-RT_FUNC(Game3DBTreeWait,       rt_game3d_btree_wait,              "Viper.Game3D.BehaviorTree3D.Wait",            "i64(obj,f64)")
-RT_FUNC(Game3DBTreeMoveTarget, rt_game3d_btree_move_to_target,    "Viper.Game3D.BehaviorTree3D.MoveToTarget",    "i64(obj,f64,f64)")
-RT_FUNC(Game3DBTreeMoveKnown,  rt_game3d_btree_move_to_last_known, "Viper.Game3D.BehaviorTree3D.MoveToLastKnown", "i64(obj,f64,f64)")
-RT_FUNC(Game3DBTreeCustom,     rt_game3d_btree_custom,            "Viper.Game3D.BehaviorTree3D.Custom",          "i64(obj,i64)")
-RT_FUNC(Game3DBTreeAddChild,   rt_game3d_btree_add_child,         "Viper.Game3D.BehaviorTree3D.AddChild",        "void(obj,i64,i64)")
-RT_FUNC(Game3DBTreeSetRoot,    rt_game3d_btree_set_root,          "Viper.Game3D.BehaviorTree3D.SetRoot",         "void(obj,i64)")
+RT_FUNC(Game3DBTreeNew,        rt_game3d_btree_new,               "Zanna.Game3D.BehaviorTree3D.New",             "obj()")
+RT_FUNC(Game3DBTreeSequence,   rt_game3d_btree_sequence,          "Zanna.Game3D.BehaviorTree3D.Sequence",        "i64(obj)")
+RT_FUNC(Game3DBTreeSelector,   rt_game3d_btree_selector,          "Zanna.Game3D.BehaviorTree3D.Selector",        "i64(obj)")
+RT_FUNC(Game3DBTreeInverter,   rt_game3d_btree_inverter,          "Zanna.Game3D.BehaviorTree3D.Inverter",        "i64(obj)")
+RT_FUNC(Game3DBTreeCanSee,     rt_game3d_btree_can_see,           "Zanna.Game3D.BehaviorTree3D.TargetVisible",   "i64(obj)")
+RT_FUNC(Game3DBTreeWait,       rt_game3d_btree_wait,              "Zanna.Game3D.BehaviorTree3D.Wait",            "i64(obj,f64)")
+RT_FUNC(Game3DBTreeMoveTarget, rt_game3d_btree_move_to_target,    "Zanna.Game3D.BehaviorTree3D.MoveToTarget",    "i64(obj,f64,f64)")
+RT_FUNC(Game3DBTreeMoveKnown,  rt_game3d_btree_move_to_last_known, "Zanna.Game3D.BehaviorTree3D.MoveToLastKnown", "i64(obj,f64,f64)")
+RT_FUNC(Game3DBTreeCustom,     rt_game3d_btree_custom,            "Zanna.Game3D.BehaviorTree3D.Custom",          "i64(obj,i64)")
+RT_FUNC(Game3DBTreeAddChild,   rt_game3d_btree_add_child,         "Zanna.Game3D.BehaviorTree3D.AddChild",        "void(obj,i64,i64)")
+RT_FUNC(Game3DBTreeSetRoot,    rt_game3d_btree_set_root,          "Zanna.Game3D.BehaviorTree3D.SetRoot",         "void(obj,i64)")
 
 /// @summary Provides Behavior Tree 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.BehaviorTree3D` values through its registered constructor and use the
+/// Create `Zanna.Game3D.BehaviorTree3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes operations
 /// including `Sequence`, `Selector`, `Inverter`, `TargetVisible`.
-RT_CLASS_BEGIN("Viper.Game3D.BehaviorTree3D", Game3DBehaviorTree3D, "obj", Game3DBTreeNew)
+RT_CLASS_BEGIN("Zanna.Game3D.BehaviorTree3D", Game3DBehaviorTree3D, "obj", Game3DBTreeNew)
     RT_METHOD("Sequence", "i64()", Game3DBTreeSequence)
     RT_METHOD("Selector", "i64()", Game3DBTreeSelector)
     RT_METHOD("Inverter", "i64()", Game3DBTreeInverter)
@@ -417,40 +417,40 @@ RT_CLASS_BEGIN("Viper.Game3D.BehaviorTree3D", Game3DBehaviorTree3D, "obj", Game3
     RT_METHOD("SetRoot", "void(i64)", Game3DBTreeSetRoot)
 RT_CLASS_END()
 
-RT_FUNC(Game3DBTInstanceNew,     rt_game3d_bt_instance_new,            "Viper.Game3D.BehaviorTreeInstance3D.New",               "obj(obj,obj<Viper.Game3D.BehaviorTree3D>)")
-RT_FUNC(Game3DBTInstanceTarget,  rt_game3d_bt_instance_set_target,     "Viper.Game3D.BehaviorTreeInstance3D.SetTarget",         "void(obj,obj)")
-RT_FUNC(Game3DBTInstancePending, rt_game3d_bt_instance_pending_custom, "Viper.Game3D.BehaviorTreeInstance3D.get_PendingCustom", "i64(obj)")
-RT_FUNC(Game3DBTInstanceResolve, rt_game3d_bt_instance_resolve,        "Viper.Game3D.BehaviorTreeInstance3D.Resolve",           "void(obj,i1)")
+RT_FUNC(Game3DBTInstanceNew,     rt_game3d_bt_instance_new,            "Zanna.Game3D.BehaviorTreeInstance3D.New",               "obj(obj,obj<Zanna.Game3D.BehaviorTree3D>)")
+RT_FUNC(Game3DBTInstanceTarget,  rt_game3d_bt_instance_set_target,     "Zanna.Game3D.BehaviorTreeInstance3D.SetTarget",         "void(obj,obj)")
+RT_FUNC(Game3DBTInstancePending, rt_game3d_bt_instance_pending_custom, "Zanna.Game3D.BehaviorTreeInstance3D.get_PendingCustom", "i64(obj)")
+RT_FUNC(Game3DBTInstanceResolve, rt_game3d_bt_instance_resolve,        "Zanna.Game3D.BehaviorTreeInstance3D.Resolve",           "void(obj,i1)")
 
 /// @summary Provides Behavior Tree Instance 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.BehaviorTreeInstance3D` values through its registered constructor and use
+/// Create `Zanna.Game3D.BehaviorTreeInstance3D` values through its registered constructor and use
 /// the returned object with the instance members below. Its public surface exposes properties
 /// such as `PendingCustom` and operations including `SetTarget`, `Resolve`.
-RT_CLASS_BEGIN("Viper.Game3D.BehaviorTreeInstance3D", Game3DBehaviorTreeInstance3D, "obj", Game3DBTInstanceNew)
+RT_CLASS_BEGIN("Zanna.Game3D.BehaviorTreeInstance3D", Game3DBehaviorTreeInstance3D, "obj", Game3DBTInstanceNew)
     RT_METHOD("SetTarget", "void(obj)", Game3DBTInstanceTarget)
     RT_PROP("PendingCustom", "i64", Game3DBTInstancePending, none)
     RT_METHOD("Resolve", "void(i1)", Game3DBTInstanceResolve)
 RT_CLASS_END()
 
-RT_FUNC(Game3DInteractableNew,       rt_game3d_interactable_new,              "Viper.Game3D.Interactable3D.New",               "obj(obj)")
-RT_FUNC(Game3DInteractablePrompt,    rt_game3d_interactable_with_prompt,      "Viper.Game3D.Interactable3D.WithPrompt",        "obj(obj,str)")
-RT_FUNC(Game3DInteractableGetPrompt, rt_game3d_interactable_get_prompt,       "Viper.Game3D.Interactable3D.get_Prompt",        "str(obj)")
-RT_FUNC(Game3DInteractableKind,      rt_game3d_interactable_with_kind,        "Viper.Game3D.Interactable3D.WithKind",          "obj(obj,i64)")
-RT_FUNC(Game3DInteractableGetKind,   rt_game3d_interactable_get_kind,         "Viper.Game3D.Interactable3D.get_Kind",          "i64(obj)")
-RT_FUNC(Game3DInteractableRadius,    rt_game3d_interactable_with_radius,      "Viper.Game3D.Interactable3D.WithRadius",        "obj(obj,f64)")
-RT_FUNC(Game3DInteractableGetRadius, rt_game3d_interactable_get_radius,       "Viper.Game3D.Interactable3D.get_Radius",        "f64(obj)")
-RT_FUNC(Game3DInteractableSetEnabled, rt_game3d_interactable_set_enabled,     "Viper.Game3D.Interactable3D.set_IsEnabled",       "void(obj,i1)")
-RT_FUNC(Game3DInteractableGetEnabled, rt_game3d_interactable_get_enabled,     "Viper.Game3D.Interactable3D.get_IsEnabled",       "i1(obj)")
-RT_FUNC(Game3DInteractableSetPriority, rt_game3d_interactable_set_focus_priority, "Viper.Game3D.Interactable3D.set_FocusPriority", "void(obj,f64)")
-RT_FUNC(Game3DInteractableGetPriority, rt_game3d_interactable_get_focus_priority, "Viper.Game3D.Interactable3D.get_FocusPriority", "f64(obj)")
+RT_FUNC(Game3DInteractableNew,       rt_game3d_interactable_new,              "Zanna.Game3D.Interactable3D.New",               "obj(obj)")
+RT_FUNC(Game3DInteractablePrompt,    rt_game3d_interactable_with_prompt,      "Zanna.Game3D.Interactable3D.WithPrompt",        "obj(obj,str)")
+RT_FUNC(Game3DInteractableGetPrompt, rt_game3d_interactable_get_prompt,       "Zanna.Game3D.Interactable3D.get_Prompt",        "str(obj)")
+RT_FUNC(Game3DInteractableKind,      rt_game3d_interactable_with_kind,        "Zanna.Game3D.Interactable3D.WithKind",          "obj(obj,i64)")
+RT_FUNC(Game3DInteractableGetKind,   rt_game3d_interactable_get_kind,         "Zanna.Game3D.Interactable3D.get_Kind",          "i64(obj)")
+RT_FUNC(Game3DInteractableRadius,    rt_game3d_interactable_with_radius,      "Zanna.Game3D.Interactable3D.WithRadius",        "obj(obj,f64)")
+RT_FUNC(Game3DInteractableGetRadius, rt_game3d_interactable_get_radius,       "Zanna.Game3D.Interactable3D.get_Radius",        "f64(obj)")
+RT_FUNC(Game3DInteractableSetEnabled, rt_game3d_interactable_set_enabled,     "Zanna.Game3D.Interactable3D.set_IsEnabled",       "void(obj,i1)")
+RT_FUNC(Game3DInteractableGetEnabled, rt_game3d_interactable_get_enabled,     "Zanna.Game3D.Interactable3D.get_IsEnabled",       "i1(obj)")
+RT_FUNC(Game3DInteractableSetPriority, rt_game3d_interactable_set_focus_priority, "Zanna.Game3D.Interactable3D.set_FocusPriority", "void(obj,f64)")
+RT_FUNC(Game3DInteractableGetPriority, rt_game3d_interactable_get_focus_priority, "Zanna.Game3D.Interactable3D.get_FocusPriority", "f64(obj)")
 
 /// @summary Provides Interactable 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Interactable3D` values through its registered constructor and use the
+/// Create `Zanna.Game3D.Interactable3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Prompt`, `Kind`, `Radius` and operations including `WithPrompt`, `WithKind`, `WithRadius`.
-RT_CLASS_BEGIN("Viper.Game3D.Interactable3D", Game3DInteractable3D, "obj", Game3DInteractableNew)
+RT_CLASS_BEGIN("Zanna.Game3D.Interactable3D", Game3DInteractable3D, "obj", Game3DInteractableNew)
     RT_PROP("Prompt", "str", Game3DInteractableGetPrompt, none)
     RT_PROP("Kind", "i64", Game3DInteractableGetKind, none)
     RT_PROP("Radius", "f64", Game3DInteractableGetRadius, none)
@@ -461,26 +461,26 @@ RT_CLASS_BEGIN("Viper.Game3D.Interactable3D", Game3DInteractable3D, "obj", Game3
     RT_METHOD("WithRadius", "obj(f64)", Game3DInteractableRadius)
 RT_CLASS_END()
 
-RT_FUNC(Game3DInteractorNew,        rt_game3d_interactor_new,                "Viper.Game3D.Interactor3D.New",                 "obj(obj)")
-RT_FUNC(Game3DInteractorSetCone,    rt_game3d_interactor_set_cone_degrees,   "Viper.Game3D.Interactor3D.set_ConeDegrees",     "void(obj,f64)")
-RT_FUNC(Game3DInteractorGetCone,    rt_game3d_interactor_get_cone_degrees,   "Viper.Game3D.Interactor3D.get_ConeDegrees",     "f64(obj)")
-RT_FUNC(Game3DInteractorSetLos,     rt_game3d_interactor_set_require_los,    "Viper.Game3D.Interactor3D.set_RequireLineOfSight", "void(obj,i1)")
-RT_FUNC(Game3DInteractorGetLos,     rt_game3d_interactor_get_require_los,    "Viper.Game3D.Interactor3D.get_RequireLineOfSight", "i1(obj)")
-RT_FUNC(Game3DInteractorSetLosMask, rt_game3d_interactor_set_los_mask,       "Viper.Game3D.Interactor3D.set_LosMask",         "void(obj,i64)")
-RT_FUNC(Game3DInteractorGetLosMask, rt_game3d_interactor_get_los_mask,       "Viper.Game3D.Interactor3D.get_LosMask",         "i64(obj)")
-RT_FUNC(Game3DInteractorGetFocused, rt_game3d_interactor_get_focused,        "Viper.Game3D.Interactor3D.get_Focused",         "obj(obj)")
-RT_FUNC(Game3DInteractorFocusChanged, rt_game3d_interactor_focus_changed,    "Viper.Game3D.Interactor3D.FocusChanged",        "i1(obj)")
-RT_FUNC(Game3DInteractorInteract,   rt_game3d_interactor_interact,           "Viper.Game3D.Interactor3D.Interact",            "i1(obj)")
-RT_FUNC(Game3DInteractorCount,      rt_game3d_interactor_get_interact_count, "Viper.Game3D.Interactor3D.get_InteractCount",   "i64(obj)")
-RT_FUNC(Game3DInteractorLast,       rt_game3d_interactor_get_last_interacted, "Viper.Game3D.Interactor3D.get_LastInteracted", "obj(obj)")
+RT_FUNC(Game3DInteractorNew,        rt_game3d_interactor_new,                "Zanna.Game3D.Interactor3D.New",                 "obj(obj)")
+RT_FUNC(Game3DInteractorSetCone,    rt_game3d_interactor_set_cone_degrees,   "Zanna.Game3D.Interactor3D.set_ConeDegrees",     "void(obj,f64)")
+RT_FUNC(Game3DInteractorGetCone,    rt_game3d_interactor_get_cone_degrees,   "Zanna.Game3D.Interactor3D.get_ConeDegrees",     "f64(obj)")
+RT_FUNC(Game3DInteractorSetLos,     rt_game3d_interactor_set_require_los,    "Zanna.Game3D.Interactor3D.set_RequireLineOfSight", "void(obj,i1)")
+RT_FUNC(Game3DInteractorGetLos,     rt_game3d_interactor_get_require_los,    "Zanna.Game3D.Interactor3D.get_RequireLineOfSight", "i1(obj)")
+RT_FUNC(Game3DInteractorSetLosMask, rt_game3d_interactor_set_los_mask,       "Zanna.Game3D.Interactor3D.set_LosMask",         "void(obj,i64)")
+RT_FUNC(Game3DInteractorGetLosMask, rt_game3d_interactor_get_los_mask,       "Zanna.Game3D.Interactor3D.get_LosMask",         "i64(obj)")
+RT_FUNC(Game3DInteractorGetFocused, rt_game3d_interactor_get_focused,        "Zanna.Game3D.Interactor3D.get_Focused",         "obj(obj)")
+RT_FUNC(Game3DInteractorFocusChanged, rt_game3d_interactor_focus_changed,    "Zanna.Game3D.Interactor3D.FocusChanged",        "i1(obj)")
+RT_FUNC(Game3DInteractorInteract,   rt_game3d_interactor_interact,           "Zanna.Game3D.Interactor3D.Interact",            "i1(obj)")
+RT_FUNC(Game3DInteractorCount,      rt_game3d_interactor_get_interact_count, "Zanna.Game3D.Interactor3D.get_InteractCount",   "i64(obj)")
+RT_FUNC(Game3DInteractorLast,       rt_game3d_interactor_get_last_interacted, "Zanna.Game3D.Interactor3D.get_LastInteracted", "obj(obj)")
 
 /// @summary Provides Interactor 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Interactor3D` values through its registered constructor and use the
+/// Create `Zanna.Game3D.Interactor3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `ConeDegrees`, `RequireLineOfSight`, `LosMask` and operations including `FocusChanged`,
 /// `Interact`.
-RT_CLASS_BEGIN("Viper.Game3D.Interactor3D", Game3DInteractor3D, "obj", Game3DInteractorNew)
+RT_CLASS_BEGIN("Zanna.Game3D.Interactor3D", Game3DInteractor3D, "obj", Game3DInteractorNew)
     RT_PROP("ConeDegrees", "f64", Game3DInteractorGetCone, Game3DInteractorSetCone)
     RT_PROP("RequireLineOfSight", "i1", Game3DInteractorGetLos, Game3DInteractorSetLos)
     RT_PROP("LosMask", "i64", Game3DInteractorGetLosMask, Game3DInteractorSetLosMask)
@@ -491,20 +491,20 @@ RT_CLASS_BEGIN("Viper.Game3D.Interactor3D", Game3DInteractor3D, "obj", Game3DInt
     RT_METHOD("Interact", "i1()", Game3DInteractorInteract)
 RT_CLASS_END()
 
-RT_FUNC(Game3DFootstepsNew,           rt_game3d_footsteps_new,              "Viper.Game3D.Footsteps3D.New",             "obj(obj,obj<Viper.Game3D.SurfaceTable3D>)")
-RT_FUNC(Game3DFootstepsEventPrefix,   rt_game3d_footsteps_set_event_prefix, "Viper.Game3D.Footsteps3D.SetEventPrefix",  "obj(obj,str)")
-RT_FUNC(Game3DFootstepsGroundMask,    rt_game3d_footsteps_set_ground_mask,  "Viper.Game3D.Footsteps3D.SetGroundMask",   "obj(obj,i64)")
-RT_FUNC(Game3DFootstepsVolumeScale,   rt_game3d_footsteps_set_volume_scale, "Viper.Game3D.Footsteps3D.SetVolumeScale",  "obj(obj,f64)")
-RT_FUNC(Game3DFootstepsStepCount,     rt_game3d_footsteps_get_step_count,   "Viper.Game3D.Footsteps3D.get_StepCount",   "i64(obj)")
-RT_FUNC(Game3DFootstepsLastSurface,   rt_game3d_footsteps_get_last_surface, "Viper.Game3D.Footsteps3D.get_LastSurface", "i64(obj)")
+RT_FUNC(Game3DFootstepsNew,           rt_game3d_footsteps_new,              "Zanna.Game3D.Footsteps3D.New",             "obj(obj,obj<Zanna.Game3D.SurfaceTable3D>)")
+RT_FUNC(Game3DFootstepsEventPrefix,   rt_game3d_footsteps_set_event_prefix, "Zanna.Game3D.Footsteps3D.SetEventPrefix",  "obj(obj,str)")
+RT_FUNC(Game3DFootstepsGroundMask,    rt_game3d_footsteps_set_ground_mask,  "Zanna.Game3D.Footsteps3D.SetGroundMask",   "obj(obj,i64)")
+RT_FUNC(Game3DFootstepsVolumeScale,   rt_game3d_footsteps_set_volume_scale, "Zanna.Game3D.Footsteps3D.SetVolumeScale",  "obj(obj,f64)")
+RT_FUNC(Game3DFootstepsStepCount,     rt_game3d_footsteps_get_step_count,   "Zanna.Game3D.Footsteps3D.get_StepCount",   "i64(obj)")
+RT_FUNC(Game3DFootstepsLastSurface,   rt_game3d_footsteps_get_last_surface, "Zanna.Game3D.Footsteps3D.get_LastSurface", "i64(obj)")
 
 /// @summary Provides Footsteps 3D functionality for Game3D worlds and gameplay systems.
 /// @details
-/// Create `Viper.Game3D.Footsteps3D` values through its registered constructor and use the returned
+/// Create `Zanna.Game3D.Footsteps3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `StepCount`, `LastSurface` and operations including `SetEventPrefix`, `SetGroundMask`,
 /// `SetVolumeScale`.
-RT_CLASS_BEGIN("Viper.Game3D.Footsteps3D", Game3DFootsteps3D, "obj", Game3DFootstepsNew)
+RT_CLASS_BEGIN("Zanna.Game3D.Footsteps3D", Game3DFootsteps3D, "obj", Game3DFootstepsNew)
     RT_METHOD("SetEventPrefix", "obj(str)", Game3DFootstepsEventPrefix)
     RT_METHOD("SetGroundMask", "obj(i64)", Game3DFootstepsGroundMask)
     RT_METHOD("SetVolumeScale", "obj(f64)", Game3DFootstepsVolumeScale)
@@ -514,10 +514,10 @@ RT_CLASS_END()
 
 /// @summary Provides Surfaces constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Surfaces` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Game3D.Surfaces` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `Count` and operations including `Register`,
 /// `NameOf`, `IdOf`.
-RT_CLASS_BEGIN("Viper.Game3D.Surfaces", Game3DSurfaces, "none", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Surfaces", Game3DSurfaces, "none", none)
     RT_METHOD("Register", "i64(str)", Game3DSurfacesRegister)
     RT_METHOD("NameOf", "str(i64)", Game3DSurfacesNameOf)
     RT_METHOD("IdOf", "i64(str)", Game3DSurfacesIdOf)
@@ -526,10 +526,10 @@ RT_CLASS_END()
 
 /// @summary Provides Diagnostics 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance.
+/// `Zanna.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance.
 /// Its public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClampedFrames`,
 /// `CcdClampedBodies` and operations including `Reset`, `Summary`.
-RT_CLASS_BEGIN("Viper.Game3D.Diagnostics3D", Game3DDiagnostics3D, "none", none)
+RT_CLASS_BEGIN("Zanna.Game3D.Diagnostics3D", Game3DDiagnostics3D, "none", none)
     RT_PROP("BroadphaseFallbackCount", "i64", Game3DDiagnosticsBroadphaseFallbackCount, none)
     RT_PROP("CcdClampedFrames", "i64", Game3DDiagnosticsCcdClampedFrames, none)
     RT_PROP("CcdClampedBodies", "i64", Game3DDiagnosticsCcdClampedBodies, none)

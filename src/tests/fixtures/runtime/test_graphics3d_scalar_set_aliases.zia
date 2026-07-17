@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,8 +12,8 @@
 
 module TestGraphics3DScalarSetAliases;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 /// @brief Exercise canonical static `set_*` functions for scalar Graphics3D properties.
 /// @details These are the ABI-shaped property setter functions used by static calls.

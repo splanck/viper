@@ -10,7 +10,7 @@ API in the first version.
 
 ## Problem statement
 
-Viper already provides the essential primitives: synthetic Canvas3D input
+Zanna already provides the essential primitives: synthetic Canvas3D input
 (`PushSyntheticKey`, `PushSyntheticMouse`, `AdvanceSyntheticFrame`,
 `ClearSyntheticInput`, `SetSyntheticDeltaTimeSec`), World3D
 RunFrames/RunFramesOnly, manual phase methods, final-frame capture

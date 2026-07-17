@@ -9,7 +9,7 @@
 // =============================================================================
 module manifest_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../world/level_base" as level_base;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,10 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// curve.zia - Quadratic Bezier curve tool for Viper Paint
+// curve.zia - Quadratic Bezier curve tool for Zanna Paint
 module curve;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 bind "../config";
 bind "../canvas";

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Build the bind opcode stream for non-lazy GOT binding + TLV descriptors.
 /// Appends bind opcodes to \p bindData, terminated with BIND_OPCODE_DONE.
@@ -71,4 +71,4 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
                  uint32_t &nExtDef,
                  uint32_t &nUndef);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

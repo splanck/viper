@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_water3d.h"
 #include "rt_canvas3d.h"
@@ -145,7 +145,7 @@ static rt_water3d *water3d_checked(void *obj) {
     return (rt_water3d *)rt_g3d_checked_or_null(obj, RT_G3D_WATER3D_CLASS_ID);
 }
 
-/// @brief Return non-zero when @p pixels is a live `Viper.Graphics.Pixels` handle.
+/// @brief Return non-zero when @p pixels is a live `Zanna.Graphics.Pixels` handle.
 static int water3d_is_pixels_handle(void *pixels) {
     return rt_pixels_checked_impl_or_null(pixels) != NULL;
 }
@@ -948,4 +948,4 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

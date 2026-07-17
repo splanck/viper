@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -160,7 +160,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const {
             }
 
             // Check if callee is a static factory method on a runtime class
-            // (e.g., Viper.Math.Vec2.Zero → returns Vec2)
+            // (e.g., Zanna.Math.Vec2.Zero → returns Vec2)
             auto lastDot = calleeName.rfind('.');
             if (lastDot != std::string::npos) {
                 std::string prefix = calleeName.substr(0, lastDot);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -46,7 +46,7 @@ static void write_file(const char *path, const char *data) {
 
 static void test_filesystem_zero_byte_asset() {
     char empty_path[512];
-    snprintf(empty_path, sizeof(empty_path), "viper_empty_asset_%d.bin", (int)GETPID());
+    snprintf(empty_path, sizeof(empty_path), "zanna_empty_asset_%d.bin", (int)GETPID());
 
     unlink_p(empty_path);
     write_file(empty_path, "");
@@ -64,7 +64,7 @@ static void test_filesystem_zero_byte_asset() {
 
 static void test_filesystem_directories_are_not_assets() {
     char dir_path[512];
-    snprintf(dir_path, sizeof(dir_path), "viper_asset_dir_%d", (int)GETPID());
+    snprintf(dir_path, sizeof(dir_path), "zanna_asset_dir_%d", (int)GETPID());
 
     rmdir_p(dir_path);
     mkdir_p(dir_path);
@@ -79,7 +79,7 @@ static void test_filesystem_directories_are_not_assets() {
 
 static void test_missing_asset_size_sentinel() {
     char missing_path[512];
-    snprintf(missing_path, sizeof(missing_path), "viper_missing_asset_%d.bin", (int)GETPID());
+    snprintf(missing_path, sizeof(missing_path), "zanna_missing_asset_%d.bin", (int)GETPID());
 
     unlink_p(missing_path);
     rt_string name = rt_const_cstr(missing_path);
@@ -95,9 +95,9 @@ static void test_unsafe_asset_names_are_rejected() {
     if (!tmp)
         tmp = ".";
     snprintf(
-        absolute_path, sizeof(absolute_path), "%s\\viper_abs_asset_%d.bin", tmp, (int)GETPID());
+        absolute_path, sizeof(absolute_path), "%s\\zanna_abs_asset_%d.bin", tmp, (int)GETPID());
 #else
-    snprintf(absolute_path, sizeof(absolute_path), "/tmp/viper_abs_asset_%d.bin", (int)GETPID());
+    snprintf(absolute_path, sizeof(absolute_path), "/tmp/zanna_abs_asset_%d.bin", (int)GETPID());
 #endif
     unlink_p(absolute_path);
     write_file(absolute_path, "secret");
@@ -124,8 +124,8 @@ static void test_unsafe_asset_names_are_rejected() {
 static void test_loose_symlink_asset_rejected() {
     char real_path[512];
     char link_path[512];
-    snprintf(real_path, sizeof(real_path), "viper_real_asset_%d.bin", (int)GETPID());
-    snprintf(link_path, sizeof(link_path), "viper_link_asset_%d.bin", (int)GETPID());
+    snprintf(real_path, sizeof(real_path), "zanna_real_asset_%d.bin", (int)GETPID());
+    snprintf(link_path, sizeof(link_path), "zanna_link_asset_%d.bin", (int)GETPID());
 
     unlink_p(real_path);
     unlink_p(link_path);
@@ -147,7 +147,7 @@ static void test_loose_symlink_asset_rejected() {
 ///        unrecognized extension still returns raw Bytes.
 static void test_recognized_decode_failure_returns_null() {
     char png_path[512];
-    snprintf(png_path, sizeof(png_path), "viper_corrupt_asset_%d.png", (int)GETPID());
+    snprintf(png_path, sizeof(png_path), "zanna_corrupt_asset_%d.png", (int)GETPID());
     unlink_p(png_path);
     write_file(png_path, "this is definitely not a valid PNG file");
 
@@ -162,7 +162,7 @@ static void test_recognized_decode_failure_returns_null() {
 
     // An unrecognized extension still returns Bytes from Load.
     char bin_path[512];
-    snprintf(bin_path, sizeof(bin_path), "viper_unknown_asset_%d.dat", (int)GETPID());
+    snprintf(bin_path, sizeof(bin_path), "zanna_unknown_asset_%d.dat", (int)GETPID());
     unlink_p(bin_path);
     write_file(bin_path, "arbitrary payload");
     rt_string bin_name = rt_const_cstr(bin_path);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Abstract Win64 unwind operation recorded during frame lowering.
 enum class Win64UnwindOpKind : uint8_t {
@@ -65,4 +65,4 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
 /// \brief Assigns concrete stack displacements to spill slots and records frame usage.
 void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

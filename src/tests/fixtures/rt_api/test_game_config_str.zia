@@ -3,8 +3,8 @@
 // could not be assigned to a String local or passed to a String parameter.
 module TestGameConfigStr;
 
-bind Viper.Terminal;
-bind Viper.Game.Config as Config;
+bind Zanna.Terminal;
+bind Zanna.Game.Config as Config;
 
 func decorate(s: String) -> String {
     return s + "!";

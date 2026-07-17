@@ -1,7 +1,7 @@
-# Update VIPER_IL_VERSION_STR in the generated version header without Python.
+# Update ZANNA_IL_VERSION_STR in the generated version header without Python.
 # Usage:
 #   cmake -DIL_VERSION_FILE=path/to/src/buildmeta/IL_VERSION \
-#         -DHEADER_FILE=path/to/build/generated/viper/version.hpp \
+#         -DHEADER_FILE=path/to/build/generated/zanna/version.hpp \
 #         -P cmake/BumpIlVersion.cmake
 
 if(NOT DEFINED IL_VERSION_FILE)
@@ -25,14 +25,14 @@ string(STRIP "${_il_raw}" _il_ver)
 
 file(READ "${HEADER_FILE}" _hdr)
 
-set(_pattern "#define[ \t]+VIPER_IL_VERSION_STR[ \t]+\"[^\"]*\"")
-set(_replacement "#define VIPER_IL_VERSION_STR \"${_il_ver}\"")
+set(_pattern "#define[ \t]+ZANNA_IL_VERSION_STR[ \t]+\"[^\"]*\"")
+set(_replacement "#define ZANNA_IL_VERSION_STR \"${_il_ver}\"")
 string(REGEX REPLACE "${_pattern}" "${_replacement}" _new_hdr "${_hdr}")
 
 if(NOT _new_hdr STREQUAL _hdr)
   file(WRITE "${HEADER_FILE}" "${_new_hdr}")
-  message(STATUS "Updated VIPER_IL_VERSION_STR to ${_il_ver}")
+  message(STATUS "Updated ZANNA_IL_VERSION_STR to ${_il_ver}")
 else()
-  message(STATUS "VIPER_IL_VERSION_STR already up-to-date (${_il_ver})")
+  message(STATUS "ZANNA_IL_VERSION_STR already up-to-date (${_il_ver})")
 endif()
 

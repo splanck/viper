@@ -1,6 +1,6 @@
-' API Audit: Viper.Network.WebSocket (BASIC)
+' API Audit: Zanna.Network.WebSocket (BASIC)
 ' NOTE: WebSocket requires live server - API surface documentation only
-PRINT "=== API Audit: Viper.Network.WebSocket ==="
+PRINT "=== API Audit: Zanna.Network.WebSocket ==="
 PRINT "WebSocket API surface (requires live server):"
 PRINT "  Connect(str) -> obj"
 PRINT "  ConnectFor(str,i64) -> obj"

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 // =============================================================================
 // Mach-O Constants
@@ -143,7 +143,7 @@ static bool checkedRelocSymbolNum(uint32_t value, const char *what, std::ostream
     return true;
 }
 
-/// Adapter to the shared @ref viper::codegen::objfile::physicalSymbolValue helper
+/// Adapter to the shared @ref zanna::codegen::objfile::physicalSymbolValue helper
 /// that pins the writerName to "MachOWriter:" so existing call sites compile
 /// unchanged.
 static bool physicalSymbolValue(const CodeSection &section,
@@ -151,7 +151,7 @@ static bool physicalSymbolValue(const CodeSection &section,
                                 const char *sectionName,
                                 std::ostream &err,
                                 uint64_t &out) {
-    return viper::codegen::objfile::physicalSymbolValue(
+    return zanna::codegen::objfile::physicalSymbolValue(
         section, sym, sectionName, "MachOWriter", err, out);
 }
 
@@ -244,9 +244,9 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
 static void writeBuildVersionCmd(std::vector<uint8_t> &out) {
     appendLE32(out, kLcBuildVersion);
     appendLE32(out, kBuildVerCmdSize);
-    appendLE32(out, viper::codegen::macho::kPlatformMacOS);
-    appendLE32(out, viper::codegen::macho::minimumMacOSVersion());
-    appendLE32(out, viper::codegen::macho::macOSSDKVersion());
+    appendLE32(out, zanna::codegen::macho::kPlatformMacOS);
+    appendLE32(out, zanna::codegen::macho::minimumMacOSVersion());
+    appendLE32(out, zanna::codegen::macho::macOSSDKVersion());
     appendLE32(out, 0); // ntools
 }
 
@@ -860,9 +860,9 @@ bool MachOWriter::write(const std::string &path,
                 appendLE32(unwindData, entry.functionLength);
                 // compactEncoding (4 bytes)
                 appendLE32(unwindData, entry.encoding);
-                // personality (8 bytes) — none for Viper
+                // personality (8 bytes) — none for Zanna
                 appendLE64(unwindData, 0);
-                // lsda (8 bytes) — none for Viper
+                // lsda (8 bytes) — none for Zanna
                 appendLE64(unwindData, 0);
 
                 // Relocation for functionStart → symbol in __text.
@@ -1372,4 +1372,4 @@ bool MachOWriter::write(const std::string &path,
     }
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

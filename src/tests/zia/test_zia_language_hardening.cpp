@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -62,7 +62,7 @@ func start() {
         var one = 1;
         n + one
     };
-    Viper.Terminal.SayInt(add(x));
+    Zanna.Terminal.SayInt(add(x));
 }
 )",
                                 "block_exprs.zia");
@@ -114,7 +114,7 @@ func start() {
     var a: Boolean = dog is Animal;
     var b: Boolean = dog is Named;
     var c: Boolean = value is Integer;
-    Viper.Terminal.SayInt((a && b && c) ? value : 0);
+    Zanna.Terminal.SayInt((a && b && c) ? value : 0);
 }
 )",
                                 "is_as_hardening.zia");
@@ -157,8 +157,8 @@ class Animal {
 func start() {
     var pet: Pet = adopt(new Dog());
     var named: Named = identify(new Dog());
-    Viper.Terminal.SayBool(pet is Animal);
-    Viper.Terminal.Say(named.name());
+    Zanna.Terminal.SayBool(pet is Animal);
+    Zanna.Terminal.Say(named.name());
 }
 )",
                                 "forward_type_refs.zia");
@@ -176,14 +176,14 @@ func start() {
     var emptyMap: Map[String, Integer] = map {};
     var explicitMap = map {"one": 1, "two": 2};
     var match: (Integer) -> Integer = (x: Integer) => x + 1;
-    Viper.Terminal.SayInt(match(2) + explicitSet.Count + emptyMap.Count + explicitMap.Count);
+    Zanna.Terminal.SayInt(match(2) + explicitSet.Count + emptyMap.Count + explicitMap.Count);
 }
 )",
                                 "empty_set_match_identifier.zia");
 
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Set.New"));
-    EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Map.New"));
+    EXPECT_TRUE(hasCall(result.module, "Zanna.Collections.Set.New"));
+    EXPECT_TRUE(hasCall(result.module, "Zanna.Collections.Map.New"));
 }
 
 TEST(ZiaLanguageHardening, RuntimeCollectionForInCompiles) {
@@ -194,27 +194,27 @@ func start() {
     var q: Queue[String] = new Queue[String]();
     q.push("a");
     for item in q {
-        Viper.Terminal.Say(item);
+        Zanna.Terminal.Say(item);
     }
 
     var stack: Stack[Integer] = new Stack[Integer]();
     stack.push(1);
     for index, value in stack {
-        Viper.Terminal.SayInt(index + value);
+        Zanna.Terminal.SayInt(index + value);
     }
 }
 )",
                                 "runtime_collection_forin.zia");
 
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Queue.ToSeq"));
-    EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Stack.ToSeq"));
+    EXPECT_TRUE(hasCall(result.module, "Zanna.Collections.Queue.ToSeq"));
+    EXPECT_TRUE(hasCall(result.module, "Zanna.Collections.Stack.ToSeq"));
 }
 
 TEST(ZiaLanguageHardening, ModuleHeaderIsOptional) {
     auto result = compileSource(R"(
 func start() {
-    Viper.Terminal.SayInt(1);
+    Zanna.Terminal.SayInt(1);
 }
 )",
                                 "implicit_module.zia");
@@ -229,7 +229,7 @@ module Test;
 func start() {
     var x = 1;
     var x = 2;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                                 "duplicate_local.zia");
@@ -248,7 +248,7 @@ func anyValue() -> Any {
 
 func start() {
     var text = "value: " + anyValue();
-    Viper.Terminal.Say(text);
+    Zanna.Terminal.Say(text);
 }
 )",
                                 "any_string_concat.zia");
@@ -258,5 +258,5 @@ func start() {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

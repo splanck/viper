@@ -21,7 +21,7 @@
 // ============================================================================
 module play_by_play_writer;
 
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 bind "../model/constants";
 bind "../model/game_state";
 bind "../model/player";
@@ -33,7 +33,7 @@ bind "../model/play_result";
 func gameIntro(state: game_state.GameState) -> List[String] {
     var lines: List[String] = [];
     lines.add("========================================");
-    lines.add("  Viper Baseball Demo");
+    lines.add("  Zanna Baseball Demo");
     lines.add("========================================");
     lines.add(state.away.teamRef.fullName + " at " + state.home.teamRef.fullName);
     lines.add("Ballpark: " + state.park.name);

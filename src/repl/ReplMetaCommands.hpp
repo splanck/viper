@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/repl/ReplMetaCommands.hpp
 // Purpose: Registry of dot-prefixed meta-commands (.help, .quit, .vars, etc.)
-//          for the Viper REPL.
+//          for the Zanna REPL.
 // Key invariants:
 //   - Command names are stored without the leading dot.
 //   - tryHandle() returns false if the input is not a meta-command.
@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 // Forward declaration
 class ReplSession;
@@ -62,4 +62,4 @@ class ReplMetaCommands {
     std::vector<MetaCommandEntry> commands_;
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

@@ -1,0 +1,78 @@
+// Test: OOP - Inheritance
+// Tests: extends, override, polymorphism
+module Test;
+
+// Base entity
+class Animal {
+    hide String name;
+
+    expose func init(n: String) {
+        name = n;
+    }
+
+    expose func getName() -> String {
+        return name;
+    }
+
+    expose func speak() -> String {
+        return "...";
+    }
+}
+
+// Derived entity with additional field
+class Dog extends Animal {
+    hide String breed;
+
+    expose func init(n: String, b: String) {
+        name = n;   // Access inherited field
+        breed = b;
+    }
+
+    expose func getBreed() -> String {
+        return breed;
+    }
+
+    // Override parent method
+    override expose func speak() -> String {
+        return "Woof!";
+    }
+}
+
+// Another derived entity
+class Cat extends Animal {
+    expose func init(n: String) {
+        name = n;   // Access inherited field
+    }
+
+    override expose func speak() -> String {
+        return "Meow!";
+    }
+}
+
+func main() {
+    Zanna.Terminal.Say("=== OOP Inheritance Test ===");
+
+    // Test basic inheritance
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Basic Inheritance ---");
+    var dog = new Dog("Buddy", "Golden Retriever");
+    Zanna.Terminal.Say("Dog name: " + dog.getName());
+    Zanna.Terminal.Say("Dog breed: " + dog.getBreed());
+    Zanna.Terminal.Say("Dog speaks: " + dog.speak());
+
+    Zanna.Terminal.Say("");
+    var cat = new Cat("Whiskers");
+    Zanna.Terminal.Say("Cat name: " + cat.getName());
+    Zanna.Terminal.Say("Cat speaks: " + cat.speak());
+
+    // Test polymorphism - assign derived type to base type variable
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("--- Polymorphism ---");
+    var animal: Animal = dog;
+    Zanna.Terminal.Say("As Animal (dog): " + animal.speak());
+    animal = cat;
+    Zanna.Terminal.Say("As Animal (cat): " + animal.speak());
+
+    Zanna.Terminal.Say("");
+    Zanna.Terminal.Say("=== OOP Inheritance test complete ===");
+}

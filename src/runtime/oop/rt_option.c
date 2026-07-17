@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_option.c
-// Purpose: Implements the Option<T> type (Some/None) for the Viper.Option class.
+// Purpose: Implements the Option<T> type (Some/None) for the Zanna.Option class.
 //          Wraps an optional value as a heap-allocated object with a presence
 //          flag, allowing functions to return "no value" without using NULL.
 //

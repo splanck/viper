@@ -8,17 +8,17 @@ last-verified: 2026-04-09
 
 > From zero to a playable game with movement, sprites, collision, and sound.
 
-**Part of [Viper Game Engine](README.md)**
+**Part of [Zanna Game Engine](README.md)**
 
 ---
 
-This guide builds a complete mini-game: a paddle that bounces a ball, with sound effects and score tracking. You'll learn the core game loop pattern, drawing, input handling, and audio — the foundation for every Viper game.
+This guide builds a complete mini-game: a paddle that bounces a ball, with sound effects and score tracking. You'll learn the core game loop pattern, drawing, input handling, and audio — the foundation for every Zanna game.
 
 ---
 
 ## Prerequisites
 
-- Viper built and installed ([Getting Started](../getting-started.md))
+- Zanna built and installed ([Getting Started](../getting-started.md))
 - A text editor
 - A terminal
 
@@ -33,14 +33,14 @@ Every game starts with a **Canvas** — a window you draw to.
 ```zia
 module mygame;
 
-bind Viper.Graphics.Canvas;
+bind Zanna.Graphics.Canvas;
 
 func start() {
     var canvas = Canvas.New("My First Game", 640, 480);
 
     while canvas.BeginFrame() != 0 {
         canvas.Clear(0x1a1a2e);
-        canvas.Text(10, 10, "Hello, Viper!", 0xffffff);
+        canvas.Text(10, 10, "Hello, Zanna!", 0xffffff);
         canvas.Flip();
     }
 }
@@ -49,13 +49,13 @@ func start() {
 ### BASIC
 
 ```basic
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("My First Game", 640, 480)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("My First Game", 640, 480)
 
 DO WHILE canvas.ShouldClose = 0
     canvas.Poll()
     canvas.Clear(&H001A1A2E)
-    canvas.Text(10, 10, "Hello, Viper!", &H00FFFFFF)
+    canvas.Text(10, 10, "Hello, Zanna!", &H00FFFFFF)
     canvas.Flip()
 LOOP
 ```
@@ -78,7 +78,7 @@ Read keyboard input to move a paddle.
 ```zia
 module mygame;
 
-bind Viper.Graphics.Canvas;
+bind Zanna.Graphics.Canvas;
 
 final W = 640;
 final H = 480;
@@ -118,8 +118,8 @@ CONST PADDLE_W = 80
 CONST PADDLE_H = 12
 CONST PADDLE_SPEED = 5
 
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("Paddle Game", W, H)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("Paddle Game", W, H)
 DIM px AS INTEGER = W / 2 - PADDLE_W / 2
 DIM py AS INTEGER = H - 40
 
@@ -154,7 +154,7 @@ Add a ball with velocity that bounces off walls and the paddle.
 ```zia
 module mygame;
 
-bind Viper.Graphics.Canvas;
+bind Zanna.Graphics.Canvas;
 
 final W = 640;
 final H = 480;
@@ -225,8 +225,8 @@ CONST PADDLE_H = 12
 CONST PADDLE_SPEED = 5
 CONST BALL_R = 8
 
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("Bounce!", W, H)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("Bounce!", W, H)
 DIM px AS INTEGER = W / 2 - PADDLE_W / 2
 DIM py AS INTEGER = H - 40
 
@@ -279,14 +279,14 @@ You now have a playable game with input, physics, collision detection, and scori
 
 ## Step 4: Add Sound Effects
 
-Viper includes a **Synth** module for procedural sound — no audio files needed.
+Zanna includes a **Synth** module for procedural sound — no audio files needed.
 
 ### Zia
 
 Add these imports and lines to the previous example:
 
 ```zia
-bind Viper.Audio;
+bind Zanna.Audio;
 
 // In start(), before the game loop:
 Audio.Init();
@@ -304,16 +304,16 @@ miss.Play();
 
 ```basic
 ' Before the game loop:
-Viper.Audio.Mixer.Init()
+Zanna.Audio.Mixer.Init()
 
 ' Where the paddle bounce happens:
-DIM bounce AS Viper.Audio.Sound
-bounce = Viper.Audio.Synth.Sfx(1) ' coin
+DIM bounce AS Zanna.Audio.Sound
+bounce = Zanna.Audio.Synth.Sfx(1) ' coin
 bounce.Play()
 
 ' Where the ball resets:
-DIM miss AS Viper.Audio.Sound
-miss = Viper.Audio.Synth.Sfx(2) ' hit
+DIM miss AS Zanna.Audio.Sound
+miss = Zanna.Audio.Synth.Sfx(2) ' hit
 miss.Play()
 ```
 
@@ -328,7 +328,7 @@ Add screen effects for game feel:
 ### Zia
 
 ```zia
-bind Viper.Game.ScreenFX as FX;
+bind Zanna.Game.ScreenFX as FX;
 
 // In start(), before the game loop:
 var fx = FX.New();
@@ -354,12 +354,12 @@ You've learned the core loop: **input -> update -> draw -> flip**. From here:
 
 | Want to... | Read... |
 |------------|---------|
-| Use sprites instead of shapes | [Animation](../viperlib/game/animation.md) |
-| Build levels with tiles | [Tilemaps](../viperlib/graphics/tilemaps2d.md) |
-| Add enemies with AI | [Entities](../viperlib/game/entity.md) |
-| Structure a multi-screen game | [GameBase and IScene](../viperlib/game/gameloop.md) |
-| Add a scrolling camera | [Scene and Camera](../viperlib/graphics/scene.md#vipergraphicscamera) |
-| Use rebindable input | [Input](../viperlib/input.md) |
+| Use sprites instead of shapes | [Animation](../zannalib/game/animation.md) |
+| Build levels with tiles | [Tilemaps](../zannalib/graphics/tilemaps2d.md) |
+| Add enemies with AI | [Entities](../zannalib/game/entity.md) |
+| Structure a multi-screen game | [GameBase and IScene](../zannalib/game/gameloop.md) |
+| Add a scrolling camera | [Scene and Camera](../zannalib/graphics/scene.md#zannagraphicscamera) |
+| Use rebindable input | [Input](../zannalib/input.md) |
 | Study complete games | [Game examples](examples/README.md) |
 
 ---
@@ -380,14 +380,14 @@ class MyGame : GameBase {
 }
 ```
 
-See [GameBase and IScene](../viperlib/game/gameloop.md) for the full pattern.
+See [GameBase and IScene](../zannalib/game/gameloop.md) for the full pattern.
 
 ---
 
 ## See Also
 
-- [2D Graphics](../viperlib/graphics/README.md) — Graphics guide and API index
-- [Audio](../viperlib/audio.md) — Sound loading, music streaming, and procedural synthesis
-- [Input](../viperlib/input.md) — Keyboard codes, gamepad, and action mapping
-- [Canvas API Reference](../viperlib/graphics/canvas.md) — Exhaustive method signatures
-- [The Viper Book, Chapter 19](../book/part4-applications/19-graphics.md) — Deep dive on graphics fundamentals
+- [2D Graphics](../zannalib/graphics/README.md) — Graphics guide and API index
+- [Audio](../zannalib/audio.md) — Sound loading, music streaming, and procedural synthesis
+- [Input](../zannalib/input.md) — Keyboard codes, gamepad, and action mapping
+- [Canvas API Reference](../zannalib/graphics/canvas.md) — Exhaustive method signatures
+- [The Zanna Book, Chapter 19](../book/part4-applications/19-graphics.md) — Deep dive on graphics fundamentals

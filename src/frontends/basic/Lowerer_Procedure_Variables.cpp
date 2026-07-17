@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -268,7 +268,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
     };
     auto isRuntimeStringObject = [](std::string_view cls) {
         return string_utils::iequals(cls, il::runtime::RTCLASS_STRING) ||
-               string_utils::iequals(cls, "Viper.System.String");
+               string_utils::iequals(cls, "Zanna.System.String");
     };
 
     const auto *sym = findSymbol(name);

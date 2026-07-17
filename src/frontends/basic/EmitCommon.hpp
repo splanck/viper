@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #pragma once
 
 #include "support/source_location.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <cstdint>
 #include <optional>

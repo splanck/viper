@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "support/string_interner.hpp"
-#include "viper/vm/debug/Debug.hpp"
+#include "zanna/vm/debug/Debug.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>

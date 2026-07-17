@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <cassert>
 #include <limits>
@@ -528,7 +528,7 @@ Value Lowerer::narrow32(Value value, il::support::SourceLoc loc) {
 }
 
 namespace {
-// Prefer canonical Viper.* runtime names when an alias group exists.
+// Prefer canonical Zanna.* runtime names when an alias group exists.
 // Falls back to the original spelling when no registry entry is known.
 static std::string mapToCanonicalRuntime(std::string_view name) {
     using namespace il::runtime;
@@ -539,7 +539,7 @@ static std::string mapToCanonicalRuntime(std::string_view name) {
 
     // Identify a canonical descriptor in the alias group sharing the same
     // generated signature id. Prefer entries with a namespace ('.' in name).
-    // Priority: Viper.String.* > Viper.Terminal.* > other Viper.* namespaces.
+    // Priority: Zanna.String.* > Zanna.Terminal.* > other Zanna.* namespaces.
     if (auto sigId = findRuntimeSignatureId(desc->name)) {
         const bool callerCanonical = name.find('.') != std::string_view::npos;
         const RuntimeDescriptor *callerDesc =
@@ -557,11 +557,11 @@ static std::string mapToCanonicalRuntime(std::string_view name) {
                 continue;
             if (!firstCanonical)
                 firstCanonical = &entry;
-            if (entry.name.rfind("Viper.String.", 0) == 0) {
+            if (entry.name.rfind("Zanna.String.", 0) == 0) {
                 stringPreferred = &entry;
                 break; // strongest preference satisfied
             }
-            if (entry.name.rfind("Viper.Terminal.", 0) == 0) {
+            if (entry.name.rfind("Zanna.Terminal.", 0) == 0) {
                 terminalPreferred = &entry;
                 continue; // keep looking for String.*
             }

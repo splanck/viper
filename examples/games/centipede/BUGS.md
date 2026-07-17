@@ -22,7 +22,7 @@ Additionally, `Lowerer_Expr.cpp::lowerCall()` didn't check for implicit method c
 2. Modified `Lowerer_Expr.cpp::lowerCall()` to check for implicit method calls when inside an class
 
 **Verification:**
-```viper
+```zanna
 class Foo {
     expose func helper() -> Integer { return 42; }
     expose func doWork() -> Integer { return helper(); }  // Now works!
@@ -31,45 +31,45 @@ class Foo {
 
 ---
 
-## Bug #46: Missing `Viper.Math.RandInt()` Function
+## Bug #46: Missing `Zanna.Math.RandInt()` Function
 
 **Severity:** Medium
 **Status:** NOT A BUG - API Exists
 
 **Description:**
-There is no direct integer random function under `Viper.Math.RandInt()`.
+There is no direct integer random function under `Zanna.Math.RandInt()`.
 
 **Root Cause:**
 This was a documentation/API discovery issue. The correct API is:
-- `Viper.Random.NextInt(max)` - returns Integer in range [0, max)
-- `Viper.Random.Next()` - returns Number in range [0.0, 1.0)
-- `Viper.Random.Seed(seed)` - seeds the RNG with an Integer value
+- `Zanna.Random.NextInt(max)` - returns Integer in range [0, max)
+- `Zanna.Random.Next()` - returns Number in range [0.0, 1.0)
+- `Zanna.Random.Seed(seed)` - seeds the RNG with an Integer value
 
 **Correct Usage:**
-```viper
-var x = Viper.Random.NextInt(10);  // Returns 0-9
-Viper.Terminal.SayInt(x);
+```zanna
+var x = Zanna.Random.NextInt(10);  // Returns 0-9
+Zanna.Terminal.SayInt(x);
 ```
 
 ---
 
-## Bug #47: Missing `Viper.Math.Randomize()` Function
+## Bug #47: Missing `Zanna.Math.Randomize()` Function
 
 **Severity:** Low
 **Status:** NOT A BUG - API Exists
 
 **Description:**
-The `Viper.Math.Randomize()` function to seed the RNG was reported as missing.
+The `Zanna.Math.Randomize()` function to seed the RNG was reported as missing.
 
 **Root Cause:**
 The function exists and is registered in both `Sema.cpp` and `RuntimeSignatures.cpp`. The API is:
-- `Viper.Math.Randomize(seed)` - takes an Integer seed
-- `Viper.Random.Seed(seed)` - alternative name, same function
+- `Zanna.Math.Randomize(seed)` - takes an Integer seed
+- `Zanna.Random.Seed(seed)` - alternative name, same function
 
 **Correct Usage:**
-```viper
-Viper.Math.Randomize(12345);  // Seeds the RNG
-var x = Viper.Random.NextInt(100);
+```zanna
+Zanna.Math.Randomize(12345);  // Seeds the RNG
+var x = Zanna.Random.NextInt(100);
 ```
 
 ---
@@ -83,12 +83,12 @@ var x = Viper.Random.NextInt(100);
 The `String.substring(start, length)` method was reported as possibly missing.
 
 **Root Cause:**
-The function exists as `Viper.String.Substring(str, start, length)`. It is registered in both `Sema.cpp` and `runtime.def`.
+The function exists as `Zanna.String.Substring(str, start, length)`. It is registered in both `Sema.cpp` and `runtime.def`.
 
 **Correct Usage:**
-```viper
+```zanna
 var s = "Hello World";
-var sub = Viper.String.Substring(s, 0, 5);  // Returns "Hello"
+var sub = Zanna.String.Substring(s, 0, 5);  // Returns "Hello"
 ```
 
 ---
@@ -105,7 +105,7 @@ Complex expressions involving class field access were reported to sometimes fail
 Testing confirms this works correctly. The original issue may have been caused by type mismatches (mixing Integer and Number types) or other syntax errors.
 
 **Verification:**
-```viper
+```zanna
 class Game {
     expose Integer x;
     expose Integer y;
@@ -113,7 +113,7 @@ class Game {
 
     expose func test() {
         var idx = y * width + x;  // Works correctly
-        Viper.Terminal.SayInt(idx);
+        Zanna.Terminal.SayInt(idx);
     }
 }
 ```
@@ -129,10 +129,10 @@ class Game {
 The `List[T].set(index, value)` method was reported as possibly missing.
 
 **Root Cause:**
-The method exists as `set_Item(index, value)`. It is registered in both `Sema.cpp` as `Viper.Collections.List.set_Item` and in `runtime.def`.
+The method exists as `set_Item(index, value)`. It is registered in both `Sema.cpp` as `Zanna.Collections.List.set_Item` and in `runtime.def`.
 
 **Correct Usage:**
-```viper
+```zanna
 var items: List[Integer] = [1, 2, 3];
 items.set_Item(1, 99);  // Sets index 1 to 99
 ```
@@ -162,9 +162,9 @@ The Bug #45 fix also resolved this inconsistency. Now both fields and methods wo
 
 **Description:**
 Terminal input functions have different names than expected:
-- `Viper.Terminal.ReadLine()` - reads a line of text (blocking)
-- `Viper.Terminal.ReadKey()` - reads a single key (blocking)
-- `Viper.Terminal.PollKey()` - reads a key if available (non-blocking)
+- `Zanna.Terminal.ReadLine()` - reads a line of text (blocking)
+- `Zanna.Terminal.ReadKey()` - reads a single key (blocking)
+- `Zanna.Terminal.PollKey()` - reads a key if available (non-blocking)
 
 **Resolution:**
 Use the correct function names as listed above.
@@ -177,25 +177,25 @@ Use the correct function names as listed above.
 **Status:** FIXED
 
 **Description:**
-There was no way to convert a Number (float) to an Integer. Functions like `Viper.Math.Trunc()`, `Viper.Math.Floor()`, etc. all return Number, not Integer.
+There was no way to convert a Number (float) to an Integer. Functions like `Zanna.Math.Trunc()`, `Zanna.Math.Floor()`, etc. all return Number, not Integer.
 
 **Root Cause:**
-The `Viper.Core.Convert.NumToInt` function was missing from both the semantic analyzer and the runtime.
+The `Zanna.Core.Convert.NumToInt` function was missing from both the semantic analyzer and the runtime.
 
 **Fix:**
-Added `Viper.Core.Convert.NumToInt(num)` which truncates a Number toward zero and returns an Integer:
+Added `Zanna.Core.Convert.NumToInt(num)` which truncates a Number toward zero and returns an Integer:
 1. Added `rt_f64_to_i64()` function to `rt_numeric_conv.c`
 2. Added declaration to `rt_numeric.h`
 3. Added to `runtime.def`
 4. Registered in `Sema.cpp`
 
 **Correct Usage:**
-```viper
+```zanna
 var n: Number = 3.7;
-var i: Integer = Viper.Core.Convert.NumToInt(n);  // Returns 3
+var i: Integer = Zanna.Core.Convert.NumToInt(n);  // Returns 3
 
 var n2: Number = -2.9;
-var i2: Integer = Viper.Core.Convert.NumToInt(n2);  // Returns -2
+var i2: Integer = Zanna.Core.Convert.NumToInt(n2);  // Returns -2
 ```
 
 ---
@@ -209,7 +209,7 @@ var i2: Integer = Viper.Core.Convert.NumToInt(n2);  // Returns -2
 List collections use `.size()` to get the element count, not `.count()` as some documentation suggests.
 
 **Example:**
-```viper
+```zanna
 var items: List[Integer] = [1, 2, 3];
 var len = items.size();  // Correct
 // var len = items.count();  // Wrong
@@ -222,18 +222,18 @@ var len = items.size();  // Correct
 | Bug | Status | Fix Location |
 |-----|--------|--------------|
 | #45 | FIXED | `Sema_Decl.cpp`, `Lowerer_Expr.cpp` |
-| #46 | Not a bug | Use `Viper.Random.NextInt(max)` |
-| #47 | Not a bug | `Viper.Math.Randomize(seed)` exists |
-| #48 | Not a bug | `Viper.String.Substring(str, start, len)` exists |
+| #46 | Not a bug | Use `Zanna.Random.NextInt(max)` |
+| #47 | Not a bug | `Zanna.Math.Randomize(seed)` exists |
+| #48 | Not a bug | `Zanna.String.Substring(str, start, len)` exists |
 | #49 | Not a bug | Works correctly |
 | #50 | Not a bug | Use `list.set_Item(index, value)` |
 | #51 | FIXED | Fixed by Bug #45 fix |
 | #52 | Docs only | Use correct API names |
-| #53 | FIXED | Added `Viper.Core.Convert.NumToInt(num)` |
+| #53 | FIXED | Added `Zanna.Core.Convert.NumToInt(num)` |
 | #54 | Docs only | Use `.size()` not `.count()` |
 
 ## Notes for Future Development
 
 1. The Zia frontend now supports implicit method calls within entities (same as fields)
-2. Runtime library documentation should list all available Viper.* functions
-3. Consider adding `Viper.Random.Range(min, max)` for convenience (currently registered in Sema but not implemented in runtime)
+2. Runtime library documentation should list all available Zanna.* functions
+3. Consider adding `Zanna.Random.Range(min, max)` for convenience (currently registered in Sema but not implemented in runtime)

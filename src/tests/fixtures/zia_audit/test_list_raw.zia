@@ -3,13 +3,13 @@ module Test;
 // Test: List with raw (unboxed) values
 
 func start() {
-    Viper.Terminal.Say("=== List Raw Test ===");
+    Zanna.Terminal.Say("=== List Raw Test ===");
 
-    var list: Viper.Collections.List = Viper.Collections.List.New();
-    Viper.Collections.List.Push(list, 100);
+    var list: Zanna.Collections.List = Zanna.Collections.List.New();
+    Zanna.Collections.List.Push(list, 100);
 
-    var item: Any = Viper.Collections.List.Get(list, 0);
-    Viper.Terminal.Say("Got item");
+    var item: Any = Zanna.Collections.List.Get(list, 0);
+    Zanna.Terminal.Say("Got item");
 
-    Viper.Terminal.Say("RESULT: ok");
+    Zanna.Terminal.Say("RESULT: ok");
 }

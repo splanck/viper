@@ -1,5 +1,5 @@
 ' parser.bas - SQL Parser
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "stmt.bas"
 

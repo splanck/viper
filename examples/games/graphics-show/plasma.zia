@@ -1,7 +1,7 @@
 module plasma;
 
 // ============================================================================
-// PLASMA.VIPER - Classic Plasma Effect
+// PLASMA.ZANNA - Classic Plasma Effect
 // ============================================================================
 // Creates a colorful animated plasma effect using sine wave combinations.
 // This is a classic demoscene effect from the 90s.
@@ -10,11 +10,11 @@ module plasma;
 
 bind "./colors";
 
-bind Viper.Graphics;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Time;
 
 // Precomputed sine table (256 entries, values 0-255)
 var sinTable: List[Integer];
@@ -302,6 +302,6 @@ func plasmaRun(canvas: Canvas) {
         canvas.TextBg(10, 28, "SPACE: Pattern | P: Palette | ESC: Exit", colors.Gray, colors.Black);
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(16);
+        Zanna.Time.Clock.Sleep(16);
     }
 }

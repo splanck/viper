@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/oop/rt_object.h
 // Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing
-// the foundational object model for all Viper heap objects.
+// the foundational object model for all Zanna heap objects.
 //
 // Key invariants:
 //   - Refcounts never underflow; retain and release calls must be balanced.
@@ -68,13 +68,13 @@ void rt_obj_retain_maybe(void *p);
 ///          values proven to originate from object allocation helpers.
 void rt_obj_retain_known(void *p);
 
-/// @brief Public Viper.Memory retain wrapper.
+/// @brief Public Zanna.Memory retain wrapper.
 /// @details Validates that @p p is a live runtime heap/string handle before
 ///          retaining. Invalid non-null pointers trap instead of relying on
 ///          debug-only heap assertions.
 void rt_memory_retain(void *p);
 
-/// @brief String-typed Viper.Memory retain wrapper.
+/// @brief String-typed Zanna.Memory retain wrapper.
 void rt_memory_retain_str(struct rt_string_impl *s);
 
 /// @brief Decrement the reference count and report whether the object should be destroyed.
@@ -89,14 +89,14 @@ int32_t rt_obj_release_check0(void *p);
 ///          values proven to originate from object allocation helpers.
 int32_t rt_obj_release_known_check0(void *p);
 
-/// @brief Public Viper.Memory release wrapper.
+/// @brief Public Zanna.Memory release wrapper.
 /// @details Releases strings, arrays, and objects through their managed
 ///          lifetime paths. Object finalizers run when this drops the last
 ///          reference.
 /// @return Remaining reference count, or 0 when the value was destroyed.
 int64_t rt_memory_release(void *p);
 
-/// @brief String-typed Viper.Memory release wrapper.
+/// @brief String-typed Zanna.Memory release wrapper.
 int64_t rt_memory_release_str(struct rt_string_impl *s);
 
 /// @brief Release storage for a runtime-managed object without modifying its reference count.

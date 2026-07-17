@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_scene.h
@@ -216,7 +216,7 @@ void *rt_scene_node_find(void *node, rt_string name);
 ///          absent, avoiding the legacy NULL sentinel.
 /// @param node Starting node to search from.
 /// @param name Name to search for.
-/// @return Opaque Viper.Option containing the matching node, or None.
+/// @return Opaque Zanna.Option containing the matching node, or None.
 void *rt_scene_node_find_option(void *node, rt_string name);
 
 /// @brief Remove this node from its parent.
@@ -299,7 +299,7 @@ void *rt_scene_find(void *scene, rt_string name);
 ///          absent.
 /// @param scene The Scene object.
 /// @param name The name to search for in the entire scene hierarchy.
-/// @return Opaque Viper.Option containing the matching node, or None.
+/// @return Opaque Zanna.Option containing the matching node, or None.
 void *rt_scene_find_option(void *scene, rt_string name);
 
 /// @brief Draw all nodes in the scene (depth-sorted).

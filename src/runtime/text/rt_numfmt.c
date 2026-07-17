@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_numfmt.c
-// Purpose: Implements numeric formatting utilities for the Viper.Text.NumFmt
+// Purpose: Implements numeric formatting utilities for the Zanna.Text.NumFmt
 //          class. Provides FormatInt (integer with thousands separators),
 //          FormatFloat (float with configurable decimal places), FormatPercent,
 //          FormatCurrency, FormatScientific, and FormatOrdinal.

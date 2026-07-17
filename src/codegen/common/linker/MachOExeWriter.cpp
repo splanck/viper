@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 using encoding::writeLE32;
 using encoding::writeLE64;
@@ -98,7 +98,7 @@ static constexpr uint32_t VM_PROT_READ = 1;
 static constexpr uint32_t VM_PROT_WRITE = 2;
 static constexpr uint32_t VM_PROT_EXECUTE = 4;
 
-static constexpr uint32_t PLATFORM_MACOS = viper::codegen::macho::kPlatformMacOS;
+static constexpr uint32_t PLATFORM_MACOS = zanna::codegen::macho::kPlatformMacOS;
 
 /// @brief Convert a power-of-two alignment value to its log2 (Mach-O encoding).
 /// @details Mach-O `section_64::align` stores alignment as the exponent (e.g.,
@@ -989,8 +989,8 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, LC_BUILD_VERSION);
     writeLE32(file, 24);
     writeLE32(file, PLATFORM_MACOS);
-    writeLE32(file, viper::codegen::macho::minimumMacOSVersion());
-    writeLE32(file, viper::codegen::macho::macOSSDKVersion());
+    writeLE32(file, zanna::codegen::macho::minimumMacOSVersion());
+    writeLE32(file, zanna::codegen::macho::macOSSDKVersion());
     writeLE32(file, 0);
 
     // --- LC_CODE_SIGNATURE ---
@@ -1109,4 +1109,4 @@ bool writeMachOExe(const std::string &path,
     return writeBinaryFileAtomically(path, file, true, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -133,7 +133,7 @@ static void test_tempfile() {
     // Test 8: Invalid TMPDIR values fall back instead of being trusted.
     {
         char bad_tmpdir[256];
-        snprintf(bad_tmpdir, sizeof(bad_tmpdir), "/tmp/viper_tmpdir_file_%d", (int)getpid());
+        snprintf(bad_tmpdir, sizeof(bad_tmpdir), "/tmp/zanna_tmpdir_file_%d", (int)getpid());
         FILE *fp = fopen(bad_tmpdir, "wb");
         assert(fp != nullptr);
         fclose(fp);

@@ -3,127 +3,127 @@ module TestBits;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// Tests for Viper.Math.Bits.* functions
+// Tests for Zanna.Math.Bits.* functions
 
 func testBitwiseAnd() {
     setTest("Bits.And");
 
-    assertEqInt(Viper.Math.Bits.And(255, 15), 15, "and(255, 15)");
-    assertEqInt(Viper.Math.Bits.And(12, 10), 8, "and(12,10)");
-    assertEqInt(Viper.Math.Bits.And(0, 255), 0, "and with zero");
-    assertEqInt(Viper.Math.Bits.And(255, 255), 255, "and same");
+    assertEqInt(Zanna.Math.Bits.And(255, 15), 15, "and(255, 15)");
+    assertEqInt(Zanna.Math.Bits.And(12, 10), 8, "and(12,10)");
+    assertEqInt(Zanna.Math.Bits.And(0, 255), 0, "and with zero");
+    assertEqInt(Zanna.Math.Bits.And(255, 255), 255, "and same");
 }
 
 func testBitwiseOr() {
     setTest("Bits.Or");
 
-    assertEqInt(Viper.Math.Bits.Or(240, 15), 255, "or(240, 15)");
-    assertEqInt(Viper.Math.Bits.Or(12, 3), 15, "or(12,3)");
-    assertEqInt(Viper.Math.Bits.Or(0, 255), 255, "or with zero");
-    assertEqInt(Viper.Math.Bits.Or(0, 0), 0, "or zeros");
+    assertEqInt(Zanna.Math.Bits.Or(240, 15), 255, "or(240, 15)");
+    assertEqInt(Zanna.Math.Bits.Or(12, 3), 15, "or(12,3)");
+    assertEqInt(Zanna.Math.Bits.Or(0, 255), 255, "or with zero");
+    assertEqInt(Zanna.Math.Bits.Or(0, 0), 0, "or zeros");
 }
 
 func testBitwiseXor() {
     setTest("Bits.Xor");
 
-    assertEqInt(Viper.Math.Bits.Xor(255, 15), 240, "xor(255, 15)");
-    assertEqInt(Viper.Math.Bits.Xor(12, 10), 6, "xor(12,10)");
-    assertEqInt(Viper.Math.Bits.Xor(255, 255), 0, "xor same");
-    assertEqInt(Viper.Math.Bits.Xor(0, 255), 255, "xor with zero");
+    assertEqInt(Zanna.Math.Bits.Xor(255, 15), 240, "xor(255, 15)");
+    assertEqInt(Zanna.Math.Bits.Xor(12, 10), 6, "xor(12,10)");
+    assertEqInt(Zanna.Math.Bits.Xor(255, 255), 0, "xor same");
+    assertEqInt(Zanna.Math.Bits.Xor(0, 255), 255, "xor with zero");
 }
 
 func testBitwiseNot() {
     setTest("Bits.Not");
 
     // Not inverts all 64 bits, so mask to check
-    var notZero = Viper.Math.Bits.Not(0);
-    assertEqInt(Viper.Math.Bits.And(notZero, 255), 255, "not(0) & 255");
+    var notZero = Zanna.Math.Bits.Not(0);
+    assertEqInt(Zanna.Math.Bits.And(notZero, 255), 255, "not(0) & 255");
 
-    var not255 = Viper.Math.Bits.Not(255);
-    assertEqInt(Viper.Math.Bits.And(not255, 255), 0, "not(255) & 255");
+    var not255 = Zanna.Math.Bits.Not(255);
+    assertEqInt(Zanna.Math.Bits.And(not255, 255), 0, "not(255) & 255");
 }
 
 func testShiftLeft() {
     setTest("Bits.Shl");
 
-    assertEqInt(Viper.Math.Bits.Shl(1, 0), 1, "shl(1,0)");
-    assertEqInt(Viper.Math.Bits.Shl(1, 1), 2, "shl(1,1)");
-    assertEqInt(Viper.Math.Bits.Shl(1, 4), 16, "shl(1,4)");
-    assertEqInt(Viper.Math.Bits.Shl(255, 8), 65280, "shl(255,8)");
+    assertEqInt(Zanna.Math.Bits.Shl(1, 0), 1, "shl(1,0)");
+    assertEqInt(Zanna.Math.Bits.Shl(1, 1), 2, "shl(1,1)");
+    assertEqInt(Zanna.Math.Bits.Shl(1, 4), 16, "shl(1,4)");
+    assertEqInt(Zanna.Math.Bits.Shl(255, 8), 65280, "shl(255,8)");
 }
 
 func testShiftRight() {
     setTest("Bits.Shr");
 
-    assertEqInt(Viper.Math.Bits.Shr(16, 0), 16, "shr(16,0)");
-    assertEqInt(Viper.Math.Bits.Shr(16, 1), 8, "shr(16,1)");
-    assertEqInt(Viper.Math.Bits.Shr(16, 4), 1, "shr(16,4)");
-    assertEqInt(Viper.Math.Bits.Shr(65280, 8), 255, "shr(65280,8)");
+    assertEqInt(Zanna.Math.Bits.Shr(16, 0), 16, "shr(16,0)");
+    assertEqInt(Zanna.Math.Bits.Shr(16, 1), 8, "shr(16,1)");
+    assertEqInt(Zanna.Math.Bits.Shr(16, 4), 1, "shr(16,4)");
+    assertEqInt(Zanna.Math.Bits.Shr(65280, 8), 255, "shr(65280,8)");
 }
 
 func testUnsignedShiftRight() {
     setTest("Bits.Ushr");
 
-    assertEqInt(Viper.Math.Bits.ShiftRightLogical(16, 1), 8, "ushr(16,1)");
-    assertEqInt(Viper.Math.Bits.ShiftRightLogical(256, 4), 16, "ushr(256,4)");
+    assertEqInt(Zanna.Math.Bits.ShiftRightLogical(16, 1), 8, "ushr(16,1)");
+    assertEqInt(Zanna.Math.Bits.ShiftRightLogical(256, 4), 16, "ushr(256,4)");
 }
 
 func testRotate() {
     setTest("Bits.Rotl/Rotr");
 
     // Rotate left
-    assertEqInt(Viper.Math.Bits.RotateLeft(1, 1), 2, "rotl(1,1)");
-    assertEqInt(Viper.Math.Bits.RotateLeft(1, 4), 16, "rotl(1,4)");
+    assertEqInt(Zanna.Math.Bits.RotateLeft(1, 1), 2, "rotl(1,1)");
+    assertEqInt(Zanna.Math.Bits.RotateLeft(1, 4), 16, "rotl(1,4)");
 
     // Rotate right
-    assertEqInt(Viper.Math.Bits.RotateRight(2, 1), 1, "rotr(2,1)");
-    assertEqInt(Viper.Math.Bits.RotateRight(16, 4), 1, "rotr(16,4)");
+    assertEqInt(Zanna.Math.Bits.RotateRight(2, 1), 1, "rotr(2,1)");
+    assertEqInt(Zanna.Math.Bits.RotateRight(16, 4), 1, "rotr(16,4)");
 }
 
 func testBitManipulation() {
     setTest("Bits.Get/Set/Clear/Toggle");
 
     // Get bit
-    assertTrue(Viper.Math.Bits.Get(10, 1), "get bit 1 of 10");
-    assertFalse(Viper.Math.Bits.Get(10, 0), "get bit 0 of 10");
-    assertTrue(Viper.Math.Bits.Get(10, 3), "get bit 3 of 10");
+    assertTrue(Zanna.Math.Bits.Get(10, 1), "get bit 1 of 10");
+    assertFalse(Zanna.Math.Bits.Get(10, 0), "get bit 0 of 10");
+    assertTrue(Zanna.Math.Bits.Get(10, 3), "get bit 3 of 10");
 
     // Set bit
-    assertEqInt(Viper.Math.Bits.Set(0, 0), 1, "set bit 0");
-    assertEqInt(Viper.Math.Bits.Set(0, 3), 8, "set bit 3");
-    assertEqInt(Viper.Math.Bits.Set(8, 0), 9, "set bit 0 of 8");
+    assertEqInt(Zanna.Math.Bits.Set(0, 0), 1, "set bit 0");
+    assertEqInt(Zanna.Math.Bits.Set(0, 3), 8, "set bit 3");
+    assertEqInt(Zanna.Math.Bits.Set(8, 0), 9, "set bit 0 of 8");
 
     // Clear bit
-    assertEqInt(Viper.Math.Bits.Clear(15, 0), 14, "clear bit 0");
-    assertEqInt(Viper.Math.Bits.Clear(15, 3), 7, "clear bit 3");
+    assertEqInt(Zanna.Math.Bits.Clear(15, 0), 14, "clear bit 0");
+    assertEqInt(Zanna.Math.Bits.Clear(15, 3), 7, "clear bit 3");
 
     // Toggle bit
-    assertEqInt(Viper.Math.Bits.Toggle(10, 0), 11, "toggle bit 0 (set)");
-    assertEqInt(Viper.Math.Bits.Toggle(10, 1), 8, "toggle bit 1 (clear)");
+    assertEqInt(Zanna.Math.Bits.Toggle(10, 0), 11, "toggle bit 0 (set)");
+    assertEqInt(Zanna.Math.Bits.Toggle(10, 1), 8, "toggle bit 1 (clear)");
 }
 
 func testBitCount() {
     setTest("Bits.Count");
 
-    assertEqInt(Viper.Math.Bits.CountOnes(0), 0, "count(0)");
-    assertEqInt(Viper.Math.Bits.CountOnes(1), 1, "count(1)");
-    assertEqInt(Viper.Math.Bits.CountOnes(10), 2, "count(10)");
-    assertEqInt(Viper.Math.Bits.CountOnes(255), 8, "count(255)");
-    assertEqInt(Viper.Math.Bits.CountOnes(127), 7, "count(127)");
+    assertEqInt(Zanna.Math.Bits.CountOnes(0), 0, "count(0)");
+    assertEqInt(Zanna.Math.Bits.CountOnes(1), 1, "count(1)");
+    assertEqInt(Zanna.Math.Bits.CountOnes(10), 2, "count(10)");
+    assertEqInt(Zanna.Math.Bits.CountOnes(255), 8, "count(255)");
+    assertEqInt(Zanna.Math.Bits.CountOnes(127), 7, "count(127)");
 }
 
 func testLeadingTrailingZeros() {
     setTest("Bits.LeadZ/TrailZ");
 
     // Leading zeros (count from MSB)
-    assertEqInt(Viper.Math.Bits.CountLeadingZeros(1), 63, "leadz(1)");
-    assertEqInt(Viper.Math.Bits.CountLeadingZeros(256), 55, "leadz(256)");
+    assertEqInt(Zanna.Math.Bits.CountLeadingZeros(1), 63, "leadz(1)");
+    assertEqInt(Zanna.Math.Bits.CountLeadingZeros(256), 55, "leadz(256)");
 
     // Trailing zeros (count from LSB)
-    assertEqInt(Viper.Math.Bits.CountTrailingZeros(1), 0, "trailz(1)");
-    assertEqInt(Viper.Math.Bits.CountTrailingZeros(2), 1, "trailz(2)");
-    assertEqInt(Viper.Math.Bits.CountTrailingZeros(8), 3, "trailz(8)");
-    assertEqInt(Viper.Math.Bits.CountTrailingZeros(16), 4, "trailz(16)");
+    assertEqInt(Zanna.Math.Bits.CountTrailingZeros(1), 0, "trailz(1)");
+    assertEqInt(Zanna.Math.Bits.CountTrailingZeros(2), 1, "trailz(2)");
+    assertEqInt(Zanna.Math.Bits.CountTrailingZeros(8), 3, "trailz(8)");
+    assertEqInt(Zanna.Math.Bits.CountTrailingZeros(16), 4, "trailz(16)");
 }
 
 func testFlip() {
@@ -131,12 +131,12 @@ func testFlip() {
 
     // Flip reverses bit ORDER (not bitwise NOT!)
     // Flip(0) = 0 (all zeros reversed is still all zeros)
-    assertEqInt(Viper.Math.Bits.Flip(0), 0, "flip(0)");
+    assertEqInt(Zanna.Math.Bits.Flip(0), 0, "flip(0)");
 
     // Flip(1) should move bit 0 to bit 63
     // 1 in binary: 00000...0001
     // Flipped:     10000...0000 = negative (sign bit set)
-    var flipped1 = Viper.Math.Bits.Flip(1);
+    var flipped1 = Zanna.Math.Bits.Flip(1);
     assertTrue(flipped1 < 0, "flip(1) is negative");
 }
 
@@ -145,7 +145,7 @@ func testSwap() {
 
     // Byte swap on small values
     var val = 258;  // 0x0102
-    var swapped = Viper.Math.Bits.Swap(val);
+    var swapped = Zanna.Math.Bits.Swap(val);
     // After swap: 0x0201000000000000 >> 48 = 0x0201 = 513
     // Actually swap reverses all 8 bytes, so we need to check differently
     // Let's just verify it doesn't crash and returns something

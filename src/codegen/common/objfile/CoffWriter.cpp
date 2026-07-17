@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 // =============================================================================
 // COFF Constants
@@ -2315,4 +2315,4 @@ bool CoffWriter::write(const std::string &path,
     }
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

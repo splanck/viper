@@ -12,9 +12,9 @@
 // =============================================================================
 module main;
 
-bind Viper.System.Environment as Env;
-bind Viper.Core.Convert as Convert;
-bind Viper.Terminal as Terminal;
+bind Zanna.System.Environment as Env;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Terminal as Terminal;
 bind "./config" as config;
 bind "./game" as game;
 

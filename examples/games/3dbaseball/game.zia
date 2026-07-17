@@ -1,14 +1,14 @@
 // game.zia — Imported FBX baseball field viewer with fly camera controls.
 module game;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Math;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Terminal;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Math;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Terminal;
+bind Zanna.Core.Convert as Convert;
 bind "./config";
 
 class BaseballFieldDemo {

@@ -4,13 +4,13 @@
 
 module WaterDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Terminal;
-bind Viper.Core;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Terminal;
+bind Zanna.Core;
 
 func start() {
     Say("=== Water Demo ===");

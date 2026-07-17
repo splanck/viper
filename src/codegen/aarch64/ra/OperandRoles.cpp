@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
     // Returns {isUse, isDef}
@@ -217,4 +217,4 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
                            std::string(opcodeName(ins.opc)));
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

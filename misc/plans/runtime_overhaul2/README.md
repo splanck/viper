@@ -3,13 +3,13 @@
 Date: 2026-07-02
 
 This directory is the second, independent planning package for stabilizing the
-public `Viper.*` runtime API before release. It is based on a fresh live dump
+public `Zanna.*` runtime API before release. It is based on a fresh live dump
 from the current checkout and a deeper source review of `runtime.def`,
 `rtgen`, runtime class indexing, generated API metadata, and disabled/stub
 implementations.
 
 This package is deliberately decision-oriented. The goal is not only to list
-problems, but to define the API shape Viper should converge on and the gates
+problems, but to define the API shape Zanna should converge on and the gates
 that keep the public surface from drifting again.
 
 ## Baseline
@@ -17,7 +17,7 @@ that keep the public surface from drifting again.
 Commands used:
 
 ```sh
-build/install/bin/viper --dump-runtime-api > /tmp/viper_runtime_api_overhaul2.json
+build/install/bin/zanna --dump-runtime-api > /tmp/zanna_runtime_api_overhaul2.json
 build/src/rtgen --audit --summary-only src/il/runtime/runtime.def
 ```
 
@@ -71,7 +71,7 @@ The public runtime should feel:
 1. Canonical public names use PascalCase full words. Short aliases such as
    `LeadZ`, `Rotl`, `Fpr`, `Len`, `Cap`, `Norm`, and `Dist` become legacy or
    hidden compatibility names.
-2. Public handle signatures use `obj<Viper.Domain.Type>` whenever the type is
+2. Public handle signatures use `obj<Zanna.Domain.Type>` whenever the type is
    known. Bare `obj` is allowed only for intentionally dynamic values.
 3. Public fallible operations return `Result<T>` for operation failure and
    `Option<T>` for ordinary absence. Sentinel and side-channel error APIs are

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_graphics3d_abi_surface.cpp
-// Purpose: Source-level guardrails for Viper.Graphics3D / Viper.Game3D public
+// Purpose: Source-level guardrails for Zanna.Graphics3D / Zanna.Game3D public
 //   ABI naming and class-id sentinels.
 //
 // Key invariants:
@@ -32,8 +32,8 @@
 
 #include "tests/RuntimeDefTestView.hpp"
 
-#ifndef VIPER_SOURCE_DIR
-#define VIPER_SOURCE_DIR "."
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
 #endif
 
 namespace {
@@ -50,7 +50,7 @@ struct ParsedId {
 };
 
 std::string read_file(const char *relative) {
-    std::string path = std::string(VIPER_SOURCE_DIR) + "/" + relative;
+    std::string path = std::string(ZANNA_SOURCE_DIR) + "/" + relative;
     std::ifstream in(path);
     if (!in) {
         std::cerr << "failed to open " << path << "\n";
@@ -206,61 +206,61 @@ bool check_class_ids() {
 }
 
 bool check_runtime_surface_names() {
-    const std::string runtime_def = viper::tests::runtimeDefinitionText();
+    const std::string runtime_def = zanna::tests::runtimeDefinitionText();
     const std::string canvas_header = read_file("src/runtime/graphics/3d/render/rt_canvas3d.h");
     const std::string canvas_overlay =
         read_file("src/runtime/graphics/3d/render/rt_canvas3d_overlay.c");
     bool ok = true;
 
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_WorkerCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_WorkerCount\""),
                  "World3D.WorkerCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_JobsEnabled\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_JobsEnabled\""),
                  "World3D.JobsEnabled getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.SetWorkerCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.SetWorkerCount\""),
                  "World3D.SetWorkerCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_FloatingOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_FloatingOrigin\""),
                  "World3D.FloatingOrigin getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.set_FloatingOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.set_FloatingOrigin\""),
                  "World3D.FloatingOrigin setter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_WorldOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_WorldOrigin\""),
                  "World3D.WorldOrigin getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_Stream\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_Stream\""),
                  "World3D.Stream getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_EntityCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_EntityCount\""),
                  "World3D.EntityCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_BodyCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_BodyCount\""),
                  "World3D.BodyCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_DrawCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_DrawCount\""),
                  "World3D.DrawCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_VisibleNodeCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_VisibleNodeCount\""),
                  "World3D.VisibleNodeCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_OccludedDrawCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_OccludedDrawCount\""),
                  "World3D.OccludedDrawCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_StreamResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.get_StreamResidentBytes\""),
                  "World3D.StreamResidentBytes getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.SetOriginRebaseThreshold\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.SetOriginRebaseThreshold\""),
                  "World3D.SetOriginRebaseThreshold must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.RebaseOrigin\""),
                  "World3D.RebaseOrigin must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.BakeNavMesh\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.BakeNavMesh\""),
                  "World3D.BakeNavMesh must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.BakeTiledNavMesh\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.World3D.BakeTiledNavMesh\""),
                  "World3D.BakeTiledNavMesh must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"WorkerCount\""),
@@ -312,16 +312,16 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"BakeTiledNavMesh\""),
                  "World3D.BakeTiledNavMesh method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.get_ContactCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Collision3DEvent.get_ContactCount\""),
                  "Collision3DEvent.ContactCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactPoint\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Collision3DEvent.ContactPoint\""),
                  "Collision3DEvent.ContactPoint must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactNormal\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Collision3DEvent.ContactNormal\""),
                  "Collision3DEvent.ContactNormal must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactSeparation\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Collision3DEvent.ContactSeparation\""),
                  "Collision3DEvent.ContactSeparation must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ContactCount\""),
@@ -336,49 +336,49 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"ContactSeparation\""),
                  "Collision3DEvent.ContactSeparation method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Entity3D.FromNode\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Entity3D.FromNode\""),
                  "Entity3D.FromNode must use Game3D PascalCase factory naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"FromNode\""),
                  "Entity3D.FromNode method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadEntityAsync\""),
                  "Assets3D.LoadEntityAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAssetAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadEntityAssetAsync\""),
                  "Assets3D.LoadEntityAssetAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadEntityAsync\""),
                  "Assets3D.LoadEntityAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAssetAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadEntityAssetAsync\""),
                  "Assets3D.LoadEntityAssetAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.Load\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Prefab.Load\""),
                  "Prefab.Load canonical loader missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAsset\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Prefab.LoadAsset\""),
                  "Prefab.LoadAsset canonical loader missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Prefab.LoadAsync\""),
                  "Prefab.LoadAsync canonical loader missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAssetAsync\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Prefab.LoadAssetAsync\""),
                  "Prefab.LoadAssetAsync canonical loader missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_SceneCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.SceneTemplate.get_SceneCount\""),
                  "SceneTemplate.SceneCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetSceneName\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.SceneTemplate.GetSceneName\""),
                  "SceneTemplate.GetSceneName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetCameraCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.SceneTemplate.GetCameraCount\""),
                  "SceneTemplate.GetCameraCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetCamera\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.SceneTemplate.GetCamera\""),
                  "SceneTemplate.GetCamera must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.InstantiateSceneAt\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.SceneTemplate.InstantiateSceneAt\""),
                  "SceneTemplate.InstantiateSceneAt must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
@@ -387,40 +387,40 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"InstantiateSceneAt\""),
                  "SceneTemplate.InstantiateSceneAt method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.GetResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.GetResidentBytes\""),
                  "Assets3D.GetResidentBytes must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyHint\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.SetResidencyHint\""),
                  "Assets3D.SetResidencyHint must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.Evict\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.Evict\""),
                  "Assets3D.Evict must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_IsReady\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.get_IsReady\""),
                  "AssetHandle3D.IsReady getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Progress\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.get_Progress\""),
                  "AssetHandle3D.Progress getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Error\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.get_Error\""),
                  "AssetHandle3D.Error getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.Cancel\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.Cancel\""),
                  "AssetHandle3D.Cancel must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetEntity\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.GetEntity\""),
                  "AssetHandle3D.GetEntity must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetPrefab\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.GetPrefab\""),
                  "AssetHandle3D.GetPrefab must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetPrefab\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.AssetHandle3D.GetPrefab\""),
                  "AssetHandle3D.GetPrefab canonical loader result missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.AssetHandle3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Game3D.AssetHandle3D\""),
                  "AssetHandle3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"IsReady\""),
@@ -446,88 +446,88 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"GetEntity\""),
                  "AssetHandle3D.GetEntity method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.New\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.New\""),
                  "WorldStream3D.New must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentCellCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.get_ResidentCellCount\""),
                  "WorldStream3D.ResidentCellCount getter must use Game3D PascalCase naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentTerrainTileCount\""),
+             contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.get_ResidentTerrainTileCount\""),
              "WorldStream3D.ResidentTerrainTileCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetResidentTerrainTile\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetResidentTerrainTile\""),
                  "WorldStream3D.GetResidentTerrainTile must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellCount\""),
                  "WorldStream3D.GetCellCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellName\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellName\""),
                  "WorldStream3D.GetCellName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCenter\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellCenter\""),
                  "WorldStream3D.GetCellCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellResident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellResident\""),
                  "WorldStream3D.GetCellResident must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellBytes\""),
                  "WorldStream3D.GetCellBytes must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellMaterial\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellMaterial\""),
                  "WorldStream3D.GetCellMaterial must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCollisionMask\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellCollisionMask\""),
                  "WorldStream3D.GetCellCollisionMask must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellTraversalCost\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetCellTraversalCost\""),
                  "WorldStream3D.GetCellTraversalCost must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileCount\""),
                  "WorldStream3D.GetTerrainTileCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileName\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileName\""),
                  "WorldStream3D.GetTerrainTileName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileHeightmap\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileHeightmap\""),
                  "WorldStream3D.GetTerrainTileHeightmap must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCenter\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileCenter\""),
                  "WorldStream3D.GetTerrainTileCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileResident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileResident\""),
                  "WorldStream3D.GetTerrainTileResident must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileBytes\""),
                  "WorldStream3D.GetTerrainTileBytes must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileMaterial\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileMaterial\""),
                  "WorldStream3D.GetTerrainTileMaterial must use Game3D PascalCase naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCollisionMask\""),
+        require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileCollisionMask\""),
                 "WorldStream3D.GetTerrainTileCollisionMask must use Game3D PascalCase naming") &&
         ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileTraversalCost\""),
+        require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.GetTerrainTileTraversalCost\""),
                 "WorldStream3D.GetTerrainTileTraversalCost must use Game3D PascalCase naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_PendingRequestCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.get_PendingRequestCount\""),
                  "WorldStream3D.PendingRequestCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.get_ResidentBytes\""),
                  "WorldStream3D.ResidentBytes getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.SetCenter\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.SetCenter\""),
                  "WorldStream3D.SetCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.SetRadii\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.SetRadii\""),
                  "WorldStream3D.SetRadii must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.MountTiledTerrain\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.WorldStream3D.MountTiledTerrain\""),
                  "WorldStream3D.MountTiledTerrain must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.WorldStream3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Game3D.WorldStream3D\""),
                  "WorldStream3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ResidentCellCount\""),
@@ -566,64 +566,64 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetCenter\""),
                  "WorldStream3D.SetCenter method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.PlayLayerAdditive\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Animator3D.PlayLayerAdditive\""),
                  "Animator3D.PlayLayerAdditive must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"PlayLayerAdditive\""),
                  "Animator3D.PlayLayerAdditive method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.CrossfadeLayerAdditive\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Animator3D.CrossfadeLayerAdditive\""),
                  "Animator3D.CrossfadeLayerAdditive must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"CrossfadeLayerAdditive\""),
                  "Animator3D.CrossfadeLayerAdditive method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.SetBlendTree\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Animator3D.SetBlendTree\""),
                  "Animator3D.SetBlendTree must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetBlendTree\""),
                  "Animator3D.SetBlendTree method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.SetIKSolver\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Animator3D.SetIKSolver\""),
                  "Animator3D.SetIKSolver must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetIKSolver\""),
                  "Animator3D.SetIKSolver method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.get_NodeAnimator\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Animator3D.get_NodeAnimator\""),
                  "Animator3D.NodeAnimator getter must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimator\""),
                  "Animator3D.NodeAnimator property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadAnimation\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadAnimation\""),
                  "Assets3D.LoadAnimation must expose skeletal animation loading") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadNodeAnimation\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Assets3D.LoadNodeAnimation\""),
                  "Assets3D.LoadNodeAnimation must expose node animation loading") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadNodeAnimation\""),
                  "Assets3D.LoadNodeAnimation method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_Resident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_Resident\""),
                  "Mesh3D.Resident getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.set_Resident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.set_Resident\""),
                  "Mesh3D.Resident setter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_ResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_ResidentBytes\""),
                  "Mesh3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_RetainedBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_RetainedBytes\""),
                  "Mesh3D.RetainedBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetLodResident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.SetLodResident\""),
                  "SceneNode.SetLodResident must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.GetLodResident\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.GetLodResident\""),
                  "SceneNode.GetLodResident must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.GetLodResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.GetLodResidentBytes\""),
                  "SceneNode.GetLodResidentBytes must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"Resident\""),
@@ -644,28 +644,28 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"GetLodResidentBytes\""),
                  "SceneNode.GetLodResidentBytes method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.get_SceneCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.get_SceneCount\""),
                  "SceneAsset.SceneCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetCameraCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.GetCameraCount\""),
                  "SceneAsset.GetCameraCount must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetCamera\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.GetCamera\""),
                  "SceneAsset.GetCamera must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetSceneName\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.GetSceneName\""),
                  "SceneAsset.GetSceneName must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.InstantiateSceneAt\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.InstantiateSceneAt\""),
                  "SceneAsset.InstantiateSceneAt must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.get_NodeAnimationCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.get_NodeAnimationCount\""),
                  "SceneAsset.NodeAnimationCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetNodeAnimation\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.GetNodeAnimation\""),
                  "SceneAsset.GetNodeAnimation must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneAsset.LoadNodeAnimationResult\""),
                  "SceneAsset.LoadNodeAnimationResult must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
@@ -692,10 +692,10 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadNodeAnimation\""),
                  "SceneAsset.LoadNodeAnimation method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.BindNodeAnimator\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.BindNodeAnimator\""),
                  "SceneNode.BindNodeAnimator must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.get_NodeAnimator\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.get_NodeAnimator\""),
                  "SceneNode.NodeAnimator getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimator\""),
@@ -704,94 +704,94 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"BindNodeAnimator\""),
                  "SceneNode.BindNodeAnimator method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.NodeAnimation3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.NodeAnimation3D\""),
                  "NodeAnimation3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.NodeAnimator3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.NodeAnimator3D\""),
                  "NodeAnimator3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NodeAnimator3D.Play\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NodeAnimator3D.Play\""),
                  "NodeAnimator3D.Play must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ClipCount\""),
                  "NodeAnimator3D.ClipCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKtx2\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.LoadKtx2\""),
                  "TextureAsset3D.LoadKtx2 must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKtx2Asset\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.LoadKtx2Asset\""),
                  "TextureAsset3D.LoadKtx2Asset must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_Width\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Width\""),
                  "TextureAsset3D.Width getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_Height\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Height\""),
                  "TextureAsset3D.Height getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_MipCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_MipCount\""),
                  "TextureAsset3D.MipCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_Format\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Format\""),
                  "TextureAsset3D.Format getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_Compressed\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Compressed\""),
                  "TextureAsset3D.Compressed getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_ResidentMipStart\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_ResidentMipStart\""),
                  "TextureAsset3D.ResidentMipStart getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_ResidentMipCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_ResidentMipCount\""),
                  "TextureAsset3D.ResidentMipCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_ResidentBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_ResidentBytes\""),
                  "TextureAsset3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.SetResidentMipRange\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Vegetation3D.SetSeed\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Vegetation3D.SetSeed\""),
                  "Vegetation3D.SetSeed must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.New1D\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.New1D\""),
                  "BlendTree3D.New1D must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.New2D\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.New2D\""),
                  "BlendTree3D.New2D must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.AddSample\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.AddSample\""),
                  "BlendTree3D.AddSample must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.SetParam\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.SetParam\""),
                  "BlendTree3D.SetParam must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.Update\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.Update\""),
                  "BlendTree3D.Update must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.get_SampleCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.BlendTree3D.get_SampleCount\""),
                  "BlendTree3D.SampleCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.TwoBone\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.TwoBone\""),
                  "IKSolver3D.TwoBone must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.LookAt\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.LookAt\""),
                  "IKSolver3D.LookAt must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.FABRIK\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.FABRIK\""),
                  "IKSolver3D.FABRIK must use Graphics3D all-caps acronym naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.SetTarget\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.SetTarget\""),
                  "IKSolver3D.SetTarget must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.SetWeight\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.SetWeight\""),
                  "IKSolver3D.SetWeight must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.IKSolver3D.Solve\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.IKSolver3D.Solve\""),
                  "IKSolver3D.Solve must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetIKSolver\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.AnimController3D.SetIKSolver\""),
                  "AnimController3D.SetIKSolver must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.TextureAsset3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.TextureAsset3D\""),
                  "TextureAsset3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"MipCount\""),
@@ -812,7 +812,7 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.BlendTree3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.BlendTree3D\""),
                  "BlendTree3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SampleCount\""),
@@ -830,7 +830,7 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"Update\""),
                  "BlendTree3D.Update method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.IKSolver3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.IKSolver3D\""),
                  "IKSolver3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"TwoBone\""),
@@ -853,56 +853,56 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetIKSolver\""),
                  "AnimController3D.SetIKSolver method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.AddOffMeshLink\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.AddOffMeshLink\""),
                  "NavMesh3D.AddOffMeshLink must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_OffMeshLinkCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.get_OffMeshLinkCount\""),
                  "NavMesh3D.OffMeshLinkCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.SetOffMeshLinkMetadata\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.SetOffMeshLinkMetadata\""),
                  "NavMesh3D.SetOffMeshLinkMetadata must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkKind\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.GetOffMeshLinkKind\""),
                  "NavMesh3D.GetOffMeshLinkKind must use Graphics3D PascalCase naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkTraversalCost\""),
+        require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.GetOffMeshLinkTraversalCost\""),
                 "NavMesh3D.GetOffMeshLinkTraversalCost must use Graphics3D PascalCase naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkState\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.GetOffMeshLinkState\""),
                  "NavMesh3D.GetOffMeshLinkState must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.AddObstacle\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.AddObstacle\""),
                  "NavMesh3D.AddObstacle must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.RemoveObstacle\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.RemoveObstacle\""),
                  "NavMesh3D.RemoveObstacle must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.UpdateObstacle\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.UpdateObstacle\""),
                  "NavMesh3D.UpdateObstacle must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.Bake\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.Bake\""),
                  "NavMesh3D.Bake must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.BakeTiled\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.BakeTiled\""),
                  "NavMesh3D.BakeTiled must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.RebuildTile\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.RebuildTile\""),
                  "NavMesh3D.RebuildTile must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_ObstacleCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.get_ObstacleCount\""),
                  "NavMesh3D.ObstacleCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_LastPathCost\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.get_LastPathCost\""),
                  "NavMesh3D.LastPathCost getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.SetArea\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.SetArea\""),
                  "NavMesh3D.SetArea must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetArea\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.GetArea\""),
                  "NavMesh3D.GetArea must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetTraversalCost\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavMesh3D.GetTraversalCost\""),
                  "NavMesh3D.GetTraversalCost must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"OffMeshLinkCount\""),
@@ -955,16 +955,16 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"RebuildTile\""),
                  "NavMesh3D.RebuildTile method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavAgent3D.get_AvoidanceEnabled\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavAgent3D.get_AvoidanceEnabled\""),
                  "NavAgent3D.AvoidanceEnabled getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavAgent3D.set_AvoidanceEnabled\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavAgent3D.set_AvoidanceEnabled\""),
                  "NavAgent3D.AvoidanceEnabled setter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavAgent3D.get_AvoidanceRadius\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavAgent3D.get_AvoidanceRadius\""),
                  "NavAgent3D.AvoidanceRadius getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavAgent3D.set_AvoidanceRadius\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.NavAgent3D.set_AvoidanceRadius\""),
                  "NavAgent3D.AvoidanceRadius setter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"AvoidanceEnabled\""),
@@ -1021,105 +1021,105 @@ bool check_runtime_surface_names() {
     ok = require(contains(canvas_overlay, "strcmp(name, \"anisotropy\")"),
                  "Canvas3D.BackendSupports missing anisotropy capability name") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_SolverIterations\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_SolverIterations\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.set_SolverIterations\""),
                  "Physics3DWorld.SolverIterations setter must use get_/set_ property naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_PositionIterations\""),
+        require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_PositionIterations\""),
                 "Physics3DWorld.PositionIterations getter must use Graphics3D PascalCase "
                 "naming") &&
         ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_PositionIterations\""),
+        require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.set_PositionIterations\""),
                 "Physics3DWorld.PositionIterations setter must use get_/set_ property naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_ContactBeta\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_ContactBeta\""),
                  "Physics3DWorld.ContactBeta getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_ContactBeta\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.set_ContactBeta\""),
                  "Physics3DWorld.ContactBeta setter must use get_/set_ property naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_RestitutionThreshold\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_RestitutionThreshold\""),
              "Physics3DWorld.RestitutionThreshold getter must use Graphics3D PascalCase "
              "naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_RestitutionThreshold\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.set_RestitutionThreshold\""),
              "Physics3DWorld.RestitutionThreshold setter must use get_/set_ property "
              "naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.StepFixed\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.StepFixed\""),
                  "Physics3DWorld.StepFixed must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_FixedStepAlpha\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_FixedStepAlpha\""),
                  "Physics3DWorld.FixedStepAlpha getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_DroppedFixedSteps\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_DroppedFixedSteps\""),
                  "Physics3DWorld.DroppedFixedSteps getter must use Graphics3D PascalCase "
                  "naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverIslandCount\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_LastSolverIslandCount\""),
              "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def,
-                          "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverActiveBodyCount\""),
+                          "\"Zanna.Graphics3D.PhysicsWorld3D.get_LastSolverActiveBodyCount\""),
                  "Physics3DWorld.LastSolverActiveBodyCount getter must use Graphics3D PascalCase "
                  "naming") &&
          ok;
     ok =
         require(
-            contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverContactCount\""),
+            contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.get_LastSolverContactCount\""),
             "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
         ok;
-    ok = require(!contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.SetSolverIterations\""),
+    ok = require(!contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations duplicate method must stay removed") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.PhysicsWorld3D.RebaseOrigin\""),
                  "Physics3DWorld.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Particles3D.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Particles3D.RebaseOrigin\""),
                  "Particles3D.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Sprite3D.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Sprite3D.RebaseOrigin\""),
                  "Sprite3D.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.HingeJoint3D.New\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.HingeJoint3D.New\""),
                  "HingeJoint3D.New must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.RopeJoint3D.New\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.RopeJoint3D.New\""),
                  "RopeJoint3D.New must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.RopeJoint3D.get_MaxLength\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.RopeJoint3D.get_MaxLength\""),
                  "RopeJoint3D.MaxLength getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SixDofJoint3D.New\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SixDofJoint3D.New\""),
                  "SixDofJoint3D.New must use symbol-friendly Dof spelling") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SixDofJoint3D.SetLinearLimits\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SixDofJoint3D.SetLinearLimits\""),
                  "SixDofJoint3D.SetLinearLimits must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SixDofJoint3D.SetAngularLimits\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SixDofJoint3D.SetAngularLimits\""),
                  "SixDofJoint3D.SetAngularLimits must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.PlayLayerAdditive\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.AnimController3D.PlayLayerAdditive\""),
                  "AnimController3D.PlayLayerAdditive must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.CrossfadeLayerAdditive\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.AnimController3D.CrossfadeLayerAdditive\""),
              "AnimController3D.CrossfadeLayerAdditive must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetAnimationLod\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.AnimController3D.SetAnimationLod\""),
                  "AnimController3D.SetAnimationLod must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetBlendTree\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.AnimController3D.SetBlendTree\""),
                  "AnimController3D.SetBlendTree must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Animation3D.Retarget\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Animation3D.Retarget\""),
                  "Animation3D.Retarget must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SolverIterations\""),
@@ -1170,16 +1170,16 @@ bool check_runtime_surface_names() {
                           "Sprite3DRebaseOrigin)"),
                  "Sprite3D.RebaseOrigin method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.HingeJoint3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.HingeJoint3D\""),
                  "HingeJoint3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.RopeJoint3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.RopeJoint3D\""),
                  "RopeJoint3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"MaxLength\""),
                  "RopeJoint3D.MaxLength property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.SixDofJoint3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.SixDofJoint3D\""),
                  "SixDofJoint3D class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetLinearLimits\""),
@@ -1203,19 +1203,19 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"Retarget\""),
                  "Animation3D.Retarget method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.RebaseOrigin\""),
                  "SceneGraph.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.QueryAABB\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.QueryAABB\""),
                  "SceneGraph.QueryAABB must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.QuerySphere\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.QuerySphere\""),
                  "SceneGraph.QuerySphere must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.RaycastNodes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.RaycastNodes\""),
                  "SceneGraph.RaycastNodes must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.get_VisibleNodeCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.get_VisibleNodeCount\""),
                  "SceneGraph.VisibleNodeCount getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"RebaseOrigin\""),
@@ -1233,10 +1233,10 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"VisibleNodeCount\""),
                  "SceneGraph.VisibleNodeCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.get_CastsShadows\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.get_CastsShadows\""),
                  "Light3D.CastsShadows getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_CastsShadows\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.set_CastsShadows\""),
                  "Light3D.CastsShadows setter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"CastsShadows\""),
@@ -1245,33 +1245,33 @@ bool check_runtime_surface_names() {
     ok = require(!contains(runtime_def, "RT_METHOD(\"SetCastsShadows\""),
                  "Light3D.SetCastsShadows duplicate method must stay removed") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_IsEnabled\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.set_IsEnabled\""),
                  "Light3D.IsEnabled property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_CastsShadows\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.set_CastsShadows\""),
                  "Light3D.CastsShadows property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasTexture\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasTexture\""),
                  "Material3D.HasTexture getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasNormalMap\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasNormalMap\""),
                  "Material3D.HasNormalMap getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasSpecularMap\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasSpecularMap\""),
                  "Material3D.HasSpecularMap getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasEmissiveMap\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasEmissiveMap\""),
                  "Material3D.HasEmissiveMap getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
              "Material3D.HasMetallicRoughnessMap getter must use Graphics3D PascalCase naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap\""),
+        require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasAmbientOcclusionMap\""),
                 "Material3D.HasAmbientOcclusionMap getter must use Graphics3D PascalCase naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasEnvMap\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_HasEnvMap\""),
                  "Material3D.HasEnvMap getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"HasTexture\""),
@@ -1280,116 +1280,116 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"HasMetallicRoughnessMap\""),
                  "Material3D.HasMetallicRoughnessMap property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Metallic\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_Metallic\""),
                  "Material3D.Metallic property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Roughness\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_Roughness\""),
                  "Material3D.Roughness property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_AmbientOcclusion\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_AmbientOcclusion\""),
                  "Material3D.AmbientOcclusion property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_EmissiveIntensity\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_EmissiveIntensity\""),
                  "Material3D.EmissiveIntensity property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_NormalScale\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_NormalScale\""),
                  "Material3D.NormalScale property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_Anisotropy\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.get_Anisotropy\""),
                  "Material3D.Anisotropy getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Anisotropy\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_Anisotropy\""),
                  "Material3D.Anisotropy setter must use get_/set_ property naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Anisotropy\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_Anisotropy\""),
                  "Material3D.Anisotropy property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"Anisotropy\""),
                  "Material3D.Anisotropy property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Reflectivity\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Material3D.set_Reflectivity\""),
                  "Material3D.Reflectivity property setter missing") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.set_ClusteredLighting\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.set_ClusteredLighting\""),
              "Canvas3D.ClusteredLighting property setter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.TrySetClusteredLighting\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.TrySetClusteredLighting\""),
                  "Canvas3D.TrySetClusteredLighting must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MaxActiveLights\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_MaxActiveLights\""),
                  "Canvas3D.MaxActiveLights getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetShadowCascades\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.SetShadowCascades\""),
                  "Canvas3D.SetShadowCascades must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_OccludedDrawCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_OccludedDrawCount\""),
                  "Canvas3D.OccludedDrawCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_OcclusionCandidateCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_OcclusionCandidateCount\""),
                  "Canvas3D.OcclusionCandidateCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_DrawCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_DrawCount\""),
                  "Canvas3D.DrawCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadBytes\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_TextureUploadBytes\""),
                  "Canvas3D.TextureUploadBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_FrameGpuTimeUs\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_FrameGpuTimeUs\""),
                  "Canvas3D.FrameGpuTimeUs getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_DrawsSubmitted\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_DrawsSubmitted\""),
                  "Canvas3D.DrawsSubmitted getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_AabbTransforms\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_AabbTransforms\""),
                  "Canvas3D.AabbTransforms getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_SortPasses\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_SortPasses\""),
                  "Canvas3D.SortPasses getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendStateChanges\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_BackendStateChanges\""),
                  "Canvas3D.BackendStateChanges getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_Backend\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_Backend\""),
                  "Canvas3D.Backend getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallback\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_BackendFallback\""),
                  "Canvas3D.BackendFallback getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallbackReason\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_BackendFallbackReason\""),
                  "Canvas3D.BackendFallbackReason getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def,
-                          "\"Viper.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount\""),
+                          "\"Zanna.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount\""),
                  "Canvas3D.InstancedFallbackDroppedCount getter must use Graphics3D PascalCase "
                  "naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_EventDropCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_EventDropCount\""),
                  "Canvas3D.EventDropCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MeshSnapshotDropCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_MeshSnapshotDropCount\""),
                  "Canvas3D.MeshSnapshotDropCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
+             contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
              "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.AddVisibilityZone\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.AddVisibilityZone\""),
                  "SceneGraph.AddVisibilityZone must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.AddVisibilityPortal\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.AddVisibilityPortal\""),
                  "SceneGraph.AddVisibilityPortal must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.get_PvsCulledCount\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneGraph.get_PvsCulledCount\""),
                  "SceneGraph.PvsCulledCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetAutoLod\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.SetAutoLod\""),
                  "SceneNode.SetAutoLod must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetImpostor\""),
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.SetImpostor\""),
                  "SceneNode.SetImpostor must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ClusteredLighting\""),
@@ -1454,31 +1454,31 @@ bool check_runtime_surface_names() {
          ok;
 
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
+        require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
                 "Diagnostics.BroadphaseFallbackCount getter missing") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_CcdClampedFrames\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_CcdClampedFrames\""),
                  "Diagnostics.CcdClampedFrames getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_CcdClampedBodies\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_CcdClampedBodies\""),
                  "Diagnostics.CcdClampedBodies getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_AnimEventsDropped\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_AnimEventsDropped\""),
                  "Diagnostics.AnimEventsDropped getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_AudioVoicesEvicted\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_AudioVoicesEvicted\""),
                  "Diagnostics.AudioVoicesEvicted getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_NavGridFallbacks\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.get_NavGridFallbacks\""),
                  "Diagnostics.NavGridFallbacks getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.Reset\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.Reset\""),
                  "Diagnostics.Reset method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.Summary\""),
+    ok = require(contains(runtime_def, "\"Zanna.Game3D.Diagnostics3D.Summary\""),
                  "Diagnostics.Summary method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.Diagnostics3D\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Game3D.Diagnostics3D\""),
                  "Diagnostics class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"BroadphaseFallbackCount\""),
@@ -1489,179 +1489,179 @@ bool check_runtime_surface_names() {
          ok;
 
     static const char *forbidden[] = {
-        "Viper.Game3D.World3D.get_workerCount",
-        "Viper.Game3D.World3D.get_jobsEnabled",
-        "Viper.Game3D.World3D.setWorkerCount",
-        "Viper.Game3D.World3D.get_floatingOrigin",
-        "Viper.Game3D.World3D.set_floatingOrigin",
-        "Viper.Game3D.World3D.get_worldOrigin",
-        "Viper.Game3D.World3D.get_entityCount",
-        "Viper.Game3D.World3D.get_bodyCount",
-        "Viper.Game3D.World3D.get_drawCount",
-        "Viper.Game3D.World3D.get_visibleNodeCount",
-        "Viper.Game3D.World3D.get_visible_node_count",
-        "Viper.Game3D.World3D.get_occludedDrawCount",
-        "Viper.Game3D.World3D.get_occluded_draw_count",
-        "Viper.Game3D.World3D.get_streamResidentBytes",
-        "Viper.Game3D.World3D.get_stream_resident_bytes",
-        "Viper.Game3D.World3D.setOriginRebaseThreshold",
-        "Viper.Game3D.World3D.rebaseOrigin",
-        "Viper.Game3D.World3D.bakeNavMesh",
-        "Viper.Game3D.World3D.bake_nav_mesh",
-        "Viper.Game3D.World3D.bakeTiledNavMesh",
-        "Viper.Game3D.World3D.bake_tiled_nav_mesh",
-        "Viper.Game3D.Collision3DEvent.get_contactCount",
-        "Viper.Game3D.Collision3DEvent.contactPoint",
-        "Viper.Game3D.Collision3DEvent.contactNormal",
-        "Viper.Game3D.Collision3DEvent.contactSeparation",
-        "Viper.Game3D.Entity3D.fromNode",
-        "Viper.Game3D.Entity3D.WrapNode",
-        "Viper.Game3D.Animator3D.playLayerAdditive",
-        "Viper.Game3D.Animator3D.play_layer_additive",
-        "Viper.Game3D.Animator3D.crossfadeLayerAdditive",
-        "Viper.Game3D.Animator3D.crossfadeLayeradditive",
-        "Viper.Game3D.Animator3D.crossfade_layer_additive",
-        "Viper.Game3D.Animator3D.setBlendTree",
-        "Viper.Game3D.Animator3D.set_blend_tree",
-        "Viper.Game3D.Animator3D.setIKSolver",
-        "Viper.Game3D.WorldStream3D.getResidentTerrainTile",
-        "Viper.Game3D.WorldStream3D.get_resident_terrain_tile",
-        "Viper.Game3D.WorldStream3D.getresidentTerrainTile",
-        "Viper.Game3D.WorldStream3D.getCellCount",
-        "Viper.Game3D.WorldStream3D.get_cellCount",
-        "Viper.Game3D.WorldStream3D.get_cell_count",
-        "Viper.Game3D.WorldStream3D.getCellMaterial",
-        "Viper.Game3D.WorldStream3D.get_cell_material",
-        "Viper.Game3D.WorldStream3D.getTerrainTileCount",
-        "Viper.Game3D.WorldStream3D.get_terrainTileCount",
-        "Viper.Game3D.WorldStream3D.get_terrain_tile_count",
-        "Viper.Game3D.WorldStream3D.getTerrainTileHeightmap",
-        "Viper.Game3D.WorldStream3D.get_terrainTileHeightmap",
-        "Viper.Game3D.WorldStream3D.get_terrain_tile_heightmap",
-        "Viper.Game3D.WorldStream3D.getTerrainTileMaterial",
-        "Viper.Game3D.WorldStream3D.get_terrain_tile_material",
-        "Viper.Graphics3D.PhysicsWorld3D.get_solverIterations",
-        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverIslandCount",
-        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_island_count",
-        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverActiveBodyCount",
-        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_active_body_count",
-        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverContactCount",
-        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_contact_count",
-        "Viper.Graphics3D.PhysicsWorld3D.setSolverIterations",
-        "Viper.Graphics3D.PhysicsWorld3D.get_positionIterations",
-        "Viper.Graphics3D.PhysicsWorld3D.setPositionIterations",
-        "Viper.Graphics3D.PhysicsWorld3D.get_contactBeta",
-        "Viper.Graphics3D.PhysicsWorld3D.setContactBeta",
-        "Viper.Graphics3D.PhysicsWorld3D.get_restitutionThreshold",
-        "Viper.Graphics3D.PhysicsWorld3D.setRestitutionThreshold",
-        "Viper.Graphics3D.PhysicsWorld3D.stepFixed",
-        "Viper.Graphics3D.PhysicsWorld3D.get_fixedStepAlpha",
-        "Viper.Graphics3D.PhysicsWorld3D.get_droppedFixedSteps",
-        "Viper.Graphics3D.HingeJoint3D.new",
-        "Viper.Graphics3D.RopeJoint3D.get_maxLength",
-        "Viper.Graphics3D.SixDofJoint3D.setLinearLimits",
-        "Viper.Graphics3D.SixDofJoint3D.setAngularLimits",
-        "Viper.Graphics3D.AnimController3D.playLayerAdditive",
-        "Viper.Graphics3D.AnimController3D.PlaylayerAdditive",
-        "Viper.Graphics3D.AnimController3D.PlayLayeradditive",
-        "Viper.Graphics3D.AnimController3D.crossfadeLayerAdditive",
-        "Viper.Graphics3D.AnimController3D.CrossfadelayerAdditive",
-        "Viper.Graphics3D.AnimController3D.CrossfadeLayeradditive",
-        "Viper.Graphics3D.AnimController3D.setAnimationLOD",
-        "Viper.Graphics3D.AnimController3D.SetAnimationLOD",
-        "Viper.Graphics3D.AnimController3D.SetAnimLOD",
-        "Viper.Graphics3D.AnimController3D.setBlendTree",
-        "Viper.Graphics3D.AnimController3D.SetBlendtree",
-        "Viper.Graphics3D.Animation3D.retarget",
-        "Viper.Graphics3D.Animation3D.RetargetAnimation",
-        "Viper.Graphics3D.SceneGraph.rebaseOrigin",
-        "Viper.Graphics3D.SceneGraph.Rebaseorigin",
-        "Viper.Graphics3D.SceneGraph.queryAABB",
-        "Viper.Graphics3D.SceneGraph.QueryAabb",
-        "Viper.Graphics3D.SceneGraph.Raycastnodes",
-        "Viper.Graphics3D.SceneGraph.get_visibleNodeCount",
-        "Viper.Graphics3D.Mesh3D.get_retainedBytes",
-        "Viper.Graphics3D.Mesh3D.get_retained_bytes",
-        "Viper.Graphics3D.Light3D.get_castsShadows",
-        "Viper.Graphics3D.Light3D.set_castsShadows",
-        "Viper.Graphics3D.Light3D.SetCastShadows",
-        "Viper.Graphics3D.Material3D.get_hasTexture",
-        "Viper.Graphics3D.Material3D.HasTexture",
-        "Viper.Graphics3D.Material3D.SetTextureAsset",
-        "Viper.Graphics3D.TextureAsset3D.loadKTX2",
-        "Viper.Graphics3D.TextureAsset3D.loadKtx2",
-        "Viper.Graphics3D.TextureAsset3D.get_mipCount",
-        "Viper.Graphics3D.TextureAsset3D.get_residentMipCount",
-        "Viper.Graphics3D.TextureAsset3D.setResidentMipRange",
-        "Viper.Graphics3D.TextureAsset3D.SetResidentMiprange",
-        "Viper.Graphics3D.TextureAsset3D.set_Texture",
-        "Viper.Graphics3D.Vegetation3D.setSeed",
-        "Viper.Graphics3D.Vegetation3D.Setseed",
-        "Viper.Graphics3D.Blendtree3D",
-        "Viper.Graphics3D.BlendTree3D.new1D",
-        "Viper.Graphics3D.BlendTree3D.New1d",
-        "Viper.Graphics3D.BlendTree3D.new2D",
-        "Viper.Graphics3D.BlendTree3D.New2d",
-        "Viper.Graphics3D.BlendTree3D.addSample",
-        "Viper.Graphics3D.BlendTree3D.setParam",
-        "Viper.Graphics3D.BlendTree3D.get_sampleCount",
-        "Viper.Graphics3D.IK3D",
-        "Viper.Graphics3D.IKSolver3D.twoBone",
-        "Viper.Graphics3D.IKSolver3D.Twobone",
-        "Viper.Graphics3D.IKSolver3D.lookAt",
-        "Viper.Graphics3D.IKSolver3D.Fabrik",
-        "Viper.Graphics3D.IKSolver3D.setTarget",
-        "Viper.Graphics3D.IKSolver3D.setWeight",
-        "Viper.Graphics3D.AnimController3D.setIKSolver",
-        "Viper.Game3D.Animator3D.setIkSolver",
-        "Viper.Graphics3D.NavMesh3D.addOffMeshLink",
-        "Viper.Graphics3D.NavMesh3D.AddOffmeshLink",
-        "Viper.Graphics3D.NavMesh3D.setOffMeshLinkMetadata",
-        "Viper.Graphics3D.NavMesh3D.SetOffmeshLinkMetadata",
-        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkKind",
-        "Viper.Graphics3D.NavMesh3D.GetOffmeshLinkKind",
-        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkTraversalCost",
-        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkState",
-        "Viper.Graphics3D.NavMesh3D.get_offMeshLinkCount",
-        "Viper.Graphics3D.NavMesh3D.OffmeshLinkCount",
-        "Viper.Graphics3D.NavMesh3D.addObstacle",
-        "Viper.Graphics3D.NavMesh3D.Addobstacle",
-        "Viper.Graphics3D.NavMesh3D.removeObstacle",
-        "Viper.Graphics3D.NavMesh3D.Removeobstacle",
-        "Viper.Graphics3D.NavMesh3D.updateObstacle",
-        "Viper.Graphics3D.NavMesh3D.Updateobstacle",
-        "Viper.Graphics3D.NavMesh3D.bake",
-        "Viper.Graphics3D.NavMesh3D.bakeTiled",
-        "Viper.Graphics3D.NavMesh3D.Baketiled",
-        "Viper.Graphics3D.NavMesh3D.rebuildTile",
-        "Viper.Graphics3D.NavMesh3D.Rebuildtile",
-        "Viper.Graphics3D.NavMesh3D.get_obstacleCount",
-        "Viper.Graphics3D.NavMesh3D.Obstaclecount",
-        "Viper.Graphics3D.NavMesh3D.get_lastPathCost",
-        "Viper.Graphics3D.NavMesh3D.LastpathCost",
-        "Viper.Graphics3D.NavMesh3D.setArea",
-        "Viper.Graphics3D.NavMesh3D.getArea",
-        "Viper.Graphics3D.NavMesh3D.getTraversalCost",
-        "Viper.Graphics3D.NavAgent3D.get_avoidanceEnabled",
-        "Viper.Graphics3D.NavAgent3D.set_avoidanceEnabled",
-        "Viper.Graphics3D.NavAgent3D.get_avoidanceRadius",
-        "Viper.Graphics3D.NavAgent3D.set_avoidanceRadius",
-        "Viper.Graphics3D.NavAgent3D.setAvoidanceEnabled",
-        "Viper.Graphics3D.NavAgent3D.setAvoidanceRadius",
-        "Viper.Graphics3D.Canvas3D.setClusteredLighting",
-        "Viper.Graphics3D.Canvas3D.trySetClusteredLighting",
-        "Viper.Graphics3D.Canvas3D.get_maxActiveLights",
-        "Viper.Graphics3D.Canvas3D.setShadowCascades",
-        "Viper.Graphics3D.Canvas3D.get_occludedDrawCount",
-        "Viper.Graphics3D.Canvas3D.get_drawCount",
-        "Viper.Graphics3D.Canvas3D.setTextureUploadBudget",
-        "Viper.Graphics3D.Canvas3D.get_textureUploadPendingBytes",
-        "Viper.Graphics3D.SceneNode.setAutoLOD",
-        "Viper.Graphics3D.SceneNode.setImpostor",
-        "Viper.Graphics3D.Canvas3D.SetShadowCascade\"",
-        "Viper.Game3D.ModelHandle",
-        "Viper.Graphics3D.SixDOFJoint3D",
-        "Viper.Graphics3D.SixDoFJoint3D",
+        "Zanna.Game3D.World3D.get_workerCount",
+        "Zanna.Game3D.World3D.get_jobsEnabled",
+        "Zanna.Game3D.World3D.setWorkerCount",
+        "Zanna.Game3D.World3D.get_floatingOrigin",
+        "Zanna.Game3D.World3D.set_floatingOrigin",
+        "Zanna.Game3D.World3D.get_worldOrigin",
+        "Zanna.Game3D.World3D.get_entityCount",
+        "Zanna.Game3D.World3D.get_bodyCount",
+        "Zanna.Game3D.World3D.get_drawCount",
+        "Zanna.Game3D.World3D.get_visibleNodeCount",
+        "Zanna.Game3D.World3D.get_visible_node_count",
+        "Zanna.Game3D.World3D.get_occludedDrawCount",
+        "Zanna.Game3D.World3D.get_occluded_draw_count",
+        "Zanna.Game3D.World3D.get_streamResidentBytes",
+        "Zanna.Game3D.World3D.get_stream_resident_bytes",
+        "Zanna.Game3D.World3D.setOriginRebaseThreshold",
+        "Zanna.Game3D.World3D.rebaseOrigin",
+        "Zanna.Game3D.World3D.bakeNavMesh",
+        "Zanna.Game3D.World3D.bake_nav_mesh",
+        "Zanna.Game3D.World3D.bakeTiledNavMesh",
+        "Zanna.Game3D.World3D.bake_tiled_nav_mesh",
+        "Zanna.Game3D.Collision3DEvent.get_contactCount",
+        "Zanna.Game3D.Collision3DEvent.contactPoint",
+        "Zanna.Game3D.Collision3DEvent.contactNormal",
+        "Zanna.Game3D.Collision3DEvent.contactSeparation",
+        "Zanna.Game3D.Entity3D.fromNode",
+        "Zanna.Game3D.Entity3D.WrapNode",
+        "Zanna.Game3D.Animator3D.playLayerAdditive",
+        "Zanna.Game3D.Animator3D.play_layer_additive",
+        "Zanna.Game3D.Animator3D.crossfadeLayerAdditive",
+        "Zanna.Game3D.Animator3D.crossfadeLayeradditive",
+        "Zanna.Game3D.Animator3D.crossfade_layer_additive",
+        "Zanna.Game3D.Animator3D.setBlendTree",
+        "Zanna.Game3D.Animator3D.set_blend_tree",
+        "Zanna.Game3D.Animator3D.setIKSolver",
+        "Zanna.Game3D.WorldStream3D.getResidentTerrainTile",
+        "Zanna.Game3D.WorldStream3D.get_resident_terrain_tile",
+        "Zanna.Game3D.WorldStream3D.getresidentTerrainTile",
+        "Zanna.Game3D.WorldStream3D.getCellCount",
+        "Zanna.Game3D.WorldStream3D.get_cellCount",
+        "Zanna.Game3D.WorldStream3D.get_cell_count",
+        "Zanna.Game3D.WorldStream3D.getCellMaterial",
+        "Zanna.Game3D.WorldStream3D.get_cell_material",
+        "Zanna.Game3D.WorldStream3D.getTerrainTileCount",
+        "Zanna.Game3D.WorldStream3D.get_terrainTileCount",
+        "Zanna.Game3D.WorldStream3D.get_terrain_tile_count",
+        "Zanna.Game3D.WorldStream3D.getTerrainTileHeightmap",
+        "Zanna.Game3D.WorldStream3D.get_terrainTileHeightmap",
+        "Zanna.Game3D.WorldStream3D.get_terrain_tile_heightmap",
+        "Zanna.Game3D.WorldStream3D.getTerrainTileMaterial",
+        "Zanna.Game3D.WorldStream3D.get_terrain_tile_material",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_solverIterations",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_lastSolverIslandCount",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_last_solver_island_count",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_lastSolverActiveBodyCount",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_last_solver_active_body_count",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_lastSolverContactCount",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_last_solver_contact_count",
+        "Zanna.Graphics3D.PhysicsWorld3D.setSolverIterations",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_positionIterations",
+        "Zanna.Graphics3D.PhysicsWorld3D.setPositionIterations",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_contactBeta",
+        "Zanna.Graphics3D.PhysicsWorld3D.setContactBeta",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_restitutionThreshold",
+        "Zanna.Graphics3D.PhysicsWorld3D.setRestitutionThreshold",
+        "Zanna.Graphics3D.PhysicsWorld3D.stepFixed",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_fixedStepAlpha",
+        "Zanna.Graphics3D.PhysicsWorld3D.get_droppedFixedSteps",
+        "Zanna.Graphics3D.HingeJoint3D.new",
+        "Zanna.Graphics3D.RopeJoint3D.get_maxLength",
+        "Zanna.Graphics3D.SixDofJoint3D.setLinearLimits",
+        "Zanna.Graphics3D.SixDofJoint3D.setAngularLimits",
+        "Zanna.Graphics3D.AnimController3D.playLayerAdditive",
+        "Zanna.Graphics3D.AnimController3D.PlaylayerAdditive",
+        "Zanna.Graphics3D.AnimController3D.PlayLayeradditive",
+        "Zanna.Graphics3D.AnimController3D.crossfadeLayerAdditive",
+        "Zanna.Graphics3D.AnimController3D.CrossfadelayerAdditive",
+        "Zanna.Graphics3D.AnimController3D.CrossfadeLayeradditive",
+        "Zanna.Graphics3D.AnimController3D.setAnimationLOD",
+        "Zanna.Graphics3D.AnimController3D.SetAnimationLOD",
+        "Zanna.Graphics3D.AnimController3D.SetAnimLOD",
+        "Zanna.Graphics3D.AnimController3D.setBlendTree",
+        "Zanna.Graphics3D.AnimController3D.SetBlendtree",
+        "Zanna.Graphics3D.Animation3D.retarget",
+        "Zanna.Graphics3D.Animation3D.RetargetAnimation",
+        "Zanna.Graphics3D.SceneGraph.rebaseOrigin",
+        "Zanna.Graphics3D.SceneGraph.Rebaseorigin",
+        "Zanna.Graphics3D.SceneGraph.queryAABB",
+        "Zanna.Graphics3D.SceneGraph.QueryAabb",
+        "Zanna.Graphics3D.SceneGraph.Raycastnodes",
+        "Zanna.Graphics3D.SceneGraph.get_visibleNodeCount",
+        "Zanna.Graphics3D.Mesh3D.get_retainedBytes",
+        "Zanna.Graphics3D.Mesh3D.get_retained_bytes",
+        "Zanna.Graphics3D.Light3D.get_castsShadows",
+        "Zanna.Graphics3D.Light3D.set_castsShadows",
+        "Zanna.Graphics3D.Light3D.SetCastShadows",
+        "Zanna.Graphics3D.Material3D.get_hasTexture",
+        "Zanna.Graphics3D.Material3D.HasTexture",
+        "Zanna.Graphics3D.Material3D.SetTextureAsset",
+        "Zanna.Graphics3D.TextureAsset3D.loadKTX2",
+        "Zanna.Graphics3D.TextureAsset3D.loadKtx2",
+        "Zanna.Graphics3D.TextureAsset3D.get_mipCount",
+        "Zanna.Graphics3D.TextureAsset3D.get_residentMipCount",
+        "Zanna.Graphics3D.TextureAsset3D.setResidentMipRange",
+        "Zanna.Graphics3D.TextureAsset3D.SetResidentMiprange",
+        "Zanna.Graphics3D.TextureAsset3D.set_Texture",
+        "Zanna.Graphics3D.Vegetation3D.setSeed",
+        "Zanna.Graphics3D.Vegetation3D.Setseed",
+        "Zanna.Graphics3D.Blendtree3D",
+        "Zanna.Graphics3D.BlendTree3D.new1D",
+        "Zanna.Graphics3D.BlendTree3D.New1d",
+        "Zanna.Graphics3D.BlendTree3D.new2D",
+        "Zanna.Graphics3D.BlendTree3D.New2d",
+        "Zanna.Graphics3D.BlendTree3D.addSample",
+        "Zanna.Graphics3D.BlendTree3D.setParam",
+        "Zanna.Graphics3D.BlendTree3D.get_sampleCount",
+        "Zanna.Graphics3D.IK3D",
+        "Zanna.Graphics3D.IKSolver3D.twoBone",
+        "Zanna.Graphics3D.IKSolver3D.Twobone",
+        "Zanna.Graphics3D.IKSolver3D.lookAt",
+        "Zanna.Graphics3D.IKSolver3D.Fabrik",
+        "Zanna.Graphics3D.IKSolver3D.setTarget",
+        "Zanna.Graphics3D.IKSolver3D.setWeight",
+        "Zanna.Graphics3D.AnimController3D.setIKSolver",
+        "Zanna.Game3D.Animator3D.setIkSolver",
+        "Zanna.Graphics3D.NavMesh3D.addOffMeshLink",
+        "Zanna.Graphics3D.NavMesh3D.AddOffmeshLink",
+        "Zanna.Graphics3D.NavMesh3D.setOffMeshLinkMetadata",
+        "Zanna.Graphics3D.NavMesh3D.SetOffmeshLinkMetadata",
+        "Zanna.Graphics3D.NavMesh3D.getOffMeshLinkKind",
+        "Zanna.Graphics3D.NavMesh3D.GetOffmeshLinkKind",
+        "Zanna.Graphics3D.NavMesh3D.getOffMeshLinkTraversalCost",
+        "Zanna.Graphics3D.NavMesh3D.getOffMeshLinkState",
+        "Zanna.Graphics3D.NavMesh3D.get_offMeshLinkCount",
+        "Zanna.Graphics3D.NavMesh3D.OffmeshLinkCount",
+        "Zanna.Graphics3D.NavMesh3D.addObstacle",
+        "Zanna.Graphics3D.NavMesh3D.Addobstacle",
+        "Zanna.Graphics3D.NavMesh3D.removeObstacle",
+        "Zanna.Graphics3D.NavMesh3D.Removeobstacle",
+        "Zanna.Graphics3D.NavMesh3D.updateObstacle",
+        "Zanna.Graphics3D.NavMesh3D.Updateobstacle",
+        "Zanna.Graphics3D.NavMesh3D.bake",
+        "Zanna.Graphics3D.NavMesh3D.bakeTiled",
+        "Zanna.Graphics3D.NavMesh3D.Baketiled",
+        "Zanna.Graphics3D.NavMesh3D.rebuildTile",
+        "Zanna.Graphics3D.NavMesh3D.Rebuildtile",
+        "Zanna.Graphics3D.NavMesh3D.get_obstacleCount",
+        "Zanna.Graphics3D.NavMesh3D.Obstaclecount",
+        "Zanna.Graphics3D.NavMesh3D.get_lastPathCost",
+        "Zanna.Graphics3D.NavMesh3D.LastpathCost",
+        "Zanna.Graphics3D.NavMesh3D.setArea",
+        "Zanna.Graphics3D.NavMesh3D.getArea",
+        "Zanna.Graphics3D.NavMesh3D.getTraversalCost",
+        "Zanna.Graphics3D.NavAgent3D.get_avoidanceEnabled",
+        "Zanna.Graphics3D.NavAgent3D.set_avoidanceEnabled",
+        "Zanna.Graphics3D.NavAgent3D.get_avoidanceRadius",
+        "Zanna.Graphics3D.NavAgent3D.set_avoidanceRadius",
+        "Zanna.Graphics3D.NavAgent3D.setAvoidanceEnabled",
+        "Zanna.Graphics3D.NavAgent3D.setAvoidanceRadius",
+        "Zanna.Graphics3D.Canvas3D.setClusteredLighting",
+        "Zanna.Graphics3D.Canvas3D.trySetClusteredLighting",
+        "Zanna.Graphics3D.Canvas3D.get_maxActiveLights",
+        "Zanna.Graphics3D.Canvas3D.setShadowCascades",
+        "Zanna.Graphics3D.Canvas3D.get_occludedDrawCount",
+        "Zanna.Graphics3D.Canvas3D.get_drawCount",
+        "Zanna.Graphics3D.Canvas3D.setTextureUploadBudget",
+        "Zanna.Graphics3D.Canvas3D.get_textureUploadPendingBytes",
+        "Zanna.Graphics3D.SceneNode.setAutoLOD",
+        "Zanna.Graphics3D.SceneNode.setImpostor",
+        "Zanna.Graphics3D.Canvas3D.SetShadowCascade\"",
+        "Zanna.Game3D.ModelHandle",
+        "Zanna.Graphics3D.SixDOFJoint3D",
+        "Zanna.Graphics3D.SixDoFJoint3D",
         "SetTextureAsset",
         "SetNormalMapAsset",
         "SelectScene",

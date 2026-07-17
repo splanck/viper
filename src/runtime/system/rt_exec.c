@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_exec.c
-// Purpose: Implements external command execution for the Viper.System.Exec class.
+// Purpose: Implements external command execution for the Zanna.System.Exec class.
 //          Provides Run (synchronous direct execution), Capture (capture stdout),
 //          Shell (via system shell), and ShellFull (capture + exit code)
 //          variants using posix_spawn (Unix) or CreateProcess (Win32).
@@ -1303,7 +1303,7 @@ int64_t rt_exec_last_exit_code(void) {
 
 rt_string rt_exec_command_result_output(void *ptr) {
     rt_exec_command_result_impl *result =
-        checked_command_result(ptr, "CommandResult.Output: expected Viper.System.CommandResult");
+        checked_command_result(ptr, "CommandResult.Output: expected Zanna.System.CommandResult");
     if (!result || !result->output)
         return rt_string_from_bytes("", 0);
     return rt_string_ref(result->output);
@@ -1311,12 +1311,12 @@ rt_string rt_exec_command_result_output(void *ptr) {
 
 int64_t rt_exec_command_result_exit_code(void *ptr) {
     rt_exec_command_result_impl *result =
-        checked_command_result(ptr, "CommandResult.ExitCode: expected Viper.System.CommandResult");
+        checked_command_result(ptr, "CommandResult.ExitCode: expected Zanna.System.CommandResult");
     return result ? result->exit_code : -1;
 }
 
 int8_t rt_exec_command_result_succeeded(void *ptr) {
     rt_exec_command_result_impl *result =
-        checked_command_result(ptr, "CommandResult.Succeeded: expected Viper.System.CommandResult");
+        checked_command_result(ptr, "CommandResult.Succeeded: expected Zanna.System.CommandResult");
     return (result && result->exit_code == 0) ? 1 : 0;
 }

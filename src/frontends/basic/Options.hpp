@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -59,17 +59,17 @@ namespace il::frontends::basic {
  *
  * | Flag                        | Default | Description                      |
  * |-----------------------------|---------|----------------------------------|
- * | enableRuntimeNamespaces     | true    | Allow USING Viper.* imports      |
+ * | enableRuntimeNamespaces     | true    | Allow USING Zanna.* imports      |
  * | enableRuntimeTypeBridging   | true    | Direct runtime type constructors |
  * | enableSelectCaseConstLabels | true    | CONST labels in SELECT CASE     |
  */
 struct FrontendOptions {
-    /// @brief Enable treating the reserved root namespace 'Viper' as a readable
+    /// @brief Enable treating the reserved root namespace 'Zanna' as a readable
     ///        runtime namespace for imports and references.
-    /// @details When enabled, USING Viper.* and calls/references to Viper.* are
-    ///          permitted, while declaring namespaces/types under 'Viper' remains
+    /// @details When enabled, USING Zanna.* and calls/references to Zanna.* are
+    ///          permitted, while declaring namespaces/types under 'Zanna' remains
     ///          prohibited. When disabled, the legacy behavior blocks USING and
-    ///          references to 'Viper'.
+    ///          references to 'Zanna'.
     /// @note Thread-safe: uses atomic load with relaxed ordering.
     static bool enableRuntimeNamespaces();
 

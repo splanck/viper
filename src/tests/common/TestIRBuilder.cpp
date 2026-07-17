@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <iterator>
 #include <utility>
 
-namespace viper::tests {
+namespace zanna::tests {
 namespace {
 [[nodiscard]] il::core::Value makeTempValue(unsigned id) {
     return il::core::Value::temp(id);
@@ -124,4 +124,4 @@ il::support::SourceLoc TestIRBuilder::loc(uint32_t line, uint32_t column) const 
     return {defaultLoc_.file_id, line, column};
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

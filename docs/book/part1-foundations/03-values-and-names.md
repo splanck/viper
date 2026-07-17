@@ -37,7 +37,7 @@ Every one of these tasks involves working with specific pieces of data -- values
 This is an important distinction. When we write:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(42);
 ```
@@ -70,9 +70,9 @@ Types exist because different kinds of data need different operations. Consider:
 
 Types tell the computer what operations make sense for each value. They prevent nonsensical operations and enable meaningful ones.
 
-**Viper's basic types**
+**Zanna's basic types**
 
-Viper has three fundamental types:
+Zanna has three fundamental types:
 
 **Numbers** are for math, counting, measuring, and anything quantitative.
 ```rust
@@ -109,7 +109,7 @@ var price = "100";    // Oops, used quotes - this is text, not a number!
 var tax = price * 0.08;
 ```
 
-In some languages, this might fail silently or produce bizarre results. In Viper, the type system catches the error: you can't multiply text by a number. This forces you to fix the bug before your program even runs.
+In some languages, this might fail silently or produce bizarre results. In Zanna, the type system catches the error: you can't multiply text by a number. This forces you to fix the bug before your program even runs.
 
 Types also make code clearer. When you see `var age = 25`, you know `age` is a number. When you see `var name = "Alice"`, you know `name` is text. The types communicate meaning.
 
@@ -117,7 +117,7 @@ Types also make code clearer. When you see `var age = 25`, you know `age` is a n
 
 Depending on the situation:
 
-1. **Compile-time error**: Viper refuses to run your program and tells you what's wrong. This is the best case -- you catch the bug immediately.
+1. **Compile-time error**: Zanna refuses to run your program and tells you what's wrong. This is the best case -- you catch the bug immediately.
 
 2. **Unexpected behavior**: Some operations work on multiple types but do different things. `5 + 3` gives `8` (addition), but `"5" + "3"` gives `"53"` (concatenation). If you meant to add numbers but accidentally used strings, you get the wrong answer.
 
@@ -152,7 +152,7 @@ This instruction says: "Get a box, put the value `25` inside it, and stick a lab
 Now, whenever your program mentions `age`, the computer knows to go find the box labeled `age` and look inside to see what value is there.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = 25;
 Say(age);  // Goes to the 'age' box, finds 25, displays it
@@ -180,7 +180,7 @@ Variables serve several crucial purposes:
 
 **1. Memory**: Programs need to remember things for later use.
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = InputLine();  // remember what the user typed
 // ... 50 lines of code later ...
@@ -189,7 +189,7 @@ Say("Goodbye, " + name);  // Still remember their name!
 
 **2. Clarity**: Names make code readable.
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // What does this mean?
 Say(100 * 0.08);
@@ -202,9 +202,9 @@ Say(price * taxRate);
 
 **3. Reusability**: Use the same value in multiple places without retyping it.
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-var greeting = "Welcome to Viper Programming!";
+var greeting = "Welcome to Zanna Programming!";
 Say(greeting);
 // ... later ...
 Say(greeting);  // Same message, no retyping
@@ -224,7 +224,7 @@ Let's see variables at work:
 
 ```rust
 module Variables;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var name = "Alice";
@@ -283,7 +283,7 @@ Immediately clear! You understand not just *what* the program does, but *why* --
 
 Good naming is not about following rules -- it's about communicating with the next person who reads your code. That person might be a colleague, might be you six months from now, might be you tomorrow morning after a good night's sleep has made you forget what you were thinking.
 
-**Rules for names** (what Viper allows):
+**Rules for names** (what Zanna allows):
 - Must start with a letter or underscore (`_`)
 - Can contain letters, numbers, underscores
 - Can't be a keyword (like `var`, `func`, `if`, `true`)
@@ -307,7 +307,7 @@ Numbers are probably the most intuitive type -- we all learned to count and do a
 
 ### Two Kinds of Numbers
 
-Viper has two kinds of numbers:
+Zanna has two kinds of numbers:
 
 **Integers** are whole numbers: `1`, `42`, `-7`, `1000000`, `0`. No decimal point. The word comes from Latin *integer*, meaning "whole" or "untouched."
 
@@ -340,7 +340,7 @@ Use floats for:
 You can do math with numbers using operators:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var a = 10;
 var b = 3;
@@ -432,13 +432,13 @@ var isDivisibleBy4 = year % 4 == 0;  // true (for leap year checking)
 Here's something that surprises almost every beginner:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = 10 / 3;
 Say(result);  // Prints: 3
 ```
 
-Wait -- 10 divided by 3 is 3.333..., isn't it? Why does Viper say 3?
+Wait -- 10 divided by 3 is 3.333..., isn't it? Why does Zanna say 3?
 
 **The rule: when you divide two integers, you get an integer result.** The fractional part is simply discarded (not rounded -- truncated toward zero).
 
@@ -512,12 +512,12 @@ You can't do arithmetic with `"42"` (what's `"42" + 1`? Is that `"43"` or `"421"
 What if you want to include a quote mark *inside* your string? This won't work:
 
 ```rust
-var quote = "She said "Hello"";  // Error! Viper thinks the string ends at said "
+var quote = "She said "Hello"";  // Error! Zanna thinks the string ends at said "
 ```
 
 The computer sees the first `"`, starts the string, sees the second `"`, thinks the string ended, and then is confused by the remaining text.
 
-The solution is the *escape character*: backslash (`\`). It tells Viper "the next character is special -- don't interpret it normally."
+The solution is the *escape character*: backslash (`\`). It tells Zanna "the next character is special -- don't interpret it normally."
 
 ```rust
 var quote = "She said \"Hello\"";  // Works! \" means a literal quote
@@ -538,7 +538,7 @@ The `\"` doesn't print as `\"` -- it prints as `"`. The backslash "escapes" the 
 **Examples in action:**
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Newlines
 Say("Line one\nLine two\nLine three");
@@ -551,7 +551,7 @@ Line three
 ```
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Tabs (for alignment)
 Say("Name\tAge\tCity");
@@ -566,7 +566,7 @@ Bob     25      Chicago
 ```
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Including backslashes (need to escape them)
 Say("Path: C:\\Users\\Alice\\Documents");
@@ -577,7 +577,7 @@ Path: C:\Users\Alice\Documents
 ```
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Quotes in dialogue
 Say("\"To be or not to be,\" he pondered.");
@@ -602,7 +602,7 @@ Think of it like gluing words together. `"Hello"` + `", "` + `"World"` + `"!"` b
 **Concatenating strings with numbers:**
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = "Alice";
 var age = 30;
@@ -613,7 +613,7 @@ Output:
 Alice is 30 years old.
 ```
 
-When you concatenate a string with a number, Viper automatically converts the number to its text representation. This is convenient but can lead to surprises:
+When you concatenate a string with a number, Zanna automatically converts the number to its text representation. This is convenient but can lead to surprises:
 
 ```rust
 var result = "5" + 3;  // "53" (concatenation, not addition!)
@@ -644,13 +644,13 @@ var userInput = "25";      // This is TEXT from user input
 var nextYear = userInput + 1;  // Doesn't give 26!
 ```
 
-The variable `userInput` contains the string `"25"` -- two characters that look like the number twenty-five but aren't. When you try to add `1`, Viper converts `1` to `"1"` and concatenates, giving `"251"`.
+The variable `userInput` contains the string `"25"` -- two characters that look like the number twenty-five but aren't. When you try to add `1`, Zanna converts `1` to `"1"` and concatenates, giving `"251"`.
 
 To do math with user input, you must convert it first:
 
 ```rust
 var userInput = "25";
-var age = Viper.Core.Convert.ToInt64(userInput);  // Convert to number
+var age = Zanna.Core.Convert.ToInt64(userInput);  // Convert to number
 var nextYear = age + 1;  // Now this is 26
 ```
 
@@ -742,7 +742,7 @@ if (x == 5)
 - Single `=` means "assignment" -- put this value into this variable
 - Double `==` means "comparison" -- are these two values equal?
 
-Some languages actually allow `x = 5` in conditions (with unintended results). Viper tries to catch this as an error, but it's still a habit worth developing: always use `==` for comparison.
+Some languages actually allow `x = 5` in conditions (with unintended results). Zanna tries to catch this as an error, but it's still a habit worth developing: always use `==` for comparison.
 
 A memory trick: "One equals for setting, two equals for checking."
 
@@ -850,7 +850,7 @@ Breaking complex boolean expressions into named parts makes them much easier to 
 Variables can change. That's why they're called "variables" -- they vary.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var score = 0;
 Say(score);  // 0
@@ -941,7 +941,7 @@ So far, our variables have been set by us in the code. But programs become inter
 
 ```rust
 module Greeting;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print("What is your name? ");
@@ -971,20 +971,20 @@ We use `Print()` for the prompt so the user types on the same line as the questi
 
 ```rust
 module Age;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Print("How old are you? ");
     var ageText = InputLine();
-    var age = Viper.Core.Convert.ToInt64(ageText);        // Convert to integer
+    var age = Zanna.Core.Convert.ToInt64(ageText);        // Convert to integer
 
     var nextYear = age + 1;
     Say("Next year you'll be " + nextYear);
 }
 ```
 
-`Viper.Core.Convert.ToInt64()` converts a string like `"25"` into the number `25`.
-`Viper.Core.Convert.ToDouble()` converts a string like `"3.14"` into the float `3.14`.
+`Zanna.Core.Convert.ToInt64()` converts a string like `"25"` into the number `25`.
+`Zanna.Core.Convert.ToDouble()` converts a string like `"3.14"` into the float `3.14`.
 
 **What if the user types something that isn't a number?**
 
@@ -995,24 +995,24 @@ If you try to parse `"hello"` as a number, you'll get an error. In Chapter 7, we
 A very common beginner mistake:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Print("Enter a number: ");
 var number = InputLine();
 var doubled = number * 2;  // Error! Can't multiply a string
 ```
 
-Always remember: `InputLine()` returns a string, not a number. You must convert it with `Viper.Core.Convert.ToInt64()` if you want to do math.
+Always remember: `InputLine()` returns a string, not a number. You must convert it with `Zanna.Core.Convert.ToInt64()` if you want to do math.
 
 ---
 
 ## The Two Languages
 
-Viper supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.
+Zanna supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var name = "Alice";
 var age = 30;
@@ -1064,7 +1064,7 @@ Variables must be given a value when created.
 
 ### 2. Using a variable before creating it
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(score);  // Error: score doesn't exist yet!
 var score = 100;
@@ -1093,12 +1093,12 @@ Integer divided by integer gives integer. Use floats for fractional results.
 
 ### 6. Forgetting to convert user input
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var age = InputLine();  // This is a string, not a number!
 var nextYear = age + 1;  // Wrong result: string concatenation, not arithmetic!
 ```
-`InputLine()` returns a string. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert it to a number.
+`InputLine()` returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert it to a number.
 
 ### 7. Using var twice for the same variable
 ```rust
@@ -1124,17 +1124,17 @@ Here's a small program that uses everything we've learned:
 
 ```rust
 module Calculator;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     Say("Simple Calculator");
     Say("================");
 
     Print("Enter first number: ");
-    var first = Viper.Core.Convert.ToDouble(InputLine());
+    var first = Zanna.Core.Convert.ToDouble(InputLine());
 
     Print("Enter second number: ");
-    var second = Viper.Core.Convert.ToDouble(InputLine());
+    var second = Zanna.Core.Convert.ToDouble(InputLine());
 
     var sum = first + second;
     var difference = first - second;
@@ -1206,7 +1206,7 @@ Every one of these chapters builds on what you've learned here. Values, types, v
 
 - Variables can change (that's why they're called variables). Use `=` to assign new values.
 
-- Use `InputLine()` to get text input from users. It returns a string. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert text to numbers.
+- Use `InputLine()` to get text input from users. It returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert text to numbers.
 
 - Choose descriptive variable names to make your code readable.
 

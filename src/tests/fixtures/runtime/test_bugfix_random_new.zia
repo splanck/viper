@@ -1,14 +1,14 @@
-// BUG-011 regression test: Viper.Math.Random should be constructible via `new`
+// BUG-011 regression test: Zanna.Math.Random should be constructible via `new`
 // and should keep per-instance RNG state.
 module TestBugfixRandomNew;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var passed = true;
 
     // Test: NEW should work for Random with a seed argument.
-    var rng = new Viper.Math.Random(42);
+    var rng = new Zanna.Math.Random(42);
     var val1 = rng.NextInt(100);
     var val2 = rng.NextInt(100);
 
@@ -31,7 +31,7 @@ func start() {
     }
 
     // Same seed should produce the same instance sequence.
-    var rng2 = new Viper.Math.Random(42);
+    var rng2 = new Zanna.Math.Random(42);
     var val1b = rng2.NextInt(100);
     var val2b = rng2.NextInt(100);
 
@@ -60,11 +60,11 @@ func start() {
     }
 
     // Constructing an instance must not mutate the global/static RNG sequence.
-    Viper.Math.Random.Seed(7);
-    var globalExpected = Viper.Math.Random.NextInt(1000);
-    Viper.Math.Random.Seed(7);
-    var unused = new Viper.Math.Random(123);
-    var globalActual = Viper.Math.Random.NextInt(1000);
+    Zanna.Math.Random.Seed(7);
+    var globalExpected = Zanna.Math.Random.NextInt(1000);
+    Zanna.Math.Random.Seed(7);
+    var unused = new Zanna.Math.Random(123);
+    var globalActual = Zanna.Math.Random.NextInt(1000);
     if (globalActual != globalExpected) {
         Say("FAIL: Random constructor mutated global RNG state");
         passed = false;

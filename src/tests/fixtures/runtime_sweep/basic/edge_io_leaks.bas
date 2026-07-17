@@ -3,7 +3,7 @@
 
 DIM i AS INTEGER
 DIM testFile AS STRING
-testFile = "/tmp/viper_leak_test.txt"
+testFile = "/tmp/zanna_leak_test.txt"
 
 PRINT "=== IO Resource Leak Test ==="
 
@@ -12,11 +12,11 @@ PRINT "Testing file handle leaks..."
 CONST FILE_ITERS AS INTEGER = 1000
 
 ' Create test file
-Viper.IO.File.WriteAllText(testFile, "test content for leak checking")
+Zanna.IO.File.WriteAllText(testFile, "test content for leak checking")
 
 FOR i = 1 TO FILE_ITERS
     DIM content AS STRING
-    content = Viper.IO.File.ReadAllText(testFile)
+    content = Zanna.IO.File.ReadAllText(testFile)
     IF i MOD 200 = 0 THEN
         PRINT "  Read iteration "; i
     END IF
@@ -25,14 +25,14 @@ PRINT "Completed "; FILE_ITERS; " file reads"
 
 ' Write many times
 FOR i = 1 TO FILE_ITERS
-    Viper.IO.File.WriteAllText(testFile, "iteration " + Viper.Text.Fmt.Int(i))
+    Zanna.IO.File.WriteAllText(testFile, "iteration " + Zanna.Text.Fmt.Int(i))
     IF i MOD 200 = 0 THEN
         PRINT "  Write iteration "; i
     END IF
 NEXT i
 PRINT "Completed "; FILE_ITERS; " file writes"
 
-Viper.IO.File.Delete(testFile)
+Zanna.IO.File.Delete(testFile)
 PRINT "Cleaned up test file"
 PRINT ""
 
@@ -41,10 +41,10 @@ PRINT "Testing StringBuilder resource usage..."
 CONST SB_ITERS AS INTEGER = 100
 
 FOR i = 1 TO SB_ITERS
-    DIM sb AS Viper.Text.StringBuilder
-    sb = Viper.Text.StringBuilder.New()
+    DIM sb AS Zanna.Text.StringBuilder
+    sb = Zanna.Text.StringBuilder.New()
     DIM big AS STRING
-    big = Viper.String.Repeat("x", 10000)
+    big = Zanna.String.Repeat("x", 10000)
     sb.Append(big)
     sb.Clear()
     sb.Append("short")
@@ -59,15 +59,15 @@ PRINT "Testing collection allocation..."
 CONST COLL_ITERS AS INTEGER = 500
 
 FOR i = 1 TO COLL_ITERS
-    DIM seq AS Viper.Collections.Seq
-    seq = Viper.Collections.Seq.New()
+    DIM seq AS Zanna.Collections.Seq
+    seq = Zanna.Collections.Seq.New()
     seq.Push("item1")
     seq.Push("item2")
     seq.Push("item3")
     seq.Clear()
 
-    DIM map AS Viper.Collections.Map
-    map = Viper.Collections.Map.New()
+    DIM map AS Zanna.Collections.Map
+    map = Zanna.Collections.Map.New()
     map.Set("key1", "value1")
     map.Set("key2", "value2")
     map.Clear()
@@ -82,17 +82,17 @@ PRINT ""
 ' === BinFile read/write leak test ===
 PRINT "Testing BinFile handles..."
 DIM binFile AS STRING
-binFile = "/tmp/viper_bin_leak.bin"
+binFile = "/tmp/zanna_bin_leak.bin"
 CONST BIN_ITERS AS INTEGER = 200
 
 FOR i = 1 TO BIN_ITERS
-    DIM bf AS Viper.IO.BinFile
-    bf = Viper.IO.BinFile.Open(binFile, "w")
+    DIM bf AS Zanna.IO.BinFile
+    bf = Zanna.IO.BinFile.Open(binFile, "w")
     bf.WriteByte(65)
     bf.WriteByte(66)
     bf.Close()
 
-    bf = Viper.IO.BinFile.Open(binFile, "r")
+    bf = Zanna.IO.BinFile.Open(binFile, "r")
     DIM b1 AS INTEGER
     DIM b2 AS INTEGER
     b1 = bf.ReadByte()
@@ -103,25 +103,25 @@ FOR i = 1 TO BIN_ITERS
         PRINT "  BinFile iteration "; i
     END IF
 NEXT i
-Viper.IO.File.Delete(binFile)
+Zanna.IO.File.Delete(binFile)
 PRINT "Completed "; BIN_ITERS; " BinFile cycles"
 PRINT ""
 
 ' === LineReader/LineWriter leak test ===
 PRINT "Testing LineReader/LineWriter handles..."
 DIM lineFile AS STRING
-lineFile = "/tmp/viper_line_leak.txt"
+lineFile = "/tmp/zanna_line_leak.txt"
 CONST LINE_ITERS AS INTEGER = 200
 
 FOR i = 1 TO LINE_ITERS
-    DIM lw AS Viper.IO.LineWriter
-    lw = Viper.IO.LineWriter.Open(lineFile)
+    DIM lw AS Zanna.IO.LineWriter
+    lw = Zanna.IO.LineWriter.Open(lineFile)
     lw.WriteLine("Line 1")
     lw.WriteLine("Line 2")
     lw.Close()
 
-    DIM lr AS Viper.IO.LineReader
-    lr = Viper.IO.LineReader.Open(lineFile)
+    DIM lr AS Zanna.IO.LineReader
+    lr = Zanna.IO.LineReader.Open(lineFile)
     DIM line1 AS STRING
     DIM line2 AS STRING
     line1 = lr.Read()
@@ -132,7 +132,7 @@ FOR i = 1 TO LINE_ITERS
         PRINT "  LineReader/Writer iteration "; i
     END IF
 NEXT i
-Viper.IO.File.Delete(lineFile)
+Zanna.IO.File.Delete(lineFile)
 PRINT "Completed "; LINE_ITERS; " LineReader/Writer cycles"
 PRINT ""
 

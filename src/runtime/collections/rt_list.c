@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -88,7 +88,7 @@ typedef struct rt_list_impl {
 
 /// @brief Finalizer callback invoked when a List is garbage collected.
 ///
-/// This function is automatically called by Viper's garbage collector when a
+/// This function is automatically called by Zanna's garbage collector when a
 /// List object becomes unreachable. It releases the underlying object array,
 /// which will in turn release references to all contained elements.
 ///
@@ -519,7 +519,7 @@ int64_t rt_list_find(void *list, void *elem) {
 ///          to reserve `-1` as an out-of-band value.
 /// @param list Opaque List object pointer, or NULL.
 /// @param elem Element to search for; may be NULL.
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_list_find_option(void *list, void *elem) {
     int64_t index = rt_list_find(list, elem);
     return index >= 0 ? rt_option_some_i64(index) : rt_option_none();

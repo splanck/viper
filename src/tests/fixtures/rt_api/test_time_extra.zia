@@ -1,10 +1,10 @@
 // test_time_extra.zia — Stopwatch, Countdown
 module TestTimeExtra;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    var sw = new Viper.Time.Stopwatch();
+    var sw = new Zanna.Time.Stopwatch();
     SayBool(sw.IsRunning);
     sw.Start();
     SayBool(sw.IsRunning);
@@ -14,7 +14,7 @@ func start() {
     sw.Reset();
     SayInt(sw.ElapsedMs);
 
-    var cd = new Viper.Time.Countdown(5000);
+    var cd = new Zanna.Time.Countdown(5000);
     SayInt(cd.Interval);
     SayBool(cd.IsExpired);
     SayBool(cd.IsRunning);

@@ -1,10 +1,10 @@
 module PatternDemo;
-bind Viper.Terminal;
-bind Viper.Text.Pattern as Pat;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.Pattern as Pat;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Text.Pattern API Audit ===");
+    Say("=== Zanna.Text.Pattern API Audit ===");
 
     // --- IsMatch ---
     Say("--- IsMatch ---");

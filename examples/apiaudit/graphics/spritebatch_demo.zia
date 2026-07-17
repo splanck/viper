@@ -1,7 +1,7 @@
 module SpriteBatchDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Graphics.SpriteBatch ===");
+    Say("=== API Audit: Zanna.Graphics.SpriteBatch ===");
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New(canvas)");
     Say("Properties: get_DrawCount");

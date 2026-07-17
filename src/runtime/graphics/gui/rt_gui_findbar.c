@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_findbar.c
-// Purpose: Find/replace bar widget runtime bindings for ViperGUI. Provides
+// Purpose: Find/replace bar widget runtime bindings for ZannaGUI. Provides
 //   creation, editor binding, text/option configuration, and search/replace
 //   operations for the vg_findreplacebar_t widget.
 //
@@ -30,7 +30,7 @@
 #include "rt_option.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 //=============================================================================
 // Phase 6: FindBar (Search & Replace)
@@ -481,7 +481,7 @@ int64_t rt_findbar_find_next(void *bar) {
 
 /// @brief Advance to the next match and return its current 1-based match index.
 /// @param bar FindBar runtime wrapper.
-/// @return Viper.Option.SomeI64(index) when a match exists, otherwise Viper.Option.None().
+/// @return Zanna.Option.SomeI64(index) when a match exists, otherwise Zanna.Option.None().
 void *rt_findbar_find_next_option(void *bar) {
     if (!rt_findbar_find_next(bar))
         return rt_option_none();
@@ -502,7 +502,7 @@ int64_t rt_findbar_find_previous(void *bar) {
 
 /// @brief Move to the previous match and return its current 1-based match index.
 /// @param bar FindBar runtime wrapper.
-/// @return Viper.Option.SomeI64(index) when a match exists, otherwise Viper.Option.None().
+/// @return Zanna.Option.SomeI64(index) when a match exists, otherwise Zanna.Option.None().
 void *rt_findbar_find_previous_option(void *bar) {
     if (!rt_findbar_find_previous(bar))
         return rt_option_none();
@@ -583,7 +583,7 @@ void rt_findbar_focus(void *bar) {
     vg_findreplacebar_focus(data->bar);
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 // Graphics-disabled stubs — every public entry-point returns a benign zero/no-op so callers
 // link cleanly without graphics. Behavioral docs live on the real implementations above.
@@ -747,4 +747,4 @@ void rt_findbar_focus(void *bar) {
     (void)bar;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

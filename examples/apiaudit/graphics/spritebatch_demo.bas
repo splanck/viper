@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics.SpriteBatch ==="
+PRINT "=== API Audit: Zanna.Graphics.SpriteBatch ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New(canvas)"
 PRINT "Properties: get_DrawCount"

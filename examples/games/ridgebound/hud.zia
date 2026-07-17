@@ -1,10 +1,10 @@
 // hud.zia - Ridgebound overlay and debug panel.
 module hud;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Audio;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Audio;
+bind Zanna.Core.Convert as Convert;
 bind "./config";
 bind "./minimap";
 bind "./worldsim";

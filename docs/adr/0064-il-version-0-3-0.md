@@ -42,8 +42,8 @@ verbatim and never validates it; there is no supported-range check anywhere in
 ## Decision
 
 1. **Advance the IL spec version to `0.3.0`.** The single source of truth is
-   `src/buildmeta/IL_VERSION`; CMake bakes it into `VIPER_IL_VERSION_STR`
-   (`include/viper/version.hpp.in`), which flows to `Module::version`'s default,
+   `src/buildmeta/IL_VERSION`; CMake bakes it into `ZANNA_IL_VERSION_STR`
+   (`include/zanna/version.hpp.in`), which flows to `Module::version`'s default,
    the `il <version>` serialized banner, and every tool's version output.
 
 2. **Renumber only — no new gating.** The parser and verifier are unchanged.
@@ -53,7 +53,7 @@ verbatim and never validates it; there is no supported-range check anywhere in
    separate grammar/verifier change requiring its own ADR.
 
 3. **Serialized default flips to `il 0.3.0`.** Because `Module::version`
-   defaults to `VIPER_IL_VERSION_STR`, any freshly-built module now serializes
+   defaults to `ZANNA_IL_VERSION_STR`, any freshly-built module now serializes
    with an `il 0.3.0` banner. The two golden fixtures compared byte-for-byte
    against a freshly-built module (`src/tests/golden/hello_expected.il`,
    `src/tests/golden/il/serializer_all_opcodes.il`) were regenerated; version-

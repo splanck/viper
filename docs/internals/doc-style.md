@@ -22,7 +22,7 @@ canonical home per topic.
 - **Internal artifacts stay out of `docs/`.** Review reports, working logs,
   and audit findings live in `misc/reviews/`.
 - **Runtime API**: `docs/generated/runtime/` (rtgen output) is the canonical
-  signature reference. `docs/viperlib/` pages are curated concept guides with
+  signature reference. `docs/zannalib/` pages are curated concept guides with
   examples that link into the generated reference. Never hand-edit generated
   files; fix the `@summary`/`@details` fragments in
   `src/il/runtime/defs/` and regenerate.
@@ -67,7 +67,7 @@ canonical home per topic.
 ## Command examples
 
 - The canonical invocation in user-facing docs is the installed driver:
-  `viper run file.zia`, `viper check`, `viper -run file.il`.
+  `zanna run file.zia`, `zanna check`, `zanna -run file.il`.
 - Build-tree paths (`./build/src/tools/...`) may appear only in
   troubleshooting sections and contributor docs where running from the build
   tree is the point.

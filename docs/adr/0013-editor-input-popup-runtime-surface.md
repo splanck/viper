@@ -12,7 +12,7 @@ Status: Accepted
 
 ## Context
 
-The ViperIDE polish pass fixes editor and popup behaviors that are implemented
+The ZannaIDE polish pass fixes editor and popup behaviors that are implemented
 below Zia command code in the shared GUI runtime:
 
 - Context menus can be created by runtime callers without inheriting the active
@@ -55,7 +55,7 @@ Keep CodeEditor selection semantics inside the widget:
 - pointer drags only start after a small movement threshold, preserving click
   synthesis for normal press/release gestures;
 - keyboard navigation supports Shift selection, word movement, and word delete
-  without duplicating that behavior in ViperIDE command handlers.
+  without duplicating that behavior in ZannaIDE command handlers.
 
 ## Consequences
 
@@ -65,7 +65,7 @@ restyling a menu before showing it.
 
 The editor gains conventional double-click word and triple-click line
 selection through the shared CodeEditor widget, so future GUI applications get
-the same behavior without ViperIDE-specific event code. Tests cover triple-click
+the same behavior without ZannaIDE-specific event code. Tests cover triple-click
 event synthesis, editor word/line selection, and recursive context-menu theme
 and font propagation.
 

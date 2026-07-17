@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTListViewTests.cpp
-// Purpose: Tests for Viper.GUI.ListBox (ListView) enhancements.
+// Purpose: Tests for Zanna.GUI.ListBox (ListView) enhancements.
 //
 // Note: These are unit tests that don't require actual GUI rendering.
 //       They test the data structure aspects of the ListBox API.
@@ -19,7 +19,7 @@
 #include <cassert>
 #include <cstdio>
 
-// We can't test the actual GUI functions without vipergui library being initialized,
+// We can't test the actual GUI functions without zannagui library being initialized,
 // but we can test the string functions that the ListView API uses.
 
 // Test string operations that ListView uses

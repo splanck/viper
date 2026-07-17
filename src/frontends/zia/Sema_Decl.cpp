@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -61,22 +61,22 @@ std::string forbiddenValueTypeName(TypeRef type) {
 bool suppressBroadRuntimeAliasNamespaceImport(std::string_view ns, std::string_view child) {
     const std::string qualified = std::string(ns) + "." + std::string(child);
     static constexpr std::string_view suppressed[] = {
-        "Viper.Graphics.Lighting2D",
-        "Viper.Graphics3D.Sound3D",
-        "Viper.Graphics3D.Assets3D",
-        "Viper.Text.NumberFormat",
-        "Viper.GUI.Clipboard",
-        "Viper.Workspace.Watcher",
-        "Viper.System.Process.Handle",
-        "Viper.Zia.SemanticJob.Handle",
-        "Viper.Zia.ProjectIndex.Handle",
-        "Viper.Game.UI.Label",
-        "Viper.Game.UI.TextInput",
-        "Viper.Game.UI.Slider",
-        "Viper.Game.UI.Dropdown",
-        "Viper.Game.UI.Tooltip",
-        "Viper.Game3D.Environment",
-        "Viper.Game3D.Diagnostics",
+        "Zanna.Graphics.Lighting2D",
+        "Zanna.Graphics3D.Sound3D",
+        "Zanna.Graphics3D.Assets3D",
+        "Zanna.Text.NumberFormat",
+        "Zanna.GUI.Clipboard",
+        "Zanna.Workspace.Watcher",
+        "Zanna.System.Process.Handle",
+        "Zanna.Zia.SemanticJob.Handle",
+        "Zanna.Zia.ProjectIndex.Handle",
+        "Zanna.Game.UI.Label",
+        "Zanna.Game.UI.TextInput",
+        "Zanna.Game.UI.Slider",
+        "Zanna.Game.UI.Dropdown",
+        "Zanna.Game.UI.Tooltip",
+        "Zanna.Game3D.Environment",
+        "Zanna.Game3D.Diagnostics",
     };
 
     for (std::string_view name : suppressed) {
@@ -102,7 +102,7 @@ void Sema::analyzeBind(BindDecl &decl) {
         return;
     }
 
-    // Handle namespace binds (e.g., "Viper.Terminal")
+    // Handle namespace binds (e.g., "Zanna.Terminal")
     if (decl.isNamespaceBind) {
         analyzeNamespaceBind(decl);
         return;
@@ -332,11 +332,11 @@ std::vector<std::string> Sema::fileBindVisibleModuleNames(const BindDecl &decl) 
 
 /// @brief Analyze a bind declaration that imports a runtime namespace.
 /// @details Handles three forms of namespace binding:
-///          1. Selective import: `bind Viper.Terminal { Say, ReadLine };`
+///          1. Selective import: `bind Zanna.Terminal { Say, ReadLine };`
 ///             - Only listed symbols are imported into scope
-///          2. Alias import: `bind Viper.Terminal as T;`
+///          2. Alias import: `bind Zanna.Terminal as T;`
 ///             - Namespace accessible via alias (e.g., T.Say())
-///          3. Full import: `bind Viper.Terminal;`
+///          3. Full import: `bind Zanna.Terminal;`
 ///             - All namespace symbols imported into current scope
 ///          Validates that the namespace exists and checks for symbol conflicts.
 /// @param decl The bind declaration AST node to analyze.
@@ -363,7 +363,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
         aliasToNamespace_[decl.alias] = ns;
 
     if (!decl.specificItems.empty()) {
-        // Selective import: bind Viper.Terminal { Say, ReadLine };
+        // Selective import: bind Zanna.Terminal { Say, ReadLine };
         for (const auto &item : decl.specificItems) {
             std::string fullName = ns + "." + item;
             Symbol *sym = lookupSymbol(fullName);
@@ -382,7 +382,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
             importedSymbols_[item] = fullName;
         }
     } else if (!decl.alias.empty()) {
-        // Alias import: bind Viper.Terminal as T;
+        // Alias import: bind Zanna.Terminal as T;
         // Register alias as a module symbol for qualified access
         Symbol sym;
         sym.kind = Symbol::Kind::Module;
@@ -391,10 +391,10 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
         sym.isFinal = true;
         defineSymbol(decl.alias, sym);
         // Also register in importedSymbols_ so type resolution can expand
-        // aliased dotted names (e.g., T.Canvas → Viper.Graphics.Canvas)
+        // aliased dotted names (e.g., T.Canvas → Zanna.Graphics.Canvas)
         importedSymbols_[decl.alias] = ns;
     } else {
-        // Full namespace import: bind Viper.Terminal;
+        // Full namespace import: bind Zanna.Terminal;
         // Import all symbols from this namespace into scope
         importNamespaceSymbols(ns, decl.loc);
     }
@@ -443,7 +443,7 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns) {
     }
 
     // Check scope symbols for extern functions registered via defineExternFunction
-    // (e.g., Viper.Box.* functions that aren't part of a runtime class)
+    // (e.g., Zanna.Box.* functions that aren't part of a runtime class)
     for (Scope *s = currentScope_; s != nullptr; s = s->parent()) {
         if (s->hasSymbolWithPrefix(prefix))
             return true;
@@ -463,7 +463,7 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
     // Walk through all registered types and import matching class names
     for (const auto &[name, type] : typeRegistry_) {
         if (name.rfind(prefix, 0) == 0) {
-            // Extract short name (e.g., "Canvas" from "Viper.Graphics.Canvas")
+            // Extract short name (e.g., "Canvas" from "Zanna.Graphics.Canvas")
             std::string shortName = name.substr(prefix.size());
             // Skip nested namespaces (only import direct children)
             if (shortName.find('.') != std::string::npos)
@@ -488,7 +488,7 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
     const auto &catalog = registry.rawCatalog();
 
     for (const auto &cls : catalog) {
-        // Import the class name itself (e.g., "Canvas" from "Viper.Graphics.Canvas")
+        // Import the class name itself (e.g., "Canvas" from "Zanna.Graphics.Canvas")
         std::string clsName = cls.qname ? cls.qname : "";
         if (!clsName.empty() && clsName.rfind(prefix, 0) == 0) {
             // Extract short name
@@ -511,7 +511,7 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
             if (target.rfind(prefix, 0) != 0)
                 continue;
 
-            // Extract short name (e.g., "Say" from "Viper.Terminal.Say")
+            // Extract short name (e.g., "Say" from "Zanna.Terminal.Say")
             std::string shortName = target.substr(prefix.size());
 
             // Skip nested namespaces (only import direct children)
@@ -531,10 +531,10 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
         }
 
         // Also import properties by their display name for namespace-like
-        // runtime classes (e.g., Length backed by Viper.String.get_Length).
+        // runtime classes (e.g., Length backed by Zanna.String.get_Length).
         // Do not import nested class properties from a broad namespace such as
-        // Viper.Game; otherwise names like Grid2D.Size become global
-        // Length() candidates and can shadow Viper.String.get_Length.
+        // Zanna.Game; otherwise names like Grid2D.Size become global
+        // Length() candidates and can shadow Zanna.String.get_Length.
         for (const auto &p : cls.properties) {
             if (p.getter && p.name) {
                 std::string getter(p.getter);
@@ -558,7 +558,7 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
     // Import standalone runtime functions and non-conflicting alias-only
     // namespace groups from runtime.def entries not in the RuntimeClasses
     // catalog.
-    // Direct children (e.g., Viper.String.Capitalize for bind Viper.String)
+    // Direct children (e.g., Zanna.String.Capitalize for bind Zanna.String)
     // are imported as short name → qualified name mappings.
     // Nested compatibility aliases that were renamed to remove collisions are
     // intentionally skipped during broad imports. Explicit binds to those alias
@@ -578,7 +578,7 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
             continue;
         }
 
-        // Direct child — standalone function (e.g., "Capitalize" from bind Viper.String)
+        // Direct child — standalone function (e.g., "Capitalize" from bind Zanna.String)
         auto existingIt = importedSymbols_.find(shortName);
         if (existingIt == importedSymbols_.end())
             importedSymbols_[shortName] = canonical;

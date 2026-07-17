@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -68,7 +68,7 @@ enum class RuntimeArgKind {
 
 /// @brief Full signature information for a runtime function.
 struct RuntimeFunctionInfo {
-    std::string_view canonicalName;       ///< Viper.* canonical name
+    std::string_view canonicalName;       ///< Zanna.* canonical name
     std::string_view runtimeSymbol;       ///< C rt_* symbol
     std::string_view signature;           ///< Signature string e.g., "i64(str,i64)"
     RuntimeReturnKind returnKind;         ///< Parsed return type
@@ -77,7 +77,7 @@ struct RuntimeFunctionInfo {
 
 /// @brief Class information for OOP-style APIs.
 struct RuntimeClassInfo {
-    std::string_view name;                            ///< Class name (e.g., "Viper.String")
+    std::string_view name;                            ///< Class name (e.g., "Zanna.String")
     std::string_view constructor;                     ///< Constructor canonical name or empty
     std::string_view summary;                         ///< Short authored class description
     std::string_view details;                         ///< Long authored Markdown description
@@ -85,7 +85,7 @@ struct RuntimeClassInfo {
     std::vector<runtime::RuntimeMethod> methods;      ///< Class methods
 };
 
-/// @brief Central registry for all Viper.* runtime APIs.
+/// @brief Central registry for all Zanna.* runtime APIs.
 ///
 /// @details Provides unified access to runtime function metadata for all frontends.
 /// Built from the generated data in runtime.def, this registry enables:
@@ -96,10 +96,10 @@ struct RuntimeClassInfo {
 /// @example
 /// @code
 ///   auto& reg = RuntimeRegistry::instance();
-///   if (auto info = reg.findFunction("Viper.String.Len")) {
+///   if (auto info = reg.findFunction("Zanna.String.Len")) {
 ///       // info->returnKind == RuntimeReturnKind::Integer
 ///   }
-///   if (auto cls = reg.findClass("Viper.Collections.List")) {
+///   if (auto cls = reg.findClass("Zanna.Collections.List")) {
 ///       for (const auto& method : cls->methods) { ... }
 ///   }
 /// @endcode
@@ -110,18 +110,18 @@ class RuntimeRegistry {
     static const RuntimeRegistry &instance();
 
     /// @brief Look up a runtime function by canonical name.
-    /// @param canonicalName Viper.* name (e.g., "Viper.String.Len")
+    /// @param canonicalName Zanna.* name (e.g., "Zanna.String.Len")
     /// @return Function info if found, nullopt otherwise.
     [[nodiscard]] std::optional<RuntimeFunctionInfo> findFunction(
         std::string_view canonicalName) const;
 
     /// @brief Look up a runtime class by name.
-    /// @param className Class name (e.g., "Viper.String")
+    /// @param className Class name (e.g., "Zanna.String")
     /// @return Class info if found, nullopt otherwise.
     [[nodiscard]] std::optional<RuntimeClassInfo> findClass(std::string_view className) const;
 
     /// @brief Check if a canonical name is a registered runtime function.
-    /// @param canonicalName Viper.* name to check
+    /// @param canonicalName Zanna.* name to check
     /// @return True if registered.
     [[nodiscard]] bool hasFunction(std::string_view canonicalName) const;
 
@@ -131,12 +131,12 @@ class RuntimeRegistry {
     [[nodiscard]] bool hasClass(std::string_view className) const;
 
     /// @brief Get the return type kind for a function.
-    /// @param canonicalName Viper.* name
+    /// @param canonicalName Zanna.* name
     /// @return Return type kind, or Unknown if not found.
     [[nodiscard]] RuntimeReturnKind getReturnKind(std::string_view canonicalName) const;
 
     /// @brief Get the C runtime symbol for a canonical name.
-    /// @param canonicalName Viper.* name
+    /// @param canonicalName Zanna.* name
     /// @return Runtime symbol (e.g., "rt_string_len") or nullopt.
     [[nodiscard]] std::optional<std::string_view> getRuntimeSymbol(
         std::string_view canonicalName) const;

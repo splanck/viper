@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::ra {
+namespace zanna::codegen::ra {
 
 /// @brief Documents the interface a backend must implement for shared RA algorithms.
 ///
@@ -127,4 +127,4 @@ uint16_t selectLRUVictim(const std::vector<uint16_t> &activeSet, GetLastUse getL
     return bestVreg;
 }
 
-} // namespace viper::codegen::ra
+} // namespace zanna::codegen::ra

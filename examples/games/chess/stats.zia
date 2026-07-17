@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,15 +13,15 @@
 // Ownership/Lifetime:
 //   - ChessGame owns one ChessStats instance.
 //   - AchievementTracker owns notification timing/render state.
-// Links: docs/viperlib/game.md#vipergameachievementtracker
+// Links: docs/zannalib/game.md#zannagameachievementtracker
 //
 //===----------------------------------------------------------------------===//
 
 module stats;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.IO;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.IO;
 
 final ACH_FIRST_GAME = 0;
 final ACH_FIRST_WIN = 1;

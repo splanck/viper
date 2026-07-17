@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Viper.Threads.Parallel
+// Tests for Zanna.Threads.Parallel
 //
 //===----------------------------------------------------------------------===//
 
@@ -405,41 +405,41 @@ static void test_invoke_empty() {
 //=============================================================================
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_foreach_shutdown_pool);
-    viper::tests::registerChildFunction(call_foreach_trapping_task);
-    viper::tests::registerChildFunction(call_foreach_huge_seq_len);
-    viper::tests::registerChildFunction(call_map_huge_seq_len);
-    viper::tests::registerChildFunction(call_for_range_too_large);
-    viper::tests::registerChildFunction(call_invoke_huge_seq_len);
-    viper::tests::registerChildFunction(call_reduce_huge_seq_len);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_foreach_shutdown_pool);
+    zanna::tests::registerChildFunction(call_foreach_trapping_task);
+    zanna::tests::registerChildFunction(call_foreach_huge_seq_len);
+    zanna::tests::registerChildFunction(call_map_huge_seq_len);
+    zanna::tests::registerChildFunction(call_for_range_too_large);
+    zanna::tests::registerChildFunction(call_invoke_huge_seq_len);
+    zanna::tests::registerChildFunction(call_reduce_huge_seq_len);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Isolated child tests must run before the shared default pool starts worker
     // threads; forked children cannot safely inherit locked pthread mutexes.
-    auto result = viper::tests::runIsolated(call_foreach_shutdown_pool);
+    auto result = zanna::tests::runIsolated(call_foreach_shutdown_pool);
     test_result(result.stderrText.find("Parallel.ForEach: failed to submit work") !=
                     std::string::npos,
                 "foreach_shutdown_pool: should trap without hanging");
-    result = viper::tests::runIsolated(call_foreach_trapping_task);
+    result = zanna::tests::runIsolated(call_foreach_trapping_task);
     test_result(result.stderrText.find("parallel foreach trap") != std::string::npos,
                 "foreach_task_trap: should preserve worker trap message");
-    result = viper::tests::runIsolated(call_foreach_huge_seq_len);
+    result = zanna::tests::runIsolated(call_foreach_huge_seq_len);
     test_result(result.stderrText.find("Parallel.ForEach: allocation size overflow") !=
                     std::string::npos,
                 "foreach_huge_seq: should trap before overflowing allocation");
-    result = viper::tests::runIsolated(call_map_huge_seq_len);
+    result = zanna::tests::runIsolated(call_map_huge_seq_len);
     test_result(result.stderrText.find("Parallel.Map: allocation size overflow") !=
                     std::string::npos,
                 "map_huge_seq: should trap before overflowing allocation");
-    result = viper::tests::runIsolated(call_for_range_too_large);
+    result = zanna::tests::runIsolated(call_for_range_too_large);
     test_result(result.stderrText.find("Parallel.For: range too large") != std::string::npos,
                 "for_range_too_large: should trap instead of overflowing");
-    result = viper::tests::runIsolated(call_invoke_huge_seq_len);
+    result = zanna::tests::runIsolated(call_invoke_huge_seq_len);
     test_result(result.stderrText.find("Parallel.Invoke: allocation size overflow") !=
                     std::string::npos,
                 "invoke_huge_seq: should trap before overflowing allocation");
-    result = viper::tests::runIsolated(call_reduce_huge_seq_len);
+    result = zanna::tests::runIsolated(call_reduce_huge_seq_len);
     test_result(result.stderrText.find("Parallel.Reduce: allocation size overflow") !=
                     std::string::npos,
                 "reduce_huge_seq: should trap before overflowing allocation");

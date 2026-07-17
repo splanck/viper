@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "tests/TestHarness.hpp"
@@ -75,7 +75,7 @@ static void free_mesh(void *m) {
 
 static const char *write_temp(const char *name, const void *data, size_t len) {
     static char path[256];
-    snprintf(path, sizeof(path), "/tmp/viper_test_%s", name);
+    snprintf(path, sizeof(path), "/tmp/zanna_test_%s", name);
     FILE *f = fopen(path, "wb");
     if (!f)
         return nullptr;
@@ -311,5 +311,5 @@ TEST(StlLoadTest, RejectBinaryWithNonFiniteVertex) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

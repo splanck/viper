@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -79,7 +79,7 @@ DWORD markSelfForDeletion() {
                               nullptr);
     if (file == INVALID_HANDLE_VALUE)
         return 1000U + GetLastError();
-    constexpr wchar_t kDeletedStream[] = L":viper-cleanup-deleted";
+    constexpr wchar_t kDeletedStream[] = L":zanna-cleanup-deleted";
     constexpr DWORD kStreamBytes = sizeof(kDeletedStream) - sizeof(wchar_t);
     std::vector<unsigned char> renameBytes(offsetof(FILE_RENAME_INFO, FileName) +
                                            sizeof(kDeletedStream));

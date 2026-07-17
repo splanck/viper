@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_network_dns.c
-// Purpose: DNS resolution and IP address utilities for the Viper runtime.
+// Purpose: DNS resolution and IP address utilities for the Zanna runtime.
 //   Provides forward/reverse DNS lookup, IP address validation, and local
 //   network address discovery.
 //

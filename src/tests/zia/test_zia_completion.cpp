@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@ TEST(ZiaCompletion, ParseAndAnalyze_SuccessfulSource) {
     const std::string source = R"(
 module Test;
 
-func greet() {    Viper.Terminal.Say("hi");
+func greet() {    Zanna.Terminal.Say("hi");
 }
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -75,7 +75,7 @@ TEST(ZiaCompletion, ParseAndAnalyze_WithSyntaxErrors_StillReturnsSema) {
 module Test;
 
 func broken( {
-    Viper.Terminal.Say("oops");
+    Zanna.Terminal.Say("oops");
 )";
     CompilerInput input{.source = source, .path = "broken.zia"};
     CompilerOptions opts{};
@@ -223,8 +223,8 @@ TEST(ZiaCompletion, GetRuntimeMembers_StringClass) {
     auto ar = parseAndAnalyze(input, opts, sm);
     ASSERT_TRUE(ar->sema != nullptr);
 
-    // Viper.String is always in the runtime catalog.
-    auto members = ar->sema->getRuntimeMembers("Viper.String");
+    // Zanna.String is always in the runtime catalog.
+    auto members = ar->sema->getRuntimeMembers("Zanna.String");
     EXPECT_FALSE(members.empty());
 
     // String should have at least a Length property and Substring method.
@@ -241,7 +241,7 @@ TEST(ZiaCompletion, GetRuntimeMembers_UnknownClass_ReturnsEmpty) {
     auto ar = parseAndAnalyze(input, opts, sm);
     ASSERT_TRUE(ar->sema != nullptr);
 
-    auto members = ar->sema->getRuntimeMembers("Viper.NonExistent.Class");
+    auto members = ar->sema->getRuntimeMembers("Zanna.NonExistent.Class");
     EXPECT_TRUE(members.empty());
 }
 
@@ -255,7 +255,7 @@ TEST(ZiaCompletion, GetBoundModuleNames_WithBindAlias) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 func compute() -> Number {    return Math.Sqrt(4.0);
 }
 )";
@@ -277,9 +277,9 @@ func start() {
     var x = 1;
     if true {
         var x = 2;
-        Viper.Terminal.SayInt(x);
+        Zanna.Terminal.SayInt(x);
     }
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )";
     CompilerInput input{.source = source, .path = "scope_lookup.zia"};
@@ -296,5 +296,5 @@ func start() {
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

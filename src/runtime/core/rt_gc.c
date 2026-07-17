@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_gc.c
-// Purpose: Implements the cycle-detecting garbage collector for the Viper
+// Purpose: Implements the cycle-detecting garbage collector for the Zanna
 //          runtime. Uses a trial-deletion (synchronous mark-sweep) algorithm:
 //          trial-decrement child refcounts, identify zero-trial-refcount
 //          candidates as potential cycle members, restore reachable objects,

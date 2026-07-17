@@ -10,9 +10,9 @@
 // =============================================================================
 module camera_rig;
 
-bind Viper.Graphics3D as G3D;
-bind Viper.Game3D as Game3D;
-bind Viper.Math as Math;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../player/playerctl" as playerctl;

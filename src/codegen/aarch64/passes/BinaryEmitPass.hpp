@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Encode all MIR functions into machine code bytes.
 class BinaryEmitPass final : public Pass {
@@ -33,4 +33,4 @@ class BinaryEmitPass final : public Pass {
     bool run(AArch64Module &module, Diagnostics &diags) override;
 };
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

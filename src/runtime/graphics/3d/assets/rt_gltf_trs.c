@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -284,7 +284,7 @@ void gltf_matrix_to_trs(const double *m, double *pos, double *quat, double *scal
     }
 }
 
-/// @brief Convert a glTF column-major matrix array into Viper's row-major matrix layout.
+/// @brief Convert a glTF column-major matrix array into Zanna's row-major matrix layout.
 void gltf_matrix_column_major_to_row_major(const double *src, double *dst) {
     if (!src || !dst)
         return;
@@ -347,7 +347,7 @@ static void gltf_build_trs_matrix(const double *pos,
 /// @details A glTF node stores its transform as either a 16-element column-major `"matrix"` array
 ///   or as separate `"translation"`, `"rotation"`, and `"scale"` arrays. This function handles
 ///   both forms: when a `"matrix"` field is present it is transposed from glTF's column-major
-///   convention to Viper's row-major layout via `gltf_matrix_column_major_to_row_major`; otherwise
+///   convention to Zanna's row-major layout via `gltf_matrix_column_major_to_row_major`; otherwise
 ///   the three TRS arrays are read (defaulting to identity when absent) and reassembled into a
 ///   matrix by `gltf_build_trs_matrix`. Returns 1 on success, 0 if the node index is out of
 ///   range or required data is missing.

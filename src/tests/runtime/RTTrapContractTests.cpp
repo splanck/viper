@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -111,7 +111,7 @@ static void trap_dir_not_found() {
     char missing_path[96];
     std::snprintf(missing_path,
                   sizeof(missing_path),
-                  "__viper_missing_dir_%p__",
+                  "__zanna_missing_dir_%p__",
                   static_cast<void *>(missing_path));
     rt_string path = rt_string_from_bytes(missing_path, std::strlen(missing_path));
     (void)rt_dir_entries_seq(path);

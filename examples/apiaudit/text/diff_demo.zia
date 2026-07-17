@@ -1,9 +1,9 @@
 module DiffDemo;
-bind Viper.Terminal;
-bind Viper.Text.Diff as Diff;
-bind Viper.Data.Json as Json;
+bind Zanna.Terminal;
+bind Zanna.Text.Diff as Diff;
+bind Zanna.Data.Json as Json;
 func start() {
-    Say("=== Viper.Text.Diff API Audit ===");
+    Say("=== Zanna.Text.Diff API Audit ===");
 
     var text1 = "line1\nline2\nline3\nline4";
     var text2 = "line1\nmodified\nline3\nline5";

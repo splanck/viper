@@ -27,7 +27,7 @@ FAILED_CHECKS=0
 # Check 1: Reserved namespace policy
 # ============================================================================
 
-echo -e "${BLUE}[1/5]${NC} Checking reserved 'Viper' namespace policy..."
+echo -e "${BLUE}[1/5]${NC} Checking reserved 'Zanna' namespace policy..."
 if "${SCRIPT_DIR}/check_reserved_namespaces.sh"; then
   echo -e "${GREEN}✓ PASS${NC}: Reserved namespace policy enforced"
 else
@@ -82,7 +82,7 @@ GOLDEN_TESTS=(
   "golden_basic_namespace_simple"
   "golden_basic_namespace_using"
   "golden_basic_namespace_inheritance"
-  "golden_basic_viper_root_example"
+  "golden_basic_zanna_root_example"
   "golden_basic_errors_namespace_notfound"
   "golden_basic_errors_namespace_ambiguous"
   "golden_basic_errors_namespace_duplicate_alias"
@@ -131,7 +131,7 @@ echo ""
 
 echo -e "${BLUE}[5/5]${NC} Verifying namespace_demo.bas compiles..."
 EXAMPLE_FILE="${REPO_ROOT}/examples/basic/namespace_demo.bas"
-ILC="${BUILD_DIR}/src/tools/viper/viper"
+ILC="${BUILD_DIR}/src/tools/zanna/zanna"
 
 if [[ ! -f "$ILC" ]]; then
   echo -e "${RED}✗ FAIL${NC}: ilc not found at $ILC"

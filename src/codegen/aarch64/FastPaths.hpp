@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <optional>
 #include <unordered_map>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Try fast-path lowering for simple function patterns.
 /// @details Recognises a small set of trivially-lowerable IL function shapes
@@ -55,4 +55,4 @@ std::optional<MFunction> tryFastPaths(
     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr,
     const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts = nullptr);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

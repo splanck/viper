@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Performance — Viper</title>
-  <meta name="description" content="Viper documentation: Performance">
+  <title>Performance — Zanna</title>
+  <meta name="description" content="Zanna documentation: Performance">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -31,7 +31,7 @@
 <div class="section">
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
     <h1>Performance</h1>
-<p>Viper native code benchmarked against C, Rust, Java, C#, Lua, and Python on identical algorithms. All benchmarks run on Apple M4 Max with 10 iterations and 2 warmup runs.</p>
+<p>Zanna native code benchmarked against C, Rust, Java, C#, Lua, and Python on identical algorithms. All benchmarks run on Apple M4 Max with 10 iterations and 2 warmup runs.</p>
 
 <h2>Headline Results</h2>
 <ul>
@@ -43,7 +43,7 @@
 
 <h2>Full Benchmark Results (April 2026)</h2>
 <table>
-<thead><tr><th>Benchmark</th><th>Viper</th><th>C -O0</th><th>C -O2</th><th>Rust -O</th><th>Java</th><th>Python</th></tr></thead>
+<thead><tr><th>Benchmark</th><th>Zanna</th><th>C -O0</th><th>C -O2</th><th>Rust -O</th><th>Java</th><th>Python</th></tr></thead>
 <tbody>
 <tr><td>branch_stress</td><td><strong>29ms</strong></td><td>56ms</td><td>51ms</td><td>51ms</td><td>71ms</td><td>2,490ms</td></tr>
 <tr><td>udiv_stress</td><td><strong>39ms</strong></td><td>218ms</td><td>34ms</td><td>85ms</td><td>-</td><td>-</td></tr>
@@ -65,21 +65,21 @@
 <li><strong>Benchmarks:</strong> 9 stress tests covering arithmetic, branching, function calls, division, inlining, string ops, and redundancy elimination</li>
 </ul>
 
-<h2>Why Viper Wins on Some Benchmarks</h2>
+<h2>Why Zanna Wins on Some Benchmarks</h2>
 <ul>
-<li><strong>branch_stress:</strong> Viper's strength reduction turns division/modulo into cheaper operations; Clang's auto-vectorization doesn't help on branchy code</li>
+<li><strong>branch_stress:</strong> Zanna's strength reduction turns division/modulo into cheaper operations; Clang's auto-vectorization doesn't help on branchy code</li>
 <li><strong>udiv_stress:</strong> Custom SMULH magic-number multiply for constant divisors (4-6 cycles vs 22 cycles for SDIV)</li>
 <li><strong>call_stress:</strong> Tight calling convention with effective inlining; faster than C -O0's unoptimized call overhead</li>
 </ul>
 
-<h2>Where Viper Has Room to Grow</h2>
+<h2>Where Zanna Has Room to Grow</h2>
 <ul>
 <li><strong>arith_stress:</strong> Clang's loop vectorization (SIMD) gives C -O2 a ~5x advantage on pure arithmetic</li>
-<li><strong>fib_stress:</strong> Clang converts one recursive branch to a loop; Viper does naive double recursion</li>
+<li><strong>fib_stress:</strong> Clang converts one recursive branch to a loop; Zanna does naive double recursion</li>
 <li><strong>redundant_stress:</strong> Clang's aggressive dead code elimination at -O2 removes more redundant work</li>
 </ul>
 
-<p>See the <a href="https://github.com/splanck/viper/tree/master/benchmarks">benchmark suite on GitHub</a> for full source code and methodology details.</p>
+<p>See the <a href="https://github.com/zannagames/zanna/tree/master/benchmarks">benchmark suite on GitHub</a> for full source code and methodology details.</p>
   </div>
 </div>
 
@@ -103,13 +103,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

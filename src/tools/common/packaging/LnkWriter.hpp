@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Parameters for generating a .lnk shortcut file.
 struct LnkParams {
@@ -58,4 +58,4 @@ struct LnkParams {
 /// @return .lnk file bytes.
 std::vector<uint8_t> generateLnk(const LnkParams &params);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

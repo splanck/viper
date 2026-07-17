@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_camera3d.c
-// Purpose: Viper.Graphics3D.Camera3D — perspective camera with view/projection.
+// Purpose: Zanna.Graphics3D.Camera3D — perspective camera with view/projection.
 //   Uses existing Mat4 perspective/lookAt math from rt_mat4.c.
 //
 // Key invariants:
@@ -18,7 +18,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -320,7 +320,7 @@ static void camera_normalize_vec3_or(
 
 /// @brief Build an OpenGL-style perspective projection matrix into `m` (row-major).
 /// `f = 1 / tan(fov/2)` sets vertical scale; horizontal divides by aspect. Writes depth
-/// in the `[-1, 1]` NDC convention. With Viper's row-major, column-vector transform
+/// in the `[-1, 1]` NDC convention. With Zanna's row-major, column-vector transform
 /// path, `m[14] = -1` makes clip.w = -view.z for perspective division. Zeroes the matrix first so
 /// unused slots stay at 0 — callers can assume a fully initialised 4×4.
 static void build_perspective(
@@ -1710,4 +1710,4 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

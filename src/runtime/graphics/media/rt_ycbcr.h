@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Input: separate Y, Cb, Cr planes. Y is full resolution; Cb/Cr may
 //     be 4:2:0, 4:2:2, or 4:4:4 depending on the decoder header.
-//   - Output: 0xRRGGBBAA packed uint32_t array (Viper Pixels format).
+//   - Output: 0xRRGGBBAA packed uint32_t array (Zanna Pixels format).
 //   - Clamping: output values clamped to [0, 255].
 //
 // Links: rt_theora.h, rt_videoplayer.h
@@ -48,7 +48,7 @@ void ycbcr420_to_rgba(const uint8_t *y_plane,
 ///
 /// The luma plane is full resolution, while Cb and Cr are horizontally
 /// subsampled by two and have one chroma row for every luma row. The output
-/// buffer receives @p width * @p height pixels in Viper's packed
+/// buffer receives @p width * @p height pixels in Zanna's packed
 /// 0xRRGGBBAA format.
 ///
 /// @param y_plane   Luma plane (width x height).
@@ -72,7 +72,7 @@ void ycbcr422_to_rgba(const uint8_t *y_plane,
 ///
 /// All three planes are full resolution, so each luma pixel has a matching
 /// Cb and Cr sample. The conversion uses the same BT.601 limited-range
-/// coefficients as the 4:2:0 path and writes Viper packed 0xRRGGBBAA pixels.
+/// coefficients as the 4:2:0 path and writes Zanna packed 0xRRGGBBAA pixels.
 ///
 /// @param y_plane   Luma plane (width x height).
 /// @param cb_plane  Cb chroma plane (width x height).

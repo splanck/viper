@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 /// @brief Magic number parameters for signed division by a constant.
 /// @details For a positive divisor d, multiplier M and post-shift S satisfy
@@ -190,4 +190,4 @@ struct UnsignedMagicNumber {
     return result;
 }
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

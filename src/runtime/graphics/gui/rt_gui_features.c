@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_features.c
-// Purpose: Runtime bindings for advanced ViperGUI feature widgets: CommandPalette
+// Purpose: Runtime bindings for advanced ZannaGUI feature widgets: CommandPalette
 //   (fuzzy-searchable command list), Tooltip (hover annotation), Toast
 //   (transient notification), Breadcrumb (navigation path), Minimap (scaled
 //   document overview), and Drag & Drop. Each widget type wraps the corresponding
@@ -32,7 +32,7 @@
 //     at destroy time.
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/gui/include/vg.h (ZannaGUI C API),
 //        src/runtime/rt_platform.h (platform detection helpers)
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Duplicate a feature-widget string with malloc ownership.
 /// @details Command IDs, toast action labels, and dropped-file paths are stored
@@ -1323,7 +1323,7 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
     app->file_drop = (rt_gui_file_drop_data_t){0};
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
@@ -1620,4 +1620,4 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
     (void)app;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

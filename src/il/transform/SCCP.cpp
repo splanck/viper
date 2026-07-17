@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -887,7 +887,7 @@ static FoldResult foldConstantMaterialization(const Instr &instr) {
 class SCCPSolver {
   public:
     explicit SCCPSolver(Function &function)
-        : function_(function), debug_(std::getenv("VIPER_SCCP_DEBUG") != nullptr) {
+        : function_(function), debug_(std::getenv("ZANNA_SCCP_DEBUG") != nullptr) {
         initialiseStates();
     }
 

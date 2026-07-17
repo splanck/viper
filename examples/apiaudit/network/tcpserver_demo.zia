@@ -1,8 +1,8 @@
 module TcpServerDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Network.TcpServer ===");
+    Say("=== API Audit: Zanna.Network.TcpServer ===");
     Say("NOTE: TcpServer requires binding to ports. API surface test only.");
     Say("Constructor: Listen(port), ListenAt(address,port)");
     Say("Properties: Port() -> i64, Address() -> str, IsListening() -> bool");

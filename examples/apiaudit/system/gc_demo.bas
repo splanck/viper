@@ -1,45 +1,45 @@
 ' =============================================================================
-' API Audit: Viper.Runtime.GC - Garbage Collector
+' API Audit: Zanna.Runtime.GC - Garbage Collector
 ' =============================================================================
 ' Tests: Collect, TrackedCount, TotalCollected, PassCount
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Runtime.GC ==="
+PRINT "=== API Audit: Zanna.Runtime.GC ==="
 
 ' --- TrackedCount (initial) ---
 PRINT "--- TrackedCount (initial) ---"
-PRINT "TrackedCount: "; Viper.Runtime.GC.TrackedCount()
+PRINT "TrackedCount: "; Zanna.Runtime.GC.TrackedCount()
 
 ' --- PassCount (initial) ---
 PRINT "--- PassCount (initial) ---"
-PRINT "PassCount: "; Viper.Runtime.GC.PassCount()
+PRINT "PassCount: "; Zanna.Runtime.GC.PassCount()
 
 ' --- TotalCollected (initial) ---
 PRINT "--- TotalCollected (initial) ---"
-PRINT "TotalCollected: "; Viper.Runtime.GC.TotalCollected()
+PRINT "TotalCollected: "; Zanna.Runtime.GC.TotalCollected()
 
 ' Create some objects
 PRINT "--- Creating objects ---"
 DIM a AS OBJECT
 DIM b AS OBJECT
 DIM c AS OBJECT
-a = Viper.Core.Box.I64(1)
-b = Viper.Core.Box.I64(2)
-c = Viper.Core.Box.Str("test")
+a = Zanna.Core.Box.I64(1)
+b = Zanna.Core.Box.I64(2)
+c = Zanna.Core.Box.Str("test")
 PRINT "Created 3 boxed objects"
-PRINT "TrackedCount after creation: "; Viper.Runtime.GC.TrackedCount()
+PRINT "TrackedCount after creation: "; Zanna.Runtime.GC.TrackedCount()
 
 ' --- Collect ---
 PRINT "--- Collect ---"
 DIM collected AS INTEGER
-collected = Viper.Runtime.GC.Collect()
+collected = Zanna.Runtime.GC.Collect()
 PRINT "Collect() returned: "; collected
 
 ' --- Post-collection stats ---
 PRINT "--- Post-collection stats ---"
-PRINT "TrackedCount: "; Viper.Runtime.GC.TrackedCount()
-PRINT "TotalCollected: "; Viper.Runtime.GC.TotalCollected()
-PRINT "PassCount: "; Viper.Runtime.GC.PassCount()
+PRINT "TrackedCount: "; Zanna.Runtime.GC.TrackedCount()
+PRINT "TotalCollected: "; Zanna.Runtime.GC.TotalCollected()
+PRINT "PassCount: "; Zanna.Runtime.GC.PassCount()
 
 PRINT "=== GC Demo Complete ==="
 END

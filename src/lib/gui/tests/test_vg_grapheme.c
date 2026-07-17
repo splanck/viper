@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/tests/test_vg_grapheme.c
-// Purpose: Validate ViperGUI extended grapheme segmentation against the pinned
+// Purpose: Validate ZannaGUI extended grapheme segmentation against the pinned
 //          Unicode conformance corpus and public offset-conversion contracts.
 // Key invariants:
 //   - Every non-comment GraphemeBreakTest row is checked in both directions.

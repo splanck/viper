@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -98,7 +98,7 @@ func start() {    var x = 5;
 TEST(ZiaWarnings, W001_UsedVariable_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
-bind Viper.Terminal as IO;func start() {    var x = 5;
+bind Zanna.Terminal as IO;func start() {    var x = 5;
     IO.Say(x);
 }
 )");
@@ -432,7 +432,7 @@ func start() {    compute();
 TEST(ZiaWarnings, W015_UninitializedVariable) {
     auto r = compileWithPolicy(R"(
 module T;
-bind Viper.Terminal as IO;func start() {    var x: Integer;
+bind Zanna.Terminal as IO;func start() {    var x: Integer;
     IO.Say(x);
 }
 )");
@@ -664,5 +664,5 @@ func start() {    var x = 5 & 3;
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/math/rt_quat.c
-// Purpose: Quaternion mathematics for the Viper.Quat class. Implements Hamilton
+// Purpose: Quaternion mathematics for the Zanna.Quat class. Implements Hamilton
 //   quaternions for 3D rotation: construction from axis-angle and Euler angles,
 //   multiplication (composition), conjugate/inverse, normalization, dot product,
 //   spherical linear interpolation (Slerp), Vec3 rotation, and conversion to/from
@@ -50,7 +50,7 @@ typedef struct {
     double y;
     double z;
     double w;
-} ViperQuat;
+} ZannaQuat;
 
 /// @brief Return whether @p q is a Quat-compatible heap payload.
 /// @details Accepts the explicit Quat class id from current constructors and the historical
@@ -67,8 +67,8 @@ static int quat_is_compatible_object(void *q) {
     if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
         return 0;
     if (hdr->class_id == RT_QUAT_CLASS_ID)
-        return hdr->cap >= sizeof(ViperQuat);
-    return hdr->class_id == 0 && hdr->len == sizeof(ViperQuat) && hdr->cap == sizeof(ViperQuat);
+        return hdr->cap >= sizeof(ZannaQuat);
+    return hdr->class_id == 0 && hdr->len == sizeof(ZannaQuat) && hdr->cap == sizeof(ZannaQuat);
 }
 
 /// @brief Validate and cast an opaque handle to a quaternion payload.
@@ -77,12 +77,12 @@ static int quat_is_compatible_object(void *q) {
 /// @param q Candidate Quat runtime handle.
 /// @param op Diagnostic prefix used if validation fails.
 /// @return Typed quaternion payload, or NULL after trapping.
-static ViperQuat *quat_checked(void *q, const char *op) {
+static ZannaQuat *quat_checked(void *q, const char *op) {
     if (!quat_is_compatible_object(q)) {
         rt_trap(op ? op : "Quat: invalid quaternion");
         return NULL;
     }
-    return (ViperQuat *)q;
+    return (ZannaQuat *)q;
 }
 
 /// @brief Compute a finite, overflow-resistant Euclidean norm for quaternion components.
@@ -107,9 +107,9 @@ static double quat_safe_len3(double x, double y, double z) {
 }
 
 /// @brief Allocate a GC-managed quaternion object and initialize all four components.
-/// @return New ViperQuat with the given (x, y, z, w) components, or NULL on OOM.
-static ViperQuat *quat_alloc(double x, double y, double z, double w) {
-    ViperQuat *q = (ViperQuat *)rt_obj_new_i64(RT_QUAT_CLASS_ID, (int64_t)sizeof(ViperQuat));
+/// @return New ZannaQuat with the given (x, y, z, w) components, or NULL on OOM.
+static ZannaQuat *quat_alloc(double x, double y, double z, double w) {
+    ZannaQuat *q = (ZannaQuat *)rt_obj_new_i64(RT_QUAT_CLASS_ID, (int64_t)sizeof(ZannaQuat));
     if (!q) {
         rt_trap("Quat: memory allocation failed");
         return NULL;
@@ -163,7 +163,7 @@ void *rt_quat_from_axis_angle(void *axis, double angle) {
 
 /// @brief Build a unit quaternion from Euler angles (radians). Convention: pitch about X, yaw
 /// about Y, roll about Z, composed in ZYX intrinsic order (yaw, then pitch, then roll). This is
-/// the same convention as Viper.Graphics3D.Transform3D.SetEuler so every Euler-consuming API in
+/// the same convention as Zanna.Graphics3D.Transform3D.SetEuler so every Euler-consuming API in
 /// the engine agrees on axes.
 void *rt_quat_from_euler(double pitch, double yaw, double roll) {
     if (!isfinite(pitch) || !isfinite(yaw) || !isfinite(roll))
@@ -188,7 +188,7 @@ void *rt_quat_from_euler(double pitch, double yaw, double roll) {
 
 /// @brief X the quat.
 double rt_quat_x(void *q) {
-    ViperQuat *quat = quat_checked(q, "Quat.X: invalid quaternion");
+    ZannaQuat *quat = quat_checked(q, "Quat.X: invalid quaternion");
     if (!quat)
         return 0.0;
     return quat->x;
@@ -196,7 +196,7 @@ double rt_quat_x(void *q) {
 
 /// @brief Y the quat.
 double rt_quat_y(void *q) {
-    ViperQuat *quat = quat_checked(q, "Quat.Y: invalid quaternion");
+    ZannaQuat *quat = quat_checked(q, "Quat.Y: invalid quaternion");
     if (!quat)
         return 0.0;
     return quat->y;
@@ -204,7 +204,7 @@ double rt_quat_y(void *q) {
 
 /// @brief Z the quat.
 double rt_quat_z(void *q) {
-    ViperQuat *quat = quat_checked(q, "Quat.Z: invalid quaternion");
+    ZannaQuat *quat = quat_checked(q, "Quat.Z: invalid quaternion");
     if (!quat)
         return 0.0;
     return quat->z;
@@ -212,7 +212,7 @@ double rt_quat_z(void *q) {
 
 /// @brief W the quat.
 double rt_quat_w(void *q) {
-    ViperQuat *quat = quat_checked(q, "Quat.W: invalid quaternion");
+    ZannaQuat *quat = quat_checked(q, "Quat.W: invalid quaternion");
     if (!quat)
         return 0.0;
     return quat->w;
@@ -225,8 +225,8 @@ double rt_quat_w(void *q) {
 /// @brief Hamilton product (a × b) — composes rotations: applying `mul(a, b)` rotates the
 /// vector by b first, then by a. Traps on null input.
 void *rt_quat_mul(void *a, void *b) {
-    ViperQuat *qa = quat_checked(a, "Quat.Mul: invalid quaternion");
-    ViperQuat *qb = quat_checked(b, "Quat.Mul: invalid quaternion");
+    ZannaQuat *qa = quat_checked(a, "Quat.Mul: invalid quaternion");
+    ZannaQuat *qb = quat_checked(b, "Quat.Mul: invalid quaternion");
     if (!qa || !qb)
         return NULL;
     double w = qa->w * qb->w - qa->x * qb->x - qa->y * qb->y - qa->z * qb->z;
@@ -239,7 +239,7 @@ void *rt_quat_mul(void *a, void *b) {
 /// @brief Quaternion conjugate (negates the imaginary part: x, y, z → -x, -y, -z; w stays).
 /// For unit quaternions, conjugate equals inverse and represents the opposite rotation.
 void *rt_quat_conjugate(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Conjugate: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Conjugate: invalid quaternion");
     if (!qv)
         return NULL;
     return quat_alloc(-qv->x, -qv->y, -qv->z, qv->w);
@@ -249,7 +249,7 @@ void *rt_quat_conjugate(void *q) {
 /// @details Traps on an invalid receiver or a zero/non-finite length. Squaring an
 ///          extreme finite length can still overflow or underflow (VDOC-206).
 void *rt_quat_inverse(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Inverse: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Inverse: invalid quaternion");
     if (!qv)
         return NULL;
     double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
@@ -271,7 +271,7 @@ void *rt_quat_inverse(void *q) {
 /// to avoid divide-by-zero. Re-normalize periodically when chaining many multiplies to prevent
 /// drift from accumulated floating-point error.
 void *rt_quat_norm(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Norm: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Norm: invalid quaternion");
     if (!qv)
         return NULL;
     double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
@@ -283,7 +283,7 @@ void *rt_quat_norm(void *q) {
 
 /// @brief Return the number of elements in the quat.
 double rt_quat_len(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Len: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Len: invalid quaternion");
     if (!qv)
         return 0.0;
     return quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
@@ -291,7 +291,7 @@ double rt_quat_len(void *q) {
 
 /// @brief Len the sq of the quat.
 double rt_quat_len_sq(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.LenSq: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.LenSq: invalid quaternion");
     if (!qv)
         return 0.0;
     return qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w;
@@ -299,8 +299,8 @@ double rt_quat_len_sq(void *q) {
 
 /// @brief Dot the quat.
 double rt_quat_dot(void *a, void *b) {
-    ViperQuat *qa = quat_checked(a, "Quat.Dot: invalid quaternion");
-    ViperQuat *qb = quat_checked(b, "Quat.Dot: invalid quaternion");
+    ZannaQuat *qa = quat_checked(a, "Quat.Dot: invalid quaternion");
+    ZannaQuat *qb = quat_checked(b, "Quat.Dot: invalid quaternion");
     if (!qa || !qb)
         return 0.0;
     return qa->x * qb->x + qa->y * qb->y + qa->z * qb->z + qa->w * qb->w;
@@ -323,8 +323,8 @@ void *rt_quat_slerp(void *a, void *b, double t) {
         t = 0.0;
     else if (t > 1.0)
         t = 1.0;
-    ViperQuat *qa = quat_checked(a, "Quat.Slerp: invalid start quaternion");
-    ViperQuat *qb = quat_checked(b, "Quat.Slerp: invalid end quaternion");
+    ZannaQuat *qa = quat_checked(a, "Quat.Slerp: invalid start quaternion");
+    ZannaQuat *qb = quat_checked(b, "Quat.Slerp: invalid end quaternion");
     if (!qa || !qb)
         return NULL;
 
@@ -371,8 +371,8 @@ void *rt_quat_slerp(void *a, void *b, double t) {
 /// slerp but constant angular velocity is not preserved — use only for small angle deltas.
 /// The result is re-normalized to unit length (nlerp); a degenerate blend returns identity.
 void *rt_quat_lerp(void *a, void *b, double t) {
-    ViperQuat *qa = quat_checked(a, "Quat.Lerp: invalid quaternion");
-    ViperQuat *qb = quat_checked(b, "Quat.Lerp: invalid quaternion");
+    ZannaQuat *qa = quat_checked(a, "Quat.Lerp: invalid quaternion");
+    ZannaQuat *qb = quat_checked(b, "Quat.Lerp: invalid quaternion");
     if (!qa || !qb)
         return NULL;
     double omt = 1.0 - t;
@@ -398,7 +398,7 @@ void *rt_quat_rotate_vec3(void *q, void *v) {
         rt_trap("Quat.RotateVec3: null argument");
         return NULL;
     }
-    ViperQuat *qv = quat_checked(q, "Quat.RotateVec3: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.RotateVec3: invalid quaternion");
     if (!qv)
         return NULL;
     double vx = rt_vec3_x(v);
@@ -420,7 +420,7 @@ void *rt_quat_rotate_vec3(void *q, void *v) {
 /// @brief Convert the quaternion to an equivalent 4×4 rotation matrix (translation = 0,
 /// scale = 1). Useful for shader uniforms that prefer matrix uniforms over quaternion math.
 void *rt_quat_to_mat4(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.ToMat4: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.ToMat4: invalid quaternion");
     if (!qv)
         return NULL;
     double x = qv->x;
@@ -464,7 +464,7 @@ void *rt_quat_to_mat4(void *q) {
 /// normalized imaginary part, so the result is correct for non-unit quaternions too.
 /// Returns (0, 0, 1) for an identity-or-degenerate quaternion (no meaningful axis).
 void *rt_quat_axis(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Axis: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Axis: invalid quaternion");
     if (!qv)
         return NULL;
     double len = quat_safe_len3(qv->x, qv->y, qv->z);
@@ -478,7 +478,7 @@ void *rt_quat_axis(void *q) {
 /// The scalar part is normalized first so non-unit quaternions report the correct angle;
 /// a zero/degenerate quaternion returns 0.
 double rt_quat_angle(void *q) {
-    ViperQuat *qv = quat_checked(q, "Quat.Angle: invalid quaternion");
+    ZannaQuat *qv = quat_checked(q, "Quat.Angle: invalid quaternion");
     if (!qv)
         return 0.0;
     double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);

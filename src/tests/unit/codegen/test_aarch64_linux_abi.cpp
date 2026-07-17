@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -51,8 +51,8 @@
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
 #include "il/io/Parser.hpp"
 
-using namespace viper::codegen::aarch64;
-using namespace viper::codegen::aarch64::passes;
+using namespace zanna::codegen::aarch64;
+using namespace zanna::codegen::aarch64::passes;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,10 +97,10 @@ static std::vector<std::string> compileToBinarySymbols(const std::string &il,
     m.ilMod = &mod;
     m.ti = &ti;
 
-    viper::codegen::aarch64::PipelineOptions opts;
+    zanna::codegen::aarch64::PipelineOptions opts;
     opts.useBinaryEmit = true;
     std::ostringstream sink;
-    if (!viper::codegen::aarch64::runCodegenPipeline(m, opts, sink) || m.binaryTextSections.empty())
+    if (!zanna::codegen::aarch64::runCodegenPipeline(m, opts, sink) || m.binaryTextSections.empty())
         return {};
 
     std::vector<std::string> names;
@@ -117,7 +117,7 @@ static bool hasSymbol(const std::vector<std::string> &symbols, const std::string
     return false;
 }
 
-static uint32_t readWord(const viper::codegen::objfile::CodeSection &section, size_t offset) {
+static uint32_t readWord(const zanna::codegen::objfile::CodeSection &section, size_t offset) {
     const auto &bytes = section.bytes();
     return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
@@ -341,7 +341,7 @@ TEST(AArch64LinuxABI, BinaryEmitPassConsumesLegalizedMainStartupWithNonLeafFrame
 
     size_t callRelocs = 0;
     for (const auto &rel : text.relocations()) {
-        if (rel.kind == viper::codegen::objfile::RelocKind::A64Call26)
+        if (rel.kind == zanna::codegen::objfile::RelocKind::A64Call26)
             ++callRelocs;
     }
     EXPECT_EQ(callRelocs, 2u);
@@ -349,8 +349,8 @@ TEST(AArch64LinuxABI, BinaryEmitPassConsumesLegalizedMainStartupWithNonLeafFrame
 
 TEST(AArch64LinuxABI, DarwinBinaryEncoderRecordsCompactUnwind) {
     binenc::A64BinaryEncoder encoder;
-    viper::codegen::objfile::CodeSection text;
-    viper::codegen::objfile::CodeSection rodata;
+    zanna::codegen::objfile::CodeSection text;
+    zanna::codegen::objfile::CodeSection rodata;
 
     encoder.encodeFunction(makeNonLeafFunc("darwin_unwind"), text, rodata, ABIFormat::Darwin);
     EXPECT_FALSE(text.unwindEntries().empty());
@@ -359,8 +359,8 @@ TEST(AArch64LinuxABI, DarwinBinaryEncoderRecordsCompactUnwind) {
 TEST(AArch64LinuxABI, NonDarwinBinaryEncoderSkipsCompactUnwind) {
     for (ABIFormat abi : {ABIFormat::Linux, ABIFormat::Windows}) {
         binenc::A64BinaryEncoder encoder;
-        viper::codegen::objfile::CodeSection text;
-        viper::codegen::objfile::CodeSection rodata;
+        zanna::codegen::objfile::CodeSection text;
+        zanna::codegen::objfile::CodeSection rodata;
 
         encoder.encodeFunction(makeNonLeafFunc("non_darwin_unwind"), text, rodata, abi);
         EXPECT_TRUE(text.unwindEntries().empty());
@@ -368,6 +368,6 @@ TEST(AArch64LinuxABI, NonDarwinBinaryEncoderSkipsCompactUnwind) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief In-memory store for open documents, keyed by URI.
 ///
@@ -97,4 +97,4 @@ class DocumentStore {
     std::unordered_map<std::string, Document> docs_;
 };
 
-} // namespace viper::server
+} // namespace zanna::server

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_tls.c
 // Purpose: TLS 1.3 client and server implementation in pure C. Provides the
-//          Viper.Crypto.Tls class: X25519 key exchange, AES-128-GCM-SHA256 and
+//          Zanna.Crypto.Tls class: X25519 key exchange, AES-128-GCM-SHA256 and
 //          ChaCha20-Poly1305-SHA256 AEAD, certificate chain verification against
 //          the system trust store, SNI/ALPN extensions, and KeyUpdate.
 //
@@ -705,7 +705,7 @@ static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, con
     int san_count = 0;
 
     if (!hostname || !*hostname) {
-        const char *require_sni = getenv("VIPER_TLS_REQUIRE_SNI");
+        const char *require_sni = getenv("ZANNA_TLS_REQUIRE_SNI");
         return (require_sni && require_sni[0] && strcmp(require_sni, "0") != 0) ? 0 : 1;
     }
     if (!ctx || !ctx->leaf_cert_der || ctx->leaf_cert_der_len == 0)

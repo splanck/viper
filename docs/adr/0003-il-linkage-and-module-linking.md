@@ -12,7 +12,7 @@ Accepted; implemented and verified against source/tests on 2026-06-27.
 
 ## Context
 
-Viper has two frontend languages (Zia and BASIC) that compile to the same IL and
+Zanna has two frontend languages (Zia and BASIC) that compile to the same IL and
 share the same runtime. This ADR records the linkage annotations and module
 linking algorithm used for cross-language interop.
 
@@ -93,7 +93,7 @@ Verified on 2026-06-27:
   unresolved imports, prefixes internal collisions, deduplicates externs, rewrites
   function/global references, and injects non-entry module init calls.
 - `src/il/link/InteropThunks.cpp` generates `i1`/`i64` boolean conversion thunks.
-- `src/tools/viper/cmd_run.cpp` links entry and library project modules for mixed
+- `src/tools/zanna/cmd_run.cpp` links entry and library project modules for mixed
   projects before running the optimizer/VM path.
 - Zia lowers `foreign` functions to `Import` and public/exposed functions to
   `Export`; BASIC lowers `DECLARE FOREIGN` to `Import` and `EXPORT` to `Export`.

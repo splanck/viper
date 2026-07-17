@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_vec3.h
-// Purpose: 3D vector math utilities for Viper.Vec3 with pure arithmetic helpers and explicit
+// Purpose: 3D vector math utilities for Zanna.Vec3 with pure arithmetic helpers and explicit
 // in-place mutators for hot script paths.
 //
 // Key invariants:

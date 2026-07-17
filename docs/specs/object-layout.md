@@ -72,7 +72,7 @@ The BASIC method-call lowerer resolves calls in this order:
 
 1. static user-class calls
 2. runtime-catalog methods
-3. `Viper.Core.Object` fallback methods
+3. `Zanna.Core.Object` fallback methods
 4. explicit interface dispatch through an `AS Interface` receiver
 5. virtual dispatch through the object's vtable slot
 6. direct calls to the selected mangled method

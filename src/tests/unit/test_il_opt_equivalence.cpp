@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -335,13 +335,13 @@ std::string describeFailure(std::string_view pipeline, const GeneratedProgram &p
 }
 
 /// Marker prefix written by the child to encode the return value in stderr.
-static constexpr const char *kValuePrefix = "VIPER_OPT_EQ_VALUE=";
+static constexpr const char *kValuePrefix = "ZANNA_OPT_EQ_VALUE=";
 
 ExecResult runModuleIsolated(const il::core::Module &module) {
     ExecResult result{};
 
-    auto childResult = viper::tests::runIsolated([&]() {
-        viper::tests::VmFixture fixture;
+    auto childResult = zanna::tests::runIsolated([&]() {
+        zanna::tests::VmFixture fixture;
         il::core::Module copy = module;
         const std::int64_t value = fixture.run(copy);
         // Encode the return value in stderr so the parent can parse it.
@@ -429,7 +429,7 @@ bool runPipeline(il::core::Module &module, const std::string &pipelineId, std::s
 }
 
 std::uint64_t baseSeed() {
-    if (const char *env = std::getenv("VIPER_OPT_EQ_SEED")) {
+    if (const char *env = std::getenv("ZANNA_OPT_EQ_SEED")) {
         char *end = nullptr;
         const auto value = std::strtoull(env, &end, 10);
         if (end != env)
@@ -518,8 +518,8 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics) {
 }
 
 int main(int argc, char **argv) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

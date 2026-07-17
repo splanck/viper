@@ -1,9 +1,9 @@
 // Test: PhysicsBody3D rotation, damping, sleep, kinematic motion, and CCD surface.
 module TestPhysics3DRotation;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     var world = PhysicsWorld3D.New(0.0, 0.0, 0.0);

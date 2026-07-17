@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Builds a minimal XAR archive (macOS flat-package container) in memory.
 /// @details Entries are accumulated by the addXxx() methods and serialized by
@@ -91,4 +91,4 @@ class XarWriter {
     std::set<std::string> seenNames_; ///< Paths added so far (duplicate guard).
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

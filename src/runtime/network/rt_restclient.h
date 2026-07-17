@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/network/rt_restclient.h
@@ -97,7 +97,7 @@ void *rt_restclient_get(void *obj, rt_string path);
 ///          response, including 4xx/5xx, is returned as `Result.Ok(HttpRes)`.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_get_result(void *obj, rt_string path);
 
 /// @brief Perform POST request with body.
@@ -113,7 +113,7 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param body Request body as string.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_post_result(void *obj, rt_string path, rt_string body);
 
 /// @brief Perform PUT request with body.
@@ -127,7 +127,7 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param body Request body as string.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_put_result(void *obj, rt_string path, rt_string body);
 
 /// @brief Perform PATCH request with body.
@@ -141,7 +141,7 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param body Request body as string.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_patch_result(void *obj, rt_string path, rt_string body);
 
 /// @brief Perform DELETE request.
@@ -153,7 +153,7 @@ void *rt_restclient_delete(void *obj, rt_string path);
 /// @brief Perform DELETE request and return a Result-wrapped HttpRes.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_delete_result(void *obj, rt_string path);
 
 /// @brief Perform HEAD request.
@@ -165,7 +165,7 @@ void *rt_restclient_head(void *obj, rt_string path);
 /// @brief Perform HEAD request and return a Result-wrapped HttpRes.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_restclient_head_result(void *obj, rt_string path);
 
 //=============================================================================

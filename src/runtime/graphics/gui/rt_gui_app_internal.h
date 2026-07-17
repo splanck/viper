@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Engine-internal; included only by the graphics/gui/ app translation units.
-//   - All symbols are graphics-only (VIPER_ENABLE_GRAPHICS); no stub variants.
+//   - All symbols are graphics-only (ZANNA_ENABLE_GRAPHICS); no stub variants.
 //   - The app registry tracks every live rt_gui_app_t so font retirement can
 //     check usage across apps before freeing a font.
 //
@@ -27,7 +27,7 @@
 
 #include "rt_gui_internal.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 // Process-wide GUI app registry (defined in rt_gui_app.c).
 extern rt_gui_app_t *s_active_app;
@@ -48,4 +48,4 @@ int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font);
 /// @param app App whose retirement queue should be collected; NULL is ignored.
 void rt_gui_collect_retired_fonts(rt_gui_app_t *app);
 
-#endif // VIPER_ENABLE_GRAPHICS
+#endif // ZANNA_ENABLE_GRAPHICS

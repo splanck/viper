@@ -10,8 +10,8 @@ module popup;
 bind "./config";
 bind "./utils";
 
-bind Viper.Graphics;
-bind Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Zanna.Text.Fmt;
 
 // =============================================================================
 // SCORE POPUP ENTITY - Floating score text

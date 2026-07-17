@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@ constexpr size_t kMaxRecursionDepth = 1000;
 
 /// @brief Maximum number of instructions to execute before interrupt check.
 /// @details Balances responsiveness vs overhead. Can be overridden via
-///          VIPER_INTERRUPT_EVERY_N environment variable.
+///          ZANNA_INTERRUPT_EVERY_N environment variable.
 constexpr uint64_t kDefaultInterruptCheckInterval = 10000;
 
 /// @brief Initial capacity for the execution stack.

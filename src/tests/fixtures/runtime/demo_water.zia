@@ -1,10 +1,10 @@
 // Demo: Water3D — animated water plane with sine waves over a terrain-like scene.
 module DemoWater;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Water Demo", 800, 600);

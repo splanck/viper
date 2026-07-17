@@ -1,9 +1,9 @@
-# ViperGFX - Cross-Platform Software 2D Graphics Library
+# ZannaGFX - Cross-Platform Software 2D Graphics Library
 
 **Version:** 1.0.0
 **Status:** ✅ Phase 1 Complete (macOS)
 
-ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C11. It provides
+ZannaGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C11. It provides
 window management, pixel operations, drawing primitives, and input handling with zero external dependencies.
 
 ## Features
@@ -28,7 +28,7 @@ window management, pixel operations, drawing primitives, and input handling with
 
 ## Building Standalone
 
-From the **Viper repository root**, configure and build as a standalone project:
+From the **Zanna repository root**, configure and build as a standalone project:
 
 ```bash
 # Configure from repository root
@@ -59,23 +59,23 @@ cmake -S src/lib/graphics -B build-gfx -DVGFX_BUILD_EXAMPLES=OFF
 cmake -S src/lib/graphics -B build-gfx -DCMAKE_BUILD_TYPE=Release
 ```
 
-## Building as Part of Viper
+## Building as Part of Zanna
 
-When included via `add_subdirectory()` from a parent CMake project (like Viper), ViperGFX automatically integrates:
+When included via `add_subdirectory()` from a parent CMake project (like Zanna), ZannaGFX automatically integrates:
 
 ```cmake
 # In parent CMakeLists.txt
 add_subdirectory(src/lib/graphics)
 
 # Link against it
-target_link_libraries(your_target PRIVATE vipergfx)
+target_link_libraries(your_target PRIVATE zannagfx)
 ```
 
 The library will use the parent project's test and example build settings.
 
 ## Library Output
 
-- **Static library**: `libvipergfx.a` (Unix) or `vipergfx.lib` (Windows)
+- **Static library**: `libzannagfx.a` (Unix) or `zannagfx.lib` (Windows)
 - **Location**: `build-gfx/lib/` (standalone) or `build/lib/` (integrated)
 - **Size**: ~139 KB
 
@@ -91,7 +91,7 @@ int main(void) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 800;
     params.height = 600;
-    params.title = "Hello ViperGFX";
+    params.title = "Hello ZannaGFX";
     params.fps = 60;
     params.resizable = 0;
 
@@ -152,7 +152,7 @@ int main(void) {
 Compile and link:
 
 ```bash
-gcc main.c -o myapp -Iinclude -Llib -lvipergfx -framework Cocoa
+gcc main.c -o myapp -Iinclude -Llib -lzannagfx -framework Cocoa
 ```
 
 ## API Overview
@@ -224,7 +224,7 @@ backend exposes Unicode paths. File-drop paths must fit in the fixed event
 payload; oversized paths are dropped and counted by `vgfx_event_overflow_count`
 instead of being truncated into invalid or misleading paths. On X11, clipboard
 operations use the focused window when available and fall back to another live
-ViperGFX window, so multi-window apps keep clipboard access after the
+ZannaGFX window, so multi-window apps keep clipboard access after the
 last-created window closes.
 
 ### Colors
@@ -246,11 +246,11 @@ vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b);
 
 ### Threading Model
 
-ViperGFX is **single-threaded** and **not thread-safe**:
+ZannaGFX is **single-threaded** and **not thread-safe**:
 
-- All ViperGFX functions must be called from the **main thread**
+- All ZannaGFX functions must be called from the **main thread**
 - The platform backend interacts with OS windowing systems that require main-thread execution (Cocoa, X11, Win32)
-- Do **not** call ViperGFX functions from worker threads or signal handlers
+- Do **not** call ZannaGFX functions from worker threads or signal handlers
 - The internal event queue is synchronized only for backend event production and application polling.
 
 **Correct usage:**
@@ -297,7 +297,7 @@ void* worker_thread(void* arg) {
 
 ## Testing
 
-ViperGFX includes comprehensive unit tests using a mock backend for deterministic testing without requiring a display.
+ZannaGFX includes comprehensive unit tests using a mock backend for deterministic testing without requiring a display.
 
 ### Running Tests
 
@@ -386,7 +386,7 @@ Full-featured interactive example demonstrating:
 **Output:**
 
 ```
-ViperGFX v1.0.0 - Basic Drawing Example
+ZannaGFX v1.0.0 - Basic Drawing Example
 Window created: 640x480
 [Window displays with colored shapes]
 Close event received
@@ -408,7 +408,7 @@ backend works correctly.
 **Output:**
 
 ```
-ViperGFX macOS Backend Test
+ZannaGFX macOS Backend Test
 ============================
 
 1. Creating window...
@@ -442,7 +442,7 @@ Comprehensive API validation that works with **all backends** (including mock):
 **Output:**
 
 ```
-=== ViperGFX API Test ===
+=== ZannaGFX API Test ===
 Version: 1.0.0
 
 Test 1: Creating window...
@@ -499,8 +499,8 @@ src/lib/graphics/
 
 ### Integration Guides
 
-- **[INTEGRATION.md](INTEGRATION.md)** - CMake build system integration into Viper
-- **[docs/VIPER_INTEGRATION.md](docs/VIPER_INTEGRATION.md)** - Runtime integration guide for BASIC language support
+- **[INTEGRATION.md](INTEGRATION.md)** - CMake build system integration into Zanna
+- **[docs/ZANNA_INTEGRATION.md](docs/ZANNA_INTEGRATION.md)** - Runtime integration guide for BASIC language support
     - BASIC statement mapping (SCREEN, PSET, LINE, CIRCLE, etc.)
     - Runtime architecture and main loop integration
     - Memory management and error handling
@@ -539,13 +539,13 @@ Software-rendered with the following characteristics:
 
 ## License
 
-ViperGFX is part of the Viper project and distributed under the GNU GPL v3.
+ZannaGFX is part of the Zanna project and distributed under the GNU GPL v3.
 See [LICENSE](../../../LICENSE) for details.
 
 ## Contributing
 
-ViperGFX is part of the larger Viper project. For questions or contributions, see the
-main [Viper documentation](../../../docs/README.md).
+ZannaGFX is part of the larger Zanna project. For questions or contributions, see the
+main [Zanna documentation](../../../docs/README.md).
 
 ### Platform Backend Implementation
 
@@ -573,4 +573,4 @@ See `MACOS_BACKEND.md` for implementation guidance.
 
 ## Support
 
-For issues or questions, see the main Viper project documentation or file an issue in the Viper repository.
+For issues or questions, see the main Zanna project documentation or file an issue in the Zanna repository.

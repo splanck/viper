@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_unionfind.h
@@ -47,7 +47,7 @@ int64_t rt_unionfind_find(void *uf, int64_t x);
 ///          path-compression behavior of rt_unionfind_find.
 /// @param uf Union-Find object, or NULL.
 /// @param x Element index (0-based).
-/// @return Opaque Viper.Option containing the representative root, or None.
+/// @return Opaque Zanna.Option containing the representative root, or None.
 void *rt_unionfind_find_root_option(void *uf, int64_t x);
 
 /// @brief Merge the sets containing x and y.

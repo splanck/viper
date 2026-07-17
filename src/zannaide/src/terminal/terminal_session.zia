@@ -1,0 +1,151 @@
+module terminal_session;
+
+bind Pty = Zanna.System.Pty;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: terminal_session  (Phase 5D — integrated terminal)
+// PURPOSE: Thin wrapper around a Zanna.System.Pty PtySession for the IDE
+//          terminal: start a PTY-backed child, drain its merged output each
+//          frame, send input, resize, and stop. No widgets — terminal_controller
+//          owns the UI and pumps this.
+//
+// NOTE: Pty's i1 methods map to Zia Boolean (compare with == false / if x), its
+//       i64 methods (ExitCode/Write) to Integer.
+// ============================================================================
+
+final MAX_TERMINAL_OUTPUT_DELTA = 65536;
+
+/// @brief A running PTY-backed terminal child.
+class TerminalSession {
+    expose Pty.PtySession session;
+    expose Boolean active;    // child is running
+    expose Boolean started;   // a start was attempted (don't auto-restart)
+    expose Integer exitCode;
+    expose Boolean exitedThisUpdate;
+    expose String lastError;
+    expose Boolean outputTruncated;
+    expose String replayBuffer; // Output accumulated while this session is not shown.
+    expose String title;        // Display label for the terminal selector.
+
+    expose func init() {
+        session = null;
+        active = false;
+        started = false;
+        exitCode = -1;
+        exitedThisUpdate = false;
+        lastError = "";
+        outputTruncated = false;
+        replayBuffer = "";
+        title = "";
+    }
+
+    /// @brief Open a PTY-backed child. @return true when the session is live.
+    expose func Start(program: String, args: Any, cwd: String, cols: Integer, rows: Integer) -> Boolean {
+        lastError = "";
+        exitedThisUpdate = false;
+        started = true;
+        if Pty.IsSupported() == false {
+            lastError = "PTY support is not available on this platform";
+            return false;
+        }
+        if active { return true; }
+        var a = args;
+        if a == null { a = Seq.New(); }
+        var opened = Pty.OpenResult(program, a, cwd, null, cols, rows);
+        if not opened.IsOk {
+            lastError = opened.UnwrapErrStr();
+            if lastError == "" { lastError = "PTY session could not be created"; }
+            return false;
+        }
+        session = opened.Unwrap();
+        if session.IsValid() == false {
+            lastError = "PTY session handle was invalid";
+            session = null;
+            return false;
+        }
+        active = true;
+        exitCode = -1;
+        outputTruncated = false;
+        return true;
+    }
+
+    /// @brief Stop any existing child and open a replacement PTY session.
+    /// @details This is used by the IDE's Restart control and by Run when the
+    ///          previous shell exited or was manually stopped. It resets the
+    ///          one-shot `started` latch before delegating to Start.
+    /// @return true when the replacement session is live.
+    expose func Restart(program: String, args: Any, cwd: String, cols: Integer, rows: Integer) -> Boolean {
+        Stop();
+        started = false;
+        return Start(program, args, cwd, cols, rows);
+    }
+
+    /// @brief Drain available output (bounded); detect exit. @return new bytes.
+    expose func Update() -> String {
+        exitedThisUpdate = false;
+        if session == null or active == false { return ""; }
+        var out = ReadTerminalDelta();
+        if session.IsRunning() == false {
+            out = out + ReadTerminalDelta();
+            exitCode = session.ExitCode();
+            active = false;
+            exitedThisUpdate = true;
+        }
+        if Str.get_Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
+            out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA)
+                + "\n[terminal frame output truncated]\n";
+            outputTruncated = true;
+        }
+        return out;
+    }
+
+    hide func ReadTerminalDelta() -> String {
+        if session == null { return ""; }
+        var result = session.ReadResult();
+        var out = Map.GetStr(result, "text");
+        if Map.GetBool(result, "truncated") {
+            outputTruncated = true;
+            out = out + "\n[terminal output truncated by runtime]\n";
+        }
+        return out;
+    }
+
+    /// @brief Write raw bytes to the terminal input.
+    expose func Send(text: String) {
+        if session == null or active == false { return; }
+        session.Write(text);
+    }
+
+    /// @brief Write a line (appends newline) to the terminal input.
+    expose func SendLine(text: String) {
+        Send(text + "\n");
+    }
+
+    /// @brief Resize the terminal window.
+    expose func Resize(cols: Integer, rows: Integer) {
+        if session == null or active == false { return; }
+        session.Resize(cols, rows);
+    }
+
+    /// @brief Terminate the child, release the session, and clear restart state.
+    /// @details The controller decides whether to auto-start again; clearing the
+    ///          session latch here lets explicit Run/Restart actions create a
+    ///          fresh PTY after Stop.
+    expose func Stop() {
+        if session == null { return; }
+        session.Kill();
+        session.Destroy();
+        session = null;
+        active = false;
+        started = false;
+        exitedThisUpdate = false;
+    }
+
+    expose func IsActive() -> Boolean { return active; }
+
+    /// @brief Return the most recent PTY startup error, if any.
+    expose func LastError() -> String { return lastError; }
+}

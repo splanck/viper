@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-MANIFEST="${VIPER_DEMO_MANIFEST:-${ROOT_DIR}/scripts/demo_projects.list}"
+MANIFEST="${ZANNA_DEMO_MANIFEST:-${ROOT_DIR}/scripts/demo_projects.list}"
 
 if [[ ! -f "$MANIFEST" ]]; then
     echo "error: demo project manifest not found: $MANIFEST" >&2
@@ -49,7 +49,7 @@ while IFS='|' read -r name category directory extra || [[ -n "${name:-}" ]]; do
     esac
     seen_names+="$name"$'\n'
 
-    project_file="$ROOT_DIR/examples/$category/$directory/viper.project"
+    project_file="$ROOT_DIR/examples/$category/$directory/zanna.project"
     if [[ ! -f "$project_file" ]]; then
         echo "error: demo project file not found: $project_file" >&2
         exit 1

@@ -1,10 +1,10 @@
 // Demo: 3D particle system — fountain effect with gravity and fade-out.
 module DemoParticles;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func start() {
     var canvas = Canvas3D.New("Particle System", 800, 600);

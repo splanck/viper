@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the EditHistory class, which implements transactional
-// undo/redo for Viper's TUI text editor. Edit operations (insertions and
+// undo/redo for Zanna's TUI text editor. Edit operations (insertions and
 // erasures) are grouped into transactions that can be atomically undone
 // or redone.
 //
@@ -37,7 +37,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Transactional undo/redo system for text editing operations.
 /// @details Groups insert and erase operations into transactions that can be
 ///          atomically undone and redone. Maintains twin stacks (undo/redo)
@@ -119,4 +119,4 @@ class EditHistory {
     Txn current_{};
     bool in_txn_{};
 };
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

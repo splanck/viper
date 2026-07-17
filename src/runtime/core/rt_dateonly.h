@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_dateonly.h
@@ -15,7 +15,7 @@
 //   - Date arithmetic traps on signed 64-bit overflow.
 //
 // Ownership/Lifetime:
-//   - DateOnly objects are heap-allocated runtime objects managed through Viper's
+//   - DateOnly objects are heap-allocated runtime objects managed through Zanna's
 //     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_dateonly.c (implementation), src/runtime/core/rt_string.h

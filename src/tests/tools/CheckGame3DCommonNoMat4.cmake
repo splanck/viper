@@ -1,5 +1,5 @@
-if (NOT DEFINED VIPER_SOURCE_DIR)
-    message(FATAL_ERROR "VIPER_SOURCE_DIR is required")
+if (NOT DEFINED ZANNA_SOURCE_DIR)
+    message(FATAL_ERROR "ZANNA_SOURCE_DIR is required")
 endif ()
 
 set(_game3d_common_files
@@ -10,7 +10,7 @@ set(_game3d_common_files
         src/tests/fixtures/runtime/test_game3d_docs_snippets.zia)
 
 foreach (_rel IN LISTS _game3d_common_files)
-    set(_path "${VIPER_SOURCE_DIR}/${_rel}")
+    set(_path "${ZANNA_SOURCE_DIR}/${_rel}")
     if (NOT EXISTS "${_path}")
         message(FATAL_ERROR "Missing Game3D common sample/probe: ${_rel}")
     endif ()

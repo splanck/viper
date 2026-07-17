@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <array>
 #include <cstring>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 using encoding::writeBE32;
 using encoding::writeBE64;
@@ -286,4 +286,4 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
     return sb;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

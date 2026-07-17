@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Contributing — Viper</title>
-  <meta name="description" content="Viper documentation: Contributing">
+  <title>Contributing — Zanna</title>
+  <meta name="description" content="Zanna documentation: Contributing">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -54,7 +54,7 @@
 <p>&lt;a id=&quot;style-guide&quot;&gt;&lt;/a&gt;</p>
 <h2 id="style-guide">Style Guide</h2>
 <p>See [CLAUDE.md](../CLAUDE.md) for project-wide policies. This guide defines</p>
-<p>comment conventions and file headers for the Viper codebase. All contributors</p>
+<p>comment conventions and file headers for the Zanna codebase. All contributors</p>
 <p>must follow these rules when adding new code or updating existing files.</p>
 <h3 id="file-naming">File naming</h3>
 <p>Use <code>.cpp</code> for implementation files and <code>.hpp</code> for headers. Do not use <code>.cc</code>. Use <code>.hpp</code> for C++ headers and <code>.h</code> for C runtime headers.</p>
@@ -242,7 +242,7 @@ error[B1004]: duplicate procedure &#x27;S&#x27;
 <p>On-demand helpers to query basic block successors and predecessors without</p>
 <p>constructing an explicit graph.</p>
 <pre><code data-lang="cpp">
-using namespace viper::analysis;
+using namespace zanna::analysis;
 CFGContext ctx(module);
 auto succ = successors(ctx, block);
 auto pred = predecessors(ctx, block);
@@ -300,7 +300,7 @@ b.cbr(i, loop, {i}, loop, {i});                 // conditional
 <h2 id="debugging">Debugging</h2>
 <h3 id="breakpoints-and-source-tracing">Breakpoints and Source Tracing</h3>
 <h4 id="breaking-on-source-lines">Breaking on source lines</h4>
-<p><code>viper</code> can halt execution before running a specific source line.</p>
+<p><code>zanna</code> can halt execution before running a specific source line.</p>
 <h4 id="flags">Flags</h4>
 <ul>
 <li><code>--break &lt;file:line&gt;</code>: Generic breakpoint flag. If the argument contains a path separator or dot, it is interpreted as</li>
@@ -310,24 +310,24 @@ b.cbr(i, loop, {i}, loop, {i});                 // conditional
 <li><code>--break-src &lt;file:line&gt;</code>: Explicit source-line breakpoint.</li>
 </ul>
 <p>Paths are normalized before comparison, including platform separators and <code>.</code>/<code>..</code> segments. When the normalized path</p>
-<p>does not match the location recorded in the IL, <code>viper</code> falls back to comparing only the basename.</p>
+<p>does not match the location recorded in the IL, <code>zanna</code> falls back to comparing only the basename.</p>
 <p>Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the</p>
-<p>same source line, <code>viper</code> reports the breakpoint once per line until control transfers to a different basic block.</p>
+<p>same source line, <code>zanna</code> reports the breakpoint once per line until control transfers to a different basic block.</p>
 <h4 id="examples">Examples</h4>
 <pre><code data-lang="sh">
 # Path normalization: break at the first PRINT in math_basics.bas
-viper front basic -run ./examples/basic/../basic/math_basics.bas \
+zanna front basic -run ./examples/basic/../basic/math_basics.bas \
   --break ./examples/basic/../basic/math_basics.bas:4 --trace=src
 
 # Basename fallback with the explicit flag
-viper front basic -run examples/basic/sine_cosine.bas \
+zanna front basic -run examples/basic/sine_cosine.bas \
   --break-src sine_cosine.bas:5 --trace=src
 </code></pre>
 <h3 id="verifying-inkey-getkey-locally">Verifying INKEY$/GETKEY$ Locally</h3>
 <p>These built-in functions interact with the terminal and require manual testing to verify behavior.</p>
 <h4 id="non-blocking-read-inkey">Non-blocking read (INKEY$)</h4>
 <pre><code data-lang="sh">
-viper front basic -run examples/inkey_smoke.bas
+zanna front basic -run examples/inkey_smoke.bas
 </code></pre>
 <p>Expected: Program polls once, prints &quot;No key&quot; (or the key code if pressed quickly), and exits immediately without</p>
 <p>blocking.</p>
@@ -335,7 +335,7 @@ viper front basic -run examples/inkey_smoke.bas
 <p>Create a temporary test file and run:</p>
 <pre><code data-lang="sh">
 echo &#x27;COLOR 7,0: PRINT &quot;Press a key&quot;: k$ = GETKEY$(): PRINT &quot;Got:&quot;; ASC(k$)&#x27; &gt; /tmp/getkey.bas
-viper front basic -run /tmp/getkey.bas
+zanna front basic -run /tmp/getkey.bas
 </code></pre>
 <p>Expected: Program waits for one keystroke, then prints the ASCII code and exits.</p>
 <p><strong>Note:</strong> INKEY$ never blocks; GETKEY$ waits for input. Both functions require parentheses even though they take zero</p>
@@ -343,7 +343,7 @@ viper front basic -run /tmp/getkey.bas
 <h3 id="debugging-basic-recursion-failures">Debugging BASIC Recursion Failures</h3>
 <p>Use the factorial example to inspect recursive calls.</p>
 <pre><code data-lang="sh">
-viper -run src/tests/e2e/factorial.bas --trace=src \
+zanna -run src/tests/e2e/factorial.bas --trace=src \
     --break-src src/tests/e2e/factorial.bas:5 \
     --debug-cmds examples/il/debug_script.txt
 </code></pre>
@@ -393,13 +393,13 @@ viper -run src/tests/e2e/factorial.bas --trace=src \
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

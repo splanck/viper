@@ -1,5 +1,5 @@
 ' test_split.bas - Test that AddFile split works
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "token.bas"
 AddFile "lexer.bas"

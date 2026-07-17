@@ -1,6 +1,6 @@
-' API Audit: Viper.Game.SpriteAnimation (BASIC)
-PRINT "=== API Audit: Viper.Game.SpriteAnimation ==="
-DIM sa AS OBJECT = Viper.Game.SpriteAnimation.New()
+' API Audit: Zanna.Game.SpriteAnimation (BASIC)
+PRINT "=== API Audit: Zanna.Game.SpriteAnimation ==="
+DIM sa AS OBJECT = Zanna.Game.SpriteAnimation.New()
 sa.Setup(0, 3, 100)
 PRINT sa.FrameCount
 PRINT sa.Frame

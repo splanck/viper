@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/e2e/test_arm64_demos_run.cpp
 // Purpose: End-to-end run-native tests for Frogger and Vtris on macOS arm64.
@@ -70,7 +70,7 @@ TEST(ARM64E2E, Frogger_RunNative_OptIn) {
         return; // opt-in only
     const std::string buildDir = ".";
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
     const std::string froggerBas = "../examples/games/frogger-basic/frogger.bas";
     if (!exists(vbasic) || !exists(ilc) || !exists(froggerBas))
         return;
@@ -87,7 +87,7 @@ TEST(ARM64E2E, Vtris_RunNative_OptIn) {
         return; // opt-in only
     const std::string buildDir = ".";
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
     const std::string vtrisBas = "../examples/games/vtris/vtris.bas";
     if (!exists(vbasic) || !exists(ilc) || !exists(vtrisBas))
         return;
@@ -99,6 +99,6 @@ TEST(ARM64E2E, Vtris_RunNative_OptIn) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

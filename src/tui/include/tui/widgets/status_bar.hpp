@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the StatusBar widget for Viper's TUI framework.
+// This file declares the StatusBar widget for Zanna's TUI framework.
 // The status bar displays a single-line informational strip, typically
 // positioned at the bottom of the screen, with left-aligned and
 // right-aligned text segments.
@@ -31,7 +31,7 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets {
+namespace zanna::tui::widgets {
 /// @brief Single-line status display widget with left and right text segments.
 /// @details Renders a horizontal bar spanning the full width of its layout rectangle,
 ///          displaying left-aligned text on the left and right-aligned text on the right.
@@ -59,4 +59,4 @@ class StatusBar : public ui::Widget {
     const style::Theme &theme_;
 };
 
-} // namespace viper::tui::widgets
+} // namespace zanna::tui::widgets

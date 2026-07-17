@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 
 /// @brief Parse a hex RGB color string into an RGBA struct.
 /// @details Accepts colors in the forms "#RRGGBB" or "RRGGBB" and stores the
@@ -30,4 +30,4 @@ namespace viper::tui::util {
 /// @return True when parsing succeeds, false otherwise.
 [[nodiscard]] bool parseHexColor(const std::string &s, render::RGBA &out);
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

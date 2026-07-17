@@ -18,14 +18,14 @@ scripting surface no longer exposes `Length`. New code must use `StepCount`
 
 ## Context
 
-`Viper.Game.PathResult.Length` was added as part of the game snapshot result
+`Zanna.Game.PathResult.Length` was added as part of the game snapshot result
 work to expose the number of cell-to-cell steps in a path. The value is useful,
 but the name is ambiguous beside `PathResult.Path.Length`, weighted path `Cost`,
 and collection/string `Length` conventions.
 
 ## Decision
 
-Add `Viper.Game.PathResult.StepCount` as the canonical property for the
+Add `Zanna.Game.PathResult.StepCount` as the canonical property for the
 cell-to-cell step count. Keep `PathResult.Length` registered as a compatibility
 alias, with runtime API metadata pointing callers to `PathResult.StepCount`.
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Write an ELF executable.
 /// @param path    Output file path.
@@ -71,4 +71,4 @@ inline bool writeElfExe(const std::string &path,
     return writeElfExe(path, layout, arch, {}, {}, 0, false, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

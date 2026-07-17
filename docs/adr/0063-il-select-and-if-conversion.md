@@ -64,7 +64,7 @@ could hand the backends that opportunity.
    Arms are speculated only when every hoisted instruction is pure,
    result-producing, and non-trapping (side-effect flag plus an explicit
    exclusion list: `load`, division/remainder, `alloca`, calls), capped at
-   three instructions per arm. Escape hatch: `VIPER_NO_IF_CONVERT=1`.
+   three instructions per arm. Escape hatch: `ZANNA_NO_IF_CONVERT=1`.
 
 4. **Pipeline placement: late O2.** `if-conv` runs after `gvn`/`earlycse` and
    after the last `check-opt`, before the final `dce`/`simplify-cfg`. Earlier

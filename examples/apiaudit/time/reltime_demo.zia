@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Time.RelativeTime - Human-Readable Time Formatting
+// API Audit: Zanna.Time.RelativeTime - Human-Readable Time Formatting
 // =============================================================================
 // Tests: Format, FormatFrom, FormatDuration, FormatShort
 // =============================================================================
 
 module RelTimeDemo;
-bind Viper.Terminal;
-bind Viper.Time.RelativeTime as RT;
-bind Viper.Time.DateTime as DT;
-bind Viper.Time.Duration as Dur;
+bind Zanna.Terminal;
+bind Zanna.Time.RelativeTime as RT;
+bind Zanna.Time.DateTime as DT;
+bind Zanna.Time.Duration as Dur;
 func start() {
-    Say("=== API Audit: Viper.Time.RelativeTime ===");
+    Say("=== API Audit: Zanna.Time.RelativeTime ===");
 
     var now = DT.Now();
 

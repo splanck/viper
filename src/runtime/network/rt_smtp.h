@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,12 +39,12 @@ int8_t rt_smtp_send(void *client, rt_string from, rt_string to, rt_string subjec
 ///          path are returned as ErrStr(message). Lower-level transport traps can
 ///          still escape. Use this in new code instead of calling
 ///          rt_smtp_send() and then rt_smtp_last_error().
-/// @param client Opaque Viper.Network.SmtpClient object.
+/// @param client Opaque Zanna.Network.SmtpClient object.
 /// @param from Sender mailbox path.
 /// @param to Recipient mailbox path.
 /// @param subject Email subject; CR/LF are sanitized before DATA.
 /// @param body Plain-text message body.
-/// @return Opaque Viper.Result object containing OkI64(1) or ErrStr(message).
+/// @return Opaque Zanna.Result object containing OkI64(1) or ErrStr(message).
 void *rt_smtp_send_result(
     void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
 /// @brief Send an HTML-format email (Content-Type: text/html). Returns 1 on success.
@@ -53,12 +53,12 @@ int8_t rt_smtp_send_html(
 /// @brief Send an HTML email and return a Result instead of using LastError.
 /// @details Mirrors rt_smtp_send_html() with a side-channel-free result shape.
 ///          Success is OkI64(1); failures are ErrStr(message).
-/// @param client Opaque Viper.Network.SmtpClient object.
+/// @param client Opaque Zanna.Network.SmtpClient object.
 /// @param from Sender mailbox path.
 /// @param to Recipient mailbox path.
 /// @param subject Email subject; CR/LF are sanitized before DATA.
 /// @param html_body HTML message body; callers remain responsible for escaping.
-/// @return Opaque Viper.Result object containing OkI64(1) or ErrStr(message).
+/// @return Opaque Zanna.Result object containing OkI64(1) or ErrStr(message).
 void *rt_smtp_send_html_result(
     void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
 /// @brief Get the last SMTP error message (response code + text), empty if no error.

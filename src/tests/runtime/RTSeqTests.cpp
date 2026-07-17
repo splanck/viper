@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTSeqTests.cpp
-// Purpose: Comprehensive tests for Viper.Collections.Seq dynamic sequence.
+// Purpose: Comprehensive tests for Zanna.Collections.Seq dynamic sequence.
 //
 //===----------------------------------------------------------------------===//
 

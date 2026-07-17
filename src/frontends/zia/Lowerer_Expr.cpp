@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -271,7 +271,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
         return lowerStoredValue(loaded, storageType, useType);
     }
 
-    // Check for auto-evaluated property getters (e.g., Pi → call Viper.Math.get_Pi())
+    // Check for auto-evaluated property getters (e.g., Pi → call Zanna.Math.get_Pi())
     std::string autoGetter = sema_.autoEvalGetter(expr);
     if (!autoGetter.empty()) {
         TypeRef type = sema_.typeOf(expr);

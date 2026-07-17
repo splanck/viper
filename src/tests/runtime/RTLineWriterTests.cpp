@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTLineWriterTests.cpp
-// Purpose: Comprehensive tests for Viper.IO.LineWriter text file writing.
+// Purpose: Comprehensive tests for Zanna.IO.LineWriter text file writing.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,9 +64,9 @@ static const char *get_test_file() {
             tmp = getenv("TMP");
         if (!tmp)
             tmp = ".";
-        snprintf(path, sizeof(path), "%s\\viper_linewriter_test_%d.txt", tmp, (int)GETPID());
+        snprintf(path, sizeof(path), "%s\\zanna_linewriter_test_%d.txt", tmp, (int)GETPID());
 #else
-        snprintf(path, sizeof(path), "/tmp/viper_linewriter_test_%d.txt", (int)GETPID());
+        snprintf(path, sizeof(path), "/tmp/zanna_linewriter_test_%d.txt", (int)GETPID());
 #endif
         initialized = true;
     }

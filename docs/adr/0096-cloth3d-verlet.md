@@ -15,7 +15,7 @@ Accepted
 ## Context
 
 The back of a third-person character — cape, hair tail, tabard — is the
-thing the player stares at all game, and Viper had no secondary motion at
+thing the player stares at all game, and Zanna had no secondary motion at
 all: no cloth, no verlet, only rigid bodies and skinned animation. Banners
 and flags for world dressing had the same gap.
 

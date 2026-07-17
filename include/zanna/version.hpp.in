@@ -1,0 +1,43 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/zanna/version.hpp.in
+// Purpose: Define configured toolchain, source, and IL build identity.
+//
+// Key invariants:
+//   - Release provenance is immutable and comes from configure-time metadata.
+//   - Source state is exactly clean, dirty, or unknown.
+//
+// Ownership/Lifetime: CMake configures this template into generated/zanna.
+//
+// Links: CMakeLists.txt, ToolchainInstallManifest.cpp
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+// Toolchain (Zanna) version as provided by CMake/configure_file.
+#define ZANNA_VERSION_STR    "@ZANNA_VERSION_STR@"
+
+// Numeric parts (derived from ZANNA_VERSION_STR before any pre-release suffix)
+#define ZANNA_VERSION_MAJOR  @ZANNA_VERSION_MAJOR@
+#define ZANNA_VERSION_MINOR  @ZANNA_VERSION_MINOR@
+#define ZANNA_VERSION_PATCH  @ZANNA_VERSION_PATCH@
+
+// Optional snapshot/build metadata derived from `git describe`.
+// Empty if not in a git checkout or no matching tags.
+#define ZANNA_SNAPSHOT_STR   "@ZANNA_SNAPSHOT_STR@"
+
+// Immutable source provenance used by release package gates and diagnostics.
+#define ZANNA_SOURCE_COMMIT_STR "@ZANNA_SOURCE_COMMIT@"
+#define ZANNA_SOURCE_STATE_STR  "@ZANNA_SOURCE_STATE@"
+
+// IL/spec version (single source of truth from IL_VERSION file)
+#define ZANNA_IL_VERSION_STR "@ZANNA_IL_VERSION_STR@"
+
+// Runtime namespace transition flag (1 = dual-publish legacy rt_* aliases)
+#define ZANNA_RUNTIME_NS_DUAL @ZANNA_RUNTIME_NS_DUAL_DEFINE@

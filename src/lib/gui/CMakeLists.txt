@@ -1,4 +1,4 @@
-# Viper GUI Library CMakeLists.txt
+# Zanna GUI Library CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -81,10 +81,10 @@ endif ()
 set(VG_GUI_SOURCES ${VG_GUI_FONT_SOURCES} ${VG_GUI_CORE_SOURCES} ${VG_GUI_WIDGET_SOURCES} ${VG_GUI_IDE_WIDGET_SOURCES} ${VG_GUI_NATIVE_DIALOG_SOURCES})
 
 # Create GUI library
-add_library(vipergui STATIC ${VG_GUI_SOURCES})
+add_library(zannagui STATIC ${VG_GUI_SOURCES})
 
 # Include directories
-target_include_directories(vipergui
+target_include_directories(zannagui
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -94,23 +94,23 @@ target_include_directories(vipergui
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
 
-# Link against vipergfx
-target_link_libraries(vipergui
+# Link against zannagfx
+target_link_libraries(zannagui
         PUBLIC
-        vipergfx
-        viper_text_core
+        zannagfx
+        zanna_text_core
 )
 
 # Link math library on Unix
 if (UNIX AND NOT APPLE)
-    target_link_libraries(vipergui PRIVATE m)
+    target_link_libraries(zannagui PRIVATE m)
     # GNU feature test macros for Linux (strdup, FNM_CASEFOLD, etc.)
-    target_compile_definitions(vipergui PRIVATE _GNU_SOURCE)
+    target_compile_definitions(zannagui PRIVATE _GNU_SOURCE)
 endif ()
 
 # Link UniformTypeIdentifiers framework on macOS (for file dialogs)
 if (APPLE)
-    target_link_libraries(vipergui PRIVATE
+    target_link_libraries(zannagui PRIVATE
             "-framework UniformTypeIdentifiers"
             "-framework CoreFoundation"
             "-framework CoreGraphics"
@@ -119,26 +119,26 @@ if (APPLE)
 endif ()
 
 # C11 standard
-set_target_properties(vipergui PROPERTIES
+set_target_properties(zannagui PROPERTIES
         C_STANDARD 11
         C_STANDARD_REQUIRED ON
 )
 
 # Compiler warnings
 if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(vipergui PRIVATE
+    target_compile_options(zannagui PRIVATE
             -Wall
             -Wextra
             -Wno-unused-parameter
     )
 elseif (MSVC)
-    target_compile_options(vipergui PRIVATE /utf-8 /FS)
+    target_compile_options(zannagui PRIVATE /utf-8 /FS)
 endif ()
 
 # Tests
-if (VIPER_BUILD_TESTING)
+if (ZANNA_BUILD_TESTING)
     add_executable(test_vg_font tests/test_font.c)
-    target_link_libraries(test_vg_font vipergui)
+    target_link_libraries(test_vg_font zannagui)
     target_include_directories(test_vg_font PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -146,7 +146,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_font PROPERTIES LABELS "gui")
 
     add_executable(test_vg_widgets_new tests/test_vg_widgets_new.c)
-    target_link_libraries(test_vg_widgets_new vipergui)
+    target_link_libraries(test_vg_widgets_new zannagui)
     target_include_directories(test_vg_widgets_new PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -154,7 +154,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_widgets_new PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier1_fixes tests/test_vg_tier1_fixes.c)
-    target_link_libraries(test_vg_tier1_fixes vipergui)
+    target_link_libraries(test_vg_tier1_fixes zannagui)
     target_include_directories(test_vg_tier1_fixes PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -162,7 +162,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_tier1_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier2_fixes tests/test_vg_tier2_fixes.c)
-    target_link_libraries(test_vg_tier2_fixes vipergui)
+    target_link_libraries(test_vg_tier2_fixes zannagui)
     target_include_directories(test_vg_tier2_fixes PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -170,7 +170,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_tier2_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier3_fixes tests/test_vg_tier3_fixes.c)
-    target_link_libraries(test_vg_tier3_fixes vipergui)
+    target_link_libraries(test_vg_tier3_fixes zannagui)
     target_include_directories(test_vg_tier3_fixes PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/src/font
@@ -180,7 +180,7 @@ if (VIPER_BUILD_TESTING)
 
     # Regression suite for GUI audit fixes.
     add_executable(test_vg_audit_fixes tests/test_vg_audit_fixes.c)
-    target_link_libraries(test_vg_audit_fixes vipergui)
+    target_link_libraries(test_vg_audit_fixes zannagui)
     target_include_directories(test_vg_audit_fixes PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -189,10 +189,10 @@ if (VIPER_BUILD_TESTING)
             LABELS "gui"
             TIMEOUT 180
             RUN_SERIAL TRUE
-            ENVIRONMENT "VIPER_GUI_TEST_VERBOSE=1")
+            ENVIRONMENT "ZANNA_GUI_TEST_VERBOSE=1")
 
     add_executable(test_vg_grapheme tests/test_vg_grapheme.c)
-    target_link_libraries(test_vg_grapheme vipergui)
+    target_link_libraries(test_vg_grapheme zannagui)
     target_include_directories(test_vg_grapheme PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -202,7 +202,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_grapheme PROPERTIES LABELS "gui;unicode" TIMEOUT 30)
 
     add_executable(test_vg_textinput tests/test_vg_textinput.c)
-    target_link_libraries(test_vg_textinput vipergui)
+    target_link_libraries(test_vg_textinput zannagui)
     target_include_directories(test_vg_textinput PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -210,7 +210,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_textinput PROPERTIES LABELS "gui;unicode" TIMEOUT 30)
 
     add_executable(test_vg_outputpane_metrics tests/test_vg_outputpane_metrics.c)
-    target_link_libraries(test_vg_outputpane_metrics vipergui)
+    target_link_libraries(test_vg_outputpane_metrics zannagui)
     target_include_directories(test_vg_outputpane_metrics PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -218,7 +218,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_outputpane_metrics PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
 
     add_executable(test_vg_datagrid tests/test_vg_datagrid.c)
-    target_link_libraries(test_vg_datagrid vipergui)
+    target_link_libraries(test_vg_datagrid zannagui)
     target_include_directories(test_vg_datagrid PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -226,7 +226,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_datagrid PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
 
     add_executable(test_vg_popuplist tests/test_vg_popuplist.c)
-    target_link_libraries(test_vg_popuplist vipergui)
+    target_link_libraries(test_vg_popuplist zannagui)
     target_include_directories(test_vg_popuplist PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -234,7 +234,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_popuplist PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
 
     add_executable(test_vg_font_bounds tests/test_vg_font_bounds.c)
-    target_link_libraries(test_vg_font_bounds vipergui)
+    target_link_libraries(test_vg_font_bounds zannagui)
     target_include_directories(test_vg_font_bounds PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/src/font
@@ -243,44 +243,44 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_codeeditor_perf tests/test_vg_codeeditor_perf.c)
-    target_link_libraries(test_vg_codeeditor_perf vipergui)
+    target_link_libraries(test_vg_codeeditor_perf zannagui)
     target_include_directories(test_vg_codeeditor_perf PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_perf COMMAND test_vg_codeeditor_perf)
-    set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;zannaide;perf" TIMEOUT 15)
 
     add_executable(test_vg_codeeditor_behavior tests/test_vg_codeeditor_behavior.c)
-    target_link_libraries(test_vg_codeeditor_behavior vipergui)
+    target_link_libraries(test_vg_codeeditor_behavior zannagui)
     target_include_directories(test_vg_codeeditor_behavior PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_behavior COMMAND test_vg_codeeditor_behavior)
-    set_tests_properties(test_vg_codeeditor_behavior PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_behavior PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
 
     add_executable(test_vg_codeeditor_journal tests/test_vg_codeeditor_journal.c)
-    target_link_libraries(test_vg_codeeditor_journal vipergui)
+    target_link_libraries(test_vg_codeeditor_journal zannagui)
     target_include_directories(test_vg_codeeditor_journal PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_journal COMMAND test_vg_codeeditor_journal)
-    set_tests_properties(test_vg_codeeditor_journal PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_journal PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
 
     add_executable(test_vg_treeview_dnd tests/test_vg_treeview_dnd.c)
-    target_link_libraries(test_vg_treeview_dnd vipergui)
+    target_link_libraries(test_vg_treeview_dnd zannagui)
     target_include_directories(test_vg_treeview_dnd PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_treeview_dnd COMMAND test_vg_treeview_dnd)
-    set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
+    set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
 
     add_executable(test_vg_virtual_models tests/test_vg_virtual_models.c)
-    target_link_libraries(test_vg_virtual_models vipergui)
+    target_link_libraries(test_vg_virtual_models zannagui)
     target_include_directories(test_vg_virtual_models PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_virtual_models COMMAND test_vg_virtual_models)
-    set_tests_properties(test_vg_virtual_models PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
+    set_tests_properties(test_vg_virtual_models PROPERTIES LABELS "gui;zannaide;perf" TIMEOUT 15)
 
     # Anti-aliased drawing core. Built self-contained against the mock backend so
     # the pixel-exact and determinism assertions run headless on every platform.
@@ -321,30 +321,30 @@ endif ()
 
 # Demo applications
 add_executable(gui_demo examples/gui_demo.c)
-target_link_libraries(gui_demo vipergui vipergfx)
+target_link_libraries(gui_demo zannagui zannagfx)
 target_include_directories(gui_demo PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
 
 add_executable(widget_showcase examples/widget_showcase.c)
-target_link_libraries(widget_showcase vipergui vipergfx)
+target_link_libraries(widget_showcase zannagui zannagfx)
 target_include_directories(widget_showcase PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
 
 add_executable(color_widgets_demo examples/color_widgets_demo.c)
-target_link_libraries(color_widgets_demo vipergui vipergfx)
+target_link_libraries(color_widgets_demo zannagui zannagfx)
 target_include_directories(color_widgets_demo PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
 
-# ViperIDE Runtime Test (Phase 1 & 2 features)
-add_executable(viperide_menu_test ../../viperide/src/tests/menu_test.c)
-target_link_libraries(viperide_menu_test PRIVATE viper_runtime vipergui vipergfx)
-target_include_directories(viperide_menu_test PRIVATE
+# ZannaIDE Runtime Test (Phase 1 & 2 features)
+add_executable(zannaide_menu_test ../../zannaide/src/tests/menu_test.c)
+target_link_libraries(zannaide_menu_test PRIVATE zanna_runtime zannagui zannagfx)
+target_include_directories(zannaide_menu_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime

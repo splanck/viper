@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_process.c
 // Purpose: Implements streaming, cancellable child-process handles for
-//          Viper.System.Process.
+//          Zanna.System.Process.
 //
 // Key invariants:
 //   - Start returns NULL when the process cannot be spawned.

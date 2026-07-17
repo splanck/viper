@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/ToolchainInstallManifest.hpp
-// Purpose: Gather and validate the staged Viper toolchain install tree for
+// Purpose: Gather and validate the staged Zanna toolchain install tree for
 //          native installer packaging.
 //
 // Key invariants:
@@ -31,15 +31,15 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
-/// @brief Classification of a file in the Viper toolchain install tree.
+/// @brief Classification of a file in the Zanna toolchain install tree.
 /// Used by mapInstallPath to assign the correct platform-specific destination
 /// directory (bin/, lib/, include/, share/, etc.) for each file type.
 enum class ToolchainFileKind {
     Binary,         ///< Executable tool (installed to bin/).
     RuntimeArchive, ///< Packaged runtime archive (e.g. .a/.lib shipped to lib/).
-    SupportLibrary, ///< Viper support shared library (graphics/audio/etc.).
+    SupportLibrary, ///< Zanna support shared library (graphics/audio/etc.).
     Library,        ///< Generic library file.
     Header,         ///< C/C++ header (installed to include/).
     CMakeConfig,    ///< CMake package-config file (lib/cmake/...).
@@ -60,7 +60,7 @@ struct ToolchainFileEntry {
     std::string symlinkTarget;                        ///< Non-empty only when symlink == true.
 };
 
-/// @brief The full Viper toolchain install manifest for one (arch, platform) pair.
+/// @brief The full Zanna toolchain install manifest for one (arch, platform) pair.
 struct ToolchainInstallManifest {
     std::string version;                     ///< Toolchain version (e.g. "0.2.5").
     std::string snapshot;                    ///< Optional git-describe build identity.
@@ -69,9 +69,9 @@ struct ToolchainInstallManifest {
     std::string arch;                        ///< Target architecture ("x64"/"arm64").
     std::string platform;                    ///< Target platform ("windows"/"macos"/"linux").
     std::string license{"GPL-3.0-only"};     ///< SPDX license id for package metadata.
-    std::string maintainer{"Viper Project"}; ///< Maintainer/packager display name.
+    std::string maintainer{"Zanna Project"}; ///< Maintainer/packager display name.
     std::string maintainerEmail{"splanck@users.noreply.github.com"}; ///< Package contact email.
-    std::string homepage{"https://github.com/splanck/viper"};        ///< Project homepage URL.
+    std::string homepage{"https://github.com/zannagames/zanna"};        ///< Project homepage URL.
     std::vector<ToolchainFileEntry> files;   ///< All staged files and symlinks.
     std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
 
@@ -81,8 +81,8 @@ struct ToolchainInstallManifest {
 
 /// @brief Destination layout policy for mapInstallPath.
 enum class InstallPathPolicy {
-    WindowsProgramFilesRoot, ///< Flat layout under %ProgramFiles%\Viper
-    MacOSUsrLocalViperRoot,  ///< FHS-like layout under /usr/local/viper/
+    WindowsProgramFilesRoot, ///< Flat layout under %ProgramFiles%\Zanna
+    MacOSUsrLocalZannaRoot,  ///< FHS-like layout under /usr/local/zanna/
     LinuxUsrRoot,            ///< FHS layout under /usr/ (bin/, lib/, include/, etc.)
     PortableArchive,         ///< Relative paths for a platform-neutral .zip or .tar.gz
 };
@@ -106,8 +106,8 @@ std::vector<std::string> requiredToolchainBinaryNames();
 /// returns a path rooted at "/usr/".
 std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy policy);
 
-/// @brief Return the default file associations for Viper toolchain packages
+/// @brief Return the default file associations for Zanna toolchain packages
 /// (.zia and .bas source files).
 std::vector<FileAssoc> defaultToolchainFileAssociations();
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

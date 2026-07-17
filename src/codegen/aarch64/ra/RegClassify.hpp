@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Check if a GPR is available for register allocation.
 /// @param r The physical register to check.
@@ -62,4 +62,4 @@ inline bool isArgRegister(PhysReg r, const TargetInfo &ti) {
     return false;
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

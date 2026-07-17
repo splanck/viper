@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -845,7 +845,7 @@ static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
 ///          unnecessarily.
 ///          NOT constant-time: the per-bit branch on `(k[i] >> bit) & 1`
 ///          is observable through timing/cache. **This is acceptable
-///          because Viper's ECDSA path only uses scalar-mul on
+///          because Zanna's ECDSA path only uses scalar-mul on
 ///          *public* values during verification (G * u₁ + Q * u₂),
 ///          never on the secret signing scalar.** A signing path would
 ///          need a constant-time variant (Montgomery ladder, regular

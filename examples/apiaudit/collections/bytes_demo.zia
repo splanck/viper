@@ -1,13 +1,13 @@
-// bytes_demo.zia - Comprehensive API audit for Viper.Collections.Bytes
+// bytes_demo.zia - Comprehensive API audit for Zanna.Collections.Bytes
 // Tests: New, Get, Set, Len, Fill, Find, FindOption, Clone, Slice, Copy,
 //        ToHex, FromHex, ToBase64, FromBase64, ToStr, FromStr
 
 module BytesDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Bytes API Audit ===");

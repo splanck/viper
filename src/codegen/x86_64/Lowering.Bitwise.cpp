@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include "Lowering.EmitCommon.hpp"
 #include "Unsupported.hpp"
 
-namespace viper::codegen::x64::lowering {
+namespace zanna::codegen::x64::lowering {
 namespace {
 
 /// @brief True if @p kind is integer-like (I64/I1/PTR) and thus GPR-eligible.
@@ -107,4 +107,4 @@ void emitShiftAshr(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitShift(instr, MOpcode::SARri, MOpcode::SARrc);
 }
 
-} // namespace viper::codegen::x64::lowering
+} // namespace zanna::codegen::x64::lowering

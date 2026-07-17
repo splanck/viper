@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,14 +27,14 @@
 //   * **Named states, not booleans.**  A player can be in
 //     exactly one of: IDLE, RUN, JUMP, FALL, DJUMP, WALLSLIDE,
 //     HURT, DEAD.  We store `state` as a numeric enum and route
-//     through `Viper.Game.StateMachine` so the
+//     through `Zanna.Game.StateMachine` so the
 //     animation/sound/AI layers can cheaply ask "what are you
 //     doing right now?" without decoding a pile of booleans.
 //
-//   * **Viper's PlatformerController does the boring math.**
+//   * **Zanna's PlatformerController does the boring math.**
 //     Instead of implementing jump buffers, coyote time,
 //     variable jump height, apex hang, acceleration curves
-//     from scratch, we delegate to `Viper.Game.PlatformerController`.
+//     from scratch, we delegate to `Zanna.Game.PlatformerController`.
 //     Tuning `SetJumpForce(full, cut)`, `SetJumpBuffer(ms)`,
 //     `SetCoyoteTime(ms)`, `SetApexBonus(threshold, pct)` gives
 //     us PlatformerController's behaviour — all the tricks
@@ -64,13 +64,13 @@
 //                                tick.
 //     physics.zia           ──►  moveAndCollide + ground/wall
 //                                checks.
-//     Viper.Game.PlatformerController
+//     Zanna.Game.PlatformerController
 //                           ──►  acceleration, gravity, jump
 //                                buffer / coyote / apex.
-//     Viper.Game.StateMachine
+//     Zanna.Game.StateMachine
 //                           ──►  tracks PS_* states, gives us
 //                                "frames in this state" for free.
-//     Viper.Input.Action     ──► named input bindings.
+//     Zanna.Input.Action     ──► named input bindings.
 //     projectile.zia / abilities.zia
 //                           ──►  read the player's ability
 //                                flags at fire time.
@@ -94,9 +94,9 @@
 
 module player;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Game;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Game;
 bind "./abilities";
 bind "./config";
 bind "./environment";

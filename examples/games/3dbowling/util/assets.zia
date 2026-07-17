@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,9 +18,9 @@
 
 module assets;
 
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.Terminal as Terminal;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.Terminal as Terminal;
 
 var missingAssetNames: List[String] = [];
 

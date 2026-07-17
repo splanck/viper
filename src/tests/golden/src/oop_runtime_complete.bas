@@ -1,10 +1,10 @@
-' Comprehensive test for all Viper.* OOP runtime classes
+' Comprehensive test for all Zanna.* OOP runtime classes
 ' Tests each class's methods and properties
 
 ' =============================================================================
-' Viper.String Tests
+' Zanna.String Tests
 ' =============================================================================
-PRINT "=== Viper.String ==="
+PRINT "=== Zanna.String ==="
 DIM s AS STRING
 s = "  Hello World  "
 PRINT "Original: '"; s; "'"
@@ -39,11 +39,11 @@ END IF
 PRINT ""
 
 ' =============================================================================
-' Viper.Text.StringBuilder Tests
+' Zanna.Text.StringBuilder Tests
 ' =============================================================================
-PRINT "=== Viper.Text.StringBuilder ==="
-DIM sb AS Viper.Text.StringBuilder
-sb = NEW Viper.Text.StringBuilder()
+PRINT "=== Zanna.Text.StringBuilder ==="
+DIM sb AS Zanna.Text.StringBuilder
+sb = NEW Zanna.Text.StringBuilder()
 PRINT "Initial Length: "; sb.Length
 sb.Append("Hello")
 PRINT "After 'Hello' Length: "; sb.Length
@@ -56,16 +56,16 @@ PRINT "After Clear Length: "; sb.Length
 PRINT ""
 
 ' =============================================================================
-' Viper.Collections.List Tests
+' Zanna.Collections.List Tests
 ' =============================================================================
-PRINT "=== Viper.Collections.List ==="
-DIM list AS Viper.Collections.List
-list = NEW Viper.Collections.List()
+PRINT "=== Zanna.Collections.List ==="
+DIM list AS Zanna.Collections.List
+list = NEW Zanna.Collections.List()
 PRINT "Initial Count: "; list.Count
 
 ' Create a simple object to add to list
-DIM obj AS Viper.Text.StringBuilder
-obj = NEW Viper.Text.StringBuilder()
+DIM obj AS Zanna.Text.StringBuilder
+obj = NEW Zanna.Text.StringBuilder()
 list.Add(obj)
 list.Add(obj)
 list.Add(obj)
@@ -79,9 +79,9 @@ PRINT "After Clear: "; list.Count
 PRINT ""
 
 ' =============================================================================
-' Viper.Math Tests
+' Zanna.Math Tests
 ' =============================================================================
-PRINT "=== Viper.Math ==="
+PRINT "=== Zanna.Math ==="
 PRINT "Sqrt(16): "; SQR(16)
 PRINT "Abs(-5): "; ABS(-5)
 PRINT "Abs(-3.14): "; ABS(-3.14)
@@ -109,9 +109,9 @@ PRINT "Sgn(5): "; SGN(5)
 PRINT ""
 
 ' =============================================================================
-' Viper.Random Tests
+' Zanna.Random Tests
 ' =============================================================================
-PRINT "=== Viper.Random ==="
+PRINT "=== Zanna.Random ==="
 RANDOMIZE 12345
 DIM r1 AS DOUBLE, r2 AS DOUBLE, r3 AS DOUBLE
 r1 = RND()
@@ -134,16 +134,16 @@ END IF
 PRINT ""
 
 ' =============================================================================
-' Viper.Terminal Tests
+' Zanna.Terminal Tests
 ' =============================================================================
-PRINT "=== Viper.Terminal ==="
+PRINT "=== Zanna.Terminal ==="
 PRINT "WriteLine test: PASS"
 PRINT ""
 
 ' =============================================================================
-' Viper.Core.Convert Tests
+' Zanna.Core.Convert Tests
 ' =============================================================================
-PRINT "=== Viper.Core.Convert ==="
+PRINT "=== Zanna.Core.Convert ==="
 DIM numStr AS STRING
 numStr = "42"
 DIM numVal AS DOUBLE

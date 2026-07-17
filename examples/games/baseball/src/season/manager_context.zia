@@ -94,7 +94,7 @@ class PregameLineupContext {
 
 // Typed result from a legality check. ok=true means the lineup card is
 // legal; ok=false means error contains the specific reason. The choice of
-// a custom struct (rather than the runtime Viper.Result) is intentional —
+// a custom struct (rather than the runtime Zanna.Result) is intentional —
 // the engine has its own error vocabulary tied to the legality check tiers
 // from plan 11.
 class ValidationResult {

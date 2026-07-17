@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -269,11 +269,11 @@ std::size_t determineValueCapacity(const core::Function &fn) {
 /// @return Populated CFG information ready for data-flow analysis.
 CFGInfo buildCFG(core::Module &module, core::Function &fn) {
     CFGInfo info;
-    viper::analysis::CFGContext ctx(module, fn);
+    zanna::analysis::CFGContext ctx(module, fn);
 
     for (auto &block : fn.blocks) {
         auto &succ = info.successors[&block];
-        const auto &succBlocks = viper::analysis::successors(ctx, block);
+        const auto &succBlocks = zanna::analysis::successors(ctx, block);
         succ.reserve(succBlocks.size());
         for (auto *succBlock : succBlocks)
             succ.push_back(succBlock);
@@ -281,7 +281,7 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn) {
 
     for (auto &block : fn.blocks) {
         auto &pred = info.predecessors[&block];
-        const auto &predBlocks = viper::analysis::predecessors(ctx, block);
+        const auto &predBlocks = zanna::analysis::predecessors(ctx, block);
         pred.reserve(predBlocks.size());
         for (auto *predBlock : predBlocks)
             pred.push_back(predBlock);

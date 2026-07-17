@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Container base class and the VStack/HStack layout
-// containers for Viper's TUI. Container provides a common base for widgets
+// containers for Zanna's TUI. Container provides a common base for widgets
 // that manage a collection of child widgets, handling ownership, painting
 // delegation, and layout orchestration.
 //
@@ -31,7 +31,7 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Base container holding child widgets with ownership and layout delegation.
 /// @details Provides the common infrastructure for composite widgets: child ownership
 ///          via unique_ptr, delegation of paint() to children in insertion order, and
@@ -80,4 +80,4 @@ class HStack : public Container {
     void layoutChildren() override;
 };
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

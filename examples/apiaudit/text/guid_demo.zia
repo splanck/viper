@@ -1,8 +1,8 @@
 module GuidDemo;
-bind Viper.Terminal;
-bind Viper.Text.Uuid as Uuid;
+bind Zanna.Terminal;
+bind Zanna.Text.Uuid as Uuid;
 func start() {
-    Say("=== Viper.Text.Uuid API Audit ===");
+    Say("=== Zanna.Text.Uuid API Audit ===");
 
     // --- New ---
     Say("--- New ---");

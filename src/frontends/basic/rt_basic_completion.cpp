@@ -1,19 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 ///
 /// @file rt_basic_completion.cpp
-/// @brief extern "C" bridge exposing the Viper BASIC IDE engines (diagnostics,
-///        completion, …) to the runtime as `Viper.Basic.*`, mirroring the Zia
+/// @brief extern "C" bridge exposing the Zanna BASIC IDE engines (diagnostics,
+///        completion, …) to the runtime as `Zanna.Basic.*`, mirroring the Zia
 ///        bridge (src/frontends/zia/rt_zia_completion.cpp).
 ///
 /// Lives in fe_basic so it can call parseAndAnalyzeBasic / BasicCompletionEngine
 /// without putting editor entry points in the runtime. The rt_string / rt_map /
-/// rt_seq symbols are declared here but implemented in viper_runtime; they
-/// resolve at final link when the binary links both fe_basic and viper_runtime.
+/// rt_seq symbols are declared here but implemented in zanna_runtime; they
+/// resolve at final link when the binary links both fe_basic and zanna_runtime.
 /// Weak stubs in src/runtime/core/rt_basic_completion_stub.c cover binaries that
 /// omit fe_basic. Result shapes are identical to the Zia bridge so the IDE
 /// controllers consume both. See docs/adr/0014-basic-language-service-runtime-bridge.md.

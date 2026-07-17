@@ -29,7 +29,7 @@
 - **Goal:** Implement **Part A** (recommendations #1–#14) of the XENOSCAPE review: a visual overhaul with a cinematic-atmospheric **menu** as the centerpiece, plus gameplay visual upgrades.
 - **Done so far:** Reviewed the demo, verified APIs in `runtime.def` **and against the C headers/impl**, confirmed the build path, and resolved every "RE-VERIFY" caveat (see §0.1). Created 5 tracking tasks. **Wrote zero code.**
 - **Next concrete action:** record the **baseline commit SHA** (§9.0), run the **baseline build** (§1) to confirm the demo compiles *before* editing, then start **Batch 0/1** (§7).
-- **Hard rules (from CLAUDE.md / memory):** Write ALL code yourself — **never use agents to write code**. Don't commit unless asked. Zero external deps. 100% cross-platform. Bind `Viper.*` namespaces at the top of each file. User is visually impaired → **dark/high-contrast only**, and verification must not rely solely on eyesight (§9).
+- **Hard rules (from CLAUDE.md / memory):** Write ALL code yourself — **never use agents to write code**. Don't commit unless asked. Zero external deps. 100% cross-platform. Bind `Zanna.*` namespaces at the top of each file. User is visually impaired → **dark/high-contrast only**, and verification must not rely solely on eyesight (§9).
 
 ### 0.1 Validation pass — what changed in this revision (2026-05-28)
 
@@ -49,18 +49,18 @@ This plan was validated end-to-end against `src/il/runtime/runtime.def`, the C h
 
 ```sh
 # Frontend compile check (Zia -> IL). This is the fast inner-loop check.
-build/src/tools/viper/viper build examples/games/xenoscape -o /tmp/xeno.il
+build/src/tools/zanna/zanna build examples/games/xenoscape -o /tmp/xeno.il
 
 # Full build of all demos (frontend -> IL -> native arm64 exe), optional smoke-run:
 ./scripts/build_demos_mac.sh            # build only (default = --skip-run)
 ./scripts/build_demos_mac.sh --run      # build + launch EACH demo ~5s
 ```
 
-- `viper` binary: `build/src/tools/viper/viper` (already built; reports `v0.2.6-snapshot`). **VERIFIED.**
-- `viper build <target> -o out.il` accepts a directory / `viper.project` and emits IL text without native link — confirmed via `viper --help`. **VERIFIED.**
-- Project manifest: `examples/games/xenoscape/viper.project` → `lang zia`, `entry main.zia`. **VERIFIED.**
-- Build script: `./scripts/build_demos_mac.sh` exists, is xenoscape-aware (lists `xenoscape:${GAMES_DIR}/xenoscape`), default is build-only, `--run` launches **every** demo ~5s each (slow — prefer the frontend-only check for iteration). CLAUDE.md's generic `./scripts/build_demos.sh` also exists; `build_demos_mac.sh` is the macOS/arm64-specific one and runs the same `viper build <dir> -o` under the hood. Either is valid; this plan uses the mac script. **VERIFIED, no conflict.**
-- The MCP tools `zia_check` / `zia_compile` work on a single source string, but XENOSCAPE spans ~30 files with cross-file `bind`s, so **whole-project `viper build` is the real check** — prefer it.
+- `zanna` binary: `build/src/tools/zanna/zanna` (already built; reports `v0.2.6-snapshot`). **VERIFIED.**
+- `zanna build <target> -o out.il` accepts a directory / `zanna.project` and emits IL text without native link — confirmed via `zanna --help`. **VERIFIED.**
+- Project manifest: `examples/games/xenoscape/zanna.project` → `lang zia`, `entry main.zia`. **VERIFIED.**
+- Build script: `./scripts/build_demos_mac.sh` exists, is xenoscape-aware (lists `xenoscape:${GAMES_DIR}/xenoscape`), default is build-only, `--run` launches **every** demo ~5s each (slow — prefer the frontend-only check for iteration). CLAUDE.md's generic `./scripts/build_demos.sh` also exists; `build_demos_mac.sh` is the macOS/arm64-specific one and runs the same `zanna build <dir> -o` under the hood. Either is valid; this plan uses the mac script. **VERIFIED, no conflict.**
+- The MCP tools `zia_check` / `zia_compile` work on a single source string, but XENOSCAPE spans ~30 files with cross-file `bind`s, so **whole-project `zanna build` is the real check** — prefer it.
 - Build in **batches**, not after every function (per user preference). Build at each batch boundary in §7.
 
 ---
@@ -90,7 +90,7 @@ build/src/tools/viper/viper build examples/games/xenoscape -o /tmp/xeno.il
 
 Mood-first; replaces flat gradient + `drawStarfield` (`menu.zia:360`), static title bounce (`menu.zia:300-307`), and instant screen cuts (`menu.zia:198` + recurring siblings, see §5).
 
-- **4-layer parallax backdrop** (`Camera.AddParallax`): (1) deep-space nebula gradient — `Pixels` filled via `Viper.Math.PerlinNoise.Noise2D`, very slow drift; (2) twinkling starfield (per-star alpha via `Tween`); (3) distant alien ridge silhouette (medium); (4) foreground rocks + lone astronaut silhouette with subtle sway. Advance the menu `Camera` slowly each frame (`camera.Move(...)`) so layers scroll. **Build each layer `Pixels` once at init** (perf, §6.6).
+- **4-layer parallax backdrop** (`Camera.AddParallax`): (1) deep-space nebula gradient — `Pixels` filled via `Zanna.Math.PerlinNoise.Noise2D`, very slow drift; (2) twinkling starfield (per-star alpha via `Tween`); (3) distant alien ridge silhouette (medium); (4) foreground rocks + lone astronaut silhouette with subtle sway. Advance the menu `Camera` slowly each frame (`camera.Move(...)`) so layers scroll. **Build each layer `Pixels` once at init** (perf, §6.6).
 - **Title reveal:** "XENOSCAPE" letters fade+rise staggered via `Tween`+`EASE_OUT_EXPO` (= 11); soft additive bloom behind (blurred `Pixels` + additive `Renderer2D`, blend mode 2). **Pre-blur the title bloom once** — it is static (perf). "the descent" fades in last.
 - **Sparse menu:** PLAY / CONTINUE / OPTIONS / QUIT, centered; selected item brightens via `Color.Brighten(c, pct)` or `Color.Lerp(a, b, pct)` (**`pct` is an i64 0–100**); thin underline glides via `SmoothValue` (drive its `Target`, read `Value`/`ValueI64`); soft SFX on move/confirm.
 - **Transitions:** select → `ScreenFX.CircleOut`/`FadeOut` into next screen; back → `FadeIn`. Ambient: low-rate `ParticleEmitter` dust; occasional low-alpha `ScreenFX.Flash` (distant lightning). Optional idle attract mode: slow parallax pan + a `Typewriter` lore line.
@@ -104,7 +104,7 @@ Mood-first; replaces flat gradient + `drawStarfield` (`menu.zia:360`), static ti
 
 All signatures below were read from `runtime.def` and cross-checked against the C headers/impl. **No remaining "RE-VERIFY" items** — the easing/ScreenFX constant tables are now sourced from the canonical enums.
 
-**Camera — `Viper.Graphics.Camera`** (RT_FUNC table `runtime.def:1654-1682`; **class block `runtime.def:8033-8058`** ← method/prop signatures live here)
+**Camera — `Zanna.Graphics.Camera`** (RT_FUNC table `runtime.def:1654-1682`; **class block `runtime.def:8033-8058`** ← method/prop signatures live here)
 - `New(width:i64, height:i64) -> Camera`
 - `Follow(x,y)`, `Move(dx,dy)`, `SetCenter(x,y)`, `SmoothFollow(targetX,targetY,speed)`, `SetDeadzone(w,h)` — all `i64`
 - props: `X`/`Y`/`Zoom` (read+write `i64`); `Width`/`Height`/`CenterX`/`CenterY`/`ParallaxCount`/`Rotation` (read-only)
@@ -112,14 +112,14 @@ All signatures below were read from `runtime.def` and cross-checked against the 
 - `AddParallax(pixels:obj, scrollXpct:i64, scrollYpct:i64) -> i64` (layer id). **Scroll args are PERCENT** of camera speed: 100 = moves with camera, 50 = half, 0 = static. (Source: `rt_camera.h:198-204`.)
 - `RemoveParallax(id)`, `ClearParallax()`, `DrawParallax(canvas:obj) -> i64` (returns # layers drawn)
 
-**Tween — `Viper.Game.Tween`** (class block `runtime.def:10329-10348`)
+**Tween — `Zanna.Game.Tween`** (class block `runtime.def:10329-10348`)
 - `New()`; props (all read-only): `Value:f64`, `ValueI64:i64`, `IsRunning/IsComplete/IsPaused:i1`, `Progress/Elapsed/Duration:i64`
 - `Start(from:f64, to:f64, durationFrames:i64, easingType:i64)`, `StartI64(from:i64, to:i64, durationFrames:i64, easingType:i64)` — **durations are FRAMES** (`rt_tween.h:76`), not ms
 - `Update() -> i1` — **NO argument**, advances exactly one frame, returns 1 on the frame it completes (`rt_tween.h:93`)
 - `Stop()`, `Reset()`, `Pause()`, `Resume()`
 - **statics (confirmed present at 10346-10347):** `LerpI64(from:i64, to:i64, t:f64) -> i64`, `Ease(t:f64, easingType:i64) -> f64`
 
-**ScreenFX — `Viper.Game.ScreenFX`** (class block `runtime.def:12012-12034`)
+**ScreenFX — `Zanna.Game.ScreenFX`** (class block `runtime.def:12012-12034`)
 - `New()`; props (all read-only): `IsActive/IsFinished:i1`, `ShakeX/ShakeY:i64`, `OverlayColor/OverlayAlpha:i64`, `TransitionProgress:i64`
 - `Update(dt:i64)` — **dt in milliseconds** (`rt_screenfx.h:76`: "fixed-point seconds, 1000 = 1 second"; numerically = ms). `Draw(canvas:obj, w:i64, h:i64)`
 - `Shake(intensity:i64, durationMs:i64, decay:i64)` — **3rd arg is a decay RATE [0,1000]** (0 = no decay, 1000 = instant), NOT ms (`rt_screenfx.h:89-91`). intensity is fixed-point px (1000 = 1px).
@@ -133,39 +133,39 @@ All signatures below were read from `runtime.def` and cross-checked against the 
 
 **Easing-type constants** — ✅ VERIFIED authoritative (`src/runtime/game/rt_tween.h:34-55`, `rt_ease_type_t`). This enum has **NO Quart/Circ/Elastic** and is the enum consumed by `Tween.Start`/`StartI64`/`Ease`:
 LINEAR=0, IN_QUAD=1, OUT_QUAD=2, IN_OUT_QUAD=3, IN_CUBIC=4, OUT_CUBIC=5, IN_OUT_CUBIC=6, IN_SINE=7, OUT_SINE=8, IN_OUT_SINE=9, IN_EXPO=10, **OUT_EXPO=11**, IN_OUT_EXPO=12, IN_BACK=13, OUT_BACK=14, IN_OUT_BACK=15, IN_BOUNCE=16, **OUT_BOUNCE=17**, IN_OUT_BOUNCE=18 (COUNT=19).
-> ⚠️ Do **not** confuse this with the separate `Viper.Math.Easing` class (`runtime.def:11097+`), which exposes *named* methods (InQuart/OutCirc/OutElastic/…) at different indices. The integer `easingType` arg is ONLY the `rt_ease_type_t` value above.
+> ⚠️ Do **not** confuse this with the separate `Zanna.Math.Easing` class (`runtime.def:11097+`), which exposes *named* methods (InQuart/OutCirc/OutElastic/…) at different indices. The integer `easingType` arg is ONLY the `rt_ease_type_t` value above.
 > 🐞 **Latent bug to fix:** `config.zia:780` `EASE_OUT_ELASTIC = 16` → no elastic exists; 16 is `IN_BOUNCE`. `config.zia:781` `EASE_OUT_BOUNCE = 18` → wrong; out-bounce is **17** (18 is `IN_OUT_BOUNCE`). Fix `EASE_OUT_BOUNCE = 17` and remove/remap `EASE_OUT_ELASTIC` (closest springy curve is `OUT_BACK = 14`). Grep for current uses before changing.
 
-**Pixels — `Viper.Graphics.Pixels`** (class block `runtime.def:7879+`)
+**Pixels — `Zanna.Graphics.Pixels`** (class block `runtime.def:7879+`)
 - `New(w:i64, h:i64)`; `Fill(color:i64)`, `Clear()` ← **needed for parallax/procedural layer authoring (plan previously omitted these)**
 - `Blur(radius:i64) -> obj` (returns a **NEW** buffer — does not mutate in place), `Tint(color:i64) -> obj`, `Clone() -> obj`
 - `Set(x,y,color)`, `Get(x,y) -> color`, `Scale(newWidth:i64, newHeight:i64) -> obj` (**two dims**, not a single factor)
 - `LoadPng(path:str) -> obj` (also `Load`/`LoadBmp`/`LoadJpeg`/`LoadGif`)
 - in-place primitives also available for procedural art: `DrawDisc`/`DrawBox`/`DrawLine`/`DrawTriangle`/`FloodFill`/`BlendPixel`/`Resize`/`FlipH`/`FlipV`
 
-**Renderer2D — `Viper.Graphics.Renderer2D`** (class block `runtime.def:8182`)
+**Renderer2D — `Zanna.Graphics.Renderer2D`** (class block `runtime.def:8182`)
 - `New(maxDrawCalls:i64)`, `Begin()`, `End(canvas:obj)`, `SetTint(c:i64)`, `SetAlpha(a:i64)` (0–255)
 - `SetBlendMode(mode:i64)` — ✅ `0=alpha, 1=opaque, 2=additive` (confirmed `rt_graphics2d.h:57-59`)
 - `DrawPixels(pixels:obj, x:i64, y:i64)`
 
-**Color — `Viper.Graphics.Color`** (static, class block `runtime.def:7845+`)
+**Color — `Zanna.Graphics.Color`** (static, class block `runtime.def:7845+`)
 - `RGB(r,g,b) -> i64`, `RGBA(r,g,b,a) -> i64`
 - `Lerp(c1:i64, c2:i64, t:i64) -> i64` — **`t` is an integer PERCENT 0–100** (clamped), NOT a float
 - `Brighten(c:i64, amt:i64) -> i64`, `Darken(c:i64, amt:i64) -> i64` — **`amt` is integer percent 0–100**
 - `FromHSL(h:i64, s:i64, l:i64) -> i64` — **all i64** (verify h/s/l ranges in `rt_drawing_advanced.c:1576` before procedural use)
 - `GetR/G/B/A(c:i64) -> i64` (also `GetH/GetS/GetL`)
 
-**SmoothValue — `Viper.Game.SmoothValue`** (class block `runtime.def:10370`)
+**SmoothValue — `Zanna.Game.SmoothValue`** (class block `runtime.def:10370`)
 - `New(initial:f64, smoothing:f64)` — **2nd arg is the smoothing factor in `[0.0, 0.999]`** (higher = slower; 0 = snap). NOT "damping".
 - `Update()` — **NO argument; frame-based** exponential smoothing (`current = current*smoothing + target*(1-smoothing)`)
 - **`Target:f64` is a read+write PROPERTY** — set via `sv.Target = x` (there is **no `SetTarget` method**)
 - `Value:f64` (read-only), `ValueI64:i64` (read-only, rounded — use for pixel coords)
 
-**ParticleEmitter — `Viper.Game.ParticleEmitter`** (class block `runtime.def:10383`)
+**ParticleEmitter — `Zanna.Game.ParticleEmitter`** (class block `runtime.def:10383`)
 - `New(max:i64)`, `Burst(n:i64)`, `SetPosition(f64,f64)`, `SetLifetime(i64,i64)`, `SetVelocity(f64,f64,f64,f64)`, `SetGravity(f64,f64)`, `Start()`, `Stop()`, `Update()`
 - `Draw(canvas:obj) -> i64` (**returns count drawn**, not void); also `DrawAt(obj,i64,i64)`, `DrawToPixels(obj,i64,i64)`
 
-**Lighting2D — `Viper.Game.Lighting2D`** (class block `runtime.def:12138-12148`) — ⚠️ **corrected surface**
+**Lighting2D — `Zanna.Game.Lighting2D`** (class block `runtime.def:12138-12148`) — ⚠️ **corrected surface**
 - `New(maxLights:i64)`
 - props: `Darkness:i64` (0..255, read+write), `TintColor:i64` (read+write), `LightCount:i64` (read-only)
 - `SetPlayerLight(radius:i64, color:i64)`, `AddLight(x:i64, y:i64, radius:i64, color:i64, lifetimeFrames:i64)`, `AddTileLight(x:i64, y:i64, radius:i64, color:i64)`, `ClearLights()`, `Update()`, `Draw(canvas:obj, camX:i64, camY:i64, playerScreenX:i64, playerScreenY:i64)`
@@ -173,10 +173,10 @@ LINEAR=0, IN_QUAD=1, OUT_QUAD=2, IN_OUT_QUAD=3, IN_CUBIC=4, OUT_CUBIC=5, IN_OUT_
 
 **Other classes (constructors are non-trivial — note the args):**
 - `Gradient2D` (`runtime.def:8447`): `New(i64,i64,i64)`; `SetColors(i64,i64)`, `SetSteps(i64)`, `Sample(i64)->i64`, `SampleRGBA(i64)->i64`, `FillHorizontal(obj)`, `FillVertical(obj)`
-- `NineSlice2D` (`Viper.Graphics`, ctor `runtime.def:1943`): `New(obj,i64,i64,i64,i64)`, `DrawToPixels(obj,i64,i64,i64,i64)`. Also `Viper.Game.UI.HudNineSlice` (ctor `5654`): `New(obj,i64,i64,i64,i64)`, prop `Tint`, `Draw(obj,i64,i64,i64,i64)`
+- `NineSlice2D` (`Zanna.Graphics`, ctor `runtime.def:1943`): `New(obj,i64,i64,i64,i64)`, `DrawToPixels(obj,i64,i64,i64,i64)`. Also `Zanna.Game.UI.HudNineSlice` (ctor `5654`): `New(obj,i64,i64,i64,i64)`, prop `Tint`, `Draw(obj,i64,i64,i64,i64)`
 - `Game.UI.GameButton` (ctor `5909`): `New(x,y,w,h,text:str)`; `SetText`/`SetSize`/`SetColors`/`SetTextColors`/`SetBorder`, `Draw(obj,i1)`
 - `Material2D` (`runtime.def:8200`): `New()`; props `Tint/Alpha/BlendMode`, `Apply(obj)->obj`. `Shader2D` (`runtime.def:8207`): `New(effect:i64)`; props `Effect/Amount/Color`, `Apply(obj)->obj`
-- `PerlinNoise` (`Viper.Math`, `runtime.def:11089`): `New(seed:i64)`; `Noise2D(f64,f64)->f64`, `Noise3D(f64,f64,f64)->f64`. ⚠️ `Octave2D`/`Octave3D` are registered as RT_FUNCs but are **absent from the class method table** — they may NOT be callable as instance methods. Use `Noise2D` for the nebula layer (loop octaves yourself if needed).
+- `PerlinNoise` (`Zanna.Math`, `runtime.def:11089`): `New(seed:i64)`; `Noise2D(f64,f64)->f64`, `Noise3D(f64,f64,f64)->f64`. ⚠️ `Octave2D`/`Octave3D` are registered as RT_FUNCs but are **absent from the class method table** — they may NOT be callable as instance methods. Use `Noise2D` for the nebula layer (loop octaves yourself if needed).
 
 ---
 
@@ -184,14 +184,14 @@ LINEAR=0, IN_QUAD=1, OUT_QUAD=2, IN_OUT_QUAD=3, IN_CUBIC=4, OUT_CUBIC=5, IN_OUT_
 
 | File | Lines | Relevant anchors / role (✅ verified / ✏️ corrected) |
 |------|------|--------------------------|
-| `menu.zia` | 1212 | `class MenuSystem` @ **83**. `MenuList` field decls **88-91**; `ButtonGroup` fields **84-87**; ctor `init(p: Palette)` **103-167** (the old "fields 88-149" label conflated decls + ctor body). `drawTitle` **273-341** (bounce **300-307**, text/glow **310-315**); `drawStarfield` **360-370**; `drawMenuOption` **345-357** (instant `BoxAlpha` highlight @ **351** — #5 target). **Instant state returns recur at: `updateTitle` 193-202 (the `198` anchor), `updateLevelSelect` 230-233, `updatePause` 387-390, `updateGameOver` 416-419** — #3 must hit ALL of them. `drawLevelComplete` **455-491 is WIRED** (called `game.zia:1093`) — NOT orphaned. **Orphaned (zero callers): `drawVictoryScreen` 744, `drawEnhancedPause` 804, `drawEnhancedLevelComplete` 927.** Live pause = `drawPause` **396** + `updatePause` **377**. Binds **64-72**: Graphics/Input/Text.Fmt/IO/Game/Game.UI + `./config`/`./palette`/`./sprites`. **`Viper.Math` NOT bound** (add for PerlinNoise). Navigation = `MenuList.HandleInput(up,down,confirm)->index`; **fires no SFX** — see §7 Batch 3. |
+| `menu.zia` | 1212 | `class MenuSystem` @ **83**. `MenuList` field decls **88-91**; `ButtonGroup` fields **84-87**; ctor `init(p: Palette)` **103-167** (the old "fields 88-149" label conflated decls + ctor body). `drawTitle` **273-341** (bounce **300-307**, text/glow **310-315**); `drawStarfield` **360-370**; `drawMenuOption` **345-357** (instant `BoxAlpha` highlight @ **351** — #5 target). **Instant state returns recur at: `updateTitle` 193-202 (the `198` anchor), `updateLevelSelect` 230-233, `updatePause` 387-390, `updateGameOver` 416-419** — #3 must hit ALL of them. `drawLevelComplete` **455-491 is WIRED** (called `game.zia:1093`) — NOT orphaned. **Orphaned (zero callers): `drawVictoryScreen` 744, `drawEnhancedPause` 804, `drawEnhancedLevelComplete` 927.** Live pause = `drawPause` **396** + `updatePause` **377**. Binds **64-72**: Graphics/Input/Text.Fmt/IO/Game/Game.UI + `./config`/`./palette`/`./sprites`. **`Zanna.Math` NOT bound** (add for PerlinNoise). Navigation = `MenuList.HandleInput(up,down,confirm)->index`; **fires no SFX** — see §7 Batch 3. |
 | `game.zia` | 1499 | God object. Binds **107-138**. Subsystem init + palette injection **266-284** (`pal = new Palette()` @ 267; `menus = new MenuSystem(pal)` @ **279** — palette stored in `menu.zia:103`). `run()` main loop **349-397** (loop body **354-396**; `dt = canvas.DeltaTime` @ **355**; `SetFps(60)` @ 351, `SetDTMax` @ 352). `updateMenu` **480-505** (`updateTitle` 481, `drawTitle` 482 — **takes NO `dt`**; ScreenFX wiring point). `updatePlaying` **554-719**. Kill flash **697-711** (inline `Color.RGB` @ **704, 705, 708**). `drawLevelIntro` def **723-746**, call **714-718**. `renderObj.update(dt)`→`fx.Update(dt)` is called ONLY in gameplay (**603, 996**), never in the menu. |
 | `camera.zia` | 1219 | `drawBackground` **189**; `drawGrasslandsBiome` **233**, `drawStationBiome` **269**; `drawBiomeBackground` **984**, `drawBiomeParticles` **1191**. Hand-draws all biomes (#9 target). Binds **70-76**. Already driven by `camera.updateBg(dt)` (called `game.zia:588`) — #9 parallax must integrate with that existing dt path, not a parallel one. |
-| `renderer.zia` | 891 | **`ScreenFX` already lives here:** `bind Viper.Game.ScreenFX as FX` @ **80**, `fx = FX.New()` @ **117**, `fx.Update(dt)` @ **232/234**, Fade/Circle wrappers **171-194**. Bevel overlay **built** @ **123-136**, **applied** @ **359-366** (already excludes VINE/CHECKPOINT/LAVA/CLOUD — #13 insertion point). `renderPlaying` **259-319** is the single draw-order authority (bg/parallax 273 → tiles 276 → ambient 279 → pickups 282 → player 286 → enemies 292 → projectiles 295 → particles 298 → HUD 301 → overlay 313) — #11 bloom pass inserts before the screen overlay (313). |
-| `palette.zia` | 391 | `class Palette` @ **62**, ~160 `expose Integer` color fields **63-222**, populated in `init()` @ **229**; binds `Viper.Graphics.Color` @ 48. Add derived-color helpers here for #12. |
-| `sound.zia` | 521 | `class SoundManager` @ **70** wraps `Viper.Audio.SoundBank` (bind @ 60); `setup(basePath)` @ **100** registers WAVs **110-121** with Synth fallback **125-160**. **`menu_move` + `menu_select` already exist** (`playMenuMove` @ **367**, `playMenuSelect` @ **361**). Only **`menuBack`** is new for #6. `gen_sounds.c` (11 KB) generates 12 WAVs in `sounds/` (no `menu_back.wav` yet). |
+| `renderer.zia` | 891 | **`ScreenFX` already lives here:** `bind Zanna.Game.ScreenFX as FX` @ **80**, `fx = FX.New()` @ **117**, `fx.Update(dt)` @ **232/234**, Fade/Circle wrappers **171-194**. Bevel overlay **built** @ **123-136**, **applied** @ **359-366** (already excludes VINE/CHECKPOINT/LAVA/CLOUD — #13 insertion point). `renderPlaying` **259-319** is the single draw-order authority (bg/parallax 273 → tiles 276 → ambient 279 → pickups 282 → player 286 → enemies 292 → projectiles 295 → particles 298 → HUD 301 → overlay 313) — #11 bloom pass inserts before the screen overlay (313). |
+| `palette.zia` | 391 | `class Palette` @ **62**, ~160 `expose Integer` color fields **63-222**, populated in `init()` @ **229**; binds `Zanna.Graphics.Color` @ 48. Add derived-color helpers here for #12. |
+| `sound.zia` | 521 | `class SoundManager` @ **70** wraps `Zanna.Audio.SoundBank` (bind @ 60); `setup(basePath)` @ **100** registers WAVs **110-121** with Synth fallback **125-160**. **`menu_move` + `menu_select` already exist** (`playMenuMove` @ **367**, `playMenuSelect` @ **361**). Only **`menuBack`** is new for #6. `gen_sounds.c` (11 KB) generates 12 WAVs in `sounds/` (no `menu_back.wav` yet). |
 | `hud.zia` | 418 | `drawDamageNumber` **368-383** is **fully implemented** (upward float + alpha fade + crit gold/normal white) but has **ZERO callers** — #14 = wire it into damage/score event sites (+ maybe a score variant), not "implement". |
-| `lighting.zia` | 249 | `class LightingSystem` @ **144**, bind `Viper.Game` @ 82. `initLighting(p)` @ **160** (`lit = Lighting2D.New(MAX_DYN_LIGHTS)` @ 162, `Darkness`/`TintColor`/`SetPlayerLight` 163-165). Transient `addLight`→`AddLight` @ **190**; tile `drawTileLight`→`AddTileLight` @ **226**; flash helpers **230-248**. #10 reframed (§7). |
+| `lighting.zia` | 249 | `class LightingSystem` @ **144**, bind `Zanna.Game` @ 82. `initLighting(p)` @ **160** (`lit = Lighting2D.New(MAX_DYN_LIGHTS)` @ 162, `Darkness`/`TintColor`/`SetPlayerLight` 163-165). Transient `addLight`→`AddLight` @ **190**; tile `drawTileLight`→`AddTileLight` @ **226**; flash helpers **230-248**. #10 reframed (§7). |
 | `particles.zia` | 604 | `class ParticleSystem` @ **80**, `emitter = PE.New(256)` @ **89**. Bright-FX bursts: `burstSpark` 151, `burstDeath` 179, `burstEnemyDeath` 236, `burstBossIntro` 312 — #11 bloom attaches at these emit sites. |
 | `config.zia` | 832 | `module config` @ 75; 562 module-scope `final`s. **`EASE_*` ALREADY EXIST** @ **775-781** (used by `hud.zia:269`) — extend, don't re-add; **fix the two bugged values (§4).** `TRANS_*_MS` timing block @ **794-801** (`TRANS_FADE_MS=300`, etc.). No `SCREENFX_*` constants yet (genuinely new). Proof `final` holds int literals at module scope: `SCREEN_W=1280` @ 80, `TILE_SIZE=64` @ 82. |
 
@@ -199,7 +199,7 @@ LINEAR=0, IN_QUAD=1, OUT_QUAD=2, IN_OUT_QUAD=3, IN_CUBIC=4, OUT_CUBIC=5, IN_OUT_
 
 ## 6. Zia gotchas (from project memory — READ BEFORE CODING)
 
-- **Bind namespaces at top of every file** (e.g. `bind Viper.Graphics;`); never inline `Viper.X.Y.method()`. **Add `bind Viper.Math;` to `menu.zia` if you use `PerlinNoise`** (not currently bound).
+- **Bind namespaces at top of every file** (e.g. `bind Zanna.Graphics;`); never inline `Zanna.X.Y.method()`. **Add `bind Zanna.Math;` to `menu.zia` if you use `PerlinNoise`** (not currently bound).
 - `var items: List[Integer] = [];` (not `List[Integer].New()`).
 - Params are `name: Type` (e.g. `func f(a: Integer, b: Integer)`). Range loops: `for i in 0..10` (double-dot).
 - `final` **can** hold integer literals at module scope (proof: `config.zia:80`); it **cannot** hold `Color.RGB(...)` (runtime fn) → use class fields / palette object instead. `hide final` is NOT valid inside class bodies — module scope only.
@@ -207,7 +207,7 @@ LINEAR=0, IN_QUAD=1, OUT_QUAD=2, IN_OUT_QUAD=3, IN_CUBIC=4, OUT_CUBIC=5, IN_OUT_
 - Keyword change already in tree: `entity`→`class`, `value`→`struct`.
 - Zia emits overflow arithmetic (`IAddOvf` etc.) by default.
 - Canvas immediate-mode API: `New(title,w,h)`, `Poll/Flip/Clear/Box/Disc/Ring/Frame/Line/Text` (+ scaled/centered text variants, `DiscAlpha`, `BoxAlpha`, `GradientV/H`). `canvas.DeltaTime` is `i64` **milliseconds** (clamped by `SetDTMax`).
-- `#ifdef VIPER_ENABLE_GRAPHICS`: not relevant to Zia game code, but if you ever touch `rt_canvas_*` C stubs, add BOTH real impl and stub.
+- `#ifdef ZANNA_ENABLE_GRAPHICS`: not relevant to Zia game code, but if you ever touch `rt_canvas_*` C stubs, add BOTH real impl and stub.
 
 ### 6.5 ⏱️ Timing model (NEW — read before Batch 1)
 
@@ -242,7 +242,7 @@ The demo runs `canvas.SetFps(60)` (`game.zia:351`) and computes `dt = canvas.Del
 - Add derived-color helpers to `palette.zia` (`Color.Lerp`/`Brighten`/`Darken` — remember **`t`/`amt` are i64 0–100**, not floats). The menu selection highlight (Batch 3) depends on these, so they must land before Batch 3.
 - Fix the two bugged easing constants in `config.zia`: `EASE_OUT_BOUNCE = 17`; remove or remap `EASE_OUT_ELASTIC` (→ `OUT_BACK = 14`). Grep current uses first.
 - (Defer the bulk ~970-call `Color.RGB` migration — start with the kill flash `game.zia:704-711` as a sample; the full migration is Large and can trail the menu work.)
-- **Build.** ✅ *Done when:* `viper build` clean; helpers callable from a throwaway call in `palette.zia`.
+- **Build.** ✅ *Done when:* `zanna build` clean; helpers callable from a throwaway call in `palette.zia`.
 
 **Batch 1 — Menu animation foundation + logo (#2, #4) + dt plumbing**
 - Thread `dt` into the menu update path (§6.5): `updateMenu` reads `dt` (in scope @ `game.zia:355`) and passes it down (`menus.tick(dt)` or `menus.updateTitle(dt)`).
@@ -299,7 +299,7 @@ Created in the paused session (IDs may reset after restart — recreate if missi
 **9.0 Baseline (do FIRST, before any edit):** record the current `git rev-parse HEAD` SHA (and/or branch off it) so any regression can be diff'd/reverted. Do NOT commit unless the user asks — just note the SHA here.
 
 **9.1 Build gates (per batch):**
-- [ ] `build/src/tools/viper/viper build examples/games/xenoscape -o /tmp/xeno.il` succeeds (frontend clean) — run at **every** batch boundary.
+- [ ] `build/src/tools/zanna/zanna build examples/games/xenoscape -o /tmp/xeno.il` succeeds (frontend clean) — run at **every** batch boundary.
 - [ ] `./scripts/build_demos_mac.sh` builds xenoscape to native exe with no errors (end of Batch 5).
 - [ ] `--run` smoke check launches without crash.
 
@@ -310,6 +310,6 @@ Created in the paused session (IDs may reset after restart — recreate if missi
 **9.3 Behavioral / regression:**
 - [ ] Menu shows: parallax drift, logo fade-in, eased selection, deferred screen transitions, SFX (move/confirm/back).
 - [ ] No regressions in gameplay rendering (kill flash, HUD, biome backgrounds); existing `EASE_*` users (`hud.zia:269`) still animate correctly after the constant fix.
-- [ ] All edits keep `bind` discipline (incl. new `Viper.Math` bind if PerlinNoise used); dark/high-contrast preserved.
+- [ ] All edits keep `bind` discipline (incl. new `Zanna.Math` bind if PerlinNoise used); dark/high-contrast preserved.
 - [ ] Performance: bloom/parallax layers built at init (not per frame); bloom/lighting toggleable.
 - [ ] Do NOT commit unless the user asks.

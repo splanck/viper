@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,8 +32,8 @@
 #include <iostream>
 #include <sstream>
 
-using namespace viper::codegen::linker;
-using namespace viper::codegen::objfile;
+using namespace zanna::codegen::linker;
+using namespace zanna::codegen::objfile;
 
 static int gFail = 0;
 
@@ -1216,18 +1216,18 @@ int main() {
         CHECK(err.str().find("multiply defined symbol 'fprintf'") != std::string::npos);
     }
 
-    // --- Viper runtime archives may provide Windows shim duplicates ---
+    // --- Zanna runtime archives may provide Windows shim duplicates ---
     {
         auto user = makeObj("user.obj", {".text"});
         addSymbol(user, "main", 1, ObjSymbol::Global);
         addSymbol(user, "fprintf", 1, ObjSymbol::Global);
         addSymbol(user, "need_archive", 0, ObjSymbol::Undefined);
 
-        auto memberBytes = writeElfObjectWithGlobals("build/test-out/viper_runtime_shim.o",
+        auto memberBytes = writeElfObjectWithGlobals("build/test-out/zanna_runtime_shim.o",
                                                      {"need_archive", "fprintf"});
 
         Archive archive;
-        archive.path = "viper_rt_base.lib";
+        archive.path = "zanna_rt_base.lib";
         archive.data = memberBytes;
         archive.members.push_back({"shim.o", 0, memberBytes.size()});
         archive.symbolIndex["need_archive"] = 0;
@@ -1438,10 +1438,10 @@ int main() {
         };
 
         std::string diagnostic;
-        CHECK(runWithArchivePath("C:/viper/lib/viper_rt_base.lib", diagnostic));
+        CHECK(runWithArchivePath("C:/zanna/lib/zanna_rt_base.lib", diagnostic));
         CHECK(diagnostic.empty());
 
-        CHECK(!runWithArchivePath("C:/work/viper_rt_shadow/user.lib", diagnostic));
+        CHECK(!runWithArchivePath("C:/work/zanna_rt_shadow/user.lib", diagnostic));
         CHECK(diagnostic.find("multiply defined symbol") != std::string::npos);
     }
 

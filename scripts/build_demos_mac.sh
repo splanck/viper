@@ -13,7 +13,7 @@ BUILD_DIR="$ROOT_DIR/build"
 BIN_DIR="$ROOT_DIR/examples/bin"
 DEMO_MANIFEST="$SCRIPT_DIR/demo_projects.list"
 
-VIPER="$BUILD_DIR/src/tools/viper/viper"
+ZANNA="$BUILD_DIR/src/tools/zanna/zanna"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -52,9 +52,9 @@ for arg in "$@"; do
     esac
 done
 
-if [[ ! -x "$VIPER" ]]; then
-    echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper_mac.sh' first"
+if [[ ! -x "$ZANNA" ]]; then
+    echo -e "${RED}Error: zanna tool not found at $ZANNA${NC}"
+    echo "Run './scripts/build_zanna_mac.sh' first"
     exit 1
 fi
 
@@ -65,7 +65,7 @@ if [[ $CLEAN -eq 1 ]]; then
     rm -f "$BIN_DIR"/*
 fi
 
-RUN_TIMEOUT_DEFAULT="${VIPER_DEMO_TIMEOUT:-5}"
+RUN_TIMEOUT_DEFAULT="${ZANNA_DEMO_TIMEOUT:-5}"
 RUN_DEMO_RC=0
 
 SHOWCASE_DEMOS=()
@@ -132,7 +132,7 @@ run_demo() {
     fi
 
     case "$name" in
-        3dbowling|ridgebound|vipersql|xenoscape)
+        3dbowling|ridgebound|zannasql|xenoscape)
             timeout_secs=10
             ;;
     esac
@@ -174,15 +174,15 @@ build_demo() {
     local name="$1"
     local project_dir="$2"
     local exe_file="$BIN_DIR/${name}"
-    local tmp_base="/tmp/viper_demo_${name}_$$"
+    local tmp_base="/tmp/zanna_demo_${name}_$$"
     local il_file="${tmp_base}.il"
     local frontend_err="${tmp_base}.front.err"
     local codegen_err="${tmp_base}.codegen.err"
     local run_out="${tmp_base}.run.out"
     local run_err="${tmp_base}.run.err"
 
-    if [[ ! -f "$project_dir/viper.project" ]]; then
-        echo -e "${RED}  Error: No viper.project found in $project_dir${NC}"
+    if [[ ! -f "$project_dir/zanna.project" ]]; then
+        echo -e "${RED}  Error: No zanna.project found in $project_dir${NC}"
         return 1
     fi
 
@@ -191,15 +191,15 @@ build_demo() {
     # crackman down to -O0 have been fixed in the IL optimizer.
     local codegen_opt="-O2"
 
-    # Projects that bake assets into the build (embed -> .rodata, pack -> a .vpa
-    # beside the binary) must build in one step: `viper build` runs the asset
+    # Projects that bake assets into the build (embed -> .rodata, pack -> a .zpak
+    # beside the binary) must build in one step: `zanna build` runs the asset
     # compiler, whereas the two-step IL->codegen path carries no assets (the
     # binary would silently fall back to loose files on disk). Plain `asset`
     # directives ship external files and load fine via the two-step, so they are
     # not matched here. Both paths use the from-scratch native asm + linker.
-    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/zanna.project"; then
         echo -n "  Build+embed -> native (asm+link)... "
-        if ! "$VIPER" build "$project_dir" --arch arm64 "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
+        if ! "$ZANNA" build "$project_dir" --arch arm64 "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$codegen_err"
             rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
@@ -209,7 +209,7 @@ build_demo() {
     else
         # Step 1: Frontend — compile to IL.
         echo -n "  Frontend -> IL... "
-        if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
+        if ! "$ZANNA" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$frontend_err"
             rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
@@ -219,7 +219,7 @@ build_demo() {
 
         # Step 2: Native codegen — binary encoder + native linker.
         echo -n "  Codegen (native asm+link)... "
-        if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
+        if ! "$ZANNA" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$codegen_err"
             rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
@@ -254,7 +254,7 @@ build_demo() {
     return 0
 }
 
-echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64)${NC}"
+echo -e "${CYAN}Building Zanna demos with native assembler + linker (arm64)${NC}"
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi

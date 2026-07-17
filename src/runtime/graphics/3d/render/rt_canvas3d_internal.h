@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_canvas3d_internal.h
-// Purpose: Internal struct definitions for Viper.Graphics3D types.
+// Purpose: Internal struct definitions for Zanna.Graphics3D types.
 //   Shared between rt_canvas3d.c, rt_mesh3d.c, rt_camera3d.c, etc.
 //
 // Key invariants:
@@ -23,7 +23,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_graphics3d_ids.h"
 #include "rt_heap.h"
@@ -1216,13 +1216,13 @@ typedef struct {
     int64_t synthetic_key_keys[64];
     int8_t synthetic_key_downs[64];
     int32_t synthetic_key_count;
-    uint8_t synthetic_key_state[VIPER_KEY_MAX];
+    uint8_t synthetic_key_state[ZANNA_KEY_MAX];
     double synthetic_mouse_dx;
     double synthetic_mouse_dy;
     double synthetic_mouse_wheel_y;
     int64_t synthetic_mouse_buttons;
     int8_t synthetic_mouse_has_buttons;
-    uint8_t synthetic_mouse_button_state[VIPER_MOUSE_BUTTON_MAX];
+    uint8_t synthetic_mouse_button_state[ZANNA_MOUSE_BUTTON_MAX];
     /* Relative (raw) mouse mode applied to the platform window; reconciled
      * against rt_mouse_get_relative_mode() each poll so the runtime input
      * layer stays window-handle-free. */
@@ -1675,4 +1675,4 @@ void canvas3d_frame_arena_free(rt_canvas3d *c);
 }
 #endif
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

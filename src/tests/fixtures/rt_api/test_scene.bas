@@ -1,6 +1,6 @@
-' test_scene.bas - Viper.Game2D.SceneDocument smoke
+' test_scene.bas - Zanna.Game2D.SceneDocument smoke
 DIM scene AS OBJECT
-scene = Viper.Game2D.SceneDocument.New(3, 2, 16, 16)
+scene = Zanna.Game2D.SceneDocument.New(3, 2, 16, 16)
 scene.SetInt("playerStartX", 32)
 scene.SetStr("theme", "cavern")
 scene.SetBool("dark", TRUE)
@@ -18,21 +18,21 @@ obj = scene.AddObject("enemy", "slime-1", 64, 48)
 scene.ObjectSetInt(obj, "hp", 3)
 scene.ObjectSetStr(obj, "sprite", "sprites/slime.png")
 PRINT scene.ObjectGetInt(obj, "hp", -1)
-PRINT Viper.Option.UnwrapOrI64(scene.FindObjectOption("slime-1"), -1)
+PRINT Zanna.Option.UnwrapOrI64(scene.FindObjectOption("slime-1"), -1)
 PRINT scene.CountOfType("enemy")
 
 DIM json AS STRING
 json = scene.ToJson()
-PRINT Viper.String.Contains(json, """version""")
+PRINT Zanna.String.Contains(json, """version""")
 
 DIM loaded AS OBJECT
-loaded = Viper.Game2D.SceneDocument.LoadJson(json)
+loaded = Zanna.Game2D.SceneDocument.LoadJson(json)
 PRINT loaded.HasErrors()
 PRINT loaded.GetInt("playerStartX", -1)
 PRINT loaded.ObjectGetInt(0, "hp", -1)
 
 DIM bad AS OBJECT
-bad = Viper.Game2D.SceneDocument.LoadJson("{""version"":1,")
+bad = Zanna.Game2D.SceneDocument.LoadJson("{""version"":1,")
 PRINT bad.HasErrors()
 
 DIM tm AS OBJECT

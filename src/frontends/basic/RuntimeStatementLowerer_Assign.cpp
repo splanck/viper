@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,7 +53,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
     const bool isRuntimeStringObject =
         slotInfo.isObject &&
         (string_utils::iequals(slotInfo.objectClass, il::runtime::RTCLASS_STRING) ||
-         string_utils::iequals(slotInfo.objectClass, "Viper.System.String"));
+         string_utils::iequals(slotInfo.objectClass, "Zanna.System.String"));
     if (isRuntimeStringObject)
         targetTy = il::core::Type(il::core::Type::Kind::Str);
     bool isStr = targetTy.kind == il::core::Type::Kind::Str;
@@ -219,7 +219,7 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
         lowerer_.requireArrayF64Set();
         lowerer_.emitCall("rt_arr_f64_set", {access.base, access.index, coerced.value});
     } else {
-        // Integer/numeric array: use rt_arr_i64_set (all Viper integers are 64-bit)
+        // Integer/numeric array: use rt_arr_i64_set (all Zanna integers are 64-bit)
         // Runtime ABI: rt_arr_i64_set expects its value operand as i64.
         // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
         Lowerer::RVal coerced = lowerer_.ensureI64(std::move(value), loc);

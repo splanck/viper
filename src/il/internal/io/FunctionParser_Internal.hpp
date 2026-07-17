@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include "il/internal/io/ParserState.hpp"
 #include "il/internal/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
-#include "viper/parse/Cursor.h"
+#include "zanna/parse/Cursor.h"
 
 #include <cctype>
 #include <istream>
@@ -42,8 +42,8 @@ using il::core::Type;
 using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
-using viper::parse::Cursor;
-using viper::parse::SourcePos;
+using zanna::parse::Cursor;
+using zanna::parse::SourcePos;
 
 // Alias for the public ParserState to distinguish from parser_impl::ParserState
 using LegacyParserState = ::il::io::detail::ParserState;

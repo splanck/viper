@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,8 +22,8 @@
 #include <stdexcept>
 #include <string>
 
-using viper::codegen::x64::ILInstr;
-using viper::codegen::x64::ILValue;
+using zanna::codegen::x64::ILInstr;
+using zanna::codegen::x64::ILValue;
 
 namespace {
 
@@ -53,11 +53,11 @@ ILValue makeLabel(std::string name) {
 } // namespace
 
 TEST(LoweringRuleEmit, SwitchRejectsDuplicateCases) {
-    viper::codegen::x64::AsmEmitter::RoDataPool rodata;
-    viper::codegen::x64::LowerILToMIR lower{viper::codegen::x64::sysvTarget(), rodata};
-    viper::codegen::x64::MBasicBlock block{};
+    zanna::codegen::x64::AsmEmitter::RoDataPool rodata;
+    zanna::codegen::x64::LowerILToMIR lower{zanna::codegen::x64::sysvTarget(), rodata};
+    zanna::codegen::x64::MBasicBlock block{};
     block.label = ".Lentry";
-    viper::codegen::x64::MIRBuilder builder{lower, block};
+    zanna::codegen::x64::MIRBuilder builder{lower, block};
 
     ILInstr instr{};
     instr.opcode = "switch_i32";
@@ -68,16 +68,16 @@ TEST(LoweringRuleEmit, SwitchRejectsDuplicateCases) {
                  makeLabel(".Lcase1"),
                  makeLabel(".Ldefault")};
 
-    EXPECT_THROWS(viper::codegen::x64::lowering::emitSwitchI32(instr, builder),
+    EXPECT_THROWS(zanna::codegen::x64::lowering::emitSwitchI32(instr, builder),
                   std::runtime_error);
 }
 
 TEST(LoweringRuleEmit, SwitchRejectsOutOfRangeI32Cases) {
-    viper::codegen::x64::AsmEmitter::RoDataPool rodata;
-    viper::codegen::x64::LowerILToMIR lower{viper::codegen::x64::sysvTarget(), rodata};
-    viper::codegen::x64::MBasicBlock block{};
+    zanna::codegen::x64::AsmEmitter::RoDataPool rodata;
+    zanna::codegen::x64::LowerILToMIR lower{zanna::codegen::x64::sysvTarget(), rodata};
+    zanna::codegen::x64::MBasicBlock block{};
     block.label = ".Lentry";
-    viper::codegen::x64::MIRBuilder builder{lower, block};
+    zanna::codegen::x64::MIRBuilder builder{lower, block};
 
     ILInstr instr{};
     instr.opcode = "switch_i32";
@@ -87,7 +87,7 @@ TEST(LoweringRuleEmit, SwitchRejectsOutOfRangeI32Cases) {
                  makeLabel(".Lcase0"),
                  makeLabel(".Ldefault")};
 
-    EXPECT_THROWS(viper::codegen::x64::lowering::emitSwitchI32(instr, builder),
+    EXPECT_THROWS(zanna::codegen::x64::lowering::emitSwitchI32(instr, builder),
                   std::runtime_error);
 }
 
@@ -98,7 +98,7 @@ TEST(LoweringRuleLookup, SelectsArithmeticRule) {
     instr.resultId = 0;
     instr.ops = {makeValue(ILValue::Kind::I64, 1), makeValue(ILValue::Kind::I64, 2)};
 
-    const auto *rule = viper::codegen::x64::viper_select_rule(instr);
+    const auto *rule = zanna::codegen::x64::zanna_select_rule(instr);
     ASSERT_NE(rule, nullptr);
     EXPECT_EQ(std::string(rule->name), std::string{"add"});
     EXPECT_TRUE(rule->match(instr));
@@ -111,7 +111,7 @@ TEST(LoweringRuleLookup, SelectsComparePrefixRule) {
     instr.resultId = 5;
     instr.ops = {makeValue(ILValue::Kind::I64, 10), makeImmediate(ILValue::Kind::I64, 0)};
 
-    const auto *rule = viper::codegen::x64::viper_select_rule(instr);
+    const auto *rule = zanna::codegen::x64::zanna_select_rule(instr);
     ASSERT_NE(rule, nullptr);
     EXPECT_EQ(std::string(rule->name), std::string{"icmp"});
     EXPECT_TRUE(rule->match(instr));
@@ -124,7 +124,7 @@ TEST(LoweringRuleLookup, SelectsShiftRule) {
     instr.resultId = 7;
     instr.ops = {makeValue(ILValue::Kind::I64, 8), makeImmediate(ILValue::Kind::I64, 1)};
 
-    const auto *rule = viper::codegen::x64::viper_select_rule(instr);
+    const auto *rule = zanna::codegen::x64::zanna_select_rule(instr);
     ASSERT_NE(rule, nullptr);
     EXPECT_EQ(std::string(rule->name), std::string{"shl"});
     EXPECT_TRUE(rule->match(instr));
@@ -137,7 +137,7 @@ TEST(LoweringRuleLookup, SelectsLoadAndStoreRules) {
     load.resultId = 3;
     load.ops = {makeValue(ILValue::Kind::PTR, 9), makeImmediate(ILValue::Kind::I64, 16)};
 
-    const auto *loadRule = viper::codegen::x64::viper_select_rule(load);
+    const auto *loadRule = zanna::codegen::x64::zanna_select_rule(load);
     ASSERT_NE(loadRule, nullptr);
     EXPECT_EQ(std::string(loadRule->name), std::string{"load"});
     EXPECT_TRUE(loadRule->match(load));
@@ -148,7 +148,7 @@ TEST(LoweringRuleLookup, SelectsLoadAndStoreRules) {
                  makeValue(ILValue::Kind::PTR, 12),
                  makeImmediate(ILValue::Kind::I64, 8)};
 
-    const auto *storeRule = viper::codegen::x64::viper_select_rule(store);
+    const auto *storeRule = zanna::codegen::x64::zanna_select_rule(store);
     ASSERT_NE(storeRule, nullptr);
     EXPECT_EQ(std::string(storeRule->name), std::string{"store"});
     EXPECT_TRUE(storeRule->match(store));
@@ -159,13 +159,13 @@ TEST(LoweringRuleLookup, SelectsCallRule) {
     instr.opcode = "call";
     instr.ops = {makeLabel("callee"), makeValue(ILValue::Kind::I64, 13)};
 
-    const auto *rule = viper::codegen::x64::viper_select_rule(instr);
+    const auto *rule = zanna::codegen::x64::zanna_select_rule(instr);
     ASSERT_NE(rule, nullptr);
     EXPECT_EQ(std::string(rule->name), std::string{"call"});
     EXPECT_TRUE(rule->match(instr));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

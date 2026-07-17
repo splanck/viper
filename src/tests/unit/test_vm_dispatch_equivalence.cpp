@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -90,7 +90,7 @@ Module buildSimpleModule() {
 /// @return The result from VM::run().
 int64_t runWithStrategy(const Module &m, const char *strategy) {
     // Set environment variable to select dispatch strategy
-    setenv("VIPER_DISPATCH", strategy, 1);
+    setenv("ZANNA_DISPATCH", strategy, 1);
     il::vm::VM vm(m);
     return vm.run();
 }

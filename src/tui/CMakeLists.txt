@@ -1,4 +1,4 @@
-# CMake configuration for ViperTUI
+# CMake configuration for ZannaTUI
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -44,18 +44,18 @@ add_library(tui STATIC
 
 target_include_directories(tui PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/zanna>
 )
 
 target_link_libraries(tui
         PUBLIC
-        viper_common_opts
-        viper_text_core
+        zanna_common_opts
+        zanna_text_core
 )
 
-if (VIPER_INSTALL_TUI)
+if (ZANNA_INSTALL_TUI)
     install(TARGETS tui
-            EXPORT ViperTargets
+            EXPORT ZannaTargets
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -63,14 +63,14 @@ if (VIPER_INSTALL_TUI)
     )
 
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tui/
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/tui
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zanna/tui
             FILES_MATCHING PATTERN "*.hpp"
     )
 endif ()
 
 add_subdirectory(apps)
 
-if (VIPER_BUILD_TESTING)
+if (ZANNA_BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)
 endif ()

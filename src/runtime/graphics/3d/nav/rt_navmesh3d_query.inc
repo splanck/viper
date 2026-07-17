@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/nav/rt_navmesh3d_query.inc  (#included from rt_navmesh3d.c; not a
 // standalone translation unit) Purpose: NavMesh3D A* pathfinding and point/poly queries
 //===----------------------------------------------------------------------===//

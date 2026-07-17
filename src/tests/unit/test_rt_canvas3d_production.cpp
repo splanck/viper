@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,12 +14,12 @@
 //   - Tests allocate runtime objects directly and release them before returning.
 //   - Environment overrides are restored by scoped guards.
 // Links: src/runtime/graphics/3d/backend/vgfx3d_backend_sw.c,
-//        docs/viperlib/graphics/rendering3d.md
+//        docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_canvas3d.h"
@@ -821,7 +821,7 @@ static void test_software_spot_light_shadow_render_is_stable() {
 }
 
 static void test_software_tiled_raster_threads_are_deterministic() {
-    ScopedEnvVar threads_env("VIPER_3D_SW_THREADS");
+    ScopedEnvVar threads_env("ZANNA_3D_SW_THREADS");
     SoftwareSceneRenderResult one;
     SoftwareSceneRenderResult four;
     SoftwareSceneRenderResult automatic;
@@ -831,14 +831,14 @@ static void test_software_tiled_raster_threads_are_deterministic() {
                 "Single-threaded software raster render completes");
     if (one.hash == 0)
         return;
-    EXPECT_EQ_I64(one.worker_count, 1, "VIPER_3D_SW_THREADS=1 uses the serial worker count");
+    EXPECT_EQ_I64(one.worker_count, 1, "ZANNA_3D_SW_THREADS=1 uses the serial worker count");
 
     EXPECT_TRUE(threads_env.set("4"), "Test can force four software raster workers");
     EXPECT_TRUE(render_software_spot_light_shadow_scene(&four),
                 "Four-worker software raster render completes");
     if (four.hash == 0)
         return;
-    EXPECT_EQ_I64(four.worker_count, 4, "VIPER_3D_SW_THREADS=4 creates four workers");
+    EXPECT_EQ_I64(four.worker_count, 4, "ZANNA_3D_SW_THREADS=4 creates four workers");
     EXPECT_EQ_U64(four.hash, one.hash, "Four-worker software raster hash matches serial");
     EXPECT_TRUE(rgba_equal(one, four), "Four-worker software raster pixels match serial");
 

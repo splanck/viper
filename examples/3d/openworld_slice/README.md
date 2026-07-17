@@ -14,20 +14,20 @@ software final-frame baseline comparison.
 Run from this directory:
 
 ```sh
-../../../build/src/tools/viper/viper run main.zia
-VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run test.zia
-VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run perf_probe.zia
-../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
-VIPER_3D_BACKEND=metal VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
-VIPER_3D_BACKEND=d3d11 VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
-VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run visibility_dense_probe.zia
-VIPER_3D_BACKEND=metal ../../../build/src/tools/viper/viper run gpu_smoke.zia
-VIPER_3D_BACKEND=d3d11 ../../../build/src/tools/viper/viper run gpu_smoke.zia
-../../../build/src/tools/viper/viper package . --target tarball --dry-run
+../../../build/src/tools/zanna/zanna run main.zia
+ZANNA_3D_BACKEND=software ../../../build/src/tools/zanna/zanna run test.zia
+ZANNA_3D_BACKEND=software ../../../build/src/tools/zanna/zanna run perf_probe.zia
+../../../build/src/tools/zanna/zanna run streaming_hitch_probe.zia
+ZANNA_3D_BACKEND=metal ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/zanna/zanna run streaming_hitch_probe.zia
+ZANNA_3D_BACKEND=d3d11 ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/zanna/zanna run streaming_hitch_probe.zia
+ZANNA_3D_BACKEND=software ../../../build/src/tools/zanna/zanna run visibility_dense_probe.zia
+ZANNA_3D_BACKEND=metal ../../../build/src/tools/zanna/zanna run gpu_smoke.zia
+ZANNA_3D_BACKEND=d3d11 ../../../build/src/tools/zanna/zanna run gpu_smoke.zia
+../../../build/src/tools/zanna/zanna package . --target tarball --dry-run
 ```
 
 Release perf baselines should be recorded from the Release build output, for
-example `../../../build_release_perf/src/tools/viper/viper run perf_probe.zia`.
+example `../../../build_release_perf/src/tools/zanna/zanna run perf_probe.zia`.
 CTest also registers `g3d_openworld_slice_perf_harness`, which wraps the same
 probe, validates the required `PERF:` counters, and emits a stable `HARNESS:`
 summary for CI logs.
@@ -77,7 +77,7 @@ proves zero upload budget keeps positive-cost async commit work pending, then
 checks the shared `Assets3D.GetResidentBytes` counter returns to zero after
 clear. The same script also has an opt-in GPU lane used by
 `g3d_openworld_slice_streaming_hitch_native_compressed_probe`; when
-`VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1` it binds a native compressed
+`ZANNA_OPENWORLD_NATIVE_COMPRESSED_PROBE=1` it binds a native compressed
 `TextureAsset3D`, proves `Canvas3D.SetTextureUploadBudget(0)` keeps backend
 upload bytes pending, then records the budgeted release upload bytes,
 raw-vs-compressed RAM/VRAM reduction, and final-frame texture tolerance. The

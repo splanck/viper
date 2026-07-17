@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -62,14 +62,14 @@ New-Item -ItemType Directory -Path $workPath -Force | Out-Null
 $certificate = $null
 try {
     $certificate = New-SelfSignedCertificate `
-        -Subject "CN=Viper Update Manifest Test $PID" `
+        -Subject "CN=Zanna Update Manifest Test $PID" `
         -CertStoreLocation "Cert:\CurrentUser\My" `
         -KeyAlgorithm RSA `
         -KeyLength 2048 `
         -KeyExportPolicy Exportable `
         -HashAlgorithm SHA256 `
         -NotAfter ([DateTime]::UtcNow.AddDays(1))
-    $passwordText = "viper-update-test-$PID"
+    $passwordText = "zanna-update-test-$PID"
     $password = ConvertTo-SecureString $passwordText -AsPlainText -Force
     $pfx = Join-Path $workPath "update-signing-test.pfx"
     Export-PfxCertificate `
@@ -79,13 +79,13 @@ try {
         -ChainOption EndEntityCertOnly | Out-Null
 
     $common = @{
-        ManifestUrl = "https://updates.example.test/viper/windows-x64.txt"
+        ManifestUrl = "https://updates.example.test/zanna/windows-x64.txt"
         Channel = "stable"
         Architecture = "x64"
         Version = "1.2.3-rc.1+build.9"
-        DownloadUrl = "https://updates.example.test/viper/viper-1.2.3-x64.exe"
+        DownloadUrl = "https://updates.example.test/zanna/zanna-1.2.3-x64.exe"
         DownloadSha256 = ("ab" * 32)
-        ReleaseNotesUrl = "https://updates.example.test/viper/1.2.3.html"
+        ReleaseNotesUrl = "https://updates.example.test/zanna/1.2.3.html"
         PfxPath = $pfx
         PfxPassword = $passwordText
     }
@@ -115,7 +115,7 @@ try {
     $lines = $text.Split("`n")
     Assert-True ($lines.Count -eq 9 -and $lines[8] -eq "") `
         "Update manifest does not contain exactly eight LF-terminated records."
-    Assert-True ($lines[0] -eq "VIPER-WINDOWS-UPDATE`t1") "Wrong update manifest header."
+    Assert-True ($lines[0] -eq "ZANNA-WINDOWS-UPDATE`t1") "Wrong update manifest header."
     Assert-True ($lines[1] -eq "channel`tstable") "Wrong update manifest channel."
     Assert-True ($lines[7] -match '^signature\t[0-9a-f]{512}$') `
         "Update signature is missing or has the wrong RSA-2048 encoding."
@@ -147,12 +147,12 @@ try {
         & $scriptPath @badOverflow -OutputPath (Join-Path $workPath "bad-overflow.txt")
     } "overflowing"
     $badOrigin = $common.Clone()
-    $badOrigin["DownloadUrl"] = "https://downloads.example.test/viper.exe"
+    $badOrigin["DownloadUrl"] = "https://downloads.example.test/zanna.exe"
     Assert-Fails {
         & $scriptPath @badOrigin -OutputPath (Join-Path $workPath "bad-origin.txt")
     } "share the update-manifest service origin"
     $badHttp = $common.Clone()
-    $badHttp["ManifestUrl"] = "http://updates.example.test/viper/windows-x64.txt"
+    $badHttp["ManifestUrl"] = "http://updates.example.test/zanna/windows-x64.txt"
     Assert-Fails {
         & $scriptPath @badHttp -OutputPath (Join-Path $workPath "bad-http.txt")
     } "absolute HTTPS URL"

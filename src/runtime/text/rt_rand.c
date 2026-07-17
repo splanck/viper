@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_rand.c
-// Purpose: Implements Viper.Crypto.Rand.Bytes and Int. Compatibility mode uses
+// Purpose: Implements Zanna.Crypto.Rand.Bytes and Int. Compatibility mode uses
 //          platform CSPRNGs (`getrandom` with `/dev/urandom` fallback on Linux,
 //          `arc4random_buf` on macOS, BCryptGenRandom on Windows); approved mode
 //          uses the locked module HMAC-DRBG.

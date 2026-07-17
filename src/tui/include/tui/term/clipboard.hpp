@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Clipboard abstract interface and its concrete
 // implementations (Osc52Clipboard and MockClipboard) for clipboard
-// operations in Viper's TUI framework.
+// operations in Zanna's TUI framework.
 //
 // Osc52Clipboard uses the OSC 52 terminal escape sequence to copy text
 // to the system clipboard via the terminal emulator. This works over
@@ -32,7 +32,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 class TermIO;
 
 /// @brief Abstract interface for system clipboard operations in the TUI.
@@ -88,4 +88,4 @@ class MockClipboard : public Clipboard {
     std::string last_{};
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

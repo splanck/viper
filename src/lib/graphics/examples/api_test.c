@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/examples/api_test.c
-// Purpose: ViperGFX example used to exercise API surface for sanity checks.
+// Purpose: ZannaGFX example used to exercise API surface for sanity checks.
 // Key invariants: Avoids undefined behavior; reports failures to stderr; exits
 //                 non-zero on error.
 // Ownership/Lifetime: Demonstration program; owns and releases created
@@ -16,7 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX API Test
+ * ZannaGFX API Test
  * Tests core API functionality without requiring platform backend
  */
 
@@ -28,7 +28,7 @@
 /// Why:  Quickly reveal ABI or linkage issues in CI.
 /// How:  Calls a representative subset of the API and checks return values.
 int main(void) {
-    printf("=== ViperGFX API Test ===\n");
+    printf("=== ZannaGFX API Test ===\n");
     printf("Version: %s\n\n", vgfx_version_string());
 
     /* Test 1: Window creation */
@@ -166,13 +166,13 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/examples/api_test.c
-// Purpose: ViperGFX example used to exercise API surface for sanity checks.
+// Purpose: ZannaGFX example used to exercise API surface for sanity checks.
 // Key invariants: Avoids undefined behavior; reports failures to stderr; exits
 //                 non-zero on error.
 // Ownership/Lifetime: Demonstration program; owns and releases created

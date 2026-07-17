@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTLineReaderTests.cpp
-// Purpose: Comprehensive tests for Viper.IO.LineReader text file reading.
+// Purpose: Comprehensive tests for Zanna.IO.LineReader text file reading.
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,7 +23,7 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static const char *test_file = "/tmp/viper_linereader_test.txt";
+static const char *test_file = "/tmp/zanna_linereader_test.txt";
 
 static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
@@ -406,7 +406,7 @@ static void test_null_handling() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
+    ZANNA_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     test_open_close();
     test_read_lf_lines();

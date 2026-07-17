@@ -1,4 +1,4 @@
-' lrucache_demo.bas - Comprehensive API audit for Viper.Collections.LruCache
+' lrucache_demo.bas - Comprehensive API audit for Zanna.Collections.LruCache
 ' Tests: New, Set, Get, Peek, Has, Remove, RemoveOldest, Keys, Values,
 '        Len, Capacity, IsEmpty, Clear
 
@@ -7,7 +7,7 @@ PRINT "=== LruCache API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM cache AS OBJECT
-cache = Viper.Collections.LruCache.New(3)
+cache = Zanna.Collections.LruCache.New(3)
 PRINT cache.Count       ' 0
 PRINT cache.Capacity  ' 3
 PRINT cache.IsEmpty   ' 1

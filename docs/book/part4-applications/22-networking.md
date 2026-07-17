@@ -288,9 +288,9 @@ Programs can do all of this too. That's networking.
 The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer Protocol) is the language of the web --- the format that browsers and servers use to communicate.
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func start() {
     // Simple fetch — returns the body as a string
@@ -376,10 +376,10 @@ These methods map to CRUD operations (Create, Read, Update, Delete) that are fun
 Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. JSON is a text format for structured data that's easy for both humans and computers to read.
 
 ```rust
-bind Viper.Network;
-bind Json = Viper.Text.Json;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Json = Zanna.Text.Json;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 class Weather {
     expose temperature: Integer;
@@ -465,9 +465,9 @@ A **socket** is an endpoint for communication --- like a telephone in the phone 
 Here's how to connect to a server and communicate:
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func start() {
     // Connect to a server
@@ -530,8 +530,8 @@ Step 4: socket.Close()
 A server listens for incoming connections instead of initiating them:
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
 
 func start() {
     // Create a server socket that listens on port 8080
@@ -625,10 +625,10 @@ When Alice sends "Hello":
 ```rust
 module ChatServer;
 
-bind Viper.Network;
-bind Viper.Collections;
-bind Viper.Terminal as Terminal;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Network;
+bind Zanna.Collections;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time.Clock as Clock;
 
 class ServerApp {
     // The server socket that accepts new connections
@@ -764,8 +764,8 @@ Time 0:30 - Alice sends "/quit"
 ```rust
 module ChatClient;
 
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
 
 class ClientApp {
     hide socket: Tcp;
@@ -861,9 +861,9 @@ UDP trades reliability for speed. When you can tolerate lost packets or have you
 ### Basic UDP Communication
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 // UDP sender
 func sendUdpMessage() {
@@ -907,9 +907,9 @@ Notice the differences from TCP:
 Games often need to send player state many times per second. Lost packets don't matter because new state arrives constantly. Here's a typical pattern:
 
 ```rust
-bind Viper.Network;
-bind Viper.Time;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Network;
+bind Zanna.Time;
+bind Convert = Zanna.Core.Convert;
 
 // Player state that we'll send frequently
 struct PlayerState {
@@ -996,8 +996,8 @@ HTTP was designed for request-response: the client asks, the server answers, don
 **WebSockets** provide full-duplex communication over a single connection. After an initial HTTP handshake, the connection stays open and either side can send messages at any time.
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
 
 class WebSocketClient {
     hide ws: WebSocket;
@@ -1077,9 +1077,9 @@ Networks are inherently unreliable. Connections drop. Servers go down. Packets g
 ### The Many Ways Networks Fail
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func demonstrateFailures() {
     // Failure 1: Cannot connect
@@ -1119,10 +1119,10 @@ func demonstrateFailures() {
 For important operations, implement retry logic with exponential backoff:
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Viper.Time;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time;
+bind Fmt = Zanna.Text.Fmt;
 
 func robustFetch(url: String, maxRetries: Integer) -> String? {
     var retries = 0;
@@ -1268,7 +1268,7 @@ func onButtonClick() {
 }
 
 // GOOD: Use a separate thread
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func fetchWorker(arg: Any) {
     var data = Http.Get(slowUrl);
@@ -1376,8 +1376,8 @@ while true {
 // If socket breaks, RecvLine returns an empty string, and process("") may be wrong
 
 // GOOD: Detect disconnection and reconnect
-bind Viper.Terminal as Terminal;
-bind Viper.Time;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time;
 
 func reliableConnection(host: String, port: Integer) {
     var socket: Tcp? = null;
@@ -1487,7 +1487,7 @@ var contents = File.ReadAllText("/data/" + filename);
 Without limits, attackers can flood your server with requests.
 
 ```rust
-bind Clock = Viper.Time.Clock;
+bind Clock = Zanna.Time.Clock;
 
 class RateLimitedServer {
     // Track requests per IP address
@@ -1501,7 +1501,7 @@ class RateLimitedServer {
         self.maxRequestsPerMinute = 100;
     }
 
-    func handleRequest(client: Viper.Network.Tcp) {
+    func handleRequest(client: Zanna.Network.Tcp) {
         var ip = client.Host;
         var now = Clock.Ticks();
 
@@ -1539,7 +1539,7 @@ var hardCodedResponse = Http.Get("https://api.example.com/data?key=sk_live_abc12
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.System.Environment.GetVariable("API_KEY");
+var apiKey = Zanna.System.Environment.GetVariable("API_KEY");
 var configuredResponse = Http.Get("https://api.example.com/data?key=" + apiKey);
 ```
 
@@ -1554,9 +1554,9 @@ Network bugs are notoriously hard to track down. The problem might be in your co
 When network code doesn't work, add logging at every step:
 
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 func debugFetch(url: String) -> String {
     Terminal.Say("[DEBUG] Starting fetch of: " + url);
@@ -1592,7 +1592,7 @@ Network communication involves multiple layers. Test each one:
 
 1. **Can you reach the host at all?**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var socket = Tcp.ConnectFor(host, port, 3000);
 if socket == null {
@@ -1604,7 +1604,7 @@ if socket == null {
 
 2. **Can you send data?**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 socket.SendStr("test\n");
 Terminal.Say("Data sent successfully");
@@ -1613,7 +1613,7 @@ Terminal.Say("Data sent successfully");
 
 3. **Can you receive data?**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var response = socket.RecvLine();
 if response == null {
@@ -1675,11 +1675,11 @@ Let's tie everything together with a complete, well-structured networking applic
 ```rust
 module WeatherDashboard;
 
-bind Viper.Network;
-bind Json = Viper.Text.Json;
-bind Clock = Viper.Time.Clock;
-bind Viper.Terminal as Terminal;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Network;
+bind Json = Zanna.Text.Json;
+bind Clock = Zanna.Time.Clock;
+bind Zanna.Terminal as Terminal;
+bind Fmt = Zanna.Text.Fmt;
 
 // Data type for weather information
 class CityWeather {
@@ -1838,8 +1838,8 @@ This example demonstrates:
 
 **Zia**
 ```rust
-bind Viper.Network;
-bind Viper.Terminal as Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal as Terminal;
 
 // HTTP request
 var response = Http.Get("https://api.example.com/data");
@@ -1878,7 +1878,7 @@ UDP_SEND udp, "Hello", "192.168.1.100", 5000
 UDP_CLOSE udp
 ```
 
-The current networking runtime is exposed through Zia classes under `Viper.Network`. The BASIC-style block is conceptual pseudocode, not current BASIC syntax.
+The current networking runtime is exposed through Zia classes under `Zanna.Network`. The BASIC-style block is conceptual pseudocode, not current BASIC syntax.
 
 ---
 

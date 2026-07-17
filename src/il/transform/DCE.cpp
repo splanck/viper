@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,7 +45,7 @@
 
 namespace {
 static bool traceEnabled() {
-    static const bool enabled = std::getenv("VIPER_DCE_TRACE") != nullptr;
+    static const bool enabled = std::getenv("ZANNA_DCE_TRACE") != nullptr;
     return enabled;
 }
 
@@ -253,8 +253,8 @@ void dce(Module &M) {
             // escaping call argument, returned value, or branch argument.
             // Stores to unobserved alloca-derived addresses can be removed.
             std::unordered_map<unsigned, bool> allocaObserved;
-            const auto allocaRootDefs = viper::analysis::collectAllocaRootDefs(F);
-            const auto allocaRoots = viper::analysis::computeAllocaRoots(F, allocaRootDefs);
+            const auto allocaRootDefs = zanna::analysis::collectAllocaRootDefs(F);
+            const auto allocaRoots = zanna::analysis::computeAllocaRoots(F, allocaRootDefs);
 
             for (auto &B : F.blocks)
                 for (auto &I : B.instructions) {

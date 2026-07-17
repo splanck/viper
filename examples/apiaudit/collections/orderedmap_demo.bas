@@ -1,4 +1,4 @@
-' orderedmap_demo.bas - Comprehensive API audit for Viper.Collections.OrderedMap
+' orderedmap_demo.bas - Comprehensive API audit for Zanna.Collections.OrderedMap
 ' Tests: New, Set, Get, Has, Remove, Clear, Len, IsEmpty, Keys, Values, KeyAt
 
 PRINT "=== OrderedMap API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== OrderedMap API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM om AS OBJECT
-om = Viper.Collections.OrderedMap.New()
+om = Zanna.Collections.OrderedMap.New()
 PRINT om.Count       ' 0
 PRINT om.IsEmpty   ' 1
 

@@ -1,52 +1,52 @@
 // Test: Action mapping system — define, bind, save, load
 module TestActionApi;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // === Test 1: Define actions ===
-    Viper.Input.Action.Clear();
+    Zanna.Input.Action.Clear();
 
-    var ok = Viper.Input.Action.Define("jump");
+    var ok = Zanna.Input.Action.Define("jump");
     if (ok != true) {
         Say("FAIL: Define jump should succeed");
         return;
     }
 
     // Duplicate should fail
-    var dup = Viper.Input.Action.Define("jump");
+    var dup = Zanna.Input.Action.Define("jump");
     if (dup != false) {
         Say("FAIL: duplicate Define should fail");
         return;
     }
 
     // Define axis
-    var ok2 = Viper.Input.Action.DefineAxis("move_x");
+    var ok2 = Zanna.Input.Action.DefineAxis("move_x");
     if (ok2 != true) {
         Say("FAIL: DefineAxis move_x should succeed");
         return;
     }
 
     // === Test 2: Exists and IsAxis ===
-    var exists = Viper.Input.Action.Exists("jump");
+    var exists = Zanna.Input.Action.Exists("jump");
     if (exists != true) {
         Say("FAIL: jump should exist");
         return;
     }
 
-    var notExists = Viper.Input.Action.Exists("nonexistent");
+    var notExists = Zanna.Input.Action.Exists("nonexistent");
     if (notExists != false) {
         Say("FAIL: nonexistent should not exist");
         return;
     }
 
-    var isAxis = Viper.Input.Action.IsAxis("move_x");
+    var isAxis = Zanna.Input.Action.IsAxis("move_x");
     if (isAxis != true) {
         Say("FAIL: move_x should be axis");
         return;
     }
 
-    var notAxis = Viper.Input.Action.IsAxis("jump");
+    var notAxis = Zanna.Input.Action.IsAxis("jump");
     if (notAxis != false) {
         Say("FAIL: jump should not be axis");
         return;
@@ -54,111 +54,111 @@ func start() {
 
     // === Test 3: Key bindings ===
     // Bind Space (key code 32) to jump
-    var bindOk = Viper.Input.Action.BindKey("jump", 32);
+    var bindOk = Zanna.Input.Action.BindKey("jump", 32);
     if (bindOk != true) {
         Say("FAIL: BindKey should succeed");
         return;
     }
 
-    var count = Viper.Input.Action.BindingCount("jump");
+    var count = Zanna.Input.Action.BindingCount("jump");
     if (count != 1) {
         Say("FAIL: binding count should be 1");
         return;
     }
 
     // Bind another key (Enter = 13)
-    Viper.Input.Action.BindKey("jump", 13);
-    count = Viper.Input.Action.BindingCount("jump");
+    Zanna.Input.Action.BindKey("jump", 13);
+    count = Zanna.Input.Action.BindingCount("jump");
     if (count != 2) {
         Say("FAIL: binding count should be 2");
         return;
     }
 
     // BindingsStr should return non-empty
-    var desc = Viper.Input.Action.BindingsStr("jump");
+    var desc = Zanna.Input.Action.BindingsStr("jump");
 
     // === Test 4: Axis key bindings ===
-    Viper.Input.Action.BindKeyAxis("move_x", 263, -1.0);  // Left arrow
-    Viper.Input.Action.BindKeyAxis("move_x", 262, 1.0);   // Right arrow
-    count = Viper.Input.Action.BindingCount("move_x");
+    Zanna.Input.Action.BindKeyAxis("move_x", 263, -1.0);  // Left arrow
+    Zanna.Input.Action.BindKeyAxis("move_x", 262, 1.0);   // Right arrow
+    count = Zanna.Input.Action.BindingCount("move_x");
     if (count != 2) {
         Say("FAIL: move_x should have 2 bindings");
         return;
     }
 
     // === Test 5: Action list ===
-    var actions = Viper.Input.Action.List();
-    var alen = Viper.Collections.Seq.get_Count(actions);
+    var actions = Zanna.Input.Action.List();
+    var alen = Zanna.Collections.Seq.get_Count(actions);
     if (alen != 2) {
         Say("FAIL: should have 2 actions");
         return;
     }
 
     // === Test 6: Save and Load ===
-    var saved = Viper.Input.Action.Save();
+    var saved = Zanna.Input.Action.Save();
 
     // Clear and verify empty
-    Viper.Input.Action.Clear();
-    var afterClear = Viper.Input.Action.Exists("jump");
+    Zanna.Input.Action.Clear();
+    var afterClear = Zanna.Input.Action.Exists("jump");
     if (afterClear != false) {
         Say("FAIL: jump should not exist after clear");
         return;
     }
 
     // Load from saved JSON
-    var loadOk = Viper.Input.Action.Load(saved);
+    var loadOk = Zanna.Input.Action.Load(saved);
     if (loadOk != true) {
         Say("FAIL: Load should succeed");
         return;
     }
 
     // Verify restored
-    var restored = Viper.Input.Action.Exists("jump");
+    var restored = Zanna.Input.Action.Exists("jump");
     if (restored != true) {
         Say("FAIL: jump should exist after Load");
         return;
     }
 
-    var restoredAxis = Viper.Input.Action.Exists("move_x");
+    var restoredAxis = Zanna.Input.Action.Exists("move_x");
     if (restoredAxis != true) {
         Say("FAIL: move_x should exist after Load");
         return;
     }
 
-    var restoredCount = Viper.Input.Action.BindingCount("jump");
+    var restoredCount = Zanna.Input.Action.BindingCount("jump");
     if (restoredCount != 2) {
         Say("FAIL: jump should have 2 bindings after Load");
         return;
     }
 
     // === Test 7: Remove action ===
-    var removed = Viper.Input.Action.Remove("jump");
+    var removed = Zanna.Input.Action.Remove("jump");
     if (removed != true) {
         Say("FAIL: Remove should succeed");
         return;
     }
 
-    exists = Viper.Input.Action.Exists("jump");
+    exists = Zanna.Input.Action.Exists("jump");
     if (exists != false) {
         Say("FAIL: jump should not exist after Remove");
         return;
     }
 
     // === Test 8: Unbind key ===
-    var unbound = Viper.Input.Action.UnbindKey("move_x", 263);
+    var unbound = Zanna.Input.Action.UnbindKey("move_x", 263);
     if (unbound != true) {
         Say("FAIL: UnbindKey should succeed");
         return;
     }
 
-    count = Viper.Input.Action.BindingCount("move_x");
+    count = Zanna.Input.Action.BindingCount("move_x");
     if (count != 1) {
         Say("FAIL: move_x should have 1 binding after unbind");
         return;
     }
 
     // Cleanup
-    Viper.Input.Action.Clear();
+    Zanna.Input.Action.Clear();
 
     Say("RESULT: ok");
 }

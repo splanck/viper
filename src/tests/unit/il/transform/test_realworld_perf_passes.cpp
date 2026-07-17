@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -88,14 +88,14 @@ TEST(RealWorldPerfPasses, RuntimeOwnershipClassifiesArrayAndObjectHelpers) {
     const auto releaseKnown = il::runtime::classifyRuntimeOwnership("rt_obj_release_known_check0");
     EXPECT_TRUE(releaseKnown.consumesArg(0));
 
-    const auto memoryRetain = il::runtime::classifyRuntimeOwnership("Viper.Memory.Retain");
+    const auto memoryRetain = il::runtime::classifyRuntimeOwnership("Zanna.Memory.Retain");
     EXPECT_TRUE(memoryRetain.retainsArg(0));
 
-    const auto boxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.Str");
+    const auto boxStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.Str");
     EXPECT_TRUE(boxStr.retainsArg(0));
     EXPECT_TRUE(boxStr.returnsOwned);
 
-    const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
+    const auto msgSub = il::runtime::classifyRuntimeOwnership("Zanna.Core.MessageBus.Subscribe");
     EXPECT_TRUE(msgSub.retainsArg(1));
     EXPECT_TRUE(msgSub.retainsArg(2));
 
@@ -347,6 +347,6 @@ TEST(RealWorldPerfPasses, DevirtualizeRewritesConstantFunctionPointerCall) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

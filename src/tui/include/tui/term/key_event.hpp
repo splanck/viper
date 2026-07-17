@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the KeyEvent, MouseEvent, and PasteEvent structs
-// representing terminal input events for Viper's TUI. These are the
+// representing terminal input events for Zanna's TUI. These are the
 // low-level event types produced by the InputDecoder from raw terminal
 // byte sequences.
 //
@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 /// @brief Represents a single keyboard input event from the terminal.
 /// @details Captures either a Unicode character (via codepoint) or a special
 ///          key (via Code enum), along with modifier flags (Shift, Alt, Ctrl).
@@ -105,4 +105,4 @@ struct PasteEvent {
     std::string text{};
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

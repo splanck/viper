@@ -4,25 +4,25 @@ audience: contributors
 last-verified: 2026-06-27
 ---
 
-# ADR 0017: CRLF-Aware Line Splitting (Viper.String.Lines)
+# ADR 0017: CRLF-Aware Line Splitting (Zanna.String.Lines)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE source-analysis modules adopt it as the
+Accepted (runtime implemented; ZannaIDE source-analysis modules adopt it as the
 first consumer).
 
 ## Context
 
 Splitting text into logical lines is one of the most common operations in any
 editor, formatter, or text tool. The runtime already provides
-`Viper.String.Split(str, delim)`, but `Split(source, "\n")` leaves a trailing
+`Zanna.String.Split(str, delim)`, but `Split(source, "\n")` leaves a trailing
 carriage return on every line of CRLF-terminated input. As a result, callers
 must pair every split with a per-line carriage-return strip.
 
-In ViperIDE alone this `Split("\n")` + strip-`\r` idiom appears in 30+ places
+In ZannaIDE alone this `Split("\n")` + strip-`\r` idiom appears in 30+ places
 across the formatter, refactors, bind utilities, and source-analysis modules,
 each re-implementing the same two-step dance (and a hand-rolled `StripTrailingCr`
-helper backed it). Any Viper program that processes multi-line text — log
+helper backed it). Any Zanna program that processes multi-line text — log
 viewers, config parsers, code tools — hits the same friction. This is a missing
 standard-library primitive, not application logic.
 
@@ -31,7 +31,7 @@ ADR.
 
 ## Decision
 
-Add `Viper.String.Lines(str) -> Seq(String)` to the runtime.
+Add `Zanna.String.Lines(str) -> Seq(String)` to the runtime.
 
 Semantics (deliberately a drop-in for the existing idiom):
 
@@ -46,9 +46,9 @@ Semantics (deliberately a drop-in for the existing idiom):
 
 Surface:
 
-- `RT_FUNC(StrLines, rt_str_lines, "Viper.String.Lines", "seq<str>(str)", always)`
-  (free-function form, e.g. `Viper.String.Lines(source)`).
-- `RT_METHOD("Lines", "seq<str>()", StrLines)` on the `Viper.String` class
+- `RT_FUNC(StrLines, rt_str_lines, "Zanna.String.Lines", "seq<str>(str)", always)`
+  (free-function form, e.g. `Zanna.String.Lines(source)`).
+- `RT_METHOD("Lines", "seq<str>()", StrLines)` on the `Zanna.String` class
   (method form, e.g. `text.Lines()`).
 
 The C implementation (`rt_str_lines` in `rt_string_advanced.c`) mirrors
@@ -59,7 +59,7 @@ segment. No new runtime class, no new ID, no new `.c`/`.h` file (so no
 ## Consequences
 
 - **Adoption:** the `Split("\n")` + `StripTrailingCr` pairs collapse to a single
-  `Str.Lines(source)` call. ViperIDE adopts it as the first consumer; the
+  `Str.Lines(source)` call. ZannaIDE adopts it as the first consumer; the
   hand-rolled `StripTrailingCr` helper is retained only for the few non-split
   callers.
 - **Determinism / cross-platform:** the function is pure and platform-independent
@@ -72,7 +72,7 @@ segment. No new runtime class, no new ID, no new `.c`/`.h` file (so no
 ## Alternatives Considered
 
 - **Keep a Zia/library helper (`StripTrailingCr`) per project.** Rejected: every
-  Viper text program re-derives the same primitive, and the helper still requires
+  Zanna text program re-derives the same primitive, and the helper still requires
   a `Split` + per-line call. A runtime primitive removes the idiom platform-wide.
 - **A `splitlines`-style function that also collapses a trailing empty line.**
   Rejected: that would make it a non-drop-in for `Split("\n")` and silently

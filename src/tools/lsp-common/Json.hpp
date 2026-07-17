@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <variant>
 #include <vector>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief JSON value types.
 enum class JsonType : uint8_t {
@@ -171,4 +171,4 @@ class JsonValue {
     void emitTo(std::string &out) const;
 };
 
-} // namespace viper::server
+} // namespace zanna::server

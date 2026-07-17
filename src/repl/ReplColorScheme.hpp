@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/repl/ReplColorScheme.hpp
-// Purpose: ANSI color constants for the Viper REPL. Colors are applied via
+// Purpose: ANSI color constants for the Zanna REPL. Colors are applied via
 //          escape codes when stdout is a terminal; all codes resolve to empty
 //          strings when output is piped or redirected.
 // Key invariants:
@@ -27,7 +27,7 @@
 #include <stdio.h>
 #endif
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief ANSI color scheme for the REPL.
 /// @details All methods return empty strings when stdout is not a terminal.
@@ -114,4 +114,4 @@ inline const char *success() {
 
 } // namespace colors
 
-} // namespace viper::repl
+} // namespace zanna::repl

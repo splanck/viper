@@ -1,7 +1,7 @@
 # XENOSCAPE: The Descent
 
 XENOSCAPE is an active-development ten-region science-fiction action
-Metroidvania and a substantial Viper/Zia game example. The current project
+Metroidvania and a substantial Zanna/Zia game example. The current project
 version is **0.3.0 development preview**. It is not 1.0 and this repository does
 not claim final platform certification or commercial-release status.
 
@@ -13,16 +13,16 @@ deterministic art/audio fallbacks.
 
 ## Run from source
 
-Build Viper with the platform script from the repository root, then run:
+Build Zanna with the platform script from the repository root, then run:
 
 ```sh
-./build/src/tools/viper/viper run examples/games/xenoscape
+./build/src/tools/zanna/zanna run examples/games/xenoscape
 ```
 
 To build the standalone project:
 
 ```sh
-./build/src/tools/viper/viper build examples/games/xenoscape
+./build/src/tools/zanna/zanna build examples/games/xenoscape
 ```
 
 The game targets 1280x720 and is cadence-checked at 30, 60, and 120 Hz.
@@ -57,16 +57,16 @@ actually active.
 
 ## Package the development preview
 
-From the game directory, inspect and build the portable archive with the Viper
+From the game directory, inspect and build the portable archive with the Zanna
 binary already built for the host:
 
 ```sh
-../../../build/src/tools/viper/viper package . --target tarball --dry-run --json
-../../../build/src/tools/viper/viper package . --target tarball \
+../../../build/src/tools/zanna/zanna package . --target tarball --dry-run --json
+../../../build/src/tools/zanna/zanna package . --target tarball \
   --output /tmp/xenoscape-0.3.0-preview.tar.gz
 ```
 
-The package smoke mode is `xenoscape --viper-package-smoke`. It checks packaged
+The package smoke mode is `xenoscape --zanna-package-smoke`. It checks packaged
 runtime tuning and an audio asset without opening the game window.
 
 ## Documentation
@@ -81,4 +81,4 @@ runtime tuning and an audio asset without opening the game window.
 - [Asset provenance](assets/README.md)
 
 XENOSCAPE and its bundled first-party assets are distributed under GNU GPL v3
-as part of the Viper project.
+as part of the Zanna project.

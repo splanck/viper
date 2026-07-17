@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Weak-symbol stub for the Zia syntax-highlight keyword bridge. The
 //          real implementation lives in src/frontends/zia/rt_zia_highlight.cpp
 //          (part of zia_editor_services) and consults the authoritative kKeywordTable.
-//          When a test binary or other consumer links viper_runtime without
+//          When a test binary or other consumer links zanna_runtime without
 //          editor services, the linker falls back to this stub which
 //          conservatively reports "not a keyword" for every identifier.
 //

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_concqueue.c
 // Purpose: Implements a thread-safe concurrent FIFO queue for the
-//          Viper.Threads.ConcQueue class. Uses a linked-list of nodes protected
+//          Zanna.Threads.ConcQueue class. Uses a linked-list of nodes protected
 //          by a mutex and condition variable. Supports Enqueue, Dequeue
 //          (blocking), TryDequeue (non-blocking), Count, and Clear.
 //
@@ -535,7 +535,7 @@ void *rt_concqueue_try_dequeue(void *obj) {
 ///          returned as `Some(NULL)`. The node's retained value transfer is
 ///          released after the Option has retained it.
 /// @param obj ConcurrentQueue pointer.
-/// @return Opaque Viper.Option object containing the dequeued value, or None.
+/// @return Opaque Zanna.Option object containing the dequeued value, or None.
 void *rt_concqueue_try_dequeue_option(void *obj) {
     if (!obj)
         return rt_option_none();

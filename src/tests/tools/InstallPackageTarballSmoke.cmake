@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required VIPER_BIN VIPER_BUILD_DIR)
+foreach (_required ZANNA_BIN ZANNA_BUILD_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to InstallPackageTarballSmoke.cmake")
     endif ()
 endforeach ()
 
-set(_tmp_root "${VIPER_BUILD_DIR}/tests/install-package-tarball-smoke")
-set(_artifact "${_tmp_root}/viper-toolchain.tar.gz")
-set(_release_artifact "${_tmp_root}/viper-toolchain-release.tar.gz")
+set(_tmp_root "${ZANNA_BUILD_DIR}/tests/install-package-tarball-smoke")
+set(_artifact "${_tmp_root}/zanna-toolchain.tar.gz")
+set(_release_artifact "${_tmp_root}/zanna-toolchain-release.tar.gz")
 set(_extensionless_artifact "${_tmp_root}/portable-toolchain")
 set(_stage "${_tmp_root}/stage")
 
@@ -22,8 +22,8 @@ file(MAKE_DIRECTORY "${_tmp_root}")
 # install tree three times.
 file(MAKE_DIRECTORY
         "${_stage}/bin"
-        "${_stage}/include/viper"
-        "${_stage}/lib/cmake/Viper"
+        "${_stage}/include/zanna"
+        "${_stage}/lib/cmake/Zanna"
         "${_stage}/lib")
 
 if (WIN32)
@@ -37,8 +37,8 @@ else ()
 endif ()
 
 # A host-native executable is required only for staged platform/architecture
-# detection. The real Viper binary still drives every command in this test.
-configure_file("${CMAKE_COMMAND}" "${_stage}/bin/viper${_tool_suffix}" COPYONLY)
+# detection. The real Zanna binary still drives every command in this test.
+configure_file("${CMAKE_COMMAND}" "${_stage}/bin/zanna${_tool_suffix}" COPYONLY)
 foreach (_tool IN ITEMS
         zia
         vbasic
@@ -49,11 +49,11 @@ foreach (_tool IN ITEMS
         vbasic-server
         basic-ast-dump
         basic-lex-dump
-        viperide)
+        zannaide)
     file(WRITE "${_stage}/bin/${_tool}${_tool_suffix}" "fixture\n")
 endforeach ()
 if (NOT WIN32)
-    file(CHMOD "${_stage}/bin/viper${_tool_suffix}"
+    file(CHMOD "${_stage}/bin/zanna${_tool_suffix}"
             PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
                         WORLD_READ WORLD_EXECUTE)
     foreach (_tool IN ITEMS
@@ -66,38 +66,38 @@ if (NOT WIN32)
             vbasic-server
             basic-ast-dump
             basic-lex-dump
-            viperide)
+            zannaide)
         file(CHMOD "${_stage}/bin/${_tool}${_tool_suffix}"
                 PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
                             WORLD_READ WORLD_EXECUTE)
     endforeach ()
 endif ()
 
-file(WRITE "${_stage}/lib/cmake/Viper/ViperConfig.cmake" "# tarball smoke fixture\n")
-file(WRITE "${_stage}/lib/cmake/Viper/ViperTargets.cmake" "# tarball smoke fixture\n")
-file(WRITE "${_stage}/lib/cmake/Viper/ViperConfigVersion.cmake"
+file(WRITE "${_stage}/lib/cmake/Zanna/ZannaConfig.cmake" "# tarball smoke fixture\n")
+file(WRITE "${_stage}/lib/cmake/Zanna/ZannaTargets.cmake" "# tarball smoke fixture\n")
+file(WRITE "${_stage}/lib/cmake/Zanna/ZannaConfigVersion.cmake"
         "set(PACKAGE_VERSION \"1.2.3\")\n")
-file(WRITE "${_stage}/include/viper/version.hpp"
-        "#define VIPER_SNAPSHOT_STR \"1.2.3-test\"\n"
-        "#define VIPER_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
-        "#define VIPER_SOURCE_STATE_STR \"clean\"\n")
+file(WRITE "${_stage}/include/zanna/version.hpp"
+        "#define ZANNA_SNAPSHOT_STR \"1.2.3-test\"\n"
+        "#define ZANNA_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
+        "#define ZANNA_SOURCE_STATE_STR \"clean\"\n")
 
 set(_runtime_manifest
-        "${VIPER_BUILD_DIR}/generated/viper/runtime/RuntimeComponentManifest.hpp")
+        "${ZANNA_BUILD_DIR}/generated/zanna/runtime/RuntimeComponentManifest.hpp")
 if (NOT EXISTS "${_runtime_manifest}")
     message(FATAL_ERROR "generated runtime component manifest is missing: ${_runtime_manifest}")
 endif ()
 file(STRINGS "${_runtime_manifest}" _runtime_archive_lines
-        REGEX "\"viper_rt_[A-Za-z0-9_]+\"")
+        REGEX "\"zanna_rt_[A-Za-z0-9_]+\"")
 foreach (_archive_line IN LISTS _runtime_archive_lines)
-    string(REGEX MATCH "viper_rt_[A-Za-z0-9_]+" _archive "${_archive_line}")
+    string(REGEX MATCH "zanna_rt_[A-Za-z0-9_]+" _archive "${_archive_line}")
     if (NOT "${_archive}" STREQUAL "")
         file(WRITE "${_stage}/lib/${_archive_prefix}${_archive}${_archive_suffix}" "fixture\n")
     endif ()
 endforeach ()
 
 set(_install_package_cmd
-        "${VIPER_BIN}" install-package
+        "${ZANNA_BIN}" install-package
         --stage-dir "${_stage}"
         --target tarball
         --output-file "${_artifact}")
@@ -110,7 +110,7 @@ execute_process(
 )
 if (NOT _build_rv EQUAL 0)
     message(FATAL_ERROR
-            "viper install-package tarball smoke failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
+            "zanna install-package tarball smoke failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
 endif ()
 
 if (NOT EXISTS "${_artifact}")
@@ -134,20 +134,20 @@ foreach (_inventory_field IN ITEMS
 endforeach ()
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${_artifact}" --require-checksum
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${_artifact}" --require-checksum
         RESULT_VARIABLE _verify_rv
         OUTPUT_VARIABLE _verify_out
         ERROR_VARIABLE _verify_err
 )
 if (NOT _verify_rv EQUAL 0)
     message(FATAL_ERROR
-            "viper install-package verify-only failed\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
+            "zanna install-package verify-only failed\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
 endif ()
 file(READ "${_artifact}.sha256" _valid_sidecar)
 file(WRITE "${_artifact}.sha256"
-        "0000000000000000000000000000000000000000000000000000000000000000  viper-toolchain.tar.gz\n")
+        "0000000000000000000000000000000000000000000000000000000000000000  zanna-toolchain.tar.gz\n")
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --verify-only "${_artifact}" --require-checksum
+        COMMAND "${ZANNA_BIN}" install-package --verify-only "${_artifact}" --require-checksum
         RESULT_VARIABLE _bad_checksum_rv
         OUTPUT_VARIABLE _bad_checksum_out
         ERROR_VARIABLE _bad_checksum_err)
@@ -158,7 +158,7 @@ endif ()
 file(WRITE "${_artifact}.sha256" "${_valid_sidecar}")
 
 set(_extensionless_cmd
-        "${VIPER_BIN}" install-package
+        "${ZANNA_BIN}" install-package
         --stage-dir "${_stage}"
         --target tarball
         -o "${_extensionless_artifact}")
@@ -174,7 +174,7 @@ endif ()
 
 set(_release_cmd
         "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
-        "${VIPER_BIN}" install-package
+        "${ZANNA_BIN}" install-package
         --stage-dir "${_stage}"
         --target tarball
         --output-file "${_release_artifact}"
@@ -188,7 +188,7 @@ if (NOT _release_rv EQUAL 0)
     message(FATAL_ERROR
             "release tarball generation failed\nstdout:\n${_release_out}\nstderr:\n${_release_err}")
 endif ()
-if (EXISTS "${_tmp_root}/.viper-release.lock")
+if (EXISTS "${_tmp_root}/.zanna-release.lock")
     message(FATAL_ERROR "successful release generation left its output lock")
 endif ()
 file(READ "${_release_artifact}.manifest.json" _release_inventory)

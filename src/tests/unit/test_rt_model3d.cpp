@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,8 +17,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_animcontroller3d.h"
@@ -47,7 +47,7 @@
 #include <string>
 #include <vector>
 
-#include "VpaWriter.hpp"
+#include "ZpakWriter.hpp"
 
 extern "C" {
 extern rt_string rt_const_cstr(const char *s);
@@ -1647,7 +1647,7 @@ static bool write_fbx_negative_time_animation_fixture(const char *path) {
 }
 
 static bool write_truncated_fbx_fixture(const char *path) {
-    const char *valid_path = "/tmp/viper_model3d_valid_for_truncate.fbx";
+    const char *valid_path = "/tmp/zanna_model3d_valid_for_truncate.fbx";
     if (!write_fbx_fixture(valid_path))
         return false;
 
@@ -1783,7 +1783,7 @@ static const char *find_existing_path(std::initializer_list<const char *> candid
 }
 
 static void test_model3d_roundtrips_vscn_assets() {
-    const char *path = "/tmp/viper_model3d_fixture.vscn";
+    const char *path = "/tmp/zanna_model3d_fixture.vscn";
     bool wrote_fixture = write_scene_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Scene fixture can be written to .vscn");
     if (!wrote_fixture)
@@ -1907,7 +1907,7 @@ static void test_model3d_roundtrips_vscn_assets() {
 }
 
 static void test_model3d_find_node_rejects_wrong_string_handles() {
-    const char *path = "/tmp/viper_model3d_find_node_fixture.vscn";
+    const char *path = "/tmp/zanna_model3d_find_node_fixture.vscn";
     bool wrote_fixture = write_scene_fixture(path);
     EXPECT_TRUE(wrote_fixture, "FindNode corruption fixture can be written to .vscn");
     if (!wrote_fixture)
@@ -1947,7 +1947,7 @@ static void test_model3d_find_node_rejects_wrong_string_handles() {
 }
 
 static void test_model3d_adapts_gltf_scene_graphs() {
-    const char *path = "/tmp/viper_model3d_fixture.gltf";
+    const char *path = "/tmp/zanna_model3d_fixture.gltf";
     bool wrote_fixture = write_gltf_fixture(path);
     EXPECT_TRUE(wrote_fixture, "glTF fixture can be written");
     if (!wrote_fixture)
@@ -2058,7 +2058,7 @@ static void test_model3d_adapts_gltf_scene_graphs() {
 }
 
 static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
-    const char *path = "/tmp/viper_model3d_accessor_overrun.gltf";
+    const char *path = "/tmp/zanna_model3d_accessor_overrun.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
@@ -2086,7 +2086,7 @@ static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
 }
 
 static void test_gltf_asset_accessors_clamp_corrupt_counts() {
-    const char *path = "/tmp/viper_gltf_asset_corrupt_counts.gltf";
+    const char *path = "/tmp/zanna_gltf_asset_corrupt_counts.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
@@ -2293,7 +2293,7 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
 }
 
 static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
-    const char *pack_path = "/tmp/viper_model3d_asset_pack.vpa";
+    const char *pack_path = "/tmp/zanna_model3d_asset_pack.zpak";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f, 7.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -2320,7 +2320,7 @@ static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
         "}";
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("assets/models/model.gltf",
                     reinterpret_cast<const uint8_t *>(gltf_json.data()),
                     gltf_json.size(),
@@ -2361,7 +2361,7 @@ static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
 }
 
 static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
-    const char *pack_path = "/tmp/viper_model3d_missing_dep_pack.vpa";
+    const char *pack_path = "/tmp/zanna_model3d_missing_dep_pack.zpak";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -2371,7 +2371,7 @@ static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
         "}";
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("assets/models/missing_dep.gltf",
                     reinterpret_cast<const uint8_t *>(gltf_json.data()),
                     gltf_json.size(),
@@ -2401,7 +2401,7 @@ static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
 }
 
 static void test_model3d_adapts_fbx_scene_graphs() {
-    const char *path = "/tmp/viper_model3d_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_fixture.fbx";
     bool wrote_fixture = write_fbx_fixture(path);
     EXPECT_TRUE(wrote_fixture, "FBX fixture can be written");
     if (!wrote_fixture)
@@ -2455,7 +2455,7 @@ static void test_model3d_adapts_fbx_scene_graphs() {
 }
 
 static void test_model3d_imports_fbx_nodes_with_many_properties() {
-    const char *path = "/tmp/viper_model3d_many_properties.fbx";
+    const char *path = "/tmp/zanna_model3d_many_properties.fbx";
     bool wrote_fixture = write_fbx_many_property_node_fixture(path);
     EXPECT_TRUE(wrote_fixture, "FBX many-property fixture can be written");
     if (!wrote_fixture)
@@ -2472,7 +2472,7 @@ static void test_model3d_imports_fbx_nodes_with_many_properties() {
 }
 
 static void test_model3d_loads_preloaded_fbx_bytes() {
-    const char *path = "/tmp/viper_model3d_preloaded_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_preloaded_fixture.fbx";
     std::vector<uint8_t> bytes;
     bool wrote_fixture = write_fbx_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Preloaded FBX fixture can be written");
@@ -2499,7 +2499,7 @@ static void test_model3d_loads_preloaded_fbx_bytes() {
 }
 
 static void test_model3d_loads_obj_as_template_asset() {
-    const char *path = "/tmp/viper_model3d_fixture.obj";
+    const char *path = "/tmp/zanna_model3d_fixture.obj";
     const char *obj = "# simple indexed triangle\n"
                       "v 0 0 0\n"
                       "v 1 0 0\n"
@@ -2543,13 +2543,13 @@ static void test_model3d_loads_obj_as_template_asset() {
 }
 
 static void test_model3d_preserves_obj_mtl_material_groups() {
-    const char *obj_path = "/tmp/viper_model3d_mtl_groups.obj";
-    const char *mtl_path = "/tmp/viper_model3d_mtl_groups.mtl";
+    const char *obj_path = "/tmp/zanna_model3d_mtl_groups.obj";
+    const char *mtl_path = "/tmp/zanna_model3d_mtl_groups.mtl";
     const char *mtl = "newmtl Red\n"
                       "Kd 0.9 0.1 0.1\n"
                       "newmtl Blue\n"
                       "Kd 0.1 0.2 0.9\n";
-    const char *obj = "mtllib viper_model3d_mtl_groups.mtl\n"
+    const char *obj = "mtllib zanna_model3d_mtl_groups.mtl\n"
                       "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"
@@ -2596,10 +2596,10 @@ static void test_model3d_preserves_obj_mtl_material_groups() {
 }
 
 static void test_model3d_imports_obj_mtl_texture_maps() {
-    const char *obj_path = "/tmp/viper_model3d_mtl_texture.obj";
-    const char *mtl_a_path = "/tmp/viper_model3d_mtl_texture_a.mtl";
-    const char *mtl_b_path = "/tmp/viper_model3d_mtl_texture_b.mtl";
-    const char *png_path = "/tmp/viper_model3d_mtl_texture.png";
+    const char *obj_path = "/tmp/zanna_model3d_mtl_texture.obj";
+    const char *mtl_a_path = "/tmp/zanna_model3d_mtl_texture_a.mtl";
+    const char *mtl_b_path = "/tmp/zanna_model3d_mtl_texture_b.mtl";
+    const char *png_path = "/tmp/zanna_model3d_mtl_texture.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0xFF8844FFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
@@ -2608,10 +2608,10 @@ static void test_model3d_imports_obj_mtl_texture_maps() {
     const char *mtl_a = "newmtl Unused\nKd 0.2 0.2 0.2\n";
     const char *mtl_b = "newmtl Textured\n"
                         "Kd 1.0 1.0 1.0\n"
-                        "map_Kd viper_model3d_mtl_texture.png\n"
-                        "map_Bump viper_model3d_mtl_texture.png\n";
-    const char *obj = "mtllib viper_model3d_mtl_texture_a.mtl "
-                      "viper_model3d_mtl_texture_b.mtl\n"
+                        "map_Kd zanna_model3d_mtl_texture.png\n"
+                        "map_Bump zanna_model3d_mtl_texture.png\n";
+    const char *obj = "mtllib zanna_model3d_mtl_texture_a.mtl "
+                      "zanna_model3d_mtl_texture_b.mtl\n"
                       "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"
@@ -2638,9 +2638,9 @@ static void test_model3d_imports_obj_mtl_texture_maps() {
 }
 
 static void test_model3d_imports_quoted_obj_mtl_references() {
-    const char *obj_path = "/tmp/viper_model3d quoted refs.obj";
-    const char *mtl_path = "/tmp/viper model3d quoted refs.mtl";
-    const char *png_path = "/tmp/viper model3d quoted texture.png";
+    const char *obj_path = "/tmp/zanna_model3d quoted refs.obj";
+    const char *mtl_path = "/tmp/zanna model3d quoted refs.mtl";
+    const char *png_path = "/tmp/zanna model3d quoted texture.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x7799BBFFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
@@ -2648,8 +2648,8 @@ static void test_model3d_imports_quoted_obj_mtl_references() {
 
     std::string mtl = "newmtl \"Quoted Red\"\n"
                       "Kd 0.7 0.1 0.2\n"
-                      "map_Kd -o 0 0 \"viper model3d quoted texture.png\"\n";
-    std::string obj = "mtllib \"viper model3d quoted refs.mtl\"\n"
+                      "map_Kd -o 0 0 \"zanna model3d quoted texture.png\"\n";
+    std::string obj = "mtllib \"zanna model3d quoted refs.mtl\"\n"
                       "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"
@@ -2677,10 +2677,10 @@ static void test_model3d_imports_quoted_obj_mtl_references() {
 }
 
 static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
-    const char *obj_path = "/tmp/viper_model3d_mtl_sanitize.obj";
-    const char *mtl_path = "/tmp/viper_model3d_mtl_sanitize.mtl";
-    const char *unsafe_texture_ref = "file:viper_model3d_mtl_unsafe.png";
-    const char *normal_png_path = "/tmp/viper_model3d_mtl_norm.png";
+    const char *obj_path = "/tmp/zanna_model3d_mtl_sanitize.obj";
+    const char *mtl_path = "/tmp/zanna_model3d_mtl_sanitize.mtl";
+    const char *unsafe_texture_ref = "file:zanna_model3d_mtl_unsafe.png";
+    const char *normal_png_path = "/tmp/zanna_model3d_mtl_norm.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x4488FFFFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(normal_png_path)) == 1,
@@ -2690,9 +2690,9 @@ static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
                       "Kd 2.0 -1.0 0.5\n"
                       "Ks 2.0 -0.5 0.25\n"
                       "d 1.5\n"
-                      "map_Kd file:viper_model3d_mtl_unsafe.png\n"
-                      "norm viper_model3d_mtl_norm.png\n";
-    const char *obj = "mtllib viper_model3d_mtl_sanitize.mtl\n"
+                      "map_Kd file:zanna_model3d_mtl_unsafe.png\n"
+                      "norm zanna_model3d_mtl_norm.png\n";
+    const char *obj = "mtllib zanna_model3d_mtl_sanitize.mtl\n"
                       "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"
@@ -2726,7 +2726,7 @@ static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
 }
 
 static void test_model3d_preserves_empty_gltf_scene_without_synth_nodes() {
-    const char *path = "/tmp/viper_model3d_empty_scene.gltf";
+    const char *path = "/tmp/zanna_model3d_empty_scene.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
@@ -2767,7 +2767,7 @@ static void test_model3d_preserves_empty_gltf_scene_without_synth_nodes() {
 }
 
 static void test_model3d_loads_stl_as_template_asset() {
-    const char *path = "/tmp/viper_model3d_fixture.stl";
+    const char *path = "/tmp/zanna_model3d_fixture.stl";
     const char *stl = "solid tri\n"
                       "facet normal 0 0 1\n"
                       "  outer loop\n"
@@ -2793,7 +2793,7 @@ static void test_model3d_loads_stl_as_template_asset() {
 }
 
 static void test_model3d_loads_minimal_ascii_fbx() {
-    const char *path = "/tmp/viper_model3d_ascii_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_ascii_fixture.fbx";
     const char *fbx = "; FBX 7.4.0 project file\n"
                       "Objects:  {\n"
                       "  Geometry: 1, \"Geometry::AsciiMesh\", \"Mesh\" {\n"
@@ -2813,7 +2813,7 @@ static void test_model3d_loads_minimal_ascii_fbx() {
 }
 
 static void test_model3d_splits_fbx_layer_element_materials() {
-    const char *path = "/tmp/viper_model3d_multimaterial_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_multimaterial_fixture.fbx";
     EXPECT_TRUE(write_fbx_multimaterial_fixture(path), "Multi-material FBX fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
     EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX LayerElementMaterial fixtures");
@@ -2856,7 +2856,7 @@ static void test_model3d_splits_fbx_layer_element_materials() {
 }
 
 static void test_model3d_triangulates_large_fbx_ngons() {
-    const char *path = "/tmp/viper_model3d_large_ngon.fbx";
+    const char *path = "/tmp/zanna_model3d_large_ngon.fbx";
     bool wrote_fixture = write_fbx_large_ngon_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Large n-gon FBX fixture can be written");
     if (!wrote_fixture)
@@ -2876,8 +2876,8 @@ static void test_model3d_triangulates_large_fbx_ngons() {
 }
 
 static void test_model3d_imports_fbx_embedded_textures() {
-    const char *path = "/tmp/viper_model3d_embedded_texture_fixture.fbx";
-    const char *png_path = "/tmp/viper_model3d_embedded_texture_source.png";
+    const char *path = "/tmp/zanna_model3d_embedded_texture_fixture.fbx";
+    const char *png_path = "/tmp/zanna_model3d_embedded_texture_source.png";
     std::vector<uint8_t> png_bytes;
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x4A6C8EFFll);
@@ -2903,9 +2903,9 @@ static void test_model3d_imports_fbx_embedded_textures() {
 }
 
 static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallback() {
-    const char *path = "/tmp/viper_model3d_texture_aliases.fbx";
-    const char *png_path = "/tmp/viper_model3d_texture_aliases.png";
-    const char *exporter_path = "/missing/export/machine/viper_model3d_texture_aliases.png";
+    const char *path = "/tmp/zanna_model3d_texture_aliases.fbx";
+    const char *png_path = "/tmp/zanna_model3d_texture_aliases.png";
+    const char *exporter_path = "/missing/export/machine/zanna_model3d_texture_aliases.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x66AAEEFFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
@@ -2928,7 +2928,7 @@ static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallb
 }
 
 static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
-    const char *path = "/tmp/viper_model3d_material_aliases.fbx";
+    const char *path = "/tmp/zanna_model3d_material_aliases.fbx";
     bool wrote_fixture = write_fbx_material_alias_fixture(path);
     EXPECT_TRUE(wrote_fixture, "FBX material alias fixture can be written");
     if (!wrote_fixture)
@@ -2970,7 +2970,7 @@ static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
 }
 
 static void test_model3d_imports_fbx_secondary_uvs_and_vertex_colors() {
-    const char *path = "/tmp/viper_model3d_multilayer_attributes.fbx";
+    const char *path = "/tmp/zanna_model3d_multilayer_attributes.fbx";
     EXPECT_TRUE(write_fbx_multilayer_attribute_fixture(path),
                 "FBX multi-layer attribute fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
@@ -2992,7 +2992,7 @@ static void test_model3d_imports_fbx_secondary_uvs_and_vertex_colors() {
 }
 
 static void test_fbx_cluster_transform_link_drives_bind_pose() {
-    const char *path = "/tmp/viper_model3d_cluster_transform_link.fbx";
+    const char *path = "/tmp/zanna_model3d_cluster_transform_link.fbx";
     EXPECT_TRUE(write_fbx_cluster_transform_link_fixture(path),
                 "FBX TransformLink bind-pose fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
@@ -3013,7 +3013,7 @@ static void test_fbx_cluster_transform_link_drives_bind_pose() {
 }
 
 static void test_fbx_imports_skeletons_beyond_draw_palette_limit() {
-    const char *path = "/tmp/viper_model3d_257_bone_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_257_bone_fixture.fbx";
     EXPECT_TRUE(write_fbx_large_skeleton_fixture(path, 257), "FBX 257-bone fixture can be written");
     void *asset = rt_fbx_load(rt_const_cstr(path));
     EXPECT_TRUE(asset != nullptr, "FBX loader accepts skeletons larger than one draw palette");
@@ -3026,7 +3026,7 @@ static void test_fbx_imports_skeletons_beyond_draw_palette_limit() {
 }
 
 static void test_fbx_constant_animation_curve_preserves_step() {
-    const char *path = "/tmp/viper_model3d_constant_anim_curve.fbx";
+    const char *path = "/tmp/zanna_model3d_constant_anim_curve.fbx";
     EXPECT_TRUE(write_fbx_constant_animation_fixture(path),
                 "FBX constant animation fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
@@ -3062,7 +3062,7 @@ static void test_fbx_constant_animation_curve_preserves_step() {
 }
 
 static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
-    const char *path = "/tmp/viper_model3d_ascii_attributes.fbx";
+    const char *path = "/tmp/zanna_model3d_ascii_attributes.fbx";
     const char *fbx = "; FBX 7.4.0 project file\n"
                       "Objects:  {\n"
                       "  Model: 2, \"Model::AsciiNamed\", \"Mesh\" {\n"
@@ -3106,7 +3106,7 @@ static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
 }
 
 static void test_model3d_honors_fbx_rotation_order() {
-    const char *path = "/tmp/viper_model3d_rotation_order.fbx";
+    const char *path = "/tmp/zanna_model3d_rotation_order.fbx";
     EXPECT_TRUE(write_fbx_rotation_order_fixture(path), "FBX RotationOrder fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
     EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX RotationOrder properties");
@@ -3128,7 +3128,7 @@ static void test_model3d_honors_fbx_rotation_order() {
 }
 
 static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
-    const char *path = "/tmp/viper_model3d_skinned_anim_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_skinned_anim_fixture.fbx";
     bool wrote_fixture = write_fbx_skinned_animation_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Skinned FBX fixture can be written");
     if (!wrote_fixture)
@@ -3210,7 +3210,7 @@ static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
 }
 
 static void test_fbx_duplicate_animation_curves_keep_first_component() {
-    const char *path = "/tmp/viper_model3d_duplicate_anim_curve_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_duplicate_anim_curve_fixture.fbx";
     bool wrote_fixture = write_fbx_duplicate_animation_curve_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Duplicate-curve FBX fixture can be written");
     if (!wrote_fixture)
@@ -3249,7 +3249,7 @@ static void test_fbx_duplicate_animation_curves_keep_first_component() {
 }
 
 static void test_fbx_mismatched_animation_curve_key_arrays_are_ignored() {
-    const char *path = "/tmp/viper_model3d_mismatched_anim_curve_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_mismatched_anim_curve_fixture.fbx";
     bool wrote_fixture = write_fbx_mismatched_animation_curve_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Mismatched-curve FBX fixture can be written");
     if (!wrote_fixture)
@@ -3288,7 +3288,7 @@ static void test_fbx_mismatched_animation_curve_key_arrays_are_ignored() {
 }
 
 static void test_fbx_bare_animation_curve_component_names_import() {
-    const char *path = "/tmp/viper_model3d_bare_anim_curve_component_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_bare_anim_curve_component_fixture.fbx";
     bool wrote_fixture = write_fbx_bare_component_animation_curve_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Bare-component FBX fixture can be written");
     if (!wrote_fixture)
@@ -3327,7 +3327,7 @@ static void test_fbx_bare_animation_curve_component_names_import() {
 }
 
 static void test_fbx_lowercase_animation_curve_component_names_import() {
-    const char *path = "/tmp/viper_model3d_lowercase_anim_curve_component_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_lowercase_anim_curve_component_fixture.fbx";
     bool wrote_fixture = write_fbx_lowercase_component_animation_curve_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Lowercase-component FBX fixture can be written");
     if (!wrote_fixture)
@@ -3367,7 +3367,7 @@ static void test_fbx_lowercase_animation_curve_component_names_import() {
 }
 
 static void test_fbx_negative_animation_key_times_normalize_to_clip_start() {
-    const char *path = "/tmp/viper_model3d_negative_time_anim_curve_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_negative_time_anim_curve_fixture.fbx";
     bool wrote_fixture = write_fbx_negative_time_animation_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Negative-time FBX fixture can be written");
     if (!wrote_fixture)
@@ -3413,7 +3413,7 @@ static void test_fbx_negative_animation_key_times_normalize_to_clip_start() {
 }
 
 static void test_fbx_animation_layers_beyond_fixed_cap_import() {
-    const char *path = "/tmp/viper_model3d_many_anim_layers_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_many_anim_layers_fixture.fbx";
     bool wrote_fixture = write_fbx_many_layer_animation_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Many-layer FBX fixture can be written");
     if (!wrote_fixture)
@@ -3446,7 +3446,7 @@ static void test_fbx_animation_layers_beyond_fixed_cap_import() {
 }
 
 static void test_fbx_animation_curve_nodes_beyond_fixed_cap_import() {
-    const char *path = "/tmp/viper_model3d_many_curve_nodes_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_many_curve_nodes_fixture.fbx";
     bool wrote_fixture = write_fbx_many_curve_node_animation_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Many-curve-node FBX fixture can be written");
     if (!wrote_fixture)
@@ -3480,7 +3480,7 @@ static void test_fbx_animation_curve_nodes_beyond_fixed_cap_import() {
 }
 
 static void test_fbx_duplicate_bone_names_resolve_by_model_id() {
-    const char *path = "/tmp/viper_model3d_duplicate_bone_names_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_duplicate_bone_names_fixture.fbx";
     bool wrote_fixture = write_fbx_duplicate_bone_name_child_animation_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Duplicate-bone-name FBX fixture can be written");
     if (!wrote_fixture)
@@ -3530,7 +3530,7 @@ static void test_fbx_duplicate_bone_names_resolve_by_model_id() {
 }
 
 static void test_fbx_asset_accessors_clamp_corrupt_counts() {
-    const char *skinned_path = "/tmp/viper_fbx_asset_corrupt_counts_skinned.fbx";
+    const char *skinned_path = "/tmp/zanna_fbx_asset_corrupt_counts_skinned.fbx";
     EXPECT_TRUE(write_fbx_skinned_animation_fixture(skinned_path),
                 "Skinned FBX fixture can be written for asset corruption test");
     void *skinned_asset = rt_fbx_load(rt_const_cstr(skinned_path));
@@ -3640,7 +3640,7 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
             rt_obj_free(wrong_material);
     }
 
-    const char *material_path = "/tmp/viper_fbx_asset_corrupt_counts_material.fbx";
+    const char *material_path = "/tmp/zanna_fbx_asset_corrupt_counts_material.fbx";
     EXPECT_TRUE(write_fbx_fixture(material_path),
                 "Material FBX fixture can be written for asset corruption test");
     void *material_asset = rt_fbx_load(rt_const_cstr(material_path));
@@ -3680,7 +3680,7 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
 }
 
 static void test_model3d_rejects_truncated_fbx() {
-    const char *path = "/tmp/viper_model3d_truncated_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_truncated_fixture.fbx";
     bool wrote_fixture = write_truncated_fbx_fixture(path);
     EXPECT_TRUE(wrote_fixture, "Truncated FBX fixture can be written");
     if (!wrote_fixture)
@@ -3700,7 +3700,7 @@ static void test_model3d_rejects_truncated_fbx() {
 /// @details Content loaders report missing files as NULL plus last-error state so fallback asset
 /// flows can continue without aborting the program.
 static void test_model3d_missing_fbx_returns_null_without_trap() {
-    const char *path = "/tmp/viper_model3d_missing_recoverable_fixture.fbx";
+    const char *path = "/tmp/zanna_model3d_missing_recoverable_fixture.fbx";
     std::remove(path);
 
     void *model = rt_model3d_load(rt_const_cstr(path));
@@ -3711,8 +3711,8 @@ static void test_model3d_missing_fbx_returns_null_without_trap() {
 
 static void test_model3d_loads_demo_fbx_textures() {
     const char *path = find_existing_path({
-#ifdef VIPER_SOURCE_DIR
-        VIPER_SOURCE_DIR "/examples/games/3dbaseball/model.fbx",
+#ifdef ZANNA_SOURCE_DIR
+        ZANNA_SOURCE_DIR "/examples/games/3dbaseball/model.fbx",
 #endif
         "examples/games/3dbaseball/model.fbx",
         "../examples/games/3dbaseball/model.fbx"});
@@ -3769,15 +3769,15 @@ static void test_model3d_loads_gltfpack_meshopt_fixture() {
     const char *compressed = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb",
          "../examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb"
 #endif
         });
     const char *reference = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
          "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(compressed != nullptr && reference != nullptr,
@@ -3840,8 +3840,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     const char *path = find_existing_path(
         {"examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
          "../examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2"
 #endif
         });
     EXPECT_TRUE(path != nullptr, "ETC1S KTX2 fixture is present");
@@ -3894,8 +3894,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     const char *bc6h_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
          "../examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2"
 #endif
         });
     EXPECT_TRUE(bc6h_path != nullptr, "BC6H KTX2 fixture is present");
@@ -3935,8 +3935,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     const char *uastc_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
          "../examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2"
 #endif
         });
     EXPECT_TRUE(uastc_path != nullptr, "UASTC KTX2 fixture is present");
@@ -3982,8 +3982,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     const char *glb = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
          "../examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_etc1s.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_etc1s.glb"
 #endif
         });
     EXPECT_TRUE(glb != nullptr, "ETC1S GLB fixture is present");
@@ -4007,8 +4007,8 @@ static void test_model3d_loads_draco_sequential_fixture() {
     const char *seq_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
          "../examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_seq.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_seq.glb"
 #endif
         });
     EXPECT_TRUE(seq_path != nullptr, "Draco sequential fixture is present");
@@ -4049,8 +4049,8 @@ static void test_model3d_loads_draco_sequential_fixture() {
     const char *eb_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
          "../examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_eb.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_eb.glb"
 #endif
         });
     EXPECT_TRUE(eb_path != nullptr, "Draco edgebreaker fixture is present");
@@ -4138,8 +4138,8 @@ static void test_model3d_loads_draco_edgebreaker_spheres() {
     const char *eb_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb"
 #endif
         });
     EXPECT_TRUE(eb_path != nullptr, "standard-edgebreaker sphere fixture is present");
@@ -4152,8 +4152,8 @@ static void test_model3d_loads_draco_edgebreaker_spheres() {
     const char *valence_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
 #endif
         });
     EXPECT_TRUE(valence_path != nullptr, "valence-edgebreaker sphere fixture is present");
@@ -4165,8 +4165,8 @@ static void test_model3d_loads_draco_edgebreaker_spheres() {
     const char *pd_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb"
 #endif
         });
     EXPECT_TRUE(pd_path != nullptr, "prediction-degree sphere fixture is present");
@@ -4181,8 +4181,8 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     const char *src_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
          "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(src_path != nullptr, "skinned agent fixture is present");
@@ -4196,7 +4196,7 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     EXPECT_TRUE(src_anims > 0, "skinned agent carries animation clips");
     void *scene = rt_model3d_instantiate_scene(model);
     EXPECT_TRUE(scene != nullptr, "skinned agent instantiates");
-    const char *baked_path = "/tmp/viper_model3d_baked_rig.vscn";
+    const char *baked_path = "/tmp/zanna_model3d_baked_rig.vscn";
     if (scene) {
         EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(baked_path)) != 0,
                     "skinned scene saves as vscn");
@@ -4229,8 +4229,8 @@ static void test_model3d_draco_corrupt_payloads_fail_cleanly() {
     const char *path = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
 #endif
         });
     if (!path)
@@ -4245,7 +4245,7 @@ static void test_model3d_draco_corrupt_payloads_fail_cleanly() {
     if (bin_start >= glb.size())
         return;
     size_t bin_len = glb.size() - bin_start;
-    const char *tmp_path = "/tmp/viper_model3d_draco_corrupt.glb";
+    const char *tmp_path = "/tmp/zanna_model3d_draco_corrupt.glb";
     int survived = 0;
     const int kVariants = 24;
     for (int i = 0; i < kVariants; i++) {
@@ -4288,8 +4288,8 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
     const char *reference = find_existing_path(
         {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
          "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-#ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(reference != nullptr, "Quantized-fixture reference twin is present");
@@ -4313,15 +4313,15 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
         {"quantized",
          {"examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb",
           "../examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb",
-#ifdef VIPER_SOURCE_DIR
-          VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb"
+#ifdef ZANNA_SOURCE_DIR
+          ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb"
 #endif
          }},
         {"filtered",
          {"examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb",
           "../examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb",
-#ifdef VIPER_SOURCE_DIR
-          VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb"
+#ifdef ZANNA_SOURCE_DIR
+          ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb"
 #endif
          }},
     };
@@ -4378,7 +4378,7 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
 }
 
 static void test_model3d_generate_lods_builds_chains() {
-    const char *obj_path = "/tmp/viper_model3d_generate_lods.obj";
+    const char *obj_path = "/tmp/zanna_model3d_generate_lods.obj";
     std::string obj_text = "v -1 -1 -1\n"
                            "v 1 -1 -1\n"
                            "v 1 1 -1\n"
@@ -4425,7 +4425,7 @@ static void test_model3d_generate_lods_builds_chains() {
 }
 
 static void test_model3d_applies_material_variants() {
-    const char *gltf_path = "/tmp/viper_model3d_material_variants.gltf";
+    const char *gltf_path = "/tmp/zanna_model3d_material_variants.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -4513,7 +4513,7 @@ static void test_model3d_applies_material_variants() {
 }
 
 static void test_model3d_autoplays_gltf_node_and_morph_animation() {
-    const char *path = "/tmp/viper_model3d_node_animation.gltf";
+    const char *path = "/tmp/zanna_model3d_node_animation.gltf";
     std::vector<uint8_t> buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -4638,7 +4638,7 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
 }
 
 static void test_gltf_short_node_weights_clear_morph_tail() {
-    const char *path = "/tmp/viper_gltf_short_node_weights.gltf";
+    const char *path = "/tmp/zanna_gltf_short_node_weights.gltf";
     std::vector<uint8_t> buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -4722,7 +4722,7 @@ static void test_gltf_short_node_weights_clear_morph_tail() {
 }
 
 static void test_gltf_rejects_unknown_animation_interpolation() {
-    const char *path = "/tmp/viper_gltf_unknown_animation_interpolation.gltf";
+    const char *path = "/tmp/zanna_gltf_unknown_animation_interpolation.gltf";
     std::vector<uint8_t> buffer;
     const float times[2] = {0.0f, 1.0f};
     const float translations[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
@@ -4775,7 +4775,7 @@ static void test_gltf_rejects_unknown_animation_interpolation() {
 }
 
 static void test_gltf_rejects_oversized_node_animation_key_count_before_scan() {
-    const char *path = "/tmp/viper_gltf_oversized_node_animation_keys.gltf";
+    const char *path = "/tmp/zanna_gltf_oversized_node_animation_keys.gltf";
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
@@ -4803,7 +4803,7 @@ static void test_gltf_rejects_oversized_node_animation_key_count_before_scan() {
 }
 
 static void test_gltf_rejects_oversized_morph_weight_animation_width() {
-    const char *path = "/tmp/viper_gltf_oversized_weight_animation.gltf";
+    const char *path = "/tmp/zanna_gltf_oversized_weight_animation.gltf";
     std::vector<uint8_t> buffer;
     const float time = 0.0f;
     size_t time_off = buffer.size();
@@ -4876,7 +4876,7 @@ static void test_model3d_rejects_wrong_handle_types() {
 }
 
 static void test_model3d_binds_first_valid_default_skeletal_animator_for_multiple_skeletons() {
-    const char *path = "/tmp/viper_model3d_multi_skeleton_autobind.obj";
+    const char *path = "/tmp/zanna_model3d_multi_skeleton_autobind.obj";
     const char *obj = "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"
@@ -4935,7 +4935,7 @@ static void test_model3d_binds_first_valid_default_skeletal_animator_for_multipl
 }
 
 static void test_model3d_clamps_corrupt_counts_and_child_walks() {
-    const char *path = "/tmp/viper_model3d_corrupt_counts.obj";
+    const char *path = "/tmp/zanna_model3d_corrupt_counts.obj";
     const char *obj = "v 0 0 0\n"
                       "v 1 0 0\n"
                       "v 0 1 0\n"

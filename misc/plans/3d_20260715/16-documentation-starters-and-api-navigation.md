@@ -50,12 +50,12 @@ Out of scope:
 
 ## Primary owners
 
-- `docs/viperlib/graphics/game3d.md`
-- `docs/viperlib/graphics/rendering3d.md`, `physics3d.md`, `scene.md` only for
+- `docs/zannalib/graphics/game3d.md`
+- `docs/zannalib/graphics/rendering3d.md`, `physics3d.md`, `scene.md` only for
   cross-links/changed low-level contracts;
 - `docs/internals/graphics3d-architecture.md` for frame/ownership architecture;
-- `docs/viperlib/game/README.md`, UI/core/persistence pages;
-- `docs/viperlib/io/assets.md`;
+- `docs/zannalib/game/README.md`, UI/core/persistence pages;
+- `docs/zannalib/io/assets.md`;
 - `docs/internals/testing.md`, `docs/internals/codemap/`, and the generated
   runtime docs under `docs/generated/runtime/` through their supported
   generator (`./scripts/update_generated_docs.sh`);
@@ -142,7 +142,7 @@ Do not turn one starter into a feature dump. Split modules and cross-link.
 
 1. Inventory every Game3D/Graphics3D page and starter. The documentation tree
    was reorganized on 2026-07-16 (`docs/internals/`, `docs/generated/`,
-   `docs/adr/` restructure); the `docs/viperlib/` paths in this plan were
+   `docs/adr/` restructure); the `docs/zannalib/` paths in this plan were
    unaffected, but verify every cross-link against the new tree rather than
    pre-reorganization memory.
 2. Compare public runtime dump to docs class/member coverage.
@@ -189,7 +189,7 @@ Each recipe states ownership, time domain, error/fallback, and teardown.
 ### Phase 4 — Application/UI guidance
 
 Document that GameBase3D is example-library incubation unless promoted. Link
-existing `Viper.Game.UI` and `Viper.GUI` widget references. Show title,
+existing `Zanna.Game.UI` and `Zanna.GUI` widget references. Show title,
 gameplay HUD, pause modal, resize, and transition without inventing new widgets.
 
 ### Phase 5 — Starter updates
@@ -199,7 +199,7 @@ Update tiers in dependency order. Every starter gets:
 - a README explaining the intended abstraction level;
 - source headers following repository convention;
 - a deterministic smoke path/frame limit;
-- `viper.project` asset/package declarations;
+- `zanna.project` asset/package declarations;
 - a CTest check/run/package dry run;
 - no repository-CWD-only assumptions.
 
@@ -236,7 +236,7 @@ entities, event lifetime, pool drops, and corrupt save diagnostics.
 For every snippet:
 
 1. copy it into or source it from a compiled fixture;
-2. run `viper check` and relevant execution test;
+2. run `zanna check` and relevant execution test;
 3. verify qualified names against runtime dump;
 4. test source-tree and packaged working directories where assets exist;
 5. verify docs do not promise an unsupported backend feature;
@@ -244,7 +244,7 @@ For every snippet:
 
 ## Validation
 
-Run docs snippet fixtures, `viper check` on all starters, Game3D/Graphics3D docs
+Run docs snippet fixtures, `zanna check` on all starters, Game3D/Graphics3D docs
 probes, package dry runs, link/path/freshness checks
 (`./scripts/check_docs.sh`), runtime API surface audits, examples label/smoke,
 and full build scripts.

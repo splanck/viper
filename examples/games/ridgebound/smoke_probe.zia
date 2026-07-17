@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,16 +18,16 @@
 
 module smoke_probe;
 
-bind Viper.Core.Convert as Convert;
-bind Viper.Game3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.Input.Key as Key;
-bind Viper.Math as Math;
-bind Viper.System.Environment as Environment;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Time.Clock as Clock;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Game3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.Input.Key as Key;
+bind Zanna.Math as Math;
+bind Zanna.System.Environment as Environment;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
 bind "./config";
 bind "./game";
 
@@ -492,10 +492,10 @@ func main() {
     }
     var renderMs = ms(Clock.NowMicros() - renderStart) / (perfFrames + 0.0);
     var budgetMs = performanceBudget(
-        "VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS", config.PERF_BUDGET_GPU_MS);
+        "ZANNA_RIDGEBOUND_PERF_BUDGET_GPU_MS", config.PERF_BUDGET_GPU_MS);
     if (game.getCanvas().Backend == "software") {
         budgetMs = performanceBudget(
-            "VIPER_RIDGEBOUND_PERF_BUDGET_SOFTWARE_MS", config.PERF_BUDGET_SOFTWARE_MS);
+            "ZANNA_RIDGEBOUND_PERF_BUDGET_SOFTWARE_MS", config.PERF_BUDGET_SOFTWARE_MS);
     }
     Terminal.Say("METRIC: cinematic_960x540_render_ms=" + fmt(renderMs)
         + " budget_ms=" + fmt(budgetMs));

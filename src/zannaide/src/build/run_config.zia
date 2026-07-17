@@ -1,0 +1,189 @@
+module run_config;
+
+bind "../core/document";
+bind "../core/project_manager";
+bind "../services/file_utils";
+
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+final ACTION_BUILD = "build";
+final ACTION_RUN = "run";
+final KIND_CURRENT_FILE = "current-file";
+final KIND_PROJECT_ENTRY = "project-entry";
+final KIND_CUSTOM = "custom";
+
+// ============================================================================
+// MODULE: run_config
+// PURPOSE: Convert an active document/project manifest into build/run argv.
+//
+// WHERE-THIS-FITS: Command handlers ask this module what to run; BuildSystem
+//          owns process launch. Keeping target selection here prevents build
+//          commands from duplicating project-entry and custom-argv policy.
+//
+// TEACHING-NOTE: Build and run commands are argument vectors, not shell strings.
+//          Preserve quoting and `{target}` expansion here so process code can
+//          execute exactly what the project model describes.
+// ============================================================================
+
+class RunConfig {
+    expose String name;
+    expose String action;
+    expose String kind;
+    expose String program;
+    expose Any args;
+    expose String workingDirectory;
+    expose Any env;
+    expose String problemMatcher;
+    expose String targetPath;
+
+    expose func init() {
+        name = "";
+        action = ACTION_RUN;
+        kind = KIND_CURRENT_FILE;
+        program = "zanna";
+        args = Seq.New();
+        workingDirectory = "";
+        env = null;
+        problemMatcher = "zanna";
+        targetPath = "";
+    }
+}
+
+func ForDocument(action: String,
+                 doc: document.Document,
+                 projMgr: project_manager.ProjectManager) -> RunConfig {
+    var cfg = new RunConfig();
+    cfg.action = action;
+    if action == ACTION_BUILD {
+        cfg.name = "Build";
+    } else {
+        cfg.name = "Run";
+    }
+
+    var root = "";
+    var lang = "";
+    if doc != null {
+        lang = doc.language;
+    }
+    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+        root = projMgr.project.rootPath;
+        lang = projMgr.project.lang;
+        cfg.kind = KIND_PROJECT_ENTRY;
+        cfg.targetPath = root;
+        cfg.workingDirectory = root;
+        cfg.problemMatcher = "zanna";
+        ApplyProjectOverrides(cfg, projMgr);
+    } else if doc != null {
+        cfg.kind = KIND_CURRENT_FILE;
+        cfg.targetPath = doc.filePath;
+        cfg.workingDirectory = Path.Directory(doc.filePath);
+    }
+
+    if cfg.program == "" { cfg.program = "zanna"; }
+    if Seq.get_Count(cfg.args) == 0 {
+        if action == ACTION_BUILD {
+            Seq.Push(cfg.args, "build");
+        } else {
+            Seq.Push(cfg.args, "run");
+        }
+        if cfg.program == "zanna" {
+            Seq.Push(cfg.args, "--diagnostic-format=json");
+        }
+        Seq.Push(cfg.args, cfg.targetPath);
+    }
+    if lang == "basic" and cfg.kind == KIND_CURRENT_FILE and cfg.program == "zanna" {
+        // zanna run/build handles BASIC directly; keep this branch explicit so
+        // project configs can override BASIC without changing call sites.
+    }
+    return cfg;
+}
+
+func ApplyProjectOverrides(cfg: RunConfig,
+                           projMgr: project_manager.ProjectManager) {
+    if projMgr == null or projMgr.project == null { return; }
+    var proj = projMgr.project;
+    if proj.problemMatcher != "" {
+        cfg.problemMatcher = proj.problemMatcher;
+    }
+    if proj.workingDirectory != "" {
+        cfg.workingDirectory = Path.Join(proj.rootPath, proj.workingDirectory);
+    }
+    if cfg.action == ACTION_BUILD {
+        if proj.buildProgram != "" { cfg.program = proj.buildProgram; }
+        if proj.buildArgs != "" {
+            cfg.args = SplitArgsWithTarget(proj.buildArgs, cfg.targetPath);
+            cfg.kind = KIND_CUSTOM;
+        }
+    } else {
+        if proj.runProgram != "" { cfg.program = proj.runProgram; }
+        if proj.runArgs != "" {
+            cfg.args = SplitArgsWithTarget(proj.runArgs, cfg.targetPath);
+            cfg.kind = KIND_CUSTOM;
+        }
+    }
+}
+
+func SplitArgsWithTarget(text: String, targetPath: String) -> Any {
+    var items = SplitArgs(text);
+    var out = Seq.New();
+    var i = 0;
+    while i < Seq.get_Count(items) {
+        var item = Obj.ToString(Seq.Get(items, i));
+        if item == "{target}" {
+            item = targetPath;
+        }
+        Seq.Push(out, item);
+        i = i + 1;
+    }
+    return out;
+}
+
+/// @brief Split a project run/build argument string into an argv sequence.
+/// @details Supports whitespace-delimited tokens, single and double quoted
+///          spans, and backslash escapes inside or outside quotes. This keeps
+///          project manifests compatible with paths containing spaces without
+///          invoking a shell or doing platform-specific command parsing.
+/// @param text User-authored argument string from zanna.project.
+/// @return Seq of argv tokens with quotes removed and escapes resolved.
+func SplitArgs(text: String) -> Any {
+    var items = Seq.New();
+    var token = "";
+    var quote = "";
+    var escaping = false;
+    var i = 1;
+    while i <= Str.get_Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if escaping {
+            token = token + ch;
+            escaping = false;
+        } else if ch == "\\" {
+            escaping = true;
+        } else if ch == "\"" or ch == "'" {
+            if quote == "" {
+                quote = ch;
+            } else if quote == ch {
+                quote = "";
+            } else {
+                token = token + ch;
+            }
+        } else if (ch == " " or ch == "\t") and quote == "" {
+            if token != "" {
+                Seq.Push(items, token);
+                token = "";
+            }
+        } else {
+            token = token + ch;
+        }
+        i = i + 1;
+    }
+    if escaping {
+        token = token + "\\";
+    }
+    if token != "" {
+        Seq.Push(items, token);
+    }
+    return items;
+}

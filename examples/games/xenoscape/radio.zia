@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,12 +19,12 @@
 
 module radio;
 
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
-bind Viper.Graphics;
-bind Viper.IO.File as File;
-bind Viper.Terminal as Terminal;
-bind Viper.Text.TextWrapper as TextWrapper;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
+bind Zanna.Graphics;
+bind Zanna.IO.File as File;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.TextWrapper as TextWrapper;
 bind "./accessibility";
 bind "./config";
 bind "./palette";

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -78,16 +78,16 @@ bool writeUtf8(HANDLE handle, const std::string &utf8) {
 }
 
 bool writeInherited(HANDLE handle, std::wstring_view text) {
-    return writeUtf8(handle, viper::installer::wideToUtf8(text));
+    return writeUtf8(handle, zanna::installer::wideToUtf8(text));
 }
 
 [[noreturn]] void throwOutputError(std::wstring_view action, DWORD error) {
-    throw std::runtime_error(viper::installer::wideToUtf8(
-        std::wstring(action) + L": " + viper::installer::formatWindowsError(error)));
+    throw std::runtime_error(zanna::installer::wideToUtf8(
+        std::wstring(action) + L": " + zanna::installer::formatWindowsError(error)));
 }
 
 void writeFileAtomically(const fs::path &destination, std::wstring_view text) {
-    const std::string utf8 = viper::installer::wideToUtf8(text);
+    const std::string utf8 = zanna::installer::wideToUtf8(text);
     fs::path temporary;
     HANDLE file = INVALID_HANDLE_VALUE;
     DWORD createError = ERROR_FILE_EXISTS;
@@ -131,7 +131,7 @@ void writeFileAtomically(const fs::path &destination, std::wstring_view text) {
     }
 }
 
-void writeAutomationOutput(const viper::installer::HostOptions &options, std::wstring_view text) {
+void writeAutomationOutput(const zanna::installer::HostOptions &options, std::wstring_view text) {
     if (!options.outputPath.empty()) {
         writeFileAtomically(options.outputPath, text);
         return;
@@ -142,11 +142,11 @@ void writeAutomationOutput(const viper::installer::HostOptions &options, std::ws
     }
 }
 
-void showFatal(const viper::installer::HostOptions *options,
+void showFatal(const zanna::installer::HostOptions *options,
                std::wstring_view title,
                std::wstring_view message) {
     writeInherited(GetStdHandle(STD_ERROR_HANDLE), std::wstring(message) + L"\r\n");
-    if (!options || options->uiLevel != viper::installer::UiLevel::Quiet) {
+    if (!options || options->uiLevel != zanna::installer::UiLevel::Quiet) {
         MessageBoxW(nullptr,
                     std::wstring(message).c_str(),
                     std::wstring(title).c_str(),
@@ -165,92 +165,92 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     int argc = 0;
     wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv)
-        return viper::installer::kExitInvalidCommandLine;
-    viper::installer::HostOptions options;
+        return zanna::installer::kExitInvalidCommandLine;
+    zanna::installer::HostOptions options;
     for (int i = 1; i < argc; ++i) {
         if (_wcsicmp(argv[i], L"/quiet") == 0 || _wcsicmp(argv[i], L"/silent") == 0) {
-            options.uiLevel = viper::installer::UiLevel::Quiet;
+            options.uiLevel = zanna::installer::UiLevel::Quiet;
             break;
         }
     }
     try {
-        options = viper::installer::parseCommandLine(argc, argv);
+        options = zanna::installer::parseCommandLine(argc, argv);
     } catch (const std::exception &ex) {
         std::wstring message;
         try {
-            message = viper::installer::utf8ToWide(ex.what());
+            message = zanna::installer::utf8ToWide(ex.what());
         } catch (...) {
             message = L"The installer encountered an invalid diagnostic message.";
         }
-        showFatal(&options, L"Viper Tools Installer", message);
+        showFatal(&options, L"Zanna Tools Installer", message);
         LocalFree(argv);
-        return viper::installer::kExitInvalidCommandLine;
+        return zanna::installer::kExitInvalidCommandLine;
     }
     LocalFree(argv);
-    if (options.operation == viper::installer::Operation::Help) {
-        const std::wstring help = viper::installer::commandLineHelp();
+    if (options.operation == zanna::installer::Operation::Help) {
+        const std::wstring help = zanna::installer::commandLineHelp();
         if (!writeInherited(GetStdHandle(STD_OUTPUT_HANDLE), help))
-            MessageBoxW(nullptr, help.c_str(), L"Viper Tools Installer Help", MB_OK);
-        return viper::installer::kExitSuccess;
+            MessageBoxW(nullptr, help.c_str(), L"Zanna Tools Installer Help", MB_OK);
+        return zanna::installer::kExitSuccess;
     }
-    if (options.operation == viper::installer::Operation::SelfTest)
-        return viper::installer::kExitSuccess;
+    if (options.operation == zanna::installer::Operation::SelfTest)
+        return zanna::installer::kExitSuccess;
 
     try {
-        const auto path = viper::installer::currentExecutablePath();
-        const auto package = viper::installer::loadHostPackage(path);
-        if (options.operation == viper::installer::Operation::Inspect) {
-            writeAutomationOutput(options, viper::installer::inspectPackageJson(package));
-            return viper::installer::kExitSuccess;
+        const auto path = zanna::installer::currentExecutablePath();
+        const auto package = zanna::installer::loadHostPackage(path);
+        if (options.operation == zanna::installer::Operation::Inspect) {
+            writeAutomationOutput(options, zanna::installer::inspectPackageJson(package));
+            return zanna::installer::kExitSuccess;
         }
-        viper::installer::Logger logger;
+        zanna::installer::Logger logger;
         logger.open(options.logPath.empty()
-                        ? viper::installer::defaultLogPath(package.metadata.identifier)
+                        ? zanna::installer::defaultLogPath(package.metadata.identifier)
                         : options.logPath);
-        logger.info(L"Viper native installer session started");
-        logger.info(L"Package: " + viper::installer::utf8ToWide(package.metadata.identifier) +
-                    L" " + viper::installer::utf8ToWide(package.metadata.version) + L" " +
-                    viper::installer::utf8ToWide(package.metadata.architecture) + L" " +
-                    viper::installer::utf8ToWide(package.metadata.channel));
-        logger.info(L"Package SHA-256: " + viper::installer::utf8ToWide(package.executableSha256));
+        logger.info(L"Zanna native installer session started");
+        logger.info(L"Package: " + zanna::installer::utf8ToWide(package.metadata.identifier) +
+                    L" " + zanna::installer::utf8ToWide(package.metadata.version) + L" " +
+                    zanna::installer::utf8ToWide(package.metadata.architecture) + L" " +
+                    zanna::installer::utf8ToWide(package.metadata.channel));
+        logger.info(L"Package SHA-256: " + zanna::installer::utf8ToWide(package.executableSha256));
         logger.info(L"Session log: " + logger.path().wstring());
         try {
-            if (options.operation == viper::installer::Operation::CheckUpdates) {
+            if (options.operation == zanna::installer::Operation::CheckUpdates) {
                 logger.info(L"Checking the pinned signed update manifest");
-                const auto update = viper::installer::checkForUpdates(package);
-                writeAutomationOutput(options, viper::installer::updateResultJson(update));
-                if (options.uiLevel == viper::installer::UiLevel::Full)
-                    viper::installer::showUpdateResult(instance, package, update);
+                const auto update = zanna::installer::checkForUpdates(package);
+                writeAutomationOutput(options, zanna::installer::updateResultJson(update));
+                if (options.uiLevel == zanna::installer::UiLevel::Full)
+                    zanna::installer::showUpdateResult(instance, package, update);
                 logger.info(L"Update discovery completed successfully");
-                return viper::installer::kExitSuccess;
+                return zanna::installer::kExitSuccess;
             }
-            const int result = viper::installer::runLifecycle(instance, package, options, logger);
-            logger.info(L"Viper native installer session completed with exit code " +
+            const int result = zanna::installer::runLifecycle(instance, package, options, logger);
+            logger.info(L"Zanna native installer session completed with exit code " +
                         std::to_wstring(result));
             return result;
-        } catch (const viper::installer::InstallerError &error) {
-            logger.error(viper::installer::utf8ToWide(error.what()));
-            const std::wstring diagnostic = viper::installer::utf8ToWide(error.what()) +
+        } catch (const zanna::installer::InstallerError &error) {
+            logger.error(zanna::installer::utf8ToWide(error.what()));
+            const std::wstring diagnostic = zanna::installer::utf8ToWide(error.what()) +
                                             L"\r\n\r\nDiagnostic log:\r\n" +
                                             logger.path().wstring();
-            showFatal(&options, L"Viper Tools Installer", diagnostic);
+            showFatal(&options, L"Zanna Tools Installer", diagnostic);
             return error.exitCode();
         } catch (const std::exception &error) {
-            logger.error(viper::installer::utf8ToWide(error.what()));
-            const std::wstring diagnostic = viper::installer::utf8ToWide(error.what()) +
+            logger.error(zanna::installer::utf8ToWide(error.what()));
+            const std::wstring diagnostic = zanna::installer::utf8ToWide(error.what()) +
                                             L"\r\n\r\nDiagnostic log:\r\n" +
                                             logger.path().wstring();
-            showFatal(&options, L"Viper Tools Installer", diagnostic);
-            return viper::installer::kExitFatalError;
+            showFatal(&options, L"Zanna Tools Installer", diagnostic);
+            return zanna::installer::kExitFatalError;
         }
     } catch (const std::exception &ex) {
         std::wstring message;
         try {
-            message = viper::installer::utf8ToWide(ex.what());
+            message = zanna::installer::utf8ToWide(ex.what());
         } catch (...) {
             message = L"The installer encountered an invalid diagnostic message.";
         }
-        showFatal(&options, L"Viper Tools Installer", message);
-        return viper::installer::kExitFatalError;
+        showFatal(&options, L"Zanna Tools Installer", message);
+        return zanna::installer::kExitFatalError;
     }
 }

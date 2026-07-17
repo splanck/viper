@@ -14,5 +14,5 @@ func start() {
         var t9: Integer = t8 - 11;
         sum = sum + t9;
     }
-    Viper.System.Environment.Exit(sum);
+    Zanna.System.Environment.Exit(sum);
 }

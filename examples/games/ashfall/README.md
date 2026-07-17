@@ -1,7 +1,7 @@
 # ASHFALL
 
 A single-player, combat-first sci-fi FPS campaign built entirely in Zia on the
-Viper engine. Salvager **Rook Ryder** fights through nine missions on the ash
+Zanna engine. Salvager **Rook Ryder** fights through nine missions on the ash
 world Erebos-4 against **HELIX**, a corrupted terraforming AI, its machine army,
 and three distinct bosses.
 
@@ -19,11 +19,11 @@ were removed from all nine missions.
 ## Running
 
 ```sh
-# From a built Viper checkout:
-build/src/tools/viper/viper run examples/games/ashfall/main.zia
-build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --windowed
-build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --level 1
-build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --smoke
+# From a built Zanna checkout:
+build/src/tools/zanna/zanna run examples/games/ashfall/main.zia
+build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --windowed
+build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --level 1
+build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --smoke
 ```
 
 Fullscreen is the default. `--windowed` forces a window, `--level 1` through
@@ -112,10 +112,10 @@ probes/     deterministic Ashfall-specific validation programs
 The 13 probes can be run without ctest:
 
 ```sh
-viper check examples/games/ashfall --diagnostic-format=json
+zanna check examples/games/ashfall --diagnostic-format=json
 
 for probe in core movement perf combat enemy level manifest meta render campaign menu assets smoke; do
-  viper run "examples/games/ashfall/probes/${probe}_probe.zia"
+  zanna run "examples/games/ashfall/probes/${probe}_probe.zia"
 done
 ```
 

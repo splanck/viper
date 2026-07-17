@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tools/common/project_loader.hpp
-// Purpose: Universal project system for Viper — discovers source files,
-//          parses optional viper.project manifests, and resolves project
+// Purpose: Universal project system for Zanna — discovers source files,
+//          parses optional zanna.project manifests, and resolves project
 //          configuration for both Zia and BASIC frontends.
 // Key invariants: ProjectConfig always has a valid entryFile and lang after
 //                 successful resolution.
@@ -82,7 +82,7 @@ struct ProjectConfig {
     bool nullChecks{true};
 
     /// @brief Package configuration (from package-* directives).
-    viper::pkg::PackageConfig packageConfig;
+    zanna::pkg::PackageConfig packageConfig;
 
     // ── Asset embedding ─────────────────────────────────────────────────
 
@@ -91,9 +91,9 @@ struct ProjectConfig {
         std::string sourcePath; ///< File or directory, relative to project root.
     };
 
-    /// @brief A named group of assets to pack into a .vpa file.
+    /// @brief A named group of assets to pack into a .zpak file.
     struct PackGroup {
-        std::string name;                 ///< Pack name → produces <name>.vpa.
+        std::string name;                 ///< Pack name → produces <name>.zpak.
         std::vector<std::string> sources; ///< File/dir paths relative to project root.
         bool compressed{false};           ///< DEFLATE compress entries.
     };
@@ -101,7 +101,7 @@ struct ProjectConfig {
     /// @brief Assets to embed in the executable's .rodata section.
     std::vector<EmbedEntry> embedAssets;
 
-    /// @brief Named groups of assets to pack into .vpa files.
+    /// @brief Named groups of assets to pack into .zpak files.
     std::vector<PackGroup> packGroups;
 };
 
@@ -110,14 +110,14 @@ struct ProjectConfig {
 /// The target may be:
 /// - A single .zia or .bas file -> single-file mode
 /// - A directory -> convention or manifest mode
-/// - A viper.project file path -> explicit manifest mode
+/// - A zanna.project file path -> explicit manifest mode
 ///
 /// @param target CLI argument (file or directory path).
 /// @return ProjectConfig on success, diagnostic on failure.
 il::support::Expected<ProjectConfig> resolveProject(const std::string &target);
 
-/// @brief Parse a viper.project manifest file.
-/// @param manifestPath Absolute path to the viper.project file.
+/// @brief Parse a zanna.project manifest file.
+/// @param manifestPath Absolute path to the zanna.project file.
 /// @return ProjectConfig on success, diagnostic on failure.
 il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath);
 

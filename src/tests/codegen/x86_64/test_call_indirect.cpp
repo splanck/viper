@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
 
 [[nodiscard]] ILValue makeValue(ILValue::Kind kind, int id) {
@@ -89,10 +89,10 @@ namespace {
 }
 
 } // namespace
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
 int main() {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
     const ILModule module = makeCallIndirectModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
     if (!result.errors.empty() || !containsIndirectCall(result.asmText)) {

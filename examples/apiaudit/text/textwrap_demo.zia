@@ -1,10 +1,10 @@
 module TextWrapDemo;
-bind Viper.Terminal;
-bind Viper.Text.TextWrapper as TW;
-bind Viper.Collections.Seq as Seq;
-bind Viper.Core.Object as Obj;
+bind Zanna.Terminal;
+bind Zanna.Text.TextWrapper as TW;
+bind Zanna.Collections.Seq as Seq;
+bind Zanna.Core.Object as Obj;
 func start() {
-    Say("=== Viper.Text.TextWrapper API Audit ===");
+    Say("=== Zanna.Text.TextWrapper API Audit ===");
 
     var longText = "The quick brown fox jumps over the lazy dog. This is a longer sentence that should be wrapped at the specified width.";
 

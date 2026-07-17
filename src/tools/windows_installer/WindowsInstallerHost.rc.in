@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,8 +24,8 @@
 #include <windows.h>
 #include "tools/windows_installer/WindowsInstallerResources.h"
 
-1 RT_MANIFEST "@VIPER_INSTALLER_MANIFEST_PATH@"
-IDI_VIPER_INSTALLER ICON "@VIPER_INSTALLER_ICON_PATH@"
+1 RT_MANIFEST "@ZANNA_INSTALLER_MANIFEST_PATH@"
+IDI_ZANNA_INSTALLER ICON "@ZANNA_INSTALLER_ICON_PATH@"
 
 1 VERSIONINFO
  FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
@@ -44,13 +44,13 @@ BEGIN
   BEGIN
     BLOCK "040904b0"
     BEGIN
-      VALUE "CompanyName", "Viper Project\0"
-      VALUE "FileDescription", "Viper Tools Native Installer Host\0"
+      VALUE "CompanyName", "Zanna Project\0"
+      VALUE "FileDescription", "Zanna Tools Native Installer Host\0"
       VALUE "FileVersion", "@PROJECT_VERSION@\0"
-      VALUE "InternalName", "viper-installer-host\0"
-      VALUE "LegalCopyright", "Copyright (c) Viper Project contributors\0"
-      VALUE "OriginalFilename", "viper-installer-host.exe\0"
-      VALUE "ProductName", "Viper Tools\0"
+      VALUE "InternalName", "zanna-installer-host\0"
+      VALUE "LegalCopyright", "Copyright (c) Zanna Project contributors\0"
+      VALUE "OriginalFilename", "zanna-installer-host.exe\0"
+      VALUE "ProductName", "Zanna Tools\0"
       VALUE "ProductVersion", "@PROJECT_VERSION@\0"
     END
   END

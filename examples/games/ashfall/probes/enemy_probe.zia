@@ -10,8 +10,8 @@
 // =============================================================================
 module enemy_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Math as Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../game" as game;

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_draw.inc
 //   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
 // Purpose: Draw submission (mesh/instanced/shadow), end-frame/present/resize/readback, GPU post-FX

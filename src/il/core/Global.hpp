@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: il/core/Global.hpp
 // Purpose: Declares the Global struct -- module-scope variables and constants
-//          in Viper IL. Provides named, statically-allocated storage accessible
+//          in Zanna IL. Provides named, statically-allocated storage accessible
 //          to all functions within a module (string literals, numeric constants,
 //          lookup tables, runtime metadata).
 // Key invariants:

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 namespace {
 
@@ -1077,4 +1077,4 @@ std::string generateAsInvokerManifest(const std::string &minOsWindows) {
     return generateManifestWithExecutionLevel("asInvoker", minOsWindows);
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

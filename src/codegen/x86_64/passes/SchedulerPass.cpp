@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "codegen/x86_64/Scheduler.hpp"
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// @brief Run the post-RA instruction scheduler over the module's MIR.
 /// @details Requires that register allocation has already completed so the
@@ -43,5 +43,5 @@ bool SchedulerPass::run(Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes
 

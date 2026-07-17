@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -104,11 +104,11 @@ BindDecl Parser::parseBindDecl() {
             outPath += segmentTok.text;
         }
 
-        outIsNamespaceBind = outPath.rfind("Viper.", 0) == 0;
+        outIsNamespaceBind = outPath.rfind("Zanna.", 0) == 0;
         return true;
     };
 
-    // Legacy alias-first form: bind Alias = Viper.IO;
+    // Legacy alias-first form: bind Alias = Zanna.IO;
     if (check(TokenKind::Identifier) && check(TokenKind::Equal, 1)) {
         Token aliasTok = advance();
         alias = aliasTok.text;

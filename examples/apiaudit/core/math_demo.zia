@@ -1,9 +1,9 @@
 module MathDemo;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== Viper.Math Demo ===");
+    Say("=== Zanna.Math Demo ===");
 
     Say("--- Constants ---");
     SayNum(Pi);

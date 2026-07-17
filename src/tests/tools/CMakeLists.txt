@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -16,409 +16,409 @@
 #
 #===----------------------------------------------------------------------===#
 
-set(VIPER_TOOLS_LIBS viper_il_full il_vm il_api il_transform il_tools_common viper_bytecode)
-set(VIPER_TOOLS_LIBS ${VIPER_TOOLS_LIBS} PARENT_SCOPE)
+set(ZANNA_TOOLS_LIBS zanna_il_full il_vm il_api il_transform il_tools_common zanna_bytecode)
+set(ZANNA_TOOLS_LIBS ${ZANNA_TOOLS_LIBS} PARENT_SCOPE)
 
-function(viper_add_tools_tests)
+function(zanna_add_tools_tests)
     if (TARGET test_tools_break_parsing)
         return()
     endif ()
 
-    set(_VIPER_TOOLS_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
+    set(_ZANNA_TOOLS_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
 
-    viper_add_test(test_tools_break_parsing
-            ${_VIPER_TOOLS_DIR}/BreakParsingTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_tools_break_parsing
+            ${_ZANNA_TOOLS_DIR}/BreakParsingTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_tools_break_parsing PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    viper_add_ctest(test_tools_break_parsing test_tools_break_parsing)
+    zanna_add_ctest(test_tools_break_parsing test_tools_break_parsing)
 
-    viper_add_test(test_tools_module_loader
-            ${_VIPER_TOOLS_DIR}/ModuleLoaderTests.cpp)
+    zanna_add_test(test_tools_module_loader
+            ${_ZANNA_TOOLS_DIR}/ModuleLoaderTests.cpp)
     target_include_directories(test_tools_module_loader PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_tools_module_loader PRIVATE VIPER_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(test_tools_module_loader PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_tools_module_loader test_tools_module_loader)
+    target_compile_definitions(test_tools_module_loader PRIVATE ZANNA_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(test_tools_module_loader PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_tools_module_loader test_tools_module_loader)
 
-    viper_add_test(test_tools_basic_common
-            ${_VIPER_TOOLS_DIR}/BasicCommonTests.cpp
+    zanna_add_test(test_tools_basic_common
+            ${_ZANNA_TOOLS_DIR}/BasicCommonTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/basic/common.cpp)
     target_include_directories(test_tools_basic_common PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_tools_basic_common PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-tool <file.bas>\\n")
-    target_link_libraries(test_tools_basic_common PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_tools_basic_common test_tools_basic_common)
+    target_compile_definitions(test_tools_basic_common PRIVATE ZANNA_BASIC_TOOL_USAGE="Usage: basic-tool <file.bas>\\n")
+    target_link_libraries(test_tools_basic_common PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_tools_basic_common test_tools_basic_common)
 
-    viper_add_ctest(diagnostic_cli
+    zanna_add_ctest(diagnostic_cli
             ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/diagnostic_cli
-            -P ${_VIPER_TOOLS_DIR}/DiagnosticCliTests.cmake)
-    viper_add_test_labels(diagnostic_cli tools zia)
+            -P ${_ZANNA_TOOLS_DIR}/DiagnosticCliTests.cmake)
+    zanna_add_test_labels(diagnostic_cli tools zia)
 
-    viper_add_ctest(cli_help
+    zanna_add_ctest(cli_help
             ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
-            -P ${_VIPER_TOOLS_DIR}/CliHelpTests.cmake)
-    viper_add_test_labels(cli_help tools)
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
+            -P ${_ZANNA_TOOLS_DIR}/CliHelpTests.cmake)
+    zanna_add_test_labels(cli_help tools)
 
-    viper_add_ctest(agent_cli
+    zanna_add_ctest(agent_cli
             ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/agent_cli
-            -P ${_VIPER_TOOLS_DIR}/AgentCliTests.cmake)
-    viper_add_test_labels(agent_cli tools zia)
+            -P ${_ZANNA_TOOLS_DIR}/AgentCliTests.cmake)
+    zanna_add_test_labels(agent_cli tools zia)
 
-    viper_add_ctest(rtgen_definition_manifest
+    zanna_add_ctest(rtgen_definition_manifest
             ${CMAKE_COMMAND}
             -DRTGEN_EXE=$<TARGET_FILE:rtgen>
             -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/rtgen_definition_manifest
-            -P ${_VIPER_TOOLS_DIR}/RtgenDefinitionManifestTests.cmake)
-    viper_add_test_labels(rtgen_definition_manifest tools runtime)
+            -P ${_ZANNA_TOOLS_DIR}/RtgenDefinitionManifestTests.cmake)
+    zanna_add_test_labels(rtgen_definition_manifest tools runtime)
 
-    viper_add_ctest(runtime_reference_docs
+    zanna_add_ctest(runtime_reference_docs
             $<TARGET_FILE:rtgen>
             --docs --check
             ${CMAKE_SOURCE_DIR}/src/il/runtime/runtime.def
             ${CMAKE_SOURCE_DIR}/docs/generated/runtime)
-    viper_add_test_labels(runtime_reference_docs tools runtime contract)
+    zanna_add_test_labels(runtime_reference_docs tools runtime contract)
 
-    viper_add_test(test_tools_frontend_native_compiler
-            ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)
+    zanna_add_test(test_tools_frontend_native_compiler
+            ${_ZANNA_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_codegen_x64.cpp)
     target_include_directories(test_tools_frontend_native_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_tools_frontend_native_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_native_compiler viper_codegen_x86_64)
-    viper_add_ctest(test_tools_frontend_native_compiler test_tools_frontend_native_compiler)
+    target_link_libraries(test_tools_frontend_native_compiler PRIVATE ${ZANNA_TOOLS_LIBS} zanna_native_compiler zanna_codegen_x86_64)
+    zanna_add_ctest(test_tools_frontend_native_compiler test_tools_frontend_native_compiler)
 
-    viper_add_test(test_tools_asset_compiler
-            ${_VIPER_TOOLS_DIR}/AssetCompilerTests.cpp)
+    zanna_add_test(test_tools_asset_compiler
+            ${_ZANNA_TOOLS_DIR}/AssetCompilerTests.cpp)
     target_include_directories(test_tools_asset_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_tools_asset_compiler PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(test_tools_asset_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_packaging)
-    viper_add_ctest(test_tools_asset_compiler test_tools_asset_compiler)
+    target_compile_definitions(test_tools_asset_compiler PRIVATE ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(test_tools_asset_compiler PRIVATE ${ZANNA_TOOLS_LIBS} zanna_packaging)
+    zanna_add_ctest(test_tools_asset_compiler test_tools_asset_compiler)
 
-    viper_add_ctest(run_build_performance_flags
+    zanna_add_ctest(run_build_performance_flags
             ${CMAKE_COMMAND}
-            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DZANNA_EXE=$<TARGET_FILE:zanna>
             -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/run_build_performance_flags
-            -P ${_VIPER_TOOLS_DIR}/RunBuildPerformanceFlagTests.cmake)
-    viper_add_test_labels(run_build_performance_flags tools zia)
+            -P ${_ZANNA_TOOLS_DIR}/RunBuildPerformanceFlagTests.cmake)
+    zanna_add_test_labels(run_build_performance_flags tools zia)
 
-    viper_add_ctest(package_cli
+    zanna_add_ctest(package_cli
             ${CMAKE_COMMAND}
-            -DVIPER_BIN=$<TARGET_FILE:viper>
+            -DZANNA_BIN=$<TARGET_FILE:zanna>
             -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/package_cli
-            -P ${_VIPER_TOOLS_DIR}/PackageCliTests.cmake)
-    viper_add_test_labels(package_cli tools installer)
+            -P ${_ZANNA_TOOLS_DIR}/PackageCliTests.cmake)
+    zanna_add_test_labels(package_cli tools installer)
 
     if (APPLE)
-        viper_add_ctest(package_crackman_macos_signed
+        zanna_add_ctest(package_crackman_macos_signed
                 ${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_REPO_ROOT=${CMAKE_SOURCE_DIR}
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_REPO_ROOT=${CMAKE_SOURCE_DIR}
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/package_crackman_macos_signed
-                -P ${_VIPER_TOOLS_DIR}/MacOSPackageSmokeTests.cmake)
-        viper_add_test_labels(package_crackman_macos_signed tools installer zia slow)
+                -P ${_ZANNA_TOOLS_DIR}/MacOSPackageSmokeTests.cmake)
+        zanna_add_test_labels(package_crackman_macos_signed tools installer zia slow)
 
-        viper_add_ctest(macos_toolchain_installer_smoke
+        zanna_add_ctest(macos_toolchain_installer_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-                -DVIPER_CONFIG=$<CONFIG>
-                -P ${_VIPER_TOOLS_DIR}/MacOSToolchainInstallerSmoke.cmake)
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DZANNA_CONFIG=$<CONFIG>
+                -P ${_ZANNA_TOOLS_DIR}/MacOSToolchainInstallerSmoke.cmake)
         set_tests_properties(macos_toolchain_installer_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 420
                 SKIP_REGULAR_EXPRESSION "Skipping macOS installer smoke")
-        viper_add_test_labels(macos_toolchain_installer_smoke installer tools requires_macos requires_privileged_install slow)
+        zanna_add_test_labels(macos_toolchain_installer_smoke installer tools requires_macos requires_privileged_install slow)
     endif ()
 
     if (UNIX AND NOT APPLE)
-        viper_add_ctest(linux_headless_graphics_smoke
+        zanna_add_ctest(linux_headless_graphics_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -DZANNA_SOURCE_DIR=${CMAKE_SOURCE_DIR}
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/linux_headless_graphics_smoke
-                -P ${_VIPER_TOOLS_DIR}/HeadlessGraphicsSmoke.cmake)
+                -P ${_ZANNA_TOOLS_DIR}/HeadlessGraphicsSmoke.cmake)
         set_tests_properties(linux_headless_graphics_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 180)
-        viper_add_test_labels(linux_headless_graphics_smoke gui smoke tools requires_linux)
+        zanna_add_test_labels(linux_headless_graphics_smoke gui smoke tools requires_linux)
 
-        viper_add_ctest(linux_toolchain_deb_installer_smoke
+        zanna_add_ctest(linux_toolchain_deb_installer_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-                -DVIPER_CONFIG=$<CONFIG>
-                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainDebInstallerSmoke.cmake)
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DZANNA_CONFIG=$<CONFIG>
+                -P ${_ZANNA_TOOLS_DIR}/LinuxToolchainDebInstallerSmoke.cmake)
         set_tests_properties(linux_toolchain_deb_installer_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 420
                 SKIP_REGULAR_EXPRESSION "Skipping Linux installer smoke")
-        viper_add_test_labels(linux_toolchain_deb_installer_smoke installer tools requires_linux requires_linux_deb requires_privileged_install slow)
+        zanna_add_test_labels(linux_toolchain_deb_installer_smoke installer tools requires_linux requires_linux_deb requires_privileged_install slow)
 
-        viper_add_ctest(linux_toolchain_rpm_installer_smoke
+        zanna_add_ctest(linux_toolchain_rpm_installer_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-                -DVIPER_CONFIG=$<CONFIG>
-                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainRpmInstallerSmoke.cmake)
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DZANNA_CONFIG=$<CONFIG>
+                -P ${_ZANNA_TOOLS_DIR}/LinuxToolchainRpmInstallerSmoke.cmake)
         set_tests_properties(linux_toolchain_rpm_installer_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 540
                 SKIP_REGULAR_EXPRESSION "Skipping Linux installer smoke")
-        viper_add_test_labels(linux_toolchain_rpm_installer_smoke installer tools requires_linux requires_linux_rpm requires_privileged_install slow)
+        zanna_add_test_labels(linux_toolchain_rpm_installer_smoke installer tools requires_linux requires_linux_rpm requires_privileged_install slow)
 
-        viper_add_ctest(linux_toolchain_bundle_smoke
+        zanna_add_ctest(linux_toolchain_bundle_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-                -DVIPER_CONFIG=$<CONFIG>
-                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainBundleSmoke.cmake)
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DZANNA_CONFIG=$<CONFIG>
+                -P ${_ZANNA_TOOLS_DIR}/LinuxToolchainBundleSmoke.cmake)
         set_tests_properties(linux_toolchain_bundle_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 420
                 SKIP_REGULAR_EXPRESSION "Skipping Linux self-extracting bundle smoke")
-        viper_add_test_labels(linux_toolchain_bundle_smoke installer tools requires_linux slow)
+        zanna_add_test_labels(linux_toolchain_bundle_smoke installer tools requires_linux slow)
     endif ()
 
     if (WIN32)
-        viper_add_ctest(windows_update_manifest_authoring
+        zanna_add_ctest(windows_update_manifest_authoring
                 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
-                -File ${_VIPER_TOOLS_DIR}/WindowsUpdateManifestAuthoringTests.ps1
+                -File ${_ZANNA_TOOLS_DIR}/WindowsUpdateManifestAuthoringTests.ps1
                 -ManifestScript ${CMAKE_SOURCE_DIR}/scripts/new-windows-update-manifest.ps1
                 -WorkDir ${CMAKE_CURRENT_BINARY_DIR}/windows_update_manifest_authoring)
         set_tests_properties(windows_update_manifest_authoring PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 120)
-        viper_add_test_labels(windows_update_manifest_authoring installer tools requires_windows)
+        zanna_add_test_labels(windows_update_manifest_authoring installer tools requires_windows)
 
-        viper_add_ctest(windows_installer_user_smoke
+        zanna_add_ctest(windows_installer_user_smoke
                 ${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_user_smoke
-                -P ${_VIPER_TOOLS_DIR}/WindowsUserInstallerSmoke.cmake)
+                -P ${_ZANNA_TOOLS_DIR}/WindowsUserInstallerSmoke.cmake)
         set_tests_properties(windows_installer_user_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 300
                 SKIP_REGULAR_EXPRESSION "Skipping .*Windows user installer smoke")
-        viper_add_test_labels(windows_installer_user_smoke installer tools requires_windows slow)
+        zanna_add_test_labels(windows_installer_user_smoke installer tools requires_windows slow)
 
-        viper_add_ctest(windows_installer_xenoscape_smoke
+        zanna_add_ctest(windows_installer_xenoscape_smoke
                 ${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_REPO_ROOT=${CMAKE_SOURCE_DIR}
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_REPO_ROOT=${CMAKE_SOURCE_DIR}
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_xenoscape_smoke
-                -P ${_VIPER_TOOLS_DIR}/WindowsXenoScapeInstallerSmoke.cmake)
+                -P ${_ZANNA_TOOLS_DIR}/WindowsXenoScapeInstallerSmoke.cmake)
         set_tests_properties(windows_installer_xenoscape_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 540
                 SKIP_REGULAR_EXPRESSION "Skipping .*XenoScape Windows installer smoke")
-        viper_add_test_labels(windows_installer_xenoscape_smoke installer tools zia requires_windows slow)
+        zanna_add_test_labels(windows_installer_xenoscape_smoke installer tools zia requires_windows slow)
 
-        viper_add_ctest(windows_installer_elevated_smoke
+        zanna_add_ctest(windows_installer_elevated_smoke
                 ${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_elevated_smoke
-                -P ${_VIPER_TOOLS_DIR}/WindowsInstallerSmoke.cmake)
+                -P ${_ZANNA_TOOLS_DIR}/WindowsInstallerSmoke.cmake)
         set_tests_properties(windows_installer_elevated_smoke PROPERTIES
                 RUN_SERIAL TRUE
                 TIMEOUT 240
                 SKIP_REGULAR_EXPRESSION "Skipping .*Windows installer smoke")
-        viper_add_test_labels(windows_installer_elevated_smoke installer tools requires_windows requires_privileged_install slow)
+        zanna_add_test_labels(windows_installer_elevated_smoke installer tools requires_windows requires_privileged_install slow)
     endif ()
 
-    viper_add_test(test_cli_run_missing_main
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_missing_main
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_missing_main PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_missing_main PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_missing_main test_cli_run_missing_main)
+    target_link_libraries(test_cli_run_missing_main PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_missing_main test_cli_run_missing_main)
 
-    viper_add_test(test_cli_run_invalid_break_line
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_invalid_break_line.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_invalid_break_line
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_invalid_break_line.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_invalid_break_line PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_invalid_break_line PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_invalid_break_line test_cli_run_invalid_break_line)
+    target_link_libraries(test_cli_run_invalid_break_line PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_invalid_break_line test_cli_run_invalid_break_line)
 
-    viper_add_test(test_cli_run_break_src_whitespace
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_break_src_whitespace.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_break_src_whitespace
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_break_src_whitespace.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_break_src_whitespace PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_break_src_whitespace PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_break_src_whitespace test_cli_run_break_src_whitespace)
+    target_link_libraries(test_cli_run_break_src_whitespace PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_break_src_whitespace test_cli_run_break_src_whitespace)
 
-    viper_add_test(test_cli_run_break_src_line_padding
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_break_src_line_padding.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_break_src_line_padding
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_break_src_line_padding.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_break_src_line_padding PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_break_src_line_padding PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_break_src_line_padding test_cli_run_break_src_line_padding)
+    target_link_libraries(test_cli_run_break_src_line_padding PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_break_src_line_padding test_cli_run_break_src_line_padding)
 
-    viper_add_test(test_cli_run_break_src_plain
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_break_src_plain.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_break_src_plain
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_break_src_plain.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_break_src_plain PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_break_src_plain PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_break_src_plain test_cli_run_break_src_plain)
+    target_link_libraries(test_cli_run_break_src_plain PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_break_src_plain test_cli_run_break_src_plain)
 
-    viper_add_test(test_cli_front_basic_verify_diag
-            ${VIPER_TESTS_DIR}/unit/test_cli_front_basic_verify_diag.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp)
+    zanna_add_test(test_cli_front_basic_verify_diag
+            ${ZANNA_TESTS_DIR}/unit/test_cli_front_basic_verify_diag.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp)
     target_include_directories(test_cli_front_basic_verify_diag PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_front_basic_verify_diag PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_front_basic_verify_diag test_cli_front_basic_verify_diag)
+    target_link_libraries(test_cli_front_basic_verify_diag PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_front_basic_verify_diag test_cli_front_basic_verify_diag)
 
-    viper_add_test(test_cli_front_basic_reject_break
-            ${_VIPER_TOOLS_DIR}/FrontBasicRejectBreakFlagTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp)
+    zanna_add_test(test_cli_front_basic_reject_break
+            ${_ZANNA_TOOLS_DIR}/FrontBasicRejectBreakFlagTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp)
     target_include_directories(test_cli_front_basic_reject_break PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_front_basic_reject_break PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_front_basic_reject_break test_cli_front_basic_reject_break)
+    target_link_libraries(test_cli_front_basic_reject_break PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_front_basic_reject_break test_cli_front_basic_reject_break)
 
-    viper_add_test(test_cli_run_invalid_max_steps
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_invalid_max_steps.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_invalid_max_steps
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_invalid_max_steps.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_invalid_max_steps PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_invalid_max_steps PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_invalid_max_steps test_cli_run_invalid_max_steps)
+    target_link_libraries(test_cli_run_invalid_max_steps PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_invalid_max_steps test_cli_run_invalid_max_steps)
 
-    viper_add_test(test_cli_run_return_overflow
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_return_overflow.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_return_overflow
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_return_overflow.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_return_overflow PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_return_overflow PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_return_overflow test_cli_run_return_overflow)
+    target_link_libraries(test_cli_run_return_overflow PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_return_overflow test_cli_run_return_overflow)
 
-    viper_add_test(test_cli_run_bounds_checks_unsupported
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_bounds_checks_unsupported.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_bounds_checks_unsupported
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_bounds_checks_unsupported.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_bounds_checks_unsupported PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_bounds_checks_unsupported PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_bounds_checks_unsupported test_cli_run_bounds_checks_unsupported)
+    target_link_libraries(test_cli_run_bounds_checks_unsupported PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_bounds_checks_unsupported test_cli_run_bounds_checks_unsupported)
 
-    viper_add_test(test_cli_run_source_manager_overflow
-            ${VIPER_TESTS_DIR}/unit/test_cli_run_source_manager_overflow.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_run_il.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/break_spec.cpp)
+    zanna_add_test(test_cli_run_source_manager_overflow
+            ${ZANNA_TESTS_DIR}/unit/test_cli_run_source_manager_overflow.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_run_il.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/break_spec.cpp)
     target_include_directories(test_cli_run_source_manager_overflow PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_run_source_manager_overflow PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_run_source_manager_overflow test_cli_run_source_manager_overflow)
+    target_link_libraries(test_cli_run_source_manager_overflow PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_run_source_manager_overflow test_cli_run_source_manager_overflow)
 
-    viper_add_test(test_cli_il_verify_source_manager_overflow
-            ${VIPER_TESTS_DIR}/unit/test_cli_il_verify_source_manager_overflow.cpp
+    zanna_add_test(test_cli_il_verify_source_manager_overflow
+            ${ZANNA_TESTS_DIR}/unit/test_cli_il_verify_source_manager_overflow.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/il-verify/il-verify.cpp)
     target_include_directories(test_cli_il_verify_source_manager_overflow PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_cli_il_verify_source_manager_overflow PRIVATE VIPER_IL_VERIFY_SKIP_MAIN)
-    target_link_libraries(test_cli_il_verify_source_manager_overflow PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_cli_il_verify_source_manager_overflow test_cli_il_verify_source_manager_overflow)
+    target_compile_definitions(test_cli_il_verify_source_manager_overflow PRIVATE ZANNA_IL_VERIFY_SKIP_MAIN)
+    target_link_libraries(test_cli_il_verify_source_manager_overflow PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_cli_il_verify_source_manager_overflow test_cli_il_verify_source_manager_overflow)
 
-    viper_add_test(test_tools_il_verify_overflow_diag_once
-            ${_VIPER_TOOLS_DIR}/IlVerifyOverflowDiagOnceTests.cpp
+    zanna_add_test(test_tools_il_verify_overflow_diag_once
+            ${_ZANNA_TOOLS_DIR}/IlVerifyOverflowDiagOnceTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/il-verify/il-verify.cpp)
     target_include_directories(test_tools_il_verify_overflow_diag_once PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_tools_il_verify_overflow_diag_once PRIVATE VIPER_IL_VERIFY_SKIP_MAIN)
-    target_link_libraries(test_tools_il_verify_overflow_diag_once PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_tools_il_verify_overflow_diag_once test_tools_il_verify_overflow_diag_once)
+    target_compile_definitions(test_tools_il_verify_overflow_diag_once PRIVATE ZANNA_IL_VERIFY_SKIP_MAIN)
+    target_link_libraries(test_tools_il_verify_overflow_diag_once PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_tools_il_verify_overflow_diag_once test_tools_il_verify_overflow_diag_once)
 
-    viper_add_test(test_tools_il_verify_load_errors
-            ${_VIPER_TOOLS_DIR}/IlVerifyLoadErrorsTests.cpp
+    zanna_add_test(test_tools_il_verify_load_errors
+            ${_ZANNA_TOOLS_DIR}/IlVerifyLoadErrorsTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/il-verify/il-verify.cpp)
     target_include_directories(test_tools_il_verify_load_errors PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(test_tools_il_verify_load_errors PRIVATE VIPER_IL_VERIFY_SKIP_MAIN)
-    target_link_libraries(test_tools_il_verify_load_errors PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_tools_il_verify_load_errors test_tools_il_verify_load_errors)
+    target_compile_definitions(test_tools_il_verify_load_errors PRIVATE ZANNA_IL_VERIFY_SKIP_MAIN)
+    target_link_libraries(test_tools_il_verify_load_errors PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_tools_il_verify_load_errors test_tools_il_verify_load_errors)
 
-    viper_add_test(test_cli_il_opt_passes
-            ${VIPER_TESTS_DIR}/unit/test_il_opt_passes.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_il_opt.cpp)
+    zanna_add_test(test_cli_il_opt_passes
+            ${ZANNA_TESTS_DIR}/unit/test_il_opt_passes.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_il_opt.cpp)
     target_include_directories(test_cli_il_opt_passes PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_il_opt_passes PRIVATE ${VIPER_TOOLS_LIBS} il_transform)
-    viper_add_ctest(test_cli_il_opt_passes test_cli_il_opt_passes)
+    target_link_libraries(test_cli_il_opt_passes PRIVATE ${ZANNA_TOOLS_LIBS} il_transform)
+    zanna_add_ctest(test_cli_il_opt_passes test_cli_il_opt_passes)
 
-    viper_add_test(test_cli_il_opt_pipeline
-            ${VIPER_TESTS_DIR}/unit/test_il_opt_pipeline.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_il_opt.cpp)
+    zanna_add_test(test_cli_il_opt_pipeline
+            ${ZANNA_TESTS_DIR}/unit/test_il_opt_pipeline.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_il_opt.cpp)
     target_include_directories(test_cli_il_opt_pipeline PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_cli_il_opt_pipeline PRIVATE ${VIPER_TOOLS_LIBS} il_transform)
-    viper_add_ctest(test_cli_il_opt_pipeline test_cli_il_opt_pipeline)
+    target_link_libraries(test_cli_il_opt_pipeline PRIVATE ${ZANNA_TOOLS_LIBS} il_transform)
+    zanna_add_ctest(test_cli_il_opt_pipeline test_cli_il_opt_pipeline)
 
     # DCE pure call elimination test
-    viper_add_test(test_il_dce_pure_call
-            ${VIPER_TESTS_DIR}/unit/test_il_dce_pure_call.cpp)
+    zanna_add_test(test_il_dce_pure_call
+            ${ZANNA_TESTS_DIR}/unit/test_il_dce_pure_call.cpp)
     target_include_directories(test_il_dce_pure_call PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_il_dce_pure_call PRIVATE il_transform viper_il_core)
-    viper_add_ctest(test_il_dce_pure_call test_il_dce_pure_call)
+    target_link_libraries(test_il_dce_pure_call PRIVATE il_transform zanna_il_core)
+    zanna_add_ctest(test_il_dce_pure_call test_il_dce_pure_call)
 
     # Benchmark output format test
-    viper_add_test(test_tools_bench_output_format
-            ${_VIPER_TOOLS_DIR}/BenchOutputFormatTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
-            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_bench.cpp)
+    zanna_add_test(test_tools_bench_output_format
+            ${_ZANNA_TOOLS_DIR}/BenchOutputFormatTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/zanna/cmd_bench.cpp)
     target_include_directories(test_tools_bench_output_format PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(test_tools_bench_output_format PRIVATE ${VIPER_TOOLS_LIBS})
-    viper_add_ctest(test_tools_bench_output_format test_tools_bench_output_format)
+    target_link_libraries(test_tools_bench_output_format PRIVATE ${ZANNA_TOOLS_LIBS})
+    zanna_add_ctest(test_tools_bench_output_format test_tools_bench_output_format)
 
-    viper_add_ctest(installer_tarball_smoke
+    zanna_add_ctest(installer_tarball_smoke
             ${CMAKE_COMMAND}
-            -DVIPER_BIN=$<TARGET_FILE:viper>
-            -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-            -DVIPER_CONFIG=$<CONFIG>
-            -P ${_VIPER_TOOLS_DIR}/InstallPackageTarballSmoke.cmake)
+            -DZANNA_BIN=$<TARGET_FILE:zanna>
+            -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -DZANNA_CONFIG=$<CONFIG>
+            -P ${_ZANNA_TOOLS_DIR}/InstallPackageTarballSmoke.cmake)
     set_tests_properties(installer_tarball_smoke PROPERTIES TIMEOUT 60)
-    viper_add_test_labels(installer_tarball_smoke installer tools slow)
+    zanna_add_test_labels(installer_tarball_smoke installer tools slow)
 
-    set(_VIPER_INSTALLED_NATIVE_SMOKE 0)
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND VIPER_BUILD_NATIVE_LINK_X86_64)
-        set(_VIPER_INSTALLED_NATIVE_SMOKE 1)
-    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND VIPER_BUILD_NATIVE_LINK_AARCH64)
-        set(_VIPER_INSTALLED_NATIVE_SMOKE 1)
+    set(_ZANNA_INSTALLED_NATIVE_SMOKE 0)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND ZANNA_BUILD_NATIVE_LINK_X86_64)
+        set(_ZANNA_INSTALLED_NATIVE_SMOKE 1)
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND ZANNA_BUILD_NATIVE_LINK_AARCH64)
+        set(_ZANNA_INSTALLED_NATIVE_SMOKE 1)
     endif ()
 
-    viper_add_ctest(installer_installed_config_smoke
+    zanna_add_ctest(installer_installed_config_smoke
             ${CMAKE_COMMAND}
             -DCMAKE_BIN=${CMAKE_COMMAND}
-            -DVIPER_BIN=$<TARGET_FILE:viper>
-            -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-            -DVIPER_CONFIG=$<CONFIG>
-            -DVIPER_RUN_NATIVE_CODEGEN=${_VIPER_INSTALLED_NATIVE_SMOKE}
-            -P ${_VIPER_TOOLS_DIR}/InstalledViperConfigSmoke.cmake)
-    viper_add_test_labels(installer_installed_config_smoke installer tools slow)
+            -DZANNA_BIN=$<TARGET_FILE:zanna>
+            -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -DZANNA_CONFIG=$<CONFIG>
+            -DZANNA_RUN_NATIVE_CODEGEN=${_ZANNA_INSTALLED_NATIVE_SMOKE}
+            -P ${_ZANNA_TOOLS_DIR}/InstalledZannaConfigSmoke.cmake)
+    zanna_add_test_labels(installer_installed_config_smoke installer tools slow)
 
-    if (WIN32 AND VIPER_ENABLE_WINDOWS_INSTALLER_E2E)
-        viper_add_ctest(installer_windows_toolchain_e2e
+    if (WIN32 AND ZANNA_ENABLE_WINDOWS_INSTALLER_E2E)
+        zanna_add_ctest(installer_windows_toolchain_e2e
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}
-                -DVIPER_BIN=$<TARGET_FILE:viper>
-                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
-                -DVIPER_CONFIG=$<CONFIG>
-                -DVIPER_MSVC_REDIST_DIR=${MSVC_REDIST_DIR}
-                -DVIPER_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
-                -DVIPER_INSTALLER_TEST_HOOKS=${VIPER_INSTALLER_ENABLE_TEST_HOOKS}
-                -P ${_VIPER_TOOLS_DIR}/WindowsToolchainInstallerE2E.cmake)
+                -DZANNA_BIN=$<TARGET_FILE:zanna>
+                -DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DZANNA_CONFIG=$<CONFIG>
+                -DZANNA_MSVC_REDIST_DIR=${MSVC_REDIST_DIR}
+                -DZANNA_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
+                -DZANNA_INSTALLER_TEST_HOOKS=${ZANNA_INSTALLER_ENABLE_TEST_HOOKS}
+                -P ${_ZANNA_TOOLS_DIR}/WindowsToolchainInstallerE2E.cmake)
         set_tests_properties(installer_windows_toolchain_e2e PROPERTIES RUN_SERIAL TRUE TIMEOUT 1800)
-        viper_add_test_labels(installer_windows_toolchain_e2e installer tools slow e2e)
+        zanna_add_test_labels(installer_windows_toolchain_e2e installer tools slow e2e)
     endif ()
 endfunction()

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 // --- Mock transport that captures written messages ---
 
@@ -121,7 +121,7 @@ static JsonValue positionAfter(const std::string &source, const std::string &nee
 
 /// Standard valid Zia source for testing.
 static const char *kValidSource =
-    "module Test;\nfunc start() {\n    var x = 42;\n    Viper.Terminal.SayInt(x);\n}\n";
+    "module Test;\nfunc start() {\n    var x = 42;\n    Zanna.Terminal.SayInt(x);\n}\n";
 
 // ===== Lifecycle =====
 
@@ -221,7 +221,7 @@ TEST(LspHandler, DiagnosticsCarryRangeCodeAndRelatedInformation) {
              {"version", JsonValue(1)},
              {"text",
               JsonValue("module Test;\nfunc start() {\n    var count = 1;\n    var x = cout;\n"
-                        "    Viper.Terminal.SayInt(x + count);\n}\n")},
+                        "    Zanna.Terminal.SayInt(x + count);\n}\n")},
          })},
     });
     handler.handleRequest(makeNotif("textDocument/didOpen", std::move(params)));
@@ -336,8 +336,8 @@ TEST(LspHandler, CompletionAfterDot) {
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
     startLspSession(handler);
 
-    // Open document with "Viper." to trigger completions
-    std::string source = "module Test;\nfunc start() {\n    Viper.\n}\n";
+    // Open document with "Zanna." to trigger completions
+    std::string source = "module Test;\nfunc start() {\n    Zanna.\n}\n";
     auto openParams = JsonValue::object({
         {"textDocument",
          JsonValue::object({
@@ -349,7 +349,7 @@ TEST(LspHandler, CompletionAfterDot) {
     });
     handler.handleRequest(makeNotif("textDocument/didOpen", std::move(openParams)));
 
-    // Request completions at line 2 (0-based), character 10 (after "Viper.")
+    // Request completions at line 2 (0-based), character 10 (after "Zanna.")
     auto compParams = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
         {"position", JsonValue::object({{"line", JsonValue(2)}, {"character", JsonValue(10)}})},
@@ -359,7 +359,7 @@ TEST(LspHandler, CompletionAfterDot) {
 
     // Result should be an array of completion items
     auto result = resp["result"];
-    // Should have items (runtime classes/modules after "Viper.")
+    // Should have items (runtime classes/modules after "Zanna.")
     EXPECT_TRUE(result.size() > 0u);
     bool foundDocumentation = false;
     for (std::size_t i = 0; i < result.size(); ++i) {
@@ -568,7 +568,7 @@ TEST(LspHandler, DefinitionReferencesAndRenameUseProjectIndex) {
                          "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
                          "func start() {\n"
                          "    var value = add(1, 2);\n"
-                         "    Viper.Terminal.SayInt(value);\n"
+                         "    Zanna.Terminal.SayInt(value);\n"
                          "}\n";
     openDocument(handler, "file:///test.zia", source);
 
@@ -712,6 +712,6 @@ TEST(DocumentStore, UriToPathUncAuthority) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_loader.inc  (#included from rt_fbx_loader.c;
 // not a standalone translation unit) Purpose: FBX top-level loader and recoverable load paths
 //===----------------------------------------------------------------------===//
@@ -449,7 +449,7 @@ static const char *fbx_ascii_after_commas(const char *p, int comma_count) {
 }
 
 /// @brief Return the first line terminator at or after @p p without importing `strpbrk`.
-/// @details Native-linked Viper runtimes use an explicit import allow-list; keeping this tiny scan
+/// @details Native-linked Zanna runtimes use an explicit import allow-list; keeping this tiny scan
 ///          local avoids adding another C library dependency solely for ASCII FBX fallback parsing.
 /// @param p Start of the text span to scan.
 /// @return Pointer to '\r' or '\n', or NULL when the string ends first.

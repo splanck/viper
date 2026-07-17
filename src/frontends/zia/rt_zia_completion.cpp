@@ -1,20 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 ///
 /// @file rt_zia_completion.cpp
-/// @brief extern "C" bridge between the Zia CompletionEngine and the Viper
+/// @brief extern "C" bridge between the Zia CompletionEngine and the Zanna
 ///        runtime string API (rt_string).
 ///
 /// Lives in zia_editor_services so it has access to ZiaCompletion.hpp without
 /// placing editor entry points in the core compiler frontend archive. The
 /// rt_string functions (rt_string_cstr, rt_str_len, rt_string_from_bytes) are
-/// declared via rt_string.h but implemented in viper_runtime; symbols resolve
+/// declared via rt_string.h but implemented in zanna_runtime; symbols resolve
 /// at final link time when the executable links both zia_editor_services and
-/// viper_runtime.
+/// zanna_runtime.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -761,7 +761,7 @@ std::string projectPathLookupKey(std::string path) {
     else
         path = fsPath.lexically_normal().string();
     std::replace(path.begin(), path.end(), '\\', '/');
-    if (viper::platform::kHostWindows) {
+    if (zanna::platform::kHostWindows) {
         std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
             return static_cast<char>(std::tolower(ch));
         });
@@ -2443,7 +2443,7 @@ void *rt_zia_doc_begin_check_for_file(rt_string file_path) {
 // Structured Toolchain - in-process diagnostics and compile results.
 // =========================================================================
 /// @brief Runtime entry point: return structured diagnostics for @p source.
-/// @details Each diagnostic is a Viper.Collections.Map with file, line,
+/// @details Each diagnostic is a Zanna.Collections.Map with file, line,
 ///          column, endLine, endColumn, severity, severityName, code, message,
 ///          stage, and help fields.
 void *rt_zia_toolchain_check(rt_string source) {
@@ -2472,7 +2472,7 @@ void *rt_zia_toolchain_compile(rt_string source) {
 }
 
 /// @brief Runtime entry point: path-aware compile result for IDE tooling.
-/// @details Returns a Viper.Collections.Map with success, diagnostics,
+/// @details Returns a Zanna.Collections.Map with success, diagnostics,
 ///          sourcePath, outputPath, and il fields. `diagnostics` is always a
 ///          Seq of diagnostic maps, and invalid code returns the diagnostics
 ///          without requiring string parsing.
@@ -2505,7 +2505,7 @@ void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path) {
 
 // =========================================================================
 // Async semantic jobs — worker threads compute into native C++ records; the
-// UI thread later materializes Viper runtime maps/sequences by polling results.
+// UI thread later materializes Zanna runtime maps/sequences by polling results.
 // =========================================================================
 void *rt_zia_completion_begin_items_for_file(rt_string source,
                                              rt_string file_path,
@@ -2631,7 +2631,7 @@ rt_string rt_zia_semantic_job_error(void *handle) {
     return toRtString(job->error);
 }
 
-/// @brief Return the semantic job error text as a Viper.Option string.
+/// @brief Return the semantic job error text as a Zanna.Option string.
 /// @details Completed jobs with a non-empty error payload return
 ///          `SomeStr(message)`. Jobs without an error, jobs that have not
 ///          produced an error yet, and invalid/null handles return `None`.
@@ -2639,7 +2639,7 @@ rt_string rt_zia_semantic_job_error(void *handle) {
 ///          string side channel while preserving `rt_zia_semantic_job_error`
 ///          for compatibility.
 /// @param handle Opaque `SemanticJobHandle` object returned by a begin-job API.
-/// @return Owned `Viper.Option` containing the error string when present.
+/// @return Owned `Zanna.Option` containing the error string when present.
 void *rt_zia_semantic_job_error_option(void *handle) {
     auto job = asSemanticJob(handle);
     if (!job)

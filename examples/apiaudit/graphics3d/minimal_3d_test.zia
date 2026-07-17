@@ -1,11 +1,11 @@
 // Minimal 3D test — single box with directional light
 module Minimal3DTest;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Minimal 3D Test ===");

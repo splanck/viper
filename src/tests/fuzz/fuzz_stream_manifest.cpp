@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,7 +41,7 @@ void *stream_for_fuzzing() {
 } // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (!viper_fuzz3d::input_is_bounded(size))
+    if (!zanna_fuzz3d::input_is_bounded(size))
         return 0;
 
     void *stream = stream_for_fuzzing();
@@ -49,16 +49,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         return 0;
 
     std::string path =
-        viper_fuzz3d::write_temp_asset("viper_fuzz_stream_manifest_", ".json", data, size);
+        zanna_fuzz3d::write_temp_asset("zanna_fuzz_stream_manifest_", ".json", data, size);
     if (path.empty())
         return 0;
     rt_asset_error_clear();
-    rt_string runtime_path = viper_fuzz3d::runtime_string_from_path(path);
+    rt_string runtime_path = zanna_fuzz3d::runtime_string_from_path(path);
     if (runtime_path) {
         rt_game3d_world_stream_mount_cells(stream, runtime_path);
         rt_game3d_world_stream_mount_tiled_terrain(stream, runtime_path);
         rt_string_unref(runtime_path);
     }
-    viper_fuzz3d::remove_temp_asset(path);
+    zanna_fuzz3d::remove_temp_asset(path);
     return 0;
 }

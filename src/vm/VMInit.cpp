@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -120,7 +120,7 @@ struct InvariantTrapHandlerRegistrar {
 
 /// @brief Check the environment to determine whether verbose VM logging is enabled.
 ///
-/// @details Reads the VIPER_DEBUG_VM flag once and caches the result so subsequent
+/// @details Reads the ZANNA_DEBUG_VM flag once and caches the result so subsequent
 ///          calls remain cheap. Uses a lazy-initialized static for thread-safe
 ///          initialization without runtime overhead.
 ///
@@ -128,7 +128,7 @@ struct InvariantTrapHandlerRegistrar {
 /// @note Inline candidate for better performance in hot paths.
 inline bool isVmDebugLoggingEnabled() noexcept {
     static const bool enabled = [] {
-        if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
+        if (const char *flag = std::getenv("ZANNA_DEBUG_VM"))
             return flag[0] != '\0';
         return false;
     }();
@@ -326,7 +326,7 @@ void VM::init(std::shared_ptr<ProgramState> program) {
     ensureRuntimeDescriptorsValid();
 
     // Runtime overrides via environment -------------------------------------
-    if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS")) {
+    if (const char *envCounts = std::getenv("ZANNA_ENABLE_OPCOUNTS")) {
         std::string v{envCounts};
         std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
             return static_cast<char>(std::tolower(c));
@@ -338,15 +338,15 @@ void VM::init(std::shared_ptr<ProgramState> program) {
             enableOpcodeCounts = true;
         // Other values are ignored, preserving the build-time default.
     }
-    if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N")) {
+    if (const char *envEvery = std::getenv("ZANNA_INTERRUPT_EVERY_N")) {
         char *end = nullptr;
         unsigned long n = std::strtoul(envEvery, &end, 10);
         if (end && *end == '\0')
             pollEveryN_ = static_cast<uint32_t>(n);
     }
 
-    const char *switchModeEnv = std::getenv("VIPER_SWITCH_MODE");
-    viper::vm::SwitchMode mode = viper::vm::SwitchMode::Auto;
+    const char *switchModeEnv = std::getenv("ZANNA_SWITCH_MODE");
+    zanna::vm::SwitchMode mode = zanna::vm::SwitchMode::Auto;
     if (switchModeEnv != nullptr) {
         std::string rawMode{switchModeEnv};
         std::transform(rawMode.begin(), rawMode.end(), rawMode.begin(), [](unsigned char ch) {
@@ -354,25 +354,25 @@ void VM::init(std::shared_ptr<ProgramState> program) {
         });
 
         if (rawMode == "dense")
-            mode = viper::vm::SwitchMode::Dense;
+            mode = zanna::vm::SwitchMode::Dense;
         else if (rawMode == "sorted")
-            mode = viper::vm::SwitchMode::Sorted;
+            mode = zanna::vm::SwitchMode::Sorted;
         else if (rawMode == "hashed")
-            mode = viper::vm::SwitchMode::Hashed;
+            mode = zanna::vm::SwitchMode::Hashed;
         else if (rawMode == "linear")
-            mode = viper::vm::SwitchMode::Linear;
+            mode = zanna::vm::SwitchMode::Linear;
         else
-            mode = viper::vm::SwitchMode::Auto;
+            mode = zanna::vm::SwitchMode::Auto;
     }
-    viper::vm::setSwitchMode(mode);
+    zanna::vm::setSwitchMode(mode);
 
     DispatchKind defaultDispatch = DispatchKind::Switch;
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     defaultDispatch = DispatchKind::Threaded;
 #endif
     DispatchKind selectedDispatch = defaultDispatch;
 
-    if (const char *dispatchEnv = std::getenv("VIPER_DISPATCH")) {
+    if (const char *dispatchEnv = std::getenv("ZANNA_DISPATCH")) {
         std::string rawDispatch{dispatchEnv};
         std::transform(rawDispatch.begin(),
                        rawDispatch.end(),
@@ -384,7 +384,7 @@ void VM::init(std::shared_ptr<ProgramState> program) {
         else if (rawDispatch == "switch")
             selectedDispatch = DispatchKind::Switch;
         else if (rawDispatch == "threaded") {
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
             selectedDispatch = DispatchKind::Threaded;
 #else
             selectedDispatch = DispatchKind::Switch;
@@ -426,7 +426,7 @@ void VM::init(std::shared_ptr<ProgramState> program) {
         for (const auto &g : mod.globals) {
             if (g.type.kind == il::core::Type::Kind::Str) {
                 programState_->strMap[g.name] =
-                    ViperStringHandle(toViperString(g.init, AssumeNullTerminated::Yes));
+                    ZannaStringHandle(toZannaString(g.init, AssumeNullTerminated::Yes));
                 continue;
             }
 
@@ -489,9 +489,9 @@ void VM::init(std::shared_ptr<ProgramState> program) {
                         if (inlineLiteralCache.find(operand.str) == inlineLiteralCache.end()) {
                             if (operand.str.find('\0') == std::string::npos)
                                 inlineLiteralCache[operand.str] =
-                                    ViperStringHandle(rt_const_cstr(operand.str.c_str()));
+                                    ZannaStringHandle(rt_const_cstr(operand.str.c_str()));
                             else
-                                inlineLiteralCache[operand.str] = ViperStringHandle(
+                                inlineLiteralCache[operand.str] = ZannaStringHandle(
                                     rt_string_from_bytes(operand.str.data(), operand.str.size()));
                         }
                     }
@@ -504,9 +504,9 @@ void VM::init(std::shared_ptr<ProgramState> program) {
                             if (inlineLiteralCache.find(brArg.str) == inlineLiteralCache.end()) {
                                 if (brArg.str.find('\0') == std::string::npos)
                                     inlineLiteralCache[brArg.str] =
-                                        ViperStringHandle(rt_const_cstr(brArg.str.c_str()));
+                                        ZannaStringHandle(rt_const_cstr(brArg.str.c_str()));
                                 else
-                                    inlineLiteralCache[brArg.str] = ViperStringHandle(
+                                    inlineLiteralCache[brArg.str] = ZannaStringHandle(
                                         rt_string_from_bytes(brArg.str.data(), brArg.str.size()));
                             }
                         }
@@ -743,7 +743,7 @@ VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> arg
     // pollCallback_ and invoked through pollCallbackTrampoline_ to avoid
     // std::function overhead (SBO + type-erasure cost) on every dispatch boundary.
     st.config.pollCallback = pollCallback_ ? &VM::pollCallbackTrampoline_ : nullptr;
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
     st.config.enableOpcodeCounts = enableOpcodeCounts;
 #else
     st.config.enableOpcodeCounts = false;

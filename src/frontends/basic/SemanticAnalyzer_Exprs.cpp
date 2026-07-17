@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,9 +32,9 @@
 
 namespace il::frontends::basic::semantic_analyzer_detail {
 
-/// @brief Check if an expression represents a runtime namespace chain (starting with "Viper").
+/// @brief Check if an expression represents a runtime namespace chain (starting with "Zanna").
 /// @param expr The expression to check.
-/// @return True if the expression is a qualified name chain starting with "Viper".
+/// @return True if the expression is a qualified name chain starting with "Zanna".
 static bool isRuntimeNamespaceChain(const Expr &expr) {
     std::vector<std::string> parts;
     const Expr *cur = &expr;
@@ -54,7 +54,7 @@ static bool isRuntimeNamespaceChain(const Expr &expr) {
     if (parts.empty())
         return false;
     std::reverse(parts.begin(), parts.end());
-    return string_utils::iequals(parts.front(), "Viper");
+    return string_utils::iequals(parts.front(), "Zanna");
 }
 
 /// @brief Collect qualified name segments from an expression chain.
@@ -83,12 +83,12 @@ static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &ou
 
 /// @brief Extract the fully-qualified runtime class name from an expression.
 /// @param expr The expression representing a runtime class reference.
-/// @return The qualified name (e.g., "Viper.Graphics.Canvas") if valid, nullopt otherwise.
+/// @return The qualified name (e.g., "Zanna.Graphics.Canvas") if valid, nullopt otherwise.
 static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr) {
     std::vector<std::string> parts;
     if (!collectQualifiedChain(expr, parts))
         return std::nullopt;
-    if (!string_utils::iequals(parts.front(), "Viper"))
+    if (!string_utils::iequals(parts.front(), "Zanna"))
         return std::nullopt;
     return JoinDots(parts);
 }
@@ -99,40 +99,40 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
                                                          std::size_t argIndex) {
     auto is = [&](std::string_view name) { return target == name; };
 
-    if (is("Viper.Threads.Thread.Start") || is("Viper.Threads.Thread.StartSafe") ||
-        is("Viper.Threads.Async.Run")) {
+    if (is("Zanna.Threads.Thread.Start") || is("Zanna.Threads.Thread.StartSafe") ||
+        is("Zanna.Threads.Async.Run")) {
         if (argIndex == 0)
             return RuntimePointerBridgeRole::Callback;
         if (argIndex == 1)
             return RuntimePointerBridgeRole::Payload;
     }
 
-    if (is("Viper.Threads.Thread.StartOwned") || is("Viper.Threads.Thread.StartSafeOwned") ||
-        is("Viper.Threads.Async.RunOwned")) {
+    if (is("Zanna.Threads.Thread.StartOwned") || is("Zanna.Threads.Thread.StartSafeOwned") ||
+        is("Zanna.Threads.Async.RunOwned")) {
         return argIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
     }
 
-    if (is("Viper.Threads.Async.RunCancellable")) {
+    if (is("Zanna.Threads.Async.RunCancellable")) {
         if (argIndex == 0)
             return RuntimePointerBridgeRole::Callback;
         if (argIndex == 1)
             return RuntimePointerBridgeRole::Payload;
     }
 
-    if (is("Viper.Threads.Async.RunCancellableOwned"))
+    if (is("Zanna.Threads.Async.RunCancellableOwned"))
         return argIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
 
-    if (is("Viper.Threads.Async.Map")) {
+    if (is("Zanna.Threads.Async.Map")) {
         if (argIndex == 1)
             return RuntimePointerBridgeRole::Callback;
         if (argIndex == 2)
             return RuntimePointerBridgeRole::Payload;
     }
 
-    if (is("Viper.Threads.Async.MapOwned"))
+    if (is("Zanna.Threads.Async.MapOwned"))
         return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
 
-    if (is("Viper.Network.HttpServer.BindHandler") || is("Viper.Network.HttpsServer.BindHandler")) {
+    if (is("Zanna.Network.HttpServer.BindHandler") || is("Zanna.Network.HttpsServer.BindHandler")) {
         return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
     }
 
@@ -140,12 +140,12 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
 }
 
 static std::string saferRuntimePointerAlternative(std::string_view target) {
-    if (target == "Viper.Core.Parse.TryInt")
-        return "Viper.Core.Parse.IntOr";
-    if (target == "Viper.Core.Parse.TryDouble")
-        return "Viper.Core.Parse.DoubleOr";
-    if (target == "Viper.Core.Parse.TryBool")
-        return "Viper.Core.Parse.BoolOr";
+    if (target == "Zanna.Core.Parse.TryInt")
+        return "Zanna.Core.Parse.IntOr";
+    if (target == "Zanna.Core.Parse.TryDouble")
+        return "Zanna.Core.Parse.DoubleOr";
+    if (target == "Zanna.Core.Parse.TryBool")
+        return "Zanna.Core.Parse.BoolOr";
     return {};
 }
 
@@ -689,7 +689,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                         continue; // Literal 0 is the null-object idiom.
                 }
                 std::string msg = "argument " + std::to_string(i + 1) + " to '" + method +
-                                  "' expects an OBJECT; box primitives with Viper.Core.Box";
+                                  "' expects an OBJECT; box primitives with Zanna.Core.Box";
                 analyzer_.de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
                 return false;
             }

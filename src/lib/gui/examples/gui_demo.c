@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: gui_demo.c
-// Purpose: Demo application for ViperGUI widget library.
+// Purpose: Demo application for ZannaGUI widget library.
 //
 //===----------------------------------------------------------------------===//
 
@@ -340,7 +340,7 @@ static void render_demo(demo_state_t *demo) {
     // Draw title using theme color
     if (demo->font) {
         vg_font_draw_text(
-            window, demo->font, 24.0f, 20, 130, "ViperGUI Demo", theme->colors.fg_primary);
+            window, demo->font, 24.0f, 20, 130, "ZannaGUI Demo", theme->colors.fg_primary);
     }
 
     // Render widgets at their actual positions
@@ -484,7 +484,7 @@ static bool init_demo(demo_state_t *demo) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 800;
     params.height = 600;
-    params.title = "ViperGUI Demo";
+    params.title = "ZannaGUI Demo";
     params.resizable = 1;
     params.fps = 60;
 
@@ -529,7 +529,7 @@ static bool init_demo(demo_state_t *demo) {
     }
 
     // Create status label
-    demo->status_label = vg_label_create(demo->root, "Welcome to ViperGUI!");
+    demo->status_label = vg_label_create(demo->root, "Welcome to ZannaGUI!");
     if (demo->status_label && demo->font) {
         vg_label_set_font(demo->status_label, demo->font, 16.0f);
         demo->status_label->base.x = 20;
@@ -604,7 +604,7 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    printf("ViperGUI Demo\n");
+    printf("ZannaGUI Demo\n");
     printf("=============\n");
     printf("Press ESC to exit\n\n");
     fflush(stdout);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -206,7 +206,7 @@ static void test_atomic_ime_composition(void) {
 }
 
 /// @brief Verify translated platform composition events drive one grapheme-safe edit.
-/// @details Exercises the actual ViperGFX-to-GUI payload bridge, current-selection replacement
+/// @details Exercises the actual ZannaGFX-to-GUI payload bridge, current-selection replacement
 ///          sentinel, codepoint-to-grapheme preedit selection conversion, atomic commit/undo, and
 ///          cancellation restoration through the TextInput event vtable.
 static void test_platform_ime_event_bridge(void) {

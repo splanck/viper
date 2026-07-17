@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 
 module notation;
 
-bind Viper.Core.Parse as Parse;
-bind Viper.String as String;
-bind Fmt = Viper.Text.Fmt;
+bind Zanna.Core.Parse as Parse;
+bind Zanna.String as String;
+bind Fmt = Zanna.Text.Fmt;
 bind "./core/config";
 bind "./core/board";
 
@@ -83,7 +83,7 @@ func applyFEN(b: Board, fen: String) -> Boolean {
 
     var whiteMove = active != "b";
     var epFile = -1;
-    if Viper.String.get_Length(ep) >= 2 {
+    if Zanna.String.get_Length(ep) >= 2 {
         epFile = fileIndex(String.Substring(ep, 0, 1));
     }
 
@@ -103,7 +103,7 @@ func applyFEN(b: Board, fen: String) -> Boolean {
 
     var rank = 0;
     var file = 0;
-    var len = Viper.String.get_Length(placement);
+    var len = Zanna.String.get_Length(placement);
     for i in 0..len {
         var ch = String.Substring(placement, i, 1);
         if ch == "/" {
@@ -159,7 +159,7 @@ func squareName(sq: Integer) -> String {
 }
 
 func squareIndex(name: String) -> Integer {
-    if Viper.String.get_Length(name) < 2 { return -1; }
+    if Zanna.String.get_Length(name) < 2 { return -1; }
     var file = fileIndex(String.Substring(name, 0, 1));
     var rankCh = String.Substring(name, 1, 1);
     var rank = String.Asc(rankCh) - String.Asc("0");
@@ -225,7 +225,7 @@ func fileIndex(ch: String) -> Integer {
 func fenField(fen: String, target: Integer) -> String {
     var start = 0;
     var field = 0;
-    var len = Viper.String.get_Length(fen);
+    var len = Zanna.String.get_Length(fen);
     var i = 0;
     while i <= len {
         var atEnd = i == len;

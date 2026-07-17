@@ -1,34 +1,34 @@
 // Test: Audio API callable without crash
 module TestAudioApi;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Init may return 0 (no audio device in CI) or 1 (audio available)
-    var ok = Viper.Audio.Mixer.Init();
+    var ok = Zanna.Audio.Mixer.Init();
 
     if (ok == 1) {
         // Audio system available - test volume control
-        Viper.Audio.Mixer.SetMasterVolume(75);
-        var vol = Viper.Audio.Mixer.GetMasterVolume();
+        Zanna.Audio.Mixer.SetMasterVolume(75);
+        var vol = Zanna.Audio.Mixer.GetMasterVolume();
         if (vol != 75) {
             Say("FAIL: master volume should be 75");
             return;
         }
 
-        Viper.Audio.Mixer.SetMasterVolume(50);
-        var vol2 = Viper.Audio.Mixer.GetMasterVolume();
+        Zanna.Audio.Mixer.SetMasterVolume(50);
+        var vol2 = Zanna.Audio.Mixer.GetMasterVolume();
         if (vol2 != 50) {
             Say("FAIL: master volume should be 50");
             return;
         }
 
         // Test pause/resume (no-op when nothing is playing)
-        Viper.Audio.Mixer.PauseAll();
-        Viper.Audio.Mixer.ResumeAll();
-        Viper.Audio.Mixer.StopAllSounds();
+        Zanna.Audio.Mixer.PauseAll();
+        Zanna.Audio.Mixer.ResumeAll();
+        Zanna.Audio.Mixer.StopAllSounds();
 
-        Viper.Audio.Mixer.Shutdown();
+        Zanna.Audio.Mixer.Shutdown();
     }
     // If Init returns 0, audio not available - that's OK for CI
 

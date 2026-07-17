@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_deque.h
@@ -148,7 +148,7 @@ void *rt_deque_try_pop_front(void *obj);
 ///          element is removed. A stored NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_deque_try_pop_front.
 /// @param obj Opaque Deque object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_deque_try_pop_front_option(void *obj);
 
 /// @brief Pop the back element, or return NULL if empty (no trap).
@@ -161,7 +161,7 @@ void *rt_deque_try_pop_back(void *obj);
 ///          element is removed. A stored NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_deque_try_pop_back.
 /// @param obj Opaque Deque object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_deque_try_pop_back_option(void *obj);
 
 /// @brief Create a shallow copy of the deque.

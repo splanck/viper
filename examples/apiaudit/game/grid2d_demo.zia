@@ -1,11 +1,11 @@
-// grid2d_demo.zia - Comprehensive API audit for Viper.Game.Grid2D
+// grid2d_demo.zia - Comprehensive API audit for Zanna.Game.Grid2D
 // Tests: New, Set, Get, Width, Height, Size, InBounds, Fill, Clear,
 //        CopyFrom, Count, Replace
 
 module Grid2DDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Grid2D API Audit ===");

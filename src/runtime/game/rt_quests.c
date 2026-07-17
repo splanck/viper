@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_quests.c
-// Purpose: Viper.Game.Quests implementation — quest/stage/objective state
+// Purpose: Zanna.Game.Quests implementation — quest/stage/objective state
 //   machine, polled event ring, one-shot completion flags, and SaveData
 //   round-trip. Pure state; no clock or randomness (deterministic).
 // Key invariants:
@@ -41,7 +41,7 @@ extern int64_t rt_obj_class_id(void *obj);
 #define QUESTS_MAX_OBJECTIVES 8
 #define QUESTS_MAX_EVENTS 64
 #define QUESTS_MAX_ID 64
-#define QUESTS_SAVE_KEY "viper.quests.v1"
+#define QUESTS_SAVE_KEY "zanna.quests.v1"
 
 typedef struct quest_objective {
     rt_string id;
@@ -613,7 +613,7 @@ int8_t rt_quests_just_completed(void *obj, rt_string quest_id) {
 /*==========================================================================
  * SaveData persistence
  *
- * One string value under "viper.quests.v1". Ids are [A-Za-z0-9._-] by
+ * One string value under "zanna.quests.v1". Ids are [A-Za-z0-9._-] by
  * registration contract, so the compact format needs no escaping:
  *   q=<id>;s=<state>;g=<stage>{;o=<objId>:<progress>}*  records joined by '|'
  *=========================================================================*/

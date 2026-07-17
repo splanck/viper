@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,14 +31,14 @@
 // file calls `sound.jump()`, `sound.hit()`, `sound.pickup()`,
 // and never touches a raw audio API.
 //
-// This file demonstrates three useful Viper audio patterns:
+// This file demonstrates three useful Zanna audio patterns:
 //
-//   1. **Named sound bank** (`Viper.Mixer.SoundBank`) — you
+//   1. **Named sound bank** (`Zanna.Mixer.SoundBank`) — you
 //      register sounds under symbolic names ("jump", "hit"),
 //      then play them by name.  Renaming a WAV file doesn't
 //      ripple through the codebase.
 //
-//   2. **Procedural fallback** (`Viper.Mixer.Synth`) — if the
+//   2. **Procedural fallback** (`Zanna.Mixer.Synth`) — if the
 //      WAV files are absent (say a freshly-checked-out demo
 //      with no assets), the synth generates passable tones
 //      programmatically.  The game *still ships* and has
@@ -71,8 +71,8 @@
 
 module sound;
 
-bind Viper.Audio;
-bind Viper.Text.Fmt;
+bind Zanna.Audio;
+bind Zanna.Text.Fmt;
 bind "./config";
 
 final FOOTSTEP_SOFT = 0;
@@ -502,7 +502,7 @@ class SoundManager {
         return value;
     }
 
-    /// @brief Apply stored volume fields to the Viper audio mixer.
+    /// @brief Apply stored volume fields to the Zanna audio mixer.
     ///
     /// This is safe to call before audio is ready; in that case it only updates
     /// stored state and returns.  Once ready, master volume is set globally and

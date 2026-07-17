@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Crypto.Module.EnableApprovedMode()` and
+`Zanna.Crypto.Module.EnableApprovedMode()` and
 `DisableApprovedMode()` mutate process-wide crypto module policy. The old names
 were short and accurate enough for early tests, but they did not make the global
 scope obvious at call sites or in generated API listings.
@@ -24,9 +24,9 @@ stand out as advanced process configuration.
 
 Add process-scoped names:
 
-- `Viper.Crypto.Module.EnableApprovedModeForProcess()`
-- `Viper.Crypto.Module.DisableApprovedModeForProcess()`
-- `Viper.Crypto.Module.IsApprovedModeForProcess()`
+- `Zanna.Crypto.Module.EnableApprovedModeForProcess()`
+- `Zanna.Crypto.Module.DisableApprovedModeForProcess()`
+- `Zanna.Crypto.Module.IsApprovedModeForProcess()`
 
 The old `EnableApprovedMode`, `DisableApprovedMode`, and `IsApprovedMode` names
 remain available as compatibility rows with migration targets. The mutating

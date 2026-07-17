@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 
 #include <unordered_map>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Result of a linear-scan allocation.
 struct AllocationResult {
@@ -54,4 +54,4 @@ struct AllocationResult {
 ///         number of spill slots consumed per register class.
 [[nodiscard]] AllocationResult allocate(MFunction &func, const TargetInfo &target);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

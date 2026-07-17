@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -225,10 +225,10 @@ class CompletionEngine {
                                                       const std::string &prefix) const;
 
     /// @brief Enumerate classes that are direct children of a runtime namespace.
-    /// @details For example, with nsPrefix="Viper.GUI", this returns items for
+    /// @details For example, with nsPrefix="Zanna.GUI", this returns items for
     ///          Canvas, App, ListBox, FloatingPanel, etc.  Handles user typing
     ///          a module alias followed by a dot (e.g. "GUI.").
-    /// @param nsPrefix  Full dotted namespace path (e.g. "Viper.GUI").
+    /// @param nsPrefix  Full dotted namespace path (e.g. "Zanna.GUI").
     /// @param prefix    Typed prefix filter (case-insensitive).
     std::vector<CompletionItem> provideNamespaceMembers(const Sema &sema,
                                                         const std::string &nsPrefix,

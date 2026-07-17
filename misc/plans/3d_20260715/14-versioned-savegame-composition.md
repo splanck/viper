@@ -9,9 +9,9 @@ version and diagnostics so games can perform explicit migrations.
 
 ## Problem statement
 
-Viper has two useful persistence layers:
+Zanna has two useful persistence layers:
 
-- `Viper.IO.SaveData`: atomic flat JSON key/value storage for settings/progress;
+- `Zanna.IO.SaveData`: atomic flat JSON key/value storage for settings/progress;
 - World3D persistence: entity/cell delta state in validated `VW3DSAV1` files,
   with persistent keys, state tags, streamed cell flags, and save/load.
 

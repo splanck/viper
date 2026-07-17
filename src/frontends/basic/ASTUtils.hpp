@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -405,8 +405,8 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 
 /// @brief Recursively collects qualified name segments from an expression.
 /// @details Walks a chain of VarExpr or MemberAccessExpr nodes to build a list
-///          of name segments. For example, `Viper.String.get_Length` produces
-///          ["Viper", "String", "get_Length"].
+///          of name segments. For example, `Zanna.String.get_Length` produces
+///          ["Zanna", "String", "get_Length"].
 /// @param expr Expression to traverse.
 /// @param out Vector to accumulate name segments.
 /// @return True if the expression forms a valid qualified name, false otherwise.
@@ -428,15 +428,15 @@ inline bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> 
 
 /// @brief Extracts a runtime class qualified name from an expression.
 /// @details Attempts to interpret the expression as a qualified name chain
-///          (e.g., `Viper.String`). Returns the qualified name if the chain
-///          starts with "Viper" (case-insensitive), nullopt otherwise.
+///          (e.g., `Zanna.String`). Returns the qualified name if the chain
+///          starts with "Zanna" (case-insensitive), nullopt otherwise.
 /// @param expr Expression to analyze.
-/// @return Qualified class name (e.g., "Viper.String") or nullopt.
+/// @return Qualified class name (e.g., "Zanna.String") or nullopt.
 [[nodiscard]] inline std::optional<std::string> runtimeClassQNameFrom(const Expr &expr) {
     std::vector<std::string> parts;
     if (!collectQualifiedSegments(expr, parts))
         return std::nullopt;
-    if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
+    if (parts.empty() || !string_utils::iequals(parts.front(), "Zanna"))
         return std::nullopt;
     std::string qname;
     for (size_t i = 0; i < parts.size(); ++i) {

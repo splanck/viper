@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -115,14 +115,14 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
 /// @param expr The field expression node.
 /// @return The type of the accessed field, method, or property.
 /// @details Handles multiple cases:
-///          - Runtime class property access (e.g., Viper.Math.Pi)
+///          - Runtime class property access (e.g., Zanna.Math.Pi)
 ///          - Module-qualified access (e.g., colors.initColors)
 ///          - Entity/Value field and method access with visibility checking
 ///          - Built-in collection properties (e.g., list.count)
 TypeRef Sema::analyzeField(FieldExpr *expr) {
-    // BUG-012 fix: Handle runtime class namespace property access (e.g., Viper.Math.Pi)
-    // For property access like Viper.Math.Pi, we need to resolve it as a getter call
-    // before trying to analyze the base, because "Viper" is not a symbol.
+    // BUG-012 fix: Handle runtime class namespace property access (e.g., Zanna.Math.Pi)
+    // For property access like Zanna.Math.Pi, we need to resolve it as a getter call
+    // before trying to analyze the base, because "Zanna" is not a symbol.
     std::string dottedBase;
     if (extractDottedName(expr->base.get(), dottedBase)) {
         // Check if the dotted base is a runtime class (registered in typeRegistry_)
@@ -145,7 +145,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                 return normalizeRuntimeSurfaceType(funcType);
             }
 
-            // Try direct function lookup (e.g., Viper.Result.Ok, Viper.Text.Uuid.New)
+            // Try direct function lookup (e.g., Zanna.Result.Ok, Zanna.Text.Uuid.New)
             std::string funcName = dottedBase + "." + expr->field;
             sym = lookupAccessibleSymbol(funcName, expr->loc, true);
             if (sym && sym->kind == Symbol::Kind::Function) {
@@ -278,11 +278,11 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return types::unknown();
     }
 
-    // Runtime class member access (a "Viper."-prefixed Ptr base, e.g. app.Root,
+    // Runtime class member access (a "Zanna."-prefixed Ptr base, e.g. app.Root,
     // editor.LineCount). Delegated to a complete resolver that diagnoses every
     // failure mode, symmetric with resolveClassStructFieldAccess for user types.
     if (baseType && baseType->kind == TypeKindSem::Ptr && !baseType->name.empty() &&
-        baseType->name.find("Viper.") == 0) {
+        baseType->name.find("Zanna.") == 0) {
         return resolveRuntimeClassFieldAccess(expr, baseType);
     }
 
@@ -381,7 +381,7 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
         }
     }
 
-    // Build the full qualified name (e.g., Viper.Graphics.Canvas.New).
+    // Build the full qualified name (e.g., Zanna.Graphics.Canvas.New).
     std::string fullName = baseType->name + "." + expr->field;
 
     // First try to look up the qualified name directly.
@@ -396,7 +396,7 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
         return sym->type;
     }
 
-    // For runtime classes (Viper.*), the symbol might not be in the symbol table
+    // For runtime classes (Zanna.*), the symbol might not be in the symbol table
     // but could be a valid runtime method. Check importedSymbols_ for the method.
     auto importIt = importedSymbols_.find(fullName);
     if (importIt != importedSymbols_.end()) {
@@ -413,7 +413,7 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
     }
 
     // Check if fullName is a valid runtime class or sub-namespace
-    // (e.g., "Viper.Collections.List" when accessed via alias "Collections.List").
+    // (e.g., "Zanna.Collections.List" when accessed via alias "Collections.List").
     if (isValidRuntimeNamespace(fullName)) {
         return types::module(fullName);
     }
@@ -427,7 +427,7 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
 
     // Try the getter convention (get_PropertyName) for static properties
     // on runtime classes. Properties like Color.Red are registered as
-    // "Viper.Graphics.Color.get_Red" in the symbol table.
+    // "Zanna.Graphics.Color.get_Red" in the symbol table.
     {
         std::string getterName = baseType->name + ".get_" + expr->field;
         Symbol *getter = lookupAccessibleSymbol(getterName, expr->loc, true);
@@ -643,7 +643,7 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
             error(expr->loc, "Unknown field '" + expr->field + "' on String");
         }
     } else if (innerType->kind == TypeKindSem::Ptr && !innerType->name.empty() &&
-               innerType->name.find("Viper.") == 0) {
+               innerType->name.find("Zanna.") == 0) {
         const auto &registry = il::runtime::RuntimeRegistry::instance();
         std::string getterName = innerType->name + ".get_" + expr->field;
         if (auto prop = registry.findProperty(innerType->name, expr->field); prop) {
@@ -832,14 +832,14 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
     if (effectiveSource->kind == TypeKindSem::String && isScalar(targetType->kind)) {
         error(expr->loc,
               "Cannot cast String to " + targetType->toDisplayString() +
-                  " with 'as'; use Viper.Core.Parse.IntOr / DoubleOr for fallible parsing");
+                  " with 'as'; use Zanna.Core.Parse.IntOr / DoubleOr for fallible parsing");
         return targetType;
     }
     if (isScalar(effectiveSource->kind) && targetType->kind == TypeKindSem::String) {
         error(expr->loc,
               "Cannot cast " + effectiveSource->toDisplayString() +
                   " to String with 'as'; use string interpolation \"${...}\" or "
-                  "Viper.Core.Convert.ToString*");
+                  "Zanna.Core.Convert.ToString*");
         return targetType;
     }
 

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTMemorySurfaceTests.cpp
-// Purpose: Validate the public Viper.Memory retain/release surface and heap
+// Purpose: Validate the public Zanna.Memory retain/release surface and heap
 //          correctness traps that protect it.
 //
 //===----------------------------------------------------------------------===//
@@ -251,7 +251,7 @@ void call_obj_free_live_object() {
 }
 
 void expect_trap(void (*fn)(), const char *message) {
-    auto result = viper::tests::runIsolated(fn);
+    auto result = zanna::tests::runIsolated(fn);
     assert(result.trapped());
     assert(result.stderrText.find(message) != std::string::npos);
 }
@@ -537,32 +537,32 @@ void test_heap_mark_disposed_return_contract() {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_memory_retain_invalid);
-    viper::tests::registerChildFunction(call_memory_release_invalid);
-    viper::tests::registerChildFunction(call_memory_retain_str_object);
-    viper::tests::registerChildFunction(call_memory_retain_string_payload);
-    viper::tests::registerChildFunction(call_memory_release_str_object);
-    viper::tests::registerChildFunction(call_object_negative_size);
-    viper::tests::registerChildFunction(call_heap_double_release_deferred);
-    viper::tests::registerChildFunction(call_heap_retain_overflow);
-    viper::tests::registerChildFunction(call_sso_string_retain_overflow);
-    viper::tests::registerChildFunction(call_heap_release_immortal);
-    viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
-    viper::tests::registerChildFunction(call_memory_release_unknown_heap_kind);
-    viper::tests::registerChildFunction(call_memory_retain_unknown_heap_kind);
-    viper::tests::registerChildFunction(call_memory_release_unknown_array_element_kind);
-    viper::tests::registerChildFunction(call_memory_release_array_len_past_cap);
-    viper::tests::registerChildFunction(call_box_str_retain_overflow);
-    viper::tests::registerChildFunction(call_value_type_add_field_retain_overflow);
-    viper::tests::registerChildFunction(call_option_some_retain_overflow);
-    viper::tests::registerChildFunction(call_option_some_str_retain_overflow);
-    viper::tests::registerChildFunction(call_result_ok_retain_overflow);
-    viper::tests::registerChildFunction(call_result_err_retain_overflow);
-    viper::tests::registerChildFunction(call_result_ok_str_retain_overflow);
-    viper::tests::registerChildFunction(call_result_err_str_retain_overflow);
-    viper::tests::registerChildFunction(call_resurrect_live_object);
-    viper::tests::registerChildFunction(call_obj_free_live_object);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_memory_retain_invalid);
+    zanna::tests::registerChildFunction(call_memory_release_invalid);
+    zanna::tests::registerChildFunction(call_memory_retain_str_object);
+    zanna::tests::registerChildFunction(call_memory_retain_string_payload);
+    zanna::tests::registerChildFunction(call_memory_release_str_object);
+    zanna::tests::registerChildFunction(call_object_negative_size);
+    zanna::tests::registerChildFunction(call_heap_double_release_deferred);
+    zanna::tests::registerChildFunction(call_heap_retain_overflow);
+    zanna::tests::registerChildFunction(call_sso_string_retain_overflow);
+    zanna::tests::registerChildFunction(call_heap_release_immortal);
+    zanna::tests::registerChildFunction(call_heap_set_len_past_capacity);
+    zanna::tests::registerChildFunction(call_memory_release_unknown_heap_kind);
+    zanna::tests::registerChildFunction(call_memory_retain_unknown_heap_kind);
+    zanna::tests::registerChildFunction(call_memory_release_unknown_array_element_kind);
+    zanna::tests::registerChildFunction(call_memory_release_array_len_past_cap);
+    zanna::tests::registerChildFunction(call_box_str_retain_overflow);
+    zanna::tests::registerChildFunction(call_value_type_add_field_retain_overflow);
+    zanna::tests::registerChildFunction(call_option_some_retain_overflow);
+    zanna::tests::registerChildFunction(call_option_some_str_retain_overflow);
+    zanna::tests::registerChildFunction(call_result_ok_retain_overflow);
+    zanna::tests::registerChildFunction(call_result_err_retain_overflow);
+    zanna::tests::registerChildFunction(call_result_ok_str_retain_overflow);
+    zanna::tests::registerChildFunction(call_result_err_str_retain_overflow);
+    zanna::tests::registerChildFunction(call_resurrect_live_object);
+    zanna::tests::registerChildFunction(call_obj_free_live_object);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     test_memory_release_runs_finalizer();
@@ -577,11 +577,11 @@ int main(int argc, char *argv[]) {
     test_object_array_uses_object_element_kind();
     test_memory_release_array_drops_box_elements();
     test_heap_mark_disposed_return_contract();
-    expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");
-    expect_trap(call_memory_release_invalid, "Viper.Memory.Release");
-    expect_trap(call_memory_retain_str_object, "Viper.Memory.RetainStr");
+    expect_trap(call_memory_retain_invalid, "Zanna.Memory.Retain");
+    expect_trap(call_memory_release_invalid, "Zanna.Memory.Release");
+    expect_trap(call_memory_retain_str_object, "Zanna.Memory.RetainStr");
     expect_trap(call_memory_retain_string_payload, "invalid string payload");
-    expect_trap(call_memory_release_str_object, "Viper.Memory.ReleaseStr");
+    expect_trap(call_memory_release_str_object, "Zanna.Memory.ReleaseStr");
     expect_trap(call_object_negative_size, "negative object size");
     expect_trap(call_heap_double_release_deferred, "double release");
     expect_trap(call_heap_retain_overflow, "refcount overflow");

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/repl/ReplLineEditor.hpp
-// Purpose: Custom line editor for the Viper REPL, built on the TUI framework's
+// Purpose: Custom line editor for the Zanna REPL, built on the TUI framework's
 //          TerminalSession and InputDecoder. Provides line editing, history,
 //          and tab completion without any external dependencies.
 // Key invariants:
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Result of a line editor read operation.
 enum class ReadResult {
@@ -45,7 +45,7 @@ enum class ReadResult {
 using CompletionCallback =
     std::function<std::vector<std::string>(const std::string &input, size_t cursor)>;
 
-/// @brief Custom line editor built on the Viper TUI framework.
+/// @brief Custom line editor built on the Zanna TUI framework.
 /// @details Provides interactive line editing with cursor movement (left/right,
 ///          Home/End), character insertion and deletion (Backspace, Delete),
 ///          history navigation (Up/Down arrows), word-level movement (Ctrl+Left,
@@ -100,4 +100,4 @@ class ReplLineEditor {
     Impl *impl_; ///< Pointer-to-implementation (hides TUI headers from callers).
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

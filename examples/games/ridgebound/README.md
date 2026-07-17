@@ -10,7 +10,7 @@ presentation over unrelated showcase systems.
 From the repository root:
 
 ```sh
-viper run examples/games/ridgebound/
+zanna run examples/games/ridgebound/
 ```
 
 The demo opens on a scenic title view. Start a run, follow the dirt trails and
@@ -68,18 +68,18 @@ GPU backends and 250 ms on the deterministic software fallback.
 
 ## Validation
 
-The standalone gates use an existing Viper executable. They never configure or
-rebuild Viper and never invoke CTest.
+The standalone gates use an existing Zanna executable. They never configure or
+rebuild Zanna and never invoke CTest.
 
 ```sh
-VIPER_BIN=build/src/tools/viper/viper \
+ZANNA_BIN=build/src/tools/zanna/zanna \
   examples/games/ridgebound/run_probes.sh
 ```
 
 On Windows:
 
 ```bat
-set VIPER_BIN=build\src\tools\viper\viper.exe
+set ZANNA_BIN=build\src\tools\zanna\zanna.exe
 examples\games\ridgebound\run_probes.cmd
 ```
 

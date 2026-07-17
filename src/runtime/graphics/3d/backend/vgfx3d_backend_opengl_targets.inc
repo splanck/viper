@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_targets.inc  (#included from
 // vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL render-target
 // lifecycle, draw-output config, and post-FX application
@@ -1135,7 +1135,7 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
 }
 
 /// @brief Apply post-FX inside the scene FBO when standalone final FBOs are unusable.
-/// @details The Linux GLX fallback presents through the ViperGFX CPU window path because the
+/// @details The Linux GLX fallback presents through the ZannaGFX CPU window path because the
 ///          default drawable rejects the fullscreen resolve used by post-FX. On the affected
 ///          stack, additional single-attachment FBOs can also report complete while discarding
 ///          color writes. The scene FBO is proven writable by the main render pass, so this

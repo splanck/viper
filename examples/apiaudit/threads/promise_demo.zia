@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Threads.Promise / Viper.Threads.Future
+// API Audit: Zanna.Threads.Promise / Zanna.Threads.Future
 // =============================================================================
 // Tests: Promise.New, Promise.Set, Promise.SetError, Promise.GetFuture,
 //        Promise.IsDone, Future.Get, Future.Wait, Future.WaitFor,
@@ -7,13 +7,13 @@
 // =============================================================================
 
 module PromiseDemo;
-bind Viper.Threads.Promise as Promise;
-bind Viper.Threads.Future as Future;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Core.Box as Box;
+bind Zanna.Threads.Promise as Promise;
+bind Zanna.Threads.Future as Future;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.Threads.Promise / Future ===");
+    Say("=== API Audit: Zanna.Threads.Promise / Future ===");
 
     // --- Promise.New ---
     Say("--- Promise.New ---");

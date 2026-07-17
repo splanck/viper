@@ -2,98 +2,98 @@
 # File: tests/il/CMakeLists.txt
 # Purpose: IL parser, verifier, and analysis tests.
 
-set(VIPER_IL_CORE_IO_LIBS viper_il_full)
-set(VIPER_IL_CORE_IO_LIBS ${VIPER_IL_CORE_IO_LIBS} PARENT_SCOPE)
-set(VIPER_IL_ANALYSIS_LIBS il_analysis il_build)
-set(VIPER_IL_ANALYSIS_LIBS ${VIPER_IL_ANALYSIS_LIBS} PARENT_SCOPE)
+set(ZANNA_IL_CORE_IO_LIBS zanna_il_full)
+set(ZANNA_IL_CORE_IO_LIBS ${ZANNA_IL_CORE_IO_LIBS} PARENT_SCOPE)
+set(ZANNA_IL_ANALYSIS_LIBS il_analysis il_build)
+set(ZANNA_IL_ANALYSIS_LIBS ${ZANNA_IL_ANALYSIS_LIBS} PARENT_SCOPE)
 
-function(viper_add_il_core_tests)
+function(zanna_add_il_core_tests)
     if (TARGET test_il_serialize)
         return()
     endif ()
 
-    set(_VIPER_IL_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
+    set(_ZANNA_IL_UNIT_DIR ${ZANNA_TESTS_DIR}/unit)
 
-    viper_add_test(test_il_serialize ${_VIPER_IL_UNIT_DIR}/test_il_serialize.cpp)
-    target_link_libraries(test_il_serialize PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build)
-    target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
-    viper_add_ctest(test_il_serialize test_il_serialize)
+    zanna_add_test(test_il_serialize ${_ZANNA_IL_UNIT_DIR}/test_il_serialize.cpp)
+    target_link_libraries(test_il_serialize PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build)
+    target_compile_definitions(test_il_serialize PRIVATE TESTS_DIR="${ZANNA_TESTS_DIR}")
+    zanna_add_ctest(test_il_serialize test_il_serialize)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_serialize_negative_zero
-            ${_VIPER_IL_UNIT_DIR}/test_il_serialize_negative_zero.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_serialize_negative_zero.cpp)
     target_link_libraries(
-            test_il_serialize_negative_zero PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build)
-    viper_add_ctest(
+            test_il_serialize_negative_zero PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build)
+    zanna_add_ctest(
             test_il_serialize_negative_zero test_il_serialize_negative_zero)
 
-    viper_add_test(test_il_serialize_opcodes ${_VIPER_IL_UNIT_DIR}/test_il_serialize_opcodes.cpp)
-    target_link_libraries(test_il_serialize_opcodes PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
-    viper_add_ctest(test_il_serialize_opcodes test_il_serialize_opcodes)
+    zanna_add_test(test_il_serialize_opcodes ${_ZANNA_IL_UNIT_DIR}/test_il_serialize_opcodes.cpp)
+    target_link_libraries(test_il_serialize_opcodes PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${ZANNA_TESTS_DIR}")
+    zanna_add_ctest(test_il_serialize_opcodes test_il_serialize_opcodes)
 
-    viper_add_test(test_il_malformed_cbr ${_VIPER_IL_UNIT_DIR}/test_il_malformed_cbr.cpp)
-    target_link_libraries(test_il_malformed_cbr PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_malformed_cbr test_il_malformed_cbr)
+    zanna_add_test(test_il_malformed_cbr ${_ZANNA_IL_UNIT_DIR}/test_il_malformed_cbr.cpp)
+    target_link_libraries(test_il_malformed_cbr PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_malformed_cbr test_il_malformed_cbr)
 
-    viper_add_test(test_irbuilder_call_ret ${_VIPER_IL_UNIT_DIR}/test_irbuilder_call_ret.cpp)
-    target_link_libraries(test_irbuilder_call_ret PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_irbuilder_call_ret test_irbuilder_call_ret)
+    zanna_add_test(test_irbuilder_call_ret ${_ZANNA_IL_UNIT_DIR}/test_irbuilder_call_ret.cpp)
+    target_link_libraries(test_irbuilder_call_ret PRIVATE il_build ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_irbuilder_call_ret test_irbuilder_call_ret)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_core_memory_effects
-            ${_VIPER_IL_UNIT_DIR}/il/core/test_MemoryEffects.cpp)
-    target_link_libraries(test_il_core_memory_effects PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_core_memory_effects test_il_core_memory_effects)
+            ${_ZANNA_IL_UNIT_DIR}/il/core/test_MemoryEffects.cpp)
+    target_link_libraries(test_il_core_memory_effects PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_core_memory_effects test_il_core_memory_effects)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_core_structures
-            ${_VIPER_IL_UNIT_DIR}/il/core/test_IRCoreStructures.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/il/core/test_IRCoreStructures.cpp)
     target_link_libraries(
-            test_il_core_structures PRIVATE il_build il_analysis ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_core_structures test_il_core_structures)
+            test_il_core_structures PRIVATE il_build il_analysis ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_core_structures test_il_core_structures)
 
-    viper_add_test(test_irbuilder_call_unknown ${_VIPER_IL_UNIT_DIR}/test_irbuilder_call_unknown.cpp)
-    target_link_libraries(test_irbuilder_call_unknown PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_irbuilder_call_unknown test_irbuilder_call_unknown)
+    zanna_add_test(test_irbuilder_call_unknown ${_ZANNA_IL_UNIT_DIR}/test_irbuilder_call_unknown.cpp)
+    target_link_libraries(test_irbuilder_call_unknown PRIVATE il_build ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_irbuilder_call_unknown test_irbuilder_call_unknown)
 
-    viper_add_test(
+    zanna_add_test(
             test_irbuilder_resume_terminators
-            ${_VIPER_IL_UNIT_DIR}/test_irbuilder_resume_terminators.cpp)
-    target_link_libraries(test_irbuilder_resume_terminators PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(
+            ${_ZANNA_IL_UNIT_DIR}/test_irbuilder_resume_terminators.cpp)
+    target_link_libraries(test_irbuilder_resume_terminators PRIVATE il_build ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(
             test_irbuilder_resume_terminators test_irbuilder_resume_terminators)
 
-    viper_add_test(
+    zanna_add_test(
             test_irbuilder_assertions
-            ${_VIPER_IL_UNIT_DIR}/test_irbuilder_assertions.cpp)
-    target_link_libraries(test_irbuilder_assertions PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_irbuilder_assertions test_irbuilder_assertions)
+            ${_ZANNA_IL_UNIT_DIR}/test_irbuilder_assertions.cpp)
+    target_link_libraries(test_irbuilder_assertions PRIVATE il_build ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_irbuilder_assertions test_irbuilder_assertions)
 
-    viper_add_test(test_il_roundtrip ${_VIPER_IL_UNIT_DIR}/test_il_roundtrip.cpp)
-    target_link_libraries(test_il_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_roundtrip ${_ZANNA_IL_UNIT_DIR}/test_il_roundtrip.cpp)
+    target_link_libraries(test_il_roundtrip PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_roundtrip PRIVATE EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples" ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/roundtrip")
-    viper_add_ctest(test_il_roundtrip test_il_roundtrip)
+    zanna_add_ctest(test_il_roundtrip test_il_roundtrip)
 
-    viper_add_test(test_il_linkage_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/LinkageRoundTrip.cpp)
-    target_link_libraries(test_il_linkage_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_linkage_roundtrip test_il_linkage_roundtrip)
+    zanna_add_test(test_il_linkage_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/LinkageRoundTrip.cpp)
+    target_link_libraries(test_il_linkage_roundtrip PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_linkage_roundtrip test_il_linkage_roundtrip)
 
-    viper_add_test(test_il_module_linker ${CMAKE_SOURCE_DIR}/src/tests/il/ModuleLinkerTests.cpp)
-    target_link_libraries(test_il_module_linker PRIVATE il_link viper_il_core)
-    viper_add_ctest(test_il_module_linker test_il_module_linker)
+    zanna_add_test(test_il_module_linker ${CMAKE_SOURCE_DIR}/src/tests/il/ModuleLinkerTests.cpp)
+    target_link_libraries(test_il_module_linker PRIVATE il_link zanna_il_core)
+    zanna_add_ctest(test_il_module_linker test_il_module_linker)
 
-    viper_add_test(test_il_interop_thunks ${CMAKE_SOURCE_DIR}/src/tests/il/InteropThunkTests.cpp)
-    target_link_libraries(test_il_interop_thunks PRIVATE il_link viper_il_core)
-    viper_add_ctest(test_il_interop_thunks test_il_interop_thunks)
+    zanna_add_test(test_il_interop_thunks ${CMAKE_SOURCE_DIR}/src/tests/il/InteropThunkTests.cpp)
+    target_link_libraries(test_il_interop_thunks PRIVATE il_link zanna_il_core)
+    zanna_add_ctest(test_il_interop_thunks test_il_interop_thunks)
 
-    viper_add_test(test_il_interop_integration ${CMAKE_SOURCE_DIR}/src/tests/il/InteropIntegrationTests.cpp)
-    target_link_libraries(test_il_interop_integration PRIVATE il_link viper_il_core)
-    viper_add_ctest(test_il_interop_integration test_il_interop_integration)
+    zanna_add_test(test_il_interop_integration ${CMAKE_SOURCE_DIR}/src/tests/il/InteropIntegrationTests.cpp)
+    target_link_libraries(test_il_interop_integration PRIVATE il_link zanna_il_core)
+    zanna_add_ctest(test_il_interop_integration test_il_interop_integration)
 
-    viper_add_test(test_il_io_print_parse_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/IOPrintParseRoundTrip.cpp)
-    target_link_libraries(test_il_io_print_parse_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    set(_VIPER_IL_FIXTURE_DIRS
+    zanna_add_test(test_il_io_print_parse_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/IOPrintParseRoundTrip.cpp)
+    target_link_libraries(test_il_io_print_parse_roundtrip PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    set(_ZANNA_IL_FIXTURE_DIRS
             "${CMAKE_SOURCE_DIR}/examples/il"
             "${CMAKE_SOURCE_DIR}/src/tests/il/roundtrip"
             "${CMAKE_SOURCE_DIR}/src/tests/il/e2e"
@@ -108,1118 +108,1118 @@ function(viper_add_il_core_tests)
             "${CMAKE_SOURCE_DIR}/src/tests/golden/il"
             "${CMAKE_SOURCE_DIR}/src/tests/golden/il_opt"
             "${CMAKE_SOURCE_DIR}/src/tests/golden/numerics_il")
-    list(JOIN _VIPER_IL_FIXTURE_DIRS "|" _VIPER_IL_FIXTURE_DIRS_ESCAPED)
+    list(JOIN _ZANNA_IL_FIXTURE_DIRS "|" _ZANNA_IL_FIXTURE_DIRS_ESCAPED)
     target_compile_definitions(
-            test_il_io_print_parse_roundtrip PRIVATE IL_FIXTURE_DIRS="${_VIPER_IL_FIXTURE_DIRS_ESCAPED}")
-    viper_add_ctest(test_il_io_print_parse_roundtrip test_il_io_print_parse_roundtrip)
+            test_il_io_print_parse_roundtrip PRIVATE IL_FIXTURE_DIRS="${_ZANNA_IL_FIXTURE_DIRS_ESCAPED}")
+    zanna_add_ctest(test_il_io_print_parse_roundtrip test_il_io_print_parse_roundtrip)
 
-    viper_add_test(test_il_parse_roundtrip ${_VIPER_IL_UNIT_DIR}/test_il_parse_roundtrip.cpp)
-    target_link_libraries(test_il_parse_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_roundtrip ${_ZANNA_IL_UNIT_DIR}/test_il_parse_roundtrip.cpp)
+    target_link_libraries(test_il_parse_roundtrip PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_roundtrip PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip" SWITCH_GOLDEN="${CMAKE_SOURCE_DIR}/src/tests/golden/il_opt/switch_basic.il")
-    viper_add_ctest(test_il_parse_roundtrip test_il_parse_roundtrip)
+    zanna_add_ctest(test_il_parse_roundtrip test_il_parse_roundtrip)
 
-    viper_add_test(test_il_parse_unresolved_branch ${_VIPER_IL_UNIT_DIR}/test_il_parse_unresolved_branch.cpp)
-    target_link_libraries(test_il_parse_unresolved_branch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_unresolved_branch ${_ZANNA_IL_UNIT_DIR}/test_il_parse_unresolved_branch.cpp)
+    target_link_libraries(test_il_parse_unresolved_branch PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_unresolved_branch PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_unresolved_branch test_il_parse_unresolved_branch)
+    zanna_add_ctest(test_il_parse_unresolved_branch test_il_parse_unresolved_branch)
 
-    viper_add_test(test_il_parse_param_prefix ${_VIPER_IL_UNIT_DIR}/test_il_parse_param_prefix.cpp)
-    target_link_libraries(test_il_parse_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_param_prefix ${_ZANNA_IL_UNIT_DIR}/test_il_parse_param_prefix.cpp)
+    target_link_libraries(test_il_parse_param_prefix PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_param_prefix test_il_parse_param_prefix)
+    zanna_add_ctest(test_il_parse_param_prefix test_il_parse_param_prefix)
 
-    viper_add_test(test_il_parse_extra_param_commas ${_VIPER_IL_UNIT_DIR}/test_il_parse_extra_param_commas.cpp)
-    target_link_libraries(test_il_parse_extra_param_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_extra_param_commas test_il_parse_extra_param_commas)
+    zanna_add_test(test_il_parse_extra_param_commas ${_ZANNA_IL_UNIT_DIR}/test_il_parse_extra_param_commas.cpp)
+    target_link_libraries(test_il_parse_extra_param_commas PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_extra_param_commas test_il_parse_extra_param_commas)
 
-    viper_add_test(test_il_parse_extern_extra_commas ${_VIPER_IL_UNIT_DIR}/test_il_parse_extern_extra_commas.cpp)
-    target_link_libraries(test_il_parse_extern_extra_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_extern_extra_commas test_il_parse_extern_extra_commas)
+    zanna_add_test(test_il_parse_extern_extra_commas ${_ZANNA_IL_UNIT_DIR}/test_il_parse_extern_extra_commas.cpp)
+    target_link_libraries(test_il_parse_extern_extra_commas PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_extern_extra_commas test_il_parse_extern_extra_commas)
 
-    viper_add_test(test_il_parse_missing_extern_name ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_extern_name.cpp)
-    target_link_libraries(test_il_parse_missing_extern_name PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_missing_extern_name test_il_parse_missing_extern_name)
+    zanna_add_test(test_il_parse_missing_extern_name ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_extern_name.cpp)
+    target_link_libraries(test_il_parse_missing_extern_name PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_missing_extern_name test_il_parse_missing_extern_name)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_block_param_extra_commas
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_block_param_extra_commas.cpp)
-    target_link_libraries(test_il_parse_block_param_extra_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_block_param_extra_commas.cpp)
+    target_link_libraries(test_il_parse_block_param_extra_commas PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_block_param_extra_commas
             PRIVATE PARSE_ERROR_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(
+    zanna_add_ctest(
             test_il_parse_block_param_extra_commas test_il_parse_block_param_extra_commas)
 
-    viper_add_test(test_il_parse_block_param_prefix ${_VIPER_IL_UNIT_DIR}/test_il_parse_block_param_prefix.cpp)
-    target_link_libraries(test_il_parse_block_param_prefix PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_block_param_prefix ${_ZANNA_IL_UNIT_DIR}/test_il_parse_block_param_prefix.cpp)
+    target_link_libraries(test_il_parse_block_param_prefix PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_block_param_prefix PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_block_param_prefix test_il_parse_block_param_prefix)
+    zanna_add_ctest(test_il_parse_block_param_prefix test_il_parse_block_param_prefix)
 
-    viper_add_test(test_il_parse_duplicate_param ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_param.cpp)
-    target_link_libraries(test_il_parse_duplicate_param PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_duplicate_param test_il_parse_duplicate_param)
+    zanna_add_test(test_il_parse_duplicate_param ${_ZANNA_IL_UNIT_DIR}/test_il_parse_duplicate_param.cpp)
+    target_link_libraries(test_il_parse_duplicate_param PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_duplicate_param test_il_parse_duplicate_param)
 
-    viper_add_test(test_il_parse_duplicate_result ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_result.cpp)
-    target_link_libraries(test_il_parse_duplicate_result PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_duplicate_result test_il_parse_duplicate_result)
+    zanna_add_test(test_il_parse_duplicate_result ${_ZANNA_IL_UNIT_DIR}/test_il_parse_duplicate_result.cpp)
+    target_link_libraries(test_il_parse_duplicate_result PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_duplicate_result test_il_parse_duplicate_result)
 
-    viper_add_test(test_runtime_name_map ${_VIPER_IL_UNIT_DIR}/il/runtime/test_runtime_name_map.cpp)
-    target_link_libraries(test_runtime_name_map PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_runtime)
-    viper_add_ctest(test_runtime_name_map test_runtime_name_map)
+    zanna_add_test(test_runtime_name_map ${_ZANNA_IL_UNIT_DIR}/il/runtime/test_runtime_name_map.cpp)
+    target_link_libraries(test_runtime_name_map PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_runtime)
+    zanna_add_ctest(test_runtime_name_map test_runtime_name_map)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_duplicate_block_param
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_block_param.cpp)
-    target_link_libraries(test_il_parse_duplicate_block_param PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_duplicate_block_param.cpp)
+    target_link_libraries(test_il_parse_duplicate_block_param PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_duplicate_block_param
             PRIVATE PARSE_ERROR_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(test_il_parse_duplicate_block_param test_il_parse_duplicate_block_param)
+    zanna_add_ctest(test_il_parse_duplicate_block_param test_il_parse_duplicate_block_param)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_duplicate_version
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_version.cpp)
-    target_link_libraries(test_il_parse_duplicate_version PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_duplicate_version.cpp)
+    target_link_libraries(test_il_parse_duplicate_version PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_duplicate_version
             PRIVATE PARSE_ERROR_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(test_il_parse_duplicate_version test_il_parse_duplicate_version)
+    zanna_add_ctest(test_il_parse_duplicate_version test_il_parse_duplicate_version)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_invalid_calling_conv
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_invalid_calling_conv.cpp)
-    target_link_libraries(test_il_parse_invalid_calling_conv PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_invalid_calling_conv.cpp)
+    target_link_libraries(test_il_parse_invalid_calling_conv PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_invalid_calling_conv
             PRIVATE PARSE_ERROR_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(test_il_parse_invalid_calling_conv test_il_parse_invalid_calling_conv)
+    zanna_add_ctest(test_il_parse_invalid_calling_conv test_il_parse_invalid_calling_conv)
 
-    viper_add_test(test_il_parse_missing_brace ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_brace.cpp)
-    target_link_libraries(test_il_parse_missing_brace PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_missing_brace ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_brace.cpp)
+    target_link_libraries(test_il_parse_missing_brace PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_missing_brace PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_missing_brace test_il_parse_missing_brace)
+    zanna_add_ctest(test_il_parse_missing_brace test_il_parse_missing_brace)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_missing_block_label
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_block_label.cpp)
-    target_link_libraries(test_il_parse_missing_block_label PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_block_label.cpp)
+    target_link_libraries(test_il_parse_missing_block_label PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_missing_block_label
             PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_missing_block_label test_il_parse_missing_block_label)
+    zanna_add_ctest(test_il_parse_missing_block_label test_il_parse_missing_block_label)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_function_name_trim
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_function_name_trim.cpp)
-    target_link_libraries(test_il_parse_function_name_trim PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_function_name_trim test_il_parse_function_name_trim)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_function_name_trim.cpp)
+    target_link_libraries(test_il_parse_function_name_trim PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_function_name_trim test_il_parse_function_name_trim)
 
-    viper_add_test(test_il_parse_duplicate_block ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_block.cpp)
-    target_link_libraries(test_il_parse_duplicate_block PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_duplicate_block ${_ZANNA_IL_UNIT_DIR}/test_il_parse_duplicate_block.cpp)
+    target_link_libraries(test_il_parse_duplicate_block PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_duplicate_block PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_duplicate_block test_il_parse_duplicate_block)
+    zanna_add_ctest(test_il_parse_duplicate_block test_il_parse_duplicate_block)
 
-    viper_add_test(test_il_parse_missing_paren ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_paren.cpp)
-    target_link_libraries(test_il_parse_missing_paren PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_missing_paren ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_paren.cpp)
+    target_link_libraries(test_il_parse_missing_paren PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_missing_paren PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_missing_paren test_il_parse_missing_paren)
+    zanna_add_ctest(test_il_parse_missing_paren test_il_parse_missing_paren)
 
-    viper_add_test(test_il_parse_extern_whitespace ${_VIPER_IL_UNIT_DIR}/test_il_parse_extern_whitespace.cpp)
-    target_link_libraries(test_il_parse_extern_whitespace PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_extern_whitespace ${_ZANNA_IL_UNIT_DIR}/test_il_parse_extern_whitespace.cpp)
+    target_link_libraries(test_il_parse_extern_whitespace PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_extern_whitespace PRIVATE PARSE_ROUNDTRIP_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse-roundtrip")
-    viper_add_ctest(test_il_parse_extern_whitespace test_il_parse_extern_whitespace)
+    zanna_add_ctest(test_il_parse_extern_whitespace test_il_parse_extern_whitespace)
 
-    viper_add_test(test_il_parse_extern_empty_params ${_VIPER_IL_UNIT_DIR}/test_il_parse_extern_empty_params.cpp)
-    target_link_libraries(test_il_parse_extern_empty_params PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_extern_empty_params test_il_parse_extern_empty_params)
+    zanna_add_test(test_il_parse_extern_empty_params ${_ZANNA_IL_UNIT_DIR}/test_il_parse_extern_empty_params.cpp)
+    target_link_libraries(test_il_parse_extern_empty_params PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_extern_empty_params test_il_parse_extern_empty_params)
 
     # call.indirect roundtrip + VM execution smoke
-    viper_add_test(il_call_indirect_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/CallIndirectRoundTrip.cpp)
-    target_link_libraries(il_call_indirect_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_vm)
-    viper_add_ctest(il_call_indirect_roundtrip il_call_indirect_roundtrip)
+    zanna_add_test(il_call_indirect_roundtrip ${CMAKE_SOURCE_DIR}/src/tests/il/CallIndirectRoundTrip.cpp)
+    target_link_libraries(il_call_indirect_roundtrip PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_vm)
+    zanna_add_ctest(il_call_indirect_roundtrip il_call_indirect_roundtrip)
 
-    viper_add_test(test_il_correctness_fixes ${CMAKE_SOURCE_DIR}/src/tests/il/ILCorrectnessFixes.cpp)
-    target_link_libraries(test_il_correctness_fixes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_vm il_runtime)
-    viper_add_ctest(test_il_correctness_fixes test_il_correctness_fixes)
+    zanna_add_test(test_il_correctness_fixes ${CMAKE_SOURCE_DIR}/src/tests/il/ILCorrectnessFixes.cpp)
+    target_link_libraries(test_il_correctness_fixes PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_transform il_vm il_runtime)
+    zanna_add_ctest(test_il_correctness_fixes test_il_correctness_fixes)
 
-    viper_add_test(test_il_parse_call_ret_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_ret_type.cpp)
-    target_link_libraries(test_il_parse_call_ret_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_call_ret_type test_il_parse_call_ret_type)
+    zanna_add_test(test_il_parse_call_ret_type ${_ZANNA_IL_UNIT_DIR}/test_il_parse_call_ret_type.cpp)
+    target_link_libraries(test_il_parse_call_ret_type PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_call_ret_type test_il_parse_call_ret_type)
 
-    viper_add_test(test_il_parse_negative ${_VIPER_IL_UNIT_DIR}/test_il_parse_negative.cpp)
-    target_link_libraries(test_il_parse_negative PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_parse_negative ${_ZANNA_IL_UNIT_DIR}/test_il_parse_negative.cpp)
+    target_link_libraries(test_il_parse_negative PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(test_il_parse_negative test_il_parse_negative)
+    zanna_add_ctest(test_il_parse_negative test_il_parse_negative)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_operand_whitespace
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_operand_whitespace.cpp)
-    target_link_libraries(test_il_parse_operand_whitespace PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_operand_whitespace.cpp)
+    target_link_libraries(test_il_parse_operand_whitespace PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_parse_operand_whitespace
             PRIVATE OPERAND_WS_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/parse")
-    viper_add_ctest(test_il_parse_operand_whitespace test_il_parse_operand_whitespace)
+    zanna_add_ctest(test_il_parse_operand_whitespace test_il_parse_operand_whitespace)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_dollar_identifiers
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_dollar_identifiers.cpp)
-    target_link_libraries(test_il_parse_dollar_identifiers PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_dollar_identifiers test_il_parse_dollar_identifiers)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_dollar_identifiers.cpp)
+    target_link_libraries(test_il_parse_dollar_identifiers PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_dollar_identifiers test_il_parse_dollar_identifiers)
 
-    viper_add_test(test_il_parse_comment ${_VIPER_IL_UNIT_DIR}/test_il_parse_comment.cpp)
-    target_link_libraries(test_il_parse_comment PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_comment test_il_parse_comment)
+    zanna_add_test(test_il_parse_comment ${_ZANNA_IL_UNIT_DIR}/test_il_parse_comment.cpp)
+    target_link_libraries(test_il_parse_comment PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_comment test_il_parse_comment)
 
-    viper_add_test(test_il_comments ${_VIPER_IL_UNIT_DIR}/test_il_comments.cpp)
-    target_link_libraries(test_il_comments PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_comments test_il_comments)
+    zanna_add_test(test_il_comments ${_ZANNA_IL_UNIT_DIR}/test_il_comments.cpp)
+    target_link_libraries(test_il_comments PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_comments test_il_comments)
 
-    viper_add_test(test_il_parse_missing_eq ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_eq.cpp)
-    target_link_libraries(test_il_parse_missing_eq PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_missing_eq test_il_parse_missing_eq)
+    zanna_add_test(test_il_parse_missing_eq ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_eq.cpp)
+    target_link_libraries(test_il_parse_missing_eq PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_missing_eq test_il_parse_missing_eq)
 
-    viper_add_test(test_il_parse_missing_version ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_version.cpp)
-    target_link_libraries(test_il_parse_missing_version PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_missing_version test_il_parse_missing_version)
+    zanna_add_test(test_il_parse_missing_version ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_version.cpp)
+    target_link_libraries(test_il_parse_missing_version PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_missing_version test_il_parse_missing_version)
 
-    viper_add_test(test_il_parse_bom ${_VIPER_IL_UNIT_DIR}/test_il_parse_bom.cpp)
-    target_link_libraries(test_il_parse_bom PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_bom test_il_parse_bom)
+    zanna_add_test(test_il_parse_bom ${_ZANNA_IL_UNIT_DIR}/test_il_parse_bom.cpp)
+    target_link_libraries(test_il_parse_bom PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_bom test_il_parse_bom)
 
-    viper_add_test(test_il_parse_first_error ${_VIPER_IL_UNIT_DIR}/test_il_parse_first_error.cpp)
-    target_link_libraries(test_il_parse_first_error PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_first_error test_il_parse_first_error)
+    zanna_add_test(test_il_parse_first_error ${_ZANNA_IL_UNIT_DIR}/test_il_parse_first_error.cpp)
+    target_link_libraries(test_il_parse_first_error PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_first_error test_il_parse_first_error)
 
-    viper_add_test(test_il_parse_global_missing_quotes ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_quotes.cpp)
-    target_link_libraries(test_il_parse_global_missing_quotes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_global_missing_quotes test_il_parse_global_missing_quotes)
+    zanna_add_test(test_il_parse_global_missing_quotes ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_missing_quotes.cpp)
+    target_link_libraries(test_il_parse_global_missing_quotes PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_global_missing_quotes test_il_parse_global_missing_quotes)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_global_trailing_characters
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_trailing_characters.cpp)
-    target_link_libraries(test_il_parse_global_trailing_characters PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_trailing_characters.cpp)
+    target_link_libraries(test_il_parse_global_trailing_characters PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(
             test_il_parse_global_trailing_characters test_il_parse_global_trailing_characters)
 
-    viper_add_test(test_il_parse_global_missing_at ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_at.cpp)
-    target_link_libraries(test_il_parse_global_missing_at PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_global_missing_at test_il_parse_global_missing_at)
+    zanna_add_test(test_il_parse_global_missing_at ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_missing_at.cpp)
+    target_link_libraries(test_il_parse_global_missing_at PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_global_missing_at test_il_parse_global_missing_at)
 
-    viper_add_test(test_il_parse_global_missing_name ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_name.cpp)
-    target_link_libraries(test_il_parse_global_missing_name PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_global_missing_name test_il_parse_global_missing_name)
+    zanna_add_test(test_il_parse_global_missing_name ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_missing_name.cpp)
+    target_link_libraries(test_il_parse_global_missing_name PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_global_missing_name test_il_parse_global_missing_name)
 
-    viper_add_test(test_il_parse_global_missing_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_type.cpp)
-    target_link_libraries(test_il_parse_global_missing_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_global_missing_type test_il_parse_global_missing_type)
+    zanna_add_test(test_il_parse_global_missing_type ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_missing_type.cpp)
+    target_link_libraries(test_il_parse_global_missing_type PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_global_missing_type test_il_parse_global_missing_type)
 
-    viper_add_test(test_il_parse_global_unsupported_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_unsupported_type.cpp)
-    target_link_libraries(test_il_parse_global_unsupported_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_global_unsupported_type test_il_parse_global_unsupported_type)
+    zanna_add_test(test_il_parse_global_unsupported_type ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_unsupported_type.cpp)
+    target_link_libraries(test_il_parse_global_unsupported_type PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_global_unsupported_type test_il_parse_global_unsupported_type)
 
-    viper_add_test(test_il_parse_string_escapes ${_VIPER_IL_UNIT_DIR}/test_il_parse_string_escapes.cpp)
-    target_link_libraries(test_il_parse_string_escapes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_string_escapes test_il_parse_string_escapes)
+    zanna_add_test(test_il_parse_string_escapes ${_ZANNA_IL_UNIT_DIR}/test_il_parse_string_escapes.cpp)
+    target_link_libraries(test_il_parse_string_escapes PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_string_escapes test_il_parse_string_escapes)
 
-    viper_add_test(test_il_parse_conststr_escapes ${_VIPER_IL_UNIT_DIR}/test_il_parse_conststr_escapes.cpp)
-    target_link_libraries(test_il_parse_conststr_escapes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_conststr_escapes test_il_parse_conststr_escapes)
+    zanna_add_test(test_il_parse_conststr_escapes ${_ZANNA_IL_UNIT_DIR}/test_il_parse_conststr_escapes.cpp)
+    target_link_libraries(test_il_parse_conststr_escapes PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_conststr_escapes test_il_parse_conststr_escapes)
 
-    viper_add_test(test_il_parse_invalid_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_invalid_type.cpp)
-    target_link_libraries(test_il_parse_invalid_type PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_invalid_type test_il_parse_invalid_type)
+    zanna_add_test(test_il_parse_invalid_type ${_ZANNA_IL_UNIT_DIR}/test_il_parse_invalid_type.cpp)
+    target_link_libraries(test_il_parse_invalid_type PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_invalid_type test_il_parse_invalid_type)
 
-    viper_add_test(test_il_parse_misc_instructions ${_VIPER_IL_UNIT_DIR}/test_il_parse_misc_instructions.cpp)
-    target_link_libraries(test_il_parse_misc_instructions PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_misc_instructions test_il_parse_misc_instructions)
+    zanna_add_test(test_il_parse_misc_instructions ${_ZANNA_IL_UNIT_DIR}/test_il_parse_misc_instructions.cpp)
+    target_link_libraries(test_il_parse_misc_instructions PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_misc_instructions test_il_parse_misc_instructions)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_call_string_comma
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_string_comma.cpp)
-    target_link_libraries(test_il_parse_call_string_comma PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_call_string_comma test_il_parse_call_string_comma)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_call_string_comma.cpp)
+    target_link_libraries(test_il_parse_call_string_comma PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_call_string_comma test_il_parse_call_string_comma)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_call_trailing_junk
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_trailing_junk.cpp)
-    target_link_libraries(test_il_parse_call_trailing_junk PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_call_trailing_junk test_il_parse_call_trailing_junk)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_call_trailing_junk.cpp)
+    target_link_libraries(test_il_parse_call_trailing_junk PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_call_trailing_junk test_il_parse_call_trailing_junk)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_keyword_boundary
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_keyword_boundary.cpp)
-    target_link_libraries(test_il_parse_keyword_boundary PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_keyword_boundary test_il_parse_keyword_boundary)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_keyword_boundary.cpp)
+    target_link_libraries(test_il_parse_keyword_boundary PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_keyword_boundary test_il_parse_keyword_boundary)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_global_keyword_boundary
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_keyword_boundary.cpp)
-    target_link_libraries(test_il_parse_global_keyword_boundary PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_global_keyword_boundary.cpp)
+    target_link_libraries(test_il_parse_global_keyword_boundary PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(
             test_il_parse_global_keyword_boundary test_il_parse_global_keyword_boundary)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_missing_operand_between_commas
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_operand_between_commas.cpp)
-    target_link_libraries(test_il_parse_missing_operand_between_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_missing_operand_between_commas test_il_parse_missing_operand_between_commas)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_missing_operand_between_commas.cpp)
+    target_link_libraries(test_il_parse_missing_operand_between_commas PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_missing_operand_between_commas test_il_parse_missing_operand_between_commas)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_parse_branch_missing_label
-            ${_VIPER_IL_UNIT_DIR}/test_il_parse_branch_missing_label.cpp)
-    target_link_libraries(test_il_parse_branch_missing_label PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_parse_branch_missing_label test_il_parse_branch_missing_label)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_parse_branch_missing_label.cpp)
+    target_link_libraries(test_il_parse_branch_missing_label PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_parse_branch_missing_label test_il_parse_branch_missing_label)
 
-    viper_add_test(test_il_function_parser_errors ${_VIPER_IL_UNIT_DIR}/test_il_function_parser_errors.cpp)
-    target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
+    zanna_add_test(test_il_function_parser_errors ${_ZANNA_IL_UNIT_DIR}/test_il_function_parser_errors.cpp)
+    target_link_libraries(test_il_function_parser_errors PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
 
-    viper_add_test(test_il_parse_loc_errors ${_VIPER_IL_UNIT_DIR}/test_il_parse_loc_errors.cpp)
-    target_link_libraries(test_il_parse_loc_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_parse_loc_errors test_il_parse_loc_errors)
+    zanna_add_test(test_il_parse_loc_errors ${_ZANNA_IL_UNIT_DIR}/test_il_parse_loc_errors.cpp)
+    target_link_libraries(test_il_parse_loc_errors PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_parse_loc_errors test_il_parse_loc_errors)
 
-    viper_add_test(test_expected_api_build ${_VIPER_IL_UNIT_DIR}/test_expected_api_build.cpp)
-    target_link_libraries(test_expected_api_build PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_expected_api_build test_expected_api_build)
+    zanna_add_test(test_expected_api_build ${_ZANNA_IL_UNIT_DIR}/test_expected_api_build.cpp)
+    target_link_libraries(test_expected_api_build PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_expected_api_build test_expected_api_build)
 
-    viper_add_test(test_il_verify_trap ${_VIPER_IL_UNIT_DIR}/test_il_verify_trap.cpp)
-    target_link_libraries(test_il_verify_trap PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_trap test_il_verify_trap)
+    zanna_add_test(test_il_verify_trap ${_ZANNA_IL_UNIT_DIR}/test_il_verify_trap.cpp)
+    target_link_libraries(test_il_verify_trap PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_trap test_il_verify_trap)
 
-    viper_add_test(test_il_verify_select ${_VIPER_IL_UNIT_DIR}/test_il_verify_select.cpp)
-    target_link_libraries(test_il_verify_select PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_select test_il_verify_select)
+    zanna_add_test(test_il_verify_select ${_ZANNA_IL_UNIT_DIR}/test_il_verify_select.cpp)
+    target_link_libraries(test_il_verify_select PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_select test_il_verify_select)
 
-    viper_add_test(test_il_verify_forward_call ${_VIPER_IL_UNIT_DIR}/test_il_verify_forward_call.cpp)
-    target_link_libraries(test_il_verify_forward_call PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_forward_call test_il_verify_forward_call)
+    zanna_add_test(test_il_verify_forward_call ${_ZANNA_IL_UNIT_DIR}/test_il_verify_forward_call.cpp)
+    target_link_libraries(test_il_verify_forward_call PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_forward_call test_il_verify_forward_call)
 
-    viper_add_test(test_il_verify_release_lifetime ${_VIPER_IL_UNIT_DIR}/test_il_verify_release_lifetime.cpp)
-    target_link_libraries(test_il_verify_release_lifetime PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_release_lifetime test_il_verify_release_lifetime)
+    zanna_add_test(test_il_verify_release_lifetime ${_ZANNA_IL_UNIT_DIR}/test_il_verify_release_lifetime.cpp)
+    target_link_libraries(test_il_verify_release_lifetime PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_release_lifetime test_il_verify_release_lifetime)
 
-    viper_add_test(test_il_verify_table_memory_ok ${_VIPER_IL_UNIT_DIR}/test_il_verify_table_memory_ok.cpp)
-    target_link_libraries(test_il_verify_table_memory_ok PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_table_memory_ok test_il_verify_table_memory_ok)
+    zanna_add_test(test_il_verify_table_memory_ok ${_ZANNA_IL_UNIT_DIR}/test_il_verify_table_memory_ok.cpp)
+    target_link_libraries(test_il_verify_table_memory_ok PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_table_memory_ok test_il_verify_table_memory_ok)
 
-    viper_add_test(test_il_verify_table_mismatch ${_VIPER_IL_UNIT_DIR}/test_il_verify_table_mismatch.cpp)
-    target_link_libraries(test_il_verify_table_mismatch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_table_mismatch test_il_verify_table_mismatch)
+    zanna_add_test(test_il_verify_table_mismatch ${_ZANNA_IL_UNIT_DIR}/test_il_verify_table_mismatch.cpp)
+    target_link_libraries(test_il_verify_table_mismatch PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_table_mismatch test_il_verify_table_mismatch)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_verify_calls_table_interop
-            ${_VIPER_IL_UNIT_DIR}/test_il_verify_calls_table_interop.cpp)
-    target_link_libraries(test_il_verify_calls_table_interop PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(
+            ${_ZANNA_IL_UNIT_DIR}/test_il_verify_calls_table_interop.cpp)
+    target_link_libraries(test_il_verify_calls_table_interop PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(
             test_il_verify_calls_table_interop test_il_verify_calls_table_interop)
 
-    viper_add_test(test_il_verify_eh_table ${_VIPER_IL_UNIT_DIR}/test_il_verify_eh_table.cpp)
-    target_link_libraries(test_il_verify_eh_table PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
-    viper_add_ctest(test_il_verify_eh_table test_il_verify_eh_table)
+    zanna_add_test(test_il_verify_eh_table ${_ZANNA_IL_UNIT_DIR}/test_il_verify_eh_table.cpp)
+    target_link_libraries(test_il_verify_eh_table PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
+    zanna_add_ctest(test_il_verify_eh_table test_il_verify_eh_table)
 
-    viper_add_test(test_il_type_inference ${_VIPER_IL_UNIT_DIR}/test_il_type_inference.cpp)
-    target_link_libraries(test_il_type_inference PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_type_inference test_il_type_inference)
+    zanna_add_test(test_il_type_inference ${_ZANNA_IL_UNIT_DIR}/test_il_type_inference.cpp)
+    target_link_libraries(test_il_type_inference PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_type_inference test_il_type_inference)
 
-    viper_add_test(test_runtime_registry ${_VIPER_IL_UNIT_DIR}/test_runtime_registry.cpp)
+    zanna_add_test(test_runtime_registry ${_ZANNA_IL_UNIT_DIR}/test_runtime_registry.cpp)
     target_link_libraries(test_runtime_registry PRIVATE il_runtime)
-    viper_add_ctest(test_runtime_registry test_runtime_registry)
+    zanna_add_ctest(test_runtime_registry test_runtime_registry)
 
-    viper_add_test(
+    zanna_add_test(
             test_runtime_signatures_self_check
-            ${_VIPER_IL_UNIT_DIR}/RuntimeSignaturesSelfCheckTests.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/RuntimeSignaturesSelfCheckTests.cpp)
     target_link_libraries(test_runtime_signatures_self_check PRIVATE il_runtime)
-    viper_add_ctest(test_runtime_signatures_self_check test_runtime_signatures_self_check)
+    zanna_add_ctest(test_runtime_signatures_self_check test_runtime_signatures_self_check)
 
-    viper_add_test(
+    zanna_add_test(
             test_runtime_invariant_mode
-            ${_VIPER_IL_UNIT_DIR}/test_runtime_invariant_mode.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/test_runtime_invariant_mode.cpp)
     target_link_libraries(test_runtime_invariant_mode PRIVATE il_runtime)
-    viper_add_ctest(test_runtime_invariant_mode test_runtime_invariant_mode)
+    zanna_add_ctest(test_runtime_invariant_mode test_runtime_invariant_mode)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_runtime_signature_effects
-            ${_VIPER_IL_UNIT_DIR}/il/runtime/test_SignaturesPurity.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/il/runtime/test_SignaturesPurity.cpp)
     target_link_libraries(test_il_runtime_signature_effects PRIVATE il_runtime)
-    viper_add_ctest(
+    zanna_add_ctest(
             test_il_runtime_signature_effects test_il_runtime_signature_effects)
 
-    viper_add_test(test_il_instruction_checker ${_VIPER_IL_UNIT_DIR}/test_il_instruction_checker.cpp)
-    target_link_libraries(test_il_instruction_checker PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_instruction_checker test_il_instruction_checker)
+    zanna_add_test(test_il_instruction_checker ${_ZANNA_IL_UNIT_DIR}/test_il_instruction_checker.cpp)
+    target_link_libraries(test_il_instruction_checker PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_instruction_checker test_il_instruction_checker)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_instruction_checker_binary_arity
-            ${_VIPER_IL_UNIT_DIR}/test_il_instruction_checker_binary_arity.cpp)
+            ${_ZANNA_IL_UNIT_DIR}/test_il_instruction_checker_binary_arity.cpp)
     target_link_libraries(
-            test_il_instruction_checker_binary_arity PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(
+            test_il_instruction_checker_binary_arity PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(
             test_il_instruction_checker_binary_arity test_il_instruction_checker_binary_arity)
 
-    viper_add_test(test_il_error_resume_ir ${_VIPER_IL_UNIT_DIR}/test_il_error_resume_ir.cpp)
-    target_link_libraries(test_il_error_resume_ir PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_error_resume_ir test_il_error_resume_ir)
+    zanna_add_test(test_il_error_resume_ir ${_ZANNA_IL_UNIT_DIR}/test_il_error_resume_ir.cpp)
+    target_link_libraries(test_il_error_resume_ir PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_error_resume_ir test_il_error_resume_ir)
 
-    viper_add_test(test_il_control_flow_checker ${_VIPER_IL_UNIT_DIR}/test_il_control_flow_checker.cpp)
-    target_link_libraries(test_il_control_flow_checker PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_control_flow_checker test_il_control_flow_checker)
+    zanna_add_test(test_il_control_flow_checker ${_ZANNA_IL_UNIT_DIR}/test_il_control_flow_checker.cpp)
+    target_link_libraries(test_il_control_flow_checker PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_control_flow_checker test_il_control_flow_checker)
 
-    viper_add_test(test_il_exception_handler_analysis
-            ${_VIPER_IL_UNIT_DIR}/test_il_exception_handler_analysis.cpp)
-    target_link_libraries(test_il_exception_handler_analysis PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_exception_handler_analysis test_il_exception_handler_analysis)
+    zanna_add_test(test_il_exception_handler_analysis
+            ${_ZANNA_IL_UNIT_DIR}/test_il_exception_handler_analysis.cpp)
+    target_link_libraries(test_il_exception_handler_analysis PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_exception_handler_analysis test_il_exception_handler_analysis)
 
-    viper_add_test(test_il_verify_eh_checks
-            ${_VIPER_IL_UNIT_DIR}/test_il_verify_eh_checks.cpp)
-    target_link_libraries(test_il_verify_eh_checks PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_verify_eh_checks test_il_verify_eh_checks)
+    zanna_add_test(test_il_verify_eh_checks
+            ${_ZANNA_IL_UNIT_DIR}/test_il_verify_eh_checks.cpp)
+    target_link_libraries(test_il_verify_eh_checks PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_verify_eh_checks test_il_verify_eh_checks)
 
-    viper_add_test(test_il_branch_verifier ${_VIPER_IL_UNIT_DIR}/test_il_branch_verifier.cpp)
-    target_link_libraries(test_il_branch_verifier PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    zanna_add_test(test_il_branch_verifier ${_ZANNA_IL_UNIT_DIR}/test_il_branch_verifier.cpp)
+    target_link_libraries(test_il_branch_verifier PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_branch_verifier PRIVATE NEGATIVE_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/negatives")
-    viper_add_ctest(test_il_branch_verifier test_il_branch_verifier)
+    zanna_add_ctest(test_il_branch_verifier test_il_branch_verifier)
 endfunction()
 
-function(viper_add_il_utils_test)
+function(zanna_add_il_utils_test)
     if (TARGET test_il_utils)
         return()
     endif ()
 
-    set(_VIPER_IL_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
-    viper_add_test(test_il_utils ${_VIPER_IL_DIR}/UtilsTests.cpp)
+    set(_ZANNA_IL_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
+    zanna_add_test(test_il_utils ${_ZANNA_IL_DIR}/UtilsTests.cpp)
     target_link_libraries(test_il_utils PRIVATE il_utils)
-    viper_add_ctest(test_il_utils test_il_utils)
+    zanna_add_ctest(test_il_utils test_il_utils)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_bitvector_resize
-            ${_VIPER_IL_DIR}/transform/simplifycfg_bitvector_resize.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_bitvector_resize.cpp)
     target_link_libraries(
-            test_il_simplifycfg_bitvector_resize PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_bitvector_resize PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_bitvector_resize test_il_simplifycfg_bitvector_resize)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_cbr_fold
-            ${_VIPER_IL_DIR}/transform/simplifycfg_cbr_fold.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_cbr_fold.cpp)
     target_link_libraries(
-            test_il_simplifycfg_cbr_fold PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_cbr_fold PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_cbr_fold test_il_simplifycfg_cbr_fold)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_bypass_params
-            ${_VIPER_IL_DIR}/transform/simplifycfg_bypass_params.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_bypass_params.cpp)
     target_link_libraries(
-            test_il_simplifycfg_bypass_params PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_bypass_params PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_bypass_params test_il_simplifycfg_bypass_params)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_merge_single_pred
-            ${_VIPER_IL_DIR}/transform/simplifycfg_merge_single_pred.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_merge_single_pred.cpp)
     target_link_libraries(
-            test_il_simplifycfg_merge_single_pred PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_merge_single_pred PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_merge_single_pred test_il_simplifycfg_merge_single_pred)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_eh_guard
-            ${_VIPER_IL_DIR}/transform/simplifycfg_eh_guard.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_eh_guard.cpp)
     target_link_libraries(
-            test_il_simplifycfg_eh_guard PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_eh_guard PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_eh_guard test_il_simplifycfg_eh_guard)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_shrink_params
-            ${_VIPER_IL_DIR}/transform/simplifycfg_shrink_params.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_shrink_params.cpp)
     target_link_libraries(
-            test_il_simplifycfg_shrink_params PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_shrink_params PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_shrink_params test_il_simplifycfg_shrink_params)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_values_equal_fp
-            ${_VIPER_IL_DIR}/transform/simplifycfg_values_equal_fp.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_values_equal_fp.cpp)
     target_link_libraries(
-            test_il_simplifycfg_values_equal_fp PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_values_equal_fp PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_values_equal_fp test_il_simplifycfg_values_equal_fp)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_simplifycfg_pass_manager_cfg_invalidation
-            ${_VIPER_IL_DIR}/transform/simplifycfg_pass_manager_cfg_invalidation.cpp)
+            ${_ZANNA_IL_DIR}/transform/simplifycfg_pass_manager_cfg_invalidation.cpp)
     target_link_libraries(
-            test_il_simplifycfg_pass_manager_cfg_invalidation PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_simplifycfg_pass_manager_cfg_invalidation PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_simplifycfg_pass_manager_cfg_invalidation test_il_simplifycfg_pass_manager_cfg_invalidation)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_peephole_use_count
-            ${_VIPER_IL_DIR}/transform/peephole_use_count.cpp)
+            ${_ZANNA_IL_DIR}/transform/peephole_use_count.cpp)
     target_link_libraries(
-            test_il_peephole_use_count PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_peephole_use_count test_il_peephole_use_count)
+            test_il_peephole_use_count PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_peephole_use_count test_il_peephole_use_count)
 
     add_executable(
             test_il_alias_precision
-            ${_VIPER_IL_DIR}/transform/alias_precision.cpp)
+            ${_ZANNA_IL_DIR}/transform/alias_precision.cpp)
     if (WIN32)
         target_sources(test_il_alias_precision PRIVATE
-                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+                ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
     target_link_libraries(
-            test_il_alias_precision PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_alias_precision PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_alias_precision $<TARGET_FILE:test_il_alias_precision>)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_dce_param_compaction
-            ${_VIPER_IL_DIR}/transform/dce_param_compaction.cpp)
+            ${_ZANNA_IL_DIR}/transform/dce_param_compaction.cpp)
     target_link_libraries(
-            test_il_dce_param_compaction PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_dce_param_compaction test_il_dce_param_compaction)
+            test_il_dce_param_compaction PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_dce_param_compaction test_il_dce_param_compaction)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_loop_simplify_preheader
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopSimplify.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LoopSimplify.cpp)
     target_link_libraries(
-            test_il_loop_simplify_preheader PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_loop_simplify_preheader test_il_loop_simplify_preheader)
+            test_il_loop_simplify_preheader PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_loop_simplify_preheader test_il_loop_simplify_preheader)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_loop_simplify_ptr_stability
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopSimplify_PtrStability.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LoopSimplify_PtrStability.cpp)
     target_link_libraries(
-            test_il_loop_simplify_ptr_stability PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_loop_simplify_ptr_stability test_il_loop_simplify_ptr_stability)
+            test_il_loop_simplify_ptr_stability PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_loop_simplify_ptr_stability test_il_loop_simplify_ptr_stability)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_licm_basic
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LICM.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LICM.cpp)
     target_link_libraries(
-            test_il_licm_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_licm_basic test_il_licm_basic)
+            test_il_licm_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_licm_basic test_il_licm_basic)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_sccp_phi_branch
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_SCCP.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_SCCP.cpp)
     target_link_libraries(
-            test_il_sccp_phi_branch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_sccp_phi_branch test_il_sccp_phi_branch)
+            test_il_sccp_phi_branch PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_sccp_phi_branch test_il_sccp_phi_branch)
 
     # Induction variable simplification tests
-    viper_add_test(
+    zanna_add_test(
             test_il_indvars_basic
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_IndVarSimplify.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_IndVarSimplify.cpp)
     target_link_libraries(
-            test_il_indvars_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_indvars_basic test_il_indvars_basic)
+            test_il_indvars_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_indvars_basic test_il_indvars_basic)
 
     # GVN + Redundant Load Elimination tests
-    viper_add_test(
+    zanna_add_test(
             test_il_gvn_basic
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_GVN.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_GVN.cpp)
     target_link_libraries(
-            test_il_gvn_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_gvn_basic test_il_gvn_basic)
+            test_il_gvn_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_gvn_basic test_il_gvn_basic)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_gvn_cse_basic
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_gvn_cse_basic.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_gvn_cse_basic.cpp)
     target_link_libraries(
-            test_il_gvn_cse_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_gvn_cse_basic test_il_gvn_cse_basic)
+            test_il_gvn_cse_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_gvn_cse_basic test_il_gvn_cse_basic)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_earlycse_domtree
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_earlycse_domtree.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_earlycse_domtree.cpp)
     target_link_libraries(
-            test_il_earlycse_domtree PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_earlycse_domtree test_il_earlycse_domtree)
+            test_il_earlycse_domtree PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_earlycse_domtree test_il_earlycse_domtree)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_loopsimplify_invariants
-            ${VIPER_TESTS_DIR}/unit/il/transform/loopsimplify_invariants.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/loopsimplify_invariants.cpp)
     target_link_libraries(
-            test_il_loopsimplify_invariants PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_loopsimplify_invariants PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_loopsimplify_invariants test_il_loopsimplify_invariants)
 
-    viper_add_test(
-            test_il_licm_hoist ${VIPER_TESTS_DIR}/unit/il/transform/licm_basic.cpp)
+    zanna_add_test(
+            test_il_licm_hoist ${ZANNA_TESTS_DIR}/unit/il/transform/licm_basic.cpp)
     target_link_libraries(
-            test_il_licm_hoist PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_licm_hoist test_il_licm_hoist)
+            test_il_licm_hoist PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_licm_hoist test_il_licm_hoist)
 
-    viper_add_test(
-            test_il_indvars_strength ${VIPER_TESTS_DIR}/unit/il/transform/indvars_basic.cpp)
+    zanna_add_test(
+            test_il_indvars_strength ${ZANNA_TESTS_DIR}/unit/il/transform/indvars_basic.cpp)
     target_link_libraries(
-            test_il_indvars_strength PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_indvars_strength test_il_indvars_strength)
+            test_il_indvars_strength PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_indvars_strength test_il_indvars_strength)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_checkopt_redundancy
-            ${VIPER_TESTS_DIR}/unit/il/transform/checkopt_redundancy.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/checkopt_redundancy.cpp)
     target_link_libraries(
-            test_il_checkopt_redundancy PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(
+            test_il_checkopt_redundancy PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(
             test_il_checkopt_redundancy test_il_checkopt_redundancy)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_inline_basic
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_Inline.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_Inline.cpp)
     target_link_libraries(
-            test_il_inline_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_inline_basic test_il_inline_basic)
-    viper_add_test(
+            test_il_inline_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_inline_basic test_il_inline_basic)
+    zanna_add_test(
             test_il_inline_multiblock
-            ${_VIPER_IL_DIR}/transform/inline_multiblock.cpp)
+            ${_ZANNA_IL_DIR}/transform/inline_multiblock.cpp)
     target_link_libraries(
-            test_il_inline_multiblock PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_inline_multiblock test_il_inline_multiblock)
+            test_il_inline_multiblock PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_inline_multiblock test_il_inline_multiblock)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_callgraph_scc
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_callgraph_scc.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_callgraph_scc.cpp)
     target_link_libraries(
-            test_il_callgraph_scc PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
-    viper_add_ctest(test_il_callgraph_scc test_il_callgraph_scc)
-    viper_add_test(
+            test_il_callgraph_scc PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
+    zanna_add_ctest(test_il_callgraph_scc test_il_callgraph_scc)
+    zanna_add_test(
             test_il_mem2reg_sroa
-            ${_VIPER_IL_DIR}/transform/mem2reg_sroa.cpp)
+            ${_ZANNA_IL_DIR}/transform/mem2reg_sroa.cpp)
     target_link_libraries(
-            test_il_mem2reg_sroa PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_mem2reg_sroa test_il_mem2reg_sroa)
+            test_il_mem2reg_sroa PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_mem2reg_sroa test_il_mem2reg_sroa)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_check_opt
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_CheckOpt.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_CheckOpt.cpp)
     target_link_libraries(
-            test_il_check_opt PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_check_opt test_il_check_opt)
+            test_il_check_opt PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_check_opt test_il_check_opt)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_int_range_analysis
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_IntRangeAnalysis.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_IntRangeAnalysis.cpp)
     target_link_libraries(
-            test_il_int_range_analysis PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform
+            test_il_int_range_analysis PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform
             il_api)
-    viper_add_ctest(test_il_int_range_analysis test_il_int_range_analysis)
+    zanna_add_ctest(test_il_int_range_analysis test_il_int_range_analysis)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_if_convert
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_IfConvert.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_IfConvert.cpp)
     target_link_libraries(
-            test_il_if_convert PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform
+            test_il_if_convert PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform
             il_api)
-    viper_add_ctest(test_il_if_convert test_il_if_convert)
+    zanna_add_ctest(test_il_if_convert test_il_if_convert)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_late_cleanup
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LateCleanup.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LateCleanup.cpp)
     target_link_libraries(
-            test_il_late_cleanup PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_late_cleanup test_il_late_cleanup)
+            test_il_late_cleanup PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_late_cleanup test_il_late_cleanup)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_latecleanup_fixpoint
-            ${_VIPER_IL_DIR}/transform/latecleanup_fixpoint.cpp)
+            ${_ZANNA_IL_DIR}/transform/latecleanup_fixpoint.cpp)
     target_link_libraries(
-            test_il_latecleanup_fixpoint PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_latecleanup_fixpoint test_il_latecleanup_fixpoint)
+            test_il_latecleanup_fixpoint PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_latecleanup_fixpoint test_il_latecleanup_fixpoint)
 
     # Loop unrolling tests
-    viper_add_test(
+    zanna_add_test(
             test_il_loop_unroll
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopUnroll.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LoopUnroll.cpp)
     target_link_libraries(
-            test_il_loop_unroll PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_loop_unroll test_il_loop_unroll)
+            test_il_loop_unroll PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_loop_unroll test_il_loop_unroll)
 
     # Jump threading tests
-    viper_add_test(
+    zanna_add_test(
             test_il_jump_threading
-            ${_VIPER_IL_DIR}/transform/jumpthreading_basic.cpp)
+            ${_ZANNA_IL_DIR}/transform/jumpthreading_basic.cpp)
     target_link_libraries(
-            test_il_jump_threading PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_jump_threading test_il_jump_threading)
+            test_il_jump_threading PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_jump_threading test_il_jump_threading)
 
     # Cross-block DSE tests
-    viper_add_test(
+    zanna_add_test(
             test_il_dse_crossblock
-            ${_VIPER_IL_DIR}/transform/dse_crossblock.cpp)
+            ${_ZANNA_IL_DIR}/transform/dse_crossblock.cpp)
     target_link_libraries(
-            test_il_dse_crossblock PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_dse_crossblock test_il_dse_crossblock)
+            test_il_dse_crossblock PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_dse_crossblock test_il_dse_crossblock)
 
     # Enhanced constant folding tests
-    viper_add_test(
+    zanna_add_test(
             test_il_constfold_enhanced
-            ${_VIPER_IL_DIR}/transform/constfold_enhanced.cpp)
+            ${_ZANNA_IL_DIR}/transform/constfold_enhanced.cpp)
     target_link_libraries(
-            test_il_constfold_enhanced PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_constfold_enhanced test_il_constfold_enhanced)
+            test_il_constfold_enhanced PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_constfold_enhanced test_il_constfold_enhanced)
 
     # Constant folding edge case tests
-    viper_add_test(
+    zanna_add_test(
             test_il_constfold_edgecases
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_constfold_edgecases.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_constfold_edgecases.cpp)
     target_link_libraries(
-            test_il_constfold_edgecases PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_constfold_edgecases test_il_constfold_edgecases)
+            test_il_constfold_edgecases PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_constfold_edgecases test_il_constfold_edgecases)
 
     # Constant folding audit tests (comprehensive coverage)
-    viper_add_test(
+    zanna_add_test(
             test_il_constfold_audit
-            ${_VIPER_IL_DIR}/transform/ConstFoldAuditTests.cpp)
+            ${_ZANNA_IL_DIR}/transform/ConstFoldAuditTests.cpp)
     target_link_libraries(
-            test_il_constfold_audit PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_constfold_audit test_il_constfold_audit)
+            test_il_constfold_audit PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_constfold_audit test_il_constfold_audit)
 
     # IL optimization review regression tests
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_basicaa
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_basicaa.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_basicaa.cpp)
     target_link_libraries(
-            test_il_opt_review_basicaa PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_basicaa test_il_opt_review_basicaa)
+            test_il_opt_review_basicaa PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_basicaa test_il_opt_review_basicaa)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_sccp
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_sccp.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_sccp.cpp)
     target_link_libraries(
-            test_il_opt_review_sccp PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_sccp test_il_opt_review_sccp)
+            test_il_opt_review_sccp PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_sccp test_il_opt_review_sccp)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_peephole
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_peephole.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_peephole.cpp)
     target_link_libraries(
-            test_il_opt_review_peephole PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_peephole test_il_opt_review_peephole)
+            test_il_opt_review_peephole PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_peephole test_il_opt_review_peephole)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_loopinfo
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_loopinfo.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_loopinfo.cpp)
     target_link_libraries(
-            test_il_opt_review_loopinfo PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_loopinfo test_il_opt_review_loopinfo)
+            test_il_opt_review_loopinfo PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_loopinfo test_il_opt_review_loopinfo)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_valuekey
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_valuekey.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_valuekey.cpp)
     target_link_libraries(
-            test_il_opt_review_valuekey PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_valuekey test_il_opt_review_valuekey)
+            test_il_opt_review_valuekey PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_valuekey test_il_opt_review_valuekey)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_dse
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_dse.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_dse.cpp)
     target_link_libraries(
-            test_il_opt_review_dse PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_dse test_il_opt_review_dse)
+            test_il_opt_review_dse PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_dse test_il_opt_review_dse)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_dse_sideeffects
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_dse_sideeffects.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_dse_sideeffects.cpp)
     target_link_libraries(
-            test_il_dse_sideeffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_dse_sideeffects test_il_dse_sideeffects)
+            test_il_dse_sideeffects PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_dse_sideeffects test_il_dse_sideeffects)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_opt_review_calleffects
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_opt_review_calleffects.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_opt_review_calleffects.cpp)
     target_link_libraries(
-            test_il_opt_review_calleffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_opt_review_calleffects test_il_opt_review_calleffects)
+            test_il_opt_review_calleffects PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_opt_review_calleffects test_il_opt_review_calleffects)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_realworld_perf_passes
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_realworld_perf_passes.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_realworld_perf_passes.cpp)
     target_link_libraries(
-            test_il_realworld_perf_passes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_realworld_perf_passes test_il_realworld_perf_passes)
+            test_il_realworld_perf_passes PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_realworld_perf_passes test_il_realworld_perf_passes)
 
     # Canonical pipeline test: verifies runPipeline("O1"/"O2") uses full passes including SCCP
-    viper_add_test(
+    zanna_add_test(
             test_il_canonical_pipeline
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_canonical_pipeline.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_canonical_pipeline.cpp)
     target_link_libraries(
-            test_il_canonical_pipeline PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_canonical_pipeline test_il_canonical_pipeline)
+            test_il_canonical_pipeline PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_canonical_pipeline test_il_canonical_pipeline)
 
     # Mem2Reg non-entry-block promotion test
-    viper_add_test(
+    zanna_add_test(
             test_il_mem2reg_nonentry
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_mem2reg_nonentry.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_mem2reg_nonentry.cpp)
     target_link_libraries(
-            test_il_mem2reg_nonentry PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_mem2reg_nonentry test_il_mem2reg_nonentry)
+            test_il_mem2reg_nonentry PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_mem2reg_nonentry test_il_mem2reg_nonentry)
 
     # Inliner threshold test: verifies new instrThreshold=80, blockBudget=8, maxInlineDepth=3
-    viper_add_test(
+    zanna_add_test(
             test_il_inline_threshold
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_inline_threshold.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_inline_threshold.cpp)
     target_link_libraries(
-            test_il_inline_threshold PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_inline_threshold test_il_inline_threshold)
+            test_il_inline_threshold PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_inline_threshold test_il_inline_threshold)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_sibling_recursion
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_sibling_recursion.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_sibling_recursion.cpp)
     target_link_libraries(
-            test_il_sibling_recursion PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_sibling_recursion test_il_sibling_recursion)
+            test_il_sibling_recursion PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_sibling_recursion test_il_sibling_recursion)
 
     # Per-pass isolation: apply each of the 17 passes individually, verify valid IL
-    viper_add_test(
+    zanna_add_test(
             test_il_pass_isolation
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_pass_isolation.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_pass_isolation.cpp)
     target_link_libraries(
-            test_il_pass_isolation PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_pass_isolation test_il_pass_isolation)
+            test_il_pass_isolation PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_pass_isolation test_il_pass_isolation)
 
     # Missed optimizations catalogue: existing + missing optimization tests
-    viper_add_test(
+    zanna_add_test(
             test_il_missed_optimizations
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_missed_optimizations.cpp)
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_missed_optimizations.cpp)
     target_link_libraries(
-            test_il_missed_optimizations PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_missed_optimizations test_il_missed_optimizations)
+            test_il_missed_optimizations PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_missed_optimizations test_il_missed_optimizations)
 
-    viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
-    target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
-    viper_add_ctest(test_il_opcode_info test_il_opcode_info)
+    zanna_add_test(test_il_opcode_info ${_ZANNA_IL_DIR}/OpcodeInfoTests.cpp)
+    target_link_libraries(test_il_opcode_info PRIVATE ${ZANNA_IL_CORE_IO_LIBS})
+    zanna_add_ctest(test_il_opcode_info test_il_opcode_info)
 
-    viper_add_test(
+    zanna_add_test(
             test_il_invalid_eh
-            ${_VIPER_IL_DIR}/InvalidEhTests.cpp
+            ${_ZANNA_IL_DIR}/InvalidEhTests.cpp
             TEST_NAME il_InvalidEhTests)
-    target_link_libraries(test_il_invalid_eh PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    target_link_libraries(test_il_invalid_eh PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_api)
     target_compile_definitions(
             test_il_invalid_eh PRIVATE INVALID_EH_DIR="${CMAKE_SOURCE_DIR}/src/tests/il/invalid_eh")
 endfunction()
 
-function(viper_add_il_analysis_tests)
+function(zanna_add_il_analysis_tests)
     if (TARGET test_analysis_cfg)
         return()
     endif ()
 
-    set(_VIPER_ANALYSIS_DIR ${VIPER_TESTS_DIR}/analysis)
+    set(_ZANNA_ANALYSIS_DIR ${ZANNA_TESTS_DIR}/analysis)
 
-    viper_add_test(test_analysis_cfg ${_VIPER_ANALYSIS_DIR}/CFGTests.cpp)
-    target_link_libraries(test_analysis_cfg PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_cfg test_analysis_cfg)
+    zanna_add_test(test_analysis_cfg ${_ZANNA_ANALYSIS_DIR}/CFGTests.cpp)
+    target_link_libraries(test_analysis_cfg PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_cfg test_analysis_cfg)
 
-    viper_add_test(test_analysis_graph_order ${_VIPER_ANALYSIS_DIR}/GraphOrderTests.cpp)
-    target_link_libraries(test_analysis_graph_order PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_graph_order test_analysis_graph_order)
+    zanna_add_test(test_analysis_graph_order ${_ZANNA_ANALYSIS_DIR}/GraphOrderTests.cpp)
+    target_link_libraries(test_analysis_graph_order PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_graph_order test_analysis_graph_order)
 
-    viper_add_test(test_analysis_dominators ${_VIPER_ANALYSIS_DIR}/DominatorsTests.cpp)
-    target_link_libraries(test_analysis_dominators PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_dominators test_analysis_dominators)
+    zanna_add_test(test_analysis_dominators ${_ZANNA_ANALYSIS_DIR}/DominatorsTests.cpp)
+    target_link_libraries(test_analysis_dominators PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_dominators test_analysis_dominators)
 
-    viper_add_test(test_analysis_post_dominators ${_VIPER_ANALYSIS_DIR}/PostDominatorsTests.cpp)
-    target_link_libraries(test_analysis_post_dominators PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_post_dominators test_analysis_post_dominators)
+    zanna_add_test(test_analysis_post_dominators ${_ZANNA_ANALYSIS_DIR}/PostDominatorsTests.cpp)
+    target_link_libraries(test_analysis_post_dominators PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_post_dominators test_analysis_post_dominators)
 
-    viper_add_test(test_analysis_acyclic ${_VIPER_ANALYSIS_DIR}/AcyclicTests.cpp)
-    target_link_libraries(test_analysis_acyclic PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_acyclic test_analysis_acyclic)
+    zanna_add_test(test_analysis_acyclic ${_ZANNA_ANALYSIS_DIR}/AcyclicTests.cpp)
+    target_link_libraries(test_analysis_acyclic PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_acyclic test_analysis_acyclic)
 
-    viper_add_test(test_analysis_basic_aa ${_VIPER_ANALYSIS_DIR}/BasicAATests.cpp)
-    target_link_libraries(test_analysis_basic_aa PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
-    viper_add_ctest(test_analysis_basic_aa test_analysis_basic_aa)
+    zanna_add_test(test_analysis_basic_aa ${_ZANNA_ANALYSIS_DIR}/BasicAATests.cpp)
+    target_link_libraries(test_analysis_basic_aa PRIVATE ${ZANNA_IL_ANALYSIS_LIBS})
+    zanna_add_ctest(test_analysis_basic_aa test_analysis_basic_aa)
 
-    viper_add_test(test_analysis_memory_ssa ${_VIPER_ANALYSIS_DIR}/MemorySSATests.cpp)
+    zanna_add_test(test_analysis_memory_ssa ${_ZANNA_ANALYSIS_DIR}/MemorySSATests.cpp)
     target_link_libraries(test_analysis_memory_ssa
-            PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform viper_test_common)
-    viper_add_ctest(test_analysis_memory_ssa test_analysis_memory_ssa)
+            PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform zanna_test_common)
+    zanna_add_ctest(test_analysis_memory_ssa test_analysis_memory_ssa)
 endfunction()
 
-function(viper_add_il_verify_examples)
+function(zanna_add_il_verify_examples)
     if (TEST il_verify_ex1)
         return()
     endif ()
 
-    viper_add_ctest(il_verify_ex1 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex1_hello_cond.il)
-    viper_add_ctest(il_verify_ex2 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex2_sum_1_to_10.il)
-    viper_add_ctest(il_verify_ex3 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex3_table_5x5.il)
-    viper_add_ctest(il_verify_ex4 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex4_factorial.il)
-    viper_add_ctest(il_verify_ex5 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex5_strings.il)
-    viper_add_ctest(il_verify_ex6 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex6_heap_array_avg.il)
+    zanna_add_ctest(il_verify_ex1 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex1_hello_cond.il)
+    zanna_add_ctest(il_verify_ex2 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex2_sum_1_to_10.il)
+    zanna_add_ctest(il_verify_ex3 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex3_table_5x5.il)
+    zanna_add_ctest(il_verify_ex4 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex4_factorial.il)
+    zanna_add_ctest(il_verify_ex5 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex5_strings.il)
+    zanna_add_ctest(il_verify_ex6 $<TARGET_FILE:il-verify> ${CMAKE_SOURCE_DIR}/examples/il/ex6_heap_array_avg.il)
 endfunction()
 
-function(viper_add_il_invalid_tests)
+function(zanna_add_il_invalid_tests)
     if (TEST il_verify_invalid_bad_types)
         return()
     endif ()
 
     set(IL_VERIFY $<TARGET_FILE:il-verify>)
-    set(_VIPER_INVALID_DIR ${CMAKE_SOURCE_DIR}/src/tests/golden/invalid_il)
+    set(_ZANNA_INVALID_DIR ${CMAKE_SOURCE_DIR}/src/tests/golden/invalid_il)
 
-    viper_add_ctest(il_verify_invalid_bad_types
+    zanna_add_ctest(il_verify_invalid_bad_types
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/bad_types.il
+            -DFILE=${_ZANNA_INVALID_DIR}/bad_types.il
             -DEXPECT=operand\ type\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_missing_term
+    zanna_add_ctest(il_verify_invalid_missing_term
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/missing_terminator.il
+            -DFILE=${_ZANNA_INVALID_DIR}/missing_terminator.il
             -DEXPECT=missing\ terminator
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_wrong_call_arity
+    zanna_add_ctest(il_verify_invalid_wrong_call_arity
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/wrong_call_arity.il
+            -DFILE=${_ZANNA_INVALID_DIR}/wrong_call_arity.il
             -DEXPECT=call\ arg\ count
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_unknown_symbol
+    zanna_add_ctest(il_verify_invalid_unknown_symbol
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/unknown_symbol.il
+            -DFILE=${_ZANNA_INVALID_DIR}/unknown_symbol.il
             -DEXPECT=unknown\ callee
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_bad_load_store
+    zanna_add_ctest(il_verify_invalid_bad_load_store
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/bad_load_store.il
+            -DFILE=${_ZANNA_INVALID_DIR}/bad_load_store.il
             -DEXPECT=pointer\ type\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_wrong_extern_sig
+    zanna_add_ctest(il_verify_invalid_wrong_extern_sig
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/wrong_extern_sig.il
+            -DFILE=${_ZANNA_INVALID_DIR}/wrong_extern_sig.il
             -DEXPECT=extern\ @rt_print_str\ signature\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_wrong_extern_call
+    zanna_add_ctest(il_verify_invalid_wrong_extern_call
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/wrong_extern_call.il
+            -DFILE=${_ZANNA_INVALID_DIR}/wrong_extern_call.il
             -DEXPECT=call\ arg\ type\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_wrong_block_arg_arity
+    zanna_add_ctest(il_verify_invalid_wrong_block_arg_arity
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/wrong_block_arg_arity.il
+            -DFILE=${_ZANNA_INVALID_DIR}/wrong_block_arg_arity.il
             -DEXPECT=bad\ arg\ count
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_wrong_block_arg_type
+    zanna_add_ctest(il_verify_invalid_wrong_block_arg_type
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/wrong_block_arg_type.il
+            -DFILE=${_ZANNA_INVALID_DIR}/wrong_block_arg_type.il
             -DEXPECT=arg\ type\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_duplicate_param
+    zanna_add_ctest(il_verify_invalid_duplicate_param
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/duplicate_param.il
+            -DFILE=${_ZANNA_INVALID_DIR}/duplicate_param.il
             -DEXPECT=duplicate\ param
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_param_use_before_entry
+    zanna_add_ctest(il_verify_invalid_param_use_before_entry
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/param_use_before_entry.il
+            -DFILE=${_ZANNA_INVALID_DIR}/param_use_before_entry.il
             -DEXPECT=not\ dominated\ by\ definition
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_unknown_temp
+    zanna_add_ctest(il_verify_invalid_unknown_temp
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/unknown_temp.il
+            -DFILE=${_ZANNA_INVALID_DIR}/unknown_temp.il
             -DEXPECT=unknown\ temp
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_err_get_msg_outside_handler
+    zanna_add_ctest(il_verify_invalid_err_get_msg_outside_handler
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/err_get_msg_outside_handler.il
+            -DFILE=${_ZANNA_INVALID_DIR}/err_get_msg_outside_handler.il
             -DEXPECT=err.get_\\*\ only\ allowed\ in\ handler\ block
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_alloca_return_escape
+    zanna_add_ctest(il_verify_invalid_alloca_return_escape
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/alloca_return_escape.il
+            -DFILE=${_ZANNA_INVALID_DIR}/alloca_return_escape.il
             -DEXPECT=returning\ alloca-derived\ pointer
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_alloca_store_escape
+    zanna_add_ctest(il_verify_invalid_alloca_store_escape
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/alloca_store_escape.il
+            -DFILE=${_ZANNA_INVALID_DIR}/alloca_store_escape.il
             -DEXPECT=storing\ alloca-derived\ pointer
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_alloca_load_escape
+    zanna_add_ctest(il_verify_invalid_alloca_load_escape
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/alloca_load_escape.il
+            -DFILE=${_ZANNA_INVALID_DIR}/alloca_load_escape.il
             -DEXPECT=returning\ alloca-derived\ pointer
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    viper_add_ctest(il_verify_invalid_shift_i32_result
+    zanna_add_ctest(il_verify_invalid_shift_i32_result
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_DIR}/shift_i32_result.il
+            -DFILE=${_ZANNA_INVALID_DIR}/shift_i32_result.il
             -DEXPECT=result\ type\ mismatch
-            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+            -P ${_ZANNA_INVALID_DIR}/check_invalid.cmake)
 
-    set(_VIPER_NEGATIVE_DIR ${CMAKE_SOURCE_DIR}/src/tests/il/negatives)
+    set(_ZANNA_NEGATIVE_DIR ${CMAKE_SOURCE_DIR}/src/tests/il/negatives)
 
-    viper_add_ctest(il_verify_negative_use_after_release
+    zanna_add_ctest(il_verify_negative_use_after_release
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_NEGATIVE_DIR}/use_after_release.il
-            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/use_after_release.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_NEGATIVE_DIR}/use_after_release.il
+            -DEXPECT_FILE=${_ZANNA_NEGATIVE_DIR}/use_after_release.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
-    viper_add_ctest(il_verify_negative_unchecked_srem
+    zanna_add_ctest(il_verify_negative_unchecked_srem
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_NEGATIVE_DIR}/unchecked_srem.il
-            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/unchecked_srem.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_NEGATIVE_DIR}/unchecked_srem.il
+            -DEXPECT_FILE=${_ZANNA_NEGATIVE_DIR}/unchecked_srem.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
-    viper_add_ctest(il_verify_negative_narrow_cast_nochk
+    zanna_add_ctest(il_verify_negative_narrow_cast_nochk
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.il
-            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/narrow_cast_nochk.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_NEGATIVE_DIR}/narrow_cast_nochk.il
+            -DEXPECT_FILE=${_ZANNA_NEGATIVE_DIR}/narrow_cast_nochk.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
-    set(_VIPER_INVALID_EH_DIR ${CMAKE_SOURCE_DIR}/src/tests/il/invalid_eh)
+    set(_ZANNA_INVALID_EH_DIR ${CMAKE_SOURCE_DIR}/src/tests/il/invalid_eh)
 
-    viper_add_ctest(il_verify_invalid_eh_underflow
+    zanna_add_ctest(il_verify_invalid_eh_underflow
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/pop_underflow.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/pop_underflow.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/pop_underflow.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/pop_underflow.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
-    viper_add_ctest(il_verify_invalid_eh_leak
+    zanna_add_ctest(il_verify_invalid_eh_leak
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/push_leak_branch.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_same_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/push_leak_branch.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/push_leak_branch.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_same_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_same_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_same_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_next_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_same_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_same_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_next_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_next_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_next_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_label_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_next_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_next_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_label_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_same_join_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_label_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_label_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_same_join_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_same_join_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_same_join_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_next_join_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_same_join_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_same_join_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_next_join_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_next_join_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_next_join_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_label_join_no_token
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_next_join_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_next_join_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_label_join_no_token
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_join_without_token.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_join_without_token.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
-    viper_add_ctest(il_verify_invalid_eh_resume_label_non_postdom
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_label_join_without_token.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_label_join_without_token.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
+    zanna_add_ctest(il_verify_invalid_eh_resume_label_non_postdom
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.il
-            -DEXPECT_FILE=${_VIPER_INVALID_EH_DIR}/resume_label_non_postdom.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_INVALID_EH_DIR}/resume_label_non_postdom.il
+            -DEXPECT_FILE=${_ZANNA_INVALID_EH_DIR}/resume_label_non_postdom.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
     # Phase III gap-fill: additional verifier negative tests
-    viper_add_ctest(il_verify_negative_call_arity_mismatch
+    zanna_add_ctest(il_verify_negative_call_arity_mismatch
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_NEGATIVE_DIR}/call_arity_mismatch.il
-            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/call_arity_mismatch.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_NEGATIVE_DIR}/call_arity_mismatch.il
+            -DEXPECT_FILE=${_ZANNA_NEGATIVE_DIR}/call_arity_mismatch.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 
-    viper_add_ctest(il_verify_negative_missing_entry_block
+    zanna_add_ctest(il_verify_negative_missing_entry_block
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
-            -DFILE=${_VIPER_NEGATIVE_DIR}/missing_entry_block.il
-            -DEXPECT_FILE=${_VIPER_NEGATIVE_DIR}/missing_entry_block.expected
-            -P ${_VIPER_NEGATIVE_DIR}/check_negative.cmake)
+            -DFILE=${_ZANNA_NEGATIVE_DIR}/missing_entry_block.il
+            -DEXPECT_FILE=${_ZANNA_NEGATIVE_DIR}/missing_entry_block.expected
+            -P ${_ZANNA_NEGATIVE_DIR}/check_negative.cmake)
 endfunction()
 
-function(viper_add_il_liveness_tests)
+function(zanna_add_il_liveness_tests)
     if (TARGET test_il_liveness)
         return()
     endif ()
 
-    set(_VIPER_IL_UNIT_DIR ${VIPER_TESTS_DIR}/unit)
+    set(_ZANNA_IL_UNIT_DIR ${ZANNA_TESTS_DIR}/unit)
 
-    viper_add_test(test_il_liveness ${_VIPER_IL_UNIT_DIR}/test_il_liveness.cpp)
-    target_link_libraries(test_il_liveness PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
-    viper_add_ctest(test_il_liveness test_il_liveness)
+    zanna_add_test(test_il_liveness ${_ZANNA_IL_UNIT_DIR}/test_il_liveness.cpp)
+    target_link_libraries(test_il_liveness PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_transform il_api)
+    zanna_add_ctest(test_il_liveness test_il_liveness)
 
-    viper_add_test(test_il_pass_manager ${_VIPER_IL_UNIT_DIR}/test_il_pass_manager.cpp)
-    target_link_libraries(test_il_pass_manager PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
-    viper_add_ctest(test_il_pass_manager test_il_pass_manager)
+    zanna_add_test(test_il_pass_manager ${_ZANNA_IL_UNIT_DIR}/test_il_pass_manager.cpp)
+    target_link_libraries(test_il_pass_manager PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_transform il_api)
+    zanna_add_ctest(test_il_pass_manager test_il_pass_manager)
 
-    viper_add_test(test_il_switch_i32 ${_VIPER_IL_UNIT_DIR}/test_il_switch_i32.cpp)
-    target_link_libraries(test_il_switch_i32 PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_api)
-    viper_add_ctest(test_il_switch_i32 test_il_switch_i32)
+    zanna_add_test(test_il_switch_i32 ${_ZANNA_IL_UNIT_DIR}/test_il_switch_i32.cpp)
+    target_link_libraries(test_il_switch_i32 PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_transform il_api)
+    zanna_add_ctest(test_il_switch_i32 test_il_switch_i32)
 
     # EH optimization tests (Phase III gap fill)
-    viper_add_test(test_il_ehopt
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_EHOpt.cpp)
+    zanna_add_test(test_il_ehopt
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_EHOpt.cpp)
     target_link_libraries(
-            test_il_ehopt PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_ehopt test_il_ehopt)
+            test_il_ehopt PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_ehopt test_il_ehopt)
 
     # Reassociation tests (Phase III gap fill)
-    viper_add_test(test_il_reassociate
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_Reassociate.cpp)
+    zanna_add_test(test_il_reassociate
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_Reassociate.cpp)
     target_link_libraries(
-            test_il_reassociate PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_reassociate test_il_reassociate)
+            test_il_reassociate PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_reassociate test_il_reassociate)
 
     # Loop rotation tests (Phase III gap fill)
-    viper_add_test(test_il_loop_rotate
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopRotate.cpp)
+    zanna_add_test(test_il_loop_rotate
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_LoopRotate.cpp)
     target_link_libraries(
-            test_il_loop_rotate PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
-    viper_add_ctest(test_il_loop_rotate test_il_loop_rotate)
+            test_il_loop_rotate PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform il_analysis)
+    zanna_add_ctest(test_il_loop_rotate test_il_loop_rotate)
 
     # Pipeline interaction tests (Phase III gap fill)
-    viper_add_test(test_il_pipeline_interactions
-            ${VIPER_TESTS_DIR}/unit/il/transform/test_pipeline_interactions.cpp)
+    zanna_add_test(test_il_pipeline_interactions
+            ${ZANNA_TESTS_DIR}/unit/il/transform/test_pipeline_interactions.cpp)
     target_link_libraries(
-            test_il_pipeline_interactions PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_pipeline_interactions test_il_pipeline_interactions)
+            test_il_pipeline_interactions PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+    zanna_add_ctest(test_il_pipeline_interactions test_il_pipeline_interactions)
 endfunction()

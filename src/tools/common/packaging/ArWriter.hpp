@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Writes ar archives (used as .deb outer container).
 class ArWriter {
@@ -73,4 +73,4 @@ class ArWriter {
     std::vector<Member> members_;
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

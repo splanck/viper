@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_yaml.h
-// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml.
+// Purpose: YAML 1.2 subset parser and formatter for Zanna.Data.Yaml.
 //          Supports scalars (string/int/float/bool/null), block and flow
 //          sequences and mappings, and multi-document streams.
 // Key invariants:
@@ -36,20 +36,20 @@ extern "C" {
 // YAML Parsing
 //=========================================================================
 
-/// @brief Parse YAML string into a Viper value.
+/// @brief Parse YAML string into a Zanna value.
 /// @param text YAML text to parse.
 /// @return Parsed value: Map (mapping), Seq (sequence), String, boxed number/bool, or NULL.
 /// @note YAML null and empty documents return NULL with no error. Invalid YAML returns NULL and
 ///       records an error.
 void *rt_yaml_parse(rt_string text);
 
-/// @brief Parse YAML string into a Viper.Result.
+/// @brief Parse YAML string into a Zanna.Result.
 /// @details Returns `Ok(value)` for valid YAML, including YAML null and empty
 ///          documents as `Ok(NULL)`, and `Err(message)` for invalid YAML. This
 ///          avoids the ambiguity of rt_yaml_parse() returning NULL for both
 ///          valid null values and failures.
 /// @param text YAML text to parse.
-/// @return Opaque Viper.Result object containing the parsed value or error.
+/// @return Opaque Zanna.Result object containing the parsed value or error.
 void *rt_yaml_parse_result(rt_string text);
 
 /// @brief Get the last parse error message.
@@ -65,12 +65,12 @@ int8_t rt_yaml_is_valid(rt_string text);
 // YAML Formatting
 //=========================================================================
 
-/// @brief Format a Viper value as YAML.
+/// @brief Format a Zanna value as YAML.
 /// @param obj Value to format (Map, Seq, String, boxed number/bool, or null).
 /// @return Newly allocated YAML string.
 rt_string rt_yaml_format(void *obj);
 
-/// @brief Format a Viper value as YAML with custom indentation.
+/// @brief Format a Zanna value as YAML with custom indentation.
 /// @param obj Value to format.
 /// @param indent Number of spaces per indentation level (typically 2).
 /// @return Newly allocated YAML string.

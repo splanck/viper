@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
 
 /// Upper bound for the quadratic dependency graph built by the list scheduler.
@@ -631,4 +631,4 @@ std::size_t scheduleModule(std::vector<MFunction> &mir) {
     return changed;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

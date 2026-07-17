@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Lightweight in-game UI widgets that draw directly to a Canvas.
 //   Provides Label, Bar, Panel, NineSlice, MenuList, and GameButton — the
 //   building blocks for game HUDs, menus, and overlays without the overhead of
-//   the desktop ViperGUI widget system.
+//   the desktop ZannaGUI widget system.
 //
 // Key invariants:
 //   - All widgets are GC-managed via rt_obj_new_i64 (no manual free).
@@ -419,7 +419,7 @@ void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color) {
 
 /// @brief Replace the label's displayed text, truncating to 511 bytes if needed.
 void rt_uilabel_set_text(void *ptr, rt_string text) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetText: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetText: expected Zanna.Game.UI.HudLabel");
     if (!label)
         return;
     ui_copy_text(label->text, sizeof(label->text), text);
@@ -427,7 +427,7 @@ void rt_uilabel_set_text(void *ptr, rt_string text) {
 
 /// @brief Reposition the label to screen coordinates (x, y).
 void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetPos: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetPos: expected Zanna.Game.UI.HudLabel");
     if (!label)
         return;
     label->x = x;
@@ -437,14 +437,14 @@ void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
 /// @brief Set the label's text color (RGBA packed integer).
 void rt_uilabel_set_color(void *ptr, int64_t color) {
     rt_uilabel_impl *label =
-        checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.HudLabel");
+        checked_label(ptr, "UILabel.SetColor: expected Zanna.Game.UI.HudLabel");
     if (label)
         label->color = color;
 }
 
 /// @brief Assign a BitmapFont for rendering; NULL uses the built-in 8x8 font.
 void rt_uilabel_set_font(void *ptr, void *font) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetFont: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetFont: expected Zanna.Game.UI.HudLabel");
     if (!label)
         return;
     if (!ui_validate_bitmapfont(font, "UILabel.SetFont: expected BitmapFont"))
@@ -455,7 +455,7 @@ void rt_uilabel_set_font(void *ptr, void *font) {
 /// @brief Set the integer pixel scale for text rendering (minimum 1).
 void rt_uilabel_set_scale(void *ptr, int64_t scale) {
     rt_uilabel_impl *label =
-        checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.HudLabel");
+        checked_label(ptr, "UILabel.SetScale: expected Zanna.Game.UI.HudLabel");
     if (label)
         label->scale = ui_clamp_scale(scale);
 }
@@ -463,20 +463,20 @@ void rt_uilabel_set_scale(void *ptr, int64_t scale) {
 /// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
     rt_uilabel_impl *label =
-        checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.HudLabel");
+        checked_label(ptr, "UILabel.SetVisible: expected Zanna.Game.UI.HudLabel");
     if (label)
         label->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the label's current X position in screen coordinates.
 int64_t rt_uilabel_get_x(void *ptr) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.X: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.X: expected Zanna.Game.UI.HudLabel");
     return label ? label->x : 0;
 }
 
 /// @brief Return the label's current Y position in screen coordinates.
 int64_t rt_uilabel_get_y(void *ptr) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Y: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Y: expected Zanna.Game.UI.HudLabel");
     return label ? label->y : 0;
 }
 
@@ -488,7 +488,7 @@ void rt_uilabel_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Zanna.Game.UI.HudLabel");
     if (!label || !ui_resolve_draw_ops(canvas, "UILabel.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!label->visible || label->text[0] == '\0')
@@ -568,7 +568,7 @@ void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color,
 /// @details max_value is forced to at least 1 to prevent division by zero
 ///          during fill-ratio computation in the draw function.
 void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetValue: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetValue: expected Zanna.Game.UI.Bar");
     if (!bar)
         return;
     if (max_value < 1)
@@ -583,7 +583,7 @@ void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
 
 /// @brief Reposition the bar to screen coordinates (x, y).
 void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetPos: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetPos: expected Zanna.Game.UI.Bar");
     if (!bar)
         return;
     bar->x = x;
@@ -592,7 +592,7 @@ void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y) {
 
 /// @brief Set the bar's width and height in pixels (minimum 1 each).
 void rt_uibar_set_size(void *ptr, int64_t w, int64_t h) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetSize: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetSize: expected Zanna.Game.UI.Bar");
     if (!bar)
         return;
     bar->w = ui_clamp_dim(w);
@@ -601,7 +601,7 @@ void rt_uibar_set_size(void *ptr, int64_t w, int64_t h) {
 
 /// @brief Set the foreground (filled portion) and background colors of the bar.
 void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetColors: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetColors: expected Zanna.Game.UI.Bar");
     if (!bar)
         return;
     bar->fg_color = fg;
@@ -610,14 +610,14 @@ void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg) {
 
 /// @brief Set the bar's border color; 0 disables the border outline.
 void rt_uibar_set_border(void *ptr, int64_t color) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetBorder: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetBorder: expected Zanna.Game.UI.Bar");
     if (bar)
         bar->border_color = color;
 }
 
 /// @brief Set the bar's fill direction (0=L→R, 1=R→L, 2=B→T, 3=T→B).
 void rt_uibar_set_direction(void *ptr, int64_t dir) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetDirection: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetDirection: expected Zanna.Game.UI.Bar");
     if (!bar)
         return;
     if (dir < 0 || dir > 3)
@@ -627,20 +627,20 @@ void rt_uibar_set_direction(void *ptr, int64_t dir) {
 
 /// @brief Show or hide the bar; hidden bars are skipped during draw.
 void rt_uibar_set_visible(void *ptr, int8_t visible) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetVisible: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetVisible: expected Zanna.Game.UI.Bar");
     if (bar)
         bar->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the bar's current fill value.
 int64_t rt_uibar_get_value(void *ptr) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Value: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Value: expected Zanna.Game.UI.Bar");
     return bar ? bar->value : 0;
 }
 
 /// @brief Return the bar's maximum value (the denominator for fill ratio).
 int64_t rt_uibar_get_max(void *ptr) {
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Max: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Max: expected Zanna.Game.UI.Bar");
     return bar ? bar->max_value : 0;
 }
 
@@ -665,7 +665,7 @@ void rt_uibar_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
-    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Draw: expected Viper.Game.UI.Bar");
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Draw: expected Zanna.Game.UI.Bar");
     if (!bar || !ui_resolve_draw_ops(canvas, "UIBar.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!bar->visible)
@@ -752,7 +752,7 @@ void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_colo
 
 /// @brief Reposition the panel to screen coordinates (x, y).
 void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y) {
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetPos: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetPos: expected Zanna.Game.UI.Panel");
     if (!panel)
         return;
     panel->x = x;
@@ -761,7 +761,7 @@ void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y) {
 
 /// @brief Set the panel's width and height in pixels (minimum 1 each).
 void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h) {
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetSize: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetSize: expected Zanna.Game.UI.Panel");
     if (!panel)
         return;
     panel->w = ui_clamp_dim(w);
@@ -770,7 +770,7 @@ void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h) {
 
 /// @brief Set the panel's background color and alpha (opacity 0-255).
 void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetColor: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetColor: expected Zanna.Game.UI.Panel");
     if (!panel)
         return;
     panel->bg_color = bg_color;
@@ -780,7 +780,7 @@ void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
 /// @brief Set the panel's border color and thickness. Color 0 or thickness <= 0 disables the
 /// border.
 void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetBorder: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetBorder: expected Zanna.Game.UI.Panel");
     if (!panel)
         return;
     if (color == 0 || thickness <= 0) {
@@ -795,14 +795,14 @@ void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
 /// @brief Set the corner radius for rounded-rectangle drawing (0 = sharp).
 void rt_uipanel_set_corner_radius(void *ptr, int64_t radius) {
     rt_uipanel_impl *panel =
-        checked_panel(ptr, "UIPanel.SetCornerRadius: expected Viper.Game.UI.Panel");
+        checked_panel(ptr, "UIPanel.SetCornerRadius: expected Zanna.Game.UI.Panel");
     if (panel)
         panel->corner_radius = radius < 0 ? 0 : radius;
 }
 
 /// @brief Show or hide the panel; hidden panels are skipped during draw.
 void rt_uipanel_set_visible(void *ptr, int8_t visible) {
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetVisible: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetVisible: expected Zanna.Game.UI.Panel");
     if (panel)
         panel->visible = visible ? 1 : 0;
 }
@@ -814,7 +814,7 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
-    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.Draw: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.Draw: expected Zanna.Game.UI.Panel");
     if (!panel || !ui_resolve_draw_ops(canvas, "UIPanel.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!panel->visible)
@@ -962,7 +962,7 @@ void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right,
 /// @brief Set a color tint applied over the nine-slice texture when drawn.
 void rt_uinineslice_set_tint(void *ptr, int64_t color) {
     rt_uinineslice_impl *ns =
-        checked_nineslice(ptr, "UINineSlice.SetTint: expected Viper.Game.UI.NineSlice");
+        checked_nineslice(ptr, "UINineSlice.SetTint: expected Zanna.Game.UI.NineSlice");
     if (!ns)
         return;
     if (ns->tint == color)
@@ -1000,7 +1000,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
     if (!ptr || !canvas)
         return;
     rt_uinineslice_impl *ns =
-        checked_nineslice(ptr, "UINineSlice.Draw: expected Viper.Game.UI.NineSlice");
+        checked_nineslice(ptr, "UINineSlice.Draw: expected Zanna.Game.UI.NineSlice");
     if (!ns || !ui_resolve_draw_ops(canvas, "UINineSlice.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!ns->pixels || w <= 0 || h <= 0)
@@ -1164,7 +1164,7 @@ void rt_uimenulist_add_item(void *ptr, rt_string text) {
     if (!ptr || !text)
         return;
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.AddItem: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.AddItem: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     if (menu->count >= RT_UIMENULIST_MAX_ITEMS) {
@@ -1179,7 +1179,7 @@ void rt_uimenulist_add_item(void *ptr, rt_string text) {
 /// @brief Remove all entries from the uimenulist.
 void rt_uimenulist_clear(void *ptr) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.Clear: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.Clear: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     menu->count = 0;
@@ -1189,7 +1189,7 @@ void rt_uimenulist_clear(void *ptr) {
 /// @brief Set the selected item index, clamped to [0, count-1].
 void rt_uimenulist_set_selected(void *ptr, int64_t index) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.SetSelected: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.SetSelected: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     if (menu->count == 0) {
@@ -1206,14 +1206,14 @@ void rt_uimenulist_set_selected(void *ptr, int64_t index) {
 /// @brief Return the zero-based index of the currently highlighted menu item.
 int64_t rt_uimenulist_get_selected(void *ptr) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.Selected: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.Selected: expected Zanna.Game.UI.MenuList");
     return menu ? menu->selected : 0;
 }
 
 /// @brief Move the selection cursor up by one; wraps from first to last item.
 void rt_uimenulist_move_up(void *ptr) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.MoveUp: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.MoveUp: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     if (menu->count == 0)
@@ -1227,7 +1227,7 @@ void rt_uimenulist_move_up(void *ptr) {
 /// @brief Move the selection cursor down by one; wraps from last to first item.
 void rt_uimenulist_move_down(void *ptr) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.MoveDown: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.MoveDown: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     if (menu->count == 0)
@@ -1245,7 +1245,7 @@ void rt_uimenulist_set_colors(void *ptr,
                               int64_t selected_color,
                               int64_t highlight_bg) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.SetColors: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.SetColors: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     menu->text_color = text_color;
@@ -1256,7 +1256,7 @@ void rt_uimenulist_set_colors(void *ptr,
 /// @brief Assign a BitmapFont for menu item text; NULL uses the default font.
 void rt_uimenulist_set_font(void *ptr, void *font) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.SetFont: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.SetFont: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return;
     if (!ui_validate_bitmapfont(font, "UIMenuList.SetFont: expected BitmapFont"))
@@ -1267,7 +1267,7 @@ void rt_uimenulist_set_font(void *ptr, void *font) {
 /// @brief Show or hide the menu list; hidden menus are skipped during draw.
 void rt_uimenulist_set_visible(void *ptr, int8_t visible) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.SetVisible: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.SetVisible: expected Zanna.Game.UI.MenuList");
     if (menu)
         menu->visible = visible ? 1 : 0;
 }
@@ -1275,7 +1275,7 @@ void rt_uimenulist_set_visible(void *ptr, int8_t visible) {
 /// @brief Return the count of elements in the uimenulist.
 int64_t rt_uimenulist_get_count(void *ptr) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.Count: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.Count: expected Zanna.Game.UI.MenuList");
     return menu ? menu->count : 0;
 }
 
@@ -1285,7 +1285,7 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.Draw: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.Draw: expected Zanna.Game.UI.MenuList");
     if (!menu || !ui_resolve_draw_ops(canvas, "UIMenuList.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!menu->visible || menu->count == 0)
@@ -1321,7 +1321,7 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
 /// @brief Handle input for menu navigation. Returns selected index on confirm, -1 otherwise.
 int64_t rt_uimenulist_handle_input(void *ptr, int8_t up, int8_t down, int8_t confirm) {
     rt_uimenulist_impl *menu =
-        checked_menulist(ptr, "UIMenuList.HandleInput: expected Viper.Game.UI.MenuList");
+        checked_menulist(ptr, "UIMenuList.HandleInput: expected Zanna.Game.UI.MenuList");
     if (!menu)
         return -1;
     if (!menu->visible || menu->count == 0)
@@ -1400,7 +1400,7 @@ void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) 
 /// @brief Replace the button's label text (truncated to 63 bytes).
 void rt_gamebutton_set_text(void *ptr, void *text) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetText: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetText: expected Zanna.Game.UI.GameButton");
     if (!btn)
         return;
     ui_copy_text(btn->text, sizeof(btn->text), (rt_string)text);
@@ -1409,7 +1409,7 @@ void rt_gamebutton_set_text(void *ptr, void *text) {
 /// @brief Set the box-fill colors for unselected (`normal`) and selected (highlighted) states.
 void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetColors: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetColors: expected Zanna.Game.UI.GameButton");
     if (!btn)
         return;
     btn->color_normal = normal;
@@ -1419,7 +1419,7 @@ void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
 /// @brief Set the text colors for unselected and selected states.
 void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetTextColors: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetTextColors: expected Zanna.Game.UI.GameButton");
     if (!btn)
         return;
     btn->text_color = normal;
@@ -1429,7 +1429,7 @@ void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) 
 /// @brief Set border outline width (px) and color. Width 0 disables the border.
 void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetBorder: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetBorder: expected Zanna.Game.UI.GameButton");
     if (!btn)
         return;
     btn->border_width = width > 0 ? width : 0;
@@ -1439,35 +1439,35 @@ void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
 /// @brief Read the button's screen X position.
 int64_t rt_gamebutton_get_x(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.X: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.X: expected Zanna.Game.UI.GameButton");
     return btn ? btn->x : 0;
 }
 
 /// @brief Read the button's screen Y position.
 int64_t rt_gamebutton_get_y(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.Y: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.Y: expected Zanna.Game.UI.GameButton");
     return btn ? btn->y : 0;
 }
 
 /// @brief Read the button width in pixels.
 int64_t rt_gamebutton_get_width(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.Width: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.Width: expected Zanna.Game.UI.GameButton");
     return btn ? btn->width : 0;
 }
 
 /// @brief Read the button height in pixels.
 int64_t rt_gamebutton_get_height(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.Height: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.Height: expected Zanna.Game.UI.GameButton");
     return btn ? btn->height : 0;
 }
 
 /// @brief Set the button's screen X position.
 void rt_gamebutton_set_x(void *ptr, int64_t v) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetX: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetX: expected Zanna.Game.UI.GameButton");
     if (btn)
         btn->x = v;
 }
@@ -1475,7 +1475,7 @@ void rt_gamebutton_set_x(void *ptr, int64_t v) {
 /// @brief Set the button's screen Y position.
 void rt_gamebutton_set_y(void *ptr, int64_t v) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetY: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetY: expected Zanna.Game.UI.GameButton");
     if (btn)
         btn->y = v;
 }
@@ -1483,7 +1483,7 @@ void rt_gamebutton_set_y(void *ptr, int64_t v) {
 /// @brief Resize the button, clamping dimensions to the UI maximum.
 void rt_gamebutton_set_size(void *ptr, int64_t w, int64_t h) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetSize: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetSize: expected Zanna.Game.UI.GameButton");
     if (!btn)
         return;
     btn->width = ui_clamp_dim(w);
@@ -1493,7 +1493,7 @@ void rt_gamebutton_set_size(void *ptr, int64_t w, int64_t h) {
 /// @brief Toggle visibility.
 void rt_gamebutton_set_visible(void *ptr, int8_t visible) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetVisible: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetVisible: expected Zanna.Game.UI.GameButton");
     if (btn)
         btn->visible = visible ? 1 : 0;
 }
@@ -1501,14 +1501,14 @@ void rt_gamebutton_set_visible(void *ptr, int8_t visible) {
 /// @brief Return 1 if the button is visible.
 int8_t rt_gamebutton_get_visible(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.Visible: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.Visible: expected Zanna.Game.UI.GameButton");
     return btn ? btn->visible : 0;
 }
 
 /// @brief Set integer text scale, clamped to [1, 16].
 void rt_gamebutton_set_text_scale(void *ptr, int64_t scale) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.SetTextScale: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.SetTextScale: expected Zanna.Game.UI.GameButton");
     if (btn)
         btn->text_scale = ui_clamp_scale(scale);
 }
@@ -1516,7 +1516,7 @@ void rt_gamebutton_set_text_scale(void *ptr, int64_t scale) {
 /// @brief Return the current integer text scale.
 int64_t rt_gamebutton_get_text_scale(void *ptr) {
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.TextScale: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.TextScale: expected Zanna.Game.UI.GameButton");
     return btn ? btn->text_scale : 1;
 }
 
@@ -1527,7 +1527,7 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     if (!ptr || !canvas)
         return;
     rt_gamebutton_impl *btn =
-        checked_gamebutton(ptr, "GameButton.Draw: expected Viper.Game.UI.GameButton");
+        checked_gamebutton(ptr, "GameButton.Draw: expected Zanna.Game.UI.GameButton");
     if (!btn || !ui_resolve_draw_ops(canvas, "GameButton.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!btn->visible)

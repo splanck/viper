@@ -4,10 +4,10 @@ audience: developers
 last-verified: 2026-04-09
 ---
 
-# How to Write a Viper Frontend
+# How to Write a Zanna Frontend
 
-Complete implementation guide for building language frontends that compile to Viper IL. Designed for C++ programmers
-with no prior Viper experience.
+Complete implementation guide for building language frontends that compile to Zanna IL. Designed for C++ programmers
+with no prior Zanna experience.
 
 ---
 
@@ -36,17 +36,17 @@ with no prior Viper experience.
 
 ### What You'll Learn
 
-This guide teaches you how to implement a complete language frontend for Viper:
+This guide teaches you how to implement a complete language frontend for Zanna:
 
 - **Parsing**: Convert source code into an Abstract Syntax Tree (AST)
 - **Semantic Analysis**: Type checking, name resolution, and validation
-- **IL Lowering**: Transform AST to Viper IL using the IRBuilder API
+- **IL Lowering**: Transform AST to Zanna IL using the IRBuilder API
 - **Build Integration**: Add your frontend to the CMake build system
 - **Testing**: Write comprehensive tests for your frontend
 
-### What is Viper?
+### What is Zanna?
 
-Viper is a compiler infrastructure with multiple components:
+Zanna is a compiler infrastructure with multiple components:
 
 | Component    | Description                                                |
 |--------------|------------------------------------------------------------|
@@ -62,7 +62,7 @@ Viper is a compiler infrastructure with multiple components:
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
-Viper currently includes two frontends: **Zia** and **BASIC**. Both compile to the same IL and share the
+Zanna currently includes two frontends: **Zia** and **BASIC**. Both compile to the same IL and share the
 runtime library.
 
 ### Prerequisites
@@ -81,8 +81,8 @@ runtime library.
 
 **Recommended Reading:**
 
-- **[IL Guide](../il/il-guide.md)** — Viper IL specification and examples
-- **[Getting Started](../getting-started.md)** — Build and run Viper
+- **[IL Guide](../il/il-guide.md)** — Zanna IL specification and examples
+- **[Getting Started](../getting-started.md)** — Build and run Zanna
 - **[Architecture](architecture.md)** — System architecture overview
 
 ---
@@ -105,7 +105,7 @@ Before diving into code, understand what a frontend must accomplish:
 3. **Semantic Analysis**: Validate the AST (type checking, name resolution). Our minimal example skips this to focus on
    the core pipeline, but real frontends need this phase.
 
-4. **IL Lowering**: Convert the AST into Viper IL using the IRBuilder API. This is where you emit SSA instructions,
+4. **IL Lowering**: Convert the AST into Zanna IL using the IRBuilder API. This is where you emit SSA instructions,
    manage basic blocks, and call runtime functions. The IL is a platform-independent representation that can be
    interpreted by the VM or compiled to native code.
 
@@ -115,9 +115,9 @@ text to executable IL.
 ### File: minimal_frontend.cpp
 
 ```cpp
-#include "viper/il/IRBuilder.hpp"
-#include "viper/il/Module.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IRBuilder.hpp"
+#include "zanna/il/Module.hpp"
+#include "zanna/il/IO.hpp"
 #include "support/source_manager.hpp"
 #include <iostream>
 #include <string>
@@ -288,7 +288,7 @@ public:
 // ============================================================================
 //
 // The lowerer (also called "IL generator" or "backend") converts your AST
-// into Viper IL using the IRBuilder API. This is where your language semantics
+// into Zanna IL using the IRBuilder API. This is where your language semantics
 // are translated into low-level SSA instructions.
 //
 // Key concepts:
@@ -341,11 +341,11 @@ public:
         // via FFI at execution time. We declare them as "extern" so the IL
         // knows their signature, but we don't provide implementation.
         //
-        // Canonical IL extern name: Viper.Terminal.PrintI64
+        // Canonical IL extern name: Zanna.Terminal.PrintI64
         // Backed by C function rt_print_i64; legacy `rt_print_i64` extern
-        // remains accepted while VIPER_RUNTIME_NS_DUAL=ON (the current default).
+        // remains accepted while ZANNA_RUNTIME_NS_DUAL=ON (the current default).
         //
-        builder_.addExtern("Viper.Terminal.PrintI64",
+        builder_.addExtern("Zanna.Terminal.PrintI64",
                           Type(Type::Kind::Void),    // return type
                           {Type(Type::Kind::I64)});  // parameter types
 
@@ -471,7 +471,7 @@ int main(int argc, char **argv) {
 ```bash
 # Add to CMakeLists.txt:
 add_executable(minimal_frontend minimal_frontend.cpp)
-target_link_libraries(minimal_frontend PRIVATE viper_il_full il_build)
+target_link_libraries(minimal_frontend PRIVATE zanna_il_full il_build)
 
 # Build
 cmake --build build
@@ -485,11 +485,11 @@ cmake --build build
 ```il
 il 0.3.0
 
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 
 func @main() -> i64 {
 entry:
-  call @Viper.Terminal.PrintI64(42)
+  call @Zanna.Terminal.PrintI64(42)
   ret 0
 }
 ```
@@ -497,21 +497,21 @@ entry:
 **Understanding the IL output:**
 
 - `il 0.3.0` — IL version header (required by spec)
-- `extern @Viper.Terminal.PrintI64(i64) -> void` — External function declaration (implemented in C runtime)
+- `extern @Zanna.Terminal.PrintI64(i64) -> void` — External function declaration (implemented in C runtime)
 - `func @main() -> i64 { ... }` — Function definition with signature
 - `entry:` — Basic block label
-- `call @Viper.Terminal.PrintI64(42)` — Function call instruction with constant argument
+- `call @Zanna.Terminal.PrintI64(42)` — Function call instruction with constant argument
 - `ret 0` — Return terminator (exit code)
 
-> **Runtime namespace compatibility:** Viper's runtime symbols use the canonical `@Viper.*` form. When the
-> runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default), legacy `@rt_*` aliases such as
+> **Runtime namespace compatibility:** Zanna's runtime symbols use the canonical `@Zanna.*` form. When the
+> runtime is built with `-DZANNA_RUNTIME_NS_DUAL=ON` (the current default), legacy `@rt_*` aliases such as
 > `@rt_print_i64` are also accepted, but new frontends should emit the canonical names.
 
 This IL can be:
 
 - **Verified**: `il-verify output.il` checks for structural correctness
-- **Executed**: `viper -run output.il` runs it in the VM
-- **Compiled**: `viper codegen x64 output.il -S out.s` compiles to native x86-64 assembly
+- **Executed**: `zanna -run output.il` runs it in the VM
+- **Compiled**: `zanna codegen x64 output.il -S out.s` compiles to native x86-64 assembly
 
 ### Key Takeaways
 
@@ -554,12 +554,12 @@ Now let's explore each component in detail, starting with build system integrati
 
 ## 3. Build System Integration
 
-Viper uses CMake for build management. This section explains how to integrate your frontend into the build system so it
-can be compiled and used by the `viper` command-line tool.
+Zanna uses CMake for build management. This section explains how to integrate your frontend into the build system so it
+can be compiled and used by the `zanna` command-line tool.
 
 ### Directory Structure
 
-**Why this organization?** Viper organizes frontends under `src/frontends/` to keep them separate from the IL core
+**Why this organization?** Zanna organizes frontends under `src/frontends/` to keep them separate from the IL core
 infrastructure. Each frontend is a self-contained directory with its own CMakeLists.txt.
 
 Create your frontend under `src/frontends/`:
@@ -587,7 +587,7 @@ src/frontends/yourfrontend/
 ### CMakeLists.txt
 
 **What this does:** Defines a static library target (`fe_yourfrontend`) that compiles your frontend sources and links
-against Viper IL infrastructure. The library can then be linked into the `viper` tool or other programs.
+against Zanna IL infrastructure. The library can then be linked into the `zanna` tool or other programs.
 
 **File:** `src/frontends/yourfrontend/CMakeLists.txt`
 
@@ -612,7 +612,7 @@ target_sources(fe_yourfrontend PRIVATE
 # PUBLIC = consumers of fe_yourfrontend also get these dependencies.
 #
 # Key dependencies:
-# - viper_il_full: Full IL infrastructure (Module, Function, BasicBlock, etc.)
+# - zanna_il_full: Full IL infrastructure (Module, Function, BasicBlock, etc.)
 # - il_build: IRBuilder API (emitCall, emitRet, startFunction, etc.)
 # - il_runtime: Runtime function signatures (rt_print_i64, rt_str_concat, etc.)
 #
@@ -620,7 +620,7 @@ target_sources(fe_yourfrontend PRIVATE
 # headers (il/core/Module.hpp, il/build/IRBuilder.hpp), so any code that
 # includes your headers also needs these dependencies.
 target_link_libraries(fe_yourfrontend PUBLIC
-    viper_il_full      # Full IL infrastructure
+    zanna_il_full      # Full IL infrastructure
     il_build           # IRBuilder API
     il_runtime         # Runtime function signatures
 )
@@ -642,43 +642,43 @@ target_include_directories(fe_yourfrontend PUBLIC
 target_compile_features(fe_yourfrontend PUBLIC cxx_std_20)
 ```
 
-### Register with viper Tool
+### Register with zanna Tool
 
-**Why register with viper?** The `viper` tool is Viper's command-line interface for all compilation
+**Why register with zanna?** The `zanna` tool is Zanna's command-line interface for all compilation
 operations. It provides a unified interface:
 
 ```bash
-viper run source.bas                  # Unified built-in frontend path
-viper build source.bas -o source.il   # Emit IL through the unified driver
-viper front yourfrontend -run test.src  # Low-level entry point while bringing up a new frontend
+zanna run source.bas                  # Unified built-in frontend path
+zanna build source.bas -o source.il   # Emit IL through the unified driver
+zanna front yourfrontend -run test.src  # Low-level entry point while bringing up a new frontend
 ```
 
-Registering your frontend makes it accessible via `viper front yourfrontend`,
+Registering your frontend makes it accessible via `zanna front yourfrontend`,
 which is the simplest low-level path for compiler bring-up and test integration.
-If you want first-class `viper run` / `viper build` support for your new source
+If you want first-class `zanna run` / `zanna build` support for your new source
 type, extend target detection after the frontend command works.
 
-**File:** `src/tools/viper/CMakeLists.txt` (add to existing file)
+**File:** `src/tools/zanna/CMakeLists.txt` (add to existing file)
 
 ```cmake
 # Add your command handler source
 # This source file implements cmdFrontYourFrontend(), the entry point
-# for your frontend when invoked via viper.
-target_sources(viper PRIVATE
+# for your frontend when invoked via zanna.
+target_sources(zanna PRIVATE
     cmd_front_yourfrontend.cpp
 )
 
-# Link your frontend library into viper
-# PRIVATE = viper binary needs your frontend, but downstream consumers don't
-target_link_libraries(viper PRIVATE
+# Link your frontend library into zanna
+# PRIVATE = zanna binary needs your frontend, but downstream consumers don't
+target_link_libraries(zanna PRIVATE
     fe_yourfrontend
 )
 ```
 
-**File:** `src/tools/viper/main.cpp` (add to command dispatch)
+**File:** `src/tools/zanna/main.cpp` (add to command dispatch)
 
 **What this does:** Adds a low-level command dispatch path for your frontend.
-When the user runs `viper front yourfrontend <args>`, this code routes control to
+When the user runs `zanna front yourfrontend <args>`, this code routes control to
 your `cmdFrontYourFrontend()` function.
 
 ```cpp
@@ -690,10 +690,10 @@ int main(int argc, char **argv) {
     // ... existing code that parses argv[1] into 'cmd' ...
 
     // Add your frontend command
-    // Command format: viper front yourfrontend [options] source.src
+    // Command format: zanna front yourfrontend [options] source.src
     //
     // argv layout after this check:
-    //   argv[0] = "viper"
+    //   argv[0] = "zanna"
     //   argv[1] = "front"
     //   argv[2] = "yourfrontend"
     //   argv[3..] = your frontend's arguments
@@ -707,26 +707,26 @@ int main(int argc, char **argv) {
 }
 ```
 
-**Design pattern note:** Viper uses a simple string-based dispatch instead of a command framework (like CLI11 or boost::
+**Design pattern note:** Zanna uses a simple string-based dispatch instead of a command framework (like CLI11 or boost::
 program_options). This keeps dependencies minimal and build times fast.
 
 ### Command Handler Template
 
 **What this does:** Implements the low-level entry point for your frontend when
-invoked via `viper front yourfrontend`. This is the glue code that:
+invoked via `zanna front yourfrontend`. This is the glue code that:
 
 1. Parses command-line options
 2. Loads source files
 3. Invokes your compiler
 4. Handles the result (emit IL, run in VM, or report errors)
 
-**File:** `src/tools/viper/cmd_front_yourfrontend.cpp`
+**File:** `src/tools/zanna/cmd_front_yourfrontend.cpp`
 
 ```cpp
 #include "yourfrontend/Compiler.hpp"   // Your frontend's main API
 #include "il/io/Serializer.hpp"        // IL text serialization
-#include "viper/il/Verify.hpp"         // IL structural validation
-#include "viper/vm/VM.hpp"             // VM execution
+#include "zanna/il/Verify.hpp"         // IL structural validation
+#include "zanna/vm/VM.hpp"             // VM execution
 #include <fstream>
 #include <iostream>
 
@@ -734,7 +734,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     //
     // PHASE 1: Parse command-line options
     //
-    // Viper's convention: support -emit-il (print IL text) and -run (execute in VM).
+    // Zanna's convention: support -emit-il (print IL text) and -run (execute in VM).
     // You can add more options (-O2, -Wall, --dump-ast, etc.) as needed.
     //
     std::string sourcePath;
@@ -754,7 +754,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     }
 
     if (sourcePath.empty()) {
-        std::cerr << "Usage: viper front yourfrontend [-emit-il|-run] <source>\n";
+        std::cerr << "Usage: zanna front yourfrontend [-emit-il|-run] <source>\n";
         return 1;
     }
 
@@ -818,14 +818,14 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     //
     // PHASE 6: Emit IL or run in VM
     //
-    // If -emit-il: Serialize IL module to stdout (for inspection or piping to viper)
+    // If -emit-il: Serialize IL module to stdout (for inspection or piping to zanna)
     // If -run: Verify IL structure, then execute @main() in the VM
     //
 
     if (emitIl) {
         // Serialize IL to stdout in textual format.
         // Output can be saved to a .il file or piped to another tool.
-        // Example: viper front yourfrontend -emit-il test.src > test.il
+        // Example: zanna front yourfrontend -emit-il test.src > test.il
         il::io::Serializer::write(result.module, std::cout);
         return 0;
     }
@@ -871,7 +871,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
 **Key design patterns demonstrated:**
 
 1. **Option parsing**: Simple loop-based parsing. For complex CLI interfaces, consider using a library (CLI11, cxxopts)
-   or Viper's own option parser.
+   or Zanna's own option parser.
 
 2. **Diagnostics accumulation**: Errors are collected during compilation (not immediately fatal). This allows reporting
    multiple errors at once, improving the developer experience.
@@ -894,19 +894,19 @@ cmake -S . -B build
 # Build your frontend
 cmake --build build --target fe_yourfrontend
 
-# Build viper tool
-cmake --build build --target viper
+# Build zanna tool
+cmake --build build --target zanna
 
 # Test
-./build/src/tools/viper/viper front yourfrontend -emit-il test.src
-./build/src/tools/viper/viper front yourfrontend -run test.src
+./build/src/tools/zanna/zanna front yourfrontend -emit-il test.src
+./build/src/tools/zanna/zanna front yourfrontend -run test.src
 ```
 
 ---
 
 ## 4. High-Level Architecture
 
-This section explains the big-picture organization of a Viper frontend: the compilation pipeline, error handling
+This section explains the big-picture organization of a Zanna frontend: the compilation pipeline, error handling
 strategy, and file organization patterns.
 
 ### Compilation Pipeline
@@ -2280,7 +2280,7 @@ void SemanticAnalyzer::emitError(const std::string &message,
 
 ## 8. IL Lowering with IRBuilder
 
-**Purpose**: IL lowering is the final frontend phase that translates the validated AST into Viper IL. This is where your
+**Purpose**: IL lowering is the final frontend phase that translates the validated AST into Zanna IL. This is where your
 language's semantics are encoded as low-level SSA instructions.
 
 **Key challenges:**
@@ -2299,7 +2299,7 @@ language's semantics are encoded as low-level SSA instructions.
 
 For operations not exposed by IRBuilder (arithmetic, loads, stores), you construct `Instr` objects directly.
 
-**Pattern used throughout Viper**: The lowerer walks the AST recursively, maintaining state (current function, current
+**Pattern used throughout Zanna**: The lowerer walks the AST recursively, maintaining state (current function, current
 block, local variable table) and emitting IL instructions as it goes. The resulting IL module is then verified and
 executed.
 
@@ -3071,7 +3071,7 @@ Value Lowerer::coerceBoolToI64(Value val) {
 
 ### Available Runtime Functions
 
-Viper provides a C-based runtime library with common functionality.
+Zanna provides a C-based runtime library with common functionality.
 
 **Include:**
 
@@ -3083,29 +3083,29 @@ Viper provides a C-based runtime library with common functionality.
 
 ```cpp
 // Declare in IL (canonical name):
-builder.addExtern("Viper.String.Concat", Type(Type::Kind::Str),
+builder.addExtern("Zanna.String.Concat", Type(Type::Kind::Str),
                  {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
 // Call:
-// %result = call @Viper.String.Concat(%str1, %str2)
+// %result = call @Zanna.String.Concat(%str1, %str2)
 
-// Selected functions (canonical name | legacy alias when VIPER_RUNTIME_NS_DUAL=ON):
-Viper.String.Concat       | rt_str_concat        : str(str,str)        // Concatenation
-Viper.String.Equals       | rt_str_eq            : i1(str,str)         // Equality
-Viper.String.Cmp          | rt_str_cmp           : i64(str,str)        // <0/0/>0 ordering
-Viper.String.get_Length   | rt_str_len           : i64(str)            // Length in bytes
-Viper.String.Left         | rt_str_left          : str(str,i64)        // Left substring
-Viper.String.Right        | rt_str_right         : str(str,i64)        // Right substring
-Viper.String.MidLen       | rt_str_mid_len       : str(str,i64,i64)    // Substring (start, len)
-Viper.String.ToUpper      | rt_str_ucase         : str(str)            // Uppercase
-Viper.String.ToLower      | rt_str_lcase         : str(str)            // Lowercase
-Viper.String.Chr          | rt_str_chr           : str(i64)            // Codepoint → char
-Viper.String.Asc          | rt_str_asc           : i64(str)            // First char → int
-Viper.String.IndexOf      | rt_str_index_of      : i64(str,str)        // Find substring
-Viper.String.FromI16      | rt_str_i16_alloc     : str(i16)            // i16 → string
-Viper.String.FromI32      | rt_str_i32_alloc     : str(i32)            // i32 → string
-Viper.Text.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
-Viper.Core.Convert.ToStringDouble | rt_f64_to_str : str(f64)           // f64 -> string
+// Selected functions (canonical name | legacy alias when ZANNA_RUNTIME_NS_DUAL=ON):
+Zanna.String.Concat       | rt_str_concat        : str(str,str)        // Concatenation
+Zanna.String.Equals       | rt_str_eq            : i1(str,str)         // Equality
+Zanna.String.Cmp          | rt_str_cmp           : i64(str,str)        // <0/0/>0 ordering
+Zanna.String.get_Length   | rt_str_len           : i64(str)            // Length in bytes
+Zanna.String.Left         | rt_str_left          : str(str,i64)        // Left substring
+Zanna.String.Right        | rt_str_right         : str(str,i64)        // Right substring
+Zanna.String.MidLen       | rt_str_mid_len       : str(str,i64,i64)    // Substring (start, len)
+Zanna.String.ToUpper      | rt_str_ucase         : str(str)            // Uppercase
+Zanna.String.ToLower      | rt_str_lcase         : str(str)            // Lowercase
+Zanna.String.Chr          | rt_str_chr           : str(i64)            // Codepoint → char
+Zanna.String.Asc          | rt_str_asc           : i64(str)            // First char → int
+Zanna.String.IndexOf      | rt_str_index_of      : i64(str,str)        // Find substring
+Zanna.String.FromI16      | rt_str_i16_alloc     : str(i16)            // i16 → string
+Zanna.String.FromI32      | rt_str_i32_alloc     : str(i32)            // i32 → string
+Zanna.Text.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
+Zanna.Core.Convert.ToStringDouble | rt_f64_to_str : str(f64)           // f64 -> string
 ```
 
 > **Reference counting note:** `rt_string_ref` / `rt_string_unref` are internal C runtime helpers and are
@@ -3197,38 +3197,38 @@ Notes:
 
 ```text
 // Canonical name              | legacy alias       | signature             // notes
-Viper.Terminal.PrintStr        | rt_print_str       : void(str)            // Print string, no newline
-Viper.Terminal.PrintI64        | rt_print_i64       : void(i64)            // Print integer, no newline
-Viper.Terminal.PrintF64        | rt_print_f64       : void(f64)            // Print float, no newline
-Viper.Terminal.Say             | rt_term_say        : void(str)            // Print string + newline
-Viper.Terminal.SayInt          | rt_term_say_i64    : void(i64)            // Print integer + newline
-Viper.Terminal.SayNum          | rt_term_say_f64    : void(f64)            // Print float + newline
-Viper.Terminal.InputLine       | rt_input_line      : str()                // Read line from stdin
-Viper.Terminal.TryReadLine     | rt_term_try_read_line : obj<Viper.Option>() // Read line, None on EOF
-Viper.Terminal.ReadLineResult  | rt_term_read_line_result : obj<Viper.Result>() // Read line, Err on EOF
-Viper.Terminal.TryAsk          | rt_term_try_ask    : obj<Viper.Option>(str) // Prompt + read, None on EOF
-Viper.Terminal.AskResult       | rt_term_ask_result : obj<Viper.Result>(str) // Prompt + read, Err on EOF
-Viper.Terminal.ReadLine        | rt_term_read_line  : str()                // Compatibility read; prefer TryReadLine/ReadLineResult for EOF
+Zanna.Terminal.PrintStr        | rt_print_str       : void(str)            // Print string, no newline
+Zanna.Terminal.PrintI64        | rt_print_i64       : void(i64)            // Print integer, no newline
+Zanna.Terminal.PrintF64        | rt_print_f64       : void(f64)            // Print float, no newline
+Zanna.Terminal.Say             | rt_term_say        : void(str)            // Print string + newline
+Zanna.Terminal.SayInt          | rt_term_say_i64    : void(i64)            // Print integer + newline
+Zanna.Terminal.SayNum          | rt_term_say_f64    : void(f64)            // Print float + newline
+Zanna.Terminal.InputLine       | rt_input_line      : str()                // Read line from stdin
+Zanna.Terminal.TryReadLine     | rt_term_try_read_line : obj<Zanna.Option>() // Read line, None on EOF
+Zanna.Terminal.ReadLineResult  | rt_term_read_line_result : obj<Zanna.Result>() // Read line, Err on EOF
+Zanna.Terminal.TryAsk          | rt_term_try_ask    : obj<Zanna.Option>(str) // Prompt + read, None on EOF
+Zanna.Terminal.AskResult       | rt_term_ask_result : obj<Zanna.Result>(str) // Prompt + read, Err on EOF
+Zanna.Terminal.ReadLine        | rt_term_read_line  : str()                // Compatibility read; prefer TryReadLine/ReadLineResult for EOF
 ```
 
 There is no dedicated `rt_print_newline`; use one of the `Say*` variants (which append a newline) or
-emit `Viper.Terminal.PrintStr` with `"\n"`.
+emit `Zanna.Terminal.PrintStr` with `"\n"`.
 
 ### Math Operations
 
 ```text
-Viper.Math.Sqrt                | rt_sqrt            : f64(f64)             // Square root
-Viper.Math.AbsInt              | rt_abs_i64         : i64(i64)             // Absolute value (int)
-Viper.Math.Abs                 | rt_abs_f64         : f64(f64)             // Absolute value (float)
-Viper.Math.Floor               | rt_floor           : f64(f64)             // Floor
-Viper.Math.Ceil                | rt_ceil            : f64(f64)             // Ceiling
-Viper.Math.Sin                 | rt_sin             : f64(f64)             // Sine
-Viper.Math.Cos                 | rt_cos             : f64(f64)             // Cosine
-Viper.Math.Tan                 | rt_tan             : f64(f64)             // Tangent
-Viper.Math.Atan                | rt_atan            : f64(f64)             // Arctangent
-Viper.Math.Exp                 | rt_exp             : f64(f64)             // Exponential
-Viper.Math.Log                 | rt_log             : f64(f64)             // Natural logarithm
-Viper.Math.Pow                 | rt_math_pow        : f64(f64,f64)         // Power
+Zanna.Math.Sqrt                | rt_sqrt            : f64(f64)             // Square root
+Zanna.Math.AbsInt              | rt_abs_i64         : i64(i64)             // Absolute value (int)
+Zanna.Math.Abs                 | rt_abs_f64         : f64(f64)             // Absolute value (float)
+Zanna.Math.Floor               | rt_floor           : f64(f64)             // Floor
+Zanna.Math.Ceil                | rt_ceil            : f64(f64)             // Ceiling
+Zanna.Math.Sin                 | rt_sin             : f64(f64)             // Sine
+Zanna.Math.Cos                 | rt_cos             : f64(f64)             // Cosine
+Zanna.Math.Tan                 | rt_tan             : f64(f64)             // Tangent
+Zanna.Math.Atan                | rt_atan            : f64(f64)             // Arctangent
+Zanna.Math.Exp                 | rt_exp             : f64(f64)             // Exponential
+Zanna.Math.Log                 | rt_log             : f64(f64)             // Natural logarithm
+Zanna.Math.Pow                 | rt_math_pow        : f64(f64,f64)         // Power
 ```
 
 ### Example: String Concatenation
@@ -3236,13 +3236,13 @@ Viper.Math.Pow                 | rt_math_pow        : f64(f64,f64)         // Po
 ```cpp
 Value Lowerer::lowerStringConcat(Value lhs, Value rhs) {
     // Declare runtime function (canonical name; legacy rt_str_concat alias
-    // is also accepted while VIPER_RUNTIME_NS_DUAL=ON).
-    builder_.addExtern("Viper.String.Concat", Type(Type::Kind::Str),
+    // is also accepted while ZANNA_RUNTIME_NS_DUAL=ON).
+    builder_.addExtern("Zanna.String.Concat", Type(Type::Kind::Str),
                       {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
     // Emit call
     unsigned resultId = nextTempId_++;
-    builder_.emitCall("Viper.String.Concat", {lhs, rhs},
+    builder_.emitCall("Zanna.String.Concat", {lhs, rhs},
                      Value::temp(resultId), currentSourceLoc);
 
     return Value::temp(resultId);
@@ -3553,8 +3553,8 @@ TEST(LexerTests, TokenizeKeyword) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }
 ```
 
@@ -3575,8 +3575,8 @@ TEST(ParserTests, ParseIfStatement) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }
 ```
 
@@ -3595,12 +3595,12 @@ print("Hello, World!")
 ```il
 il 0.3.0
 
-extern @Viper.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
 
 func @main() -> i64 {
 entry:
   %0 = const_str @str.0
-  call @Viper.Terminal.PrintStr(%0)
+  call @Zanna.Terminal.PrintStr(%0)
   ret 0
 }
 
@@ -3665,11 +3665,11 @@ TEST(E2ETest, Fibonacci) {
 When debugging your frontend, use the `--dump-*` CLI flags to inspect output at each compilation stage:
 
 ```sh
-viper run --dump-tokens program.zia   # See what the lexer produces
-viper run --dump-ast program.zia      # See the parsed AST
-viper run --dump-il program.zia       # See IL after lowering
-viper run --dump-il-opt program.zia   # See IL after optimization
-viper run --dump-il-passes program.zia # See IL before/after each pass
+zanna run --dump-tokens program.zia   # See what the lexer produces
+zanna run --dump-ast program.zia      # See the parsed AST
+zanna run --dump-il program.zia       # See IL after lowering
+zanna run --dump-il-opt program.zia   # See IL after optimization
+zanna run --dump-il-passes program.zia # See IL before/after each pass
 ```
 
 All output goes to stderr. See `docs/tools/debugging.md` §8 for full details.
@@ -3768,7 +3768,7 @@ sites.
 1. Track which temporaries hold refcounted values.
 2. Emit balanced retain/release as part of variable assignment, function call boundaries, and
    block parameter handoff.
-3. Use the runtime helpers exposed through `runtime.def` (`Viper.String.*`, `Viper.Collections.*`)
+3. Use the runtime helpers exposed through `runtime.def` (`Zanna.String.*`, `Zanna.Collections.*`)
    rather than the internal `rt_string_ref` / `rt_string_unref` C entry points, which are not
    surfaced as IL externs.
 
@@ -3777,7 +3777,7 @@ sites.
 **Enable IL Verification:**
 
 ```cpp
-#include "viper/il/Verify.hpp"
+#include "zanna/il/Verify.hpp"
 
 auto result = il::verify::Verifier::verify(module);
 if (!result) {
@@ -3795,8 +3795,8 @@ il::io::Serializer::write(module, std::cerr);
 **Trace VM Execution:**
 
 ```bash
-./viper front yourfrontend -run --trace=il test.src
-./viper front yourfrontend -run --trace=src test.src
+./zanna front yourfrontend -run --trace=il test.src
+./zanna front yourfrontend -run --trace=src test.src
 ```
 
 **Check Opcode Usage:**
@@ -3850,7 +3850,7 @@ Study the BASIC frontend for patterns:
 
 22. **docs/il/il-guide.md** — IL specification
 23. **docs/il/il-guide.md#reference** — IL instruction reference
-24. **docs/internals/architecture.md** — Viper architecture
+24. **docs/internals/architecture.md** — Zanna architecture
 25. **docs/languages/basic-namespaces.md** — Namespace implementation
 
 ### Example Programs

@@ -1,8 +1,8 @@
 module render_probe;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Terminal;
 bind "./config";
 bind "./engine/renderer";
 bind "./engine/camera";

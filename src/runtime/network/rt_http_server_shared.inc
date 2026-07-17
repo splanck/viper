@@ -155,7 +155,7 @@ static bool http_method_is_valid(const char *method, size_t method_len) {
 /**
  * @brief Validate raw request-target bytes before URI normalization.
  *
- * @details Viper routes operate on origin-form paths or normalized absolute
+ * @details Zanna routes operate on origin-form paths or normalized absolute
  * URIs. This check rejects empty targets, whitespace/control bytes, DEL, and
  * fragments so downstream route matching receives only request-target forms
  * that the server intentionally supports.

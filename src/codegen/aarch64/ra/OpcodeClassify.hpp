@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Check if an opcode is a three-operand ALU operation (dst = src1 op src2).
 /// @param opc The machine opcode to check.
@@ -164,4 +164,4 @@ inline bool isMemSt(MOpcode opc) {
            opc == MOpcode::StrFprBaseRegLsl;
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

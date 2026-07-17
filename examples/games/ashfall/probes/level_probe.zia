@@ -11,7 +11,7 @@
 // =============================================================================
 module level_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../game" as game;

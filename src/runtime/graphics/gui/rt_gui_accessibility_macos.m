@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_accessibility_macos.m
-// Purpose: Cocoa accessibility-preference adapter for the Viper GUI runtime.
+// Purpose: Cocoa accessibility-preference adapter for the Zanna GUI runtime.
 //
 // Key invariants:
 //   - NSWorkspace is queried on demand so System Settings changes are observable.
@@ -12,7 +12,7 @@
 //   - No Objective-C object escapes the autorelease scope.
 //
 // Ownership/Lifetime:
-//   - The supplied ViperGFX window is borrowed and is not dereferenced by this adapter.
+//   - The supplied ZannaGFX window is borrowed and is not dereferenced by this adapter.
 //   - NSWorkspace is a process-owned singleton; this file retains no Cocoa object.
 //
 // Links: src/runtime/graphics/gui/rt_gui_accessibility_platform.h,
@@ -52,8 +52,8 @@ static BOOL rt_gui_accessibility_macos_is_available(const vg_widget_t *widget) {
     return YES;
 }
 
-/// @brief Map a Viper semantic role to its closest AppKit accessibility role.
-/// @param role Stable cross-platform Viper role.
+/// @brief Map a Zanna semantic role to its closest AppKit accessibility role.
+/// @param role Stable cross-platform Zanna role.
 /// @return Non-null AppKit role identifier.
 static NSAccessibilityRole rt_gui_accessibility_macos_role(vg_accessible_role_t role) {
     switch (role) {
@@ -157,7 +157,7 @@ static const char *rt_gui_accessibility_macos_name(const vg_widget_t *widget) {
     }
 }
 
-/// @brief Convert one Viper widget's semantic value into an AppKit object.
+/// @brief Convert one Zanna widget's semantic value into an AppKit object.
 /// @param widget Borrowed live widget.
 /// @return NSString or NSNumber representing the current value; never nil.
 static id rt_gui_accessibility_macos_value(const vg_widget_t *widget) {
@@ -348,7 +348,7 @@ static RTGuiAccessibilityElement *rt_gui_accessibility_macos_element(vg_widget_t
         return @"";
     if (widget->name)
         return rt_gui_accessibility_macos_string(widget->name);
-    return [NSString stringWithFormat:@"viper-widget-%llu", (unsigned long long)widget->id];
+    return [NSString stringWithFormat:@"zanna-widget-%llu", (unsigned long long)widget->id];
 }
 
 /// @brief Activate the widget through its keyboard event path.
@@ -402,7 +402,7 @@ int32_t rt_gui_accessibility_platform_reduced_motion(vgfx_window_t window) {
 /// @details A native view's effective appearance takes precedence so per-window appearance
 ///          overrides are respected. When no view exists, NSApp's process appearance is used.
 ///          Missing application state deterministically reports light mode.
-/// @param window Borrowed ViperGFX window; may be NULL.
+/// @param window Borrowed ZannaGFX window; may be NULL.
 /// @return One for Dark Aqua and zero for Aqua or unavailable state.
 int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
     @autoreleasepool {
@@ -417,7 +417,7 @@ int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
 }
 
 /// @brief Attach a dynamic NSAccessibilityElement hierarchy to the framebuffer NSView.
-/// @param window Borrowed ViperGFX window whose native view becomes the accessibility container.
+/// @param window Borrowed ZannaGFX window whose native view becomes the accessibility container.
 /// @param root Borrowed semantic widget root; NULL delegates to detach behavior.
 void rt_gui_accessibility_platform_attach(vgfx_window_t window, vg_widget_t *root) {
     @autoreleasepool {
@@ -441,7 +441,7 @@ void rt_gui_accessibility_platform_attach(vgfx_window_t window, vg_widget_t *roo
 }
 
 /// @brief Remove native elements before their borrowed widget tree is destroyed.
-/// @param window Borrowed ViperGFX window; NULL or already-detached windows are harmless.
+/// @param window Borrowed ZannaGFX window; NULL or already-detached windows are harmless.
 void rt_gui_accessibility_platform_detach(vgfx_window_t window) {
     @autoreleasepool {
         NSView *view = (__bridge NSView *)vgfx_get_native_view(window);
@@ -455,7 +455,7 @@ void rt_gui_accessibility_platform_detach(vgfx_window_t window) {
 }
 
 /// @brief Notify AppKit that one dynamic semantic element should be queried again.
-/// @param window Borrowed owning ViperGFX window.
+/// @param window Borrowed owning ZannaGFX window.
 /// @param widget Borrowed changed widget; stale pointers are ignored.
 void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *widget) {
     @autoreleasepool {
@@ -471,7 +471,7 @@ void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *wid
 }
 
 /// @brief Post a VoiceOver announcement while retaining the headless record as source of truth.
-/// @param window Borrowed owning ViperGFX window.
+/// @param window Borrowed owning ZannaGFX window.
 /// @param widget Borrowed live announcement source.
 /// @param text Borrowed UTF-8 announcement text.
 /// @param mode Polite or assertive announcement urgency.

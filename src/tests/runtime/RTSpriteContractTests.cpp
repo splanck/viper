@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -155,7 +155,7 @@ static void test_sprite_new_retains_initial_frame_without_cloning() {
 }
 
 static void test_sprite_from_file_rejects_zero_frame_gif_success() {
-    const char *path = "/tmp/viper_sprite_zero_frame.gif";
+    const char *path = "/tmp/zanna_sprite_zero_frame.gif";
     std::FILE *f = std::fopen(path, "wb");
     assert(f != nullptr);
     const unsigned char header[6] = {'G', 'I', 'F', '8', '9', 'a'};
@@ -170,7 +170,7 @@ static void test_sprite_from_file_rejects_zero_frame_gif_success() {
 }
 
 static void test_sprite_from_file_loads_all_gif_frames_and_delays() {
-    const char *path = "/tmp/viper_sprite_zero_frame.gif";
+    const char *path = "/tmp/zanna_sprite_zero_frame.gif";
     std::FILE *f = std::fopen(path, "wb");
     assert(f != nullptr);
     const unsigned char header[6] = {'G', 'I', 'F', '8', '9', 'a'};
@@ -323,7 +323,7 @@ extern "C" int64_t rt_timer_ms(void) {
 }
 
 extern "C" const char *rt_string_cstr(rt_string) {
-    return "/tmp/viper_sprite_zero_frame.gif";
+    return "/tmp/zanna_sprite_zero_frame.gif";
 }
 
 extern "C" rt_string rt_string_from_bytes(const char *, size_t) {

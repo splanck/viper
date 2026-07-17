@@ -4,11 +4,11 @@ audience: contributors
 last-verified: 2026-04-09
 ---
 
-# Viper C++ Compiler Requirements Specification
+# Zanna C++ Compiler Requirements Specification
 
 This document specifies the complete set of C and C++ language features, standard library
 components, compiler extensions, and runtime requirements necessary to build the entire
-Viper project. It serves as the definitive specification for the Viper C++ system compiler.
+Zanna project. It serves as the definitive specification for the Zanna C++ system compiler.
 
 ---
 
@@ -24,7 +24,7 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 8. [Platform and ABI Requirements](#8-platform-and-abi-requirements)
 9. [Freestanding Mode Requirements](#9-freestanding-mode-requirements)
 10. [Compilation Modes and Flags](#10-compilation-modes-and-flags)
-11. [Viper OS Kernel and Userland Requirements](#11-viper-os-kernel-and-userland-requirements)
+11. [Zanna OS Kernel and Userland Requirements](#11-zanna-os-kernel-and-userland-requirements)
 
 ---
 
@@ -34,7 +34,7 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 
 | Standard | Version | Rationale |
 |----------|---------|-----------|
-| C++ | **C++20** | Required for Viper OS kernel and userspace compilation |
+| C++ | **C++20** | Required for Zanna OS kernel and userspace compilation |
 | C | **C17** | Required for libc, bootloader, and C source files |
 
 ### Host and Target Platforms
@@ -42,7 +42,7 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 | Platform Type | Supported | Notes |
 |---------------|-----------|-------|
 | **Host (where vcpp runs)** | macOS (ARM64, x86-64), Linux (x86-64, ARM64) | Development environments |
-| **Target (code vcpp generates)** | **AArch64 only** | Viper OS target |
+| **Target (code vcpp generates)** | **AArch64 only** | Zanna OS target |
 
 | Target Property | Value |
 |-----------------|-------|
@@ -55,11 +55,11 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 
 | Component | Language | Standard | Exception Handling | RTTI |
 |-----------|----------|----------|-------------------|------|
-| Viper Compiler (vcpp) | C++ | C++20 | Enabled | Enabled |
-| Viper OS Kernel | C++ | C++20 | **Disabled** | **Disabled** |
-| Viper OS Userspace | C++ | C++20 | **Disabled** | **Disabled** |
-| Viper libc | C | C17 | N/A | N/A |
-| Viper Bootloader | C | C17 | N/A | N/A |
+| Zanna Compiler (vcpp) | C++ | C++20 | Enabled | Enabled |
+| Zanna OS Kernel | C++ | C++20 | **Disabled** | **Disabled** |
+| Zanna OS Userspace | C++ | C++20 | **Disabled** | **Disabled** |
+| Zanna libc | C | C17 | N/A | N/A |
+| Zanna Bootloader | C | C17 | N/A | N/A |
 
 ### Exception Handling Policy
 
@@ -69,7 +69,7 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 
 ### C++20 Features Actually Used
 
-Based on analysis of Viper OS source code, the following C++20 features are used:
+Based on analysis of Zanna OS source code, the following C++20 features are used:
 - Designated initializers (C++20 for aggregates with bases)
 - `[[nodiscard]]`, `[[maybe_unused]]` attributes
 - Nested inline namespaces
@@ -83,11 +83,11 @@ The following C++20 features are **not used** and have lower implementation prio
 
 ### Critical Extension Requirements
 
-These compiler extensions are **mandatory** for compiling Viper OS. Without them, the kernel and libc cannot be built.
+These compiler extensions are **mandatory** for compiling Zanna OS. Without them, the kernel and libc cannot be built.
 
 | Feature | Priority | Usage | Files |
 |---------|----------|-------|-------|
-| `__attribute__((packed))` | **CRITICAL** | ViperFS structures, device drivers | `virtio.hpp`, `ext2.hpp` |
+| `__attribute__((packed))` | **CRITICAL** | ZannaFS structures, device drivers | `virtio.hpp`, `ext2.hpp` |
 | `__attribute__((aligned(N)))` | **CRITICAL** | Page tables, DMA buffers | `mmu.cpp`, `virtio.cpp` |
 | `__attribute__((section("...")))` | **CRITICAL** | Linker section placement | `crt0.c`, `kernel.ld` |
 | `__attribute__((noreturn))` | High | `panic()`, `_exit()` | `panic.cpp`, `exit.c` |
@@ -415,11 +415,11 @@ These compiler extensions are **mandatory** for compiling Viper OS. Without them
 | `<inttypes.h>` | `PRId32`, `PRIu64`, `PRIx64`, `SCNd32`, etc. (format specifiers) |
 | `<float.h>` | `FLT_MIN`, `FLT_MAX`, `FLT_EPSILON`, `DBL_MIN`, `DBL_MAX`, `DBL_EPSILON`, etc. |
 
-### 5.3 POSIX Extensions (Viper libc Implementation Targets)
+### 5.3 POSIX Extensions (Zanna libc Implementation Targets)
 
-**Note**: These are functions that the Viper libc implements. The compiler itself does not need to provide these—it only needs to correctly compile code that calls them.
+**Note**: These are functions that the Zanna libc implements. The compiler itself does not need to provide these—it only needs to correctly compile code that calls them.
 
-| Header | Functions Implemented by Viper libc |
+| Header | Functions Implemented by Zanna libc |
 |--------|-------------------------------------|
 | `<unistd.h>` | `read`, `write`, `close`, `lseek`, `unlink`, `access`, `getcwd`, `chdir`, `sleep`, `usleep`, `sbrk` |
 | `<fcntl.h>` | `open`, `O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_CREAT`, `O_TRUNC`, `O_APPEND` |
@@ -611,7 +611,7 @@ The compiler implements the ARM 64-bit Architecture Procedure Call Standard.
 
 | Target | Format |
 |--------|--------|
-| Viper OS | ELF64 (little-endian) |
+| Zanna OS | ELF64 (little-endian) |
 | Linux AArch64 | ELF64 (for cross-development) |
 
 ### 8.4 Name Mangling
@@ -622,7 +622,7 @@ The compiler uses the Itanium C++ ABI for name mangling (same as GCC and Clang o
 
 ## 9. Freestanding Mode Requirements
 
-The Viper OS libc operates in freestanding mode with these requirements:
+The Zanna OS libc operates in freestanding mode with these requirements:
 
 ### 9.1 No Standard Library Dependencies
 
@@ -720,9 +720,9 @@ The compiler must support:
 
 ---
 
-## 11. Viper OS Kernel and Userland Requirements
+## 11. Zanna OS Kernel and Userland Requirements
 
-This section documents the specific compiler requirements for building the Viper OS kernel and userland components. The kernel is a freestanding AArch64 hybrid kernel, and the userland includes a custom libc and C++ standard library implementation.
+This section documents the specific compiler requirements for building the Zanna OS kernel and userland components. The kernel is a freestanding AArch64 hybrid kernel, and the userland includes a custom libc and C++ standard library implementation.
 
 ### 11.1 OS Component Standards
 
@@ -1248,5 +1248,5 @@ clang++ -std=c++20 -Wall -Wextra vcpp_test.cpp -o vcpp_test
 ---
 
 *Document Version: 2.0*
-*Updated with Viper OS Kernel and Userland Requirements*
-*Generated for Viper Project System Compiler Specification*
+*Updated with Zanna OS Kernel and Userland Requirements*
+*Generated for Zanna Project System Compiler Specification*

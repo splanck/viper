@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -95,7 +95,7 @@ namespace il::frontends::basic::type_conv {
 /// @brief Convert a runtime scalar type token to an IL Type.
 ///
 /// @details Maps string tokens from runtime property/method signatures
-///          (e.g., "i64", "f64", "str", "obj", "obj<Viper.Math.Vec3>") to their IL Type
+///          (e.g., "i64", "f64", "str", "obj", "obj<Zanna.Math.Vec3>") to their IL Type
 ///          equivalents.
 ///          Used when processing runtime property types from the catalog.
 ///

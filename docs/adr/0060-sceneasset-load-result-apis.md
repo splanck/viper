@@ -11,7 +11,7 @@ Status: Accepted
 
 ## Context
 
-`Viper.Graphics3D.SceneAsset` loaders historically returned `null` for routine
+`Zanna.Graphics3D.SceneAsset` loaders historically returned `null` for routine
 content failures and required callers to read
 `AssetDiagnostics3D.LastLoadError` / `LastLoadErrorCode` for the reason. That
 side-channel is useful for compatibility diagnostics and warning inspection, but

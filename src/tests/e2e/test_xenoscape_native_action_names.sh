@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-VIPER_BIN="$1"
+ZANNA_BIN="$1"
 ROOT_DIR="$2"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/xeno_native_action_names.XXXXXX")"
@@ -10,8 +10,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 IL_FILE="$TMP_DIR/action_name_probe.il"
 BIN_FILE="$TMP_DIR/action_name_probe"
 
-"$VIPER_BIN" build "$ROOT_DIR/examples/games/xenoscape/action_name_probe.zia" -o "$IL_FILE"
-"$VIPER_BIN" codegen arm64 "$IL_FILE" --native-asm --native-link -O1 -o "$BIN_FILE"
+"$ZANNA_BIN" build "$ROOT_DIR/examples/games/xenoscape/action_name_probe.zia" -o "$IL_FILE"
+"$ZANNA_BIN" codegen arm64 "$IL_FILE" --native-asm --native-link -O1 -o "$BIN_FILE"
 
 OUTPUT="$("$BIN_FILE")"
 printf '%s\n' "$OUTPUT"

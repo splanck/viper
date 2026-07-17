@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Disassemble Viper IL after bytecode lowering.
+/// @brief Disassemble Zanna IL after bytecode lowering.
 
 #include "bytecode/Bytecode.hpp"
 #include "bytecode/BytecodeCompiler.hpp"
@@ -19,7 +19,7 @@
 #include "il/core/Type.hpp"
 #include "support/diag_expected.hpp"
 #include "tools/common/module_loader.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -34,7 +34,7 @@
 
 namespace {
 
-namespace bc = viper::bytecode;
+namespace bc = zanna::bytecode;
 
 /// @brief Command-line options for the il-dis disassembler.
 struct Options {
@@ -50,7 +50,7 @@ enum class ParseResult { Ok, Help, Version, Error };
 void usage(std::ostream &out) {
     out << "Usage: il-dis [options] <file.il>\n"
         << "\n"
-        << "Parse textual IL, lower it to Viper bytecode, and print decoded bytecode.\n"
+        << "Parse textual IL, lower it to Zanna bytecode, and print decoded bytecode.\n"
         << "\n"
         << "Options:\n"
         << "  --raw       Include raw 32-bit instruction words\n"
@@ -848,7 +848,7 @@ int main(int argc, char **argv) {
             usage(std::cerr);
             return 0;
         case ParseResult::Version:
-            std::cout << "IL v" << VIPER_IL_VERSION_STR << "\n";
+            std::cout << "IL v" << ZANNA_IL_VERSION_STR << "\n";
             return 0;
         case ParseResult::Error:
             usage(std::cerr);

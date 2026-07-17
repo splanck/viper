@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -82,7 +82,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     VMExecutorResult result;
 
     // Compile IL to bytecode
-    viper::bytecode::BytecodeCompiler bcCompiler;
+    zanna::bytecode::BytecodeCompiler bcCompiler;
     auto compiled = bcCompiler.compileChecked(module, config.sourceManager);
     if (!compiled) {
         result.compileFailed = true;
@@ -97,7 +97,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
         }
         return result;
     }
-    viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
+    zanna::bytecode::BytecodeModule bcModule = std::move(compiled.value());
 
     // Set up program arguments for the runtime. An empty forwarded argument
     // list is meaningful: it must suppress the native host argv fallback.
@@ -109,17 +109,17 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     }
 
     // Configure and run the VM
-    viper::bytecode::BytecodeVM bcVm;
+    zanna::bytecode::BytecodeVM bcVm;
     bcVm.setThreadedDispatch(true);
     bcVm.setTrustedDispatch(config.trustedDispatch);
     bcVm.setRuntimeBridgeEnabled(true);
     bcVm.setMaxInstructions(config.maxSteps);
     bcVm.load(&bcModule);
 
-    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
+    zanna::bytecode::BCSlot bcResult = bcVm.exec("main", {});
 
     // Handle results
-    if (bcVm.state() == viper::bytecode::VMState::Trapped) {
+    if (bcVm.state() == zanna::bytecode::VMState::Trapped) {
         result.trapped = true;
         result.trapMessage = bcVm.trapMessage();
         result.exitCode = 1;

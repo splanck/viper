@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include "FastPaths.hpp"
 #include "fastpaths/FastPathsInternal.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 namespace {
 
 /// @brief Try a single fast-path category on a temporary scratch copy of the MFunction.
@@ -141,4 +141,4 @@ std::optional<MFunction> tryFastPaths(
     return std::nullopt;
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

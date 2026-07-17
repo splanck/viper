@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::server {
+namespace zanna::server {
 
 using namespace il::frontends::zia;
 namespace fs = std::filesystem;
@@ -649,7 +649,7 @@ static std::string buildSignatureFromDecl(const std::vector<Param> &params,
     return sig;
 }
 
-/// @brief Build a function signature from just the ViperType (no param names).
+/// @brief Build a function signature from just the ZannaType (no param names).
 static std::string buildSignatureFromType(const TypeRef &funcType) {
     if (!funcType || funcType->kind != TypeKindSem::Function)
         return "";
@@ -692,7 +692,7 @@ static HoverResult resolveHoverTarget(
             return result;
 
         // A literal qualified class name (for example, a type annotation such
-        // as `Viper.GUI.App`) does not require a module binding to resolve.
+        // as `Zanna.GUI.App`) does not require a module binding to resolve.
         if (populateRuntimeClassHover(result, ctx.dotPrefix + "." + ctx.identifier))
             return result;
 
@@ -1270,4 +1270,4 @@ std::string CompilerBridge::dumpTokens(const std::string &source, const std::str
     return out;
 }
 
-} // namespace viper::server
+} // namespace zanna::server

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_tween.c
-// Purpose: Frame-counted value interpolation ("tweening") for Viper games and
+// Purpose: Frame-counted value interpolation ("tweening") for Zanna games and
 //   UIs. A Tween smoothly animates a scalar value from a start to an end over
 //   a specified number of frames, optionally applying one of 19 easing curves
 //   (linear, quad, cubic, sine, exponential, back-overshoot, and bounced
@@ -40,7 +40,7 @@
 //     collects them automatically.
 //
 // Links: src/runtime/game/rt_tween.h (public API, easing constants),
-//        docs/viperlib/game.md (Tween and TweenChain sections)
+//        docs/zannalib/game.md (Tween and TweenChain sections)
 //
 //===----------------------------------------------------------------------===//
 
@@ -206,14 +206,14 @@ rt_tween rt_tween_new(void) {
 
 /// @brief Destroy a tween and release its GC allocation.
 void rt_tween_destroy(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Destroy: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Destroy: expected Zanna.Game.Tween");
     if (tween && rt_obj_release_check0(tween))
         rt_obj_free(tween);
 }
 
 /// @brief Start interpolating from one value to another over the given duration with easing.
 void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type) {
-    tween = checked_tween(tween, "Tween.Start: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Start: expected Zanna.Game.Tween");
     if (!tween)
         return;
     from = tween_finite_or(from, 0.0);
@@ -243,7 +243,7 @@ void rt_tween_start_i64(
     rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type) {
     rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
     // rt_tween_start clears is_i64; re-flag and record the exact endpoints after it.
-    tween = checked_tween(tween, "Tween.StartI64: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.StartI64: expected Zanna.Game.Tween");
     if (!tween)
         return;
     tween->from_i64 = from;
@@ -253,7 +253,7 @@ void rt_tween_start_i64(
 
 /// @brief Advance the tween by one tick. Returns 1 if the tween just completed.
 int8_t rt_tween_update(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Update: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Update: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     if (!tween->running || tween->paused)
@@ -286,7 +286,7 @@ int8_t rt_tween_update(rt_tween tween) {
 
 /// @brief Get the current interpolated value as a double.
 double rt_tween_value(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Value: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Value: expected Zanna.Game.Tween");
     if (!tween)
         return 0.0;
     return tween->current;
@@ -298,7 +298,7 @@ double rt_tween_value(rt_tween tween) {
 /// returns `to`, and a constant tween never drifts — none of which survive the
 /// double round-trip that the double-domain fallback uses (VDOC-273).
 int64_t rt_tween_value_i64(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.ValueI64: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.ValueI64: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
 
@@ -320,7 +320,7 @@ int64_t rt_tween_value_i64(rt_tween tween) {
 
 /// @brief Check whether the tween is actively interpolating (running and not paused).
 int8_t rt_tween_is_running(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.IsRunning: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.IsRunning: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     return tween->running && !tween->paused;
@@ -328,7 +328,7 @@ int8_t rt_tween_is_running(rt_tween tween) {
 
 /// @brief Check whether the tween has reached its end value.
 int8_t rt_tween_is_complete(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.IsComplete: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.IsComplete: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     return tween->complete;
@@ -336,7 +336,7 @@ int8_t rt_tween_is_complete(rt_tween tween) {
 
 /// @brief Get the tween progress as a percentage (0–100).
 int64_t rt_tween_progress(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Progress: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Progress: expected Zanna.Game.Tween");
     if (!tween || tween->duration == 0)
         return 0;
     return tween_percent_i64(tween->elapsed, tween->duration);
@@ -344,7 +344,7 @@ int64_t rt_tween_progress(rt_tween tween) {
 
 /// @brief Get the number of ticks elapsed since the tween was started.
 int64_t rt_tween_elapsed(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Elapsed: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Elapsed: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     return tween->elapsed;
@@ -352,7 +352,7 @@ int64_t rt_tween_elapsed(rt_tween tween) {
 
 /// @brief Get the total duration of the tween in ticks.
 int64_t rt_tween_duration(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Duration: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Duration: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     return tween->duration;
@@ -360,7 +360,7 @@ int64_t rt_tween_duration(rt_tween tween) {
 
 /// @brief Stop the tween and clear the paused state.
 void rt_tween_stop(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Stop: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Stop: expected Zanna.Game.Tween");
     if (!tween)
         return;
     tween->running = 0;
@@ -369,7 +369,7 @@ void rt_tween_stop(rt_tween tween) {
 
 /// @brief Reset the tween to its start value and restart playback.
 void rt_tween_reset(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Reset: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Reset: expected Zanna.Game.Tween");
     if (!tween)
         return;
     tween->elapsed = 0;
@@ -382,7 +382,7 @@ void rt_tween_reset(rt_tween tween) {
 
 /// @brief Pause the tween at the current position (can be resumed).
 void rt_tween_pause(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Pause: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Pause: expected Zanna.Game.Tween");
     if (!tween)
         return;
     if (tween->running && !tween->complete)
@@ -391,7 +391,7 @@ void rt_tween_pause(rt_tween tween) {
 
 /// @brief Resume a paused tween from where it left off.
 void rt_tween_resume(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.Resume: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.Resume: expected Zanna.Game.Tween");
     if (!tween)
         return;
     tween->paused = 0;
@@ -399,7 +399,7 @@ void rt_tween_resume(rt_tween tween) {
 
 /// @brief Check whether the tween is currently paused.
 int8_t rt_tween_is_paused(rt_tween tween) {
-    tween = checked_tween(tween, "Tween.IsPaused: expected Viper.Game.Tween");
+    tween = checked_tween(tween, "Tween.IsPaused: expected Zanna.Game.Tween");
     if (!tween)
         return 0;
     return tween->paused;

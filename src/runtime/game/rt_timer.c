@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_timer.c
-// Purpose: Frame-counted countdown timer for Viper games. A Timer fires after a
+// Purpose: Frame-counted countdown timer for Zanna games. A Timer fires after a
 //   specified number of game frames and optionally repeats automatically.
 //   Frame-based timing is deterministic (independent of wall-clock drift) and
 //   integrates naturally with game loops that call Update() exactly once per
@@ -32,7 +32,7 @@
 //     rt_obj_free() explicitly; the GC also reclaims them automatically.
 //
 // Links: src/runtime/game/rt_timer.h (public API),
-//        docs/viperlib/game/core.md (frame- and millisecond-driven modes)
+//        docs/zannalib/game/core.md (frame- and millisecond-driven modes)
 //
 //===----------------------------------------------------------------------===//
 
@@ -103,14 +103,14 @@ rt_timer rt_timer_new(void) {
 
 /// @brief Destroy a timer and release its GC allocation.
 void rt_timer_destroy(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Destroy: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Destroy: expected Zanna.Game.Timer");
     if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
 }
 
 /// @brief Start a one-shot timer that expires after the given number of frames.
 void rt_timer_start(rt_timer timer, int64_t frames) {
-    timer = checked_timer(timer, "Timer.Start: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Start: expected Zanna.Game.Timer");
     if (!timer || frames <= 0)
         return;
 
@@ -124,7 +124,7 @@ void rt_timer_start(rt_timer timer, int64_t frames) {
 
 /// @brief Start a repeating timer that auto-restarts when it expires.
 void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
-    timer = checked_timer(timer, "Timer.StartRepeating: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.StartRepeating: expected Zanna.Game.Timer");
     if (!timer || frames <= 0)
         return;
 
@@ -138,7 +138,7 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
 
 /// @brief Stop the timer (elapsed value is preserved for queries).
 void rt_timer_stop(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Stop: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Stop: expected Zanna.Game.Timer");
     if (!timer)
         return;
     timer->running = 0;
@@ -147,7 +147,7 @@ void rt_timer_stop(rt_timer timer) {
 
 /// @brief Reset the elapsed counter to zero without changing running/repeating state.
 void rt_timer_reset(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Reset: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Reset: expected Zanna.Game.Timer");
     if (!timer)
         return;
     timer->elapsed = 0;
@@ -156,7 +156,7 @@ void rt_timer_reset(rt_timer timer) {
 
 /// @brief Advance the timer by one tick. Returns 1 if the timer expired this tick.
 int8_t rt_timer_update(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Update: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Update: expected Zanna.Game.Timer");
     if (!timer || !timer->running) {
         return 0;
     }
@@ -185,13 +185,13 @@ int8_t rt_timer_update(rt_timer timer) {
 
 /// @brief Check whether the timer is currently counting.
 int8_t rt_timer_is_running(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.IsRunning: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.IsRunning: expected Zanna.Game.Timer");
     return timer ? timer->running : 0;
 }
 
 /// @brief Check whether the timer has expired (stopped and elapsed >= duration).
 int8_t rt_timer_is_expired(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.IsExpired: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.IsExpired: expected Zanna.Game.Timer");
     if (!timer)
         return 0;
     return timer->expired ? 1 : 0;
@@ -199,13 +199,13 @@ int8_t rt_timer_is_expired(rt_timer timer) {
 
 /// @brief Get the number of ticks elapsed since the timer was started.
 int64_t rt_timer_elapsed(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Elapsed: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Elapsed: expected Zanna.Game.Timer");
     return timer ? timer->elapsed : 0;
 }
 
 /// @brief Get the number of ticks remaining before the timer expires.
 int64_t rt_timer_remaining(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Remaining: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Remaining: expected Zanna.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
 
@@ -215,7 +215,7 @@ int64_t rt_timer_remaining(rt_timer timer) {
 
 /// @brief Get the timer progress as a percentage (0–100).
 int64_t rt_timer_progress(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Progress: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Progress: expected Zanna.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
 
@@ -224,13 +224,13 @@ int64_t rt_timer_progress(rt_timer timer) {
 
 /// @brief Get the total duration the timer was started with.
 int64_t rt_timer_duration(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.Duration: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Duration: expected Zanna.Game.Timer");
     return timer ? timer->duration : 0;
 }
 
 /// @brief Check whether the timer is in repeating (auto-restart) mode.
 int8_t rt_timer_is_repeating(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.IsRepeating: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.IsRepeating: expected Zanna.Game.Timer");
     return timer ? timer->repeating : 0;
 }
 
@@ -240,7 +240,7 @@ int8_t rt_timer_is_repeating(rt_timer timer) {
 ///          with `Update`/`Elapsed`. The cross-mode update calls are no-ops.
 /// @return 1 when the timer was started in millisecond mode, 0 for frame mode.
 int8_t rt_timer_is_ms(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.IsMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.IsMs: expected Zanna.Game.Timer");
     return timer ? timer->ms_mode : 0;
 }
 
@@ -248,7 +248,7 @@ int8_t rt_timer_is_ms(rt_timer timer) {
 /// @param timer
 /// @param frames
 void rt_timer_set_duration(rt_timer timer, int64_t frames) {
-    timer = checked_timer(timer, "Timer.Duration.set: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.Duration.set: expected Zanna.Game.Timer");
     if (!timer || frames <= 0)
         return;
     timer->duration = frames;
@@ -263,7 +263,7 @@ void rt_timer_set_duration(rt_timer timer, int64_t frames) {
 /// @brief Start a one-shot millisecond-based timer (drive with `_update_ms(dt_ms)`).
 /// Switches the timer into ms mode; subsequent frame-based ops should use the ms variants.
 void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
-    timer = checked_timer(timer, "Timer.StartMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.StartMs: expected Zanna.Game.Timer");
     if (!timer || duration_ms <= 0)
         return;
     timer->duration = duration_ms;
@@ -276,7 +276,7 @@ void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
 
 /// @brief Start a repeating millisecond-based timer that fires every @p interval_ms.
 void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
-    timer = checked_timer(timer, "Timer.StartRepeatingMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.StartRepeatingMs: expected Zanna.Game.Timer");
     if (!timer || interval_ms <= 0)
         return;
     timer->duration = interval_ms;
@@ -290,7 +290,7 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
 /// @brief Advance an ms-mode timer by @p dt milliseconds. Returns 1 on the tick it expires.
 /// Repeating timers preserve overshoot (`elapsed -= duration`) for sub-millisecond accuracy.
 int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
-    timer = checked_timer(timer, "Timer.UpdateMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.UpdateMs: expected Zanna.Game.Timer");
     if (!timer || !timer->running || dt <= 0)
         return 0;
     // Enforce the timer's mode: the millisecond-based UpdateMs() is a no-op on a
@@ -320,13 +320,13 @@ int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
 
 /// @brief Read the elapsed milliseconds since the timer started.
 int64_t rt_timer_elapsed_ms(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.ElapsedMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.ElapsedMs: expected Zanna.Game.Timer");
     return timer ? timer->elapsed : 0;
 }
 
 /// @brief Read the milliseconds remaining before an ms-mode timer expires (0 if past).
 int64_t rt_timer_remaining_ms(rt_timer timer) {
-    timer = checked_timer(timer, "Timer.RemainingMs: expected Viper.Game.Timer");
+    timer = checked_timer(timer, "Timer.RemainingMs: expected Zanna.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
     int64_t remaining = timer->duration - timer->elapsed;

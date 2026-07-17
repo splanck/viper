@@ -1,4 +1,4 @@
-' sparsearray_demo.bas - Comprehensive API audit for Viper.Collections.SparseArray
+' sparsearray_demo.bas - Comprehensive API audit for Zanna.Collections.SparseArray
 ' Tests: New, Set, Get, Has, Remove, Len, Indices, Values, Clear
 
 PRINT "=== SparseArray API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== SparseArray API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM sa AS OBJECT
-sa = Viper.Collections.SparseArray.New()
+sa = Zanna.Collections.SparseArray.New()
 PRINT sa.Count       ' 0
 
 ' --- Set / Len ---

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -1027,10 +1027,10 @@ static void test_navmesh_export_import_roundtrip() {
                     nm, rt_vec3_new(40.0, -1.0, 40.0), rt_vec3_new(41.0, 1.0, 41.0)) == 1,
                 "source navmesh stores an obstacle before export");
 
-    rt_string path = rt_const_cstr("/tmp/viper_navmesh_export_roundtrip.vnav");
+    rt_string path = rt_const_cstr("/tmp/zanna_navmesh_export_roundtrip.vnav");
     EXPECT_TRUE(rt_navmesh3d_export(nm, path) == 1, "navmesh exports to a file");
     {
-        FILE *f = std::fopen("/tmp/viper_navmesh_export_roundtrip.vnav", "rb");
+        FILE *f = std::fopen("/tmp/zanna_navmesh_export_roundtrip.vnav", "rb");
         char magic[8] = {};
         EXPECT_TRUE(f != nullptr, "exported navmesh file opens for magic check");
         EXPECT_TRUE(f && std::fread(magic, 1, sizeof(magic), f) == sizeof(magic) &&
@@ -1079,7 +1079,7 @@ static void test_navmesh_export_import_roundtrip() {
     EXPECT_TRUE(rt_navmesh3d_add_obstacle(
                     blocked_nm, rt_vec3_new(-20.0, -1.0, -20.0), rt_vec3_new(20.0, 1.0, 20.0)) == 1,
                 "source navmesh can export carved blocked state");
-    rt_string blocked_path = rt_const_cstr("/tmp/viper_navmesh_export_blocked.vnav");
+    rt_string blocked_path = rt_const_cstr("/tmp/zanna_navmesh_export_blocked.vnav");
     EXPECT_TRUE(rt_navmesh3d_export(blocked_nm, blocked_path) == 1,
                 "blocked navmesh exports to a file");
     void *blocked_imported = rt_navmesh3d_import(blocked_path);
@@ -1088,7 +1088,7 @@ static void test_navmesh_export_import_roundtrip() {
                 "imported navmesh preserves carved blocked triangles");
 
     {
-        FILE *f = std::fopen("/tmp/viper_navmesh_export_roundtrip.vnav", "ab");
+        FILE *f = std::fopen("/tmp/zanna_navmesh_export_roundtrip.vnav", "ab");
         EXPECT_TRUE(f != nullptr, "exported navmesh opens for corrupt trailing-data probe");
         if (f) {
             unsigned char trailing = 0x7f;
@@ -1100,7 +1100,7 @@ static void test_navmesh_export_import_roundtrip() {
                 "importing a navmesh with trailing bytes returns null");
 
     /* A missing/corrupt file is recoverable: import returns null without trapping. */
-    EXPECT_TRUE(rt_navmesh3d_import(rt_const_cstr("/tmp/viper_navmesh_no_such_file.vnav")) ==
+    EXPECT_TRUE(rt_navmesh3d_import(rt_const_cstr("/tmp/zanna_navmesh_no_such_file.vnav")) ==
                     nullptr,
                 "importing a missing file returns null");
 }

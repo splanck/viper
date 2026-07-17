@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTBufferOverflowTests.c
-// Purpose: Regression tests for buffer overflow bugs in the Viper runtime.
+// Purpose: Regression tests for buffer overflow bugs in the Zanna runtime.
 //          Covers:
 //            R-12 - rt_trie collect_keys fixed-buffer overflow for long keys
 //            R-14 - rt_dateonly_format growable output across old buffer boundary
@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_dateonly.h"
 #include "rt_pixels.h"

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,11 +36,11 @@ static void buildAndRun() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(buildAndRun);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(buildAndRun);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(buildAndRun);
+    auto result = zanna::tests::runIsolated(buildAndRun);
     assert(result.trapped());
     bool ok = result.stderrText.find("Trap @main:entry#0 line 1: DomainError (code=0)") !=
               std::string::npos;

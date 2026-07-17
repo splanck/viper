@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //          out of rt_gui_app.c.
 //
 // Key invariants:
-//   - Graphics-only (VIPER_ENABLE_GRAPHICS); these helpers have no stub forms
+//   - Graphics-only (ZANNA_ENABLE_GRAPHICS); these helpers have no stub forms
 //     because they are only reached from the graphics-enabled app paths.
 //   - A font is only destroyed once no live app or widget still references it
 //     (checked via the shared app registry).
@@ -31,7 +31,7 @@
 
 #include "fonts/embedded_font.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font);
 
@@ -724,4 +724,4 @@ void rt_gui_reapply_default_font(rt_gui_app_t *app) {
     }
 }
 
-#endif // VIPER_ENABLE_GRAPHICS
+#endif // ZANNA_ENABLE_GRAPHICS

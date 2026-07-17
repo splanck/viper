@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/Lowerer.hpp
-// Purpose: Transforms validated BASIC AST nodes into Viper IL instructions.
+// Purpose: Transforms validated BASIC AST nodes into Zanna IL instructions.
 //          Final stage of the pipeline: Lexer -> Parser -> AST -> Semantic -> Lowerer -> IL.
 // Key invariants: Generates deterministic block names per procedure using BlockNamer.
 //                 Procedures are lowered before a synthetic @main encompassing
@@ -35,8 +35,8 @@
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/lower/MemberArrayResolver.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "viper/il/IRBuilder.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/IRBuilder.hpp"
+#include "zanna/il/Module.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_parallel.h
@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 //=============================================================================
-// Viper.Threads.Parallel
+// Zanna.Threads.Parallel
 //=============================================================================
 
 /// @brief Execute a function for each item in a sequence, in parallel.

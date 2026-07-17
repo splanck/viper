@@ -40,7 +40,7 @@ var CAMERA_INVERT_Y: Boolean = false;  // set true to invert vertical mouse look
 // the player's head and aims a free look vector, so you can look right at the sky.
 var CAMERA_FP_EYE_HEIGHT: Float = 1.55; // eye height above the player's ground Y
 var CAMERA_FP_PITCH_LIMIT: Float = 1.50; // ~+-86 deg free-look pitch clamp
-// The view toggle is bound to the V key in game.zia via Viper.Input.Key.V.
+// The view toggle is bound to the V key in game.zia via Zanna.Input.Key.V.
 
 var PLAYER_MOVE_SPEED: Float = 9.2;
 var PLAYER_SPRINT_MULT: Float = 1.75;
@@ -179,7 +179,7 @@ var HUD_DANGER: Integer = 0xE37A68;
 // MapleTree_1.fbx native AABB is ~623 x 664 x 490 model units, base at Y~=0,
 // so a uniform scale near 0.013 yields an ~8.6 world-unit-tall tree.
 // Two candidate paths so the model resolves whether the demo is run from the
-// repo root (`viper run examples/games/ridgebound/`) or from this folder.
+// repo root (`zanna run examples/games/ridgebound/`) or from this folder.
 var TREE_MODEL_PATH: String = "MapleTree_1.fbx";
 var TREE_MODEL_PATH_ALT: String = "examples/games/ridgebound/MapleTree_1.fbx";
 // Relative to the executable's own directory (examples/bin -> examples/games/...),

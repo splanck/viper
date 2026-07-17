@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "common/ProcessIsolation.hpp"
 #include <cassert>
@@ -40,26 +40,26 @@ static void call_input_double_nul_suffix() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(call_input_12abc);
-    viper::tests::registerChildFunction(call_input_7_5foo);
-    viper::tests::registerChildFunction(call_input_int_nul_suffix);
-    viper::tests::registerChildFunction(call_input_double_nul_suffix);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(call_input_12abc);
+    zanna::tests::registerChildFunction(call_input_7_5foo);
+    zanna::tests::registerChildFunction(call_input_int_nul_suffix);
+    zanna::tests::registerChildFunction(call_input_double_nul_suffix);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(call_input_12abc);
+    auto result = zanna::tests::runIsolated(call_input_12abc);
     bool trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
     assert(trapped);
 
-    result = viper::tests::runIsolated(call_input_7_5foo);
+    result = zanna::tests::runIsolated(call_input_7_5foo);
     trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
     assert(trapped);
 
-    result = viper::tests::runIsolated(call_input_int_nul_suffix);
+    result = zanna::tests::runIsolated(call_input_int_nul_suffix);
     trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
     assert(trapped);
 
-    result = viper::tests::runIsolated(call_input_double_nul_suffix);
+    result = zanna::tests::runIsolated(call_input_double_nul_suffix);
     trapped = result.stderrText.find("INPUT: expected numeric value") != std::string::npos;
     assert(trapped);
 

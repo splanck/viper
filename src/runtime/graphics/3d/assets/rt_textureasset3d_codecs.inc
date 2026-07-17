@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_textureasset3d_codecs.inc  (#included from
 // rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D BC3/BC7/ETC2/ASTC
 // software decoders and compressed fallback

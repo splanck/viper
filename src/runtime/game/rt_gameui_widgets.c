@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -145,7 +145,7 @@ static rt_table_click_result_impl *checked_table_click_result(void *ptr, const c
 /// @param kind One of RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
 /// @param row Row index for row clicks; ignored for other kinds.
 /// @param column Column index for header clicks; ignored for other kinds.
-/// @return New Viper.Game.UI.TableClickResult object.
+/// @return New Zanna.Game.UI.TableClickResult object.
 static void *table_click_result_new(int64_t kind, int64_t row, int64_t column) {
     rt_table_click_result_impl *result = (rt_table_click_result_impl *)rt_obj_new_i64(
         RT_UITABLE_CLICK_RESULT_CLASS_ID, (int64_t)sizeof(rt_table_click_result_impl));
@@ -332,7 +332,7 @@ void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 }
 
 int64_t rt_uitable_add_column(void *ptr, rt_string title, int64_t width, int64_t align) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.AddColumn: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.AddColumn: expected Zanna.Game.UI.Table");
     if (!table)
         return -1;
     if (!ensure_table_column_capacity(table, table->column_count + 1)) {
@@ -350,7 +350,7 @@ int64_t rt_uitable_add_column(void *ptr, rt_string title, int64_t width, int64_t
 
 void rt_uitable_set_column_sortable(void *ptr, int64_t col, int8_t sortable, int8_t numeric) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.SetColumnSortable: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.SetColumnSortable: expected Zanna.Game.UI.Table");
     if (!table || col < 0 || col >= table->column_count)
         return;
     table->columns[col].sortable = sortable ? 1 : 0;
@@ -359,12 +359,12 @@ void rt_uitable_set_column_sortable(void *ptr, int64_t col, int8_t sortable, int
 
 int64_t rt_uitable_column_count(void *ptr) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.ColumnCount: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.ColumnCount: expected Zanna.Game.UI.Table");
     return table ? table->column_count : 0;
 }
 
 int64_t rt_uitable_add_row(void *ptr) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.AddRow: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.AddRow: expected Zanna.Game.UI.Table");
     if (!table)
         return -1;
     if (!ensure_table_row_capacity(table, table->row_count + 1)) {
@@ -385,7 +385,7 @@ int64_t rt_uitable_add_row(void *ptr) {
 }
 
 void rt_uitable_set_cell(void *ptr, int64_t row, int64_t col, rt_string text) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.SetCell: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.SetCell: expected Zanna.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count || col < 0 || col >= table->column_count)
         return;
     char *cell = table_cell_ptr(table, &table->rows[row], col);
@@ -394,7 +394,7 @@ void rt_uitable_set_cell(void *ptr, int64_t row, int64_t col, rt_string text) {
 }
 
 rt_string rt_uitable_get_cell(void *ptr, int64_t row, int64_t col) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.GetCell: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.GetCell: expected Zanna.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count || col < 0 || col >= table->column_count)
         return rt_str_empty();
     char *cell = table_cell_ptr(table, &table->rows[row], col);
@@ -402,7 +402,7 @@ rt_string rt_uitable_get_cell(void *ptr, int64_t row, int64_t col) {
 }
 
 void rt_uitable_remove_row(void *ptr, int64_t row) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.RemoveRow: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.RemoveRow: expected Zanna.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count)
         return;
     free(table->rows[row].cells);
@@ -414,7 +414,7 @@ void rt_uitable_remove_row(void *ptr, int64_t row) {
 }
 
 void rt_uitable_clear_rows(void *ptr) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.ClearRows: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.ClearRows: expected Zanna.Game.UI.Table");
     if (!table)
         return;
     for (int64_t i = 0; i < table->row_count; i++) {
@@ -427,7 +427,7 @@ void rt_uitable_clear_rows(void *ptr) {
 }
 
 int64_t rt_uitable_row_count(void *ptr) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.RowCount: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.RowCount: expected Zanna.Game.UI.Table");
     return table ? table->row_count : 0;
 }
 
@@ -465,7 +465,7 @@ static int table_compare_rows(rt_uitable_impl *table,
 }
 
 void rt_uitable_sort_by(void *ptr, int64_t col, int8_t descending) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.SortBy: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.SortBy: expected Zanna.Game.UI.Table");
     if (!table || col < 0 || col >= table->column_count)
         return;
     if (!table->columns[col].sortable)
@@ -484,18 +484,18 @@ void rt_uitable_sort_by(void *ptr, int64_t col, int8_t descending) {
 }
 
 int64_t rt_uitable_get_sort_column(void *ptr) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.SortColumn: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.SortColumn: expected Zanna.Game.UI.Table");
     return table ? table->sort_column : -1;
 }
 
 int8_t rt_uitable_get_sort_descending(void *ptr) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.SortDescending: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.SortDescending: expected Zanna.Game.UI.Table");
     return table ? table->sort_descending : 0;
 }
 
 void rt_uitable_set_scroll(void *ptr, int64_t row) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.SetScroll: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.SetScroll: expected Zanna.Game.UI.Table");
     if (!table)
         return;
     table->scroll_offset = row;
@@ -503,13 +503,13 @@ void rt_uitable_set_scroll(void *ptr, int64_t row) {
 }
 
 int64_t rt_uitable_get_scroll(void *ptr) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.Scroll: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.Scroll: expected Zanna.Game.UI.Table");
     return table ? table->scroll_offset : 0;
 }
 
 void rt_uitable_set_selected_row(void *ptr, int64_t row) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.SetSelectedRow: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.SetSelectedRow: expected Zanna.Game.UI.Table");
     if (!table)
         return;
     table->selected_row = row < 0 || row >= table->row_count ? -1 : row;
@@ -517,13 +517,13 @@ void rt_uitable_set_selected_row(void *ptr, int64_t row) {
 
 int64_t rt_uitable_get_selected_row(void *ptr) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.SelectedRow: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.SelectedRow: expected Zanna.Game.UI.Table");
     return table ? table->selected_row : -1;
 }
 
 int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.HandleClick: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.HandleClick: expected Zanna.Game.UI.Table");
     if (!table || !table->visible ||
         !ui_point_inside(table->x, table->y, table->w, table->h, mx, my))
         return -1;
@@ -557,17 +557,17 @@ int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
 /// @brief Process a table click and return a structured click outcome.
 /// @details Delegates to rt_uitable_handle_click() so row selection, header
 ///          sorting, and legacy LastHeaderClick state remain identical.
-/// @param ptr Opaque Viper.Game.UI.Table object.
+/// @param ptr Opaque Zanna.Game.UI.Table object.
 /// @param mx Click x-coordinate in canvas pixels.
 /// @param my Click y-coordinate in canvas pixels.
-/// @return New Viper.Game.UI.TableClickResult object.
+/// @return New Zanna.Game.UI.TableClickResult object.
 void *rt_uitable_handle_click_result(void *ptr, int64_t mx, int64_t my) {
     int64_t clicked = rt_uitable_handle_click(ptr, mx, my);
     if (clicked >= 0)
         return table_click_result_new(RT_UITABLE_CLICK_ROW, clicked, -1);
     if (clicked == -2) {
         rt_uitable_impl *table =
-            checked_table(ptr, "UITable.HandleClickResult: expected Viper.Game.UI.Table");
+            checked_table(ptr, "UITable.HandleClickResult: expected Zanna.Game.UI.Table");
         int64_t column = table ? table->last_header_click : -1;
         return table_click_result_new(RT_UITABLE_CLICK_HEADER, -1, column);
     }
@@ -576,57 +576,57 @@ void *rt_uitable_handle_click_result(void *ptr, int64_t mx, int64_t my) {
 
 int64_t rt_uitable_last_header_click(void *ptr) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.LastHeaderClick: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.LastHeaderClick: expected Zanna.Game.UI.Table");
     return table ? table->last_header_click : -1;
 }
 
 /// @brief Return the raw TableClickResult kind value.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
 /// @return RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
 int64_t rt_table_click_result_kind(void *ptr) {
     rt_table_click_result_impl *result = checked_table_click_result(
-        ptr, "TableClickResult.Kind: expected Viper.Game.UI.TableClickResult");
+        ptr, "TableClickResult.Kind: expected Zanna.Game.UI.TableClickResult");
     return result ? result->kind : RT_UITABLE_CLICK_NONE;
 }
 
 /// @brief Return whether a TableClickResult represents a miss.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
 /// @return 1 for no-hit results, otherwise 0.
 int8_t rt_table_click_result_is_none(void *ptr) {
     return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_NONE ? 1 : 0;
 }
 
 /// @brief Return whether a TableClickResult represents a row hit.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
 /// @return 1 for row-hit results, otherwise 0.
 int8_t rt_table_click_result_is_row(void *ptr) {
     return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_ROW ? 1 : 0;
 }
 
 /// @brief Return whether a TableClickResult represents a header hit.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
 /// @return 1 for header-hit results, otherwise 0.
 int8_t rt_table_click_result_is_header(void *ptr) {
     return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_HEADER ? 1 : 0;
 }
 
 /// @brief Return the row index stored in a row-hit result.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
-/// @return Viper.Option.SomeI64(row) for row hits, otherwise Viper.Option.None().
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
+/// @return Zanna.Option.SomeI64(row) for row hits, otherwise Zanna.Option.None().
 void *rt_table_click_result_row_option(void *ptr) {
     rt_table_click_result_impl *result = checked_table_click_result(
-        ptr, "TableClickResult.RowOption: expected Viper.Game.UI.TableClickResult");
+        ptr, "TableClickResult.RowOption: expected Zanna.Game.UI.TableClickResult");
     if (!result || result->kind != RT_UITABLE_CLICK_ROW)
         return rt_option_none();
     return rt_option_some_i64(result->row);
 }
 
 /// @brief Return the header column index stored in a header-hit result.
-/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
-/// @return Viper.Option.SomeI64(column) for header hits, otherwise Viper.Option.None().
+/// @param ptr Opaque Zanna.Game.UI.TableClickResult object.
+/// @return Zanna.Option.SomeI64(column) for header hits, otherwise Zanna.Option.None().
 void *rt_table_click_result_column_option(void *ptr) {
     rt_table_click_result_impl *result = checked_table_click_result(
-        ptr, "TableClickResult.ColumnOption: expected Viper.Game.UI.TableClickResult");
+        ptr, "TableClickResult.ColumnOption: expected Zanna.Game.UI.TableClickResult");
     if (!result || result->kind != RT_UITABLE_CLICK_HEADER)
         return rt_option_none();
     return rt_option_some_i64(result->column);
@@ -634,7 +634,7 @@ void *rt_table_click_result_column_option(void *ptr) {
 
 void rt_uitable_handle_scroll(void *ptr, int64_t delta) {
     rt_uitable_impl *table =
-        checked_table(ptr, "UITable.HandleScroll: expected Viper.Game.UI.Table");
+        checked_table(ptr, "UITable.HandleScroll: expected Zanna.Game.UI.Table");
     if (!table)
         return;
     table->scroll_offset = ui_add_sat_i64(table->scroll_offset, delta);
@@ -642,7 +642,7 @@ void rt_uitable_handle_scroll(void *ptr, int64_t delta) {
 }
 
 void rt_uitable_handle_key(void *ptr, int64_t key_code) {
-    rt_uitable_impl *table = checked_table(ptr, "UITable.HandleKey: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.HandleKey: expected Zanna.Game.UI.Table");
     if (!table || table->row_count <= 0)
         return;
     if (table->selected_row < 0)
@@ -675,7 +675,7 @@ void rt_uitable_handle_key(void *ptr, int64_t key_code) {
 
 void rt_uitable_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
-    rt_uitable_impl *table = checked_table(ptr, "UITable.Draw: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.Draw: expected Zanna.Game.UI.Table");
     if (!table || !canvas || !ui_resolve_draw_ops(canvas, "UITable.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!table->visible)
@@ -817,18 +817,18 @@ void *rt_uislider_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t min_v,
 
 void rt_uislider_set_value(void *ptr, int64_t v) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.SetValue: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.SetValue: expected Zanna.Game.UI.HudSlider");
     if (s)
         s->current_value = slider_clamp_value(s, v);
 }
 
 int64_t rt_uislider_get_value(void *ptr) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Value: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Value: expected Zanna.Game.UI.HudSlider");
     return s ? s->current_value : 0;
 }
 
 void rt_uislider_set_step(void *ptr, int64_t step) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetStep: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetStep: expected Zanna.Game.UI.HudSlider");
     if (!s)
         return;
     s->step = step > 0 ? step : 1;
@@ -837,7 +837,7 @@ void rt_uislider_set_step(void *ptr, int64_t step) {
 
 void rt_uislider_set_label(void *ptr, rt_string label) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.SetLabel: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.SetLabel: expected Zanna.Game.UI.HudSlider");
     if (!s)
         return;
     ui_copy_text(s->label, sizeof(s->label), label);
@@ -846,7 +846,7 @@ void rt_uislider_set_label(void *ptr, rt_string label) {
 
 int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleKey: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.HandleKey: expected Zanna.Game.UI.HudSlider");
     if (!s || !s->visible || !s->enabled)
         return 0;
     int64_t before = s->current_value;
@@ -863,7 +863,7 @@ int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
 
 int8_t rt_uislider_handle_mouse_down(void *ptr, int64_t mx, int64_t my) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseDown: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.HandleMouseDown: expected Zanna.Game.UI.HudSlider");
     if (!s || !s->visible || !s->enabled || !ui_point_inside(s->x, s->y, s->w, s->h, mx, my))
         return 0;
     s->dragging = 1;
@@ -872,7 +872,7 @@ int8_t rt_uislider_handle_mouse_down(void *ptr, int64_t mx, int64_t my) {
 
 int8_t rt_uislider_handle_mouse_drag(void *ptr, int64_t mx) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseDrag: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.HandleMouseDrag: expected Zanna.Game.UI.HudSlider");
     if (!s || !s->dragging || !s->enabled)
         return 0;
     return slider_set_from_mouse(s, mx);
@@ -880,7 +880,7 @@ int8_t rt_uislider_handle_mouse_drag(void *ptr, int64_t mx) {
 
 int8_t rt_uislider_handle_mouse_up(void *ptr) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseUp: expected Viper.Game.UI.HudSlider");
+        checked_slider(ptr, "UISlider.HandleMouseUp: expected Zanna.Game.UI.HudSlider");
     if (!s)
         return 0;
     int8_t was = s->dragging;
@@ -890,7 +890,7 @@ int8_t rt_uislider_handle_mouse_up(void *ptr) {
 
 void rt_uislider_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Draw: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Draw: expected Zanna.Game.UI.HudSlider");
     if (!s || !canvas || !ui_resolve_draw_ops(canvas, "UISlider.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!s->visible)
@@ -1005,7 +1005,7 @@ void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 
 void rt_uidropdown_add_option(void *ptr, rt_string text) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.AddOption: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.AddOption: expected Zanna.Game.UI.HudDropdown");
     if (!dd)
         return;
     if (!ensure_dropdown_option_capacity(dd, dd->option_count + 1)) {
@@ -1020,7 +1020,7 @@ void rt_uidropdown_add_option(void *ptr, rt_string text) {
 
 void rt_uidropdown_clear_options(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.ClearOptions: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.ClearOptions: expected Zanna.Game.UI.HudDropdown");
     if (!dd)
         return;
     if (dd->options && dd->option_capacity > 0)
@@ -1032,13 +1032,13 @@ void rt_uidropdown_clear_options(void *ptr) {
 
 int64_t rt_uidropdown_get_selected(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Selected: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.Selected: expected Zanna.Game.UI.HudDropdown");
     return dd ? dd->selected : -1;
 }
 
 void rt_uidropdown_set_selected(void *ptr, int64_t index) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.SetSelected: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.SetSelected: expected Zanna.Game.UI.HudDropdown");
     if (!dd)
         return;
     dd->selected = index < 0 || index >= dd->option_count ? -1 : index;
@@ -1046,7 +1046,7 @@ void rt_uidropdown_set_selected(void *ptr, int64_t index) {
 
 rt_string rt_uidropdown_get_selected_text(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.SelectedText: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.SelectedText: expected Zanna.Game.UI.HudDropdown");
     if (!dd || dd->selected < 0 || dd->selected >= dd->option_count)
         return rt_str_empty();
     return rt_const_cstr(dd->options[dd->selected]);
@@ -1054,27 +1054,27 @@ rt_string rt_uidropdown_get_selected_text(void *ptr) {
 
 int8_t rt_uidropdown_is_open(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.IsOpen: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.IsOpen: expected Zanna.Game.UI.HudDropdown");
     return dd ? dd->open : 0;
 }
 
 void rt_uidropdown_open(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Open: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.Open: expected Zanna.Game.UI.HudDropdown");
     if (dd && dd->enabled && dd->visible)
         dd->open = 1;
 }
 
 void rt_uidropdown_close(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Close: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.Close: expected Zanna.Game.UI.HudDropdown");
     if (dd)
         dd->open = 0;
 }
 
 int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.HandleClick: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.HandleClick: expected Zanna.Game.UI.HudDropdown");
     if (!dd || !dd->enabled || !dd->visible)
         return 0;
     if (ui_point_inside(dd->x, dd->y, dd->w, dd->h, mx, my)) {
@@ -1096,7 +1096,7 @@ int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
 
 int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.HandleKey: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.HandleKey: expected Zanna.Game.UI.HudDropdown");
     if (!dd || !dd->enabled || !dd->visible || dd->option_count <= 0)
         return 0;
     if (key_code == UI_KEY_ESCAPE) {
@@ -1121,7 +1121,7 @@ int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
 void rt_uidropdown_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.HudDropdown");
+        checked_dropdown(ptr, "UIDropdown.Draw: expected Zanna.Game.UI.HudDropdown");
     if (!dd || !canvas || !ui_resolve_draw_ops(canvas, "UIDropdown.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!dd->visible)
@@ -1214,14 +1214,14 @@ void *rt_uitooltip_new(void) {
 
 void rt_uitooltip_set_text(void *ptr, rt_string text) {
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.SetText: expected Viper.Game.UI.HudTooltip");
+        checked_tooltip(ptr, "UITooltip.SetText: expected Zanna.Game.UI.HudTooltip");
     if (t)
         ui_copy_text(t->text, sizeof(t->text), text);
 }
 
 void rt_uitooltip_set_hover_delay_ms(void *ptr, int64_t ms) {
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.SetHoverDelayMs: expected Viper.Game.UI.HudTooltip");
+        checked_tooltip(ptr, "UITooltip.SetHoverDelayMs: expected Zanna.Game.UI.HudTooltip");
     if (t)
         t->hover_delay_ms = ms < 0 ? 0 : ms;
 }
@@ -1229,7 +1229,7 @@ void rt_uitooltip_set_hover_delay_ms(void *ptr, int64_t ms) {
 void rt_uitooltip_update(
     void *ptr, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms) {
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.HudTooltip");
+        checked_tooltip(ptr, "UITooltip.Update: expected Zanna.Game.UI.HudTooltip");
     if (!t)
         return;
     t->target_x = mx;
@@ -1251,7 +1251,7 @@ void rt_uitooltip_update(
 void rt_uitooltip_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.HudTooltip");
+        checked_tooltip(ptr, "UITooltip.Draw: expected Zanna.Game.UI.HudTooltip");
     if (!t || !canvas || !ui_resolve_draw_ops(canvas, "UITooltip.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!t->visible || t->text[0] == '\0')
@@ -1434,19 +1434,19 @@ void *rt_uimodal_new_at(int64_t x, int64_t y, int64_t w, int64_t h) {
 }
 
 void rt_uimodal_set_title(void *ptr, rt_string title) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.SetTitle: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.SetTitle: expected Zanna.Game.UI.Modal");
     if (m)
         ui_copy_text(m->title, sizeof(m->title), title);
 }
 
 void rt_uimodal_set_content(void *ptr, rt_string text) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.SetContent: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.SetContent: expected Zanna.Game.UI.Modal");
     if (m)
         ui_copy_text(m->content_text, sizeof(m->content_text), text);
 }
 
 int64_t rt_uimodal_add_button(void *ptr, rt_string text, int64_t return_value) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddButton: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddButton: expected Zanna.Game.UI.Modal");
     if (!m)
         return -1;
     if (!ensure_modal_button_capacity(m, m->button_count + 1)) {
@@ -1463,7 +1463,7 @@ int64_t rt_uimodal_add_button(void *ptr, rt_string text, int64_t return_value) {
 
 void rt_uimodal_set_default_button(void *ptr, int64_t index) {
     rt_uimodal_impl *m =
-        checked_modal(ptr, "UIModal.SetDefaultButton: expected Viper.Game.UI.Modal");
+        checked_modal(ptr, "UIModal.SetDefaultButton: expected Zanna.Game.UI.Modal");
     if (!m || index < 0 || index >= m->button_count)
         return;
     for (int64_t i = 0; i < m->button_count; i++)
@@ -1474,7 +1474,7 @@ void rt_uimodal_set_default_button(void *ptr, int64_t index) {
 
 void rt_uimodal_set_cancel_button(void *ptr, int64_t index) {
     rt_uimodal_impl *m =
-        checked_modal(ptr, "UIModal.SetCancelButton: expected Viper.Game.UI.Modal");
+        checked_modal(ptr, "UIModal.SetCancelButton: expected Zanna.Game.UI.Modal");
     if (!m || index < 0 || index >= m->button_count)
         return;
     for (int64_t i = 0; i < m->button_count; i++)
@@ -1483,7 +1483,7 @@ void rt_uimodal_set_cancel_button(void *ptr, int64_t index) {
 }
 
 void rt_uimodal_add_child(void *ptr, void *child_widget) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddChild: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddChild: expected Zanna.Game.UI.Modal");
     if (!m || !child_widget)
         return;
     if (!ensure_modal_child_capacity(m, m->child_count + 1)) {
@@ -1495,7 +1495,7 @@ void rt_uimodal_add_child(void *ptr, void *child_widget) {
 }
 
 void rt_uimodal_open(void *ptr) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Open: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Open: expected Zanna.Game.UI.Modal");
     if (!m)
         return;
     m->open = 1;
@@ -1504,18 +1504,18 @@ void rt_uimodal_open(void *ptr) {
 }
 
 void rt_uimodal_close(void *ptr) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Close: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Close: expected Zanna.Game.UI.Modal");
     if (m)
         m->open = 0;
 }
 
 int8_t rt_uimodal_is_open(void *ptr) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.IsOpen: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.IsOpen: expected Zanna.Game.UI.Modal");
     return m ? m->open : 0;
 }
 
 int64_t rt_uimodal_get_result(void *ptr) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Result: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Result: expected Zanna.Game.UI.Modal");
     return m ? m->result : -1;
 }
 
@@ -1531,7 +1531,7 @@ static int64_t modal_trigger_button(rt_uimodal_impl *m, int64_t index) {
 }
 
 int64_t rt_uimodal_handle_key(void *ptr, int64_t key_code, int8_t shift_held) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.HandleKey: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.HandleKey: expected Zanna.Game.UI.Modal");
     if (!m || !m->open)
         return -1;
     if (key_code == UI_KEY_TAB && m->button_count > 0) {
@@ -1570,7 +1570,7 @@ int64_t rt_uimodal_handle_key(void *ptr, int64_t key_code, int8_t shift_held) {
 }
 
 int64_t rt_uimodal_handle_click(void *ptr, int64_t mx, int64_t my) {
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.HandleClick: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.HandleClick: expected Zanna.Game.UI.Modal");
     if (!m || !m->open)
         return -1;
     int64_t button_w = 88;
@@ -1595,7 +1595,7 @@ int64_t rt_uimodal_handle_click(void *ptr, int64_t mx, int64_t my) {
 
 void rt_uimodal_draw(void *ptr, void *canvas) {
     rt_gameui_draw_ops_t ops;
-    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Draw: expected Viper.Game.UI.Modal");
+    rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Draw: expected Zanna.Game.UI.Modal");
     if (!m || !canvas || !ui_resolve_draw_ops(canvas, "UIModal.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!m->open || !m->visible)

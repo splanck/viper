@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -305,7 +305,7 @@ TEST(ZiaProjectIndex, DirtyBufferUpdateReplacesIndexedSource) {
 
 TEST(ZiaRuntimeBridge, HoverOnQualifiedRuntimeClassIncludesAuthoredDocumentation) {
     const std::string source = "module Main;\n"
-                               "func use(app: Viper.GUI.App) {}\n";
+                               "func use(app: Zanna.GUI.App) {}\n";
     rt_string sourceStr = str(source);
     rt_string pathStr = str("runtime_class_hover.zia");
     void *hover = rt_zia_hover_info_for_file(sourceStr, pathStr, 2, columnOf(source, 2, "App"));
@@ -314,7 +314,7 @@ TEST(ZiaRuntimeBridge, HoverOnQualifiedRuntimeClassIncludesAuthoredDocumentation
 
     ASSERT_TRUE(hover != nullptr);
     EXPECT_TRUE(mapBool(hover, "available"));
-    EXPECT_EQ(mapStr(hover, "type"), "Viper.GUI.App");
+    EXPECT_EQ(mapStr(hover, "type"), "Zanna.GUI.App");
     EXPECT_TRUE(mapStr(hover, "documentation").find("Owns a GUI application window") !=
                 std::string::npos);
     releaseObj(hover);
@@ -322,7 +322,7 @@ TEST(ZiaRuntimeBridge, HoverOnQualifiedRuntimeClassIncludesAuthoredDocumentation
 
 TEST(ZiaRuntimeBridge, HoverOnAliasedRuntimeClassIncludesAuthoredDocumentation) {
     const std::string source = "module Main;\n"
-                               "bind Viper.GUI as GUI;\n"
+                               "bind Zanna.GUI as GUI;\n"
                                "func use(app: GUI.App) {}\n";
     rt_string sourceStr = str(source);
     rt_string pathStr = str("runtime_class_alias_hover.zia");
@@ -332,7 +332,7 @@ TEST(ZiaRuntimeBridge, HoverOnAliasedRuntimeClassIncludesAuthoredDocumentation) 
 
     ASSERT_TRUE(hover != nullptr);
     EXPECT_TRUE(mapBool(hover, "available"));
-    EXPECT_EQ(mapStr(hover, "type"), "Viper.GUI.App");
+    EXPECT_EQ(mapStr(hover, "type"), "Zanna.GUI.App");
     EXPECT_TRUE(mapStr(hover, "documentation").find("Owns a GUI application window") !=
                 std::string::npos);
     releaseObj(hover);
@@ -341,5 +341,5 @@ TEST(ZiaRuntimeBridge, HoverOnAliasedRuntimeClassIncludesAuthoredDocumentation) 
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

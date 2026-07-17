@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -53,7 +53,7 @@
 #include "frontends/zia/ZiaAstPrinter.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/verify/Verifier.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>

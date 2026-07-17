@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -769,7 +769,7 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         if (!sig && segs.size() >= 2) {
             // Runtime class-method alias fallback: classes may expose methods that
             // alias functions registered under a different canonical name (e.g.
-            // Viper.Data.Json.GetStr aliases Viper.Collections.Map.GetStr). Resolve
+            // Zanna.Data.Json.GetStr aliases Zanna.Collections.Map.GetStr). Resolve
             // the class surface and rewrite the call to the alias target so the
             // rest of the pipeline (argument checks, lowering) sees the real
             // function, keeping BASIC's callable surface equal to Zia's.
@@ -1012,7 +1012,7 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
                 const auto *lit = c.args[i] ? as<const IntExpr>(*c.args[i]) : nullptr;
                 if (!(argTy == Type::Int && lit && lit->value == 0)) {
                     std::string msg = "argument " + std::to_string(i + 1) + " to " + c.callee +
-                                      " expects an OBJECT; box primitives with Viper.Core.Box";
+                                      " expects an OBJECT; box primitives with Zanna.Core.Box";
                     de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
                 }
             }
@@ -1039,12 +1039,12 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             continue;
         // Relax type checking for selected runtime helpers that operate on opaque pointers.
         // Permit pointer-typed values to match integer-typed parameters for
-        // Viper.Text.StringBuilder.* canonical helpers.
+        // Zanna.Text.StringBuilder.* canonical helpers.
         bool relaxPtrArg = false;
         if (!c.calleeQualified.empty()) {
             // Build canonical lowercase name
             std::string qcanon = CanonicalizeQualified(c.calleeQualified);
-            if (qcanon.rfind("viper.text.stringbuilder.", 0) == 0) {
+            if (qcanon.rfind("zanna.text.stringbuilder.", 0) == 0) {
                 relaxPtrArg = true;
             }
         }

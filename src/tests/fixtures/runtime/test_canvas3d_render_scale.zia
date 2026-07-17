@@ -1,9 +1,9 @@
 module TestCanvas3DRenderScale;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Render-scale coverage (software backend):
 //   - TrySetRenderScale succeeds where BackendSupports("render-scale") is true.

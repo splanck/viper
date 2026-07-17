@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include "frontends/basic/lower/Emitter.hpp"
 
 #include "il/core/Linkage.hpp"
-#include "viper/il/IRBuilder.hpp"
+#include "zanna/il/IRBuilder.hpp"
 
 #include <cassert>
 #include <memory>

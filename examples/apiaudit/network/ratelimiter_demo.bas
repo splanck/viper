@@ -1,8 +1,8 @@
-' API Audit: Viper.Network.RateLimiter (BASIC)
-PRINT "=== API Audit: Viper.Network.RateLimiter ==="
+' API Audit: Zanna.Network.RateLimiter (BASIC)
+PRINT "=== API Audit: Zanna.Network.RateLimiter ==="
 
 PRINT "--- New ---"
-DIM rl AS OBJECT = Viper.Network.RateLimiter.New(10, 5.0)
+DIM rl AS OBJECT = Zanna.Network.RateLimiter.New(10, 5.0)
 
 PRINT "--- Properties ---"
 PRINT rl.Available

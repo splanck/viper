@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -94,7 +94,7 @@ void vg_editor_buffer_destroy(vg_editor_buffer_t *buf) {
             free_line(&buf->lines[i]);
         free(buf->lines);
     }
-    viper_text_buffer_free((viper_text_buffer_t *)buf->document_buffer);
+    zanna_text_buffer_free((zanna_text_buffer_t *)buf->document_buffer);
     edit_history_destroy(buf->history);
     free(buf->highlight_spans);
     free(buf->semantic_tokens);

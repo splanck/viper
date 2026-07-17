@@ -1,8 +1,8 @@
 // Test: Tilemap I/O, auto-tiling, and tile properties
 module TestTilemapIO;
 
-bind Viper.Terminal;
-bind Viper.Graphics2D.Tilemap as Tilemap;
+bind Zanna.Terminal;
+bind Zanna.Graphics2D.Tilemap as Tilemap;
 
 func start() {
     // Test 1: Tile properties

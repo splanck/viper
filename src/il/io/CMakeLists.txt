@@ -1,4 +1,4 @@
-add_library(viper_il_io STATIC
+add_library(zanna_il_io STATIC
         FunctionParser.cpp
         FunctionParser_Prototype.cpp
         FunctionParser_Body.cpp
@@ -20,16 +20,16 @@ add_library(viper_il_io STATIC
         ../../parse/Cursor.cpp
 )
 
-target_link_libraries(viper_il_io
+target_link_libraries(zanna_il_io
         PUBLIC
-        viper_il_core
+        zanna_il_core
         il_runtime
         PRIVATE
-        viper_common_opts
+        zanna_common_opts
 )
 
-target_include_directories(viper_il_io PUBLIC
+target_include_directories(zanna_il_io PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/zanna>
 )

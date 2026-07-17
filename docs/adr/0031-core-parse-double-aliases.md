@@ -17,8 +17,8 @@ retirement (VDOC-233).
 ## Context
 
 The runtime overhaul naming policy prefers plain, type-specific names over
-compressed abbreviations. `Viper.Core.Parse.TryNum` and
-`Viper.Core.Parse.NumOr` both operate on `f64` values, but `Num` is less clear
+compressed abbreviations. `Zanna.Core.Parse.TryNum` and
+`Zanna.Core.Parse.NumOr` both operate on `f64` values, but `Num` is less clear
 than the rest of the parse surface:
 
 - `TryInt` names the target integer type family.
@@ -32,13 +32,13 @@ overhaul must be additive.
 
 Add canonical aliases:
 
-- `Viper.Core.Parse.TryDouble(str) -> Option`
-- `Viper.Core.Parse.DoubleOr(str, f64) -> f64`
+- `Zanna.Core.Parse.TryDouble(str) -> Option`
+- `Zanna.Core.Parse.DoubleOr(str, f64) -> f64`
 
 Keep the existing names:
 
-- `Viper.Core.Parse.TryNum`
-- `Viper.Core.Parse.NumOr`
+- `Zanna.Core.Parse.TryNum`
+- `Zanna.Core.Parse.NumOr`
 
 Both name sets lower to the same runtime implementations and carry equivalent
 ownership metadata. New docs and examples should prefer `TryDouble` and

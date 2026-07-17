@@ -1,17 +1,17 @@
 // =============================================================================
-// API Audit: Viper.Crypto.Cipher - Symmetric Encryption
+// API Audit: Zanna.Crypto.Cipher - Symmetric Encryption
 // =============================================================================
 // Tests: GenerateKey, Encrypt, DecryptResult, TryDecrypt,
 //        EncryptWithKey, DecryptWithKeyResult, DeriveKey
 // =============================================================================
 
 module CipherDemo;
-bind Viper.Crypto;
-bind Viper.Collections;
-bind Viper.Terminal;
+bind Zanna.Crypto;
+bind Zanna.Collections;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Crypto.Cipher ===");
+    Say("=== API Audit: Zanna.Crypto.Cipher ===");
 
     // --- GenerateKey ---
     Say("--- GenerateKey ---");

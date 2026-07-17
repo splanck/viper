@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/physics/rt_collider3d.c
 // Purpose: Collider3D runtime implementation for reusable 3D collision shapes.
-//   Implements Viper.Graphics3D.Collider3D — box / sphere / capsule / convex
+//   Implements Zanna.Graphics3D.Collider3D — box / sphere / capsule / convex
 //   hull / triangle mesh / compound / heightfield primitives that physics
 //   bodies attach to. Caches a local-space AABB for broadphase queries and
 //   exposes raw accessors for the physics core's narrow-phase pipeline.
@@ -33,7 +33,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_collider3d.h"
 #include "rt_quickhull3d.h"
@@ -1496,4 +1496,4 @@ int8_t rt_collider3d_get_heightfield_info_raw(void *collider,
 
 #else
 typedef int rt_collider3d_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

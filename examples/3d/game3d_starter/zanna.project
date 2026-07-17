@@ -1,0 +1,12 @@
+project game3d_starter
+version 0.1.0
+lang zia
+entry main.zia
+
+package-name "Game3D Starter"
+package-description "A code-first Zanna Game3D starter scene"
+package-identifier org.zanna-lang.game3d-starter
+package-author "Zanna Project"
+package-license MIT
+
+asset assets assets

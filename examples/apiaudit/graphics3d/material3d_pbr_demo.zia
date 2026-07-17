@@ -1,7 +1,7 @@
 module Material3DPBRDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Material3D PBR Demo ===");

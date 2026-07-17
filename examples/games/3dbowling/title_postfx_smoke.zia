@@ -1,10 +1,10 @@
 module title_postfx_smoke;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
-bind Viper.Terminal as Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
+bind Zanna.Terminal as Terminal;
 bind "./config";
 bind "./menu";
 bind "./engine/renderer";

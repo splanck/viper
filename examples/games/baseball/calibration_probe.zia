@@ -11,12 +11,12 @@
 //          errors, plate appearances per game. Each is checked against a
 //          (min, max) band scaled by 100 (so a band of (700, 950) means
 //          7.00 to 9.50 per game).
-// Run via: viper run examples/games/baseball/calibration_probe.zia
+// Run via: zanna run examples/games/baseball/calibration_probe.zia
 // ============================================================================
 module calibration_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - TextureAsset3D handles are GC-managed runtime objects.
 //   - Borrowed native mip pointers remain owned by the TextureAsset3D object.
-// Links: rt_textureasset3d.c, rt_pixels.h, docs/viperlib/graphics/rendering3d.md
+// Links: rt_textureasset3d.c, rt_pixels.h, docs/zannalib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

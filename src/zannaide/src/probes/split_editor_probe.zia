@@ -1,0 +1,89 @@
+module split_editor_probe;
+
+// ============================================================================
+// MODULE: split_editor_probe
+// PURPOSE: Validate plan 17 — the two-pane split editor. Covers pane creation,
+//          the `editor` alias tracking the focused pane, focus switching, and
+//          independent per-pane buffers, then closing back to a single pane.
+//
+// WHERE-THIS-FITS: EditorEngine keeps `editor` aliased to the focused pane's
+//          widget (left/right); every existing engine.editor consumer therefore
+//          operates on the focused pane. This probe drives that engine directly.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ZannaIDE Split Editor Probe", 1200, 760);
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    engine.SetText("PRIMARY\nline two\n");
+    shell.Poll();
+    shell.Render();
+
+    // Single pane initially: editor aliases the left widget.
+    if engine.PaneCount() != 1 { fail(shell, "expected 1 pane initially"); return; }
+    if engine.splitActive { fail(shell, "splitActive true before split"); return; }
+    if engine.editor != engine.leftWidget { fail(shell, "editor not aliased to left"); return; }
+
+    // Split: a second pane appears showing a copy of the focused content; focus
+    // stays on the primary (left) pane.
+    engine.SplitRight(shell.workbench.editorRow);
+    shell.Render();
+    if engine.PaneCount() != 2 { fail(shell, "expected 2 panes after split"); return; }
+    if engine.splitActive == false { fail(shell, "splitActive false after split"); return; }
+    if engine.rightWidget == null { fail(shell, "rightWidget null after split"); return; }
+    if engine.secondaryFocused { fail(shell, "focus should stay on primary after split"); return; }
+    if engine.editor != engine.leftWidget { fail(shell, "editor moved off left after split"); return; }
+    if engine.rightWidget.Text != "PRIMARY\nline two\n" {
+        fail(shell, "right pane did not copy content: [" + engine.rightWidget.Text + "]");
+        return;
+    }
+
+    // Focus the other (right) pane: the alias and flat state follow it.
+    engine.FocusOtherPane();
+    if engine.secondaryFocused == false { fail(shell, "secondaryFocused false after switch"); return; }
+    if engine.editor != engine.rightWidget { fail(shell, "editor not aliased to right after switch"); return; }
+
+    // Editing the focused (right) pane must NOT change the left pane (independent
+    // buffers in v1).
+    engine.SetText("RIGHT-ONLY\n");
+    if engine.GetText() != "RIGHT-ONLY\n" { fail(shell, "focused edit not reflected"); return; }
+    if engine.leftWidget.Text != "PRIMARY\nline two\n" {
+        fail(shell, "left pane changed by right edit: [" + engine.leftWidget.Text + "]");
+        return;
+    }
+
+    // Switch back: the alias and content return to the left pane, unchanged.
+    engine.FocusOtherPane();
+    if engine.editor != engine.leftWidget { fail(shell, "editor not back on left"); return; }
+    if engine.GetText() != "PRIMARY\nline two\n" {
+        fail(shell, "left content wrong after switch back: [" + engine.GetText() + "]");
+        return;
+    }
+
+    // Close the split: back to one pane on the primary widget.
+    engine.CloseSplit();
+    if engine.PaneCount() != 1 { fail(shell, "expected 1 pane after close"); return; }
+    if engine.splitActive { fail(shell, "splitActive true after close"); return; }
+    if engine.editor != engine.leftWidget { fail(shell, "editor not on left after close"); return; }
+    if engine.rightWidget.IsVisible() { fail(shell, "right pane still visible after close"); return; }
+
+    // Re-splitting after a close works (widget reused).
+    engine.SplitRight(shell.workbench.editorRow);
+    if engine.PaneCount() != 2 { fail(shell, "re-split failed"); return; }
+    engine.CloseSplit();
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

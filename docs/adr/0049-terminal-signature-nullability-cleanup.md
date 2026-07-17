@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-`Viper.Terminal.ReadLine` and `Viper.Terminal.Ask` are compatibility APIs that
+`Zanna.Terminal.ReadLine` and `Zanna.Terminal.Ask` are compatibility APIs that
 historically returned nullable strings on EOF. ADR 0028 added explicit
 `Option`-returning and `Result`-returning APIs for robust application code, but
 the public runtime signature text still exposed `str?` for the older calls.
@@ -26,15 +26,15 @@ compatibility behavior.
 
 Publish the terminal compatibility APIs with ordinary string signatures:
 
-- `Viper.Terminal.ReadLine() -> str`
-- `Viper.Terminal.Ask(prompt: str) -> str`
-- `Viper.Terminal.InputLine() -> str`
+- `Zanna.Terminal.ReadLine() -> str`
+- `Zanna.Terminal.Ask(prompt: str) -> str`
+- `Zanna.Terminal.InputLine() -> str`
 
 The compatibility APIs remain available and keep their existing EOF behavior.
 Runtime API metadata keeps fallibility information and migration targets:
 
-- `ReadLine` and `InputLine` point to `Viper.Terminal.TryReadLine`.
-- `Ask` points to `Viper.Terminal.TryAsk`.
+- `ReadLine` and `InputLine` point to `Zanna.Terminal.TryReadLine`.
+- `Ask` points to `Zanna.Terminal.TryAsk`.
 - Documentation recommends `TryReadLine`/`TryAsk` for optional input and
   `ReadLineResult`/`AskResult` when callers need a diagnostic value.
 

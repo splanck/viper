@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //                 ReadLines/WriteLines preserve line structure.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated
 //                     strings and objects that must be released.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt.hpp"
 #include "rt_bytes.h"
@@ -82,11 +82,11 @@ static const char *get_test_base() {
         tmp = getenv("TMP");
     if (!tmp)
         tmp = "C:\\Temp";
-    snprintf(buf, sizeof(buf), "%s\\viper_file_test_%d", tmp, (int)getpid());
+    snprintf(buf, sizeof(buf), "%s\\zanna_file_test_%d", tmp, (int)getpid());
     return buf;
 #else
     static char buf[256];
-    snprintf(buf, sizeof(buf), "/tmp/viper_file_test_%d", (int)getpid());
+    snprintf(buf, sizeof(buf), "/tmp/zanna_file_test_%d", (int)getpid());
     return buf;
 #endif
 }

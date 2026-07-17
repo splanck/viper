@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Threads.Throttler
+// API Audit: Zanna.Threads.Throttler
 // =============================================================================
 // Tests: New, Try, CanProceed, Reset, Interval, Count, RemainingMs
 // =============================================================================
 
 module ThrottlerDemo;
-bind Viper.Threads.Throttler as Throttler;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Throttler as Throttler;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Throttler ===");
+    Say("=== API Audit: Zanna.Threads.Throttler ===");
 
     // --- New ---
     Say("--- New ---");

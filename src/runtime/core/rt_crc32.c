@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_crc32.c
 // Purpose: Implements the CRC32 checksum (IEEE 802.3 / Ethernet polynomial
-//          0xEDB88320) shared by the Viper runtime's hash, compress, and
+//          0xEDB88320) shared by the Zanna runtime's hash, compress, and
 //          archive modules. Compatible with ZIP, PNG, GZIP, and other standard
 //          formats that use the same polynomial.
 //

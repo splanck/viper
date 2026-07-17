@@ -1,8 +1,8 @@
 module VersionDemo;
-bind Viper.Terminal;
-bind Viper.Text.Version as Ver;
+bind Zanna.Terminal;
+bind Zanna.Text.Version as Ver;
 func start() {
-    Say("=== Viper.Text.Version API Audit ===");
+    Say("=== Zanna.Text.Version API Audit ===");
 
     // --- Parse ---
     Say("--- Parse ---");

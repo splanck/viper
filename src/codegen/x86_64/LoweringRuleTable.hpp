@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <limits>
 #include <string_view>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 struct ILInstr;
 class MIRBuilder;
@@ -687,4 +687,4 @@ bool matchesRuleSpec(const lowering::RuleSpec &spec, const ILInstr &instr);
 /// @see matchesRuleSpec() for the matching algorithm details
 const lowering::RuleSpec *lookupRuleSpec(const ILInstr &instr);
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

@@ -1,10 +1,10 @@
 ' EXPECT_EXIT: 1
 ' EXPECT_ERR: Thread.Start: null entry
-' COVER: Viper.Threads.Thread.Start
+' COVER: Zanna.Threads.Thread.Start
 
-DIM t AS Viper.Threads.Thread
+DIM t AS Zanna.Threads.Thread
 
-Viper.Threads.Thread.Start(NOTHING, NOTHING)
+Zanna.Threads.Thread.Start(NOTHING, NOTHING)
 
 PRINT "UNREACHABLE"
 END

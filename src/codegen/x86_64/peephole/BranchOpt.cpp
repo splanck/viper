@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 namespace {
 
@@ -397,7 +397,7 @@ void invertConditionalBranches(MFunction &fn, PeepholeStats &stats) {
         if (!ccImm)
             continue;
 
-        // Viper CC inversion table:
+        // Zanna CC inversion table:
         //  0 (eq) <-> 1 (ne), 2 (lt) <-> 5 (ge), 3 (le) <-> 4 (gt)
         //  6 (a)  <-> 9 (be), 7 (ae) <-> 8 (b),  10 (p) <-> 11 (np)
         //  12 (o) <-> 13 (no)
@@ -440,4 +440,4 @@ void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats) {
     }
 }
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

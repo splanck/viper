@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_bits.h
-// Purpose: Bit manipulation utilities implementing the Viper.Bits runtime namespace, providing
+// Purpose: Bit manipulation utilities implementing the Zanna.Bits runtime namespace, providing
 // bitwise operations, shifts, population count, and bit scanning on 64-bit integer values.
 //
 // Key invariants:

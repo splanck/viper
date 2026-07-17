@@ -1,16 +1,16 @@
 // test_lazy.zia — Lazy, LazySeq
 module TestLazy;
 
-bind Viper.Terminal;
-bind Viper.Functional.Lazy;
-bind Viper.Functional.LazySeq;
+bind Zanna.Terminal;
+bind Zanna.Functional.Lazy;
+bind Zanna.Functional.LazySeq;
 
 func start() {
-    var lazy = Viper.Functional.Lazy.OfI64(42);
-    SayInt(Viper.Functional.Lazy.GetI64(lazy));
+    var lazy = Zanna.Functional.Lazy.OfI64(42);
+    SayInt(Zanna.Functional.Lazy.GetI64(lazy));
 
-    var seq = Viper.Functional.LazySeq.Range(1, 5, 1);
-    var out = Viper.Functional.LazySeq.ToSeqLimited(seq, 3);
+    var seq = Zanna.Functional.LazySeq.Range(1, 5, 1);
+    var out = Zanna.Functional.LazySeq.ToSeqLimited(seq, 3);
     SayInt(out.Count);
 
     Say("done");

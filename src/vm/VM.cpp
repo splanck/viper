@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 //
 //   4. EXECUTION CONTEXT MANAGEMENT
 //      - setCurrentContext/clearCurrentContext: Track current instruction
-//      - Opcode counting infrastructure (when VIPER_VM_OPCOUNTS enabled)
+//      - Opcode counting infrastructure (when ZANNA_VM_OPCOUNTS enabled)
 //
 //   5. TRAP HANDLING
 //      - prepareTrap(): Walk stack to find handlers, wire up resume state
@@ -257,7 +257,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver {
     }
 };
 
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
 /// @brief Dispatch driver that uses computed goto threading.
 /// @note This implementation uses an optimized fast-path dispatch that inlines
 ///       the common case (next instruction in same block) to minimize overhead.
@@ -329,7 +329,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
             currentInstr = &state.bb->instructions[state.ip];                                      \
             state.currentInstr = currentInstr;                                                     \
             opcode = currentInstr->op;                                                             \
-            VIPER_VM_DISPATCH_BEFORE(state, opcode);                                               \
+            ZANNA_VM_DISPATCH_BEFORE(state, opcode);                                               \
             DISPATCH_TO(opcode);                                                                   \
         }                                                                                          \
         goto LBL_SLOW_PATH;                                                                        \
@@ -374,7 +374,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
 
                 opcode = currentInstr->op;
                 vm.traceInstruction(*currentInstr, state.fr);
-                VIPER_VM_DISPATCH_BEFORE(state, opcode);
+                ZANNA_VM_DISPATCH_BEFORE(state, opcode);
                 DISPATCH_TO(opcode);
 
                 // =============================================================
@@ -418,7 +418,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
 
                 opcode = currentInstr->op;
                 vm.traceInstruction(*currentInstr, state.fr);
-                VIPER_VM_DISPATCH_BEFORE(state, opcode);
+                ZANNA_VM_DISPATCH_BEFORE(state, opcode);
                 DISPATCH_TO(opcode);
 
                 // =============================================================
@@ -441,7 +441,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
         return false; // Unreachable but placates control-flow analysis.
     }
 };
-#endif // VIPER_THREADING_SUPPORTED
+#endif // ZANNA_THREADING_SUPPORTED
 
 } // namespace detail
 
@@ -664,7 +664,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr) {
 ///          plus internal enabled() check to a single boolean test.
 void VM::traceInstruction(const Instr &instr, Frame &frame) {
     ++instrCount;
-#if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
+#if !defined(ZANNA_VM_TRACE) || ZANNA_VM_TRACE
     // Fast-path: skip tracer call entirely when tracing is disabled.
     // The tracingActive_ flag is cached from tracer.isEnabled() to avoid
     // repeated function calls on every instruction.
@@ -682,7 +682,7 @@ void VM::traceInstruction(const Instr &instr, Frame &frame) {
 /// @param exec Result returned by the opcode handler.
 /// @return True when execution of the enclosing function has completed.
 bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec) {
-    VIPER_VM_DISPATCH_AFTER(state,
+    ZANNA_VM_DISPATCH_AFTER(state,
                             state.currentInstr ? state.currentInstr->op : il::core::Opcode::Trap);
     if (state.exitRequested) [[unlikely]] {
         if (!state.hasPendingResult) {
@@ -736,7 +736,7 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
             return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
                 new detail::SwitchDispatchDriver());
         case DispatchKind::Threaded:
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
             return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
                 new detail::ThreadedDispatchDriver());
 #else
@@ -768,7 +768,7 @@ static inline bool handleTrapDispatchInternal(VM &vm,
 /// @return Slot containing the function's return value (or zero when absent).
 ///
 /// @note VMContext is still created for compatibility with the dispatch driver interface,
-/// but the hot-path macros (VIPER_VM_DISPATCH_BEFORE/AFTER) now use ExecState directly,
+/// but the hot-path macros (ZANNA_VM_DISPATCH_BEFORE/AFTER) now use ExecState directly,
 /// avoiding the need to access VMContext on every instruction. This eliminates the
 /// overhead described in CRITICAL-1 of vm_issues.txt.
 Slot VM::runFunctionLoop(ExecState &st) {
@@ -790,7 +790,7 @@ Slot VM::runFunctionLoop(ExecState &st) {
             // On Windows, hardware exceptions (access violations, divide-by-zero,
             // stack overflow) manifest as Structured Exceptions rather than POSIX
             // signals.  Wrap the dispatch step so that hardware faults produce a
-            // clean Viper trap message instead of an unhandled-exception dialog.
+            // clean Zanna trap message instead of an unhandled-exception dialog.
             //
             // Note: __try/__except cannot appear in the same function as C++ objects
             // with destructors in MSVC — move the dispatch call to a separate helper.
@@ -856,7 +856,7 @@ static int sehRunStep(int (*fn)(void *), void *ctx) {
 }
 
 /// @brief Execute one dispatch step, translating Windows hardware exceptions into
-/// Viper traps.
+/// Zanna traps.
 bool VM::runDispatchStep(VMContext &context, ExecState &st) {
     struct Args {
         VM *vm;
@@ -1011,7 +1011,7 @@ uint64_t VM::getInstrCount() const {
 
 /// @brief Emit a tail-call event to the trace sink when enabled.
 void VM::onTailCall(const Function *from, const Function *to) {
-#if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
+#if !defined(ZANNA_VM_TRACE) || ZANNA_VM_TRACE
     tracer.onTailCall(from, to);
 #else
     (void)from;
@@ -1019,7 +1019,7 @@ void VM::onTailCall(const Function *from, const Function *to) {
 #endif
 }
 
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
 const std::array<uint64_t, il::core::kNumOpcodes> &VM::opcodeCounts() const {
     return opCounts_;
 }

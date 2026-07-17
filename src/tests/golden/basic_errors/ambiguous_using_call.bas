@@ -1,5 +1,5 @@
 REM BASIC: Ambiguous unqualified call from two USING imports
-USING Viper.Terminal
+USING Zanna.Terminal
 USING My.Console
 
 NAMESPACE My.Console

@@ -100,8 +100,8 @@ Your intuition about what's slow is probably wrong. Programmers routinely spend 
 The simplest way to measure is with a stopwatch:
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 func start() {
     var startTime = Time.Clock.Ticks();
@@ -120,8 +120,8 @@ This tells you how long `doExpensiveWork` takes. But what if `doExpensiveWork` c
 You can time individual sections:
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 func processData(data: List[Record]) {
     var t0 = Time.Clock.Ticks();
@@ -163,8 +163,8 @@ Now you know: validation is the bottleneck. Optimizing parsing or computation wo
 Let's make timing reusable:
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 func timed[T](name: String, work: func() -> T) -> T {
     var start = Time.Clock.TicksUs();
@@ -204,11 +204,11 @@ Manual timing works for small programs, but for larger ones, you need a *profile
 
 ### Using `--profile`
 
-Viper includes a built-in profiler that reports instruction count and wall-clock timing:
+Zanna includes a built-in profiler that reports instruction count and wall-clock timing:
 
 ```bash
 # Profile a program — shows instruction count and elapsed time
-viper run --profile myproject/
+zanna run --profile myproject/
 
 # Output (on stderr):
 # [SUMMARY] instr=1284350 time_ms=42.7
@@ -219,32 +219,32 @@ The `--profile` flag enables both instruction counting and wall-clock timing in 
 You can also use the individual flags for more targeted analysis:
 
 ```bash
-# Instruction count only (via viper -run for IL files)
-viper -run --count program.il
+# Instruction count only (via zanna -run for IL files)
+zanna -run --count program.il
 
 # Wall-clock timing only
-viper -run --time program.il
+zanna -run --time program.il
 
 # Both (equivalent to --profile)
-viper -run --count --time program.il
+zanna -run --count --time program.il
 ```
 
-### Using Viper's Diagnostic Flags
+### Using Zanna's Diagnostic Flags
 
-Viper provides additional diagnostic flags to inspect the compiled representation of your program:
+Zanna provides additional diagnostic flags to inspect the compiled representation of your program:
 
 ```bash
 # Dump the IL (intermediate language) representation
-viper run --dump-il myproject/
+zanna run --dump-il myproject/
 
 # Dump the optimized IL after optimization passes
-viper run --dump-il-opt myproject/
+zanna run --dump-il-opt myproject/
 
 # Dump IL before and after each optimization pass
-viper run --dump-il-passes myproject/
+zanna run --dump-il-passes myproject/
 ```
 
-The `--dump-il` flag shows the raw IL your code compiles to, while `--dump-il-opt` shows the IL after Viper's optimizer has run. Comparing the two helps you understand what the optimizer does and whether your code structure helps or hinders optimization.
+The `--dump-il` flag shows the raw IL your code compiles to, while `--dump-il-opt` shows the IL after Zanna's optimizer has run. Comparing the two helps you understand what the optimizer does and whether your code structure helps or hinders optimization.
 
 ### Reading IL Output for Performance Clues
 
@@ -406,7 +406,7 @@ To determine Big O, count loops:
 But watch for hidden loops:
 
 ```rust
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 
 func sneakyQuadratic(items: List[String]) {
     for item in items {
@@ -494,8 +494,8 @@ With 1,000,000 items: ~1,000,000 operations (very fast)
 Let's benchmark all three:
 
 ```rust
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 func start() {
     var sizes = [1000, 10000, 100000];
@@ -630,11 +630,11 @@ if !seen.Contains(item) {        // O(1) each time
 
 ### Pattern 3: String Concatenation in Loops
 
-Strings are immutable in Viper. Each concatenation creates a new String:
+Strings are immutable in Zanna. Each concatenation creates a new String:
 
 **Slow:**
 ```rust
-bind Fmt = Viper.Text.Fmt;
+bind Fmt = Zanna.Text.Fmt;
 
 func buildSlow() -> String {
     var result = "";
@@ -649,8 +649,8 @@ Each `+=` creates a new String, copies all existing content, adds the new part. 
 
 **Fast:**
 ```rust
-bind Builder = Viper.Text.StringBuilder;
-bind Fmt = Viper.Text.Fmt;
+bind Builder = Zanna.Text.StringBuilder;
+bind Fmt = Zanna.Text.Fmt;
 
 func buildFast() -> String {
     var builder = Builder.New();
@@ -920,9 +920,9 @@ var data3 = Http.Get(url3);  // Wait 200ms
 
 **Fast: Parallel** *(see [Chapter 24](../part4-applications/24-concurrency.md))*
 ```rust
-bind Async = Viper.Threads.Async;
-bind Future = Viper.Threads.Future;
-bind Http = Viper.Network.Http;
+bind Async = Zanna.Threads.Async;
+bind Future = Zanna.Threads.Future;
+bind Http = Zanna.Network.Http;
 
 func fetchUrl1(arg: Any) -> Any {
     return Http.Get(url1);
@@ -1041,7 +1041,7 @@ Result: **1650 ms** (30% faster). No more giant array allocation.
 ```text
 func countWords_v3(text: String) -> Map[String, Integer] {
     var counts: Map[String, Integer] = new Map();
-    var builder = new Viper.Text.StringBuilder();
+    var builder = new Zanna.Text.StringBuilder();
 
     for i in 0..text.Length {
         var c = text[i];
@@ -1169,7 +1169,7 @@ Even if this takes 500ms, optimizing it would save 500ms once per program run. N
 
 ## Native Compilation
 
-For CPU-intensive work, Viper can compile to native machine code:
+For CPU-intensive work, Zanna can compile to native machine code:
 
 ```bash
 # VM interpretation (default)
@@ -1202,9 +1202,9 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 ### A Proper Benchmark Function
 
 ```text
-bind Viper.Time;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Time;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func benchmark(name: String, iterations: Integer, work: func()) {
     // Warm up: let JIT/caches stabilize
@@ -1269,7 +1269,7 @@ When your program is slow but you're not sure why, follow this systematic approa
 First, create a test case that reliably shows the problem:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func reproduceSlowness() {
     var testData = loadTestData("large_dataset.json");
@@ -1298,7 +1298,7 @@ Add `Time.Clock.Ticks()` measurements around suspect sections. Is the hotspot wh
 If the profiler points to a large function, add internal timing:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func processData(data: List[Record]) {
     var t0 = Time.Clock.Ticks();
@@ -1378,8 +1378,8 @@ When debugging performance, look for these usual suspects:
 
 **Zia**
 ```text
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 func benchmark(name: String, work: func()) {
     var start = Time.Clock.Ticks();

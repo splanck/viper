@@ -12,36 +12,36 @@ Accepted
 
 ## Context
 
-`Viper.Memory` currently mixes two different concepts:
+`Zanna.Memory` currently mixes two different concepts:
 
 - manual retain/release hooks that are sharp, low-level ownership tools.
-- cycle-collector diagnostics and tuning under `Viper.Memory.GC`.
+- cycle-collector diagnostics and tuning under `Zanna.Memory.GC`.
 
 The runtime overhaul plan calls for sharp lifetime tools to live under an
 explicit unsafe namespace and runtime tuning controls to live under
-`Viper.Runtime`. Existing source and IL must continue to work.
+`Zanna.Runtime`. Existing source and IL must continue to work.
 
 ## Decision
 
 Add compatibility-preserving aliases:
 
-- `Viper.Runtime.Unsafe.Retain`
-- `Viper.Runtime.Unsafe.Release`
-- `Viper.Runtime.Unsafe.RetainStr`
-- `Viper.Runtime.Unsafe.ReleaseStr`
-- `Viper.Runtime.GC.Collect`
-- `Viper.Runtime.GC.TrackedCount`
-- `Viper.Runtime.GC.TotalCollected`
-- `Viper.Runtime.GC.PassCount`
-- `Viper.Runtime.GC.SetThreshold`
-- `Viper.Runtime.GC.GetThreshold`
+- `Zanna.Runtime.Unsafe.Retain`
+- `Zanna.Runtime.Unsafe.Release`
+- `Zanna.Runtime.Unsafe.RetainStr`
+- `Zanna.Runtime.Unsafe.ReleaseStr`
+- `Zanna.Runtime.GC.Collect`
+- `Zanna.Runtime.GC.TrackedCount`
+- `Zanna.Runtime.GC.TotalCollected`
+- `Zanna.Runtime.GC.PassCount`
+- `Zanna.Runtime.GC.SetThreshold`
+- `Zanna.Runtime.GC.GetThreshold`
 
-The existing `Viper.Memory.*` and `Viper.Memory.GC.*` functions remain
+The existing `Zanna.Memory.*` and `Zanna.Memory.GC.*` functions remain
 registered and keep their behavior.
 
 ## Consequences
 
-Documentation and new examples should prefer `Viper.Runtime.Unsafe` for manual
-reference-count manipulation and `Viper.Runtime.GC` for cycle-collector
-diagnostics. The older `Viper.Memory` namespaces are compatibility surfaces, not
+Documentation and new examples should prefer `Zanna.Runtime.Unsafe` for manual
+reference-count manipulation and `Zanna.Runtime.GC` for cycle-collector
+diagnostics. The older `Zanna.Memory` namespaces are compatibility surfaces, not
 the preferred public shape for new code.

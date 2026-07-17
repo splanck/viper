@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTCollatorTests.cpp
-// Purpose: Validate Viper.Localization.Collator across the three supported
+// Purpose: Validate Zanna.Localization.Collator across the three supported
 //          strength levels, the IgnoreCase / IgnoreAccents toggles, the
 //          sv-SE tailoring for å-after-z, and the SortKey / Sort surface.
 //

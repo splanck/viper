@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 // ---------------------------------------------------------------------------
 // Helpers shared by Zia and BASIC classifiers
@@ -352,4 +352,4 @@ InputKind ReplInputClassifier::classifyBasic(const std::string &input) {
     return InputKind::Complete;
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

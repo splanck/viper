@@ -1,11 +1,11 @@
 module StreamDemo;
-bind Viper.Terminal;
-bind Viper.IO.Stream as Stream;
-bind Viper.IO.File as File;
-bind Viper.Collections.Bytes as Bytes;
-bind Viper.IO.TempFile as TempFile;
+bind Zanna.Terminal;
+bind Zanna.IO.Stream as Stream;
+bind Zanna.IO.File as File;
+bind Zanna.Collections.Bytes as Bytes;
+bind Zanna.IO.TempFile as TempFile;
 func start() {
-    Say("=== API Audit: Viper.IO.Stream ===");
+    Say("=== API Audit: Zanna.IO.Stream ===");
 
     // --- OpenMemory ---
     Say("--- OpenMemory ---");

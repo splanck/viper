@@ -1,9 +1,9 @@
 module TestCanvas3DPostfxParity;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-06 E25 coverage: the depth-aware post-FX chain runs on the CPU path.
 //   - A chain carrying SSAO/DOF/MotionBlur/TAA/SSR attaches on the software

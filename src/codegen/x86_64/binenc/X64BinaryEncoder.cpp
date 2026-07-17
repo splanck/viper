@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -42,7 +42,7 @@
 #include <utility>
 #include <variant>
 
-namespace viper::codegen::x64::binenc {
+namespace zanna::codegen::x64::binenc {
 
 /// Map IL extern names to C runtime symbol names.
 static std::string mapRuntimeSymbol(const std::string &name) {
@@ -1926,4 +1926,4 @@ void X64BinaryEncoder::encodeCallExternal(const std::string &name,
     cs.addRelocationAt(dispOffset, objfile::RelocKind::Branch32, symIdx, -4);
 }
 
-} // namespace viper::codegen::x64::binenc
+} // namespace zanna::codegen::x64::binenc

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_daterange.c
-// Purpose: Implements the DateRange type for the Viper runtime, representing
+// Purpose: Implements the DateRange type for the Zanna runtime, representing
 //          a closed interval [start, end] of Unix timestamps (seconds since
 //          epoch). Provides construction, containment testing, overlap
 //          detection, duration computation, and string formatting.

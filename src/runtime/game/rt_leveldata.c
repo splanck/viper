@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -139,7 +139,7 @@ void *rt_leveldata_load(void *path) {
     // Load is a nullable factory: a missing file must soft-fail to NULL so callers
     // can implement the documented fallback, rather than trapping inside the
     // hardened read path. Pre-check existence with the non-trapping helper, mirroring
-    // Viper.Game.Config.Load (VDOC-238).
+    // Zanna.Game.Config.Load (VDOC-238).
     if (!rt_io_file_exists((rt_string)path))
         return NULL;
 
@@ -271,21 +271,21 @@ fail:
 /// @brief Get the tilemap created from the level's tile layers.
 void *rt_leveldata_get_tilemap(void *level) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.GetTilemap: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.GetTilemap: expected Zanna.Game.LevelData");
     return ld ? ld->tilemap : NULL;
 }
 
 /// @brief Get the number of objects (entity spawn points) in the level.
 int64_t rt_leveldata_object_count(void *level) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.ObjectCount: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.ObjectCount: expected Zanna.Game.LevelData");
     return ld ? ld->object_count : 0;
 }
 
 /// @brief Get the type string of an object at the given index (e.g., "enemy", "item").
 rt_string rt_leveldata_object_type(void *level, int64_t index) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.ObjectType: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.ObjectType: expected Zanna.Game.LevelData");
     if (!ld || index < 0 || index >= ld->object_count)
         return rt_const_cstr("");
     return rt_const_cstr(ld->objects[index].type);
@@ -294,7 +294,7 @@ rt_string rt_leveldata_object_type(void *level, int64_t index) {
 /// @brief Get the ID string of an object at the given index.
 rt_string rt_leveldata_object_id(void *level, int64_t index) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.ObjectId: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.ObjectId: expected Zanna.Game.LevelData");
     if (!ld || index < 0 || index >= ld->object_count)
         return rt_const_cstr("");
     return rt_const_cstr(ld->objects[index].id);
@@ -303,7 +303,7 @@ rt_string rt_leveldata_object_id(void *level, int64_t index) {
 /// @brief Get the X position of an object at the given index.
 int64_t rt_leveldata_object_x(void *level, int64_t index) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.ObjectX: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.ObjectX: expected Zanna.Game.LevelData");
     if (!ld || index < 0 || index >= ld->object_count)
         return 0;
     return ld->objects[index].x;
@@ -312,7 +312,7 @@ int64_t rt_leveldata_object_x(void *level, int64_t index) {
 /// @brief Get the Y position of an object at the given index.
 int64_t rt_leveldata_object_y(void *level, int64_t index) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.ObjectY: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.ObjectY: expected Zanna.Game.LevelData");
     if (!ld || index < 0 || index >= ld->object_count)
         return 0;
     return ld->objects[index].y;
@@ -321,20 +321,20 @@ int64_t rt_leveldata_object_y(void *level, int64_t index) {
 /// @brief Get the player's starting X position from the level properties.
 int64_t rt_leveldata_player_start_x(void *level) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.PlayerStartX: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.PlayerStartX: expected Zanna.Game.LevelData");
     return ld ? ld->player_start_x : 0;
 }
 
 /// @brief Get the player's starting Y position from the level properties.
 int64_t rt_leveldata_player_start_y(void *level) {
     leveldata_impl *ld =
-        checked_leveldata(level, "LevelData.PlayerStartY: expected Viper.Game.LevelData");
+        checked_leveldata(level, "LevelData.PlayerStartY: expected Zanna.Game.LevelData");
     return ld ? ld->player_start_y : 0;
 }
 
 /// @brief Get the theme name from the level properties (e.g., "forest", "cave").
 rt_string rt_leveldata_get_theme(void *level) {
-    leveldata_impl *ld = checked_leveldata(level, "LevelData.Theme: expected Viper.Game.LevelData");
+    leveldata_impl *ld = checked_leveldata(level, "LevelData.Theme: expected Zanna.Game.LevelData");
     if (!ld)
         return rt_const_cstr("");
     return rt_const_cstr(ld->theme);

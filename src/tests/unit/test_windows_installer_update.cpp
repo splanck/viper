@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::installer {
+namespace zanna::installer {
 
 std::wstring utf8ToWide(std::string_view text) {
     if (text.empty())
@@ -81,7 +81,7 @@ std::string wideToUtf8(std::wstring_view text) {
     return result;
 }
 
-} // namespace viper::installer
+} // namespace zanna::installer
 
 namespace {
 
@@ -180,7 +180,7 @@ struct TestSigner {
     }
 
     std::string sign(std::string_view canonical) const {
-        const std::string digestHex = viper::pkg::sha256Hex(
+        const std::string digestHex = zanna::pkg::sha256Hex(
             reinterpret_cast<const uint8_t *>(canonical.data()), canonical.size());
         std::vector<uint8_t> digest = decodeHex(digestHex);
         BCRYPT_PKCS1_PADDING_INFO padding{BCRYPT_SHA256_ALGORITHM};
@@ -211,12 +211,12 @@ struct TestSigner {
     }
 };
 
-viper::installer::HostPackage packageFor(const TestSigner &signer) {
-    viper::installer::HostPackage package;
+zanna::installer::HostPackage packageFor(const TestSigner &signer) {
+    zanna::installer::HostPackage package;
     package.metadata.version = "1.2.3";
     package.metadata.channel = "stable";
     package.metadata.architecture = "x64";
-    package.metadata.updateManifestUrl = "https://updates.example.test/viper/windows.txt";
+    package.metadata.updateManifestUrl = "https://updates.example.test/zanna/windows.txt";
     package.metadata.updateRsaModulus = signer.modulus;
     package.metadata.updateRsaExponent = signer.exponent;
     return package;
@@ -226,15 +226,15 @@ std::string signedManifest(
     const TestSigner &signer,
     std::string_view version,
     std::string_view architecture = "x64",
-    std::string_view downloadUrl = "https://updates.example.test/viper/viper-setup.exe") {
+    std::string_view downloadUrl = "https://updates.example.test/zanna/zanna-setup.exe") {
     std::string canonical =
-        "VIPER-WINDOWS-UPDATE\t1\n"
+        "ZANNA-WINDOWS-UPDATE\t1\n"
         "channel\tstable\n"
         "architecture\t" +
         std::string(architecture) + "\nversion\t" + std::string(version) + "\ndownload-url\t" +
         std::string(downloadUrl) +
         "\nsha256\t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
-        "release-notes-url\thttps://updates.example.test/viper/notes.html\n";
+        "release-notes-url\thttps://updates.example.test/zanna/notes.html\n";
     return canonical + "signature\t" + signer.sign(canonical) + "\n";
 }
 
@@ -243,16 +243,16 @@ std::string signedManifest(
 TEST(WindowsInstallerUpdate, AcceptsAuthenticSameOriginUpgrade) {
     const TestSigner signer;
     const auto result =
-        viper::installer::verifyUpdateManifest(packageFor(signer), signedManifest(signer, "1.3.0"));
-    EXPECT_TRUE(result.status == viper::installer::UpdateStatus::Available);
+        zanna::installer::verifyUpdateManifest(packageFor(signer), signedManifest(signer, "1.3.0"));
+    EXPECT_TRUE(result.status == zanna::installer::UpdateStatus::Available);
     EXPECT_EQ(result.availableVersion, "1.3.0");
 }
 
 TEST(WindowsInstallerUpdate, DetectsCurrentVersion) {
     const TestSigner signer;
     const auto result =
-        viper::installer::verifyUpdateManifest(packageFor(signer), signedManifest(signer, "1.2.3"));
-    EXPECT_TRUE(result.status == viper::installer::UpdateStatus::Current);
+        zanna::installer::verifyUpdateManifest(packageFor(signer), signedManifest(signer, "1.2.3"));
+    EXPECT_TRUE(result.status == zanna::installer::UpdateStatus::Current);
 }
 
 TEST(WindowsInstallerUpdate, RejectsSignatureTampering) {
@@ -260,22 +260,22 @@ TEST(WindowsInstallerUpdate, RejectsSignatureTampering) {
     std::string manifest = signedManifest(signer, "1.3.0");
     manifest.replace(
         manifest.find("version\t1.3.0"), std::strlen("version\t1.3.0"), "version\t9.9.9");
-    EXPECT_THROWS(viper::installer::verifyUpdateManifest(packageFor(signer), manifest),
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(packageFor(signer), manifest),
                   std::runtime_error);
 }
 
 TEST(WindowsInstallerUpdate, RejectsCrossOriginAndWrongArchitecture) {
     const TestSigner signer;
-    EXPECT_THROWS(viper::installer::verifyUpdateManifest(
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(
                       packageFor(signer),
-                      signedManifest(signer, "1.3.0", "x64", "https://evil.example/viper.exe")),
+                      signedManifest(signer, "1.3.0", "x64", "https://evil.example/zanna.exe")),
                   std::runtime_error);
-    EXPECT_THROWS(viper::installer::verifyUpdateManifest(packageFor(signer),
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(packageFor(signer),
                                                          signedManifest(signer, "1.3.0", "arm64")),
                   std::runtime_error);
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

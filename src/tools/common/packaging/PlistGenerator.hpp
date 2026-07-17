@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Parameters for Info.plist generation.
 struct PlistParams {
@@ -49,4 +49,4 @@ std::string generatePlist(const PlistParams &params);
 /// @return 8-byte PkgInfo content.
 std::string generatePkgInfo();
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

@@ -1,10 +1,10 @@
-// API Audit: Viper.Game.Physics2D (Zia)
+// API Audit: Zanna.Game.Physics2D (Zia)
 module Physics2DDemo;
-bind Viper.Terminal;
-bind Viper.Game.Physics2D.World as World;
-bind Viper.Game.Physics2D.Body as Body;
+bind Zanna.Terminal;
+bind Zanna.Game.Physics2D.World as World;
+bind Zanna.Game.Physics2D.Body as Body;
 func start() {
-    Say("=== API Audit: Viper.Game.Physics2D ===");
+    Say("=== API Audit: Zanna.Game.Physics2D ===");
 
     // --- World.New ---
     Say("--- World ---");

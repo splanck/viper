@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -100,10 +100,10 @@ static treemap_impl *as_treemap(void *obj, const char *what) {
 
 /// @brief Extracts raw key data and length from an rt_string.
 ///
-/// Converts a Viper string to a C string pointer and computes its length.
+/// Converts a Zanna string to a C string pointer and computes its length.
 /// Handles NULL strings gracefully by returning an empty string.
 ///
-/// @param key The Viper string to extract data from.
+/// @param key The Zanna string to extract data from.
 /// @param out_len Output parameter that receives the key length in bytes.
 ///
 /// @return Pointer to the key's character data, or "" if key is NULL.

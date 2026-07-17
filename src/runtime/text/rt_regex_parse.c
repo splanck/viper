@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex_parse.c
-// Purpose: Recursive-descent parser for the Viper regex engine. Turns a
+// Purpose: Recursive-descent parser for the Zanna regex engine. Turns a
 //          pattern source string into an AST of re_node values (literals,
 //          classes, groups, quantifiers, alternation). Split out of
 //          rt_regex.c; shares AST types and node/class primitives via

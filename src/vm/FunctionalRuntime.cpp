@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/vm/FunctionalRuntime.cpp
-// Purpose: VM-side bridges for Viper.Functional runtime helpers that accept
+// Purpose: VM-side bridges for Zanna.Functional runtime helpers that accept
 //          managed callback functions (notably Lazy.New deferred suppliers and
 //          the Lazy.Map/AndThen combinators).
 // Key invariants:
@@ -26,7 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief VM-aware runtime helpers for Viper.Functional.Lazy.
+/// @brief VM-aware runtime helpers for Zanna.Functional.Lazy.
 /// @details Deferred suppliers created by `Lazy.New` are IL functions when the
 ///          program runs on the VM. The C runtime cannot invoke them, so these
 ///          handlers intercept the Lazy accessors, execute pending suppliers
@@ -368,56 +368,56 @@ static void functional_result_or_else_handler(void **args, void *result) {
 
 } // namespace
 
-/// @brief Register VM-aware Viper.Functional externals with the runtime bridge.
-/// @details Installs the `Viper.Functional.Lazy` handlers so deferred suppliers
+/// @brief Register VM-aware Zanna.Functional externals with the runtime bridge.
+/// @details Installs the `Zanna.Functional.Lazy` handlers so deferred suppliers
 ///          and combinator callbacks execute through the active VM instead of
 ///          being invoked as raw C function pointers.
 void registerFunctionalRuntimeExternals() {
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.New";
+        ext.name = "Zanna.Functional.Lazy.New";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_new_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Get";
+        ext.name = "Zanna.Functional.Lazy.Get";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_get_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.GetStr";
+        ext.name = "Zanna.Functional.Lazy.GetStr";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Str});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_get_str_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.GetI64";
+        ext.name = "Zanna.Functional.Lazy.GetI64";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::I64});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_get_i64_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Force";
+        ext.name = "Zanna.Functional.Lazy.Force";
         ext.signature = make_signature(ext.name, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_force_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Map";
+        ext.name = "Zanna.Functional.Lazy.Map";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_map_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.AndThen";
+        ext.name = "Zanna.Functional.Lazy.AndThen";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&functional_lazy_and_then_handler);
         RuntimeBridge::registerExtern(ext);
@@ -428,14 +428,14 @@ void registerFunctionalRuntimeExternals() {
         void (*handler)(void **, void *);
     };
     static constexpr CombinatorExtern kCombinators[] = {
-        {"Viper.Option.Map", &functional_option_map_handler},
-        {"Viper.Option.AndThen", &functional_option_and_then_handler},
-        {"Viper.Option.OrElse", &functional_option_or_else_handler},
-        {"Viper.Option.Filter", &functional_option_filter_handler},
-        {"Viper.Result.Map", &functional_result_map_handler},
-        {"Viper.Result.MapErr", &functional_result_map_err_handler},
-        {"Viper.Result.AndThen", &functional_result_and_then_handler},
-        {"Viper.Result.OrElse", &functional_result_or_else_handler},
+        {"Zanna.Option.Map", &functional_option_map_handler},
+        {"Zanna.Option.AndThen", &functional_option_and_then_handler},
+        {"Zanna.Option.OrElse", &functional_option_or_else_handler},
+        {"Zanna.Option.Filter", &functional_option_filter_handler},
+        {"Zanna.Result.Map", &functional_result_map_handler},
+        {"Zanna.Result.MapErr", &functional_result_map_err_handler},
+        {"Zanna.Result.AndThen", &functional_result_and_then_handler},
+        {"Zanna.Result.OrElse", &functional_result_or_else_handler},
     };
     for (const auto &entry : kCombinators) {
         ExternDesc ext;

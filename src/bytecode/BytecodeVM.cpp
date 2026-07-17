@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/bytecode/BytecodeVM.cpp
-// Purpose: Execute lowered Viper bytecode programs and bridge runtime calls.
+// Purpose: Execute lowered Zanna bytecode programs and bridge runtime calls.
 // Key invariants:
 //   - Bytecode stack, frame, and string ownership metadata remain synchronized.
 //   - Runtime bridge calls preserve VM trap semantics and deterministic state.
@@ -37,7 +37,7 @@
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
@@ -63,7 +63,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
 namespace {
@@ -332,7 +332,7 @@ rt_string BytecodeVM::getStringLiteral(uint16_t idx) {
 ///        needsConsumingStringHandler() — e.g. rt_str_concat.
 bool BytecodeVM::runtimeCallConsumesClonedStringArgs(std::string_view name) {
     // Keep this list aligned with rtgen's needsConsumingStringHandler().
-    return name == "rt_str_concat" || name == "Viper.String.Concat";
+    return name == "rt_str_concat" || name == "Zanna.String.Concat";
 }
 
 /// @brief True if runtime function @p name consumes the *caller's owned*
@@ -5074,7 +5074,7 @@ static void unified_game3d_draw_overlay_handler(void **args, void *result) {
     rt_game3d_world_draw_overlay(world, overlay);
 }
 
-/// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
+/// Handler for Zanna.Threads.Thread.Start - handles both standard VM and BytecodeVM.
 static void unified_thread_start_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -5177,7 +5177,7 @@ static void unified_thread_start_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// Handler for Viper.Threads.Thread.StartOwned - handles both standard VM and BytecodeVM.
+/// Handler for Zanna.Threads.Thread.StartOwned - handles both standard VM and BytecodeVM.
 static void unified_thread_start_owned_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -5284,7 +5284,7 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// Handler for Viper.Threads.Thread.StartSafe - handles both standard VM and BytecodeVM.
+/// Handler for Zanna.Threads.Thread.StartSafe - handles both standard VM and BytecodeVM.
 /// Uses rt_thread_start_safe to wrap execution in trap recovery via setjmp/longjmp.
 static void unified_thread_start_safe_handler(void **args, void *result) {
     void *entry = nullptr;
@@ -5388,7 +5388,7 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
-/// Handler for Viper.Threads.Thread.StartSafeOwned - handles both standard VM and BytecodeVM.
+/// Handler for Zanna.Threads.Thread.StartSafeOwned - handles both standard VM and BytecodeVM.
 static void unified_thread_start_safe_owned_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -5991,12 +5991,12 @@ static void unified_async_run_impl(void **args, void *result, bool owned) {
     publishAsyncFutureResult(result, future);
 }
 
-/// Handler for Viper.Threads.Async.Run — the arg is borrowed (native parity, VDOC-127).
+/// Handler for Zanna.Threads.Async.Run — the arg is borrowed (native parity, VDOC-127).
 static void unified_async_run_handler(void **args, void *result) {
     unified_async_run_impl(args, result, /*owned=*/false);
 }
 
-/// Handler for Viper.Threads.Async.RunOwned — the Future owns the arg on every backend.
+/// Handler for Zanna.Threads.Async.RunOwned — the Future owns the arg on every backend.
 static void unified_async_run_owned_handler(void **args, void *result) {
     unified_async_run_impl(args, result, /*owned=*/true);
 }
@@ -6138,7 +6138,7 @@ static void runBytecodeInvoke(BytecodeVM &vm,
     }
 }
 
-/// Handler for Viper.Threads.Parallel.For — bridges the callback for the BytecodeVM; otherwise
+/// Handler for Zanna.Threads.Parallel.For — bridges the callback for the BytecodeVM; otherwise
 /// chains to the prior handler (tree-walker VM runs inline, native fans out across the pool).
 static void unified_parallel_for_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6160,7 +6160,7 @@ static void unified_parallel_for_handler(void **args, void *result) {
     rt_parallel_for(start, end, func);
 }
 
-/// Handler for Viper.Threads.Parallel.ForPool — the pool is a native concurrency hint the bytecode
+/// Handler for Zanna.Threads.Parallel.ForPool — the pool is a native concurrency hint the bytecode
 /// VM ignores (the range runs sequentially); otherwise chains to the prior handler.
 static void unified_parallel_for_pool_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6183,7 +6183,7 @@ static void unified_parallel_for_pool_handler(void **args, void *result) {
     rt_parallel_for_pool(start, end, func, pool);
 }
 
-/// Handler for Viper.Threads.Pool.Submit — runs the task synchronously on the BytecodeVM and
+/// Handler for Zanna.Threads.Pool.Submit — runs the task synchronously on the BytecodeVM and
 /// reports success; otherwise chains to the prior handler.
 static void unified_pool_submit_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6243,7 +6243,7 @@ static void unified_pool_submit_owned_handler(void **args, void *result) {
         *reinterpret_cast<int8_t *>(result) = submitted;
 }
 
-/// Handler for Viper.Threads.Parallel.Invoke — runs each action sequentially on the BytecodeVM;
+/// Handler for Zanna.Threads.Parallel.Invoke — runs each action sequentially on the BytecodeVM;
 /// otherwise chains to the prior handler.
 static void unified_parallel_invoke_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6261,7 +6261,7 @@ static void unified_parallel_invoke_handler(void **args, void *result) {
     rt_parallel_invoke(funcs);
 }
 
-/// Handler for Viper.Threads.Parallel.InvokePool — pool ignored on the BytecodeVM (actions run
+/// Handler for Zanna.Threads.Parallel.InvokePool — pool ignored on the BytecodeVM (actions run
 /// sequentially); otherwise chains to the prior handler.
 static void unified_parallel_invoke_pool_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6372,7 +6372,7 @@ static void *runBytecodeSeqReduce(BytecodeVM &vm,
     return acc;
 }
 
-/// Handler for Viper.Threads.Parallel.ForEach — traps on the BytecodeVM (not bridged); otherwise
+/// Handler for Zanna.Threads.Parallel.ForEach — traps on the BytecodeVM (not bridged); otherwise
 /// chains to the prior handler (tree-walker traps too; native fans out across the pool).
 static void unified_parallel_foreach_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6392,7 +6392,7 @@ static void unified_parallel_foreach_handler(void **args, void *result) {
     rt_parallel_foreach(seq, func);
 }
 
-/// Handler for Viper.Threads.Parallel.ForEachPool — see @ref unified_parallel_foreach_handler.
+/// Handler for Zanna.Threads.Parallel.ForEachPool — see @ref unified_parallel_foreach_handler.
 static void unified_parallel_foreach_pool_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
         if (const BytecodeModule *bcModule = activeBytecodeModule()) {
@@ -6412,7 +6412,7 @@ static void unified_parallel_foreach_pool_handler(void **args, void *result) {
     rt_parallel_foreach_pool(seq, func, pool);
 }
 
-/// Handler for Viper.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise
+/// Handler for Zanna.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise
 /// chains.
 static void unified_parallel_map_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6436,7 +6436,7 @@ static void unified_parallel_map_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = mapped;
 }
 
-/// Handler for Viper.Threads.Parallel.MapPool — see @ref unified_parallel_map_handler.
+/// Handler for Zanna.Threads.Parallel.MapPool — see @ref unified_parallel_map_handler.
 static void unified_parallel_map_pool_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
         if (const BytecodeModule *bcModule = activeBytecodeModule()) {
@@ -6460,7 +6460,7 @@ static void unified_parallel_map_pool_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = mapped;
 }
 
-/// Handler for Viper.Threads.Parallel.Reduce — traps on the BytecodeVM (not bridged); else chains.
+/// Handler for Zanna.Threads.Parallel.Reduce — traps on the BytecodeVM (not bridged); else chains.
 static void unified_parallel_reduce_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
         if (const BytecodeModule *bcModule = activeBytecodeModule()) {
@@ -6486,7 +6486,7 @@ static void unified_parallel_reduce_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = reduced;
 }
 
-/// Handler for Viper.Threads.Parallel.ReducePool — see @ref unified_parallel_reduce_handler.
+/// Handler for Zanna.Threads.Parallel.ReducePool — see @ref unified_parallel_reduce_handler.
 static void unified_parallel_reduce_pool_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
         if (const BytecodeModule *bcModule = activeBytecodeModule()) {
@@ -6514,7 +6514,7 @@ static void unified_parallel_reduce_pool_handler(void **args, void *result) {
 }
 
 //===----------------------------------------------------------------------===//
-// Viper.Functional.Lazy handlers (deferred suppliers and combinator callbacks)
+// Zanna.Functional.Lazy handlers (deferred suppliers and combinator callbacks)
 //===----------------------------------------------------------------------===//
 
 /// @brief Execute a zero-argument, value-returning bytecode supplier reentrantly.
@@ -6570,7 +6570,7 @@ static void completeBytecodePendingLazy(BytecodeVM &vm,
     }
 }
 
-/// Handler for Viper.Functional.Lazy.New — stores the bytecode supplier as a handle-kind
+/// Handler for Zanna.Functional.Lazy.New — stores the bytecode supplier as a handle-kind
 /// Lazy so accessors can execute it reentrantly; otherwise chains to the prior handler.
 static void unified_lazy_new_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6602,7 +6602,7 @@ static void unified_lazy_new_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = lazy;
 }
 
-/// Handler for Viper.Functional.Lazy.Get — completes a pending bytecode supplier first.
+/// Handler for Zanna.Functional.Lazy.Get — completes a pending bytecode supplier first.
 static void unified_lazy_get_handler(void **args, void *result) {
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6623,7 +6623,7 @@ static void unified_lazy_get_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = value;
 }
 
-/// Handler for Viper.Functional.Lazy.GetStr — completes a pending bytecode supplier first.
+/// Handler for Zanna.Functional.Lazy.GetStr — completes a pending bytecode supplier first.
 static void unified_lazy_get_str_handler(void **args, void *result) {
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6644,7 +6644,7 @@ static void unified_lazy_get_str_handler(void **args, void *result) {
         *reinterpret_cast<rt_string *>(result) = value;
 }
 
-/// Handler for Viper.Functional.Lazy.GetI64 — completes a pending bytecode supplier first.
+/// Handler for Zanna.Functional.Lazy.GetI64 — completes a pending bytecode supplier first.
 static void unified_lazy_get_i64_handler(void **args, void *result) {
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
@@ -6665,7 +6665,7 @@ static void unified_lazy_get_i64_handler(void **args, void *result) {
         *reinterpret_cast<int64_t *>(result) = value;
 }
 
-/// Handler for Viper.Functional.Lazy.Force — completes a pending bytecode supplier first.
+/// Handler for Zanna.Functional.Lazy.Force — completes a pending bytecode supplier first.
 static void unified_lazy_force_handler(void **args, void *result) {
     (void)result;
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
@@ -6683,7 +6683,7 @@ static void unified_lazy_force_handler(void **args, void *result) {
     rt_lazy_force(lazy);
 }
 
-/// Handler for Viper.Functional.Lazy.Map — bridges the callback for the BytecodeVM;
+/// Handler for Zanna.Functional.Lazy.Map — bridges the callback for the BytecodeVM;
 /// mirrors the C semantics (force source, apply, wrap pre-evaluated).
 static void unified_lazy_map_handler(void **args, void *result) {
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
@@ -6714,7 +6714,7 @@ static void unified_lazy_map_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = mapped;
 }
 
-/// Handler for Viper.Functional.Lazy.AndThen — bridges the callback for the BytecodeVM;
+/// Handler for Zanna.Functional.Lazy.AndThen — bridges the callback for the BytecodeVM;
 /// mirrors the C semantics (force source, return the callback's Lazy directly).
 static void unified_lazy_and_then_handler(void **args, void *result) {
     void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
@@ -6744,7 +6744,7 @@ static void unified_lazy_and_then_handler(void **args, void *result) {
 }
 
 //===----------------------------------------------------------------------===//
-// Viper.Option / Viper.Result combinator handlers
+// Zanna.Option / Zanna.Result combinator handlers
 //===----------------------------------------------------------------------===//
 
 /// @brief Context threaded through the rt_cb_invoke* strategies for bytecode execution.
@@ -6916,125 +6916,125 @@ void registerUnifiedVmRuntimeHandlers() {
                 }
             };
 
-        capturePriorHandler("Viper.Threads.Thread.Start",
+        capturePriorHandler("Zanna.Threads.Thread.Start",
                             reinterpret_cast<void *>(&unified_thread_start_handler),
                             gPriorThreadStartHandler);
-        capturePriorHandler("Viper.Threads.Thread.StartOwned",
+        capturePriorHandler("Zanna.Threads.Thread.StartOwned",
                             reinterpret_cast<void *>(&unified_thread_start_owned_handler),
                             gPriorThreadStartOwnedHandler);
-        capturePriorHandler("Viper.Threads.Thread.StartSafe",
+        capturePriorHandler("Zanna.Threads.Thread.StartSafe",
                             reinterpret_cast<void *>(&unified_thread_start_safe_handler),
                             gPriorThreadStartSafeHandler);
-        capturePriorHandler("Viper.Threads.Thread.StartSafeOwned",
+        capturePriorHandler("Zanna.Threads.Thread.StartSafeOwned",
                             reinterpret_cast<void *>(&unified_thread_start_safe_owned_handler),
                             gPriorThreadStartSafeOwnedHandler);
-        capturePriorHandler("Viper.Threads.Pool.SubmitOwned",
+        capturePriorHandler("Zanna.Threads.Pool.SubmitOwned",
                             reinterpret_cast<void *>(&unified_pool_submit_owned_handler),
                             gPriorPoolSubmitOwnedHandler);
-        capturePriorHandler("Viper.Threads.Async.Run",
+        capturePriorHandler("Zanna.Threads.Async.Run",
                             reinterpret_cast<void *>(&unified_async_run_handler),
                             gPriorAsyncRunHandler);
-        capturePriorHandler("Viper.Network.HttpServer.BindHandler",
+        capturePriorHandler("Zanna.Network.HttpServer.BindHandler",
                             reinterpret_cast<void *>(&unified_http_server_bind_handler),
                             gPriorHttpBindHandler);
-        capturePriorHandler("Viper.Network.HttpsServer.BindHandler",
+        capturePriorHandler("Zanna.Network.HttpsServer.BindHandler",
                             reinterpret_cast<void *>(&unified_https_server_bind_handler),
                             gPriorHttpsBindHandler);
-        capturePriorHandler("Viper.Game3D.World3D.Run",
+        capturePriorHandler("Zanna.Game3D.World3D.Run",
                             reinterpret_cast<void *>(&unified_game3d_run_handler),
                             gPriorGame3DRunHandler);
-        capturePriorHandler("Viper.Game3D.World3D.RunWithOverlay",
+        capturePriorHandler("Zanna.Game3D.World3D.RunWithOverlay",
                             reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler),
                             gPriorGame3DRunWithOverlayHandler);
-        capturePriorHandler("Viper.Game3D.World3D.RunFixed",
+        capturePriorHandler("Zanna.Game3D.World3D.RunFixed",
                             reinterpret_cast<void *>(&unified_game3d_run_fixed_handler),
                             gPriorGame3DRunFixedHandler);
         capturePriorHandler(
-            "Viper.Game3D.World3D.RunFixedWithOverlay",
+            "Zanna.Game3D.World3D.RunFixedWithOverlay",
             reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler),
             gPriorGame3DRunFixedWithOverlayHandler);
-        capturePriorHandler("Viper.Game3D.World3D.RunFrames",
+        capturePriorHandler("Zanna.Game3D.World3D.RunFrames",
                             reinterpret_cast<void *>(&unified_game3d_run_frames_handler),
                             gPriorGame3DRunFramesHandler);
-        capturePriorHandler("Viper.Game3D.World3D.DrawOverlay",
+        capturePriorHandler("Zanna.Game3D.World3D.DrawOverlay",
                             reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler),
                             gPriorGame3DDrawOverlayHandler);
-        capturePriorHandler("Viper.Threads.Parallel.For",
+        capturePriorHandler("Zanna.Threads.Parallel.For",
                             reinterpret_cast<void *>(&unified_parallel_for_handler),
                             gPriorParallelForHandler);
-        capturePriorHandler("Viper.Threads.Parallel.ForPool",
+        capturePriorHandler("Zanna.Threads.Parallel.ForPool",
                             reinterpret_cast<void *>(&unified_parallel_for_pool_handler),
                             gPriorParallelForPoolHandler);
-        capturePriorHandler("Viper.Threads.Pool.Submit",
+        capturePriorHandler("Zanna.Threads.Pool.Submit",
                             reinterpret_cast<void *>(&unified_pool_submit_handler),
                             gPriorPoolSubmitHandler);
-        capturePriorHandler("Viper.Threads.Parallel.Invoke",
+        capturePriorHandler("Zanna.Threads.Parallel.Invoke",
                             reinterpret_cast<void *>(&unified_parallel_invoke_handler),
                             gPriorParallelInvokeHandler);
-        capturePriorHandler("Viper.Threads.Parallel.InvokePool",
+        capturePriorHandler("Zanna.Threads.Parallel.InvokePool",
                             reinterpret_cast<void *>(&unified_parallel_invoke_pool_handler),
                             gPriorParallelInvokePoolHandler);
-        capturePriorHandler("Viper.Threads.Parallel.ForEach",
+        capturePriorHandler("Zanna.Threads.Parallel.ForEach",
                             reinterpret_cast<void *>(&unified_parallel_foreach_handler),
                             gPriorParallelForEachHandler);
-        capturePriorHandler("Viper.Threads.Parallel.ForEachPool",
+        capturePriorHandler("Zanna.Threads.Parallel.ForEachPool",
                             reinterpret_cast<void *>(&unified_parallel_foreach_pool_handler),
                             gPriorParallelForEachPoolHandler);
-        capturePriorHandler("Viper.Threads.Parallel.Map",
+        capturePriorHandler("Zanna.Threads.Parallel.Map",
                             reinterpret_cast<void *>(&unified_parallel_map_handler),
                             gPriorParallelMapHandler);
-        capturePriorHandler("Viper.Threads.Parallel.MapPool",
+        capturePriorHandler("Zanna.Threads.Parallel.MapPool",
                             reinterpret_cast<void *>(&unified_parallel_map_pool_handler),
                             gPriorParallelMapPoolHandler);
-        capturePriorHandler("Viper.Threads.Parallel.Reduce",
+        capturePriorHandler("Zanna.Threads.Parallel.Reduce",
                             reinterpret_cast<void *>(&unified_parallel_reduce_handler),
                             gPriorParallelReduceHandler);
-        capturePriorHandler("Viper.Threads.Parallel.ReducePool",
+        capturePriorHandler("Zanna.Threads.Parallel.ReducePool",
                             reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler),
                             gPriorParallelReducePoolHandler);
-        capturePriorHandler("Viper.Functional.Lazy.New",
+        capturePriorHandler("Zanna.Functional.Lazy.New",
                             reinterpret_cast<void *>(&unified_lazy_new_handler),
                             gPriorLazyNewHandler);
-        capturePriorHandler("Viper.Functional.Lazy.Get",
+        capturePriorHandler("Zanna.Functional.Lazy.Get",
                             reinterpret_cast<void *>(&unified_lazy_get_handler),
                             gPriorLazyGetHandler);
-        capturePriorHandler("Viper.Functional.Lazy.GetStr",
+        capturePriorHandler("Zanna.Functional.Lazy.GetStr",
                             reinterpret_cast<void *>(&unified_lazy_get_str_handler),
                             gPriorLazyGetStrHandler);
-        capturePriorHandler("Viper.Functional.Lazy.GetI64",
+        capturePriorHandler("Zanna.Functional.Lazy.GetI64",
                             reinterpret_cast<void *>(&unified_lazy_get_i64_handler),
                             gPriorLazyGetI64Handler);
-        capturePriorHandler("Viper.Functional.Lazy.Force",
+        capturePriorHandler("Zanna.Functional.Lazy.Force",
                             reinterpret_cast<void *>(&unified_lazy_force_handler),
                             gPriorLazyForceHandler);
-        capturePriorHandler("Viper.Functional.Lazy.Map",
+        capturePriorHandler("Zanna.Functional.Lazy.Map",
                             reinterpret_cast<void *>(&unified_lazy_map_handler),
                             gPriorLazyMapHandler);
-        capturePriorHandler("Viper.Functional.Lazy.AndThen",
+        capturePriorHandler("Zanna.Functional.Lazy.AndThen",
                             reinterpret_cast<void *>(&unified_lazy_and_then_handler),
                             gPriorLazyAndThenHandler);
-        capturePriorHandler("Viper.Option.Map",
+        capturePriorHandler("Zanna.Option.Map",
                             reinterpret_cast<void *>(&unified_option_map_handler),
                             gPriorOptionMapHandler);
-        capturePriorHandler("Viper.Option.AndThen",
+        capturePriorHandler("Zanna.Option.AndThen",
                             reinterpret_cast<void *>(&unified_option_and_then_handler),
                             gPriorOptionAndThenHandler);
-        capturePriorHandler("Viper.Option.OrElse",
+        capturePriorHandler("Zanna.Option.OrElse",
                             reinterpret_cast<void *>(&unified_option_or_else_handler),
                             gPriorOptionOrElseHandler);
-        capturePriorHandler("Viper.Option.Filter",
+        capturePriorHandler("Zanna.Option.Filter",
                             reinterpret_cast<void *>(&unified_option_filter_handler),
                             gPriorOptionFilterHandler);
-        capturePriorHandler("Viper.Result.Map",
+        capturePriorHandler("Zanna.Result.Map",
                             reinterpret_cast<void *>(&unified_result_map_handler),
                             gPriorResultMapHandler);
-        capturePriorHandler("Viper.Result.MapErr",
+        capturePriorHandler("Zanna.Result.MapErr",
                             reinterpret_cast<void *>(&unified_result_map_err_handler),
                             gPriorResultMapErrHandler);
-        capturePriorHandler("Viper.Result.AndThen",
+        capturePriorHandler("Zanna.Result.AndThen",
                             reinterpret_cast<void *>(&unified_result_and_then_handler),
                             gPriorResultAndThenHandler);
-        capturePriorHandler("Viper.Result.OrElse",
+        capturePriorHandler("Zanna.Result.OrElse",
                             reinterpret_cast<void *>(&unified_result_or_else_handler),
                             gPriorResultOrElseHandler);
     });
@@ -7044,49 +7044,49 @@ void registerUnifiedVmRuntimeHandlers() {
 
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Thread.Start";
+        ext.name = "Zanna.Threads.Thread.Start";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_thread_start_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Thread.StartOwned";
+        ext.name = "Zanna.Threads.Thread.StartOwned";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_thread_start_owned_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Thread.StartSafe";
+        ext.name = "Zanna.Threads.Thread.StartSafe";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Thread.StartSafeOwned";
+        ext.name = "Zanna.Threads.Thread.StartSafeOwned";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_owned_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.Run";
+        ext.name = "Zanna.Threads.Async.Run";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_run_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunOwned";
+        ext.name = "Zanna.Threads.Async.RunOwned";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_run_owned_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunCancellable";
+        ext.name = "Zanna.Threads.Async.RunCancellable";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_handler);
@@ -7094,7 +7094,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.RunCancellableOwned";
+        ext.name = "Zanna.Threads.Async.RunCancellableOwned";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_owned_handler);
@@ -7102,7 +7102,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.Map";
+        ext.name = "Zanna.Threads.Async.Map";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_map_handler);
@@ -7110,7 +7110,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Async.MapOwned";
+        ext.name = "Zanna.Threads.Async.MapOwned";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_async_map_owned_handler);
@@ -7118,42 +7118,42 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Network.HttpServer.BindHandler";
+        ext.name = "Zanna.Network.HttpServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_http_server_bind_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Network.HttpsServer.BindHandler";
+        ext.name = "Zanna.Network.HttpsServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_https_server_bind_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.Run";
+        ext.name = "Zanna.Game3D.World3D.Run";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.RunWithOverlay";
+        ext.name = "Zanna.Game3D.World3D.RunWithOverlay";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.RunFixed";
+        ext.name = "Zanna.Game3D.World3D.RunFixed";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.RunFixedWithOverlay";
+        ext.name = "Zanna.Game3D.World3D.RunFixedWithOverlay";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler);
@@ -7161,7 +7161,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.RunFrames";
+        ext.name = "Zanna.Game3D.World3D.RunFrames";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::I64, SigParam::F64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_frames_handler);
@@ -7169,21 +7169,21 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.DrawOverlay";
+        ext.name = "Zanna.Game3D.World3D.DrawOverlay";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.For";
+        ext.name = "Zanna.Threads.Parallel.For";
         ext.signature = make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_for_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForPool";
+        ext.name = "Zanna.Threads.Parallel.ForPool";
         ext.signature =
             make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_for_pool_handler);
@@ -7191,7 +7191,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Pool.Submit";
+        ext.name = "Zanna.Threads.Pool.Submit";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&unified_pool_submit_handler);
@@ -7199,7 +7199,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Pool.SubmitOwned";
+        ext.name = "Zanna.Threads.Pool.SubmitOwned";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&unified_pool_submit_owned_handler);
@@ -7207,42 +7207,42 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Invoke";
+        ext.name = "Zanna.Threads.Parallel.Invoke";
         ext.signature = make_signature(ext.name, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_invoke_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.InvokePool";
+        ext.name = "Zanna.Threads.Parallel.InvokePool";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_invoke_pool_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForEach";
+        ext.name = "Zanna.Threads.Parallel.ForEach";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_foreach_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ForEachPool";
+        ext.name = "Zanna.Threads.Parallel.ForEachPool";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_foreach_pool_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Map";
+        ext.name = "Zanna.Threads.Parallel.Map";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_map_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.MapPool";
+        ext.name = "Zanna.Threads.Parallel.MapPool";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_map_pool_handler);
@@ -7250,7 +7250,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.Reduce";
+        ext.name = "Zanna.Threads.Parallel.Reduce";
         ext.signature = make_signature(
             ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_handler);
@@ -7258,7 +7258,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Threads.Parallel.ReducePool";
+        ext.name = "Zanna.Threads.Parallel.ReducePool";
         ext.signature = make_signature(ext.name,
                                        {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
                                        {SigParam::Ptr});
@@ -7267,49 +7267,49 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.New";
+        ext.name = "Zanna.Functional.Lazy.New";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_new_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Get";
+        ext.name = "Zanna.Functional.Lazy.Get";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_get_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.GetStr";
+        ext.name = "Zanna.Functional.Lazy.GetStr";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Str});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_get_str_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.GetI64";
+        ext.name = "Zanna.Functional.Lazy.GetI64";
         ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::I64});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_get_i64_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Force";
+        ext.name = "Zanna.Functional.Lazy.Force";
         ext.signature = make_signature(ext.name, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_force_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.Map";
+        ext.name = "Zanna.Functional.Lazy.Map";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_map_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Functional.Lazy.AndThen";
+        ext.name = "Zanna.Functional.Lazy.AndThen";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_lazy_and_then_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
@@ -7320,14 +7320,14 @@ void registerUnifiedVmRuntimeHandlers() {
         void (*handler)(void **, void *);
     };
     static constexpr CombinatorExtern kCombinators[] = {
-        {"Viper.Option.Map", &unified_option_map_handler},
-        {"Viper.Option.AndThen", &unified_option_and_then_handler},
-        {"Viper.Option.OrElse", &unified_option_or_else_handler},
-        {"Viper.Option.Filter", &unified_option_filter_handler},
-        {"Viper.Result.Map", &unified_result_map_handler},
-        {"Viper.Result.MapErr", &unified_result_map_err_handler},
-        {"Viper.Result.AndThen", &unified_result_and_then_handler},
-        {"Viper.Result.OrElse", &unified_result_or_else_handler},
+        {"Zanna.Option.Map", &unified_option_map_handler},
+        {"Zanna.Option.AndThen", &unified_option_and_then_handler},
+        {"Zanna.Option.OrElse", &unified_option_or_else_handler},
+        {"Zanna.Option.Filter", &unified_option_filter_handler},
+        {"Zanna.Result.Map", &unified_result_map_handler},
+        {"Zanna.Result.MapErr", &unified_result_map_err_handler},
+        {"Zanna.Result.AndThen", &unified_result_and_then_handler},
+        {"Zanna.Result.OrElse", &unified_result_or_else_handler},
     };
     for (const auto &entry : kCombinators) {
         il::vm::ExternDesc ext;
@@ -7352,4 +7352,4 @@ struct UnifiedThreadHandlerRegistrar {
 } // anonymous namespace
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: src/runtime/audio/rt_sound3d_objects.c
 // Purpose: Object-backed 3D audio listener/source APIs layered on top of the
 //   low-level Sound3D helpers and the existing 2D voice runtime. Backs
-//   `Viper.Graphics3D.SoundListener3D` and `Viper.Graphics3D.SoundSource3D`.
+//   `Zanna.Graphics3D.SoundListener3D` and `Zanna.Graphics3D.SoundSource3D`.
 //
 // Key invariants:
 //   - At most one SoundListener3D may be active at a time; activation pushes
@@ -31,7 +31,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_graphics3d_ids.h"
@@ -1289,4 +1289,4 @@ int64_t rt_soundsource3d_get_mix_group(void *obj) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

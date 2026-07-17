@@ -1,7 +1,7 @@
 // ============================================================================
 // MODULE: settings (PaintSettings)
 // PURPOSE: Runtime-tunable defaults loaded from a JSON/INI config file
-//          via Viper.Game.Config. Everything the user might want to
+//          via Zanna.Game.Config. Everything the user might want to
 //          override — window size, canvas size, default tool / brush
 //          size / opacity, target FPS, theme — lives here.
 //
@@ -21,11 +21,11 @@
 // settings.zia - Runtime-configurable Paint settings
 module settings;
 
-bind Viper.Game.Config as RuntimeConfig;
+bind Zanna.Game.Config as RuntimeConfig;
 
 bind "./config";
 
-/// @brief Runtime-tunable settings loaded from Viper.Game.Config JSON.
+/// @brief Runtime-tunable settings loaded from Zanna.Game.Config JSON.
 class PaintSettings {
     hide RuntimeConfig? cfg;
     expose Integer windowWidth;

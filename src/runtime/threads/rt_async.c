@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_async.c
-// Purpose: Implements high-level async task combinators for the Viper.Threads.Async
+// Purpose: Implements high-level async task combinators for the Zanna.Threads.Async
 //          class by composing Future/Promise, Thread, and Cancellation primitives.
 //          Provides Run, All, Any, Delay, Map, and RunCancellable.
 //

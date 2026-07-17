@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,20 +18,20 @@
 #include "tests/TestHarness.hpp"
 #include <memory>
 
-using viper::tui::term::KeyEvent;
-using viper::tui::ui::Event;
-using viper::tui::widgets::HSplitter;
-using viper::tui::widgets::VSplitter;
+using zanna::tui::term::KeyEvent;
+using zanna::tui::ui::Event;
+using zanna::tui::widgets::HSplitter;
+using zanna::tui::widgets::VSplitter;
 
-struct StubWidget : viper::tui::ui::Widget {
-    void layout(const viper::tui::ui::Rect &r) override {
-        viper::tui::ui::Widget::layout(r);
+struct StubWidget : zanna::tui::ui::Widget {
+    void layout(const zanna::tui::ui::Rect &r) override {
+        zanna::tui::ui::Widget::layout(r);
         last = r;
     }
 
-    void paint(viper::tui::render::ScreenBuffer &) override {}
+    void paint(zanna::tui::render::ScreenBuffer &) override {}
 
-    viper::tui::ui::Rect last{};
+    zanna::tui::ui::Rect last{};
 };
 
 TEST(TUI, SplitterKeyboard) {
@@ -78,6 +78,6 @@ TEST(TUI, SplitterKeyboard) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

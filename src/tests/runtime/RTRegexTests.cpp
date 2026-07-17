@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTRegexTests.cpp
-// Purpose: Validate rt_regex / rt_pattern_* API (Viper.Text.Regex).
+// Purpose: Validate rt_regex / rt_pattern_* API (Zanna.Text.Regex).
 // Key invariants: is_match, find, replace, split, escape all behave correctly.
 // Ownership/Lifetime: Returned rt_string values are released after each test.
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_regex.h"
 #include "rt_seq.h"

@@ -1,0 +1,216 @@
+module completion_filter;
+
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: completion_filter
+// PURPOSE: Pure helpers for completion filtering, auto-trigger suppression, and
+//          candidate display text. The popup controller owns UI state; this file
+//          owns deterministic string decisions that probes can test directly.
+//
+// WHERE-THIS-FITS: editor/completion.zia delegates to this module while keeping
+//          its historical wrapper function names for existing callers.
+//
+// TEACHING-NOTE: Prefer putting small, pure rules here instead of adding more
+//          private methods to CompletionController. It keeps UI behavior and
+//          matching policy independently readable.
+// ============================================================================
+
+/// @brief Return true when text begins with prefix.
+/// @param text Candidate text, normally already normalized to lower case.
+/// @param prefix Typed query prefix, normally already normalized to lower case.
+/// @return True when prefix is empty or exactly matches the start of text.
+expose func StartsWith(text: String, prefix: String) -> Boolean {
+    if prefix == "" { return true; }
+    if Str.get_Length(text) < Str.get_Length(prefix) { return false; }
+    return Str.Left(text, Str.get_Length(prefix)) == prefix;
+}
+
+/// @brief Return true for prefix or subsequence completion matches.
+/// @param text Candidate label to test.
+/// @param query User-typed query to match against the label.
+/// @return True when query is empty, a strict prefix, or a subsequence.
+/// @details Prefix matches remain exact, while subsequence matching lets users
+///          type initials or later name segments without changing the compiler
+///          completion API.
+expose func CompletionMatches(text: String, query: String) -> Boolean {
+    if query == "" { return true; }
+    if StartsWith(text, query) { return true; }
+    var ti = 1;
+    var qi = 1;
+    while ti <= Str.get_Length(text) and qi <= Str.get_Length(query) {
+        if Str.MidLen(text, ti, 1) == Str.MidLen(query, qi, 1) {
+            qi = qi + 1;
+        }
+        ti = ti + 1;
+    }
+    return qi > Str.get_Length(query);
+}
+
+/// @brief Return true when any typed character appears in a candidate set.
+/// @param characters Candidate delimiter or commit-character set.
+/// @param typed Recently typed text to scan.
+/// @return True when at least one typed character is contained in characters.
+expose func ContainsAny(characters: String, typed: String) -> Boolean {
+    if characters == "" or typed == "" { return false; }
+    var i = 1;
+    while i <= Str.get_Length(typed) {
+        var ch = Str.MidLen(typed, i, 1);
+        if Str.IndexOf(characters, ch) != 0 {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return the first typed character that appears in a candidate set.
+/// @param characters Candidate delimiter or commit-character set.
+/// @param typed Recently typed text to scan.
+/// @return The first matching typed character, or an empty string if none match.
+/// @details Completion commit handling needs the actual character, not only a
+///          boolean, so it can preserve the user's typed delimiter in the edit.
+expose func FirstMatchingCharacter(characters: String, typed: String) -> String {
+    if characters == "" or typed == "" { return ""; }
+    var i = 1;
+    while i <= Str.get_Length(typed) {
+        var ch = Str.MidLen(typed, i, 1);
+        if Str.IndexOf(characters, ch) != 0 {
+            return ch;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+/// @brief Return true when a string contains only indentation whitespace.
+/// @param text Text between an edit range and the cursor.
+/// @return True for non-empty strings made only of spaces and tabs.
+/// @details Completion replacement accepts indentation-only gaps because they
+///          are layout, not semantic text that would be destroyed by insertion.
+expose func IsOnlyIndentWhitespace(text: String) -> Boolean {
+    if text == "" { return false; }
+    var i = 1;
+    while i <= Str.get_Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch != " " and ch != "\t" {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Decide whether automatic completion should be suppressed on a line.
+/// @param line Source line containing the cursor.
+/// @param cursorCol Zero-based cursor column to scan up to.
+/// @return True when the cursor is inside a string or line comment.
+/// @details This is intentionally line-local. It is a cheap guard for automatic
+///          popups while typing; explicit Ctrl+Space completion can still run.
+expose func ShouldSuppressAutoCompletionLine(line: String, cursorCol: Integer) -> Boolean {
+    var limit = cursorCol;
+    if limit < 0 { limit = 0; }
+    if limit > Str.get_Length(line) { limit = Str.get_Length(line); }
+
+    var inString = false;
+    var escaped = false;
+    var i = 1;
+    while i <= limit {
+        var ch = Str.MidLen(line, i, 1);
+        if inString {
+            if escaped {
+                escaped = false;
+            } else if ch == "\\" {
+                escaped = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "/" and i < limit and Str.MidLen(line, i + 1, 1) == "/" {
+                return true;
+            }
+        }
+        i = i + 1;
+    }
+    return inString;
+}
+
+/// @brief Format one completion row for display in the popup list.
+/// @param label Primary candidate label.
+/// @param kind CompletionKind integer emitted by the compiler/runtime service.
+/// @param detail Optional type/signature detail.
+/// @param documentation Optional short documentation text.
+/// @param source Optional source marker such as workspace or runtime scope.
+/// @return A compact human-readable list row.
+/// @details The display string is intentionally separate from insertion text so
+///          accepting a completion never has to parse UI decoration back out.
+expose func FormatCompletionDisplay(label: String,
+                                    kind: Integer,
+                                    detail: String,
+                                    documentation: String,
+                                    source: String) -> String {
+    var kindTag = CompletionKindLabel(kind);
+    var text = label;
+    if kindTag != "" {
+        text = kindTag + " " + label;
+    }
+    if detail != "" {
+        text = text + "  -  " + ShortInlineText(detail, 72);
+    }
+
+    var meta = "";
+    var doc = ShortInlineText(documentation, 96);
+    if doc != "" {
+        meta = doc;
+    }
+    if source != "" {
+        if meta != "" {
+            meta = meta + "  ";
+        }
+        meta = meta + "[" + source + "]";
+    }
+    if meta != "" {
+        text = text + "  -  " + meta;
+    }
+    return text;
+}
+
+/// @brief Convert longer documentation/detail text into one popup-safe line.
+/// @param text Source text that may contain newlines, tabs, or long content.
+/// @param limit Maximum output length before truncation; non-positive disables.
+/// @return Trimmed single-line text, optionally shortened with an ellipsis.
+expose func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.get_Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
+}
+
+/// @brief Map a CompletionKind integer to a short bracketed tag.
+/// @param k CompletionKind integer from a Zia or BASIC completion result.
+/// @return A short tag such as [fn], [K], or [RT], or an empty string.
+/// @details The compiler emits an integer kind code; the IDE renders it as a
+///          compact tag so users can distinguish methods, variables, modules,
+///          and runtime classes at a glance.
+expose func CompletionKindLabel(k: Integer) -> String {
+    if k == 0  { return "[K]"; }   // Keyword
+    if k == 1  { return "[S]"; }   // Snippet
+    if k == 2  { return "[V]"; }   // Variable
+    if k == 3  { return "[P]"; }   // Parameter
+    if k == 4  { return "[F]"; }   // Field
+    if k == 5  { return "[M]"; }   // Method
+    if k == 6  { return "[fn]"; }  // Function
+    if k == 7  { return "[C]"; }   // Class/Entity
+    if k == 8  { return "[S]"; }   // Struct/Value
+    if k == 9  { return "[I]"; }   // Interface
+    if k == 10 { return "[mod]"; } // Module
+    if k == 11 { return "[RT]"; }  // Runtime class
+    if k == 12 { return "[P]"; }   // Property
+    return "";
+}

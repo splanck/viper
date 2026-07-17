@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Memory Management — Viper</title>
-  <meta name="description" content="Viper documentation: Memory Management">
+  <title>Memory Management — Zanna</title>
+  <meta name="description" content="Zanna documentation: Memory Management">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -50,13 +50,13 @@
   </aside>
   <main class="page-main prose">
     <h1>Memory Management</h1>
-<h1 id="viper-memory-management">Viper Memory Management</h1>
+<h1 id="zanna-memory-management">Zanna Memory Management</h1>
 <blockquote><p>**Status**: Active reference. Some aspects (particularly Zia frontend lifetime</p></blockquote>
 <blockquote><p>management) are incomplete — see [Known Unsoundness](#known-unsoundness) and</p></blockquote>
 <blockquote><p>[v1.0 Roadmap](#v10-roadmap).</p></blockquote>
 <blockquote><p></p></blockquote>
 <blockquote><p>**Audience**: Runtime developers, language users, future contributors.</p></blockquote>
-<p>Viper uses a <strong>hybrid memory model</strong>: atomic reference counting as the primary</p>
+<p>Zanna uses a <strong>hybrid memory model</strong>: atomic reference counting as the primary</p>
 <p>lifetime mechanism, a slab pool allocator for small strings, and an opt-in</p>
 <p>cycle-detecting garbage collector for breaking reference cycles. There is no</p>
 <p>generational collector, no arena allocator, and no tracing GC. The design</p>
@@ -65,7 +65,7 @@
 <h2 id="architecture-overview">Architecture Overview</h2>
 <pre><code data-lang="text">
 ┌───────────────────────────────────────────────────────────────┐
-│                     Viper Program                             │
+│                     Zanna Program                             │
 │  (Zia / BASIC source → IL → VM or Native)                    │
 └──────────────────────────┬────────────────────────────────────┘
                            │ calls
@@ -226,7 +226,7 @@ typedef struct rt_heap_hdr {
 </ul>
 <p>(or reuses <code>a</code> in-place if uniquely owned with sufficient capacity)</p>
 <h3 id="debug-tracing">Debug Tracing</h3>
-<p>Define <code>VIPER_RC_DEBUG</code> to enable stderr logging of every retain/release with</p>
+<p>Define <code>ZANNA_RC_DEBUG</code> to enable stderr logging of every retain/release with</p>
 <p>the payload address and resulting refcount.</p>
 <p>---</p>
 <h2 id="pool-allocator">Pool Allocator</h2>
@@ -332,7 +332,7 @@ rt_gc_is_tracked(obj);           // Query tracking status
 <pre><code data-lang="c">
 int64_t freed = rt_gc_collect();  // Run one collection pass
 </code></pre>
-<p>Exposed to Viper programs as <code>Viper.Memory.GC.Collect()</code>.</p>
+<p>Exposed to Zanna programs as <code>Zanna.Memory.GC.Collect()</code>.</p>
 <h3 id="thread-safety">Thread Safety</h3>
 <p>The GC state (tracked-object table, weak reference registry) is protected by a</p>
 <p>global mutex (<code>pthread_mutex_t</code> on Unix, <code>CRITICAL_SECTION</code> on Windows).</p>
@@ -550,7 +550,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 <ul>
 <li><strong>Not refcounted</strong> — caller owns the handle.</li>
 <li>Must be destroyed with <code>rt_lazyseq_destroy()</code>.</li>
-<li>Viper has no <code>using</code>/<code>Dispose</code> pattern, so this requires manual lifecycle</li>
+<li>Zanna has no <code>using</code>/<code>Dispose</code> pattern, so this requires manual lifecycle</li>
 </ul>
 <p>management in user code.</p>
 <ul>
@@ -570,7 +570,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 <h2 id="compiler-lifetime-emission">Compiler Lifetime Emission</h2>
 <p>This section documents what each compiler frontend does (and doesn&#x27;t do) about</p>
 <p>object lifetimes. This is the most important section for understanding the</p>
-<p>soundness of Viper programs.</p>
+<p>soundness of Zanna programs.</p>
 <h3 id="basic-frontend">BASIC Frontend</h3>
 <p>The BASIC lowerer (<code>src/frontends/basic/lower/Emitter.cpp</code>) emits explicit</p>
 <p>retain/release calls:</p>
@@ -625,7 +625,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 <p>result that is never released.</p>
 <h3 id="2-high-no-automatic-gc-triggering">2. HIGH: No Automatic GC Triggering</h3>
 <p>The cycle collector only runs when explicitly called via</p>
-<p><code>Viper.Memory.GC.Collect()</code>. Programs that create cyclic object graphs (e.g.,</p>
+<p><code>Zanna.Memory.GC.Collect()</code>. Programs that create cyclic object graphs (e.g.,</p>
 <p>doubly-linked lists, parent-child class references) without calling</p>
 <p><code>GC.Collect()</code> will leak those cycles indefinitely.</p>
 <h3 id="3-high-seq-elements-not-lifetime-managed">3. HIGH: Seq Elements Not Lifetime-Managed</h3>
@@ -639,7 +639,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 </ul>
 <h3 id="4-medium-lazyseq-requires-manual-destroy">4. MEDIUM: LazySeq Requires Manual Destroy</h3>
 <p>LazySeq handles are not refcounted and require explicit <code>destroy()</code> calls.</p>
-<p>Viper has no <code>using</code>/<code>Dispose</code> language-level pattern, making it easy to</p>
+<p>Zanna has no <code>using</code>/<code>Dispose</code> language-level pattern, making it easy to</p>
 <p>forget cleanup.</p>
 <h3 id="5-medium-pool-memory-never-returned-to-os">5. MEDIUM: Pool Memory Never Returned to OS</h3>
 <p>The slab allocator retains all allocated slabs for the process lifetime.</p>
@@ -682,7 +682,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 <p>---</p>
 <h2 id="v1-0-roadmap">v1.0 Roadmap</h2>
 <p>Proposed improvements in priority order. The goal is a coherent, user-transparent</p>
-<p>memory management story where Viper programs don&#x27;t leak by default.</p>
+<p>memory management story where Zanna programs don&#x27;t leak by default.</p>
 <h3 id="p0-zia-compiler-inserted-retain-release">P0: Zia Compiler-Inserted Retain/Release</h3>
 <p>Mirror the BASIC lowerer&#x27;s <code>deferReleaseStr</code>/<code>deferReleaseObj</code> pattern in the</p>
 <p>Zia frontend:</p>
@@ -892,13 +892,13 @@ end using
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

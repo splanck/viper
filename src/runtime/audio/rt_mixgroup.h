@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -61,7 +61,7 @@ int64_t rt_audio_find_group(rt_string group_name);
 /// @details Returns `SomeI64(id)` for built-in or registered groups and `None`
 ///          when the name is missing, avoiding the legacy `-1` sentinel.
 /// @param group_name Group name.
-/// @return Opaque Viper.Option containing the group id, or None.
+/// @return Opaque Zanna.Option containing the group id, or None.
 void *rt_audio_find_group_option(rt_string group_name);
 
 /// @brief Set a named group's volume (0-100, clamped). Missing groups are registered.

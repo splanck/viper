@@ -21,7 +21,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
-- **Runtime library**: Typed access to supported Viper.* classes and safe callback bridges
+- **Runtime library**: Typed access to supported Zanna.* classes and safe callback bridges
 
 ---
 
@@ -368,7 +368,7 @@ name is also accepted where the expected type is a function reference, or where
 a runtime API exposes a safe callback bridge:
 
 ```rust
-bind Viper.Threads;
+bind Zanna.Threads;
 
 func handler(arg: Any) {
     // Handle something
@@ -392,7 +392,7 @@ func start() {
 **Notes:**
 - The `&` operator can only be applied to function names, not variables or expressions
 - Function names are still ordinary call expressions when followed by `(...)`
-- Use with `Viper.Threads.Thread.Start()` to spawn threads with custom entry points
+- Use with `Zanna.Threads.Thread.Start()` to spawn threads with custom entry points
 
 ### Binary Operators
 
@@ -604,16 +604,16 @@ functionName(arg1, arg2)
 object.methodName(arg1)
 ```
 
-Strings also support instance-style calls for common `Viper.String` operations:
+Strings also support instance-style calls for common `Zanna.String` operations:
 
 ```rust
-var name = "  viper  ".Trim().ToUpper();
+var name = "  zanna  ".Trim().ToUpper();
 var part = "abcdef".Substring(1, 3);   // "bcd"
 ```
 
 #### Named Arguments
 
-Arguments can be passed by name using `name: value` syntax. Named arguments are supported for user-defined functions, methods, and constructors that have declared parameter names. Runtime APIs (`Viper.*` methods, including `String.Substring`) require positional arguments — they don't carry parameter names through the IL, so use the positional form for those.
+Arguments can be passed by name using `name: value` syntax. Named arguments are supported for user-defined functions, methods, and constructors that have declared parameter names. Runtime APIs (`Zanna.*` methods, including `String.Substring`) require positional arguments — they don't carry parameter names through the IL, so use the positional form for those.
 
 Named arguments may be supplied in **any order**, and they may **skip parameters
 that have default values**, even in the middle of the list — the omitted
@@ -726,7 +726,7 @@ var tagCount = tags.count();
 ```
 
 These are language-level generic collections. The object-style runtime classes
-under `Viper.Collections.*` use their own constructor and method surface (for
+under `Zanna.Collections.*` use their own constructor and method surface (for
 example `Map.New()`, `List.New()`, `Set.New()`).
 
 #### Functional Combinators
@@ -812,8 +812,8 @@ value as Type           // Type cast
 
 `as` does **not** convert between `String` and scalar types — there is no
 defined behavior for a failed parse. Format with string interpolation
-(`"${value}"`) and parse with the `Viper.Core.Parse.*` helpers
-(`Viper.Core.Parse.IntOr`, `Viper.Core.Parse.DoubleOr`), which take an explicit
+(`"${value}"`) and parse with the `Zanna.Core.Parse.*` helpers
+(`Zanna.Core.Parse.IntOr`, `Zanna.Core.Parse.DoubleOr`), which take an explicit
 fallback.
 
 ### Lambda Expressions
@@ -1208,7 +1208,7 @@ func writeLine(path: String, text: String) {
 
 func withBlockCleanup() {
     defer {
-        Viper.Terminal.Say("leaving scope");
+        Zanna.Terminal.Say("leaving scope");
     }
 }
 ```
@@ -1303,15 +1303,15 @@ var user: User = box.id[User](currentUser);
 
 ### Async Functions
 
-Use `async func` to return a `Viper.Threads.Future`, and `await` to unwrap the completed payload:
+Use `async func` to return a `Zanna.Threads.Future`, and `await` to unwrap the completed payload:
 
 ```rust
 async func fetchName() -> String {
-    return "viper";
+    return "zanna";
 }
 
 expose async func fetchPublicName() -> String {
-    return "viper";
+    return "zanna";
 }
 
 func start() {
@@ -1319,7 +1319,7 @@ func start() {
 }
 ```
 
-`await` is valid on values of type `Viper.Threads.Future`. The awaited value is unboxed back to the async function's declared return type.
+`await` is valid on values of type `Zanna.Threads.Future`. The awaited value is unboxed back to the async function's declared return type.
 
 ### Variadic Parameters
 
@@ -1365,7 +1365,7 @@ expose foreign func Render(canvas: Canvas, frame: Integer);
 The semicolon terminator shown above is the documented form. A legacy spelling
 without the semicolon is still accepted for compatibility.
 
-Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Viper.*`. Calling a foreign function uses the same syntax as any other function call. `expose` and `hide` may prefix ordinary, async, and foreign functions.
+Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Zanna.*`. Calling a foreign function uses the same syntax as any other function call. `expose` and `hide` may prefix ordinary, async, and foreign functions.
 
 ### Type Alias Declarations
 
@@ -1375,7 +1375,7 @@ Create compile-time type aliases with `type`:
 type Name = String;
 type Score = Integer;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func display(name: Name, score: Score) {
     Say(name);
@@ -1880,12 +1880,12 @@ bind "../parent/module";        // Parent directory
 bind "./utils" as U;            // With alias
 bind U = "./utils";             // Legacy alias-first form
 
-// Namespace binds - import Viper runtime namespaces
-bind Viper.Terminal;            // Import all symbols
-bind Viper.Graphics;            // Now Canvas, Sprite, etc. available
-bind Viper.Math as M;           // With alias: M.Sqrt(), M.Sin()
-bind Viper.Terminal { Say };    // Import specific symbols only
-bind Math = Viper.Math;         // Legacy alias-first form
+// Namespace binds - import Zanna runtime namespaces
+bind Zanna.Terminal;            // Import all symbols
+bind Zanna.Graphics;            // Now Canvas, Sprite, etc. available
+bind Zanna.Math as M;           // With alias: M.Sqrt(), M.Sin()
+bind Zanna.Terminal { Say };    // Import specific symbols only
+bind Math = Zanna.Math;         // Legacy alias-first form
 ```
 
 **File Path Resolution:**
@@ -1913,25 +1913,25 @@ var b: Beta.WishDup = new Beta.WishDup();
 
 Alpha.make();
 Beta.make();
-Viper.Terminal.SayInt(Alpha.VALUE + Beta.VALUE);
+Zanna.Terminal.SayInt(Alpha.VALUE + Beta.VALUE);
 ```
 
 **Namespace Imports:**
 
-When you bind a runtime namespace like `Viper.Terminal`, all its functions
+When you bind a runtime namespace like `Zanna.Terminal`, all its functions
 become available without qualification:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
-Say("Hello!");           // Instead of Viper.Terminal.Say("Hello!")
-var name = ReadLine();   // Instead of Viper.Terminal.ReadLine()
+Say("Hello!");           // Instead of Zanna.Terminal.Say("Hello!")
+var name = ReadLine();   // Instead of Zanna.Terminal.ReadLine()
 ```
 
 You can also use an alias to avoid conflicts:
 
 ```rust
-bind Viper.Terminal as T;
+bind Zanna.Terminal as T;
 
 T.Say("Hello!");
 ```
@@ -1939,7 +1939,7 @@ T.Say("Hello!");
 Or import only specific items:
 
 ```rust
-bind Viper.Terminal { Say, ReadLine };
+bind Zanna.Terminal { Say, ReadLine };
 
 Say("Hello!");      // Works
 // Print("x");      // Error: Print not imported
@@ -2048,20 +2048,20 @@ namespace Config {
 
 ### Built-in Namespaces
 
-The `Viper.*` namespaces (Viper.Terminal, Viper.Math, etc.) use the same namespace mechanism as user-defined namespaces.
+The `Zanna.*` namespaces (Zanna.Terminal, Zanna.Math, etc.) use the same namespace mechanism as user-defined namespaces.
 
 ---
 
 ## Runtime Library Access
 
-Zia programs have access to the registered Viper runtime APIs through the `Viper.*` namespace. The exposed surface is generated from `src/il/runtime/runtime.def`; APIs not registered there are not part of Zia's callable runtime surface.
+Zia programs have access to the registered Zanna runtime APIs through the `Zanna.*` namespace. The exposed surface is generated from `src/il/runtime/runtime.def`; APIs not registered there are not part of Zia's callable runtime surface.
 
 ### Common Runtime Classes
 
 #### Terminal I/O
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Output with newline
 Say(str);            // Print string with newline
@@ -2102,14 +2102,14 @@ Flush();             // Flush output buffer
 #### Time
 
 ```rust
-Viper.Time.Clock.Sleep(ms);         // Sleep for milliseconds
-Viper.Time.Clock.Ticks();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
+Zanna.Time.Clock.Sleep(ms);         // Sleep for milliseconds
+Zanna.Time.Clock.Ticks();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
 ```
 
 #### Math
 
 ```rust
-bind Viper.Math;
+bind Zanna.Math;
 
 Abs(x);                  // Absolute value (f64)
 AbsInt(x);               // Absolute value (i64)
@@ -2121,17 +2121,17 @@ Clamp(x, lo, hi);        // Clamp f64 to range
 ClampInt(x, lo, hi);     // Clamp i64 to range
 Floor(x);                // Floor
 Ceil(x);                 // Ceiling
-// ... and many more (see Viper.Math.* in runtime.def)
+// ... and many more (see Zanna.Math.* in runtime.def)
 ```
 
 #### Random
 
 ```rust
-// Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
-Viper.Math.Random.NextInt(max);   // Random integer [0, max)
+// Use the fully qualified name, or bind Zanna.Math and use Zanna.Math.Random.NextInt
+Zanna.Math.Random.NextInt(max);   // Random integer [0, max)
 
 // Seeded instances keep independent state.
-var rng = new Viper.Math.Random(42);
+var rng = new Zanna.Math.Random(42);
 rng.NextDouble();                 // Random Number [0.0, 1.0)
 rng.NextInt(10, 20);              // Random integer [10, 20]
 ```
@@ -2168,10 +2168,10 @@ set.count();
 ```
 
 These language-level collections are distinct from the object-style runtime
-classes in `Viper.Collections.*`. For runtime collection classes such as
-`Viper.Collections.List`, `Viper.Collections.Map`, `Viper.Collections.Set`,
+classes in `Zanna.Collections.*`. For runtime collection classes such as
+`Zanna.Collections.List`, `Zanna.Collections.Map`, `Zanna.Collections.Set`,
 `Queue`, `Stack`, `Deque`, `Bytes`, and `Seq`, see
-**[Runtime Library Reference](../viperlib/README.md)**. Zia provides typed aliases
+**[Runtime Library Reference](../zannalib/README.md)**. Zia provides typed aliases
 for common object-style collections, so `Queue[String]`, `Stack[Integer]`, and
 `Deque[MyType]` preserve element types for `push`, `pop`, `peek`, and iteration
 helpers without exposing runtime handles directly.
@@ -2224,7 +2224,7 @@ defer       throw       true        try         type        var
 while       export      foreign     let         weak
 ```
 
-`async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
+`async func` returns `Zanna.Threads.Future`. `await` is only valid on `Zanna.Threads.Future` values and unwraps the payload produced by an async call.
 
 Compatibility aliases:
 
@@ -2255,7 +2255,7 @@ Seq         Bytes
 ```
 
 `Queue`, `Stack`, `Deque`, `Seq`, and `Bytes` are convenience aliases for typed
-runtime collection classes under `Viper.Collections.*`. They are not reserved
+runtime collection classes under `Zanna.Collections.*`. They are not reserved
 words.
 
 ---
@@ -2416,6 +2416,6 @@ type        ::= "[" type "]" ["?"]
 ## See Also
 
 - [Zia Getting Started](../tutorials/zia-tutorial.md) — Tutorial introduction
-- [Runtime Library Reference](../viperlib/README.md) — Complete API documentation
+- [Runtime Library Reference](../zannalib/README.md) — Complete API documentation
 - [IL Guide](../il/il-guide.md) — Understanding compiled output
 - [Frontend How-To](../internals/frontend-howto.md) — Building language frontends

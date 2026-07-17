@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -60,14 +60,14 @@ void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs
 int64_t runBinary(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     Module module;
     buildBinaryFunction(module, op, type, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char *trapKind) {
     Module module;
     buildBinaryFunction(module, op, type, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find(trapKind) != std::string::npos);
 }
@@ -75,7 +75,7 @@ void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     //=========================================================================

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -93,14 +93,14 @@ rt_debugoverlay rt_debugoverlay_new(void) {
 
 /// @brief Release resources and destroy the debugoverlay.
 void rt_debugoverlay_destroy(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Destroy: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Destroy: expected Zanna.Game.DebugOverlay");
     if (dbg && rt_obj_release_check0(dbg))
         rt_obj_free(dbg);
 }
 
 /// @brief Enable the debugoverlay.
 void rt_debugoverlay_enable(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Enable: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Enable: expected Zanna.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = 1;
@@ -108,7 +108,7 @@ void rt_debugoverlay_enable(rt_debugoverlay dbg) {
 
 /// @brief Disable the debugoverlay.
 void rt_debugoverlay_disable(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Disable: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Disable: expected Zanna.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = 0;
@@ -116,7 +116,7 @@ void rt_debugoverlay_disable(rt_debugoverlay dbg) {
 
 /// @brief Toggle the debugoverlay.
 void rt_debugoverlay_toggle(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Toggle: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Toggle: expected Zanna.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = dbg->enabled ? 0 : 1;
@@ -124,13 +124,13 @@ void rt_debugoverlay_toggle(rt_debugoverlay dbg) {
 
 /// @brief Check whether the debug overlay is currently visible.
 int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.IsEnabled: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.IsEnabled: expected Zanna.Game.DebugOverlay");
     return dbg ? dbg->enabled : 0;
 }
 
 /// @brief Update the debugoverlay state (called per frame/tick).
 void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Update: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Update: expected Zanna.Game.DebugOverlay");
     if (!dbg)
         return;
     if (dt_ms < 0)
@@ -175,7 +175,7 @@ static int64_t find_watch(rt_debugoverlay dbg, const char *name) {
 
 /// @brief Watch the debugoverlay.
 void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Watch: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Watch: expected Zanna.Game.DebugOverlay");
     if (!dbg || !name)
         return;
 
@@ -210,7 +210,7 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
 
 /// @brief Unwatch the debugoverlay.
 int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Unwatch: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Unwatch: expected Zanna.Game.DebugOverlay");
     if (!dbg || !name)
         return 0;
 
@@ -232,7 +232,7 @@ int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
 
 /// @brief Remove all entries from the debugoverlay.
 void rt_debugoverlay_clear(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Clear: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Clear: expected Zanna.Game.DebugOverlay");
     if (!dbg)
         return;
     for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
@@ -244,7 +244,7 @@ void rt_debugoverlay_clear(rt_debugoverlay dbg) {
 
 /// @brief Return the most recently computed frames-per-second value.
 int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.FPS: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.FPS: expected Zanna.Game.DebugOverlay");
     if (!dbg || dbg->frame_count == 0)
         return 0;
 
@@ -297,7 +297,7 @@ static char *i64_to_str(int64_t val, char *buf, size_t bufsize) {
 
 /// @brief Draw the debugoverlay.
 void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
-    dbg = checked_debugoverlay(dbg, "DebugOverlay.Draw: expected Viper.Game.DebugOverlay");
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Draw: expected Zanna.Game.DebugOverlay");
     if (!dbg || !canvas_ptr || !dbg->enabled)
         return;
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include <string>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Parameters for building a macOS .app-in-.zip package.
 struct MacOSBuildParams {
@@ -55,8 +55,8 @@ void buildMacOSAppDmg(const MacOSBuildParams &params);
 struct MacOSToolchainBuildParams {
     ToolchainInstallManifest manifest;             ///< Staged files and metadata to package.
     std::string outputPath;                        ///< Output `.pkg` file path.
-    std::string identifier{"org.viper.toolchain"}; ///< CFBundleIdentifier / pkg id.
-    std::string displayName{"Viper Toolchain"};    ///< Human-readable package name.
+    std::string identifier{"org.zanna.toolchain"}; ///< CFBundleIdentifier / pkg id.
+    std::string displayName{"Zanna Toolchain"};    ///< Human-readable package name.
     std::string packageVersion;      ///< Optional dotted numeric package version override.
     std::string minimumMacOSVersion; ///< Optional minimum OS (default: 10.15/11.0 by arch).
     std::string licenseFilePath; ///< Optional license file shown in the installer (else generated).
@@ -73,8 +73,8 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params);
 struct MacOSToolchainDmgParams {
     std::string pkgPath;                               ///< Path to the already-built `.pkg`.
     std::string outputPath;                            ///< Output `.dmg` path.
-    std::string volumeName{"Viper Toolchain"};         ///< Mounted volume / window title.
-    std::string pkgDisplayName{"Viper Toolchain.pkg"}; ///< Filename shown inside the image.
+    std::string volumeName{"Zanna Toolchain"};         ///< Mounted volume / window title.
+    std::string pkgDisplayName{"Zanna Toolchain.pkg"}; ///< Filename shown inside the image.
     std::string backgroundPng; ///< Optional window background image (absolute path).
     std::string volumeIcns;    ///< Optional volume icon `.icns` (absolute path).
 };
@@ -85,4 +85,4 @@ struct MacOSToolchainDmgParams {
 /// @throws std::runtime_error on failure or when run off macOS.
 void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params);
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

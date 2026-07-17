@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -293,7 +293,7 @@ static temp_text_file_t write_temp_text_file(const char *suffix, const char *con
     temp_text_file_t file;
     std::filesystem::path dir = std::filesystem::temp_directory_path();
     auto id = (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count();
-    file.path = (dir / ("viper_tls_cert_" + std::to_string(id) + suffix)).string();
+    file.path = (dir / ("zanna_tls_cert_" + std::to_string(id) + suffix)).string();
     std::ofstream out(file.path, std::ios::binary | std::ios::trunc);
     if (!out)
         file.path.clear();

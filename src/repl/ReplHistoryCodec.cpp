@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,10 +24,10 @@
 #include <iterator>
 #include <limits>
 
-namespace viper::repl {
+namespace zanna::repl {
 namespace {
 
-constexpr const char *kHistoryMagic = "# viper-repl-history-v2";
+constexpr const char *kHistoryMagic = "# zanna-repl-history-v2";
 
 /// @brief Trim @p entries to the newest @p maxEntries elements.
 /// @param entries History entries to mutate in place.
@@ -169,4 +169,4 @@ bool ReplHistoryCodec::save(const std::filesystem::path &path,
     return file.good();
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

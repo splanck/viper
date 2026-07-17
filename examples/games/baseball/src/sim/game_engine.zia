@@ -30,7 +30,7 @@
 // ============================================================================
 module game_engine;
 
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Text.Fmt as Fmt;
 bind "../model/game_state";
 bind "./rng";
 bind "./manager_action";

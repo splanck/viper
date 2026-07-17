@@ -1,7 +1,7 @@
 module AssetDemo;
 
-bind Viper.IO;
-bind Viper.Terminal;
+bind Zanna.IO;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Asset Embedding Demo ===");

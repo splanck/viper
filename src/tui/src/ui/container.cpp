@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include "tui/ui/container.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Transfer ownership of a child widget into the container.
 ///
 /// @details Containers own their children outright so they can drive layout
@@ -102,4 +102,4 @@ void HStack::layoutChildren() {
     }
 }
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

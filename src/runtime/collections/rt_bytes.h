@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_bytes.h
@@ -147,7 +147,7 @@ int64_t rt_bytes_find(void *obj, int64_t val);
 ///          valid success value without requiring a `-1` sentinel check.
 /// @param obj Bytes object pointer, or NULL.
 /// @param val Value to find (clamped to 0-255).
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_bytes_find_option(void *obj, int64_t val);
 
 /// @brief Create a copy of the byte array.

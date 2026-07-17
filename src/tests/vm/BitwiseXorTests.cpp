@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -46,7 +46,7 @@ void buildXorFunction(Module &module, int64_t lhs, int64_t rhs) {
 int64_t runXor(int64_t lhs, int64_t rhs) {
     Module module;
     buildXorFunction(module, lhs, rhs);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 

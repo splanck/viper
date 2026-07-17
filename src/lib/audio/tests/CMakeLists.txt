@@ -1,4 +1,4 @@
-# ViperAUD CTests
+# ZannaAUD CTests
 
 add_executable(test_vaud_audit_fixes
         test_vaud_audit_fixes.c

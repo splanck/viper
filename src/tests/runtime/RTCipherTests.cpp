@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,7 +8,7 @@
 // File: tests/runtime/RTCipherTests.cpp
 // Purpose: Validate high-level encryption/decryption API.
 // Key invariants: Encrypt-decrypt round-trips produce original data.
-// Links: docs/viperlib/crypto.md
+// Links: docs/zannalib/crypto.md
 //
 //===----------------------------------------------------------------------===//
 

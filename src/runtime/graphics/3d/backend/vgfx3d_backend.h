@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend.h
-// Purpose: Backend abstraction vtable for Viper.Graphics3D. All rendering
+// Purpose: Backend abstraction vtable for Zanna.Graphics3D. All rendering
 //   backends (software, Metal, D3D11, OpenGL) implement this interface.
 //   Canvas3D dispatches through the vtable; backend selection is automatic.
 //
@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -652,7 +652,7 @@ extern const vgfx3d_backend_t vgfx3d_metal_backend;
 /// @brief The Direct3D 11 GPU backend (Windows only).
 extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
 #endif
-#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
+#if RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
 /// @brief The OpenGL GPU backend (Linux only).
 extern const vgfx3d_backend_t vgfx3d_opengl_backend;
 #endif
@@ -687,4 +687,4 @@ static inline const char *vgfx3d_default_backend_name_for_platform(
 ///   fall back to the software backend. Returns a borrowed pointer to a static vtable.
 const vgfx3d_backend_t *vgfx3d_select_backend(void);
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

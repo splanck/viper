@@ -1,8 +1,8 @@
 module OptionDemo;
-bind Viper.Terminal;
-bind Viper.Option as Option;
+bind Zanna.Terminal;
+bind Zanna.Option as Option;
 func start() {
-    Say("=== API Audit: Viper.Option ===");
+    Say("=== API Audit: Zanna.Option ===");
 
     // --- SomeI64 ---
     Say("--- SomeI64 ---");

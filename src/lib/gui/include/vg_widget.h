@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -116,8 +116,8 @@ typedef enum vg_widget_type {
     VG_WIDGET_COLORPALETTE, ///< Grid of color swatches for quick selection.
     VG_WIDGET_COLORPICKER,  ///< Full RGB(A) color picker with sliders.
     VG_WIDGET_GROUPBOX,     ///< Titled "card" container grouping related controls.
-    VG_WIDGET_DATAGRID,     ///< Tabular data grid with auto-sized columns (Viper.GUI.Grid).
-    VG_WIDGET_POPUPLIST,    ///< Caret-anchored filtered popup list (Viper.GUI.PopupList).
+    VG_WIDGET_DATAGRID,     ///< Tabular data grid with auto-sized columns (Zanna.GUI.Grid).
+    VG_WIDGET_POPUPLIST,    ///< Caret-anchored filtered popup list (Zanna.GUI.PopupList).
     VG_WIDGET_CUSTOM,       ///< Application-defined custom widget.
 } vg_widget_type_t;
 
@@ -147,7 +147,7 @@ typedef enum vg_widget_state {
 
 /// @brief Cross-platform semantic role exposed by headless and native accessibility trees.
 /// @details Numeric values are stable because they are also surfaced through
-///          `Viper.GUI.AccessibleRole`. `VG_ACCESSIBLE_ROLE_NONE` marks a structural or decorative
+///          `Zanna.GUI.AccessibleRole`. `VG_ACCESSIBLE_ROLE_NONE` marks a structural or decorative
 ///          node whose children may still carry meaningful semantics.
 typedef enum vg_accessible_role {
     VG_ACCESSIBLE_ROLE_NONE = 0,
@@ -290,7 +290,7 @@ typedef struct vg_widget_vtable {
 
     /// @brief Primary paint -- render the widget onto the canvas.
     /// @details Paint callbacks receive self->x/self->y in screen coordinates
-    ///          for compatibility with direct ViperGFX drawing. Use
+    ///          for compatibility with direct ZannaGFX drawing. Use
     ///          vg_widget_get_bounds() to query parent-local layout coordinates.
     /// @param self   The widget to paint.
     /// @param canvas Opaque canvas handle (platform-specific renderer).
@@ -345,7 +345,7 @@ typedef struct vg_widget_vtable {
 // Widget Base Structure
 //=============================================================================
 
-/// @brief The base structure that every widget in the Viper GUI inherits from.
+/// @brief The base structure that every widget in the Zanna GUI inherits from.
 ///
 /// @details Concrete widgets embed a vg_widget_t as their first member so
 ///          that a pointer to the concrete type can be safely cast to
@@ -514,7 +514,7 @@ struct vg_widget {
 /// @param vtable Pointer to the virtual function table for this widget type.
 void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_vtable_t *vtable);
 
-/// @brief Return true when @p widget points at a live ViperGUI widget.
+/// @brief Return true when @p widget points at a live ZannaGUI widget.
 bool vg_widget_is_live(const vg_widget_t *widget);
 
 /// @brief Allocate and initialise a generic container widget.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -216,7 +216,7 @@ static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *dat
 ///          channel entry, and invokes @ref rt_file_open.  When the open
 ///          succeeds the entry is flagged in-use and its EOF indicator cleared;
 ///          failures propagate the error kind from the lower layer.
-int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel) {
+int32_t rt_open_err_vstr(ZannaString *path, int32_t mode, int32_t channel) {
     const char *mode_str = rt_file_mode_string(mode);
     const char *path_str = NULL;
     if (!mode_str || !rt_file_path_from_vstr(path, &path_str) || channel <= 0)
@@ -270,7 +270,7 @@ int32_t rt_close_err(int32_t channel) {
 ///          @ref rt_file_string_view, and then calls
 ///          @ref rt_file_write_entry so EOF caching and error translation remain
 ///          centralised in one helper.
-int32_t rt_write_ch_err(int32_t channel, ViperString *s) {
+int32_t rt_write_ch_err(int32_t channel, ZannaString *s) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -287,7 +287,7 @@ int32_t rt_write_ch_err(int32_t channel, ViperString *s) {
 /// @details Resolves the channel, writes the provided bytes, and finally emits a
 ///          single newline so the behaviour matches PRINT without a trailing
 ///          semicolon in traditional BASIC.
-int32_t rt_println_ch_err(int32_t channel, ViperString *s) {
+int32_t rt_println_ch_err(int32_t channel, ZannaString *s) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -310,7 +310,7 @@ int32_t rt_println_ch_err(int32_t channel, ViperString *s) {
 ///          the blocking read, marks the cached EOF flag when the helper reports
 ///          end-of-file, and on success transfers ownership of the allocated
 ///          runtime string to @p out.
-int32_t rt_line_input_ch_err(int32_t channel, ViperString **out) {
+int32_t rt_line_input_ch_err(int32_t channel, ZannaString **out) {
     if (!out)
         return (int32_t)Err_InvalidOperation;
     *out = NULL;

@@ -1,0 +1,492 @@
+module bind_utils;
+
+bind "../services/text_utils";
+bind "identifier_utils";
+bind "source_scan";
+
+bind Obj = Zanna.Core.Object;
+bind Seq = Zanna.Collections.Seq;
+bind IO = Zanna.IO;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: bind_utils
+// PURPOSE: Pure helpers for Zia `bind` declarations and quoted bind paths.
+//
+// WHERE-THIS-FITS: Shared by edit commands and project explorer rename logic.
+//          This module owns text-level bind manipulation; project managers and
+//          command handlers decide when to read/write files or update the UI.
+//
+// KEY-DESIGN-CHOICES:
+//   * QUOTED PATH ONLY FOR REWRITES. Rename rewrites touch `bind "path";`
+//     lines and leave runtime alias binds alone.
+//   * RELATIVE PATH PRESERVATION. Rewrites keep extensionless imports
+//     extensionless and preserve `./` style when the original used it.
+//   * CONSERVATIVE DECLARATION DETECTION. Project missing-bind suggestions use
+//     top-level declaration names only; nested declarations are ignored.
+// ============================================================================
+
+/// @brief Sort and deduplicate the leading Zia bind block.
+/// @details Only the first contiguous bind block is organized. Later bind lines
+///          are left untouched because they may be intentionally scoped near code.
+/// @param source Full Zia document text.
+/// @return Source with the leading bind block sorted case-insensitively.
+expose func OrganizeZiaBindsText(source: String) -> String {
+    var lines = Str.Split(source, "\n");
+    var output = new List();
+    var binds = new List();
+    var i = 0;
+    var seenBind = false;
+
+    while i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var trimmed = Str.Trim(line);
+        if IsZiaBindLine(trimmed) {
+            InsertUniqueSortedBind(binds, line);
+            seenBind = true;
+            i = i + 1;
+            continue;
+        }
+        if seenBind {
+            break;
+        }
+        output.add(line);
+        i = i + 1;
+    }
+
+    if binds.count() == 0 {
+        return source;
+    }
+
+    var b = 0;
+    while b < binds.count() {
+        output.add(Obj.ToString(binds.get(b)));
+        b = b + 1;
+    }
+
+    while i < Seq.get_Count(lines) {
+        output.add(Obj.ToString(Seq.Get(lines, i)));
+        i = i + 1;
+    }
+
+    return text_utils.JoinStringList(output, "\n");
+}
+
+/// @brief Insert a bind line after the module declaration and existing binds.
+/// @param source Full Zia document text.
+/// @param bindLine Complete bind declaration to insert.
+/// @return Source containing the new bind line in the conventional top block.
+expose func InsertTopBindLineText(source: String,
+                                  bindLine: String) -> String {
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    var lines = Str.Lines(source);
+    var count = Seq.get_Count(lines);
+    var insertAt = 0;
+    var i = 0;
+    while i < count {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var trimmed = Str.Trim(line);
+        if Str.StartsWith(trimmed, "module ") {
+            insertAt = i + 1;
+            break;
+        }
+        i = i + 1;
+    }
+
+    while insertAt < count {
+        var existing = Obj.ToString(Seq.Get(lines, insertAt));
+        var trimmedExisting = Str.Trim(existing);
+        if IsZiaBindLine(trimmedExisting) {
+            insertAt = insertAt + 1;
+            continue;
+        }
+        break;
+    }
+
+    var output = new List();
+    var out = 0;
+    while out < count {
+        if out == insertAt {
+            output.add(bindLine);
+        }
+        output.add(Obj.ToString(Seq.Get(lines, out)));
+        out = out + 1;
+    }
+    if insertAt >= count {
+        output.add(bindLine);
+    }
+    return text_utils.JoinStringList(output, eol);
+}
+
+/// @brief Return true when a source already binds an alias.
+/// @param source Full Zia document text.
+/// @param identifier Alias being introduced.
+/// @return True when a direct alias or `as identifier` bind exists.
+expose func SourceHasBindAlias(source: String,
+                               identifier: String) -> Boolean {
+    var lines = Str.Lines(source);
+    var prefix = "bind " + identifier + " = ";
+    var aliasSuffix = " as " + identifier + ";";
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
+        if Str.StartsWith(trimmed, prefix) { return true; }
+        if Str.EndsWith(trimmed, aliasSuffix) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return true when a source already contains a quoted file bind.
+/// @param source Full Zia document text.
+/// @param bindPath Path text expected inside the quotes.
+/// @return True when `bind "<bindPath>";` appears in the source.
+expose func SourceHasFileBind(source: String,
+                              bindPath: String) -> Boolean {
+    var lines = Str.Lines(source);
+    var expected = "bind \"" + bindPath + "\";";
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
+        if trimmed == expected { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return true when a trimmed line is a simple bind declaration.
+/// @param trimmed Trimmed source line.
+/// @return True for `bind ...;` lines.
+expose func IsZiaBindLine(trimmed: String) -> Boolean {
+    return Str.StartsWith(trimmed, "bind ") and Str.EndsWith(trimmed, ";");
+}
+
+/// @brief Determine whether a file defines a top-level identifier.
+/// @param source Full Zia document text.
+/// @param identifier Identifier to search for.
+/// @return True when a top-level module/function/type/value declaration matches.
+expose func ProjectFileDefinesIdentifier(source: String,
+                                         identifier: String) -> Boolean {
+    if source == "" or identifier == "" { return false; }
+    var lines = Str.Lines(source);
+    var depth = 0;
+    var commentDepth = 0;
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var trimmed = Str.Trim(line);
+        if depth == 0 and commentDepth == 0 {
+            var name = TopLevelZiaDeclarationName(trimmed);
+            if name == identifier { return true; }
+        }
+        depth = depth + source_scan.ZiaBraceDelta(line, commentDepth);
+        if depth < 0 { depth = 0; }
+        commentDepth = source_scan.ZiaCommentDepthAfter(line, commentDepth);
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Extract a top-level declaration name from one trimmed line.
+/// @param trimmed Source line with surrounding whitespace already removed.
+/// @return Declared identifier, or empty when the line is not a declaration.
+expose func TopLevelZiaDeclarationName(trimmed: String) -> String {
+    if trimmed == "" or Str.StartsWith(trimmed, "//") or Str.StartsWith(trimmed, "/*") {
+        return "";
+    }
+    if Str.StartsWith(trimmed, "module ") {
+        return identifier_utils.ReadIdentifierAt(trimmed, Str.get_Length("module ") + 1);
+    }
+
+    var line = trimmed;
+    line = StripLeadingDeclarationModifier(line, "expose");
+    line = StripLeadingDeclarationModifier(line, "async");
+    line = StripLeadingDeclarationModifier(line, "foreign");
+    line = StripLeadingDeclarationModifier(line, "weak");
+
+    if Str.StartsWith(line, "func ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("func ") + 1);
+    }
+    if Str.StartsWith(line, "class ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("class ") + 1);
+    }
+    if Str.StartsWith(line, "struct ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("struct ") + 1);
+    }
+    if Str.StartsWith(line, "interface ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("interface ") + 1);
+    }
+    if Str.StartsWith(line, "enum ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("enum ") + 1);
+    }
+    if Str.StartsWith(line, "final ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("final ") + 1);
+    }
+    if Str.StartsWith(line, "var ") {
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("var ") + 1);
+    }
+    return "";
+}
+
+/// @brief Result of a bind rewrite operation.
+/// @details `text` always contains rebuilt source text, while `count` records
+///          how many bind lines changed.
+class BindRewriteResult {
+    expose String text;
+    expose Integer count;
+
+    /// @brief Initialize as an unchanged rewrite result.
+    expose func init() {
+        text = "";
+        count = 0;
+    }
+}
+
+/// @brief Rewrite quoted bind paths that target a renamed file or directory.
+/// @param content Source text of the importing Zia file.
+/// @param importingPath Absolute path of the importing Zia file.
+/// @param oldNorm Normalized absolute old file/directory path.
+/// @param newNorm Normalized absolute new file/directory path.
+/// @param oldWasDir True when the old path was a directory.
+/// @return Rebuilt source text and number of rewritten bind lines.
+expose func RewriteZiaBindContent(content: String,
+                                  importingPath: String,
+                                  oldNorm: String,
+                                  newNorm: String,
+                                  oldWasDir: Boolean) -> BindRewriteResult {
+    var result = new BindRewriteResult();
+    result.text = content;
+    if content == "" { return result; }
+
+    var lines = Str.Split(content, "\n");
+    var rebuilt = "";
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var rewritten = RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
+        if rewritten != line {
+            result.count = result.count + 1;
+        }
+        if i > 0 { rebuilt = rebuilt + "\n"; }
+        rebuilt = rebuilt + rewritten;
+        i = i + 1;
+    }
+    result.text = rebuilt;
+    return result;
+}
+
+/// @brief Rewrite one quoted bind line if it resolves to a renamed path.
+/// @param line Source line to inspect.
+/// @param importingPath Absolute path of the importing Zia file.
+/// @param oldNorm Normalized absolute old file/directory path.
+/// @param newNorm Normalized absolute new file/directory path.
+/// @param oldWasDir True when the old path was a directory.
+/// @return Original or rewritten source line.
+expose func RewriteZiaBindLine(line: String,
+                               importingPath: String,
+                               oldNorm: String,
+                               newNorm: String,
+                               oldWasDir: Boolean) -> String {
+    var trimmed = Str.Trim(line);
+    if Str.StartsWith(trimmed, "bind ") == false and Str.StartsWith(trimmed, "bind\t") == false {
+        return line;
+    }
+    var firstQuote = Str.IndexOf(line, "\"");
+    if firstQuote == 0 { return line; }
+    var secondQuote = Str.IndexOfFrom(line, firstQuote + 1, "\"");
+    if secondQuote == 0 { return line; }
+
+    var importPath = Str.MidLen(line, firstQuote + 1, secondQuote - firstQuote - 1);
+    var resolved = ResolveBindPath(importPath, importingPath);
+    var mapped = "";
+    if oldWasDir {
+        var prefix = oldNorm + Path.Separator();
+        if Str.StartsWith(resolved, prefix) {
+            var suffix = Str.Mid(resolved, Str.get_Length(prefix) + 1);
+            mapped = Path.Join(newNorm, suffix);
+        }
+    } else if resolved == oldNorm {
+        mapped = newNorm;
+    }
+    if mapped == "" { return line; }
+
+    var keepNoExt = Path.Extension(importPath) == "";
+    var replacement = RelativeBindPath(Path.Directory(importingPath), mapped, importPath, keepNoExt);
+    var before = "";
+    if firstQuote > 1 {
+        before = Str.Left(line, firstQuote);
+    } else {
+        before = "\"";
+    }
+    var after = Str.Mid(line, secondQuote);
+    return before + replacement + after;
+}
+
+/// @brief Resolve a quoted bind path from an importing file.
+/// @param importPath Path text from inside the bind quotes.
+/// @param importingPath Absolute path of the importing source file.
+/// @return Normalized absolute target path, adding `.zia` when omitted.
+expose func ResolveBindPath(importPath: String, importingPath: String) -> String {
+    var candidate = importPath;
+    if Path.IsAbsolute(candidate) == false {
+        candidate = Path.Join(Path.Directory(importingPath), candidate);
+    }
+    if Path.Extension(candidate) == "" {
+        candidate = candidate + ".zia";
+    }
+    return NormalizeAbsPath(candidate);
+}
+
+/// @brief Compute quoted bind path text from one source file to a target file.
+/// @param importingDir Absolute directory of the importing file.
+/// @param targetPath Absolute target file path.
+/// @param oldImportPath Original quoted import path, used to preserve style.
+/// @param keepNoExt True to drop `.zia` when the original omitted it.
+/// @return Replacement path using forward slashes for source portability.
+expose func RelativeBindPath(importingDir: String,
+                             targetPath: String,
+                             oldImportPath: String,
+                             keepNoExt: Boolean) -> String {
+    var targetNorm = NormalizeAbsPath(targetPath);
+    if Path.IsAbsolute(oldImportPath) {
+        return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
+    }
+
+    var baseParts = PathParts(NormalizeAbsPath(importingDir));
+    var targetParts = PathParts(targetNorm);
+    if Seq.get_Count(baseParts) > 0 and Seq.get_Count(targetParts) > 0 {
+        if Obj.ToString(Seq.Get(baseParts, 0)) != Obj.ToString(Seq.Get(targetParts, 0)) {
+            return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
+        }
+    }
+
+    var common = 0;
+    while common < Seq.get_Count(baseParts)
+          and common < Seq.get_Count(targetParts)
+          and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
+        common = common + 1;
+    }
+
+    var rel = "";
+    var b = common;
+    while b < Seq.get_Count(baseParts) {
+        rel = AppendPathPart(rel, "..");
+        b = b + 1;
+    }
+    var t = common;
+    while t < Seq.get_Count(targetParts) {
+        rel = AppendPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
+        t = t + 1;
+    }
+    if rel == "" {
+        rel = Path.Name(targetNorm);
+    }
+    rel = MaybeStripZiaExtension(rel, keepNoExt);
+    if Str.StartsWith(rel, "../") == false and Str.StartsWith(rel, "./") == false {
+        if Str.StartsWith(oldImportPath, "./") {
+            rel = "./" + rel;
+        }
+    }
+    return rel;
+}
+
+/// @brief Normalize an absolute path lexically.
+/// @param path Path to absolutize and normalize.
+/// @return Runtime-normalized absolute path.
+expose func NormalizeAbsPath(path: String) -> String {
+    return Path.Normalize(Path.Absolute(path));
+}
+
+/// @brief Convert path separators to source-level forward slashes.
+/// @param path Filesystem path.
+/// @return Path text suitable for Zia source bind strings.
+expose func NormalizeBindSeparators(path: String) -> String {
+    var normalized = Str.Replace(path, "\\", "/");
+    var sep = Path.Separator();
+    if sep != "/" {
+        normalized = Str.Replace(normalized, sep, "/");
+    }
+    return normalized;
+}
+
+/// @brief Return true when a string list contains a value.
+/// @param items List whose entries are compared as strings.
+/// @param value String to find.
+/// @return True when any item equals `value`.
+expose func ListContains(items: List, value: String) -> Boolean {
+    return text_utils.StringListContains(items, value);
+}
+
+/// @brief Insert a bind line into a sorted list unless it already exists.
+/// @param binds Mutable list of bind lines.
+/// @param line Bind line to insert.
+/// @details Comparison is case-insensitive and trims surrounding whitespace so
+///          organizing binds is stable even when source spacing differs.
+func InsertUniqueSortedBind(binds: List, line: String) {
+    var key = Str.ToLower(Str.Trim(line));
+    var i = 0;
+    while i < binds.count() {
+        var existing = Str.ToLower(Str.Trim(Obj.ToString(binds.get(i))));
+        if existing == key {
+            return;
+        }
+        if existing > key {
+            binds.insert(i, line);
+            return;
+        }
+        i = i + 1;
+    }
+    binds.add(line);
+}
+
+/// @brief Remove a declaration modifier prefix from a line.
+/// @param line Trimmed declaration text.
+/// @param modifier Modifier keyword such as `expose`.
+/// @return Line without the leading modifier, or the original line.
+func StripLeadingDeclarationModifier(line: String, modifier: String) -> String {
+    var prefix = modifier + " ";
+    if Str.StartsWith(line, prefix) {
+        return Str.Trim(Str.Mid(line, Str.get_Length(prefix) + 1));
+    }
+    return line;
+}
+
+/// @brief Optionally strip a `.zia` suffix from a bind path.
+/// @param path Bind path text.
+/// @param keepNoExt True when source used extensionless bind spelling.
+/// @return Path with `.zia` removed when requested and present.
+func MaybeStripZiaExtension(path: String, keepNoExt: Boolean) -> String {
+    if keepNoExt and Str.EndsWith(path, ".zia") {
+        return Str.Left(path, Str.get_Length(path) - 4);
+    }
+    return path;
+}
+
+/// @brief Append one normalized path segment using `/`.
+/// @param path Existing normalized path prefix, possibly empty.
+/// @param part Segment to append.
+/// @return Combined path.
+func AppendPathPart(path: String, part: String) -> String {
+    if path == "" { return part; }
+    return path + "/" + part;
+}
+
+/// @brief Split a bind path into meaningful normalized segments.
+/// @param path Bind path using `/` or platform separators.
+/// @return Sequence of non-empty, non-dot path segments.
+func PathParts(path: String) -> Any {
+    var parts = Seq.New();
+    var normalized = NormalizeBindSeparators(path);
+    var raw = Str.Split(normalized, "/");
+    var i = 0;
+    while i < Seq.get_Count(raw) {
+        var part = Obj.ToString(Seq.Get(raw, i));
+        if part != "" and part != "." {
+            Seq.Push(parts, part);
+        }
+        i = i + 1;
+    }
+    return parts;
+}

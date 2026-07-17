@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the TermIO abstract interface and its concrete
 // implementations (RealTermIO and StringTermIO) for terminal output in
-// Viper's TUI framework.
+// Zanna's TUI framework.
 //
 // TermIO provides a minimal write/flush interface that the Renderer uses
 // to emit ANSI escape sequences. RealTermIO writes directly to stdout
@@ -28,7 +28,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 
 /// @brief Abstract interface for terminal output used by the TUI renderer.
 /// @details Provides a write/flush contract that abstracts the output sink,
@@ -74,4 +74,4 @@ class StringTermIO : public TermIO {
     std::string buf_;
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

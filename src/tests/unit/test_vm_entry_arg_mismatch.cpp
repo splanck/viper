@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -109,14 +109,14 @@ void runTooFewArgs() {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(runTooManyArgs);
-    viper::tests::registerChildFunction(runTooFewArgs);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(runTooManyArgs);
+    zanna::tests::registerChildFunction(runTooFewArgs);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     // Too many args
     {
-        auto result = viper::tests::runIsolated(runTooManyArgs);
+        auto result = zanna::tests::runIsolated(runTooManyArgs);
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_many_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 
     // Too few args
     {
-        auto result = viper::tests::runIsolated(runTooFewArgs);
+        auto result = zanna::tests::runIsolated(runTooFewArgs);
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_few_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);

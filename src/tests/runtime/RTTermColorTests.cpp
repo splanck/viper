@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #ifdef _WIN32
 // This test requires PTY support which is not available on Windows
 int main() {
-    VIPER_PLATFORM_SKIP("PTY not available on Windows");
+    ZANNA_PLATFORM_SKIP("PTY not available on Windows");
 }
 #else
 // POSIX-only implementation
@@ -170,7 +170,7 @@ int main() {
     {
         int m = -1, s = -1;
         if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0) {
-            VIPER_PLATFORM_SKIP("openpty unavailable in this environment");
+            ZANNA_PLATFORM_SKIP("openpty unavailable in this environment");
         }
         close(m);
         close(s);

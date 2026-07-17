@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -48,7 +48,7 @@
 ///   %kind = err.get_kind %err
 ///   %code = err.get_code %err
 ///   %line = err.get_line %err
-///   call @Viper.Error.RaiseKind(%kind, %code, %line)
+///   call @Zanna.Error.RaiseKind(%kind, %code, %line)
 ///   trap.from_err i32 9                 // unreachable fallback
 ///
 /// ^catch_body(%err: error, %tok: resumetok):

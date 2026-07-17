@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Perform copy propagation within a basic block.
 std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats);
@@ -62,4 +62,4 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
 /// offsets not in that set.
 std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

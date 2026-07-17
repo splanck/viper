@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -61,7 +61,7 @@
 
 using namespace il::core;
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 // -------------------------------------------------------------------------
 // MemorySSA query implementation
@@ -583,4 +583,4 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     return mssa;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

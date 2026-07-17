@@ -1,15 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTStopwatchTests.cpp
-// Purpose: Validate Viper.Diagnostics.Stopwatch runtime functions.
+// Purpose: Validate Zanna.Diagnostics.Stopwatch runtime functions.
 // Key invariants: Stopwatch accumulates time correctly, IsRunning reflects state,
 //                 Start/Stop/Reset/Restart behave as documented.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt_countdown.h"
 #include "rt_object.h"

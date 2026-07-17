@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_log.h
-// Purpose: Simple leveled logging for the Viper.Diagnostics.Log namespace, writing timestamped
+// Purpose: Simple leveled logging for the Zanna.Diagnostics.Log namespace, writing timestamped
 // messages to stderr with DEBUG/INFO/WARN/ERROR levels and a configurable minimum level filter.
 //
 // Key invariants:

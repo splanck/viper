@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_scene.inc  (#included from rt_fbx_loader.c;
 // not a standalone translation unit) Purpose: FBX scene-graph extraction
 //===----------------------------------------------------------------------===//
@@ -257,7 +257,7 @@ static void fbx_mat4_append_axis_rotation(double acc[16], int axis, double degre
 }
 
 /// @brief Build an FBX Euler rotation matrix for the requested RotationOrder.
-/// @details FBX's order value names the local axis sequence. With Viper's row-major matrices and
+/// @details FBX's order value names the local axis sequence. With Zanna's row-major matrices and
 ///          column vectors, preserving the legacy XYZ result means composing in reverse axis order
 ///          (`XYZ` becomes `Rz * Ry * Rx`). The same rule is applied to the other FBX orders:
 ///          0 XYZ, 1 XZY, 2 YZX, 3 YXZ, 4 ZXY, 5 ZYX, 6 SphericXYZ (treated as XYZ).
@@ -305,7 +305,7 @@ static void fbx_mat4_euler_degrees(const double xyz_degrees[3],
     }
 }
 
-/// @brief Apply FBX Z-up to Viper Y-up conversion to a full affine matrix.
+/// @brief Apply FBX Z-up to Zanna Y-up conversion to a full affine matrix.
 /// @details Vector correction alone is not enough once pivots and bind matrices are involved.
 ///          This performs the basis change `C * M * C^-1`, where C maps `(x,y,z)` to
 ///          `(x,z,-y)`.
@@ -357,7 +357,7 @@ static void fbx_mat4_apply_zup(double matrix[16]) {
 /// @brief Compose the full FBX model transform stack into one affine matrix.
 /// @details The stack follows the FBX SDK transform order for local transforms, including
 ///          rotation/scaling pivots and offsets. Geometric translation is folded into the initial
-///          node translation to preserve Viper's existing scene-node behavior; geometric rotation
+///          node translation to preserve Zanna's existing scene-node behavior; geometric rotation
 ///          and scale remain appended because there is no separate per-geometry transform slot.
 /// @param c Parsed transform components.
 /// @param out Receives a row-major affine matrix.
@@ -850,7 +850,7 @@ static int32_t fbx_model_index_for_id(const fbx_model_id_entry_t *sorted,
     return -1;
 }
 
-/// @brief Three-phase builder that assembles a Viper `SceneNode3D` graph from the flat
+/// @brief Three-phase builder that assembles a Zanna `SceneNode3D` graph from the flat
 /// FBX `Objects` / `Connections` soup. Phase 1: iterate `Model` entries, skip skeleton
 /// limbs (handled by the skeleton importer), allocate a scene node per model with
 /// decoded name and extracted TRS, recording its FBX id + parent id. Phase 2: walk

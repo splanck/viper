@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// @brief Normalise a symbol name to its "bare" form for prefix matching.
 /// @details Drops any leading underscores (Mach-O mangles "main" to "_main")
@@ -180,7 +180,7 @@ inline const std::vector<const char *> &linuxExclusiveDynamicSymbols() {
 
 /// @brief Recognise Itanium-mangled C++ runtime/library symbols (`std::*`, RTTI, etc.).
 /// @details These symbols are supplied by the platform C++ runtime rather than
-///          Viper's own archives. The matcher stays narrow to known `std::*`,
+///          Zanna's own archives. The matcher stays narrow to known `std::*`,
 ///          RTTI/vtable, operator new/delete, and exception-runtime prefixes so
 ///          arbitrary user-defined C++ mangled names are not treated as system imports.
 inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
@@ -1065,4 +1065,4 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     return false;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

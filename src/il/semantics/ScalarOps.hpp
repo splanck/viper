@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/il/semantics/ScalarOps.hpp
-// Purpose: Shared scalar instruction semantics for all Viper execution engines.
+// Purpose: Shared scalar instruction semantics for all Zanna execution engines.
 // Key invariants: Functions are pure, deterministic, and never rely on C++ signed
 //                 overflow, implementation-defined shifts, or undefined division.
 // Ownership: Header-only semantic kernel; owns no state and borrows no VM objects.
@@ -42,7 +42,7 @@ namespace il::semantics {
 /// @brief Trap categories produced by the shared scalar semantic kernel.
 /// @details The values are VM-neutral.  Interpreters map them to their native
 ///          trap enums at the call site so this header remains independent from
-///          both `il::vm::TrapKind` and `viper::bytecode::TrapKind`.
+///          both `il::vm::TrapKind` and `zanna::bytecode::TrapKind`.
 enum class TrapKind : uint8_t {
     None,             ///< Operation completed normally.
     DivideByZero,     ///< Division or remainder divisor was zero.

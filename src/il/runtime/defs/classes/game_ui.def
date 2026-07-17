@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,14 +22,14 @@
 // Phase 4: Game Development Abstractions - Object Management & Spatial
 // ============================================================================
 
-// Viper.ObjectPool - Efficient object reuse via free list
+// Zanna.ObjectPool - Efficient object reuse via free list
 /// @summary Provides Object Pool functionality for game applications.
 /// @details
-/// Create `Viper.Game.ObjectPool` values through its registered constructor and use the returned
+/// Create `Zanna.Game.ObjectPool` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Capacity`, `ActiveCount`, `FreeCount` and operations including `Acquire`, `Release`,
 /// `IsActive`, `Clear`.
-RT_CLASS_BEGIN("Viper.Game.ObjectPool", ObjectPool, "obj", ObjPoolNew)
+RT_CLASS_BEGIN("Zanna.Game.ObjectPool", ObjectPool, "obj", ObjPoolNew)
     RT_PROP("Capacity", "i64", ObjPoolCapacity, none)
     RT_PROP("ActiveCount", "i64", ObjPoolActiveCount, none)
     RT_PROP("FreeCount", "i64", ObjPoolFreeCount, none)
@@ -45,13 +45,13 @@ RT_CLASS_BEGIN("Viper.Game.ObjectPool", ObjectPool, "obj", ObjPoolNew)
     RT_METHOD("GetData", "i64(i64)", ObjPoolGetData)
 RT_CLASS_END()
 
-// Viper.ScreenFX - Screen effects manager (shake, flash, fade)
+// Zanna.ScreenFX - Screen effects manager (shake, flash, fade)
 /// @summary Provides Screen FX functionality for game applications.
 /// @details
-/// Create `Viper.Game.ScreenFX` values through its registered constructor and use the returned
+/// Create `Zanna.Game.ScreenFX` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsActive`, `ShakeX`, `ShakeY` and operations including `Update`, `Shake`, `Flash`, `FadeIn`.
-RT_CLASS_BEGIN("Viper.Game.ScreenFX", ScreenFX, "obj", ScreenFXNew)
+RT_CLASS_BEGIN("Zanna.Game.ScreenFX", ScreenFX, "obj", ScreenFXNew)
     RT_PROP("IsActive", "i1", ScreenFXIsActive, none)
     RT_PROP("ShakeX", "i64", ScreenFXGetShakeX, none)
     RT_PROP("ShakeY", "i64", ScreenFXGetShakeY, none)
@@ -92,26 +92,26 @@ RT_CLASS_BEGIN("Viper.Game.ScreenFX", ScreenFX, "obj", ScreenFXNew)
     RT_METHOD("Draw", "void(obj,i64,i64)", ScreenFXDraw)
 RT_CLASS_END()
 
-// Viper.Game2D.SceneDocument - scene-owned editor document model
+// Zanna.Game2D.SceneDocument - scene-owned editor document model
 /// @summary Provides scene-owned editor document model.
 /// @details
-/// Create `Viper.Game2D.SceneDocument` values through its registered constructor and use the
+/// Create `Zanna.Game2D.SceneDocument` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Width`, `Height`, `TileWidth` and operations including `LoadJson`, `LoadJsonResult`, `Load`,
 /// `LoadResult`.
-RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
+RT_CLASS_BEGIN("Zanna.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_PROP("Width", "i64", GameSceneGetWidth, none)
     RT_PROP("Height", "i64", GameSceneGetHeight, none)
     RT_PROP("TileWidth", "i64", GameSceneGetTileWidth, none)
     RT_PROP("TileHeight", "i64", GameSceneGetTileHeight, none)
-    RT_METHOD("LoadJson", "obj<Viper.Game2D.SceneDocument>(str)", GameSceneLoadJson)
-    RT_METHOD("LoadJsonResult", "obj<Viper.Result>(str)", GameSceneLoadJsonResult)
-    RT_METHOD("Load", "obj<Viper.Game2D.SceneDocument>(str)", GameSceneLoadFile)
-    RT_METHOD("LoadResult", "obj<Viper.Result>(str)", GameSceneLoadFileResult)
+    RT_METHOD("LoadJson", "obj<Zanna.Game2D.SceneDocument>(str)", GameSceneLoadJson)
+    RT_METHOD("LoadJsonResult", "obj<Zanna.Result>(str)", GameSceneLoadJsonResult)
+    RT_METHOD("Load", "obj<Zanna.Game2D.SceneDocument>(str)", GameSceneLoadFile)
+    RT_METHOD("LoadResult", "obj<Zanna.Result>(str)", GameSceneLoadFileResult)
     RT_METHOD("ToJson", "str()", GameSceneToJson)
     RT_METHOD("Save", "i1(str)", GameSceneSaveFile)
-    RT_METHOD("Diagnostics", "obj<Viper.Collections.Seq>()", GameSceneDiagnostics)
-    RT_METHOD("DiagnosticRecords", "obj<Viper.Collections.Seq>()", GameSceneDiagnosticRecords)
+    RT_METHOD("Diagnostics", "obj<Zanna.Collections.Seq>()", GameSceneDiagnostics)
+    RT_METHOD("DiagnosticRecords", "obj<Zanna.Collections.Seq>()", GameSceneDiagnosticRecords)
     RT_METHOD("HasErrors", "i1()", GameSceneHasErrors)
     RT_METHOD("ClearDiagnostics", "void()", GameSceneClearDiagnostics)
     RT_METHOD("AddLayer", "i64(str)", GameSceneAddLayer)
@@ -143,7 +143,7 @@ RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("ObjectGetFloat", "f64(i64,str,f64)", GameSceneObjectGetFloat)
     RT_METHOD("ObjectGetBool", "i1(i64,str,i1)", GameSceneObjectGetBool)
     RT_METHOD("ObjectHas", "i1(i64,str)", GameSceneObjectHas)
-    RT_METHOD("ObjectKeys", "obj<Viper.Collections.Seq>(i64)", GameSceneObjectKeys)
+    RT_METHOD("ObjectKeys", "obj<Zanna.Collections.Seq>(i64)", GameSceneObjectKeys)
     RT_METHOD("ObjectSetInt", "void(i64,str,i64)", GameSceneObjectSetInt)
     RT_METHOD("ObjectSetStr", "void(i64,str,str)", GameSceneObjectSetStr)
     RT_METHOD("ObjectSetFloat", "void(i64,str,f64)", GameSceneObjectSetFloat)
@@ -151,7 +151,7 @@ RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("ObjectRemove", "void(i64,str)", GameSceneObjectRemove)
     RT_METHOD("CountOfType", "i64(str)", GameSceneCountOfType)
     RT_METHOD("ObjectOfType", "i64(str,i64)", GameSceneObjectOfType)
-    RT_METHOD("FindObjectOption", "obj<Viper.Option>(str)", GameSceneFindObjectOption)
+    RT_METHOD("FindObjectOption", "obj<Zanna.Option>(str)", GameSceneFindObjectOption)
     RT_METHOD("MoveObject", "void(i64,i64)", GameSceneMoveObject)
     RT_METHOD("SetProperty", "void(str,str)", GameSceneSetProperty)
     RT_METHOD("GetProperty", "str(str)", GameSceneGetProperty)
@@ -166,18 +166,18 @@ RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("SetFloat", "void(str,f64)", GameSceneSetFloat)
     RT_METHOD("SetBool", "void(str,i1)", GameSceneSetBool)
     RT_METHOD("Remove", "void(str)", GameSceneRemove)
-    RT_METHOD("AssetPaths", "obj<Viper.Collections.Seq>()", GameSceneAssetPaths)
-    RT_METHOD("AssetDescriptors", "obj<Viper.Collections.Seq>()", GameSceneAssetDescriptors)
-    RT_METHOD("BuildTilemap", "obj<Viper.Graphics2D.Tilemap>()", GameSceneBuildTilemap)
+    RT_METHOD("AssetPaths", "obj<Zanna.Collections.Seq>()", GameSceneAssetPaths)
+    RT_METHOD("AssetDescriptors", "obj<Zanna.Collections.Seq>()", GameSceneAssetDescriptors)
+    RT_METHOD("BuildTilemap", "obj<Zanna.Graphics2D.Tilemap>()", GameSceneBuildTilemap)
 RT_CLASS_END()
 
-// Viper.Game.Dialogue - typewriter text system
+// Zanna.Game.Dialogue - typewriter text system
 /// @summary Provides typewriter text system.
 /// @details
-/// Create `Viper.Game.Dialogue` values through its registered constructor and use the returned
+/// Create `Zanna.Game.Dialogue` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Speed`,
 /// `Font`, `TextColor` and operations including `Say`, `SayText`, `Clear`, `Update`.
-RT_CLASS_BEGIN("Viper.Game.Dialogue", Dialogue, "obj", DialogueNew)
+RT_CLASS_BEGIN("Zanna.Game.Dialogue", Dialogue, "obj", DialogueNew)
     RT_PROP("Speed", "i64", none, DialogueSetSpeed)
     RT_PROP("Font", "obj", none, DialogueSetFont)
     RT_PROP("TextColor", "i64", none, DialogueSetTextColor)
@@ -204,14 +204,14 @@ RT_CLASS_BEGIN("Viper.Game.Dialogue", Dialogue, "obj", DialogueNew)
     RT_METHOD("Draw", "void(obj)", DialogueDraw)
 RT_CLASS_END()
 
-// Viper.Game.Lighting2D - 2D darkness overlay with dynamic point lights
+// Zanna.Game.Lighting2D - 2D darkness overlay with dynamic point lights
 /// @summary Provides 2D darkness overlay with dynamic point lights.
 /// @details
-/// Create `Viper.Game.Lighting2D` values through its registered constructor and use the returned
+/// Create `Zanna.Game.Lighting2D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Darkness`, `TintColor`, `LightCount` and operations including `Destroy`, `SetPlayerLight`,
 /// `AddLight`, `AddTileLight`.
-RT_CLASS_BEGIN("Viper.Game.Lighting2D", Lighting2D, "obj", Lighting2DNew)
+RT_CLASS_BEGIN("Zanna.Game.Lighting2D", Lighting2D, "obj", Lighting2DNew)
     RT_PROP("Darkness", "i64", Lighting2DGetDarkness, Lighting2DSetDarkness)
     RT_PROP("TintColor", "i64", Lighting2DGetTintColor, Lighting2DSetTintColor)
     RT_PROP("LightCount", "i64", Lighting2DLightCount, none)
@@ -225,14 +225,14 @@ RT_CLASS_BEGIN("Viper.Game.Lighting2D", Lighting2D, "obj", Lighting2DNew)
     RT_METHOD("Draw", "void(obj,i64,i64,i64,i64)", Lighting2DDraw)
 RT_CLASS_END()
 
-// Viper.Game.PlatformerController - jump buffer, coyote time, acceleration
+// Zanna.Game.PlatformerController - jump buffer, coyote time, acceleration
 /// @summary Provides jump buffer, coyote time, acceleration.
 /// @details
-/// Create `Viper.Game.PlatformerController` values through its registered constructor and use the
+/// Create `Zanna.Game.PlatformerController` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `VelocityX`, `VelocityY`, `ShouldJump` and operations including `SetJumpBuffer`,
 /// `SetCoyoteTime`, `SetAcceleration`, `SetJumpForce`.
-RT_CLASS_BEGIN("Viper.Game.PlatformerController", PlatformerController, "obj", PlatCtrlNew)
+RT_CLASS_BEGIN("Zanna.Game.PlatformerController", PlatformerController, "obj", PlatCtrlNew)
     RT_PROP("VelocityX", "i64", PlatCtrlGetVX, PlatCtrlSetVX)
     RT_PROP("VelocityY", "i64", PlatCtrlGetVY, PlatCtrlSetVY)
     RT_PROP("ShouldJump", "i1", PlatCtrlShouldJump, none)
@@ -249,50 +249,50 @@ RT_CLASS_BEGIN("Viper.Game.PlatformerController", PlatformerController, "obj", P
     RT_METHOD("Update", "void(i64,i1,i1,i1,i1,i1,i1)", PlatCtrlUpdate)
 RT_CLASS_END()
 
-// Viper.Game.AchievementTracker - bitmask unlocks, stats, notifications
-RT_FUNC(GameQuestsNew,           rt_quests_new,               "Viper.Game.Quests.New",               "obj()")
-RT_FUNC(GameQuestsAddQuest,      rt_quests_add_quest,         "Viper.Game.Quests.AddQuest",          "obj(obj,str,str)")
-RT_FUNC(GameQuestsAddStage,      rt_quests_add_stage,         "Viper.Game.Quests.AddStage",          "obj(obj,str,str,str)")
-RT_FUNC(GameQuestsAddFlag,       rt_quests_add_flag,          "Viper.Game.Quests.AddFlag",           "obj(obj,str,str,str,str)")
-RT_FUNC(GameQuestsAddCounter,    rt_quests_add_counter,       "Viper.Game.Quests.AddCounter",        "obj(obj,str,str,str,str,i64)")
-RT_FUNC(GameQuestsActivate,      rt_quests_activate,          "Viper.Game.Quests.Activate",          "i1(obj,str)")
-RT_FUNC(GameQuestsFail,          rt_quests_fail,              "Viper.Game.Quests.Fail",              "i1(obj,str)")
-RT_FUNC(GameQuestsSetFlag,       rt_quests_set_flag,          "Viper.Game.Quests.SetFlag",           "i1(obj,str,str)")
-RT_FUNC(GameQuestsProgress,      rt_quests_progress,          "Viper.Game.Quests.Progress",          "i1(obj,str,str,i64)")
-RT_FUNC(GameQuestsActiveCount,   rt_quests_active_count,      "Viper.Game.Quests.get_ActiveCount",   "i64(obj)")
-RT_FUNC(GameQuestsActiveQuest,   rt_quests_active_quest,      "Viper.Game.Quests.ActiveQuest",       "str(obj,i64)")
-RT_FUNC(GameQuestsQuestTitle,    rt_quests_quest_title,       "Viper.Game.Quests.QuestTitle",        "str(obj,str)")
-RT_FUNC(GameQuestsQuestState,    rt_quests_quest_state,       "Viper.Game.Quests.QuestState",        "i64(obj,str)")
-RT_FUNC(GameQuestsStageText,     rt_quests_current_stage_text, "Viper.Game.Quests.CurrentStageText", "str(obj,str)")
-RT_FUNC(GameQuestsObjCount,      rt_quests_objective_count,   "Viper.Game.Quests.ObjectiveCount",    "i64(obj,str)")
-RT_FUNC(GameQuestsObjText,       rt_quests_objective_text,    "Viper.Game.Quests.ObjectiveText",     "str(obj,str,i64)")
-RT_FUNC(GameQuestsObjProgress,   rt_quests_objective_progress, "Viper.Game.Quests.ObjectiveProgress", "i64(obj,str,i64)")
-RT_FUNC(GameQuestsObjTarget,     rt_quests_objective_target,  "Viper.Game.Quests.ObjectiveTarget",   "i64(obj,str,i64)")
-RT_FUNC(GameQuestsObjComplete,   rt_quests_objective_complete, "Viper.Game.Quests.ObjectiveComplete", "i1(obj,str,i64)")
-RT_FUNC(GameQuestsEventCount,    rt_quests_event_count,       "Viper.Game.Quests.EventCount",        "i64(obj)")
-RT_FUNC(GameQuestsEventQuestId,  rt_quests_event_quest_id,    "Viper.Game.Quests.EventQuestId",      "str(obj,i64)")
-RT_FUNC(GameQuestsEventKind,     rt_quests_event_kind,        "Viper.Game.Quests.EventKind",         "i64(obj,i64)")
-RT_FUNC(GameQuestsClearEvents,   rt_quests_clear_events,      "Viper.Game.Quests.ClearEvents",       "void(obj)")
-RT_FUNC(GameQuestsJustCompleted, rt_quests_just_completed,    "Viper.Game.Quests.JustCompleted",     "i1(obj,str)")
-RT_FUNC(GameQuestsSave,          rt_quests_save,              "Viper.Game.Quests.Save",              "i1(obj,obj<Viper.IO.SaveData>)")
-RT_FUNC(GameQuestsLoad,          rt_quests_load,              "Viper.Game.Quests.Load",              "i1(obj,obj<Viper.IO.SaveData>)")
-RT_FUNC(GameQuestStateHidden,    rt_quests_state_hidden,      "Viper.Game.QuestState.get_Hidden",    "i64()")
-RT_FUNC(GameQuestStateActive,    rt_quests_state_active,      "Viper.Game.QuestState.get_Active",    "i64()")
-RT_FUNC(GameQuestStateComplete,  rt_quests_state_complete,    "Viper.Game.QuestState.get_Complete",  "i64()")
-RT_FUNC(GameQuestStateFailed,    rt_quests_state_failed,      "Viper.Game.QuestState.get_Failed",    "i64()")
-RT_FUNC(GameQuestEvActivated,    rt_quests_event_activated,   "Viper.Game.QuestEventKind.get_Activated",         "i64()")
-RT_FUNC(GameQuestEvObjProgress,  rt_quests_event_objective_progress, "Viper.Game.QuestEventKind.get_ObjectiveProgress", "i64()")
-RT_FUNC(GameQuestEvObjComplete,  rt_quests_event_objective_complete, "Viper.Game.QuestEventKind.get_ObjectiveComplete", "i64()")
-RT_FUNC(GameQuestEvStageComplete, rt_quests_event_stage_complete, "Viper.Game.QuestEventKind.get_StageComplete", "i64()")
-RT_FUNC(GameQuestEvQuestComplete, rt_quests_event_quest_complete, "Viper.Game.QuestEventKind.get_QuestComplete", "i64()")
-RT_FUNC(GameQuestEvQuestFailed,  rt_quests_event_quest_failed, "Viper.Game.QuestEventKind.get_QuestFailed",      "i64()")
+// Zanna.Game.AchievementTracker - bitmask unlocks, stats, notifications
+RT_FUNC(GameQuestsNew,           rt_quests_new,               "Zanna.Game.Quests.New",               "obj()")
+RT_FUNC(GameQuestsAddQuest,      rt_quests_add_quest,         "Zanna.Game.Quests.AddQuest",          "obj(obj,str,str)")
+RT_FUNC(GameQuestsAddStage,      rt_quests_add_stage,         "Zanna.Game.Quests.AddStage",          "obj(obj,str,str,str)")
+RT_FUNC(GameQuestsAddFlag,       rt_quests_add_flag,          "Zanna.Game.Quests.AddFlag",           "obj(obj,str,str,str,str)")
+RT_FUNC(GameQuestsAddCounter,    rt_quests_add_counter,       "Zanna.Game.Quests.AddCounter",        "obj(obj,str,str,str,str,i64)")
+RT_FUNC(GameQuestsActivate,      rt_quests_activate,          "Zanna.Game.Quests.Activate",          "i1(obj,str)")
+RT_FUNC(GameQuestsFail,          rt_quests_fail,              "Zanna.Game.Quests.Fail",              "i1(obj,str)")
+RT_FUNC(GameQuestsSetFlag,       rt_quests_set_flag,          "Zanna.Game.Quests.SetFlag",           "i1(obj,str,str)")
+RT_FUNC(GameQuestsProgress,      rt_quests_progress,          "Zanna.Game.Quests.Progress",          "i1(obj,str,str,i64)")
+RT_FUNC(GameQuestsActiveCount,   rt_quests_active_count,      "Zanna.Game.Quests.get_ActiveCount",   "i64(obj)")
+RT_FUNC(GameQuestsActiveQuest,   rt_quests_active_quest,      "Zanna.Game.Quests.ActiveQuest",       "str(obj,i64)")
+RT_FUNC(GameQuestsQuestTitle,    rt_quests_quest_title,       "Zanna.Game.Quests.QuestTitle",        "str(obj,str)")
+RT_FUNC(GameQuestsQuestState,    rt_quests_quest_state,       "Zanna.Game.Quests.QuestState",        "i64(obj,str)")
+RT_FUNC(GameQuestsStageText,     rt_quests_current_stage_text, "Zanna.Game.Quests.CurrentStageText", "str(obj,str)")
+RT_FUNC(GameQuestsObjCount,      rt_quests_objective_count,   "Zanna.Game.Quests.ObjectiveCount",    "i64(obj,str)")
+RT_FUNC(GameQuestsObjText,       rt_quests_objective_text,    "Zanna.Game.Quests.ObjectiveText",     "str(obj,str,i64)")
+RT_FUNC(GameQuestsObjProgress,   rt_quests_objective_progress, "Zanna.Game.Quests.ObjectiveProgress", "i64(obj,str,i64)")
+RT_FUNC(GameQuestsObjTarget,     rt_quests_objective_target,  "Zanna.Game.Quests.ObjectiveTarget",   "i64(obj,str,i64)")
+RT_FUNC(GameQuestsObjComplete,   rt_quests_objective_complete, "Zanna.Game.Quests.ObjectiveComplete", "i1(obj,str,i64)")
+RT_FUNC(GameQuestsEventCount,    rt_quests_event_count,       "Zanna.Game.Quests.EventCount",        "i64(obj)")
+RT_FUNC(GameQuestsEventQuestId,  rt_quests_event_quest_id,    "Zanna.Game.Quests.EventQuestId",      "str(obj,i64)")
+RT_FUNC(GameQuestsEventKind,     rt_quests_event_kind,        "Zanna.Game.Quests.EventKind",         "i64(obj,i64)")
+RT_FUNC(GameQuestsClearEvents,   rt_quests_clear_events,      "Zanna.Game.Quests.ClearEvents",       "void(obj)")
+RT_FUNC(GameQuestsJustCompleted, rt_quests_just_completed,    "Zanna.Game.Quests.JustCompleted",     "i1(obj,str)")
+RT_FUNC(GameQuestsSave,          rt_quests_save,              "Zanna.Game.Quests.Save",              "i1(obj,obj<Zanna.IO.SaveData>)")
+RT_FUNC(GameQuestsLoad,          rt_quests_load,              "Zanna.Game.Quests.Load",              "i1(obj,obj<Zanna.IO.SaveData>)")
+RT_FUNC(GameQuestStateHidden,    rt_quests_state_hidden,      "Zanna.Game.QuestState.get_Hidden",    "i64()")
+RT_FUNC(GameQuestStateActive,    rt_quests_state_active,      "Zanna.Game.QuestState.get_Active",    "i64()")
+RT_FUNC(GameQuestStateComplete,  rt_quests_state_complete,    "Zanna.Game.QuestState.get_Complete",  "i64()")
+RT_FUNC(GameQuestStateFailed,    rt_quests_state_failed,      "Zanna.Game.QuestState.get_Failed",    "i64()")
+RT_FUNC(GameQuestEvActivated,    rt_quests_event_activated,   "Zanna.Game.QuestEventKind.get_Activated",         "i64()")
+RT_FUNC(GameQuestEvObjProgress,  rt_quests_event_objective_progress, "Zanna.Game.QuestEventKind.get_ObjectiveProgress", "i64()")
+RT_FUNC(GameQuestEvObjComplete,  rt_quests_event_objective_complete, "Zanna.Game.QuestEventKind.get_ObjectiveComplete", "i64()")
+RT_FUNC(GameQuestEvStageComplete, rt_quests_event_stage_complete, "Zanna.Game.QuestEventKind.get_StageComplete", "i64()")
+RT_FUNC(GameQuestEvQuestComplete, rt_quests_event_quest_complete, "Zanna.Game.QuestEventKind.get_QuestComplete", "i64()")
+RT_FUNC(GameQuestEvQuestFailed,  rt_quests_event_quest_failed, "Zanna.Game.QuestEventKind.get_QuestFailed",      "i64()")
 
 /// @summary Provides Quests functionality for game applications.
 /// @details
-/// Create `Viper.Game.Quests` values through its registered constructor and use the returned object
+/// Create `Zanna.Game.Quests` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `ActiveCount`
 /// and operations including `AddQuest`, `AddStage`, `AddFlag`, `AddCounter`.
-RT_CLASS_BEGIN("Viper.Game.Quests", GameQuests, "obj", GameQuestsNew)
+RT_CLASS_BEGIN("Zanna.Game.Quests", GameQuests, "obj", GameQuestsNew)
     RT_METHOD("AddQuest", "obj(str,str)", GameQuestsAddQuest)
     RT_METHOD("AddStage", "obj(str,str,str)", GameQuestsAddStage)
     RT_METHOD("AddFlag", "obj(str,str,str,str)", GameQuestsAddFlag)
@@ -316,15 +316,15 @@ RT_CLASS_BEGIN("Viper.Game.Quests", GameQuests, "obj", GameQuestsNew)
     RT_METHOD("EventKind", "i64(i64)", GameQuestsEventKind)
     RT_METHOD("ClearEvents", "void()", GameQuestsClearEvents)
     RT_METHOD("JustCompleted", "i1(str)", GameQuestsJustCompleted)
-    RT_METHOD("Save", "i1(obj<Viper.IO.SaveData>)", GameQuestsSave)
-    RT_METHOD("Load", "i1(obj<Viper.IO.SaveData>)", GameQuestsLoad)
+    RT_METHOD("Save", "i1(obj<Zanna.IO.SaveData>)", GameQuestsSave)
+    RT_METHOD("Load", "i1(obj<Zanna.IO.SaveData>)", GameQuestsLoad)
 RT_CLASS_END()
 
 /// @summary Provides Quest State constants and static operations for game applications.
 /// @details
-/// `Viper.Game.QuestState` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Game.QuestState` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `Hidden`, `Active`, `Complete`.
-RT_CLASS_BEGIN("Viper.Game.QuestState", GameQuestState, "none", none)
+RT_CLASS_BEGIN("Zanna.Game.QuestState", GameQuestState, "none", none)
     RT_PROP("Hidden", "i64", GameQuestStateHidden, none)
     RT_PROP("Active", "i64", GameQuestStateActive, none)
     RT_PROP("Complete", "i64", GameQuestStateComplete, none)
@@ -333,10 +333,10 @@ RT_CLASS_END()
 
 /// @summary Provides Quest Event Kind constants and static operations for game applications.
 /// @details
-/// `Viper.Game.QuestEventKind` is a static runtime surface and does not require an instance.
+/// `Zanna.Game.QuestEventKind` is a static runtime surface and does not require an instance.
 /// Its public surface exposes properties such as `Activated`, `ObjectiveProgress`,
 /// `ObjectiveComplete`.
-RT_CLASS_BEGIN("Viper.Game.QuestEventKind", GameQuestEventKind, "none", none)
+RT_CLASS_BEGIN("Zanna.Game.QuestEventKind", GameQuestEventKind, "none", none)
     RT_PROP("Activated", "i64", GameQuestEvActivated, none)
     RT_PROP("ObjectiveProgress", "i64", GameQuestEvObjProgress, none)
     RT_PROP("ObjectiveComplete", "i64", GameQuestEvObjComplete, none)
@@ -347,11 +347,11 @@ RT_CLASS_END()
 
 /// @summary Provides Achievement Tracker functionality for game applications.
 /// @details
-/// Create `Viper.Game.AchievementTracker` values through its registered constructor and use the
+/// Create `Zanna.Game.AchievementTracker` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Mask`, `UnlockedCount`, `TotalCount` and operations including `Add`, `Unlock`, `IsUnlocked`,
 /// `IncrementStat`.
-RT_CLASS_BEGIN("Viper.Game.AchievementTracker", AchievementTracker, "obj", AchievementNew)
+RT_CLASS_BEGIN("Zanna.Game.AchievementTracker", AchievementTracker, "obj", AchievementNew)
     RT_PROP("Mask", "i64", AchievementGetMask, AchievementSetMask)
     RT_PROP("UnlockedCount", "i64", AchievementUnlockedCnt, none)
     RT_PROP("TotalCount", "i64", AchievementTotalCnt, none)
@@ -367,14 +367,14 @@ RT_CLASS_BEGIN("Viper.Game.AchievementTracker", AchievementTracker, "obj", Achie
     RT_METHOD("Draw", "void(obj)", AchievementDraw)
 RT_CLASS_END()
 
-// Viper.Game.Typewriter - character-by-character text reveal
+// Zanna.Game.Typewriter - character-by-character text reveal
 /// @summary Provides character-by-character text reveal.
 /// @details
-/// Create `Viper.Game.Typewriter` values through its registered constructor and use the returned
+/// Create `Zanna.Game.Typewriter` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `VisibleText`, `FullText`, `IsActive` and operations including `Say`, `Update`, `Skip`,
 /// `Reset`.
-RT_CLASS_BEGIN("Viper.Game.Typewriter", Typewriter, "obj", TypewriterNew)
+RT_CLASS_BEGIN("Zanna.Game.Typewriter", Typewriter, "obj", TypewriterNew)
     RT_PROP("VisibleText", "str", TypewriterVisibleText, none)
     RT_PROP("FullText", "str", TypewriterFullText, none)
     RT_PROP("IsActive", "i1", TypewriterIsActive, none)
@@ -388,13 +388,13 @@ RT_CLASS_BEGIN("Viper.Game.Typewriter", Typewriter, "obj", TypewriterNew)
     RT_METHOD("Reset", "void()", TypewriterReset)
 RT_CLASS_END()
 
-// Viper.Game.UI.HudLabel - Positioned text widget
+// Zanna.Game.UI.HudLabel - Positioned text widget
 /// @summary Provides positioned text widget.
 /// @details
-/// Create `Viper.Game.UI.HudLabel` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.HudLabel` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `X`,
 /// `Y`, `Color` and operations including `SetText`, `SetPosition`, `Draw`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudLabel", UIHudLabel, "obj", UILabelNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudLabel", UIHudLabel, "obj", UILabelNew)
     RT_PROP("X", "i64", UILabelGetX, none)
     RT_PROP("Y", "i64", UILabelGetY, none)
     RT_PROP("Color", "i64", none, UILabelSetColor)
@@ -406,13 +406,13 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudLabel", UIHudLabel, "obj", UILabelNew)
     RT_METHOD("Draw", "void(obj)", UILabelDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.Bar - Progress/health/XP bar
+// Zanna.Game.UI.Bar - Progress/health/XP bar
 /// @summary Provides progress/health/XP bar.
 /// @details
-/// Create `Viper.Game.UI.Bar` values through its registered constructor and use the returned object
+/// Create `Zanna.Game.UI.Bar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value`, `Max`,
 /// `Border` and operations including `SetValue`, `SetPosition`, `SetSize`, `SetColors`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudBar", UIBar, "obj", UIBarNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudBar", UIBar, "obj", UIBarNew)
     RT_PROP("Value", "i64", UIBarGetValue, none)
     RT_PROP("Max", "i64", UIBarGetMax, none)
     RT_PROP("Border", "i64", none, UIBarSetBorder)
@@ -425,14 +425,14 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudBar", UIBar, "obj", UIBarNew)
     RT_METHOD("Draw", "void(obj)", UIBarDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.Panel - Semi-transparent background panel
+// Zanna.Game.UI.Panel - Semi-transparent background panel
 /// @summary Provides semi-transparent background panel.
 /// @details
-/// Create `Viper.Game.UI.Panel` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.Panel` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `CornerRadius`, `Visible` and operations including `SetPosition`, `SetSize`, `SetColor`,
 /// `SetBorder`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudPanel", UIPanel, "obj", UIPanelNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudPanel", UIPanel, "obj", UIPanelNew)
     RT_PROP("CornerRadius", "i64", none, UIPanelSetCorner)
     RT_PROP("Visible", "i1", none, UIPanelSetVisible)
     RT_METHOD("SetPosition", "void(i64,i64)", UIPanelSetPos)
@@ -442,24 +442,24 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudPanel", UIPanel, "obj", UIPanelNew)
     RT_METHOD("Draw", "void(obj)", UIPanelDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.NineSlice - Scalable bordered UI element
+// Zanna.Game.UI.NineSlice - Scalable bordered UI element
 /// @summary Provides scalable bordered UI element.
 /// @details
-/// Create `Viper.Game.UI.NineSlice` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.NineSlice` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Tint`
 /// and operations including `Draw`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudNineSlice", UINineSlice, "obj", UINineSliceNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudNineSlice", UINineSlice, "obj", UINineSliceNew)
     RT_PROP("Tint", "i64", none, UINineSliceTint)
     RT_METHOD("Draw", "void(obj,i64,i64,i64,i64)", UINineSliceDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.MenuList - Vertical menu with selection highlight
+// Zanna.Game.UI.MenuList - Vertical menu with selection highlight
 /// @summary Provides vertical menu with selection highlight.
 /// @details
-/// Create `Viper.Game.UI.MenuList` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.MenuList` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Selected`, `Count`, `Font` and operations including `AddItem`, `Clear`, `MoveUp`, `MoveDown`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudMenuList", UIMenuList, "obj", UIMenuListNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudMenuList", UIMenuList, "obj", UIMenuListNew)
     RT_PROP("Selected", "i64", UIMenuListGetSel, UIMenuListSetSel)
     RT_PROP("Count", "i64", UIMenuListGetCount, none)
     RT_PROP("Font", "obj", none, UIMenuListSetFont)
@@ -473,14 +473,14 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudMenuList", UIMenuList, "obj", UIMenuListNew)
     RT_METHOD("HandleInput", "i64(i1,i1,i1)", MenuListHandleInput)
 RT_CLASS_END()
 
-// Viper.Game.UI.HudTextInput - editable single-line text field
+// Zanna.Game.UI.HudTextInput - editable single-line text field
 /// @summary Provides editable single-line text field.
 /// @details
-/// Create `Viper.Game.UI.HudTextInput` values through its registered constructor and use the
+/// Create `Zanna.Game.UI.HudTextInput` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Text`, `Visible`, `IsEnabled` and operations including `TextLength`, `GetCursor`,
 /// `SetCursor`, `SelectAll`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudTextInput", UIHudTextInput, "obj", UITextInputNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudTextInput", UIHudTextInput, "obj", UITextInputNew)
     RT_PROP("Text", "str", UITextInputGetText, UITextInputSetText)
     RT_PROP("Visible", "i1", UITextInputGetVisible, UITextInputSetVisible)
     RT_PROP("IsEnabled", "i1", UITextInputGetEnabled, UITextInputSetEnabled)
@@ -511,14 +511,14 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudTextInput", UIHudTextInput, "obj", UITextInputN
     RT_METHOD("SetMaxCodepoints", "void(i64)", UITextInputSetMaxCps)
 RT_CLASS_END()
 
-// Viper.Game.UI.Table - sortable, scrollable table widget
+// Zanna.Game.UI.Table - sortable, scrollable table widget
 /// @summary Provides sortable, scrollable table widget.
 /// @details
-/// Create `Viper.Game.UI.Table` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.Table` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ColumnCount`, `RowCount`, `SortColumn` and operations including `AddColumn`,
 /// `SetColumnSortable`, `AddRow`, `SetCell`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudTable", UITable, "obj", UITableNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudTable", UITable, "obj", UITableNew)
     RT_PROP("ColumnCount", "i64", UITableColumnCount, none)
     RT_PROP("RowCount", "i64", UITableRowCount, none)
     RT_PROP("SortColumn", "i64", UITableGetSortColumn, none)
@@ -533,34 +533,34 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudTable", UITable, "obj", UITableNew)
     RT_METHOD("RemoveRow", "void(i64)", UITableRemoveRow)
     RT_METHOD("ClearRows", "void()", UITableClearRows)
     RT_METHOD("SortBy", "void(i64,i1)", UITableSortBy)
-    RT_METHOD("HandleClick", "obj<Viper.Game.UI.HudTableClickResult>(i64,i64)", UITableHandleClickResult)
+    RT_METHOD("HandleClick", "obj<Zanna.Game.UI.HudTableClickResult>(i64,i64)", UITableHandleClickResult)
     RT_METHOD("HandleScroll", "void(i64)", UITableHandleScroll)
     RT_METHOD("HandleKey", "void(i64)", UITableHandleKey)
     RT_METHOD("Draw", "void(obj)", UITableDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.TableClickResult - structured table click outcome
+// Zanna.Game.UI.TableClickResult - structured table click outcome
 /// @summary Provides structured table click outcome.
 /// @details
-/// `Viper.Game.UI.TableClickResult` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Game.UI.TableClickResult` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as `Kind`,
 /// `IsNone`, `IsRow` and operations including `RowOption`, `ColumnOption`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudTableClickResult", UITableClickResult, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudTableClickResult", UITableClickResult, "obj", none)
     RT_PROP("Kind", "i64", UITableClickResultKind, none)
     RT_PROP("IsNone", "i1", UITableClickResultIsNone, none)
     RT_PROP("IsRow", "i1", UITableClickResultIsRow, none)
     RT_PROP("IsHeader", "i1", UITableClickResultIsHeader, none)
-    RT_METHOD("RowOption", "obj<Viper.Option>()", UITableClickResultRowOption)
-    RT_METHOD("ColumnOption", "obj<Viper.Option>()", UITableClickResultColumnOption)
+    RT_METHOD("RowOption", "obj<Zanna.Option>()", UITableClickResultRowOption)
+    RT_METHOD("ColumnOption", "obj<Zanna.Option>()", UITableClickResultColumnOption)
 RT_CLASS_END()
 
-// Viper.Game.UI.Modal - modal dialog with buttons and child widgets
+// Zanna.Game.UI.Modal - modal dialog with buttons and child widgets
 /// @summary Provides modal dialog with buttons and child widgets.
 /// @details
-/// Create `Viper.Game.UI.Modal` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.Modal` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsOpen`, `Result` and operations including `NewAt`, `SetTitle`, `SetContent`, `AddButton`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudModal", UIModal, "obj", UIModalNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudModal", UIModal, "obj", UIModalNew)
     RT_PROP("IsOpen", "i1", UIModalIsOpen, none)
     RT_PROP("Result", "i64", UIModalResult, none)
     RT_METHOD("NewAt", "obj(i64,i64,i64,i64)", UIModalNewAt)
@@ -577,13 +577,13 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudModal", UIModal, "obj", UIModalNew)
     RT_METHOD("Draw", "void(obj)", UIModalDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.HudSlider - integer slider control
+// Zanna.Game.UI.HudSlider - integer slider control
 /// @summary Provides integer slider control.
 /// @details
-/// Create `Viper.Game.UI.HudSlider` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.HudSlider` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Value`
 /// and operations including `SetStep`, `SetLabel`, `HandleKey`, `HandleMouseDown`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudSlider", UIHudSlider, "obj", UISliderNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudSlider", UIHudSlider, "obj", UISliderNew)
     RT_PROP("Value", "i64", UISliderGetValue, UISliderSetValue)
     RT_METHOD("SetStep", "void(i64)", UISliderSetStep)
     RT_METHOD("SetLabel", "void(str)", UISliderSetLabel)
@@ -594,14 +594,14 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudSlider", UIHudSlider, "obj", UISliderNew)
     RT_METHOD("Draw", "void(obj)", UISliderDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.HudDropdown - selectable option list
+// Zanna.Game.UI.HudDropdown - selectable option list
 /// @summary Provides selectable option list.
 /// @details
-/// Create `Viper.Game.UI.HudDropdown` values through its registered constructor and use the
+/// Create `Zanna.Game.UI.HudDropdown` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Selected`, `IsOpen` and operations including `AddOption`, `ClearOptions`, `GetSelectedText`,
 /// `Open`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudDropdown", UIHudDropdown, "obj", UIDropdownNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudDropdown", UIHudDropdown, "obj", UIDropdownNew)
     RT_PROP("Selected", "i64", UIDropdownGetSel, UIDropdownSetSel)
     RT_PROP("IsOpen", "i1", UIDropdownIsOpen, none)
     RT_METHOD("AddOption", "void(str)", UIDropdownAddOption)
@@ -614,26 +614,26 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudDropdown", UIHudDropdown, "obj", UIDropdownNew)
     RT_METHOD("Draw", "void(obj)", UIDropdownDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.HudTooltip - hover-delayed tooltip bubble
+// Zanna.Game.UI.HudTooltip - hover-delayed tooltip bubble
 /// @summary Provides hover-delayed tooltip bubble.
 /// @details
-/// Create `Viper.Game.UI.HudTooltip` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.HudTooltip` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetText`, `SetHoverDelayMs`, `Update`, `Draw`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudTooltip", UIHudTooltip, "obj", UITooltipNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudTooltip", UIHudTooltip, "obj", UITooltipNew)
     RT_METHOD("SetText", "void(str)", UITooltipSetText)
     RT_METHOD("SetHoverDelayMs", "void(i64)", UITooltipSetDelay)
     RT_METHOD("Update", "void(i64,i64,i1,i64)", UITooltipUpdate)
     RT_METHOD("Draw", "void(obj)", UITooltipDraw)
 RT_CLASS_END()
 
-// Viper.Game.UI.GameButton - Styled button for game menus and custom HUDs
+// Zanna.Game.UI.GameButton - Styled button for game menus and custom HUDs
 /// @summary Provides styled button for game menus and custom HUDs.
 /// @details
-/// Create `Viper.Game.UI.GameButton` values through its registered constructor and use the returned
+/// Create `Zanna.Game.UI.GameButton` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `X`,
 /// `Y`, `Width` and operations including `SetText`, `SetSize`, `SetColors`, `SetTextColors`.
-RT_CLASS_BEGIN("Viper.Game.UI.HudButton", GameButton, "obj", GameButtonNew)
+RT_CLASS_BEGIN("Zanna.Game.UI.HudButton", GameButton, "obj", GameButtonNew)
     RT_PROP("X", "i64", GameButtonGetX, GameButtonSetX)
     RT_PROP("Y", "i64", GameButtonGetY, GameButtonSetY)
     RT_PROP("Width", "i64", GameButtonGetWidth, none)
@@ -650,25 +650,25 @@ RT_CLASS_END()
 
 /// @summary Provides Path Result functionality for game applications.
 /// @details
-/// `Viper.Game.PathResult` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Game.PathResult` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Found`, `Steps`,
 /// `Cost`.
-RT_CLASS_BEGIN("Viper.Game.PathResult", PathResult, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.PathResult", PathResult, "obj", none)
     RT_PROP("Found", "i1", PathResultFound, none)
     RT_PROP("Steps", "i64", PathResultSteps, none)
     RT_PROP("Cost", "i64", PathResultCost, none)
     RT_PROP("StepCount", "i64", PathResultStepCount, none)
-    RT_PROP("Path", "obj<Viper.Collections.List>", PathResultPath, none)
+    RT_PROP("Path", "obj<Zanna.Collections.List>", PathResultPath, none)
 RT_CLASS_END()
 
-// Viper.Game.Pathfinder — A* grid pathfinding
+// Zanna.Game.Pathfinder — A* grid pathfinding
 /// @summary Provides Pathfinder functionality for game applications.
 /// @details
-/// Create `Viper.Game.Pathfinder` values through its registered constructor and use the returned
+/// Create `Zanna.Game.Pathfinder` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Width`,
 /// `Height`, `Diagonal` and operations including `SetWalkable`, `IsWalkable`, `SetCost`,
 /// `GetCost`.
-RT_CLASS_BEGIN("Viper.Game.Pathfinder", Pathfinder, "obj", PathfinderNew)
+RT_CLASS_BEGIN("Zanna.Game.Pathfinder", Pathfinder, "obj", PathfinderNew)
     RT_PROP("Width", "i64", PathfinderGetWidth, none)
     RT_PROP("Height", "i64", PathfinderGetHeight, none)
     RT_PROP("Diagonal", "i1", none, PathfinderSetDiagonal)
@@ -677,18 +677,18 @@ RT_CLASS_BEGIN("Viper.Game.Pathfinder", Pathfinder, "obj", PathfinderNew)
     RT_METHOD("IsWalkable", "i1(i64,i64)", PathfinderIsWalkable)
     RT_METHOD("SetCost", "void(i64,i64,i64)", PathfinderSetCost)
     RT_METHOD("GetCost", "i64(i64,i64)", PathfinderGetCost)
-    RT_METHOD("FindPath", "obj<Viper.Game.PathResult>(i64,i64,i64,i64)", PathfinderFindPathResult)
-    RT_METHOD("FindNearest", "obj<Viper.Game.PathResult>(i64,i64,i64)", PathfinderFindNearestResult)
+    RT_METHOD("FindPath", "obj<Zanna.Game.PathResult>(i64,i64,i64,i64)", PathfinderFindPathResult)
+    RT_METHOD("FindNearest", "obj<Zanna.Game.PathResult>(i64,i64,i64)", PathfinderFindNearestResult)
     RT_METHOD("Destroy", "void()", PathfinderDestroy)
 RT_CLASS_END()
 
-// Viper.PathFollower - Path following along waypoints
+// Zanna.PathFollower - Path following along waypoints
 /// @summary Provides Path Follower functionality for game applications.
 /// @details
-/// Create `Viper.Game.PathFollower` values through its registered constructor and use the returned
+/// Create `Zanna.Game.PathFollower` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `PointCount`, `Mode`, `Speed` and operations including `Clear`, `AddPoint`, `Start`, `Pause`.
-RT_CLASS_BEGIN("Viper.Game.PathFollower", PathFollower, "obj", PathFollowNew)
+RT_CLASS_BEGIN("Zanna.Game.PathFollower", PathFollower, "obj", PathFollowNew)
     RT_PROP("PointCount", "i64", PathFollowPointCount, none)
     RT_PROP("Mode", "i64", PathFollowGetMode, PathFollowSetMode)
     RT_PROP("Speed", "i64", PathFollowGetSpeed, PathFollowSetSpeed)
@@ -709,10 +709,10 @@ RT_CLASS_END()
 
 /// @summary Provides Query Result functionality for game applications.
 /// @details
-/// `Viper.Game.QueryResult` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Game.QueryResult` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Count`,
 /// `Truncated` and operations including `GetId`, `Contains`, `Ids`.
-RT_CLASS_BEGIN("Viper.Game.QueryResult", GameQueryResult, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.QueryResult", GameQueryResult, "obj", none)
     RT_PROP("Count", "i64", GameQueryResultCount, none)
     RT_PROP("Truncated", "i1", GameQueryResultTruncated, none)
     RT_METHOD("GetId", "i64(i64)", GameQueryResultGetId)
@@ -722,40 +722,40 @@ RT_CLASS_END()
 
 /// @summary Provides Quadtree Pair Result functionality for game applications.
 /// @details
-/// `Viper.Game.QuadtreePairResult` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Game.QuadtreePairResult` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
 /// `Count`, `Truncated` and operations including `First`, `Second`.
-RT_CLASS_BEGIN("Viper.Game.QuadtreePairResult", QuadtreePairResult, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.QuadtreePairResult", QuadtreePairResult, "obj", none)
     RT_PROP("Count", "i64", QuadtreePairResultCount, none)
     RT_PROP("Truncated", "i1", QuadtreePairResultTruncated, none)
     RT_METHOD("First", "i64(i64)", QuadtreePairResultFirst)
     RT_METHOD("Second", "i64(i64)", QuadtreePairResultSecond)
 RT_CLASS_END()
 
-// Viper.Quadtree - Spatial partitioning for collision queries
+// Zanna.Quadtree - Spatial partitioning for collision queries
 /// @summary Provides Quadtree functionality for game applications.
 /// @details
-/// Create `Viper.Game.Quadtree` values through its registered constructor and use the returned
+/// Create `Zanna.Game.Quadtree` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ItemCount` and operations including `Clear`, `Insert`, `Remove`, `Update`.
-RT_CLASS_BEGIN("Viper.Game.Quadtree", Quadtree, "obj", QuadtreeNew)
+RT_CLASS_BEGIN("Zanna.Game.Quadtree", Quadtree, "obj", QuadtreeNew)
     RT_PROP("ItemCount", "i64", QuadtreeItemCount, none)
     RT_METHOD("Clear", "void()", QuadtreeClear)
     RT_METHOD("Insert", "i1(i64,i64,i64,i64,i64)", QuadtreeInsert)
     RT_METHOD("Remove", "i1(i64)", QuadtreeRemove)
     RT_METHOD("Update", "i1(i64,i64,i64,i64,i64)", QuadtreeUpdate)
-    RT_METHOD("QueryRect", "obj<Viper.Game.QueryResult>(i64,i64,i64,i64)", QuadtreeQueryRectResult)
-    RT_METHOD("QueryPoint", "obj<Viper.Game.QueryResult>(i64,i64,i64)", QuadtreeQueryPointResult)
-    RT_METHOD("QueryPairs", "obj<Viper.Game.QuadtreePairResult>()", QuadtreeQueryPairs)
+    RT_METHOD("QueryRect", "obj<Zanna.Game.QueryResult>(i64,i64,i64,i64)", QuadtreeQueryRectResult)
+    RT_METHOD("QueryPoint", "obj<Zanna.Game.QueryResult>(i64,i64,i64)", QuadtreeQueryPointResult)
+    RT_METHOD("QueryPairs", "obj<Zanna.Game.QuadtreePairResult>()", QuadtreeQueryPairs)
 RT_CLASS_END()
 
-// Viper.DebugOverlay - Development debug overlay
+// Zanna.DebugOverlay - Development debug overlay
 /// @summary Provides Debug Overlay functionality for game applications.
 /// @details
-/// Create `Viper.Game.DebugOverlay` values through its registered constructor and use the returned
+/// Create `Zanna.Game.DebugOverlay` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsEnabled`, `Fps` and operations including `Enable`, `Disable`, `Toggle`, `Update`.
-RT_CLASS_BEGIN("Viper.Game.DebugOverlay", DebugOverlay, "obj", DebugOverlayNew)
+RT_CLASS_BEGIN("Zanna.Game.DebugOverlay", DebugOverlay, "obj", DebugOverlayNew)
     RT_PROP("IsEnabled", "i1", DebugOverlayIsEnabled, none)
     RT_PROP("Fps", "i64", DebugOverlayGetFps, none)
     RT_METHOD("Enable", "void()", DebugOverlayEnable)
@@ -772,39 +772,39 @@ RT_CLASS_END()
 // Functional Programming Types
 // ============================================================================
 
-// Viper.Result - Represents either success (Ok) or failure (Err)
-RT_FUNC(ResultOk,           rt_result_ok,              "Viper.Result.Ok",           "obj(obj)")
-RT_FUNC(ResultOkStr,        rt_result_ok_str,          "Viper.Result.OkStr",        "obj(str)")
-RT_FUNC(ResultOkI64,        rt_result_ok_i64,          "Viper.Result.OkI64",        "obj(i64)")
-RT_FUNC(ResultOkF64,        rt_result_ok_f64,          "Viper.Result.OkF64",        "obj(f64)")
-RT_FUNC(ResultErr,          rt_result_err,             "Viper.Result.Err",          "obj(obj)")
-RT_FUNC(ResultErrStr,       rt_result_err_str,         "Viper.Result.ErrStr",       "obj(str)")
-RT_FUNC(ResultIsOk,         rt_result_is_ok,           "Viper.Result.get_IsOk",     "i1(obj)")
-RT_FUNC(ResultIsErr,        rt_result_is_err,          "Viper.Result.get_IsErr",    "i1(obj)")
-RT_FUNC(ResultUnwrap,       rt_result_unwrap,          "Viper.Result.Unwrap",       "obj(obj)")
-RT_FUNC(ResultUnwrapStr,    rt_result_unwrap_str,      "Viper.Result.UnwrapStr",    "str(obj)")
-RT_FUNC(ResultUnwrapI64,    rt_result_unwrap_i64,      "Viper.Result.UnwrapI64",    "i64(obj)")
-RT_FUNC(ResultUnwrapF64,    rt_result_unwrap_f64,      "Viper.Result.UnwrapF64",    "f64(obj)")
-RT_FUNC(ResultUnwrapOr,     rt_result_unwrap_or,       "Viper.Result.UnwrapOr",     "obj(obj,obj)")
-RT_FUNC(ResultUnwrapOrStr,  rt_result_unwrap_or_str,   "Viper.Result.UnwrapOrStr",  "str(obj,str)")
-RT_FUNC(ResultUnwrapOrI64,  rt_result_unwrap_or_i64,   "Viper.Result.UnwrapOrI64",  "i64(obj,i64)")
-RT_FUNC(ResultUnwrapOrF64,  rt_result_unwrap_or_f64,   "Viper.Result.UnwrapOrF64",  "f64(obj,f64)")
-RT_FUNC(ResultUnwrapErr,    rt_result_unwrap_err,      "Viper.Result.UnwrapErr",    "obj(obj)")
-RT_FUNC(ResultUnwrapErrStr, rt_result_unwrap_err_str,  "Viper.Result.UnwrapErrStr", "str(obj)")
-RT_FUNC(ResultExpect,       rt_result_expect,          "Viper.Result.Expect",       "obj(obj,str)")
-RT_FUNC(ResultExpectErr,    rt_result_expect_err,      "Viper.Result.ExpectErr",    "obj(obj,str)")
-RT_FUNC(ResultToString,     rt_result_to_string,       "Viper.Result.ToString",     "str(obj)")
-RT_FUNC(ResultEquals,       rt_result_equals,          "Viper.Result.Equals",       "i1(obj,obj)")
-RT_FUNC(ResultMap,          rt_result_map_wrapper,     "Viper.Result.Map",          "obj(obj,obj)")
-RT_FUNC(ResultMapErr,       rt_result_map_err_wrapper, "Viper.Result.MapErr",       "obj(obj,obj)")
-RT_FUNC(ResultAndThen,      rt_result_and_then_wrapper,"Viper.Result.AndThen",      "obj(obj,obj)")
-RT_FUNC(ResultOrElse,       rt_result_or_else_wrapper, "Viper.Result.OrElse",       "obj(obj,obj)")
+// Zanna.Result - Represents either success (Ok) or failure (Err)
+RT_FUNC(ResultOk,           rt_result_ok,              "Zanna.Result.Ok",           "obj(obj)")
+RT_FUNC(ResultOkStr,        rt_result_ok_str,          "Zanna.Result.OkStr",        "obj(str)")
+RT_FUNC(ResultOkI64,        rt_result_ok_i64,          "Zanna.Result.OkI64",        "obj(i64)")
+RT_FUNC(ResultOkF64,        rt_result_ok_f64,          "Zanna.Result.OkF64",        "obj(f64)")
+RT_FUNC(ResultErr,          rt_result_err,             "Zanna.Result.Err",          "obj(obj)")
+RT_FUNC(ResultErrStr,       rt_result_err_str,         "Zanna.Result.ErrStr",       "obj(str)")
+RT_FUNC(ResultIsOk,         rt_result_is_ok,           "Zanna.Result.get_IsOk",     "i1(obj)")
+RT_FUNC(ResultIsErr,        rt_result_is_err,          "Zanna.Result.get_IsErr",    "i1(obj)")
+RT_FUNC(ResultUnwrap,       rt_result_unwrap,          "Zanna.Result.Unwrap",       "obj(obj)")
+RT_FUNC(ResultUnwrapStr,    rt_result_unwrap_str,      "Zanna.Result.UnwrapStr",    "str(obj)")
+RT_FUNC(ResultUnwrapI64,    rt_result_unwrap_i64,      "Zanna.Result.UnwrapI64",    "i64(obj)")
+RT_FUNC(ResultUnwrapF64,    rt_result_unwrap_f64,      "Zanna.Result.UnwrapF64",    "f64(obj)")
+RT_FUNC(ResultUnwrapOr,     rt_result_unwrap_or,       "Zanna.Result.UnwrapOr",     "obj(obj,obj)")
+RT_FUNC(ResultUnwrapOrStr,  rt_result_unwrap_or_str,   "Zanna.Result.UnwrapOrStr",  "str(obj,str)")
+RT_FUNC(ResultUnwrapOrI64,  rt_result_unwrap_or_i64,   "Zanna.Result.UnwrapOrI64",  "i64(obj,i64)")
+RT_FUNC(ResultUnwrapOrF64,  rt_result_unwrap_or_f64,   "Zanna.Result.UnwrapOrF64",  "f64(obj,f64)")
+RT_FUNC(ResultUnwrapErr,    rt_result_unwrap_err,      "Zanna.Result.UnwrapErr",    "obj(obj)")
+RT_FUNC(ResultUnwrapErrStr, rt_result_unwrap_err_str,  "Zanna.Result.UnwrapErrStr", "str(obj)")
+RT_FUNC(ResultExpect,       rt_result_expect,          "Zanna.Result.Expect",       "obj(obj,str)")
+RT_FUNC(ResultExpectErr,    rt_result_expect_err,      "Zanna.Result.ExpectErr",    "obj(obj,str)")
+RT_FUNC(ResultToString,     rt_result_to_string,       "Zanna.Result.ToString",     "str(obj)")
+RT_FUNC(ResultEquals,       rt_result_equals,          "Zanna.Result.Equals",       "i1(obj,obj)")
+RT_FUNC(ResultMap,          rt_result_map_wrapper,     "Zanna.Result.Map",          "obj(obj,obj)")
+RT_FUNC(ResultMapErr,       rt_result_map_err_wrapper, "Zanna.Result.MapErr",       "obj(obj,obj)")
+RT_FUNC(ResultAndThen,      rt_result_and_then_wrapper,"Zanna.Result.AndThen",      "obj(obj,obj)")
+RT_FUNC(ResultOrElse,       rt_result_or_else_wrapper, "Zanna.Result.OrElse",       "obj(obj,obj)")
 /// @summary Represents either a successful value or a structured runtime failure.
 /// @details
-/// `Viper.Result` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.Result` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes properties such as `IsOk`, `IsErr` and
 /// operations including `Ok`, `OkStr`, `OkI64`, `OkF64`.
-RT_CLASS_BEGIN("Viper.Result", Result, "obj", none)
+RT_CLASS_BEGIN("Zanna.Result", Result, "obj", none)
     RT_METHOD("Ok", "obj(obj)", ResultOk)
     RT_METHOD("OkStr", "obj(str)", ResultOkStr)
     RT_METHOD("OkI64", "obj(i64)", ResultOkI64)
@@ -833,40 +833,40 @@ RT_CLASS_BEGIN("Viper.Result", Result, "obj", none)
     RT_METHOD("OrElse", "obj(obj)", ResultOrElse)
 RT_CLASS_END()
 
-// Viper.Option - Represents Some(value) or None
-RT_FUNC(OptionSome,        rt_option_some,           "Viper.Option.Some",         "obj(obj)")
-RT_FUNC(OptionSomeStr,     rt_option_some_str,       "Viper.Option.SomeStr",      "obj(str)")
-RT_FUNC(OptionSomeI64,     rt_option_some_i64,       "Viper.Option.SomeI64",      "obj(i64)")
-RT_FUNC(OptionSomeI1,      rt_option_some_i1,        "Viper.Option.SomeI1",       "obj(i1)")
-RT_FUNC(OptionSomeF64,     rt_option_some_f64,       "Viper.Option.SomeF64",      "obj(f64)")
-RT_FUNC(OptionNone,        rt_option_none,           "Viper.Option.None",         "obj()")
-RT_FUNC(OptionIsSome,      rt_option_is_some,        "Viper.Option.get_IsSome",   "i1(obj)")
-RT_FUNC(OptionIsNone,      rt_option_is_none,        "Viper.Option.get_IsNone",   "i1(obj)")
-RT_FUNC(OptionUnwrap,      rt_option_unwrap,         "Viper.Option.Unwrap",       "obj(obj)")
-RT_FUNC(OptionUnwrapStr,   rt_option_unwrap_str,     "Viper.Option.UnwrapStr",    "str(obj)")
-RT_FUNC(OptionUnwrapI64,   rt_option_unwrap_i64,     "Viper.Option.UnwrapI64",    "i64(obj)")
-RT_FUNC(OptionUnwrapI1,    rt_option_unwrap_i1,      "Viper.Option.UnwrapI1",     "i1(obj)")
-RT_FUNC(OptionUnwrapF64,   rt_option_unwrap_f64,     "Viper.Option.UnwrapF64",    "f64(obj)")
-RT_FUNC(OptionUnwrapOr,    rt_option_unwrap_or,      "Viper.Option.UnwrapOr",     "obj(obj,obj)")
-RT_FUNC(OptionUnwrapOrStr, rt_option_unwrap_or_str,  "Viper.Option.UnwrapOrStr",  "str(obj,str)")
-RT_FUNC(OptionUnwrapOrI64, rt_option_unwrap_or_i64,  "Viper.Option.UnwrapOrI64",  "i64(obj,i64)")
-RT_FUNC(OptionUnwrapOrI1,  rt_option_unwrap_or_i1,   "Viper.Option.UnwrapOrI1",   "i1(obj,i1)")
-RT_FUNC(OptionUnwrapOrF64, rt_option_unwrap_or_f64,  "Viper.Option.UnwrapOrF64",  "f64(obj,f64)")
-RT_FUNC(OptionExpect,      rt_option_expect,         "Viper.Option.Expect",       "obj(obj,str)")
-RT_FUNC(OptionOkOr,        rt_option_ok_or,          "Viper.Option.OkOr",         "obj<Viper.Result>(obj,obj)")
-RT_FUNC(OptionOkOrStr,     rt_option_ok_or_str,      "Viper.Option.OkOrStr",      "obj<Viper.Result>(obj,str)")
-RT_FUNC(OptionToString,    rt_option_to_string,      "Viper.Option.ToString",     "str(obj)")
-RT_FUNC(OptionEquals,      rt_option_equals,         "Viper.Option.Equals",       "i1(obj,obj)")
-RT_FUNC(OptionMap,         rt_option_map_wrapper,     "Viper.Option.Map",          "obj(obj,obj)")
-RT_FUNC(OptionAndThen,     rt_option_and_then_wrapper,"Viper.Option.AndThen",      "obj(obj,obj)")
-RT_FUNC(OptionOrElse,      rt_option_or_else_wrapper, "Viper.Option.OrElse",       "obj(obj,obj)")
-RT_FUNC(OptionFilter,      rt_option_filter_wrapper,  "Viper.Option.Filter",       "obj(obj,obj)")
+// Zanna.Option - Represents Some(value) or None
+RT_FUNC(OptionSome,        rt_option_some,           "Zanna.Option.Some",         "obj(obj)")
+RT_FUNC(OptionSomeStr,     rt_option_some_str,       "Zanna.Option.SomeStr",      "obj(str)")
+RT_FUNC(OptionSomeI64,     rt_option_some_i64,       "Zanna.Option.SomeI64",      "obj(i64)")
+RT_FUNC(OptionSomeI1,      rt_option_some_i1,        "Zanna.Option.SomeI1",       "obj(i1)")
+RT_FUNC(OptionSomeF64,     rt_option_some_f64,       "Zanna.Option.SomeF64",      "obj(f64)")
+RT_FUNC(OptionNone,        rt_option_none,           "Zanna.Option.None",         "obj()")
+RT_FUNC(OptionIsSome,      rt_option_is_some,        "Zanna.Option.get_IsSome",   "i1(obj)")
+RT_FUNC(OptionIsNone,      rt_option_is_none,        "Zanna.Option.get_IsNone",   "i1(obj)")
+RT_FUNC(OptionUnwrap,      rt_option_unwrap,         "Zanna.Option.Unwrap",       "obj(obj)")
+RT_FUNC(OptionUnwrapStr,   rt_option_unwrap_str,     "Zanna.Option.UnwrapStr",    "str(obj)")
+RT_FUNC(OptionUnwrapI64,   rt_option_unwrap_i64,     "Zanna.Option.UnwrapI64",    "i64(obj)")
+RT_FUNC(OptionUnwrapI1,    rt_option_unwrap_i1,      "Zanna.Option.UnwrapI1",     "i1(obj)")
+RT_FUNC(OptionUnwrapF64,   rt_option_unwrap_f64,     "Zanna.Option.UnwrapF64",    "f64(obj)")
+RT_FUNC(OptionUnwrapOr,    rt_option_unwrap_or,      "Zanna.Option.UnwrapOr",     "obj(obj,obj)")
+RT_FUNC(OptionUnwrapOrStr, rt_option_unwrap_or_str,  "Zanna.Option.UnwrapOrStr",  "str(obj,str)")
+RT_FUNC(OptionUnwrapOrI64, rt_option_unwrap_or_i64,  "Zanna.Option.UnwrapOrI64",  "i64(obj,i64)")
+RT_FUNC(OptionUnwrapOrI1,  rt_option_unwrap_or_i1,   "Zanna.Option.UnwrapOrI1",   "i1(obj,i1)")
+RT_FUNC(OptionUnwrapOrF64, rt_option_unwrap_or_f64,  "Zanna.Option.UnwrapOrF64",  "f64(obj,f64)")
+RT_FUNC(OptionExpect,      rt_option_expect,         "Zanna.Option.Expect",       "obj(obj,str)")
+RT_FUNC(OptionOkOr,        rt_option_ok_or,          "Zanna.Option.OkOr",         "obj<Zanna.Result>(obj,obj)")
+RT_FUNC(OptionOkOrStr,     rt_option_ok_or_str,      "Zanna.Option.OkOrStr",      "obj<Zanna.Result>(obj,str)")
+RT_FUNC(OptionToString,    rt_option_to_string,      "Zanna.Option.ToString",     "str(obj)")
+RT_FUNC(OptionEquals,      rt_option_equals,         "Zanna.Option.Equals",       "i1(obj,obj)")
+RT_FUNC(OptionMap,         rt_option_map_wrapper,     "Zanna.Option.Map",          "obj(obj,obj)")
+RT_FUNC(OptionAndThen,     rt_option_and_then_wrapper,"Zanna.Option.AndThen",      "obj(obj,obj)")
+RT_FUNC(OptionOrElse,      rt_option_or_else_wrapper, "Zanna.Option.OrElse",       "obj(obj,obj)")
+RT_FUNC(OptionFilter,      rt_option_filter_wrapper,  "Zanna.Option.Filter",       "obj(obj,obj)")
 /// @summary Represents an optional value that may be present or absent.
 /// @details
-/// `Viper.Option` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.Option` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes properties such as `IsSome`, `IsNone` and
 /// operations including `Some`, `SomeStr`, `SomeI64`, `SomeI1`.
-RT_CLASS_BEGIN("Viper.Option", Option, "obj", none)
+RT_CLASS_BEGIN("Zanna.Option", Option, "obj", none)
     RT_METHOD("Some", "obj(obj)", OptionSome)
     RT_METHOD("SomeStr", "obj(str)", OptionSomeStr)
     RT_METHOD("SomeI64", "obj(i64)", OptionSomeI64)
@@ -886,8 +886,8 @@ RT_CLASS_BEGIN("Viper.Option", Option, "obj", none)
     RT_METHOD("UnwrapOrI1", "i1(i1)", OptionUnwrapOrI1)
     RT_METHOD("UnwrapOrF64", "f64(f64)", OptionUnwrapOrF64)
     RT_METHOD("Expect", "obj(str)", OptionExpect)
-    RT_METHOD("OkOr", "obj<Viper.Result>(obj)", OptionOkOr)
-    RT_METHOD("OkOrStr", "obj<Viper.Result>(str)", OptionOkOrStr)
+    RT_METHOD("OkOr", "obj<Zanna.Result>(obj)", OptionOkOr)
+    RT_METHOD("OkOrStr", "obj<Zanna.Result>(str)", OptionOkOrStr)
     RT_METHOD("ToString", "str()", OptionToString)
     RT_METHOD("Equals", "i1(obj)", OptionEquals)
     RT_METHOD("Map", "obj(obj)", OptionMap)

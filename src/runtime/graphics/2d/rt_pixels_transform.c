@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_pixels_transform.c
 // Purpose: Geometric transforms and image processing effects for
-//   Viper.Graphics.Pixels. Includes flips, rotations (90/180/arbitrary),
+//   Zanna.Graphics.Pixels. Includes flips, rotations (90/180/arbitrary),
 //   scaling, color inversion, grayscale conversion, tinting, box blur,
 //   and high-quality bilinear resize.
 //

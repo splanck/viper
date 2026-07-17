@@ -10,9 +10,9 @@ module mushroom;
 bind "./config";
 bind "./utils";
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Math.Random;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Math.Random;
 
 // =============================================================================
 // MUSHROOM FIELD ENTITY - The game board with mushrooms

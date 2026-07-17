@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,16 +31,16 @@
 #include <thread>
 #include <vector>
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 namespace {
 
 /// @brief Check whether the codegen-stats environment toggle is active.
-/// @details Looks at @c VIPER_CODEGEN_STATS — any non-empty value other
+/// @details Looks at @c ZANNA_CODEGEN_STATS — any non-empty value other
 ///          than @c "0" enables verbose stats reporting. Used so noisy
 ///          diagnostic output stays off by default.
 /// @return True when stats reporting should be emitted.
 [[nodiscard]] bool codegenStatsEnabled() noexcept {
-    if (const char *value = std::getenv("VIPER_CODEGEN_STATS"))
+    if (const char *value = std::getenv("ZANNA_CODEGEN_STATS"))
         return value[0] != '\0' && value[0] != '0';
     return false;
 }
@@ -174,4 +174,4 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

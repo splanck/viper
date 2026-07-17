@@ -1,10 +1,10 @@
 il 0.1
-extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.String.get_Length(str) -> i64
-extern @Viper.String.Concat(str, str) -> str
-extern @Viper.String.Substring(str, i64, i64) -> str
-extern @Viper.String.Equals(str, str) -> i1
+extern @Zanna.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
+extern @Zanna.String.get_Length(str) -> i64
+extern @Zanna.String.Concat(str, str) -> str
+extern @Zanna.String.Substring(str, i64, i64) -> str
+extern @Zanna.String.Equals(str, str) -> i1
 
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
@@ -26,45 +26,45 @@ entry:
 
   %sSp = const_str @.L2
   %a0 = load str, %a_slot
-  %c0 = call @Viper.String.Concat(%a0, %sSp)
+  %c0 = call @Zanna.String.Concat(%a0, %sSp)
   store str, %c_slot, %c0
 
   %c1 = load str, %c_slot
   %b0 = load str, %b_slot
-  %c2 = call @Viper.String.Concat(%c1, %b0)
+  %c2 = call @Zanna.String.Concat(%c1, %b0)
   store str, %c_slot, %c2
 
   %c3 = load str, %c_slot
   %out = const_str @.L3
-  call @Viper.Terminal.PrintStr(%out)
+  call @Zanna.Terminal.PrintStr(%out)
   %nl0 = const_str @.L4
-  call @Viper.Terminal.PrintStr(%nl0)
+  call @Zanna.Terminal.PrintStr(%nl0)
 
-  %len = call @Viper.String.get_Length(%c3)
+  %len = call @Zanna.String.get_Length(%c3)
   store i64, %l_slot, %len
-  call @Viper.Terminal.PrintI64(%len)
+  call @Zanna.Terminal.PrintI64(%len)
   %nl1 = const_str @.L4
-  call @Viper.Terminal.PrintStr(%nl1)
+  call @Zanna.Terminal.PrintStr(%nl1)
 
-  %first = call @Viper.String.Substring(%c3, 0, 1)
-  call @Viper.Terminal.PrintStr(%first)
+  %first = call @Zanna.String.Substring(%c3, 0, 1)
+  call @Zanna.Terminal.PrintStr(%first)
   %nl2 = const_str @.L4
-  call @Viper.Terminal.PrintStr(%nl2)
+  call @Zanna.Terminal.PrintStr(%nl2)
 
   %target = const_str @.L3
-  %eq = call @Viper.String.Equals(%c3, %target)
+  %eq = call @Zanna.String.Equals(%c3, %target)
   cbr %eq, label then1, label else0
 
 then1:
-  call @Viper.Terminal.PrintI64(1)
+  call @Zanna.Terminal.PrintI64(1)
   %nl3 = const_str @.L4
-  call @Viper.Terminal.PrintStr(%nl3)
+  call @Zanna.Terminal.PrintStr(%nl3)
   br label exit
 
 else0:
-  call @Viper.Terminal.PrintI64(0)
+  call @Zanna.Terminal.PrintI64(0)
   %nl4 = const_str @.L4
-  call @Viper.Terminal.PrintStr(%nl4)
+  call @Zanna.Terminal.PrintStr(%nl4)
   br label exit
 
 exit:

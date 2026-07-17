@@ -1,18 +1,18 @@
 // Test: Dialogue typewriter text system
 module TestDialogue;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Test 1: Creation
-    var dlg = Viper.Game.Dialogue.New(10, 200, 300, 80);
+    var dlg = Zanna.Game.Dialogue.New(10, 200, 300, 80);
     if (dlg.IsActive != false) {
         Say("FAIL: new dialogue should not be active");
         return;
     }
 
     // Test 2: Say activates
-    Viper.Game.Dialogue.Say(dlg, "NPC", "Hello world");
+    Zanna.Game.Dialogue.Say(dlg, "NPC", "Hello world");
     if (dlg.IsActive != true) {
         Say("FAIL: dialogue should be active after Say");
         return;
@@ -24,14 +24,14 @@ func start() {
 
     // Test 3: Typewriter progression
     dlg.Speed = 10;
-    Viper.Game.Dialogue.Update(dlg, 50);
+    Zanna.Game.Dialogue.Update(dlg, 50);
     if (dlg.IsLineComplete != false) {
         Say("FAIL: line should not be complete yet");
         return;
     }
 
     // Test 4: Skip completes the line
-    Viper.Game.Dialogue.Skip(dlg);
+    Zanna.Game.Dialogue.Skip(dlg);
     if (dlg.IsLineComplete != true) {
         Say("FAIL: line should be complete after Skip");
         return;
@@ -42,7 +42,7 @@ func start() {
     }
 
     // Test 5: Advance finishes single-line dialogue
-    Viper.Game.Dialogue.Advance(dlg);
+    Zanna.Game.Dialogue.Advance(dlg);
     if (dlg.IsFinished != true) {
         Say("FAIL: dialogue should be finished");
         return;
@@ -53,20 +53,20 @@ func start() {
     }
 
     // Test 6: Multi-line dialogue
-    var dlg2 = Viper.Game.Dialogue.New(0, 0, 200, 80);
+    var dlg2 = Zanna.Game.Dialogue.New(0, 0, 200, 80);
     dlg2.Speed = 1000;
-    Viper.Game.Dialogue.Say(dlg2, "A", "First");
-    Viper.Game.Dialogue.Say(dlg2, "B", "Second");
-    Viper.Game.Dialogue.Update(dlg2, 1000);
-    Viper.Game.Dialogue.Advance(dlg2); // skip first
-    Viper.Game.Dialogue.Advance(dlg2); // move to second
+    Zanna.Game.Dialogue.Say(dlg2, "A", "First");
+    Zanna.Game.Dialogue.Say(dlg2, "B", "Second");
+    Zanna.Game.Dialogue.Update(dlg2, 1000);
+    Zanna.Game.Dialogue.Advance(dlg2); // skip first
+    Zanna.Game.Dialogue.Advance(dlg2); // move to second
     if (dlg2.CurrentLine != 1) {
         Say("FAIL: should be on line 1");
         return;
     }
 
     // Test 7: Clear
-    Viper.Game.Dialogue.Clear(dlg2);
+    Zanna.Game.Dialogue.Clear(dlg2);
     if (dlg2.IsActive != false) {
         Say("FAIL: cleared dialogue should not be active");
         return;

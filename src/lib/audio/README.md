@@ -1,9 +1,9 @@
-# ViperAUD - Cross-Platform Audio Library
+# ZannaAUD - Cross-Platform Audio Library
 
 **Version:** 1.0.0
 **Status:** Complete (All Platforms)
 
-ViperAUD is a cross-platform audio library written in C11 that provides sound effect playback and music streaming
+ZannaAUD is a cross-platform audio library written in C11 that provides sound effect playback and music streaming
 with zero external dependencies (only OS-level audio APIs).
 
 ## Features
@@ -27,7 +27,7 @@ with zero external dependencies (only OS-level audio APIs).
 
 ## Building Standalone
 
-From the **Viper repository root**, configure and build as a standalone project:
+From the **Zanna repository root**, configure and build as a standalone project:
 
 ```bash
 # Configure from repository root
@@ -59,23 +59,23 @@ cmake -S src/lib/audio -B build-aud -DCMAKE_BUILD_TYPE=Release
 - **Linux**: ALSA development libraries (`libasound2-dev` on Debian/Ubuntu)
 - **Windows**: None (uses WASAPI, included in Windows Vista+)
 
-## Building as Part of Viper
+## Building as Part of Zanna
 
-When included via `add_subdirectory()` from a parent CMake project (like Viper), ViperAUD automatically integrates:
+When included via `add_subdirectory()` from a parent CMake project (like Zanna), ZannaAUD automatically integrates:
 
 ```cmake
 # In parent CMakeLists.txt
 add_subdirectory(src/lib/audio)
 
 # Link against it
-target_link_libraries(your_target PRIVATE viperaud)
+target_link_libraries(your_target PRIVATE zannaaud)
 ```
 
 The library will use the parent project's test and example build settings.
 
 ## Library Output
 
-- **Static library**: `libviperaud.a` (Unix) or `viperaud.lib` (Windows)
+- **Static library**: `libzannaaud.a` (Unix) or `zannaaud.lib` (Windows)
 - **Location**: `build-aud/lib/` (standalone) or `build/lib/` (integrated)
 
 ## Quick Start
@@ -121,10 +121,10 @@ Compile and link:
 
 ```bash
 # macOS
-gcc main.c -o myapp -Iinclude -Llib -lviperaud -framework AudioToolbox
+gcc main.c -o myapp -Iinclude -Llib -lzannaaud -framework AudioToolbox
 
 # Linux
-gcc main.c -o myapp -Iinclude -Llib -lviperaud -lasound -lpthread
+gcc main.c -o myapp -Iinclude -Llib -lzannaaud -lasound -lpthread
 ```
 
 ### Music Streaming Example
@@ -262,7 +262,7 @@ void vaud_clear_error(void);
 
 ## Threading Model
 
-ViperAUD is designed for thread-safe playback control and uses a dedicated
+ZannaAUD is designed for thread-safe playback control and uses a dedicated
 audio thread:
 
 - Playback, pause/resume, volume, pan, and query functions can be called from
@@ -350,15 +350,15 @@ src/lib/audio/
 └── README.md               # This file
 ```
 
-## Viper.Sound API (Viperlang)
+## Zanna.Sound API (Zannalang)
 
-ViperAUD is exposed to Viperlang through the `Viper.Sound` namespace:
+ZannaAUD is exposed to Zannalang through the `Zanna.Sound` namespace:
 
 ### Sound Effects
 
-```viper
+```zanna
 // Load a sound effect
-let explosion = Viper.Sound.Sound.Load("explosion.wav")
+let explosion = Zanna.Sound.Sound.Load("explosion.wav")
 
 // Play with default settings
 let voice = explosion.Play()
@@ -370,16 +370,16 @@ let voice = explosion.PlayEx(80, 0)  // 80% volume, center pan
 let voice = explosion.PlayLoop(100, -50)  // Full volume, pan left
 
 // Control playing voice
-Viper.Sound.Voice.Stop(voice)
-Viper.Sound.Voice.SetVolume(voice, 50)
-Viper.Sound.Voice.SetPan(voice, 100)  // Pan right
+Zanna.Sound.Voice.Stop(voice)
+Zanna.Sound.Voice.SetVolume(voice, 50)
+Zanna.Sound.Voice.SetPan(voice, 100)  // Pan right
 ```
 
 ### Music Streaming
 
-```viper
+```zanna
 // Load music
-let bgm = Viper.Sound.Music.Load("background.wav")
+let bgm = Zanna.Sound.Music.Load("background.wav")
 
 // Play with loop
 bgm.Play(1)
@@ -398,17 +398,17 @@ let dur = bgm.Duration
 
 ### Audio System
 
-```viper
+```zanna
 // Master volume (0-100)
-Viper.Sound.Audio.SetMasterVolume(80)
-let vol = Viper.Sound.Audio.GetMasterVolume()
+Zanna.Sound.Audio.SetMasterVolume(80)
+let vol = Zanna.Sound.Audio.GetMasterVolume()
 
 // Pause/resume all audio
-Viper.Sound.Audio.PauseAll()
-Viper.Sound.Audio.ResumeAll()
+Zanna.Sound.Audio.PauseAll()
+Zanna.Sound.Audio.ResumeAll()
 
 // Stop all sound effects (but not music)
-Viper.Sound.Audio.StopAllSounds()
+Zanna.Sound.Audio.StopAllSounds()
 ```
 
 ## Requirements
@@ -437,10 +437,10 @@ Viper.Sound.Audio.StopAllSounds()
 
 ## License
 
-ViperAUD is part of the Viper project and distributed under the GNU GPL v3.
+ZannaAUD is part of the Zanna project and distributed under the GNU GPL v3.
 See [LICENSE](../../../LICENSE) for details.
 
 ## Contributing
 
-ViperAUD is part of the larger Viper project. For questions or contributions, see the
-main [Viper documentation](../../../docs/README.md).
+ZannaAUD is part of the larger Zanna project. For questions or contributions, see the
+main [Zanna documentation](../../../docs/README.md).

@@ -24,10 +24,10 @@
 
 module session;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Game;
-bind Viper.Game.ScreenFX as FX;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Game;
+bind Zanna.Game.ScreenFX as FX;
 
 bind "./config";
 bind "./utils";

@@ -14,8 +14,8 @@
 // =============================================================================
 module stress_combat_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Math;
 bind "../config" as config;
 bind "../core/strings" as S;
 bind "../game" as game;

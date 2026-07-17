@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-06-27
 ---
 
-# Viper Bytecode VM Reference
+# Zanna Bytecode VM Reference
 
 The bytecode VM is the implemented stack interpreter in `src/bytecode/`. It is
 produced from IL by `BytecodeCompiler` and executed by `BytecodeVM`; it is not a
@@ -23,12 +23,12 @@ separate language contract. The normative IL contract remains
 | Computed-goto interpreter | `src/bytecode/BytecodeVM_threaded.cpp` |
 | Scalar width and trap adapters | `src/bytecode/BytecodeSemantics.hpp` |
 | CLI execution helper for source frontends | `src/tools/common/vm_executor.cpp` |
-| IL runner bytecode flags | `src/tools/viper/cmd_run_il.cpp` |
+| IL runner bytecode flags | `src/tools/zanna/cmd_run_il.cpp` |
 
 `src/bytecode/Bytecode.def` is the only hand-maintained bytecode opcode list.
 It drives the `BCOpcode` enum, `opcodeName()`, and the threaded-dispatch label
 table. Do not copy the full opcode list into docs; use the source file or
-`viper --dump-opcodes` for a live registry.
+`zanna --dump-opcodes` for a live registry.
 
 As of this verification, `src/il/core/Opcode.def` contains 83 IL opcode entries
 and `src/bytecode/Bytecode.def` contains 134 bytecode entries, including the
@@ -269,8 +269,8 @@ trap-record values through the runtime string API.
 interpreter. Source line, source file, and block label lookup use the tables
 stored on `BytecodeFunction`.
 
-For existing IL files, `viper run <file.il> --bytecode` and
-`viper run <file.il> --bc-threaded` reject debugger flags such as `--break`,
+For existing IL files, `zanna run <file.il> --bytecode` and
+`zanna run <file.il> --bc-threaded` reject debugger flags such as `--break`,
 `--break-src`, `--watch`, `--debug-cmds`, `--step`, and `--continue`.
 
 ## CLI And Benchmark Surface
@@ -284,16 +284,16 @@ then runs `main`.
 Existing IL files can opt into bytecode execution:
 
 ```sh
-viper run program.il --bytecode
-viper run program.il --bc-threaded
+zanna run program.il --bytecode
+zanna run program.il --bc-threaded
 ```
 
 The benchmark command can compare dispatch strategies:
 
 ```sh
-viper bench program.il --bc-switch
-viper bench program.il --bc-threaded
-viper bench program.il --bytecode
+zanna bench program.il --bc-switch
+zanna bench program.il --bc-threaded
+zanna bench program.il --bytecode
 ```
 
 ## Tests

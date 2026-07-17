@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 
 #include <stdint.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Resolve a live widget only when it owns the requested layout algorithm.
 /// @param handle Opaque runtime widget handle.
@@ -320,7 +320,7 @@ int64_t rt_dockpanel_dock_child(void *dock, void *child, int64_t position) {
     return vg_dock_add_checked(layout, child_widget, (vg_dock_t)(position + 1)) ? 1 : 0;
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: ignore VBox alignment when graphics is disabled.
 void rt_vbox_set_align(void *vbox, int64_t align) {
@@ -492,4 +492,4 @@ int64_t rt_dockpanel_dock_child(void *dock, void *child, int64_t position) {
     return 0;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

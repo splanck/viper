@@ -1,5 +1,5 @@
-' API Audit: Viper.Network.Tcp (BASIC)
-PRINT "=== API Audit: Viper.Network.Tcp ==="
+' API Audit: Zanna.Network.Tcp (BASIC)
+PRINT "=== API Audit: Zanna.Network.Tcp ==="
 PRINT "NOTE: TCP requires active connections. API surface test only."
 PRINT "Constructor: Connect(host,port), ConnectFor(host,port,timeoutMs)"
 PRINT "Properties: Host() -> str, Port() -> i64, LocalPort() -> i64, IsOpen() -> bool, Available() -> i64"

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_objpool.c
-// Purpose: Fixed-capacity object pool for Viper games. Eliminates per-frame
+// Purpose: Fixed-capacity object pool for Zanna games. Eliminates per-frame
 //   allocation churn for frequently created and destroyed game objects such as
 //   bullets, enemies, particles, and projectiles. Slots are acquired from an
 //   embedded free list in O(1); releasing a non-head active slot scans the
@@ -36,7 +36,7 @@
 //     reference and frees the object when it was the last reference.
 //
 // Links: src/runtime/game/rt_objpool.h (public API),
-//        docs/viperlib/game.md (ObjectPool section)
+//        docs/zannalib/game.md (ObjectPool section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -123,14 +123,14 @@ rt_objpool rt_objpool_new(int64_t capacity) {
 
 /// @brief Release resources and destroy the objpool.
 void rt_objpool_destroy(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.Destroy: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.Destroy: expected Zanna.Game.ObjectPool");
     if (pool && rt_obj_release_check0(pool))
         rt_obj_free(pool);
 }
 
 /// @brief Acquire the objpool.
 int64_t rt_objpool_acquire(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.Acquire: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.Acquire: expected Zanna.Game.ObjectPool");
     if (!pool)
         return -1;
     if (pool->free_head < 0)
@@ -151,7 +151,7 @@ int64_t rt_objpool_acquire(rt_objpool pool) {
 
 /// @brief Release the objpool.
 int8_t rt_objpool_release(rt_objpool pool, int64_t slot) {
-    pool = checked_objpool(pool, "ObjectPool.Release: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.Release: expected Zanna.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -182,7 +182,7 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot) {
 
 /// @brief Check whether a slot is currently active (allocated, not free).
 int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
-    pool = checked_objpool(pool, "ObjectPool.IsActive: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.IsActive: expected Zanna.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -192,37 +192,37 @@ int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
 
 /// @brief Get the number of currently active (allocated) slots.
 int64_t rt_objpool_active_count(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.ActiveCount: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.ActiveCount: expected Zanna.Game.ObjectPool");
     return pool ? pool->active_count : 0;
 }
 
 /// @brief Get the number of free (available) slots in the pool.
 int64_t rt_objpool_free_count(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.FreeCount: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.FreeCount: expected Zanna.Game.ObjectPool");
     return pool ? pool->capacity - pool->active_count : 0;
 }
 
 /// @brief Return the total capacity (active + free slots) of the pool.
 int64_t rt_objpool_capacity(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.Capacity: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.Capacity: expected Zanna.Game.ObjectPool");
     return pool ? pool->capacity : 0;
 }
 
 /// @brief Check whether all slots in the pool are active (no free slots left).
 int8_t rt_objpool_is_full(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.IsFull: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.IsFull: expected Zanna.Game.ObjectPool");
     return pool ? (pool->active_count >= pool->capacity ? 1 : 0) : 1;
 }
 
 /// @brief Check whether the objpool has no entries.
 int8_t rt_objpool_is_empty(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.IsEmpty: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.IsEmpty: expected Zanna.Game.ObjectPool");
     return pool ? (pool->active_count == 0 ? 1 : 0) : 1;
 }
 
 /// @brief Remove all entries from the objpool.
 void rt_objpool_clear(rt_objpool pool) {
-    pool = checked_objpool(pool, "ObjectPool.Clear: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.Clear: expected Zanna.Game.ObjectPool");
     if (!pool)
         return;
 
@@ -242,7 +242,7 @@ void rt_objpool_clear(rt_objpool pool) {
 /// @details O(1) — returns the head of the intrusive active-slot linked list.
 int64_t rt_objpool_first_active(rt_objpool pool) {
     // O(1): return head of the maintained active list
-    pool = checked_objpool(pool, "ObjectPool.FirstActive: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.FirstActive: expected Zanna.Game.ObjectPool");
     return pool ? pool->active_head : -1;
 }
 
@@ -250,7 +250,7 @@ int64_t rt_objpool_first_active(rt_objpool pool) {
 /// @details O(1) — follows the intrusive next_active pointer in the slot.
 int64_t rt_objpool_next_active(rt_objpool pool, int64_t after) {
     // O(1): follow the intrusive next_active pointer
-    pool = checked_objpool(pool, "ObjectPool.NextActive: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.NextActive: expected Zanna.Game.ObjectPool");
     if (!pool || after < 0 || after >= pool->capacity)
         return -1;
     return pool->slots[after].next_active;
@@ -258,7 +258,7 @@ int64_t rt_objpool_next_active(rt_objpool pool, int64_t after) {
 
 /// @brief Store a user-defined integer value in an active slot's data field.
 int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data) {
-    pool = checked_objpool(pool, "ObjectPool.SetData: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.SetData: expected Zanna.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -271,7 +271,7 @@ int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data) {
 
 /// @brief Retrieve the user-defined integer value stored in a slot.
 int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot) {
-    pool = checked_objpool(pool, "ObjectPool.GetData: expected Viper.Game.ObjectPool");
+    pool = checked_objpool(pool, "ObjectPool.GetData: expected Zanna.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)

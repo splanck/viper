@@ -1,11 +1,11 @@
 // terrain.zia - Terrain generation, procedural textures, and ground queries.
 module terrain;
 
-bind Viper.Game3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
+bind Zanna.Game3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
 bind "./config";
 bind "./mathutil";
 

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: examples/apps/paint/tool_palette.zia
 // Purpose: Exclusive-selection group for the paint tools, backed by
-//          Viper.Game.ButtonGroup. Populated dynamically from the tool
+//          Zanna.Game.ButtonGroup. Populated dynamically from the tool
 //          registry so adding a tool needs no change here.
 // Key invariants:
 //   - register() is called once per tool id before selectInitial().
@@ -20,7 +20,7 @@
 // tool_palette.zia - Runtime ButtonGroup-backed Paint tool selection
 module tool_palette;
 
-bind Viper.Game.ButtonGroup as ButtonGroup;
+bind Zanna.Game.ButtonGroup as ButtonGroup;
 
 bind "./config";
 

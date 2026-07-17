@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Threads.Gate
+// API Audit: Zanna.Threads.Gate
 // =============================================================================
 // Tests: New, Enter, TryEnter, Leave, LeaveMany, Permits
 // =============================================================================
 
 module GateDemo;
-bind Viper.Threads.Gate as Gate;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Gate as Gate;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Gate ===");
+    Say("=== API Audit: Zanna.Threads.Gate ===");
 
     // --- New ---
     Say("--- New ---");

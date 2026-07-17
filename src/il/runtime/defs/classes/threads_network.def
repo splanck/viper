@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,13 +18,13 @@
 //===----------------------------------------------------------------------===//
 
 
-// Viper.Threads.ConcurrentQueue - thread-safe FIFO queue
+// Zanna.Threads.ConcurrentQueue - thread-safe FIFO queue
 /// @summary Provides thread-safe FIFO queue.
 /// @details
-/// Create `Viper.Threads.ConcurrentQueue` values through its registered constructor and use the
+/// Create `Zanna.Threads.ConcurrentQueue` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `IsClosed`, `Count` and operations including `Clear`, `Close`, `Pop`, `PopFor`.
-RT_CLASS_BEGIN("Viper.Threads.ConcurrentQueue", ConcurrentQueue, "obj", ConcQueueNew)
+RT_CLASS_BEGIN("Zanna.Threads.ConcurrentQueue", ConcurrentQueue, "obj", ConcQueueNew)
     RT_PROP("IsEmpty", "i1", ConcQueueIsEmpty, none)
     RT_PROP("IsClosed", "i1", ConcQueueIsClosed, none)
     RT_PROP("Count", "i64", ConcQueueLen, none)
@@ -34,16 +34,16 @@ RT_CLASS_BEGIN("Viper.Threads.ConcurrentQueue", ConcurrentQueue, "obj", ConcQueu
     RT_METHOD("PopFor", "obj(i64)", ConcQueueDequeueTimeout)
     RT_METHOD("Push", "void(obj)", ConcQueueEnqueue)
     RT_METHOD("Peek", "obj()", ConcQueuePeek)
-    RT_METHOD("TryPop", "obj<Viper.Option>()", ConcQueueTryDequeueOption)
+    RT_METHOD("TryPop", "obj<Zanna.Option>()", ConcQueueTryDequeueOption)
 RT_CLASS_END()
 
-// Viper.Threads.ConcurrentMap - thread-safe hash map
+// Zanna.Threads.ConcurrentMap - thread-safe hash map
 /// @summary Provides thread-safe hash map.
 /// @details
-/// Create `Viper.Threads.ConcurrentMap` values through its registered constructor and use the
+/// Create `Zanna.Threads.ConcurrentMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsEmpty`, `Count` and operations including `Clear`, `Get`, `GetOr`, `Has`.
-RT_CLASS_BEGIN("Viper.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
+RT_CLASS_BEGIN("Zanna.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
     RT_PROP("IsEmpty", "i1", ConcMapIsEmpty, none)
     RT_PROP("Count", "i64", ConcMapLen, none)
     RT_METHOD("Clear", "void()", ConcMapClear)
@@ -57,13 +57,13 @@ RT_CLASS_BEGIN("Viper.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
     RT_METHOD("Values", "seq<obj>()", ConcMapValues)
 RT_CLASS_END()
 
-// Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
+// Zanna.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
 /// @summary Provides FIFO-fair, re-entrant monitor primitive.
 /// @details
-/// `Viper.Threads.Monitor` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Threads.Monitor` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Enter`,
 /// `TryEnter`, `TryEnterFor`, `Exit`.
-RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
+RT_CLASS_BEGIN("Zanna.Threads.Monitor", ThreadsMonitor, "obj", none)
     RT_METHOD("Enter", "void(obj)", MonitorEnter)
     RT_METHOD("TryEnter", "i1(obj)", MonitorTryEnter)
     RT_METHOD("TryEnterFor", "i1(obj,i64)", MonitorTryEnterFor)
@@ -74,26 +74,26 @@ RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
     RT_METHOD("NotifyAll", "void(obj)", MonitorPauseAll)
 RT_CLASS_END()
 
-// Viper.Threads.SafeI64 - thread-safe integer cell
+// Zanna.Threads.SafeI64 - thread-safe integer cell
 /// @summary Provides thread-safe integer cell.
 /// @details
-/// Create `Viper.Threads.SafeI64` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.SafeI64` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including `Get`,
 /// `Set`, `Add`, `CompareExchange`.
-RT_CLASS_BEGIN("Viper.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
+RT_CLASS_BEGIN("Zanna.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
     RT_METHOD("Get", "i64()", SafeI64Get)
     RT_METHOD("Set", "void(i64)", SafeI64Set)
     RT_METHOD("Add", "i64(i64)", SafeI64Add)
     RT_METHOD("CompareExchange", "i64(i64,i64)", SafeI64CompareExchange)
 RT_CLASS_END()
 
-// Viper.Threads.Gate - FIFO-fair permit gate (semaphore)
+// Zanna.Threads.Gate - FIFO-fair permit gate (semaphore)
 /// @summary Provides FIFO-fair permit gate (semaphore).
 /// @details
-/// Create `Viper.Threads.Gate` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Gate` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Permits` and operations including `Enter`, `TryEnter`, `TryEnterFor`, `Leave`.
-RT_CLASS_BEGIN("Viper.Threads.Gate", ThreadsGate, "obj", GateNew)
+RT_CLASS_BEGIN("Zanna.Threads.Gate", ThreadsGate, "obj", GateNew)
     RT_PROP("Permits", "i64", GateGetPermits, none)
     RT_METHOD("Enter", "void()", GateEnter)
     RT_METHOD("TryEnter", "i1()", GateTryEnter)
@@ -102,27 +102,27 @@ RT_CLASS_BEGIN("Viper.Threads.Gate", ThreadsGate, "obj", GateNew)
     RT_METHOD("Leave", "void(i64)", GateLeaveMany)
 RT_CLASS_END()
 
-// Viper.Threads.Barrier - reusable N-party barrier
+// Zanna.Threads.Barrier - reusable N-party barrier
 /// @summary Provides reusable N-party barrier.
 /// @details
-/// Create `Viper.Threads.Barrier` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Barrier` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Parties`, `Waiting` and operations including `Arrive`, `Reset`.
-RT_CLASS_BEGIN("Viper.Threads.Barrier", ThreadsBarrier, "obj", BarrierNew)
+RT_CLASS_BEGIN("Zanna.Threads.Barrier", ThreadsBarrier, "obj", BarrierNew)
     RT_PROP("Parties", "i64", BarrierGetParties, none)
     RT_PROP("Waiting", "i64", BarrierGetWaiting, none)
     RT_METHOD("Arrive", "i64()", BarrierArrive)
     RT_METHOD("Reset", "void()", BarrierReset)
 RT_CLASS_END()
 
-// Viper.Threads.RwLock - writer-preference reader-writer lock
+// Zanna.Threads.RwLock - writer-preference reader-writer lock
 /// @summary Provides writer-preference reader-writer lock.
 /// @details
-/// Create `Viper.Threads.RwLock` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.RwLock` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Readers`, `IsWriteLocked` and operations including `ReadEnter`, `ReadExit`, `WriteEnter`,
 /// `WriteExit`.
-RT_CLASS_BEGIN("Viper.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
+RT_CLASS_BEGIN("Zanna.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
     RT_PROP("Readers", "i64", RwLockGetReaders, none)
     RT_PROP("IsWriteLocked", "i1", RwLockGetIsWriteLocked, none)
     RT_METHOD("ReadEnter", "void()", RwLockReadEnter)
@@ -133,13 +133,13 @@ RT_CLASS_BEGIN("Viper.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
     RT_METHOD("TryWriteEnter", "i1()", RwLockTryWriteEnter)
 RT_CLASS_END()
 
-// Viper.Threads.Thread - OS thread handle
+// Zanna.Threads.Thread - OS thread handle
 /// @summary Provides OS thread handle.
 /// @details
-/// `Viper.Threads.Thread` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Threads.Thread` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Id`, `IsAlive`,
 /// `HasError` and operations including `Start`, `StartOwned`, `StartSafe`, `StartSafeOwned`.
-RT_CLASS_BEGIN("Viper.Threads.Thread", ThreadsThread, "obj", none)
+RT_CLASS_BEGIN("Zanna.Threads.Thread", ThreadsThread, "obj", none)
     RT_PROP("Id", "i64", ThreadGetId, none)
     RT_PROP("IsAlive", "i1", ThreadGetIsAlive, none)
     RT_METHOD("Start", "obj(obj,obj)", ThreadStart)
@@ -158,58 +158,58 @@ RT_CLASS_BEGIN("Viper.Threads.Thread", ThreadsThread, "obj", none)
     RT_PROP("Error", "str", ThreadGetError, none)
 RT_CLASS_END()
 
-// Viper.Threads.Promise - async result producer
-RT_FUNC(PromiseNew,        rt_promise_new,        "Viper.Threads.Promise.New",        "obj()")
-RT_FUNC(PromiseGetFuture,  rt_promise_get_future,  "Viper.Threads.Promise.GetFuture", "obj<Viper.Threads.Future>(obj)")
-RT_FUNC(PromiseSet,        rt_promise_set,          "Viper.Threads.Promise.Set",       "void(obj,obj)")
-RT_FUNC(PromiseSetOwned,   rt_promise_set_owned,    "Viper.Threads.Promise.SetOwned",  "void(obj,obj)")
-RT_FUNC(PromiseSetError,   rt_promise_set_error,    "Viper.Threads.Promise.SetError",  "void(obj,str)")
-RT_FUNC(PromiseIsDone,     rt_promise_is_done,      "Viper.Threads.Promise.get_IsDone","i1(obj)")
+// Zanna.Threads.Promise - async result producer
+RT_FUNC(PromiseNew,        rt_promise_new,        "Zanna.Threads.Promise.New",        "obj()")
+RT_FUNC(PromiseGetFuture,  rt_promise_get_future,  "Zanna.Threads.Promise.GetFuture", "obj<Zanna.Threads.Future>(obj)")
+RT_FUNC(PromiseSet,        rt_promise_set,          "Zanna.Threads.Promise.Set",       "void(obj,obj)")
+RT_FUNC(PromiseSetOwned,   rt_promise_set_owned,    "Zanna.Threads.Promise.SetOwned",  "void(obj,obj)")
+RT_FUNC(PromiseSetError,   rt_promise_set_error,    "Zanna.Threads.Promise.SetError",  "void(obj,str)")
+RT_FUNC(PromiseIsDone,     rt_promise_is_done,      "Zanna.Threads.Promise.get_IsDone","i1(obj)")
 /// @summary Provides Promise functionality for concurrent and asynchronous programs.
 /// @details
-/// Create `Viper.Threads.Promise` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Promise` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `IsDone`
 /// and operations including `GetFuture`, `Set`, `SetOwned`, `SetError`.
-RT_CLASS_BEGIN("Viper.Threads.Promise", ThreadsPromise, "obj", PromiseNew)
-    RT_METHOD("GetFuture", "obj<Viper.Threads.Future>()", PromiseGetFuture)
+RT_CLASS_BEGIN("Zanna.Threads.Promise", ThreadsPromise, "obj", PromiseNew)
+    RT_METHOD("GetFuture", "obj<Zanna.Threads.Future>()", PromiseGetFuture)
     RT_METHOD("Set", "void(obj)", PromiseSet)
     RT_METHOD("SetOwned", "void(obj)", PromiseSetOwned)
     RT_METHOD("SetError", "void(str)", PromiseSetError)
     RT_PROP("IsDone", "i1", PromiseIsDone, none)
 RT_CLASS_END()
 
-// Viper.Threads.Future - async result consumer
-RT_FUNC(FutureGet,         rt_future_get,           "Viper.Threads.Future.Get",         "obj(obj)")
-RT_FUNC(FutureWait,        rt_future_wait,           "Viper.Threads.Future.Wait",       "void(obj)")
-RT_FUNC(FutureWaitFor,     rt_future_wait_for,       "Viper.Threads.Future.WaitFor",    "i1(obj,i64)")
-RT_FUNC(FutureIsDone,      rt_future_is_done,        "Viper.Threads.Future.get_IsDone", "i1(obj)")
-RT_FUNC(FutureIsError,     rt_future_is_error,       "Viper.Threads.Future.get_IsError","i1(obj)")
-RT_FUNC(FutureGetError,    rt_future_get_error,      "Viper.Threads.Future.get_Error",  "str(obj)")
-RT_FUNC(FutureTryGetOption, rt_future_try_get_option, "Viper.Threads.Future.TryGet", "obj<Viper.Option>(obj)")
-RT_FUNC(FutureGetForVal,   rt_future_get_for_val,    "Viper.Threads.Future.GetFor",     "obj(obj,i64)")
-RT_FUNC(AsyncRun,          rt_async_run,             "Viper.Threads.Async.Run",             "obj<Viper.Threads.Future>(obj,obj)")
-RT_FUNC(AsyncRunOwned,     rt_async_run_owned,       "Viper.Threads.Async.RunOwned",        "obj<Viper.Threads.Future>(obj,obj)")
-RT_FUNC(AsyncRunCancellable, rt_async_run_cancellable, "Viper.Threads.Async.RunCancellable", "obj<Viper.Threads.Future>(obj,obj,obj)")
-RT_FUNC(AsyncRunCancellableOwned, rt_async_run_cancellable_owned, "Viper.Threads.Async.RunCancellableOwned", "obj<Viper.Threads.Future>(obj,obj,obj)")
+// Zanna.Threads.Future - async result consumer
+RT_FUNC(FutureGet,         rt_future_get,           "Zanna.Threads.Future.Get",         "obj(obj)")
+RT_FUNC(FutureWait,        rt_future_wait,           "Zanna.Threads.Future.Wait",       "void(obj)")
+RT_FUNC(FutureWaitFor,     rt_future_wait_for,       "Zanna.Threads.Future.WaitFor",    "i1(obj,i64)")
+RT_FUNC(FutureIsDone,      rt_future_is_done,        "Zanna.Threads.Future.get_IsDone", "i1(obj)")
+RT_FUNC(FutureIsError,     rt_future_is_error,       "Zanna.Threads.Future.get_IsError","i1(obj)")
+RT_FUNC(FutureGetError,    rt_future_get_error,      "Zanna.Threads.Future.get_Error",  "str(obj)")
+RT_FUNC(FutureTryGetOption, rt_future_try_get_option, "Zanna.Threads.Future.TryGet", "obj<Zanna.Option>(obj)")
+RT_FUNC(FutureGetForVal,   rt_future_get_for_val,    "Zanna.Threads.Future.GetFor",     "obj(obj,i64)")
+RT_FUNC(AsyncRun,          rt_async_run,             "Zanna.Threads.Async.Run",             "obj<Zanna.Threads.Future>(obj,obj)")
+RT_FUNC(AsyncRunOwned,     rt_async_run_owned,       "Zanna.Threads.Async.RunOwned",        "obj<Zanna.Threads.Future>(obj,obj)")
+RT_FUNC(AsyncRunCancellable, rt_async_run_cancellable, "Zanna.Threads.Async.RunCancellable", "obj<Zanna.Threads.Future>(obj,obj,obj)")
+RT_FUNC(AsyncRunCancellableOwned, rt_async_run_cancellable_owned, "Zanna.Threads.Async.RunCancellableOwned", "obj<Zanna.Threads.Future>(obj,obj,obj)")
 RT_BRIDGE(AsyncRun, "callback,payload")
 RT_BRIDGE(AsyncRunOwned, "callback,none")
 RT_BRIDGE(AsyncRunCancellable, "callback,payload,none")
 RT_BRIDGE(AsyncRunCancellableOwned, "callback,none,none")
-RT_FUNC(AsyncDelay,        rt_async_delay,           "Viper.Threads.Async.Delay",       "obj<Viper.Threads.Future>(i64)")
-RT_FUNC(AsyncAll,          rt_async_all,             "Viper.Threads.Async.All",         "obj<Viper.Threads.Future>(obj)")
-RT_FUNC(AsyncAny,          rt_async_any,             "Viper.Threads.Async.Any",         "obj<Viper.Threads.Future>(obj)")
-RT_FUNC(AsyncMap,          rt_async_map,             "Viper.Threads.Async.Map",         "obj<Viper.Threads.Future>(obj,obj,obj)")
-RT_FUNC(AsyncMapOwned,     rt_async_map_owned,       "Viper.Threads.Async.MapOwned",    "obj<Viper.Threads.Future>(obj,obj,obj)")
+RT_FUNC(AsyncDelay,        rt_async_delay,           "Zanna.Threads.Async.Delay",       "obj<Zanna.Threads.Future>(i64)")
+RT_FUNC(AsyncAll,          rt_async_all,             "Zanna.Threads.Async.All",         "obj<Zanna.Threads.Future>(obj)")
+RT_FUNC(AsyncAny,          rt_async_any,             "Zanna.Threads.Async.Any",         "obj<Zanna.Threads.Future>(obj)")
+RT_FUNC(AsyncMap,          rt_async_map,             "Zanna.Threads.Async.Map",         "obj<Zanna.Threads.Future>(obj,obj,obj)")
+RT_FUNC(AsyncMapOwned,     rt_async_map_owned,       "Zanna.Threads.Async.MapOwned",    "obj<Zanna.Threads.Future>(obj,obj,obj)")
 RT_BRIDGE(AsyncMap, "none,callback,payload")
 RT_BRIDGE(AsyncMapOwned, "none,callback,none")
 /// @summary Provides Future functionality for concurrent and asynchronous programs.
 /// @details
-/// `Viper.Threads.Future` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Threads.Future` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `IsDone`,
 /// `IsError`, `Error` and operations including `Get`, `TryGet`, `GetFor`, `Wait`.
-RT_CLASS_BEGIN("Viper.Threads.Future", ThreadsFuture, "obj", none)
+RT_CLASS_BEGIN("Zanna.Threads.Future", ThreadsFuture, "obj", none)
     RT_METHOD("Get", "obj()", FutureGet)
-    RT_METHOD("TryGet", "obj<Viper.Option>()", FutureTryGetOption)
+    RT_METHOD("TryGet", "obj<Zanna.Option>()", FutureTryGetOption)
     RT_METHOD("GetFor", "obj(i64)", FutureGetForVal)
     RT_METHOD("Wait", "void()", FutureWait)
     RT_METHOD("WaitFor", "i1(i64)", FutureWaitFor)
@@ -218,31 +218,31 @@ RT_CLASS_BEGIN("Viper.Threads.Future", ThreadsFuture, "obj", none)
     RT_PROP("Error", "str", FutureGetError, none)
 RT_CLASS_END()
 
-// Viper.Threads.Async - high-level async combinators
+// Zanna.Threads.Async - high-level async combinators
 /// @summary Provides high-level async combinators.
 /// @details
-/// `Viper.Threads.Async` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Threads.Async` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Run`,
 /// `RunOwned`, `RunCancellable`, `RunCancellableOwned`.
-RT_CLASS_BEGIN("Viper.Threads.Async", ThreadsAsync, "obj", none)
-    RT_METHOD("Run", "obj<Viper.Threads.Future>(obj,obj)", AsyncRun)
-    RT_METHOD("RunOwned", "obj<Viper.Threads.Future>(obj,obj)", AsyncRunOwned)
-    RT_METHOD("RunCancellable", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncRunCancellable)
-    RT_METHOD("RunCancellableOwned", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncRunCancellableOwned)
-    RT_METHOD("Delay", "obj<Viper.Threads.Future>(i64)", AsyncDelay)
-    RT_METHOD("All", "obj<Viper.Threads.Future>(obj)", AsyncAll)
-    RT_METHOD("Any", "obj<Viper.Threads.Future>(obj)", AsyncAny)
-    RT_METHOD("Map", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncMap)
-    RT_METHOD("MapOwned", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncMapOwned)
+RT_CLASS_BEGIN("Zanna.Threads.Async", ThreadsAsync, "obj", none)
+    RT_METHOD("Run", "obj<Zanna.Threads.Future>(obj,obj)", AsyncRun)
+    RT_METHOD("RunOwned", "obj<Zanna.Threads.Future>(obj,obj)", AsyncRunOwned)
+    RT_METHOD("RunCancellable", "obj<Zanna.Threads.Future>(obj,obj,obj)", AsyncRunCancellable)
+    RT_METHOD("RunCancellableOwned", "obj<Zanna.Threads.Future>(obj,obj,obj)", AsyncRunCancellableOwned)
+    RT_METHOD("Delay", "obj<Zanna.Threads.Future>(i64)", AsyncDelay)
+    RT_METHOD("All", "obj<Zanna.Threads.Future>(obj)", AsyncAll)
+    RT_METHOD("Any", "obj<Zanna.Threads.Future>(obj)", AsyncAny)
+    RT_METHOD("Map", "obj<Zanna.Threads.Future>(obj,obj,obj)", AsyncMap)
+    RT_METHOD("MapOwned", "obj<Zanna.Threads.Future>(obj,obj,obj)", AsyncMapOwned)
 RT_CLASS_END()
 
-// Viper.Threads.Parallel - parallel execution utilities
+// Zanna.Threads.Parallel - parallel execution utilities
 /// @summary Provides parallel execution utilities.
 /// @details
-/// `Viper.Threads.Parallel` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Threads.Parallel` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `ForEach`,
 /// `ForEachPool`, `Map`, `MapPool`.
-RT_CLASS_BEGIN("Viper.Threads.Parallel", ThreadsParallel, "obj", none)
+RT_CLASS_BEGIN("Zanna.Threads.Parallel", ThreadsParallel, "obj", none)
     RT_METHOD("ForEach", "void(obj,obj)", ParallelForEach)
     RT_METHOD("ForEachPool", "void(obj,obj,obj)", ParallelForEachPool)
     RT_METHOD("Map", "obj(obj,obj)", ParallelMap)
@@ -254,16 +254,16 @@ RT_CLASS_BEGIN("Viper.Threads.Parallel", ThreadsParallel, "obj", none)
     RT_METHOD("Reduce", "obj(obj,obj,obj)", ParallelReduce)
     RT_METHOD("ReducePool", "obj(obj,obj,obj,obj)", ParallelReducePool)
     RT_METHOD("DefaultWorkers", "i64()", ParallelDefaultWorkers)
-    RT_METHOD("DefaultPool", "obj<Viper.Threads.Pool>()", ParallelDefaultPool)
+    RT_METHOD("DefaultPool", "obj<Zanna.Threads.Pool>()", ParallelDefaultPool)
 RT_CLASS_END()
 
-// Viper.Threads.CancelToken - cooperative cancellation
+// Zanna.Threads.CancelToken - cooperative cancellation
 /// @summary Provides cooperative cancellation.
 /// @details
-/// Create `Viper.Threads.CancelToken` values through its registered constructor and use the
+/// Create `Zanna.Threads.CancelToken` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `IsCancelled` and operations including `Cancel`, `Reset`, `Linked`, `ThrowIfCancelled`.
-RT_CLASS_BEGIN("Viper.Threads.CancelToken", CancelToken, "obj", CancelNew)
+RT_CLASS_BEGIN("Zanna.Threads.CancelToken", CancelToken, "obj", CancelNew)
     RT_PROP("IsCancelled", "i1", CancelIsCancelled, none)
     RT_METHOD("Cancel", "void()", CancelCancel)
     RT_METHOD("Reset", "void()", CancelReset)
@@ -271,13 +271,13 @@ RT_CLASS_BEGIN("Viper.Threads.CancelToken", CancelToken, "obj", CancelNew)
     RT_METHOD("ThrowIfCancelled", "void()", CancelThrowIfCancelled)
 RT_CLASS_END()
 
-// Viper.Threads.Debouncer - delay-until-quiet rate limiter
+// Zanna.Threads.Debouncer - delay-until-quiet rate limiter
 /// @summary Provides delay-until-quiet rate limiter.
 /// @details
-/// Create `Viper.Threads.Debouncer` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Debouncer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Delay`,
 /// `IsReady`, `SignalCount` and operations including `Signal`, `Reset`.
-RT_CLASS_BEGIN("Viper.Threads.Debouncer", Debouncer, "obj", DebounceNew)
+RT_CLASS_BEGIN("Zanna.Threads.Debouncer", Debouncer, "obj", DebounceNew)
     RT_PROP("Delay", "i64", DebounceGetDelay, none)
     RT_PROP("IsReady", "i1", DebounceIsReady, none)
     RT_PROP("SignalCount", "i64", DebounceGetSignalCount, none)
@@ -285,13 +285,13 @@ RT_CLASS_BEGIN("Viper.Threads.Debouncer", Debouncer, "obj", DebounceNew)
     RT_METHOD("Reset", "void()", DebounceReset)
 RT_CLASS_END()
 
-// Viper.Threads.Throttler - interval-based rate limiter
+// Zanna.Threads.Throttler - interval-based rate limiter
 /// @summary Provides interval-based rate limiter.
 /// @details
-/// Create `Viper.Threads.Throttler` values through its registered constructor and use the returned
+/// Create `Zanna.Threads.Throttler` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `CanProceed`, `Count`, `Interval` and operations including `TryAcquire`, `Reset`.
-RT_CLASS_BEGIN("Viper.Threads.Throttler", Throttler, "obj", ThrottleNew)
+RT_CLASS_BEGIN("Zanna.Threads.Throttler", Throttler, "obj", ThrottleNew)
     RT_PROP("CanProceed", "i1", ThrottleCanProceed, none)
     RT_PROP("Count", "i64", ThrottleGetCount, none)
     RT_PROP("Interval", "i64", ThrottleGetInterval, none)
@@ -300,23 +300,23 @@ RT_CLASS_BEGIN("Viper.Threads.Throttler", Throttler, "obj", ThrottleNew)
     RT_METHOD("Reset", "void()", ThrottleReset)
 RT_CLASS_END()
 
-// Viper.Time.Clock - basic timing utilities (sleep, ticks)
+// Zanna.Time.Clock - basic timing utilities (sleep, ticks)
 /// @summary Provides blocking sleep and elapsed-time clock readings.
 /// @details Sleep clamps negative values to zero and values above the 32-bit millisecond limit.
 /// Tick epochs and physical resolution are unspecified. POSIX prefers a monotonic clock but falls
 /// back to adjustable realtime if that query fails; all-source failure returns zero.
-RT_CLASS_BEGIN("Viper.Time.Clock", Clock, "obj", none)
+RT_CLASS_BEGIN("Zanna.Time.Clock", Clock, "obj", none)
     RT_METHOD("Sleep", "void(i64)", ClockSleep)
     RT_METHOD("NowMs", "i64()", ClockTicks)
     RT_METHOD("NowMicros", "i64()", ClockTicksUs)
 RT_CLASS_END()
 
-// Viper.Time.Countdown - interval timing with expiration
+// Zanna.Time.Countdown - interval timing with expiration
 /// @summary Tracks a pausable millisecond interval until expiration.
 /// @details New instances start stopped; non-positive intervals clamp to zero. Elapsed time keeps
 /// increasing after expiration while running. `Wait` starts a stopped instance, sleeps in bounded
 /// chunks until expiration, and leaves it running. Instances are not thread-safe.
-RT_CLASS_BEGIN("Viper.Time.Countdown", Countdown, "obj", CountdownNew)
+RT_CLASS_BEGIN("Zanna.Time.Countdown", Countdown, "obj", CountdownNew)
     RT_PROP("Elapsed", "i64", CountdownElapsed, none)
     RT_PROP("Remaining", "i64", CountdownRemaining, none)
     RT_PROP("IsExpired", "i1", CountdownExpired, none)
@@ -328,13 +328,13 @@ RT_CLASS_BEGIN("Viper.Time.Countdown", Countdown, "obj", CountdownNew)
     RT_METHOD("Wait", "void()", CountdownWait)
 RT_CLASS_END()
 
-// Viper.Vec2 - 2D vector math
+// Zanna.Vec2 - 2D vector math
 /// @summary Provides Vec 2 functionality for numeric and geometric calculations.
 /// @details
-/// Create `Viper.Math.Vec2` values through its registered constructor and use the returned object
+/// Create `Zanna.Math.Vec2` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `X`, `Y` and
 /// operations including `Zero`, `One`, `Add`, `Sub`.
-RT_CLASS_BEGIN("Viper.Math.Vec2", Vec2, "obj", Vec2New)
+RT_CLASS_BEGIN("Zanna.Math.Vec2", Vec2, "obj", Vec2New)
     RT_PROP("X", "f64", Vec2X, none)
     RT_PROP("Y", "f64", Vec2Y, none)
     RT_METHOD("Zero", "obj()", Vec2Zero)
@@ -358,13 +358,13 @@ RT_CLASS_BEGIN("Viper.Math.Vec2", Vec2, "obj", Vec2New)
     RT_METHOD("Negate", "obj()", Vec2Neg)
 RT_CLASS_END()
 
-// Viper.Vec3 - 3D vector math
+// Zanna.Vec3 - 3D vector math
 /// @summary Provides Vec 3 functionality for numeric and geometric calculations.
 /// @details
-/// Create `Viper.Math.Vec3` values through its registered constructor and use the returned object
+/// Create `Zanna.Math.Vec3` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z`
 /// and operations including `Set`, `CopyFrom`, `Add`, `Sub`.
-RT_CLASS_BEGIN("Viper.Math.Vec3", Vec3, "obj", Vec3New)
+RT_CLASS_BEGIN("Zanna.Math.Vec3", Vec3, "obj", Vec3New)
     RT_PROP("X", "f64", Vec3X, Vec3SetX)
     RT_PROP("Y", "f64", Vec3Y, Vec3SetY)
     RT_PROP("Z", "f64", Vec3Z, Vec3SetZ)
@@ -394,13 +394,13 @@ RT_CLASS_BEGIN("Viper.Math.Vec3", Vec3, "obj", Vec3New)
     RT_METHOD("Max", "obj(obj)", Vec3Max)
 RT_CLASS_END()
 
-// Viper.Math.Quat - quaternion rotation math
+// Zanna.Math.Quat - quaternion rotation math
 /// @summary Provides quaternion rotation math.
 /// @details
-/// Create `Viper.Math.Quat` values through its registered constructor and use the returned object
+/// Create `Zanna.Math.Quat` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z`
 /// and operations including `Identity`, `FromAxisAngle`, `FromEuler`, `Mul`.
-RT_CLASS_BEGIN("Viper.Math.Quat", Quat, "obj", QuatNew)
+RT_CLASS_BEGIN("Zanna.Math.Quat", Quat, "obj", QuatNew)
     RT_PROP("X", "f64", QuatX, none)
     RT_PROP("Y", "f64", QuatY, none)
     RT_PROP("Z", "f64", QuatZ, none)
@@ -423,13 +423,13 @@ RT_CLASS_BEGIN("Viper.Math.Quat", Quat, "obj", QuatNew)
     RT_METHOD("Angle", "f64()", QuatAngle)
 RT_CLASS_END()
 
-// Viper.Math.Spline - curve interpolation
+// Zanna.Math.Spline - curve interpolation
 /// @summary Provides curve interpolation.
 /// @details
-/// `Viper.Math.Spline` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Math.Spline` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `PointCount` and
 /// operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
-RT_CLASS_BEGIN("Viper.Math.Spline", Spline, "obj", none)
+RT_CLASS_BEGIN("Zanna.Math.Spline", Spline, "obj", none)
     RT_METHOD("CatmullRom", "obj(obj)", SplineCatmullRom)
     RT_METHOD("Bezier", "obj(obj,obj,obj,obj)", SplineBezier)
     RT_METHOD("Linear", "obj(obj)", SplineLinear)
@@ -441,13 +441,13 @@ RT_CLASS_BEGIN("Viper.Math.Spline", Spline, "obj", none)
     RT_METHOD("Sample", "obj(obj,i64)", SplineSample)
 RT_CLASS_END()
 
-// Viper.Network.Tcp - TCP client connection
+// Zanna.Network.Tcp - TCP client connection
 /// @summary Provides TCP client connection.
 /// @details
-/// `Viper.Network.Tcp` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.Tcp` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
 /// `LocalPort` and operations including `Connect`, `ConnectFor`, `Send`, `SendStr`.
-RT_CLASS_BEGIN("Viper.Network.Tcp", Tcp, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.Tcp", Tcp, "obj", none)
     // Static constructors
     RT_METHOD("Connect", "obj(str,i64)", TcpConnect)
     RT_METHOD("ConnectFor", "obj(str,i64,i64)", TcpConnectFor)
@@ -472,13 +472,13 @@ RT_CLASS_BEGIN("Viper.Network.Tcp", Tcp, "obj", none)
     RT_METHOD("Close", "void()", TcpClose)
 RT_CLASS_END()
 
-// Viper.Network.TcpServer - TCP server (listener)
+// Zanna.Network.TcpServer - TCP server (listener)
 /// @summary Provides TCP server (listener).
 /// @details
-/// `Viper.Network.TcpServer` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.TcpServer` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Port`, `Address`,
 /// `IsListening` and operations including `Listen`, `ListenAt`, `Accept`, `AcceptFor`.
-RT_CLASS_BEGIN("Viper.Network.TcpServer", TcpServer, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.TcpServer", TcpServer, "obj", none)
     // Static constructors
     RT_METHOD("Listen", "obj(i64)", TcpServerListen)
     RT_METHOD("ListenAt", "obj(str,i64)", TcpServerListenAt)
@@ -487,18 +487,18 @@ RT_CLASS_BEGIN("Viper.Network.TcpServer", TcpServer, "obj", none)
     RT_PROP("Address", "str", TcpServerAddress, none)
     RT_PROP("IsListening", "i1", TcpServerIsListening, none)
     // Accept and close
-    RT_METHOD("Accept", "obj<Viper.Network.Tcp>()", TcpServerAccept)
-    RT_METHOD("AcceptFor", "obj<Viper.Network.Tcp>(i64)", TcpServerAcceptFor)
+    RT_METHOD("Accept", "obj<Zanna.Network.Tcp>()", TcpServerAccept)
+    RT_METHOD("AcceptFor", "obj<Zanna.Network.Tcp>(i64)", TcpServerAcceptFor)
     RT_METHOD("Close", "void()", TcpServerClose)
 RT_CLASS_END()
 
-// Viper.Network.Udp - UDP datagram socket
+// Zanna.Network.Udp - UDP datagram socket
 /// @summary Provides UDP datagram socket.
 /// @details
-/// Create `Viper.Network.Udp` values through its registered constructor and use the returned object
+/// Create `Zanna.Network.Udp` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Port`,
 /// `Address`, `IsBound` and operations including `New`, `Bind`, `BindAt`, `SendTo`.
-RT_CLASS_BEGIN("Viper.Network.Udp", Udp, "obj", UdpNew)
+RT_CLASS_BEGIN("Zanna.Network.Udp", Udp, "obj", UdpNew)
     // Static constructors
     RT_METHOD("New", "obj()", UdpNew)
     RT_METHOD("Bind", "obj(i64)", UdpBind)
@@ -524,13 +524,13 @@ RT_CLASS_BEGIN("Viper.Network.Udp", Udp, "obj", UdpNew)
     RT_METHOD("Close", "void()", UdpClose)
 RT_CLASS_END()
 
-// Viper.Network.Dns - DNS resolution utility class (static)
+// Zanna.Network.Dns - DNS resolution utility class (static)
 /// @summary Provides DNS resolution utility class (static).
 /// @details
-/// `Viper.Network.Dns` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Network.Dns` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Resolve`, `ResolveAll`, `ResolveIpv4`,
 /// `ResolveIpv6`.
-RT_CLASS_BEGIN("Viper.Network.Dns", Dns, "none", none)
+RT_CLASS_BEGIN("Zanna.Network.Dns", Dns, "none", none)
     // Resolution methods
     RT_METHOD("Resolve", "str(str)", DnsResolve)
     RT_METHOD("ResolveAll", "seq<str>(str)", DnsResolveAll)
@@ -546,15 +546,15 @@ RT_CLASS_BEGIN("Viper.Network.Dns", Dns, "none", none)
     RT_METHOD("LocalAddrs", "seq<str>()", DnsLocalAddrs)
 RT_CLASS_END()
 
-// Viper.Network.Http - Static HTTP client utilities
+// Zanna.Network.Http - Static HTTP client utilities
 /// @summary Provides static HTTP client utilities.
 /// @details
-/// `Viper.Network.Http` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Network.Http` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
-RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
+RT_CLASS_BEGIN("Zanna.Network.Http", Http, "none", none)
     // Simple GET/POST methods
     RT_METHOD("Get", "str(str)", HttpGet)
-    RT_METHOD("GetBytes", "obj<Viper.Collections.Bytes>(str)", HttpGetBytes)
+    RT_METHOD("GetBytes", "obj<Zanna.Collections.Bytes>(str)", HttpGetBytes)
     RT_METHOD("Post", "str(str,str)", HttpPost)
     RT_METHOD("PostBytes", "obj(str,obj)", HttpPostBytes)
     RT_METHOD("Put", "str(str,str)", HttpPut)
@@ -562,18 +562,18 @@ RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
     RT_METHOD("Delete", "str(str)", HttpDelete)
     RT_METHOD("DeleteBytes", "obj(str)", HttpDeleteBytes)
     RT_METHOD("Download", "i1(str,str)", HttpDownload)
-    RT_METHOD("Head", "obj<Viper.Collections.Map>(str)", HttpHead)
+    RT_METHOD("Head", "obj<Zanna.Collections.Map>(str)", HttpHead)
     RT_METHOD("Patch", "str(str,str)", HttpPatch)
     RT_METHOD("Options", "str(str)", HttpOptions)
 RT_CLASS_END()
 
-// Viper.Network.HttpReq - HTTP request builder (instance class)
+// Zanna.Network.HttpReq - HTTP request builder (instance class)
 /// @summary Provides HTTP request builder.
 /// @details
-/// Create `Viper.Network.HttpReq` values through its registered constructor and use the returned
+/// Create `Zanna.Network.HttpReq` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including `New`,
 /// `SetHeader`, `SetBody`, `SetBodyStr`.
-RT_CLASS_BEGIN("Viper.Network.HttpReq", HttpReq, "obj", HttpReqNew)
+RT_CLASS_BEGIN("Zanna.Network.HttpReq", HttpReq, "obj", HttpReqNew)
     // Constructor
     RT_METHOD("New", "obj(str,str)", HttpReqNew)
     // Chainable setters
@@ -587,35 +587,35 @@ RT_CLASS_BEGIN("Viper.Network.HttpReq", HttpReq, "obj", HttpReqNew)
     RT_METHOD("AllowInsecureCertificatesForTesting", "obj()", HttpReqAllowInsecureCertificatesForTesting)
     RT_METHOD("SetKeepAlive", "obj(i1)", HttpReqSetKeepAlive)
     // Send request
-    RT_METHOD("Send", "obj<Viper.Network.HttpRes>()", HttpReqSend)
-    RT_METHOD("SendResult", "obj<Viper.Result>()", HttpReqSendResult)
+    RT_METHOD("Send", "obj<Zanna.Network.HttpRes>()", HttpReqSend)
+    RT_METHOD("SendResult", "obj<Zanna.Result>()", HttpReqSendResult)
 RT_CLASS_END()
 
-// Viper.Network.HttpRes - HTTP response (instance class)
+// Zanna.Network.HttpRes - HTTP response (instance class)
 /// @summary Provides HTTP response.
 /// @details
-/// `Viper.Network.HttpRes` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.HttpRes` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Status`,
 /// `StatusText`, `Headers` and operations including `Body`, `BodyStr`, `Header`, `IsOk`.
-RT_CLASS_BEGIN("Viper.Network.HttpRes", HttpRes, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.HttpRes", HttpRes, "obj", none)
     // Properties
     RT_PROP("Status", "i64", HttpResStatus, none)
     RT_PROP("StatusText", "str", HttpResStatusText, none)
-    RT_PROP("Headers", "obj<Viper.Collections.Map>", HttpResHeaders, none)
+    RT_PROP("Headers", "obj<Zanna.Collections.Map>", HttpResHeaders, none)
     // Methods
-    RT_METHOD("Body", "obj<Viper.Collections.Bytes>()", HttpResBody)
+    RT_METHOD("Body", "obj<Zanna.Collections.Bytes>()", HttpResBody)
     RT_METHOD("BodyStr", "str()", HttpResBodyStr)
     RT_METHOD("Header", "str(str)", HttpResHeader)
     RT_METHOD("IsOk", "i1()", HttpResIsOk)
 RT_CLASS_END()
 
-// Viper.Network.Url - URL parsing and construction (instance class)
+// Zanna.Network.Url - URL parsing and construction (instance class)
 /// @summary Provides URL parsing and construction.
 /// @details
-/// Create `Viper.Network.Url` values through its registered constructor and use the returned object
+/// Create `Zanna.Network.Url` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Scheme`,
 /// `Host`, `Port` and operations including `Parse`, `New`, `SetQueryParam`, `GetQueryParam`.
-RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", UrlNew)
+RT_CLASS_BEGIN("Zanna.Network.Url", Url, "obj", UrlNew)
     // Static constructors
     RT_METHOD("Parse", "obj(str)", UrlParse)
     RT_METHOD("New", "obj()", UrlNew)
@@ -648,14 +648,14 @@ RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", UrlNew)
     RT_METHOD("IsValidAbsolute", "i1(str)", UrlIsValidAbsolute)
 RT_CLASS_END()
 
-// Viper.Network.WebSocket - WebSocket client for real-time communication
+// Zanna.Network.WebSocket - WebSocket client for real-time communication
 /// @summary Provides WebSocket client for real-time communication.
 /// @details
-/// `Viper.Network.WebSocket` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Network.WebSocket` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Url`, `IsOpen`,
 /// `CloseCode` and operations including `Connect`, `ConnectFor`, `ConnectProtocol`,
 /// `ConnectForProtocol`.
-RT_CLASS_BEGIN("Viper.Network.WebSocket", WebSocket, "obj", none)
+RT_CLASS_BEGIN("Zanna.Network.WebSocket", WebSocket, "obj", none)
     // Static constructors
     RT_METHOD("Connect", "obj(str)", WsConnect)
     RT_METHOD("ConnectFor", "obj(str,i64)", WsConnectFor)
@@ -681,14 +681,14 @@ RT_CLASS_BEGIN("Viper.Network.WebSocket", WebSocket, "obj", none)
     RT_METHOD("CloseWith", "void(i64,str)", WsCloseWith)
 RT_CLASS_END()
 
-// Viper.Network.RetryPolicy - configurable retry with backoff
+// Zanna.Network.RetryPolicy - configurable retry with backoff
 /// @summary Provides configurable retry with backoff.
 /// @details
-/// Create `Viper.Network.RetryPolicy` values through its registered constructor and use the
+/// Create `Zanna.Network.RetryPolicy` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Attempt`, `CanRetry`, `IsExhausted` and operations including `Exponential`, `NextDelay`,
 /// `Reset`.
-RT_CLASS_BEGIN("Viper.Network.RetryPolicy", RetryPolicy, "obj", RetryNew)
+RT_CLASS_BEGIN("Zanna.Network.RetryPolicy", RetryPolicy, "obj", RetryNew)
     RT_PROP("Attempt", "i64", RetryGetAttempt, none)
     RT_PROP("CanRetry", "i1", RetryCanRetry, none)
     RT_PROP("IsExhausted", "i1", RetryIsExhausted, none)
@@ -699,42 +699,42 @@ RT_CLASS_BEGIN("Viper.Network.RetryPolicy", RetryPolicy, "obj", RetryNew)
     RT_METHOD("Reset", "void()", RetryReset)
 RT_CLASS_END()
 
-// Viper.Network.RestClient - REST API client with session management
-RT_FUNC(RestClientNew,          rt_restclient_new,           "Viper.Network.RestClient.New",          "obj(str)")
-RT_FUNC(RestClientBaseUrl,      rt_restclient_base_url,      "Viper.Network.RestClient.get_BaseUrl",  "str(obj)")
-RT_FUNC(RestClientSetHeader,    rt_restclient_set_header,    "Viper.Network.RestClient.SetHeader",    "void(obj,str,str)")
-RT_FUNC(RestClientDelHeader,    rt_restclient_del_header,    "Viper.Network.RestClient.RemoveHeader",    "void(obj,str)")
-RT_FUNC(RestClientSetAuthBearer,rt_restclient_set_auth_bearer,"Viper.Network.RestClient.SetAuthBearer","void(obj,str)")
-RT_FUNC(RestClientSetAuthBasic, rt_restclient_set_auth_basic,"Viper.Network.RestClient.SetAuthBasic", "void(obj,str,str)")
-RT_FUNC(RestClientClearAuth,    rt_restclient_clear_auth,    "Viper.Network.RestClient.ClearAuth",    "void(obj)")
-RT_FUNC(RestClientSetTimeout,   rt_restclient_set_timeout,   "Viper.Network.RestClient.SetTimeout",   "void(obj,i64)")
-RT_FUNC(RestClientKeepAliveGet, rt_restclient_get_keep_alive,"Viper.Network.RestClient.get_KeepAlive","i1(obj)")
-RT_FUNC(RestClientKeepAliveSet, rt_restclient_set_keep_alive,"Viper.Network.RestClient.set_KeepAlive","void(obj,i1)")
-RT_FUNC(RestClientSetPoolSize,  rt_restclient_set_pool_size, "Viper.Network.RestClient.SetPoolSize",  "void(obj,i64)")
-RT_FUNC(RestClientGet,          rt_restclient_get,           "Viper.Network.RestClient.Get",          "obj(obj,str)")
-RT_FUNC(RestClientGetResult,    rt_restclient_get_result,    "Viper.Network.RestClient.GetResult",    "obj<Viper.Result>(obj,str)")
-RT_FUNC(RestClientPost,         rt_restclient_post,          "Viper.Network.RestClient.Post",         "obj(obj,str,str)")
-RT_FUNC(RestClientPostResult,   rt_restclient_post_result,   "Viper.Network.RestClient.PostResult",   "obj<Viper.Result>(obj,str,str)")
-RT_FUNC(RestClientPut,          rt_restclient_put,           "Viper.Network.RestClient.Put",          "obj(obj,str,str)")
-RT_FUNC(RestClientPutResult,    rt_restclient_put_result,    "Viper.Network.RestClient.PutResult",    "obj<Viper.Result>(obj,str,str)")
-RT_FUNC(RestClientPatch,        rt_restclient_patch,         "Viper.Network.RestClient.Patch",        "obj(obj,str,str)")
-RT_FUNC(RestClientPatchResult,  rt_restclient_patch_result,  "Viper.Network.RestClient.PatchResult",  "obj<Viper.Result>(obj,str,str)")
-RT_FUNC(RestClientDelete,       rt_restclient_delete,        "Viper.Network.RestClient.Delete",       "obj(obj,str)")
-RT_FUNC(RestClientDeleteResult, rt_restclient_delete_result, "Viper.Network.RestClient.DeleteResult", "obj<Viper.Result>(obj,str)")
-RT_FUNC(RestClientHead,         rt_restclient_head,          "Viper.Network.RestClient.Head",         "obj(obj,str)")
-RT_FUNC(RestClientHeadResult,   rt_restclient_head_result,   "Viper.Network.RestClient.HeadResult",   "obj<Viper.Result>(obj,str)")
-RT_FUNC(RestClientGetJson,      rt_restclient_get_json,      "Viper.Network.RestClient.GetJson",      "obj(obj,str)")
-RT_FUNC(RestClientPostJson,     rt_restclient_post_json,     "Viper.Network.RestClient.PostJson",     "obj(obj,str,obj)")
-RT_FUNC(RestClientPutJson,      rt_restclient_put_json,      "Viper.Network.RestClient.PutJson",      "obj(obj,str,obj)")
-RT_FUNC(RestClientPatchJson,    rt_restclient_patch_json,    "Viper.Network.RestClient.PatchJson",    "obj(obj,str,obj)")
-RT_FUNC(RestClientDeleteJson,   rt_restclient_delete_json,   "Viper.Network.RestClient.DeleteJson",   "obj(obj,str)")
+// Zanna.Network.RestClient - REST API client with session management
+RT_FUNC(RestClientNew,          rt_restclient_new,           "Zanna.Network.RestClient.New",          "obj(str)")
+RT_FUNC(RestClientBaseUrl,      rt_restclient_base_url,      "Zanna.Network.RestClient.get_BaseUrl",  "str(obj)")
+RT_FUNC(RestClientSetHeader,    rt_restclient_set_header,    "Zanna.Network.RestClient.SetHeader",    "void(obj,str,str)")
+RT_FUNC(RestClientDelHeader,    rt_restclient_del_header,    "Zanna.Network.RestClient.RemoveHeader",    "void(obj,str)")
+RT_FUNC(RestClientSetAuthBearer,rt_restclient_set_auth_bearer,"Zanna.Network.RestClient.SetAuthBearer","void(obj,str)")
+RT_FUNC(RestClientSetAuthBasic, rt_restclient_set_auth_basic,"Zanna.Network.RestClient.SetAuthBasic", "void(obj,str,str)")
+RT_FUNC(RestClientClearAuth,    rt_restclient_clear_auth,    "Zanna.Network.RestClient.ClearAuth",    "void(obj)")
+RT_FUNC(RestClientSetTimeout,   rt_restclient_set_timeout,   "Zanna.Network.RestClient.SetTimeout",   "void(obj,i64)")
+RT_FUNC(RestClientKeepAliveGet, rt_restclient_get_keep_alive,"Zanna.Network.RestClient.get_KeepAlive","i1(obj)")
+RT_FUNC(RestClientKeepAliveSet, rt_restclient_set_keep_alive,"Zanna.Network.RestClient.set_KeepAlive","void(obj,i1)")
+RT_FUNC(RestClientSetPoolSize,  rt_restclient_set_pool_size, "Zanna.Network.RestClient.SetPoolSize",  "void(obj,i64)")
+RT_FUNC(RestClientGet,          rt_restclient_get,           "Zanna.Network.RestClient.Get",          "obj(obj,str)")
+RT_FUNC(RestClientGetResult,    rt_restclient_get_result,    "Zanna.Network.RestClient.GetResult",    "obj<Zanna.Result>(obj,str)")
+RT_FUNC(RestClientPost,         rt_restclient_post,          "Zanna.Network.RestClient.Post",         "obj(obj,str,str)")
+RT_FUNC(RestClientPostResult,   rt_restclient_post_result,   "Zanna.Network.RestClient.PostResult",   "obj<Zanna.Result>(obj,str,str)")
+RT_FUNC(RestClientPut,          rt_restclient_put,           "Zanna.Network.RestClient.Put",          "obj(obj,str,str)")
+RT_FUNC(RestClientPutResult,    rt_restclient_put_result,    "Zanna.Network.RestClient.PutResult",    "obj<Zanna.Result>(obj,str,str)")
+RT_FUNC(RestClientPatch,        rt_restclient_patch,         "Zanna.Network.RestClient.Patch",        "obj(obj,str,str)")
+RT_FUNC(RestClientPatchResult,  rt_restclient_patch_result,  "Zanna.Network.RestClient.PatchResult",  "obj<Zanna.Result>(obj,str,str)")
+RT_FUNC(RestClientDelete,       rt_restclient_delete,        "Zanna.Network.RestClient.Delete",       "obj(obj,str)")
+RT_FUNC(RestClientDeleteResult, rt_restclient_delete_result, "Zanna.Network.RestClient.DeleteResult", "obj<Zanna.Result>(obj,str)")
+RT_FUNC(RestClientHead,         rt_restclient_head,          "Zanna.Network.RestClient.Head",         "obj(obj,str)")
+RT_FUNC(RestClientHeadResult,   rt_restclient_head_result,   "Zanna.Network.RestClient.HeadResult",   "obj<Zanna.Result>(obj,str)")
+RT_FUNC(RestClientGetJson,      rt_restclient_get_json,      "Zanna.Network.RestClient.GetJson",      "obj(obj,str)")
+RT_FUNC(RestClientPostJson,     rt_restclient_post_json,     "Zanna.Network.RestClient.PostJson",     "obj(obj,str,obj)")
+RT_FUNC(RestClientPutJson,      rt_restclient_put_json,      "Zanna.Network.RestClient.PutJson",      "obj(obj,str,obj)")
+RT_FUNC(RestClientPatchJson,    rt_restclient_patch_json,    "Zanna.Network.RestClient.PatchJson",    "obj(obj,str,obj)")
+RT_FUNC(RestClientDeleteJson,   rt_restclient_delete_json,   "Zanna.Network.RestClient.DeleteJson",   "obj(obj,str)")
 /// @summary Provides REST client functionality for networked applications.
 /// @details
-/// Create `Viper.Network.RestClient` values through its registered constructor and use the returned
+/// Create `Zanna.Network.RestClient` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `BaseUrl`, `KeepAlive` and operations including `New`, `SetHeader`, `RemoveHeader`,
 /// `SetAuthBearer`.
-RT_CLASS_BEGIN("Viper.Network.RestClient", RestClient, "obj", RestClientNew)
+RT_CLASS_BEGIN("Zanna.Network.RestClient", RestClient, "obj", RestClientNew)
     // Constructor
     RT_METHOD("New", "obj(str)", RestClientNew)
     // Properties
@@ -750,17 +750,17 @@ RT_CLASS_BEGIN("Viper.Network.RestClient", RestClient, "obj", RestClientNew)
     RT_PROP("KeepAlive", "i1", RestClientKeepAliveGet, RestClientKeepAliveSet)
     // Raw HTTP methods
     RT_METHOD("Get", "obj(str)", RestClientGet)
-    RT_METHOD("GetResult", "obj<Viper.Result>(str)", RestClientGetResult)
+    RT_METHOD("GetResult", "obj<Zanna.Result>(str)", RestClientGetResult)
     RT_METHOD("Post", "obj(str,str)", RestClientPost)
-    RT_METHOD("PostResult", "obj<Viper.Result>(str,str)", RestClientPostResult)
+    RT_METHOD("PostResult", "obj<Zanna.Result>(str,str)", RestClientPostResult)
     RT_METHOD("Put", "obj(str,str)", RestClientPut)
-    RT_METHOD("PutResult", "obj<Viper.Result>(str,str)", RestClientPutResult)
+    RT_METHOD("PutResult", "obj<Zanna.Result>(str,str)", RestClientPutResult)
     RT_METHOD("Patch", "obj(str,str)", RestClientPatch)
-    RT_METHOD("PatchResult", "obj<Viper.Result>(str,str)", RestClientPatchResult)
+    RT_METHOD("PatchResult", "obj<Zanna.Result>(str,str)", RestClientPatchResult)
     RT_METHOD("Delete", "obj(str)", RestClientDelete)
-    RT_METHOD("DeleteResult", "obj<Viper.Result>(str)", RestClientDeleteResult)
+    RT_METHOD("DeleteResult", "obj<Zanna.Result>(str)", RestClientDeleteResult)
     RT_METHOD("Head", "obj(str)", RestClientHead)
-    RT_METHOD("HeadResult", "obj<Viper.Result>(str)", RestClientHeadResult)
+    RT_METHOD("HeadResult", "obj<Zanna.Result>(str)", RestClientHeadResult)
     // JSON convenience methods
     RT_METHOD("GetJson", "obj(str)", RestClientGetJson)
     RT_METHOD("PostJson", "obj(str,obj)", RestClientPostJson)

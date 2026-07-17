@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-07-16
 ---
 
-# The Viper Book
+# The Zanna Book
 
-**An introduction to programming with Viper, in five parts.**
+**An introduction to programming with Zanna, in five parts.**
 
 This book teaches programming from the beginning — no prior experience needed. It works up from first programs to complete applications: games, tools, and networked systems.
 
@@ -29,7 +29,7 @@ Each chapter builds on the last, and the focus is on *why* things work the way t
 
 | Chapter | You Will Learn |
 |---------|----------------|
-| [0. Getting Started](part1-foundations/00-getting-started.md) | Installing Viper and running your first examples |
+| [0. Getting Started](part1-foundations/00-getting-started.md) | Installing Zanna and running your first examples |
 | [1. The Machine](part1-foundations/01-the-machine.md) | What computers actually do, how programs work |
 | [2. Your First Program](part1-foundations/02-first-program.md) | Writing, running, and understanding "Hello, World" |
 | [3. Values and Names](part1-foundations/03-values-and-names.md) | Numbers, text, variables — the atoms of programs |
@@ -48,7 +48,7 @@ Each chapter builds on the last, and the focus is on *why* things work the way t
 | [10. Errors and Recovery](part2-building-blocks/10-errors.md) | When things go wrong, handling failures gracefully |
 | [11. Structures](part2-building-blocks/11-structures.md) | Grouping related data together |
 | [12. Modules](part2-building-blocks/12-modules.md) | Organizing code across files |
-| [13. The Standard Library](part2-building-blocks/13-stdlib.md) | What Viper gives you for free |
+| [13. The Standard Library](part2-building-blocks/13-stdlib.md) | What Zanna gives you for free |
 
 ### Part III: Thinking in Objects
 *Modeling the world with objects and types.*
@@ -74,11 +74,11 @@ Each chapter builds on the last, and the focus is on *why* things work the way t
 | [24. Concurrency](part4-applications/24-concurrency.md) | Doing multiple things at once |
 
 ### Part V: Going Deeper
-*How Viper works, and techniques for larger programs.*
+*How Zanna works, and techniques for larger programs.*
 
 | Chapter | You Will Learn |
 |---------|----------------|
-| [25. How Viper Works](part5-mastery/25-how-viper-works.md) | The compiler, IL, and runtime |
+| [25. How Zanna Works](part5-mastery/25-how-zanna-works.md) | The compiler, IL, and runtime |
 | [26. Performance](part5-mastery/26-performance.md) | Making programs fast |
 | [27. Testing](part5-mastery/27-testing.md) | Ensuring your code works |
 | [28. Architecture](part5-mastery/28-architecture.md) | Designing large systems |
@@ -98,12 +98,12 @@ Each chapter builds on the last, and the focus is on *why* things work the way t
 
 ## The Two Languages
 
-Viper supports two languages that both compile to the same underlying system. This book emphasizes Zia but shows both:
+Zanna supports two languages that both compile to the same underlying system. This book emphasizes Zia but shows both:
 
 **Zia** — Modern, clean, C-like syntax. Our recommended choice for new projects.
 ```rust
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Zanna.Terminal.Say("Hello, " + name + "!");
 }
 ```
 
@@ -122,7 +122,7 @@ Both are equally powerful. They access the same runtime library. Code written in
 
 You'll need:
 - A computer (Windows, macOS, or Linux)
-- The Viper toolchain installed (see [Getting Started](part1-foundations/00-getting-started.md))
+- The Zanna toolchain installed (see [Getting Started](part1-foundations/00-getting-started.md))
 - A text editor (any will do)
 - Curiosity and patience
 

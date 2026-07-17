@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include "VMTestHook.hpp"
 
 #include "rt_internal.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <cassert>
 #include <chrono>
@@ -43,7 +43,7 @@ std::filesystem::path makeTempFile() {
     namespace fs = std::filesystem;
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path path = fs::temp_directory_path();
-    path /= "viper_vm_stack_sync_" + std::to_string(unique) + ".txt";
+    path /= "zanna_vm_stack_sync_" + std::to_string(unique) + ".txt";
     return path;
 }
 
@@ -72,7 +72,7 @@ int main() {
     }
 
     const std::string pathStorage = tempPath.string();
-    ViperString *pathHandle = rt_const_cstr(pathStorage.c_str());
+    ZannaString *pathHandle = rt_const_cstr(pathStorage.c_str());
     if (!pathHandle)
         return 1;
 

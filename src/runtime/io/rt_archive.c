@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_archive.c
-// Purpose: Implements ZIP archive reading and writing for the Viper.IO.Archive
+// Purpose: Implements ZIP archive reading and writing for the Zanna.IO.Archive
 //          class. Follows the PKWARE APPNOTE specification, supporting stored
 //          entries (method 0), DEFLATE-compressed entries (method 8) via
 //          rt_compress, directory entries, and CRC32 validation.
@@ -139,16 +139,16 @@ static void archive_add_with_temp_data(void *obj,
 
 /// @brief Extract a UTF-8 C path from an `rt_string`, trapping on failure.
 ///
-/// Converts a Viper string to a null-terminated C path via
+/// Converts a Zanna string to a null-terminated C path via
 /// `rt_file_path_from_vstr`. Traps with `context` if the path is
 /// NULL, empty, or the conversion fails (e.g., invalid encoding).
 ///
-/// @param path    Viper string containing the file path.
+/// @param path    Zanna string containing the file path.
 /// @param context Trap message to emit if the path is unusable.
 /// @return Non-null, non-empty UTF-8 C string.
 static const char *archive_require_path(rt_string path, const char *context) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0') {
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || *cpath == '\0') {
         rt_trap(context);
         return "";
     }
@@ -161,11 +161,11 @@ static const char *archive_require_path(rt_string path, const char *context) {
 /// copying. Returns NULL if `name` is empty, NULL, or contains an
 /// embedded null byte (which would truncate the ZIP entry name).
 ///
-/// @param name Viper string containing the entry name.
+/// @param name Zanna string containing the entry name.
 /// @return Borrowed C string pointer, or NULL if the name is invalid.
 static const char *archive_entry_name_cstr(rt_string name) {
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_view((const ViperString *)name, &data);
+    size_t len = rt_file_string_view((const ZannaString *)name, &data);
     if (!data || len == 0)
         return NULL;
     if (memchr(data, '\0', len) != NULL)
@@ -756,9 +756,9 @@ static int archive_parse_epoch_seconds(const char *text, time_t *out_epoch) {
 ///
 /// Defaults to a fixed `2001-01-01 00:00:00` timestamp so archives remain
 /// byte-for-byte reproducible for identical inputs. `SOURCE_DATE_EPOCH` is honored when set for
-/// reproducible-build integrations; `VIPER_ARCHIVE_TIMESTAMP=now` opts into the current UTC time.
+/// reproducible-build integrations; `ZANNA_ARCHIVE_TIMESTAMP=now` opts into the current UTC time.
 static void get_dos_time(uint16_t *dos_time, uint16_t *dos_date) {
-    const char *mode = getenv("VIPER_ARCHIVE_TIMESTAMP");
+    const char *mode = getenv("ZANNA_ARCHIVE_TIMESTAMP");
     const char *source_date_epoch = getenv("SOURCE_DATE_EPOCH");
     time_t epoch = (time_t)0;
     struct tm tm_value;
@@ -2069,7 +2069,7 @@ void rt_archive_finish(void *obj) {
 /// @return 1 if the file looks like a ZIP, 0 otherwise.
 int8_t rt_archive_is_zip(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+    if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
 
 #ifdef _WIN32

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_combat.c
-// Purpose: Melee-combat foundation for Viper.Game3D — Hitbox3D bone/entity
+// Purpose: Melee-combat foundation for Zanna.Game3D — Hitbox3D bone/entity
 //   attached hit and hurt volumes with manual + animation-window activation,
 //   the per-step world combat pass emitting polled HitEvent3D records, and the
 //   Health3D component (damage/heal/i-frames/death lifecycle, knockback helper,

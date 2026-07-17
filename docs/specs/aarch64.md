@@ -18,7 +18,7 @@ references and test cases.
 - **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer and protected-use eviction), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
 - **Immediate utils**: Extracted `A64ImmediateUtils.hpp` for consistent immediate encoding
 - **Binary encoder**: Direct object code emission (bypassing assembler text)
-- **Large-module compile path**: `CodegenPipeline` accepts an already-verified in-memory IL module from `viper build`,
+- **Large-module compile path**: `CodegenPipeline` accepts an already-verified in-memory IL module from `zanna build`,
   avoiding a textual IL round trip for project builds.
 - **Parallel backend passes**: IL-to-MIR lowering and register allocation run per function concurrently while preserving
   deterministic function order in the module.
@@ -185,9 +185,9 @@ MIR opcode categories:
 
 | File | Purpose |
 |------|---------|
-| `src/tools/viper/cmd_codegen_arm64.hpp`/`.cpp` | `cmd_codegen_arm64(argc, argv)` — CLI entry for `viper codegen arm64` |
+| `src/tools/zanna/cmd_codegen_arm64.hpp`/`.cpp` | `cmd_codegen_arm64(argc, argv)` — CLI entry for `zanna codegen arm64` |
 
-Usage: `viper codegen arm64 <input.il> -S <out.s>`
+Usage: `zanna codegen arm64 <input.il> -S <out.s>`
 
 ### Common library (`src/codegen/common/`)
 
@@ -206,17 +206,17 @@ codegen review.
 ### Build integration
 
 - `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target, emitter, lowering, RA, peephole).
-- `src/CMakeLists.txt` exposes `viper_cmd_arm64` as a static lib; `viper` links `viper_cmd_arm64` and
+- `src/CMakeLists.txt` exposes `zanna_cmd_arm64` as a static lib; `zanna` links `zanna_cmd_arm64` and
   `il_codegen_aarch64`.
-- `viper_native_compiler` links `il_codegen_aarch64` directly so `viper build` can call the AArch64 pipeline without
+- `zanna_native_compiler` links `il_codegen_aarch64` directly so `zanna build` can call the AArch64 pipeline without
   routing through the CLI adapter.
 
 ## Backend Pipeline
 
 The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline stages are:
 
-1. **IL input** — load and verify textual IL for `viper codegen`, or accept an already-verified in-memory module from
-   `viper build`
+1. **IL input** — load and verify textual IL for `zanna codegen`, or accept an already-verified in-memory module from
+   `zanna build`
 2. **Rodata pool construction** (`RodataPool`) — scan globals, deduplicate string literals
 3. **IL to MIR lowering** (`LowerILToMIR::lowerFunction`) — instruction selection via `InstrLowering` + `TerminatorLowering` + fast paths; functions are lowered in parallel and written back in source order
 4. **Register coalescing** (`Coalescer`) — pre-RA copy elimination
@@ -234,11 +234,11 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 13. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
 14. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
 
-Set `VIPER_CODEGEN_STATS=1` to emit non-fatal diagnostics with peephole transformation counts and MIR
+Set `ZANNA_CODEGEN_STATS=1` to emit non-fatal diagnostics with peephole transformation counts and MIR
 function/block/instruction, call, branch, load, and store counters.
 
 Native assembler debug line tables are disabled by default for faster object generation and smaller native-link
-executables. Use `--debug-lines` on `viper codegen arm64` when DWARF `.debug_line` output and linked debug sections
+executables. Use `--debug-lines` on `zanna codegen arm64` when DWARF `.debug_line` output and linked debug sections
 are needed.
 
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
@@ -294,7 +294,7 @@ The complete inspection pipeline from source to native is:
 **Example:**
 
 ```bash
-./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
+./build/src/tools/zanna/zanna codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
 ```
 
 **Example output:**
@@ -381,7 +381,7 @@ entry:
 }
 EOF
 
-./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s
+./build/src/tools/zanna/zanna codegen arm64 /tmp/test.il -S /tmp/test.s
 as /tmp/test.s -o /tmp/test.o
 clang++ /tmp/test.o -o /tmp/test_native
 /tmp/test_native

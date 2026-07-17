@@ -6,8 +6,8 @@
 
 module asset_probe;
 
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Terminal;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Terminal;
 
 func main() {
     var art = Pixels.Load("examples/games/3dbowling/assets/art/title-key-art.png");

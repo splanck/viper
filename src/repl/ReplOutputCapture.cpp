@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include "runtime/core/rt_output.h"
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Saved runtime output hook for one scoped capture.
 /// @details The C runtime API returns a plain hook record. Keeping it in an
@@ -59,4 +59,4 @@ void ScopedReplOutputCapture::append(const char *data, size_t len) {
     output_.append(data, len);
 }
 
-} // namespace viper::repl
+} // namespace zanna::repl

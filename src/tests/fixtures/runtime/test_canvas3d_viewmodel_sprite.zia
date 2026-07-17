@@ -1,9 +1,9 @@
 module TestCanvas3DViewModelSprite;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-05 session A coverage:
 //   - Canvas3D.BeginViewModel: secondary pass keeps scene color, clears depth

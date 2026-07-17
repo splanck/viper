@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Runtime.GC - Garbage Collector
+// API Audit: Zanna.Runtime.GC - Garbage Collector
 // =============================================================================
 // Tests: Collect, TrackedCount, TotalCollected, PassCount
 // =============================================================================
 
 module GCDemo;
-bind Viper.Terminal;
-bind Viper.Runtime.GC as GC;
-bind Viper.Core.Box as Box;
+bind Zanna.Terminal;
+bind Zanna.Runtime.GC as GC;
+bind Zanna.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.Runtime.GC ===");
+    Say("=== API Audit: Zanna.Runtime.GC ===");
 
     // --- TrackedCount (initial) ---
     Say("--- TrackedCount (initial) ---");

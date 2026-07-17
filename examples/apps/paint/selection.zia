@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// selection.zia - Rectangular selection model for Viper Paint
+// selection.zia - Rectangular selection model for Zanna Paint
 module selection;
 
 /// @brief Active rectangular selection in canvas-space pixels.

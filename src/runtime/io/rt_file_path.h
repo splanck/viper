@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //
 // Ownership/Lifetime:
 //   - All returned pointers are non-owning views; callers must not free them.
-//   - ViperString inputs are borrowed, not retained.
+//   - ZannaString inputs are borrowed, not retained.
 //
 // Links: src/runtime/io/rt_file_path.c (implementation)
 //
@@ -54,20 +54,20 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
 /// @param path Runtime string containing the path; may be NULL.
 /// @param out_path Receives pointer to the UTF-8 data on success.
 /// @return 1 when a valid NUL-terminated path pointer is produced, 0 otherwise.
-int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path);
+int8_t rt_file_path_from_vstr(const ZannaString *path, const char **out_path);
 
 /// @brief Produce a byte view for a runtime string suitable for writing to a file.
 /// @param s Runtime string; may be NULL.
 /// @param data_out Receives pointer to the string bytes when non-null.
 /// @return Number of bytes referenced by the view.
-size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out);
+size_t rt_file_string_view(const ZannaString *s, const uint8_t **data_out);
 
 /// @brief Produce a byte view for a required runtime string, trapping on invalid handles.
 /// @param s Runtime string; must be a valid string handle.
 /// @param data_out Receives pointer to the string bytes when non-null.
 /// @param context Trap message used when the string handle is invalid.
 /// @return Number of bytes referenced by the view.
-size_t rt_file_string_require_view(const ViperString *s,
+size_t rt_file_string_require_view(const ZannaString *s,
                                    const uint8_t **data_out,
                                    const char *context);
 

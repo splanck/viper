@@ -7,12 +7,12 @@
 //          event log non-trivial). Prints "RESULT: ok" or "RESULT: fail".
 //          The bands are intentionally generous so the probe catches gross
 //          breakage but doesn't false-fail on RNG churn.
-// Run via: viper run examples/games/baseball/smoke_probe.zia
+// Run via: zanna run examples/games/baseball/smoke_probe.zia
 // ============================================================================
 module smoke_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";

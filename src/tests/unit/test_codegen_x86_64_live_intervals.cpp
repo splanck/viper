@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,8 +16,8 @@
 #include "codegen/x86_64/ra/LiveIntervals.hpp"
 #include "tests/TestHarness.hpp"
 
-using namespace viper::codegen::x64;
-using namespace viper::codegen::x64::ra;
+using namespace zanna::codegen::x64;
+using namespace zanna::codegen::x64::ra;
 
 namespace {
 
@@ -57,6 +57,6 @@ TEST(LiveIntervals, ComputesLocalRanges) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

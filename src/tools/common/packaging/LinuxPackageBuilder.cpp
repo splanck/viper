@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -54,7 +54,7 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Track a data file for md5sums generation.
@@ -90,7 +90,7 @@ struct DataFile {
     }
 };
 
-/// @brief Map a Viper arch string ("x64", "arm64") to the Debian architecture field value.
+/// @brief Map a Zanna arch string ("x64", "arm64") to the Debian architecture field value.
 std::string debArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
     return arch == "arm64" ? "arm64" : "amd64";
@@ -168,7 +168,7 @@ std::optional<size_t> elfFileOffsetForVaddr(const std::vector<uint8_t> &data,
 
 /// @brief Read DT_NEEDED library names from a little-endian ELF64 binary.
 /// @details The parser intentionally supports the ELF64 shape produced by
-///          Viper's Linux x64/arm64 toolchains. Unsupported or malformed inputs
+///          Zanna's Linux x64/arm64 toolchains. Unsupported or malformed inputs
 ///          simply return an empty list so callers can retain conservative
 ///          fallback dependencies.
 /// @param data Full ELF file bytes.
@@ -307,11 +307,11 @@ void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
         return;
 
     DesktopEntryParams desktop;
-    desktop.name = "Viper Toolchain";
-    desktop.comment = "Viper source and IL tools";
+    desktop.name = "Zanna Toolchain";
+    desktop.comment = "Zanna source and IL tools";
     desktop.execPath = execPath;
     desktop.execArguments = execArguments;
-    desktop.iconName = "viper";
+    desktop.iconName = "zanna";
     desktop.categories = "Development;";
     desktop.terminal = true;
     desktop.fileAssociations = associations;
@@ -330,7 +330,7 @@ void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
 void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                                          const ToolchainInstallManifest &manifest,
                                          const std::string &packageName,
-                                         const std::string &viperExecPath) {
+                                         const std::string &zannaExecPath) {
     if (manifest.fileAssociations.empty())
         return;
 
@@ -344,9 +344,9 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
     }
 
     addToolchainDesktopMetadata(
-        dataFiles, packageName + "-source.desktop", viperExecPath, "run", sourceAssociations);
+        dataFiles, packageName + "-source.desktop", zannaExecPath, "run", sourceAssociations);
     addToolchainDesktopMetadata(
-        dataFiles, packageName + "-il.desktop", viperExecPath, "-run", ilAssociations);
+        dataFiles, packageName + "-il.desktop", zannaExecPath, "-run", ilAssociations);
 
     const std::string mimeXml = generateMimeTypeXml(packageName, manifest.fileAssociations);
     dataFiles.emplace_back("usr/share/mime/packages/" + packageName + ".xml",
@@ -354,30 +354,30 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
-/// @brief Append the visible ViperIDE desktop launcher for Linux package menus.
-void addViperIDEDesktopMetadata(std::vector<DataFile> &dataFiles, const std::string &execPath) {
+/// @brief Append the visible ZannaIDE desktop launcher for Linux package menus.
+void addZannaIDEDesktopMetadata(std::vector<DataFile> &dataFiles, const std::string &execPath) {
     DesktopEntryParams desktop;
-    desktop.name = "ViperIDE";
-    desktop.comment = "Edit, build, and debug Viper projects";
+    desktop.name = "ZannaIDE";
+    desktop.comment = "Edit, build, and debug Zanna projects";
     desktop.execPath = execPath;
-    desktop.iconName = "viper";
+    desktop.iconName = "zanna";
     desktop.categories = "Development;IDE;TextEditor;";
     desktop.terminal = false;
 
     const std::string desktopText = generateDesktopEntry(desktop);
-    dataFiles.emplace_back("usr/share/applications/viperide.desktop",
+    dataFiles.emplace_back("usr/share/applications/zannaide.desktop",
                            std::vector<uint8_t>(desktopText.begin(), desktopText.end()),
                            0644);
 }
 
-/// @brief Append hicolor theme icons for the built-in Viper toolchain launcher.
+/// @brief Append hicolor theme icons for the built-in Zanna toolchain launcher.
 /// @details Uses the dependency-free fallback image from IconGenerator and writes
 ///          standard hicolor PNG sizes so desktop menus and MIME handlers resolve
-///          Icon=viper in Debian/RPM installs and portable Linux tarballs.
+///          Icon=zanna in Debian/RPM installs and portable Linux tarballs.
 /// @param dataFiles Package payload list to append to.
 /// @param iconName Theme icon name, without an extension.
-void addViperToolchainHicolorIcons(std::vector<DataFile> &dataFiles, const std::string &iconName) {
-    const auto icons = generateMultiSizePngs(defaultViperToolchainIconImage());
+void addZannaToolchainHicolorIcons(std::vector<DataFile> &dataFiles, const std::string &iconName) {
+    const auto icons = generateMultiSizePngs(defaultZannaToolchainIconImage());
     for (const auto &[size, png] : icons) {
         dataFiles.emplace_back("usr/share/icons/hicolor/" + std::to_string(size) + "x" +
                                    std::to_string(size) + "/apps/" + iconName + ".png",
@@ -402,9 +402,9 @@ std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest 
             dataFiles.emplace_back(
                 relInstall, readFile(file.stagedAbsolutePath.string()), permissionBitsFor(file));
     }
-    addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/viper");
-    addViperIDEDesktopMetadata(dataFiles, "/usr/bin/viperide");
-    addViperToolchainHicolorIcons(dataFiles, "viper");
+    addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/zanna");
+    addZannaIDEDesktopMetadata(dataFiles, "/usr/bin/zannaide");
+    addZannaToolchainHicolorIcons(dataFiles, "zanna");
     return dataFiles;
 }
 
@@ -436,7 +436,7 @@ void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dat
         tar.addDirectory(dir, 0755);
 }
 
-/// @brief Map a Viper arch string ("x64", "arm64") to the RPM architecture name
+/// @brief Map a Zanna arch string ("x64", "arm64") to the RPM architecture name
 /// ("x86_64"/"aarch64").
 std::string rpmArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
@@ -468,7 +468,7 @@ std::string joinCommaSeparated(const std::vector<std::string> &items) {
 
 /// @brief Test whether the manifest stages a support/library file whose filename
 ///        contains @p name (case-insensitive substring match).
-/// @details Used to derive runtime package dependencies from which Viper support
+/// @details Used to derive runtime package dependencies from which Zanna support
 ///          libraries are actually included in the staged tree.
 bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::string_view name) {
     for (const auto &file : manifest.files) {
@@ -518,8 +518,8 @@ bool manifestNeedsX11(const ToolchainInstallManifest &manifest) {
     const auto needed = manifestNeededLibraries(manifest);
     if (std::find(needed.begin(), needed.end(), "libX11.so.6") != needed.end())
         return true;
-    return manifestHasSupportLibrary(manifest, "vipergfx") ||
-           manifestHasSupportLibrary(manifest, "vipergui");
+    return manifestHasSupportLibrary(manifest, "zannagfx") ||
+           manifestHasSupportLibrary(manifest, "zannagui");
 }
 
 /// @brief True if the manifest includes the audio library that needs ALSA.
@@ -527,7 +527,7 @@ bool manifestNeedsAlsa(const ToolchainInstallManifest &manifest) {
     const auto needed = manifestNeededLibraries(manifest);
     if (std::find(needed.begin(), needed.end(), "libasound.so.2") != needed.end())
         return true;
-    return manifestHasSupportLibrary(manifest, "viperaud");
+    return manifestHasSupportLibrary(manifest, "zannaaud");
 }
 
 /// @brief Which C++ runtime the staged toolchain dynamically links.
@@ -543,7 +543,7 @@ ToolchainCxxRuntime detectToolchainCxxRuntime(const ToolchainInstallManifest &ma
         if (entry.symlink || entry.kind != ToolchainFileKind::Binary)
             continue;
         const std::string base = fs::path(entry.stagedRelativePath).filename().string();
-        if (base == "viper" || base == "viper.exe") {
+        if (base == "zanna" || base == "zanna.exe") {
             primary = &entry;
             break;
         }
@@ -608,7 +608,7 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
 
 /// @brief Return optional developer and desktop integration tools for Debian metadata.
 /// @details These improve native linking, CMake consumption, and system cache integration but are
-///          not required to execute the already-built Viper binaries.
+///          not required to execute the already-built Zanna binaries.
 std::string toolchainDebRecommends() {
     return joinCommaSeparated(
         {"cmake", "g++ | clang", "make", "desktop-file-utils", "shared-mime-info", "man-db"});
@@ -761,7 +761,7 @@ std::vector<std::string> sortedUniquePaths(std::vector<std::string> paths) {
 std::string renderInstallManifest(std::vector<std::string> paths) {
     paths = sortedUniquePaths(std::move(paths));
     std::ostringstream out;
-    out << "# Viper toolchain installed files, relative to PREFIX.\n";
+    out << "# Zanna toolchain installed files, relative to PREFIX.\n";
     for (const auto &path : paths)
         out << path << "\n";
     return out.str();
@@ -769,7 +769,7 @@ std::string renderInstallManifest(std::vector<std::string> paths) {
 
 /// @brief Shared shell helpers for generated Linux install/uninstall scripts.
 std::string linuxPathSafetyShellFunctions() {
-    return R"VIPER_SCRIPT(
+    return R"ZANNA_SCRIPT(
 validate_manifest_relpath() {
     rel=$1
     case "$rel" in
@@ -818,14 +818,14 @@ path_exists_or_link() {
     [ -e "$1" ] || [ -L "$1" ]
 }
 
-)VIPER_SCRIPT";
+)ZANNA_SCRIPT";
 }
 
 /// @brief Return the POSIX `install.sh` script bundled in the portable tarball.
 /// @details Copies the staged tree under PREFIX (default /usr/local), honoring
 ///          DESTDIR, and records what it installed for the matching uninstaller.
 std::string linuxTarballInstallScript() {
-    return std::string(R"VIPER_SCRIPT(#!/bin/sh
+    return std::string(R"ZANNA_SCRIPT(#!/bin/sh
 set -eu
 umask 022
 
@@ -849,12 +849,12 @@ done
 info() {
     [ "$quiet" = 1 ] && return
     if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-        printf '\033[1;34mViper installer\033[0m  %s\n' "$*"
+        printf '\033[1;34mZanna installer\033[0m  %s\n' "$*"
     else
-        printf 'Viper installer: %s\n' "$*"
+        printf 'Zanna installer: %s\n' "$*"
     fi
 }
-fail() { printf 'Viper installer error: %s\n' "$*" >&2; exit 2; }
+fail() { printf 'Zanna installer error: %s\n' "$*" >&2; exit 2; }
 
 prefix=${PREFIX:-/usr/local}
 destdir=${DESTDIR:-}
@@ -870,10 +870,10 @@ esac
 
 root=$(CDPATH= cd "$(dirname "$0")" && pwd)
 install_root=${destdir%/}$prefix
-old_manifest="$install_root/share/viper/install_manifest.txt"
-new_manifest="$root/share/viper/install_manifest.txt"
-)VIPER_SCRIPT") +
-           linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
+old_manifest="$install_root/share/zanna/install_manifest.txt"
+new_manifest="$root/share/zanna/install_manifest.txt"
+)ZANNA_SCRIPT") +
+           linuxPathSafetyShellFunctions() + R"ZANNA_SCRIPT(
 [ -f "$new_manifest" ] || fail "package install manifest is missing: $new_manifest"
 
 set --
@@ -885,10 +885,10 @@ for item in "$root"/* "$root"/.[!.]* "$root"/..?*; do
 done
 
 if [ "$#" -eq 0 ]; then
-    fail "no installable Viper payload directories were found"
+    fail "no installable Zanna payload directories were found"
 fi
 
-# Refuse to overwrite unrelated paths before making any changes. A prior Viper
+# Refuse to overwrite unrelated paths before making any changes. A prior Zanna
 # manifest proves ownership; --force is required for all other existing files.
 conflicts=0
 changes=0
@@ -929,7 +929,7 @@ install_parent=${install_root%/*}
 [ -n "$install_parent" ] || install_parent=/
 check_no_symlink_path "$install_parent"
 mkdir -p "$install_parent"
-work_dir=$(mktemp -d "$install_parent/.viper-install.XXXXXX")
+work_dir=$(mktemp -d "$install_parent/.zanna-install.XXXXXX")
 stage_dir=$work_dir/stage
 backup_dir=$work_dir/backup
 committed_file=$work_dir/committed
@@ -968,14 +968,14 @@ trap rollback_install EXIT HUP INT TERM
 
 info "staging payload"
 (cd "$root" && tar cf - "$@") | (cd "$stage_dir" && tar xpf -)
-mkdir -p "$stage_dir/share/viper"
-cp "$root/uninstall.sh" "$stage_dir/share/viper/uninstall.sh"
-chmod 755 "$stage_dir/share/viper/uninstall.sh"
+mkdir -p "$stage_dir/share/zanna"
+cp "$root/uninstall.sh" "$stage_dir/share/zanna/uninstall.sh"
+chmod 755 "$stage_dir/share/zanna/uninstall.sh"
 {
     printf '%s\n' "$prefix"
     printf '%s\n' "$destdir"
-} > "$stage_dir/share/viper/install_metadata"
-chmod 644 "$stage_dir/share/viper/install_metadata"
+} > "$stage_dir/share/zanna/install_metadata"
+chmod 644 "$stage_dir/share/zanna/install_metadata"
 
 info "committing $changes owned path(s) to $install_root"
 while IFS= read -r rel || [ -n "$rel" ]; do
@@ -995,9 +995,9 @@ while IFS= read -r rel || [ -n "$rel" ]; do
     mv "$source_path" "$destination"
 done < "$new_manifest"
 
-# Remove files owned by the previous Viper tarball only after the new payload
+# Remove files owned by the previous Zanna tarball only after the new payload
 # has committed successfully.
-old_snapshot="$backup_dir/share/viper/install_manifest.txt"
+old_snapshot="$backup_dir/share/zanna/install_manifest.txt"
 if [ -f "$old_snapshot" ]; then
     while IFS= read -r rel || [ -n "$rel" ]; do
         validate_manifest_relpath "$rel" || continue
@@ -1032,16 +1032,16 @@ if [ -z "$destdir" ]; then
     fi
 fi
 
-info "installed Viper toolchain under $install_root"
-info "verify with: $install_root/bin/viper --version"
-info "uninstall with: $install_root/share/viper/uninstall.sh"
-)VIPER_SCRIPT";
+info "installed Zanna toolchain under $install_root"
+info "verify with: $install_root/bin/zanna --version"
+info "uninstall with: $install_root/share/zanna/uninstall.sh"
+)ZANNA_SCRIPT";
 }
 
 /// @brief Return the POSIX `uninstall.sh` script bundled in the portable tarball.
 /// @details Removes the files recorded by install.sh's manifest under PREFIX.
 std::string linuxTarballUninstallScript() {
-    return std::string(R"VIPER_SCRIPT(#!/bin/sh
+    return std::string(R"ZANNA_SCRIPT(#!/bin/sh
 set -eu
 umask 022
 
@@ -1063,12 +1063,12 @@ done
 info() {
     [ "$quiet" = 1 ] && return
     if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-        printf '\033[1;34mViper uninstaller\033[0m  %s\n' "$*"
+        printf '\033[1;34mZanna uninstaller\033[0m  %s\n' "$*"
     else
-        printf 'Viper uninstaller: %s\n' "$*"
+        printf 'Zanna uninstaller: %s\n' "$*"
     fi
 }
-fail() { printf 'Viper uninstaller error: %s\n' "$*" >&2; exit 2; }
+fail() { printf 'Zanna uninstaller error: %s\n' "$*" >&2; exit 2; }
 
 prefix=${PREFIX:-/usr/local}
 destdir=${DESTDIR:-}
@@ -1083,12 +1083,12 @@ case "$destdir" in
 esac
 
 install_root=${destdir%/}$prefix
-manifest="$install_root/share/viper/install_manifest.txt"
-metadata="$install_root/share/viper/install_metadata"
-)VIPER_SCRIPT") +
-           linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
+manifest="$install_root/share/zanna/install_manifest.txt"
+metadata="$install_root/share/zanna/install_metadata"
+)ZANNA_SCRIPT") +
+           linuxPathSafetyShellFunctions() + R"ZANNA_SCRIPT(
 if [ ! -f "$manifest" ]; then
-    fail "Viper install manifest not found: $manifest"
+    fail "Zanna install manifest not found: $manifest"
 fi
 
 if [ -f "$metadata" ]; then
@@ -1123,7 +1123,7 @@ fi
 install_parent=${install_root%/*}
 [ -n "$install_parent" ] || install_parent=/
 check_no_symlink_path "$install_parent"
-work_dir=$(mktemp -d "$install_parent/.viper-uninstall.XXXXXX")
+work_dir=$(mktemp -d "$install_parent/.zanna-uninstall.XXXXXX")
 moved_file=$work_dir/moved
 : > "$moved_file"
 collect_complete=0
@@ -1163,12 +1163,12 @@ rm -rf "$work_dir"
 trap - EXIT HUP INT TERM
 
 for dir in \
-    share/viper \
+    share/zanna \
     share/applications \
     share/mime/packages \
     share/mime \
-    share/doc/viper \
-    lib/cmake/Viper \
+    share/doc/zanna \
+    lib/cmake/Zanna \
     lib/cmake \
     bin lib include share/doc share; do
     rmdir "$install_root/$dir" 2>/dev/null || true
@@ -1186,13 +1186,13 @@ if [ -z "$destdir" ]; then
     fi
 fi
 
-info "removed $owned_count Viper-owned path(s) from $install_root"
-)VIPER_SCRIPT";
+info "removed $owned_count Zanna-owned path(s) from $install_root"
+)ZANNA_SCRIPT";
 }
 
 /// @brief Return the README text bundled in the portable toolchain tarball.
 std::string linuxTarballReadme() {
-    return R"VIPER_TEXT(Viper Toolchain Tarball
+    return R"ZANNA_TEXT(Zanna Toolchain Tarball
 
 This archive is a portable Linux toolchain layout. You can run tools directly
 from the extracted bin/ directory, or install the layout into a prefix.
@@ -1204,39 +1204,39 @@ Preview without changing the filesystem:
   ./install.sh --dry-run
 
 Install under a custom prefix:
-  PREFIX=/opt/viper sudo ./install.sh
+  PREFIX=/opt/zanna sudo ./install.sh
 
 Use without installing:
-  ./bin/viper --version
-  ./bin/viperide --version
+  ./bin/zanna --version
+  ./bin/zannaide --version
 
 If you install to a custom non-system prefix, add that prefix's bin directory to
 your shell PATH. For example:
-  export PATH=/opt/viper/bin:$PATH
+  export PATH=/opt/zanna/bin:$PATH
 
 Stage into a package root without refreshing system caches:
-  DESTDIR=/tmp/viper-root PREFIX=/usr ./install.sh
+  DESTDIR=/tmp/zanna-root PREFIX=/usr ./install.sh
 
 Verify after install:
-  viper --version
-  viperide --version
+  zanna --version
+  zannaide --version
 
 Uninstall:
-  sudo /usr/local/share/viper/uninstall.sh
+  sudo /usr/local/share/zanna/uninstall.sh
 
 For a custom prefix, invoke its installed helper with the same PREFIX value:
-  PREFIX=/opt/viper sudo /opt/viper/share/viper/uninstall.sh
+  PREFIX=/opt/zanna sudo /opt/zanna/share/zanna/uninstall.sh
 
 Before copying a new tarball payload, install.sh removes files listed in the
 currently installed manifest when those files are absent from the new manifest.
-The installer refuses to overwrite paths not owned by a prior Viper manifest;
+The installer refuses to overwrite paths not owned by a prior Zanna manifest;
 review conflicts before using --force. Payloads are staged on the destination
 filesystem and committed with rollback backups. The chosen PREFIX and DESTDIR are
-recorded in share/viper/install_metadata. The uninstaller removes only files
-listed in share/viper/install_manifest.txt and supports --dry-run.
+recorded in share/zanna/install_metadata. The uninstaller removes only files
+listed in share/zanna/install_manifest.txt and supports --dry-run.
 Desktop, MIME, and manpage caches are refreshed when the relevant host tools are
 available.
-)VIPER_TEXT";
+)ZANNA_TEXT";
 }
 
 /// @brief Return true if the `rpmbuild` tool is available on PATH (exit code 0).
@@ -1306,7 +1306,7 @@ RunResult runRpmBuild(const fs::path &tmpRoot, const fs::path &specPath) {
                      "--define",
                      "use_source_date_epoch_as_buildtime 1",
                      "--define",
-                     "_buildhost reproducible.viper.local",
+                     "_buildhost reproducible.zanna.local",
                      "--define",
                      "_build_id_links none"});
     }
@@ -1385,7 +1385,7 @@ void validatePortableMetadata(const PackageConfig &pkg,
 std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displayName) {
     std::string maintainer = trimAsciiWhitespace(pkg.author);
     if (maintainer.empty())
-        maintainer = displayName.empty() ? std::string("Viper Project") : displayName;
+        maintainer = displayName.empty() ? std::string("Zanna Project") : displayName;
     validateSingleLineField(maintainer, "package maintainer");
     if (maintainer.find('<') != std::string::npos && maintainer.find('>') != std::string::npos)
         return maintainer;
@@ -1399,13 +1399,13 @@ std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displa
 }
 
 /// @brief Build the Debian/RPM maintainer string for a toolchain package from the manifest.
-/// @details Uses manifest.maintainer (default "Viper Project") and manifest.maintainerEmail,
+/// @details Uses manifest.maintainer (default "Zanna Project") and manifest.maintainerEmail,
 ///          falling back to the project's GitHub contact address when no email is configured.
 ///          Always yields the required `Name <email>` form.
 std::string toolchainMaintainer(const ToolchainInstallManifest &manifest) {
     std::string name = trimAsciiWhitespace(manifest.maintainer);
     if (name.empty())
-        name = "Viper Project";
+        name = "Zanna Project";
     validateSingleLineField(name, "toolchain package maintainer");
     if (name.find('<') != std::string::npos && name.find('>') != std::string::npos)
         return name;
@@ -1450,7 +1450,7 @@ void appendHomeDesktopShortcutInstallScript(std::ostream &script, const std::str
            << desktopName
            << "\n"
               "    [ ! -L \"$target\" ] || continue\n"
-              "    tmp=$(mktemp \"$d/.viper-desktop.XXXXXX\" 2>/dev/null) || continue\n"
+              "    tmp=$(mktemp \"$d/.zanna-desktop.XXXXXX\" 2>/dev/null) || continue\n"
               "    owner=$(stat -c %U \"$d\" 2>/dev/null || printf '')\n"
               "    group=$(stat -c %G \"$d\" 2>/dev/null || printf '')\n"
               "    cp "
@@ -1589,30 +1589,30 @@ std::string appTarballUninstallScript(const std::string &pkgName, const std::str
 }
 
 /// @brief Return a small generated PNG used for toolchain bundle desktop metadata.
-std::vector<uint8_t> defaultViperAppImageIconPng() {
-    return pngEncode(imageResize(defaultViperToolchainIconImage(), 256, 256));
+std::vector<uint8_t> defaultZannaAppImageIconPng() {
+    return pngEncode(imageResize(defaultZannaToolchainIconImage(), 256, 256));
 }
 
 /// @brief Append Linux bundle desktop/icon metadata at the payload root.
 void addToolchainBundleMetadata(TarWriter &tar, const std::string &packageName) {
     DesktopEntryParams desktop;
-    desktop.name = "Viper Toolchain";
-    desktop.comment = "Viper source and IL tools";
+    desktop.name = "Zanna Toolchain";
+    desktop.comment = "Zanna source and IL tools";
     desktop.execPath = "AppRun";
     desktop.iconName = packageName;
     desktop.categories = "Development;";
     desktop.terminal = false;
     const std::string desktopText = generateDesktopEntry(desktop);
     tar.addFileString(packageName + ".desktop", desktopText, 0644);
-    const auto icon = defaultViperAppImageIconPng();
+    const auto icon = defaultZannaAppImageIconPng();
     tar.addFileVec(packageName + ".png", icon, 0644);
     tar.addFileVec(".DirIcon", icon, 0644);
 }
 
-/// @brief Return the self-extracting bundle AppRun launcher script for the Viper toolchain.
+/// @brief Return the self-extracting bundle AppRun launcher script for the Zanna toolchain.
 /// @details When launched from a desktop shell with no arguments it starts
-///          ViperIDE. When invoked from a terminal or file association with
-///          arguments, it preserves CLI behavior by delegating to `bin/viper`.
+///          ZannaIDE. When invoked from a terminal or file association with
+///          arguments, it preserves CLI behavior by delegating to `bin/zanna`.
 /// @return POSIX shell script text installed as executable `AppRun`.
 std::string toolchainAppRunScript() {
     return "#!/bin/sh\n"
@@ -1621,10 +1621,10 @@ std::string toolchainAppRunScript() {
            "case \"$self\" in /*) appdir=$(dirname -- \"$self\") ;;\n"
            "  *) appdir=$(CDPATH= cd -- \"$(dirname -- \"$self\")\" && pwd) ;;\n"
            "esac\n"
-           "if [ \"$#\" -eq 0 ] && [ -x \"$appdir/bin/viperide\" ]; then\n"
-           "  exec \"$appdir/bin/viperide\"\n"
+           "if [ \"$#\" -eq 0 ] && [ -x \"$appdir/bin/zannaide\" ]; then\n"
+           "  exec \"$appdir/bin/zannaide\"\n"
            "fi\n"
-           "exec \"$appdir/bin/viper\" \"$@\"\n";
+           "exec \"$appdir/bin/zanna\" \"$@\"\n";
 }
 
 /// @brief Validate all install paths in `dataFiles` are normalized and unique.
@@ -1842,7 +1842,7 @@ static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &pa
             auto srcImage = pngRead(iconSrc.string());
             pngs = generateMultiSizePngs(srcImage);
         } else {
-            pngs = generateMultiSizePngs(defaultViperToolchainIconImage());
+            pngs = generateMultiSizePngs(defaultZannaToolchainIconImage());
         }
         for (const auto &[sz, pngData] : pngs) {
             std::string iconPath = "usr/share/icons/hicolor/" + std::to_string(sz) + "x" +
@@ -2026,9 +2026,9 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
             appendHomeDesktopShortcutInstallScript(pi, pkgName);
         if (!pkg.postInstallScript.empty()) {
-            pi << "# viper user post-install hook begin\n";
+            pi << "# zanna user post-install hook begin\n";
             pi << normalizePackageHookScript(pkg.postInstallScript, "post-install script") << "\n";
-            pi << "# viper user post-install hook end\n";
+            pi << "# zanna user post-install hook end\n";
         }
         controlTar.addFileString("./postinst", pi.str(), 0755);
     }
@@ -2040,10 +2040,10 @@ void buildDebPackage(const LinuxBuildParams &params) {
         pr << "#!/bin/sh\n";
         pr << "set -e\n";
         if (!pkg.preUninstallScript.empty()) {
-            pr << "# viper user pre-uninstall hook begin\n";
+            pr << "# zanna user pre-uninstall hook begin\n";
             pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script")
                << "\n";
-            pr << "# viper user pre-uninstall hook end\n";
+            pr << "# zanna user pre-uninstall hook end\n";
         }
         if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
             appendHomeDesktopShortcutRemovalScript(pr, pkgName);
@@ -2306,7 +2306,7 @@ void buildAppImage(const LinuxBuildParams &params) {
             const auto srcImage = pngRead(iconSrc.string());
             iconPng = pngEncode(srcImage);
         } else {
-            iconPng = defaultViperAppImageIconPng();
+            iconPng = defaultZannaAppImageIconPng();
         }
         tar.addFileVec(exeName + ".png", iconPng, 0644);
         tar.addFileVec(".DirIcon", iconPng, 0644);
@@ -2355,7 +2355,7 @@ void buildRpmPackage(const LinuxBuildParams &params) {
             "or use --target linux, appimage, or tarball");
     }
 
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-app-rpm-" + version + "-" + arch);
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-app-rpm-" + version + "-" + arch);
     TempDirGuard cleanup(tmpRoot);
     fs::create_directories(tmpRoot / "BUILD");
     fs::create_directories(tmpRoot / "BUILDROOT");
@@ -2473,7 +2473,7 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
     requireLinuxToolchainManifest(manifest, "Debian toolchain package");
     const std::string packageName =
-        params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
+        params.packageName.empty() ? std::string("zanna") : normalizeDebName(params.packageName);
     if (manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     const std::string version = manifest.version;
@@ -2519,7 +2519,7 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
             validatePackageUrl(manifest.homepage, "toolchain package homepage");
             ctl << "Homepage: " << manifest.homepage << "\n";
         }
-        ctl << "Description: Viper compiler toolchain\n";
+        ctl << "Description: Zanna compiler toolchain\n";
         controlTar.addFileString("./control", ctl.str(), 0644);
     }
     {
@@ -2577,7 +2577,7 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
     validateToolchainInstallManifest(manifest);
     const std::string packageName =
-        params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
+        params.packageName.empty() ? std::string("zanna") : normalizeDebName(params.packageName);
     if (manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     const std::string version = manifest.version;
@@ -2617,9 +2617,9 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     if (platform == "linux") {
         std::vector<DataFile> generated;
         if (!manifest.fileAssociations.empty())
-            addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
-        addViperIDEDesktopMetadata(generated, "viperide");
-        addViperToolchainHicolorIcons(generated, "viper");
+            addToolchainFileAssociationMetadata(generated, manifest, packageName, "zanna");
+        addZannaIDEDesktopMetadata(generated, "zannaide");
+        addZannaToolchainHicolorIcons(generated, "zanna");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
                 df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
@@ -2629,11 +2629,11 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
         }
     }
     if (platform == "linux") {
-        installManifestPaths.push_back("share/viper/install_manifest.txt");
-        installManifestPaths.push_back("share/viper/install_metadata");
-        installManifestPaths.push_back("share/viper/uninstall.sh");
+        installManifestPaths.push_back("share/zanna/install_manifest.txt");
+        installManifestPaths.push_back("share/zanna/install_metadata");
+        installManifestPaths.push_back("share/zanna/uninstall.sh");
         const std::string manifestText = renderInstallManifest(installManifestPaths);
-        tar.addFile(topDir + "share/viper/install_manifest.txt",
+        tar.addFile(topDir + "share/zanna/install_manifest.txt",
                     reinterpret_cast<const uint8_t *>(manifestText.data()),
                     manifestText.size(),
                     0644);
@@ -2665,7 +2665,7 @@ void buildToolchainBundle(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
     requireLinuxToolchainManifest(manifest, "Linux self-extracting bundle");
     const std::string packageName =
-        params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
+        params.packageName.empty() ? std::string("zanna") : normalizeDebName(params.packageName);
     if (manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     const std::string version = manifest.version;
@@ -2689,9 +2689,9 @@ void buildToolchainBundle(const LinuxToolchainBuildParams &params) {
     {
         std::vector<DataFile> generated;
         if (!manifest.fileAssociations.empty())
-            addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
-        addViperIDEDesktopMetadata(generated, "viperide");
-        addViperToolchainHicolorIcons(generated, "viper");
+            addToolchainFileAssociationMetadata(generated, manifest, packageName, "zanna");
+        addZannaIDEDesktopMetadata(generated, "zannaide");
+        addZannaToolchainHicolorIcons(generated, "zanna");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
                 df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
@@ -2726,7 +2726,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
     requireLinuxToolchainManifest(manifest, "RPM toolchain package");
     const std::string packageName =
-        params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
+        params.packageName.empty() ? std::string("zanna") : normalizeDebName(params.packageName);
     if (manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     const std::string version = manifest.version;
@@ -2741,7 +2741,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
             "or request linux-deb/tarball output");
     }
 
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-rpm-" + version + "-" + arch);
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-rpm-" + version + "-" + arch);
     TempDirGuard cleanup(tmpRoot);
     fs::create_directories(tmpRoot / "BUILD");
     fs::create_directories(tmpRoot / "BUILDROOT");
@@ -2773,7 +2773,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Name: " << packageName << "\n";
     spec << "Version: " << version << "\n";
     spec << "Release: 1%{?dist}\n";
-    spec << "Summary: Viper compiler toolchain\n";
+    spec << "Summary: Zanna compiler toolchain\n";
     spec << "Packager: " << toolchainMaintainer(manifest) << "\n";
     {
         std::string license = trimAsciiWhitespace(manifest.license);
@@ -2793,7 +2793,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     for (const auto &dep : toolchainRpmRecommends())
         spec << "Recommends: " << dep << "\n";
     spec << "\n";
-    spec << "%description\nViper compiler toolchain\n\n";
+    spec << "%description\nZanna compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";
     spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . "
@@ -2915,4 +2915,4 @@ void signLinuxPackage(const std::string &packagePath, const std::string &gpgKeyI
     }
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

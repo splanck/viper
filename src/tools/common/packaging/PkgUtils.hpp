@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@
 #include "../../../common/PlatformCapabilities.hpp"
 #include "PackageConfig.hpp"
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -57,7 +57,7 @@
 #include <unistd.h>
 #endif
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 inline constexpr uint64_t kMaxPackageFileBytes = 0xFFFFFFFFull;
 
@@ -142,7 +142,7 @@ inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::pa
 
 namespace detail {
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 inline int openExclusiveTempFile(const std::filesystem::path &path) {
     return _wopen(
         path.native().c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
@@ -350,7 +350,7 @@ inline void writeFileAtomic(const std::filesystem::path &path, const std::vector
         throw std::runtime_error("cannot move temporary output into place at '" + path.string() +
                                  "': " + ec.message());
     }
-#if !VIPER_HOST_WINDOWS
+#if !ZANNA_HOST_WINDOWS
     detail::syncParentDirectoryBestEffort(parent);
 #endif
     temp.release();
@@ -382,7 +382,7 @@ inline std::vector<uint8_t> readFile(const std::string &path) {
         throw std::runtime_error("cannot determine file size: " + path);
     const auto size64 = static_cast<uint64_t>(size);
     if (size64 > kMaxPackageFileBytes)
-        throw std::runtime_error("file is too large for VAPS package formats: " + path);
+        throw std::runtime_error("file is too large for ZAPS package formats: " + path);
     if (size64 > static_cast<uint64_t>(std::vector<uint8_t>().max_size()))
         throw std::runtime_error("file is too large to read into memory: " + path);
     f.seekg(0);
@@ -400,7 +400,7 @@ inline std::vector<uint8_t> readFile(const std::string &path) {
 /// @brief Normalize a project name to a lowercase executable name.
 ///
 /// Spaces become underscores, all chars lowered.
-/// e.g. "Viper IDE" -> "viper_ide"
+/// e.g. "Zanna IDE" -> "zanna_ide"
 inline std::string normalizeExecName(const std::string &name) {
     std::string result;
     result.reserve(name.size());
@@ -422,7 +422,7 @@ inline std::string normalizeExecName(const std::string &name) {
 /// @brief Normalize a project name to a Debian-style package name.
 ///
 /// Spaces and underscores become hyphens, all chars lowered.
-/// e.g. "Viper IDE" -> "viper-ide"
+/// e.g. "Zanna IDE" -> "zanna-ide"
 inline std::string normalizeDebName(const std::string &name) {
     std::string result;
     result.reserve(name.size());
@@ -513,7 +513,7 @@ inline void validatePortableArchiveVersion(const std::string &version,
     }
 }
 
-/// @brief Validate that arch is one of the two supported Viper target architectures ("x64",
+/// @brief Validate that arch is one of the two supported Zanna target architectures ("x64",
 /// "arm64").
 inline void validateToolchainArchitecture(const std::string &arch,
                                           const char *fieldName = "toolchain architecture") {
@@ -1128,7 +1128,7 @@ inline void validatePackageHooksAllowed(const PackageConfig &pkg) {
         return;
     if (!pkg.postInstallScript.empty() || !pkg.preUninstallScript.empty()) {
         throw std::runtime_error("package hook scripts require 'allow-install-hooks true' in "
-                                 "viper.project");
+                                 "zanna.project");
     }
 }
 
@@ -1240,7 +1240,7 @@ inline bool isValidMacOSSignModeText(const std::string &mode) {
 inline std::string resolveMacOSSignModeForHost(const PackageConfig &pkg) {
     if (!pkg.macosSignMode.empty())
         return pkg.macosSignMode;
-#if VIPER_HOST_MACOS
+#if ZANNA_HOST_MACOS
     return "adhoc";
 #else
     return "preserve";
@@ -1869,4 +1869,4 @@ inline void safeDirectoryIterate(
     });
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

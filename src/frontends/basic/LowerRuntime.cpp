@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "viper/il/IRBuilder.hpp"
+#include "zanna/il/IRBuilder.hpp"
 #include <array>
 #include <cassert>
 #include <string>
@@ -151,12 +151,12 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
         if (usedSpelling) {
             // Only declare spellings that were actually used at call sites.
             // This allows declaring multiple aliases in the same signature
-            // group when both were referenced (e.g., Viper.String.Mid and
-            // Viper.String.Substring).
+            // group when both were referenced (e.g., Zanna.String.Mid and
+            // Zanna.String.Substring).
             if (!usedNames_.contains(std::string(d.name)))
                 return;
         } else {
-            // No specific spelling used: prefer canonical Viper.* names. If a
+            // No specific spelling used: prefer canonical Zanna.* names. If a
             // canonical exists for this signature id and we're looking at the alias,
             // skip the alias to avoid duplicates.
             const bool isAlias = d.name.find('.') == std::string_view::npos;
@@ -176,17 +176,17 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                 }
             }
 
-            // Prefer Viper.Terminal.* over Viper.Console.* (Console
+            // Prefer Zanna.Terminal.* over Zanna.Console.* (Console
             // is now an alias for backward compatibility).
-            if (d.name.rfind("Viper.Console.", 0) == 0) {
+            if (d.name.rfind("Zanna.Console.", 0) == 0) {
                 if (auto sigId = il::runtime::findRuntimeSignatureId(d.name)) {
                     const auto &reg = il::runtime::runtimeRegistry();
                     for (const auto &other : reg) {
                         auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                         if (!otherId || *otherId != *sigId)
                             continue;
-                        if (other.name.rfind("Viper.Terminal.", 0) == 0) {
-                            // Prefer the Viper.Terminal.* variant.
+                        if (other.name.rfind("Zanna.Terminal.", 0) == 0) {
+                            // Prefer the Zanna.Terminal.* variant.
                             return;
                         }
                     }
@@ -195,8 +195,8 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
             // Avoid declaring certain OOP-style or ctor helpers unless used.
             // Tests/goldens expect these only when referenced.
-            if (d.name == std::string_view{"Viper.String.get_IsEmpty"} ||
-                d.name == std::string_view{"Viper.String.FromStr"}) {
+            if (d.name == std::string_view{"Zanna.String.get_IsEmpty"} ||
+                d.name == std::string_view{"Zanna.String.FromStr"}) {
                 return;
             }
         }
@@ -236,7 +236,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
     // Declare any manually-lowered helpers that were explicitly used at call sites.
     // This keeps IL lean (no unconditional alias declarations) while ensuring
-    // names like Viper.Text.StringBuilder.* and Viper.String.Builder.* appear
+    // names like Zanna.Text.StringBuilder.* and Zanna.String.Builder.* appear
     // only when referenced.
     for (const auto &name : usedNames_) {
         // Skip rt_* manual helpers; Lowerer::declareRequiredRuntime handles them
@@ -741,7 +741,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b) {
 
     // Ensure explicit alias spellings used at call sites are declared when they
     // map to descriptors marked as ManualLowering. Under dual-namespace mode the
-    // canonical Viper.* variants are declared as Always, and legacy rt_* aliases
+    // canonical Zanna.* variants are declared as Always, and legacy rt_* aliases
     // are Manual. When lowering emits calls to rt_* names, the alias-specific
     // externs would otherwise be skipped. Declare those alias spellings here so
     // the verifier can resolve the callees while preserving stable output.

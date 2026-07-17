@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -301,7 +301,7 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_f64_new", {length});
     } else {
-        // Integer/numeric array: use rt_arr_i64_new (all Viper integers are 64-bit)
+        // Integer/numeric array: use rt_arr_i64_new (all Zanna integers are 64-bit)
         lowerer_.requireArrayI64New();
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_i64_new", {length});

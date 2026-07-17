@@ -1,0 +1,71 @@
+module zia_query;
+
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+
+// ============================================================================
+// MODULE: zia_query
+// PURPOSE: Centralized buffer preparation for every Zia completion-engine
+//          query (completion / hover / symbols / diagnostics).
+//
+// WHY-THIS-EXISTS: The Zia parser hard-requires a top-level `module X;`
+//          declaration (Parser::parseModule returns null without it), so a
+//          buffer with no module line yields null Sema and the engine returns
+//          nothing — IntelliSense looks dead. New/untitled buffers already get
+//          a synthesized `module` line, but files opened from disk that lack
+//          one would otherwise have no completion at all.
+//
+// HOW-IT-WORKS: When the buffer has no module declaration of its own we
+//          prepend exactly one synthetic line, `module __ide__;\n`, for the
+//          query only (the displayed buffer is never modified). That shifts
+//          every line by exactly one, so callers must:
+//            * OUTBOUND: send `cursorLine + LineOffset(text)` to the engine.
+//            * INBOUND:  subtract `LineOffset(text)` from engine-reported
+//                        symbol / diagnostic line numbers.
+//          Completion and hover return no line numbers, so they only need the
+//          outbound shift.
+// ============================================================================
+
+/// @brief True when the buffer's first significant line is a `module` decl.
+/// @details Blank lines and `//` line comments are skipped; the first
+///          meaningful line decides. A module declaration is `module <name>;`
+///          so we require `module` followed by whitespace to avoid matching an
+///          identifier such as `moduleName`.
+func hasModuleDecl(text: String) -> Boolean {
+    var lines = Str.Split(text, "\n");
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var t = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
+        i = i + 1;
+        if Str.get_Length(t) == 0 { continue; }
+        if Str.StartsWith(t, "//") { continue; }
+        if Str.StartsWith(t, "module ") { return true; }
+        if Str.StartsWith(t, "module\t") { return true; }
+        return false;
+    }
+    return false;
+}
+
+/// @brief Whether a synthetic module prefix must be injected for queries.
+expose func NeedsModulePrefix(text: String) -> Boolean {
+    return hasModuleDecl(text) == false;
+}
+
+/// @brief Line offset (0 or 1) introduced by the synthetic prefix.
+/// @details Add to cursor lines before a query; subtract from engine-reported
+///          symbol/diagnostic lines after a query.
+expose func LineOffset(text: String) -> Integer {
+    if NeedsModulePrefix(text) { return 1; }
+    return 0;
+}
+
+/// @brief The buffer to hand the completion engine: original text, or a
+///        copy with a one-line synthetic `module __ide__;` prefix when the
+///        buffer carries no module declaration of its own.
+expose func WrapForQuery(text: String) -> String {
+    if NeedsModulePrefix(text) {
+        return "module __ide__;\n" + text;
+    }
+    return text;
+}

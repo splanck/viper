@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -92,9 +92,9 @@ TEST(ZiaPointerSafety, LegacyDirectoryApisExposeSafeSeqs) {
 module Test;
 
 func start() {
-    var entries = Viper.IO.Dir.List(".");
-    var files = Viper.IO.Dir.Files(".");
-    var dirs = Viper.IO.Dir.Dirs(".");
+    var entries = Zanna.IO.Dir.List(".");
+    var files = Zanna.IO.Dir.Files(".");
+    var dirs = Zanna.IO.Dir.Dirs(".");
 }
 )");
 
@@ -106,11 +106,11 @@ TEST(ZiaPointerSafety, LegacyRuntimeOutParameterApisReturnOptions) {
 module Test;
 
 func start() {
-    var i = Viper.Core.Parse.TryInt("123");
-    var n = Viper.Core.Parse.TryDouble("12.5");
-    var b = Viper.Core.Parse.TryBool("yes");
-    var d = Viper.Core.Parse.TryDouble("12.5");
-    var i64 = Viper.Core.Parse.TryInt("123");
+    var i = Zanna.Core.Parse.TryInt("123");
+    var n = Zanna.Core.Parse.TryDouble("12.5");
+    var b = Zanna.Core.Parse.TryBool("yes");
+    var d = Zanna.Core.Parse.TryDouble("12.5");
+    var i64 = Zanna.Core.Parse.TryInt("123");
 }
 )");
 
@@ -125,7 +125,7 @@ func worker(arg: Any) {
 }
 
 func start() {
-    var thread = Viper.Threads.Thread.Start(&worker, 0);
+    var thread = Zanna.Threads.Thread.Start(&worker, 0);
 }
 )");
 
@@ -140,7 +140,7 @@ func worker(arg: Any) {
 }
 
 func start() {
-    var thread = Viper.Threads.Thread.Start(worker, 0);
+    var thread = Zanna.Threads.Thread.Start(worker, 0);
 }
 )");
 
@@ -185,14 +185,14 @@ TEST(ZiaPointerSafety, SafePointerAlternativesCompile) {
 module Test;
 
 func start() {
-    var box = Viper.Core.Box.I64(12);
-    var opt = Viper.Core.Box.ToI64Option(box);
-    var fields = Viper.String.SplitFields("a,\"b,c\"");
-    var path = Viper.Graphics.Path2D.New(4);
-    var canvas = Viper.Graphics.Canvas.New("x", 16, 16);
-    Viper.Graphics.Canvas.PolylinePath(canvas, path, 16777215);
-    var emitter = Viper.Game.ParticleEmitter.New(4);
-    var particle = Viper.Game.ParticleEmitter.ParticleAt(emitter, 0);
+    var box = Zanna.Core.Box.I64(12);
+    var opt = Zanna.Core.Box.ToI64Option(box);
+    var fields = Zanna.String.SplitFields("a,\"b,c\"");
+    var path = Zanna.Graphics.Path2D.New(4);
+    var canvas = Zanna.Graphics.Canvas.New("x", 16, 16);
+    Zanna.Graphics.Canvas.PolylinePath(canvas, path, 16777215);
+    var emitter = Zanna.Game.ParticleEmitter.New(4);
+    var particle = Zanna.Game.ParticleEmitter.ParticleAt(emitter, 0);
 }
 )");
 
@@ -203,13 +203,13 @@ TEST(ZiaPointerSafety, RuntimeCallbackBridgeAcceptsTypedRuntimeClassPayload) {
     auto result = compileSource(R"(
 module Test;
 
-func worker(client: Viper.Network.Tcp) {
+func worker(client: Zanna.Network.Tcp) {
 }
 
 func start() {
-    var server = Viper.Network.TcpServer.Listen(0);
-    var client = Viper.Network.TcpServer.Accept(server);
-    var thread = Viper.Threads.Thread.StartSafe(&worker, client);
+    var server = Zanna.Network.TcpServer.Listen(0);
+    var client = Zanna.Network.TcpServer.Accept(server);
+    var thread = Zanna.Threads.Thread.StartSafe(&worker, client);
 }
 )");
 
@@ -224,8 +224,8 @@ func worker(arg: Any) {
 }
 
 func start() {
-    var pool = Viper.Threads.Pool.New(1);
-    var ok = Viper.Threads.Pool.Submit(pool, &worker, 0);
+    var pool = Zanna.Threads.Pool.New(1);
+    var ok = Zanna.Threads.Pool.Submit(pool, &worker, 0);
 }
 )");
 
@@ -238,7 +238,7 @@ func onMessage(data: Any) {
 }
 
 func start() {
-    var handler = Viper.Core.MessageBus.Callback(&onMessage);
+    var handler = Zanna.Core.MessageBus.Callback(&onMessage);
 }
 )");
 
@@ -252,8 +252,8 @@ func keep(item: Any) -> Boolean {
 }
 
 func start() {
-    var seq = Viper.Collections.Seq.New();
-    var kept = Viper.Collections.Seq.Filter(seq, &keep);
+    var seq = Zanna.Collections.Seq.New();
+    var kept = Zanna.Collections.Seq.Filter(seq, &keep);
 }
 )");
 
@@ -263,5 +263,5 @@ func start() {
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

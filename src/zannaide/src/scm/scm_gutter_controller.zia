@@ -1,0 +1,95 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannaide/src/scm/scm_gutter_controller.zia
+// Purpose: Paint per-line SCM change bars (added/modified/deleted) in the editor
+//          gutter for the active document, by running `git diff --unified=0` and
+//          feeding the hunks to scm_diff.
+// Key invariants:
+//   - Uses gutter slot 4 exclusively, so bars coexist with breakpoint and
+//     diagnostic disc icons.
+//   - Markers reflect the last saved file; while a buffer is dirty they may lag
+//     by the unsaved delta.
+// Links: zannaide/src/scm/scm_diff.zia, zannaide/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scm_gutter_controller;
+
+bind "../scm/scm_diff";
+bind "../editor/editor_engine";
+bind "../core/document_manager";
+bind "../core/project_manager";
+
+bind Exec = Zanna.System.Exec;
+bind Seq = Zanna.Collections.Seq;
+
+final SCM_GUTTER_SLOT = 4;
+final COLOR_ADDED = 4283353422;    // 0xFF4EC94E green
+final COLOR_MODIFIED = 4282093290; // 0xFF3B8EEA blue
+final COLOR_DELETED = 4292891218;  // 0xFFE05252 red
+
+/// @brief Applies diff hunks as gutter change bars on the active editor.
+class ScmGutterController {
+    /// @brief Clear SCM bars then paint bars for a unified=0 diff text.
+    /// @param engine   Editor engine (active document).
+    /// @param diffText Output of `git diff --unified=0`.
+    expose func ApplyMarkers(engine: editor_engine.EditorEngine, diffText: String) {
+        if engine == null or engine.editor == null { return; }
+        engine.editor.ClearGutterIcons(SCM_GUTTER_SLOT);
+        var hunks = scm_diff.ParseHunks(diffText);
+        var n = hunks.count();
+        var hi = 0;
+        while hi < n {
+            var h = hunks.get(hi) as scm_diff.DiffHunk;
+            var color = COLOR_MODIFIED;
+            if h.kind == scm_diff.KIND_ADDED {
+                color = COLOR_ADDED;
+            } else if h.kind == scm_diff.KIND_DELETED {
+                color = COLOR_DELETED;
+            }
+            var line = h.startLine;
+            while line <= h.endLine {
+                engine.editor.SetGutterBar(line - 1, color, SCM_GUTTER_SLOT);
+                line = line + 1;
+            }
+            hi = hi + 1;
+        }
+    }
+
+    /// @brief Run git diff for the active document and repaint gutter bars.
+    expose func RefreshActive(engine: editor_engine.EditorEngine,
+                              docMgr: document_manager.DocumentManager,
+                              projMgr: project_manager.ProjectManager) {
+        if engine == null or docMgr == null or projMgr == null { return; }
+        if projMgr.IsOpen() == false { return; }
+        var doc = docMgr.GetActive();
+        if doc == null or doc!.filePath == "" or doc!.isNew {
+            Clear(engine);
+            return;
+        }
+        var root = projMgr.RootPath();
+        if root == "" { return; }
+        var args = Seq.New();
+        Seq.Push(args, "-C");
+        Seq.Push(args, root);
+        Seq.Push(args, "diff");
+        Seq.Push(args, "--unified=0");
+        Seq.Push(args, "--no-color");
+        Seq.Push(args, "--");
+        Seq.Push(args, doc!.filePath);
+        var diffText = Exec.CaptureArgs("git", args);
+        ApplyMarkers(engine, diffText);
+    }
+
+    /// @brief Clear all SCM gutter bars from the active editor.
+    expose func Clear(engine: editor_engine.EditorEngine) {
+        if engine != null and engine.editor != null {
+            engine.editor.ClearGutterIcons(SCM_GUTTER_SLOT);
+        }
+    }
+}

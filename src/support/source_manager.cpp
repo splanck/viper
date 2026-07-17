@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,7 +44,7 @@ namespace il::support {
 namespace {
 /// @brief Return whether @p path names an in-memory or generated source buffer.
 /// @param path Raw path supplied by the caller.
-/// @return True when the path uses Viper's angle-bracket virtual source form.
+/// @return True when the path uses Zanna's angle-bracket virtual source form.
 /// @details Paths such as `<memory>.zia` and `<eval>` are user-facing labels, not
 ///          filesystem paths.  Treating them as disk-backed would make their
 ///          identifiers depend on the current working directory and would trigger
@@ -55,11 +55,11 @@ bool isVirtualSourcePath(std::string_view path) {
 
 /// @brief Fold ASCII path casing when the host filesystem convention requires it.
 /// @param key Lookup key to mutate in place.
-/// @details Windows path comparisons in Viper are intentionally case-insensitive,
+/// @details Windows path comparisons in Zanna are intentionally case-insensitive,
 ///          but diagnostics should still preserve the user's display spelling.
 ///          This helper is therefore applied only to internal lookup keys.
 void foldPathLookupKeyCase(std::string &key) {
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         for (char &ch : key) {
             if (ch >= 'A' && ch <= 'Z')
                 ch = static_cast<char>(ch - 'A' + 'a');

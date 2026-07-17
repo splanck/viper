@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -225,9 +225,9 @@ struct BenchResult {
 
 BenchResult runDispatchBench(const char *mode, size_t iterations) {
     if (mode != nullptr)
-        ::setenv("VIPER_DISPATCH", mode, 1);
+        ::setenv("ZANNA_DISPATCH", mode, 1);
     else
-        ::unsetenv("VIPER_DISPATCH");
+        ::unsetenv("ZANNA_DISPATCH");
 
     Module module = buildArithmeticModule(iterations);
     il::vm::VM vm(module);
@@ -249,7 +249,7 @@ BenchResult runDispatchBench(const char *mode, size_t iterations) {
 
     const double elapsedMs =
         std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
-    std::cout << "VIPER_DISPATCH=" << (mode ? mode : "<unset>") << " iterations=" << iterations
+    std::cout << "ZANNA_DISPATCH=" << (mode ? mode : "<unset>") << " iterations=" << iterations
               << " runs=" << kBenchmarkRuns << " checksum=" << total << " elapsed_ms=" << elapsedMs
               << '\n';
 
@@ -259,15 +259,15 @@ BenchResult runDispatchBench(const char *mode, size_t iterations) {
 class DispatchEnvGuard {
   public:
     DispatchEnvGuard() {
-        if (const char *value = std::getenv("VIPER_DISPATCH"); value != nullptr)
+        if (const char *value = std::getenv("ZANNA_DISPATCH"); value != nullptr)
             original = value;
     }
 
     ~DispatchEnvGuard() {
         if (original.has_value())
-            ::setenv("VIPER_DISPATCH", original->c_str(), 1);
+            ::setenv("ZANNA_DISPATCH", original->c_str(), 1);
         else
-            ::unsetenv("VIPER_DISPATCH");
+            ::unsetenv("ZANNA_DISPATCH");
     }
 
   private:
@@ -282,7 +282,7 @@ int main() {
     const BenchResult table = runDispatchBench("table", kLoopIterations);
     const BenchResult switchResult = runDispatchBench("switch", kLoopIterations);
 
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     const BenchResult threaded = runDispatchBench("threaded", kLoopIterations);
 #endif
 
@@ -292,7 +292,7 @@ int main() {
         return 1;
     }
 
-#if VIPER_THREADING_SUPPORTED
+#if ZANNA_THREADING_SUPPORTED
     if (table.checksum != threaded.checksum) {
         std::cerr << "Dispatch benchmark checksum mismatch between table and threaded modes."
                   << std::endl;

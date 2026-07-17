@@ -1,0 +1,345 @@
+module editor_hot_path_probe;
+
+// ============================================================================
+// MODULE: editor_hot_path_probe
+// PURPOSE: Display-backed performance guard for large editor-buffer workflows.
+//
+// WHERE-THIS-FITS: EditorEngine and semantic controllers must avoid full-buffer
+//          copies or layout scans during simple cursor movement. This probe
+//          creates representative large buffers and checks those counters.
+//
+// TEACHING-NOTE: Performance probes encode user experience requirements. When a
+//          controller gains work on the typing path, add a bounded counter here.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/inlay_hints";
+bind "../editor/project_index";
+bind "../editor/symbols";
+
+bind Zanna.Terminal as Terminal;
+bind Str = Zanna.String;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Clock = Zanna.Time.Clock;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    var engine = new editor_engine.EditorEngine();
+
+    shell.Build("ZannaIDE Editor Hot Path Probe", 720, 480);
+    engine.Setup(shell.workbench.editorRow);
+
+    var initialRevision = engine.GetRevision();
+    if initialRevision <= 0 {
+        fail(shell, "initial revision");
+        return;
+    }
+
+    engine.editor.SetCursor(0, 0);
+    if engine.GetRevision() != initialRevision {
+        fail(shell, "cursor changed revision");
+        return;
+    }
+
+    engine.SetText("module Probe;\nfunc main() {\n}\n");
+    var loadedRevision = engine.GetRevision();
+    if loadedRevision <= initialRevision {
+        fail(shell, "set text did not bump revision");
+        return;
+    }
+
+    engine.ClearModified();
+    if engine.GetRevision() != loadedRevision {
+        fail(shell, "clear modified changed revision");
+        return;
+    }
+
+    engine.editor.SetCursor(1, 0);
+    if engine.GetRevision() != loadedRevision {
+        fail(shell, "second cursor change changed revision");
+        return;
+    }
+
+    var large = "module Large;\nfunc main() {\n";
+    var largeLine = 0;
+    while largeLine < 20000 {
+        large = large + "    var value" + largeLine + " = " + largeLine + ";\n";
+        largeLine = largeLine + 1;
+    }
+    large = large + "}\n";
+    engine.SetText(large);
+    var largeRevision = engine.GetRevision();
+    engine.editor.ResetPerfStats();
+    var moves = 0;
+    while moves < 200 {
+        engine.editor.SetCursor(moves + 1, 4);
+        moves = moves + 1;
+    }
+    if engine.GetRevision() != largeRevision {
+        fail(shell, "large-file cursor movement changed revision");
+        return;
+    }
+    if engine.editor.GetLayoutLinearScanCount() != 0 {
+        fail(shell, "large-file no-wrap cursor movement scanned layout");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-file cursor movement copied full text");
+        return;
+    }
+    if engine.editor.GetSyntaxHighlightCallCount() != 0 {
+        fail(shell, "large-file cursor movement highlighted text");
+        return;
+    }
+    if engine.editor.GetHighlightSpanCheckCount() != 0 {
+        fail(shell, "large-file cursor movement scanned highlight spans");
+        return;
+    }
+
+    engine.editor.ResetPerfStats();
+    var snapshot1 = engine.GetTextSnapshot();
+    var snapshot2 = engine.GetTextSnapshot();
+    if snapshot1 != snapshot2 {
+        fail(shell, "text snapshot mismatch");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "cached snapshot copied clean revision");
+        return;
+    }
+
+    var beforeSnapshotEditRevision = engine.GetRevision();
+    engine.editor.InsertAtCursor("    var cachedSnapshotProbe = 1;\n");
+    if engine.GetRevision() <= beforeSnapshotEditRevision {
+        fail(shell, "snapshot probe insert did not bump revision");
+        return;
+    }
+    engine.editor.ResetPerfStats();
+    snapshot1 = engine.GetTextSnapshot();
+    snapshot2 = engine.GetTextSnapshot();
+    if snapshot1 != snapshot2 {
+        fail(shell, "edited text snapshot mismatch");
+        return;
+    }
+    if Str.IndexOf(snapshot1, "cachedSnapshotProbe") == 0 {
+        fail(shell, "edited text snapshot stale");
+        return;
+    }
+    var snapshotCopies = engine.editor.GetFullTextCopyCount();
+    if snapshotCopies != 1 {
+        fail(shell, "edited revision not snapshotted exactly once: " + snapshotCopies);
+        return;
+    }
+    if engine.editor.GetFullTextCopyByteCount() <= 0 {
+        fail(shell, "edited revision snapshot byte counter did not update");
+        return;
+    }
+
+    engine.SetText("module Probe;\nfunc main() {\n}\n");
+    loadedRevision = engine.GetRevision();
+    engine.editor.SetCursor(1, 0);
+
+    engine.editor.InsertAtCursor("    var value = 1;\n");
+    var editRevision = engine.GetRevision();
+    if editRevision <= loadedRevision {
+        fail(shell, "insert did not bump revision");
+        return;
+    }
+
+    engine.editor.Undo();
+    var undoRevision = engine.GetRevision();
+    if undoRevision <= editRevision {
+        fail(shell, "undo did not bump revision");
+        return;
+    }
+
+    engine.editor.Redo();
+    var redoRevision = engine.GetRevision();
+    if redoRevision <= undoRevision {
+        fail(shell, "redo did not bump revision");
+        return;
+    }
+
+    var root = TempFile.CreateDirWithPrefix("zannaide_editor_hot_path_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath, "module HotPath;\nfunc main() {\n}\n");
+
+    var docMgr = new document_manager.DocumentManager();
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+    projMgr.OpenFolder(root);
+    var doc = docMgr.OpenFile(filePath);
+    engine.LoadDocument(doc);
+
+    var indexer = new project_index.ProjectIndexer();
+    indexer.EnsureProject(projMgr, docMgr);
+    indexer.ResetPerfStats();
+    var baseSyncs = indexer.syncCount;
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs {
+        fail(shell, "open document sync repeated unchanged content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "unchanged open document updated project index counters");
+        return;
+    }
+    doc.content = doc.content + "// dirty tab\n";
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs + 1 {
+        fail(shell, "open document sync missed changed content");
+        return;
+    }
+    if indexer.updateCount != 1 or indexer.updateBytes < Str.get_Length(doc.content) {
+        fail(shell, "open document project index counters");
+        return;
+    }
+    indexer.ResetPerfStats();
+    indexer.SyncOpenDocuments(docMgr);
+    if indexer.syncCount != baseSyncs + 1 {
+        fail(shell, "open document sync repeated changed content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "project index counters reset or unchanged sync");
+        return;
+    }
+    baseSyncs = indexer.syncCount;
+
+    var frame = 0;
+    while frame < 20 {
+        indexer.SyncActiveWhenIdle(docMgr, engine);
+        frame = frame + 1;
+    }
+    if indexer.syncCount != baseSyncs {
+        fail(shell, "idle index sync repeated without revision change");
+        return;
+    }
+
+    engine.editor.SetCursor(1, 0);
+    engine.editor.InsertAtCursor("    var value = 1;\n");
+    var editedSyncs = indexer.syncCount;
+    indexer.SyncActiveWhenIdle(docMgr, engine);
+    if indexer.syncCount != editedSyncs {
+        fail(shell, "index sync ran before idle");
+        return;
+    }
+    Clock.Sleep(420);
+    indexer.SyncActiveWhenIdle(docMgr, engine);
+    if indexer.syncCount != editedSyncs + 1 {
+        fail(shell, "index sync did not run after idle");
+        return;
+    }
+    if indexer.updateCount != 1 or indexer.updateBytes <= 0 {
+        fail(shell, "active idle sync project index counters");
+        return;
+    }
+
+    var idleLarge = "";
+    var idleLargeLine = "let value = 42;\n";
+    var largeIdx = 0;
+    while largeIdx < 5000 {
+        idleLarge = idleLarge + idleLargeLine;
+        largeIdx = largeIdx + 1;
+    }
+    engine.SetText(idleLarge);
+    engine.editor.SetWordWrap(false);
+    engine.editor.ResetPerfStats();
+    var moveStart = Zanna.Time.Clock.NowMs();
+    var moveIdx = 0;
+    while moveIdx < 1000 {
+        engine.editor.SetCursor(moveIdx % 5000, 4);
+        moveIdx = moveIdx + 1;
+    }
+    var moveElapsed = Zanna.Time.Clock.NowMs() - moveStart;
+    if moveElapsed > 250 {
+        fail(shell, "large-buffer cursor movement exceeded budget: " + moveElapsed + "ms");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-buffer cursor movement copied full text");
+        return;
+    }
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
+    engine.editor.ResetPerfStats();
+    inlayCtrl.Refresh(engine);
+    if inlayCtrl.lastHintCount != 0 or engine.editor.GetInlayHintCount() != 0 {
+        fail(shell, "large-buffer inlay hints were not capped");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-buffer inlay scan copied full text");
+        return;
+    }
+
+    var foldStressSource = "module FoldPerf;\n";
+    var foldStressRaw = "";
+    var foldLine = 2;
+    var foldIdx = 0;
+    while foldIdx < 1200 {
+        foldStressSource = foldStressSource
+            + "func fold" + foldIdx + "() -> Integer {\n"
+            + "    return " + foldIdx + ";\n"
+            + "}\n";
+        foldStressRaw = foldStressRaw
+            + "fold" + foldIdx + "\tfunction\tFunction()->Integer\t" + foldLine + "\n";
+        foldLine = foldLine + 3;
+        foldIdx = foldIdx + 1;
+    }
+    engine.SetText(foldStressSource);
+    var foldStartMs = Zanna.Time.Clock.NowMs();
+    var foldCount = symbols.ApplySemanticFoldRegions(engine, foldStressRaw, 0, foldStressSource);
+    var foldElapsedMs = Zanna.Time.Clock.NowMs() - foldStartMs;
+    if foldCount != 200 {
+        fail(shell, "semantic fold perf count: " + foldCount);
+        return;
+    }
+    if foldElapsedMs > 250 {
+        fail(shell, "semantic fold generation exceeded budget: " + foldElapsedMs + "ms");
+        return;
+    }
+
+    var hiddenOutline = new symbols.SymbolOutline();
+    hiddenOutline.setSourcePath("fold_perf.zia");
+    hiddenOutline.setSemanticFoldingEnabled(true, engine);
+    var hiddenFoldTicks = 0;
+    while hiddenFoldTicks < 20 {
+        hiddenOutline.update(engine);
+        Clock.Sleep(1);
+        hiddenFoldTicks = hiddenFoldTicks + 1;
+    }
+    if hiddenOutline.foldedPath != "fold_perf.zia" {
+        fail(shell, "hidden semantic folding skipped while outline hidden");
+        return;
+    }
+
+    var visibleOutline = new symbols.SymbolOutline();
+    visibleOutline.setup(shell.workbench.editorArea);
+    visibleOutline.setSourcePath("fold_perf.zia");
+    visibleOutline.toggle();
+    visibleOutline.setSemanticFoldingEnabled(true, engine);
+    var foldPumpTicks = 0;
+    while visibleOutline.foldedPath == "" and foldPumpTicks < 200 {
+        visibleOutline.update(engine);
+        Clock.Sleep(1);
+        foldPumpTicks = foldPumpTicks + 1;
+    }
+    if visibleOutline.foldedPath != "fold_perf.zia" {
+        fail(shell, "visible semantic folding initial refresh");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

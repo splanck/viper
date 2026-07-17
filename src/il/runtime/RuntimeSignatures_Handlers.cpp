@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include "rt_fp.h"
 #include "rt_internal.h"
 #include "rt_math.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -66,7 +66,7 @@ TEST(ZiaSema, TypeInferenceInteger) {
 module Test;
 func start() {
     var x = 42;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                                 sm);
@@ -83,8 +83,8 @@ module Test;
 func start() {
     var s = "hello";
     var b = true;
-    Viper.Terminal.Say(s);
-    Viper.Terminal.SayBool(b);
+    Zanna.Terminal.Say(s);
+    Zanna.Terminal.SayBool(b);
 }
 )",
                                 sm);
@@ -105,11 +105,11 @@ module Test;
 func start() {
     var s = "hello world";
     var len = s.Length;
-    Viper.Terminal.SayInt(len);
+    Zanna.Terminal.SayInt(len);
 
     var items = [1, 2, 3];
     var cnt = items.count();
-    Viper.Terminal.SayInt(cnt);
+    Zanna.Terminal.SayInt(cnt);
 }
 )",
                                 sm);
@@ -132,7 +132,7 @@ func start() {
     numbers.add(10);
     numbers.add(20);
     numbers.add(30);
-    Viper.Terminal.SayInt(numbers.count());
+    Zanna.Terminal.SayInt(numbers.count());
 }
 )",
                                 sm);
@@ -150,7 +150,7 @@ func start() {
     var names: List[String] = [];
     names.add("Alice");
     names.add("Bob");
-    Viper.Terminal.SayInt(names.count());
+    Zanna.Terminal.SayInt(names.count());
 }
 )",
                                 sm);
@@ -178,7 +178,7 @@ func start() {
     var fallback: Item = new Item();
     fallback.value = 99;
     var result: Item = maybeItem ?? fallback;
-    Viper.Terminal.SayInt(result.value);
+    Zanna.Terminal.SayInt(result.value);
 }
 )",
                                 sm);
@@ -252,9 +252,9 @@ func start() {
     p.health = 100;
     p.name = "Hero";
     p.alive = true;
-    Viper.Terminal.SayInt(p.health);
-    Viper.Terminal.Say(p.name);
-    Viper.Terminal.SayBool(p.alive);
+    Zanna.Terminal.SayInt(p.health);
+    Zanna.Terminal.Say(p.name);
+    Zanna.Terminal.SayBool(p.alive);
 }
 )",
                                 sm);
@@ -291,7 +291,7 @@ func start() {
     calc.add(10);
     calc.add(20);
     var total: Integer = calc.getResult();
-    Viper.Terminal.SayInt(total);
+    Zanna.Terminal.SayInt(total);
 }
 )",
                                 sm);
@@ -329,8 +329,8 @@ class CasualGreeter implements IGreeter {
 func start() {
     var formal = new FormalGreeter();
     var casual = new CasualGreeter();
-    Viper.Terminal.Say(formal.greet());
-    Viper.Terminal.Say(casual.greet());
+    Zanna.Terminal.Say(formal.greet());
+    Zanna.Terminal.Say(casual.greet());
 }
 )",
                                 sm);
@@ -352,7 +352,7 @@ func start() {
     var x: Number = 42;
     var y: Number = 3.14;
     var z: Number = x + y;
-    Viper.Terminal.SayNum(z);
+    Zanna.Terminal.SayNum(z);
 }
 )",
                                 sm);
@@ -377,7 +377,7 @@ func start() {
     var d = a || b;
     var e = !a;
     var f = (a && !b) || (c && d);
-    Viper.Terminal.SayBool(f);
+    Zanna.Terminal.SayBool(f);
 }
 )",
                                 sm);
@@ -399,7 +399,7 @@ func start() {
     var greeting = "Hello, ";
     var name = "World";
     var message = greeting + name + "!";
-    Viper.Terminal.Say(message);
+    Zanna.Terminal.Say(message);
 }
 )",
                                 sm);
@@ -419,12 +419,12 @@ TEST(ZiaSema, NestedScopeShadowing) {
 module Test;
 func start() {
     var x = 10;
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
     if true {
         var x = 20;
-        Viper.Terminal.SayInt(x);
+        Zanna.Terminal.SayInt(x);
     }
-    Viper.Terminal.SayInt(x);
+    Zanna.Terminal.SayInt(x);
 }
 )",
                                 sm);
@@ -456,9 +456,9 @@ func greeting() -> String {
 }
 
 func start() {
-    Viper.Terminal.SayInt(double(21));
-    Viper.Terminal.SayBool(isPositive(5));
-    Viper.Terminal.Say(greeting());
+    Zanna.Terminal.SayInt(double(21));
+    Zanna.Terminal.SayBool(isPositive(5));
+    Zanna.Terminal.Say(greeting());
 }
 )",
                                 sm);
@@ -488,9 +488,9 @@ func classify(n: Integer) -> String {
 }
 
 func start() {
-    Viper.Terminal.Say(classify(5));
-    Viper.Terminal.Say(classify(-3));
-    Viper.Terminal.Say(classify(0));
+    Zanna.Terminal.Say(classify(5));
+    Zanna.Terminal.Say(classify(-3));
+    Zanna.Terminal.Say(classify(0));
 }
 )",
                                 sm);
@@ -517,7 +517,7 @@ func factorial(n: Integer) -> Integer {
 }
 
 func start() {
-    Viper.Terminal.SayInt(factorial(5));
+    Zanna.Terminal.SayInt(factorial(5));
 }
 )",
                                 sm);
@@ -553,7 +553,7 @@ func start() {
     todo.items = [];
     todo.addItem("Buy milk");
     todo.addItem("Walk dog");
-    Viper.Terminal.SayInt(todo.itemCount());
+    Zanna.Terminal.SayInt(todo.itemCount());
 }
 )",
                                 sm);
@@ -572,7 +572,7 @@ TEST(ZiaSema, UndefinedVariableError) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    Viper.Terminal.SayInt(undeclaredVar);
+    Zanna.Terminal.SayInt(undeclaredVar);
 }
 )",
                                 sm);
@@ -605,8 +605,8 @@ func start() {
     var dog = new Dog();
     dog.age = 5;
     dog.breed = "Labrador";
-    Viper.Terminal.SayInt(dog.getAge());
-    Viper.Terminal.Say(dog.breed);
+    Zanna.Terminal.SayInt(dog.getAge());
+    Zanna.Terminal.Say(dog.breed);
 }
 )",
                                 sm);
@@ -637,7 +637,7 @@ class Derived extends Base {
 func start() {
     final d: Derived = new Derived(0);
     d.y = 3;
-    Viper.Terminal.SayInt(d.y);
+    Zanna.Terminal.SayInt(d.y);
 }
 )",
                                 sm);
@@ -670,7 +670,7 @@ class Derived extends Base {
 
 func start() {
     final d: Derived = new Derived(5);
-    Viper.Terminal.SayInt(d.x);
+    Zanna.Terminal.SayInt(d.x);
 }
 )",
                                 sm);
@@ -691,7 +691,7 @@ module Test;
 func start() {
     var names = ["Alice", "Bob", "Charlie"];
     for name in names {
-        Viper.Terminal.Say(name);
+        Zanna.Terminal.Say(name);
     }
 }
 )",
@@ -718,11 +718,11 @@ func start() {
     var prod = a * b;
     var quot = a / b;
     var rem = a % b;
-    Viper.Terminal.SayInt(sum);
-    Viper.Terminal.SayInt(diff);
-    Viper.Terminal.SayInt(prod);
-    Viper.Terminal.SayInt(quot);
-    Viper.Terminal.SayInt(rem);
+    Zanna.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(diff);
+    Zanna.Terminal.SayInt(prod);
+    Zanna.Terminal.SayInt(quot);
+    Zanna.Terminal.SayInt(rem);
 }
 )",
                                 sm);
@@ -734,6 +734,6 @@ func start() {
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

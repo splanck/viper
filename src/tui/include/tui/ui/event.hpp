@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the Event struct, the generic input event wrapper used
-// throughout Viper's TUI widget system. Events encapsulate terminal input
+// throughout Zanna's TUI widget system. Events encapsulate terminal input
 // (key presses, modifiers) and are routed through the widget tree by the
 // App and FocusManager.
 //
@@ -26,7 +26,7 @@
 
 #include "tui/term/key_event.hpp"
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Generic input event wrapper for the TUI widget system.
 /// @details Encapsulates terminal input data routed through the widget tree.
 ///          Currently wraps a KeyEvent; designed for future extension to include
@@ -34,4 +34,4 @@ namespace viper::tui::ui {
 struct Event {
     term::KeyEvent key{};
 };
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

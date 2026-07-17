@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "viper/il/io/FormatUtils.hpp"
+#include "zanna/il/io/FormatUtils.hpp"
 
 #include <cctype>
 #include <cmath>
@@ -289,8 +289,8 @@ AST::ExprPtr foldStrLiteral(const AST::Expr &arg) {
     if (!numeric)
         return nullptr;
 
-    std::string formatted = numeric->isFloat ? viper::il::io::format_float(numeric->f)
-                                             : viper::il::io::format_integer(numeric->i);
+    std::string formatted = numeric->isFloat ? zanna::il::io::format_float(numeric->f)
+                                             : zanna::il::io::format_integer(numeric->i);
     return make_string(std::move(formatted));
 }
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_sprite.h
@@ -198,7 +198,7 @@ void rt_sprite_move(void *sprite, int64_t dx, int64_t dy);
 /// Maximum number of named animation clips per animator.
 #define RT_ANIM_MAX_CLIPS 32
 
-/// Runtime class tag for Viper.Graphics.SpriteAnimator handles.
+/// Runtime class tag for Zanna.Graphics.SpriteAnimator handles.
 #define RT_SPRITE_ANIMATOR_CLASS_ID 0x5650475350414e49LL
 
 /// @brief A single named animation clip.

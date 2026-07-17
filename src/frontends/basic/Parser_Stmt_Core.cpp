@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -162,7 +162,7 @@ Parser::StmtResult Parser::parseCall(int) {
                 bool ok = true;
                 bool sawAdditionalDot = false;
                 // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments
-                // in dotted namespaces like Viper.Random.Seed() and Viper.IO.File.Delete().
+                // in dotted namespaces like Zanna.Random.Seed() and Zanna.IO.File.Delete().
                 while (isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot) {
                     sawAdditionalDot = true;
                     i += 2;
@@ -188,18 +188,18 @@ Parser::StmtResult Parser::parseCall(int) {
                     } else {
                         // When runtime namespaces are enabled, accept multi-segment
                         // dotted calls even if the head is not pre-registered as a
-                        // namespace (e.g., Viper.IO.File.*).
+                        // namespace (e.g., Zanna.IO.File.*).
                         if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces()) {
                             if (sawAdditionalDot) {
                                 treatAsQualified = true;
                             } else {
-                                // Also accept explicit 'Viper' regardless of registry seeding.
+                                // Also accept explicit 'Zanna' regardless of registry seeding.
                                 if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6) {
                                     std::string head = identTok.lexeme;
                                     for (auto &c : head)
                                         c = static_cast<char>(
                                             std::tolower(static_cast<unsigned char>(c)));
-                                    if (head == "viper")
+                                    if (head == "zanna")
                                         treatAsQualified = true;
                                 }
                             }

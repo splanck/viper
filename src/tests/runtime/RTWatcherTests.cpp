@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //                 events on watched directories and files.
 // Ownership/Lifetime: Uses runtime library; tests create temporary files
 //                     that are cleaned up after tests complete.
-// Links: docs/viperlib/io/advanced.md
+// Links: docs/zannalib/io/advanced.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -79,11 +79,11 @@ static const char *get_test_base() {
         tmp = getenv("TMP");
     if (!tmp)
         tmp = "C:\\Temp";
-    snprintf(buf, sizeof(buf), "%s\\viper_watcher_test_%d", tmp, (int)getpid());
+    snprintf(buf, sizeof(buf), "%s\\zanna_watcher_test_%d", tmp, (int)getpid());
     return buf;
 #else
     static char buf[256];
-    snprintf(buf, sizeof(buf), "/tmp/viper_watcher_test_%d", (int)getpid());
+    snprintf(buf, sizeof(buf), "/tmp/zanna_watcher_test_%d", (int)getpid());
     return buf;
 #endif
 }
@@ -363,7 +363,7 @@ static void test_nonexistent_path_trap() {
 }
 
 #if RT_PLATFORM_LINUX
-/// @brief VDOC-190: an INTERNAL ring overflow (Viper's 64-entry queue fills
+/// @brief VDOC-190: an INTERNAL ring overflow (Zanna's 64-entry queue fills
 ///        before the client polls) reports a POSITIVE exact dropped count via
 ///        EventOverflowCount(), never the -1 native-overflow sentinel. (The
 ///        native IN_Q_OVERFLOW path requires exhausting the kernel queue and is

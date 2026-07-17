@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 ///
 /// @file TestHarness.hpp
-/// @brief Minimal, dependency-free unit testing framework for the Viper project.
+/// @brief Minimal, dependency-free unit testing framework for the Zanna project.
 ///
 /// @details This header provides a lightweight test harness that enables writing
 /// and running unit tests without external dependencies like Google Test or Catch2.
@@ -56,7 +56,7 @@
 ///
 /// Assertion failures and test skips are communicated via exceptions:
 /// - `TestFailure` - Thrown on assertion failure (fatal flag controls abort)
-/// - `TestSkip` - Thrown when `VIPER_TEST_SKIP()` is called
+/// - `TestSkip` - Thrown when `ZANNA_TEST_SKIP()` is called
 ///
 /// ## Usage Example
 ///
@@ -71,13 +71,13 @@
 ///
 /// TEST(MathSuite, Division) {
 ///     if (!hasFpuSupport())
-///         VIPER_TEST_SKIP("FPU not available");
+///         ZANNA_TEST_SKIP("FPU not available");
 ///     EXPECT_EQ(10.0 / 2.0, 5.0);
 /// }
 ///
 /// int main(int argc, char** argv) {
-///     viper_test::init(&argc, argv);
-///     return viper_test::run_all_tests();
+///     zanna_test::init(&argc, argv);
+///     return zanna_test::run_all_tests();
 /// }
 /// ```
 ///
@@ -98,7 +98,7 @@
 /// Tests that need shared setup/teardown can use fixtures:
 ///
 /// ```cpp
-/// class MyFixture : public viper_test::TestFixture {
+/// class MyFixture : public zanna_test::TestFixture {
 /// protected:
 ///     void SetUp() override { /* runs before each test */ }
 ///     void TearDown() override { /* runs after each test */ }
@@ -120,8 +120,8 @@
 /// - **Compatible API**: Macro names mirror Google Test for familiarity
 /// - **Value-printing**: Comparison failures show actual operand values
 ///
-/// @see viper_test::run_all_tests() - Entry point for test execution
-/// @see viper_test::TestCase - Test case descriptor structure
+/// @see zanna_test::run_all_tests() - Entry point for test execution
+/// @see zanna_test::TestCase - Test case descriptor structure
 ///
 //===----------------------------------------------------------------------===//
 
@@ -154,7 +154,7 @@
 #endif
 #endif
 
-namespace viper_test {
+namespace zanna_test {
 
 /// @brief Exception thrown when a test assertion fails.
 ///
@@ -188,7 +188,7 @@ struct TestFailure final : public std::exception {
 
 /// @brief Exception thrown to skip a test with an explanatory message.
 ///
-/// @details Tests can call `VIPER_TEST_SKIP("reason")` to indicate they
+/// @details Tests can call `ZANNA_TEST_SKIP("reason")` to indicate they
 /// cannot run in the current environment (e.g., missing hardware, unsupported
 /// platform). The test runner catches this exception and marks the test as
 /// skipped rather than failed.
@@ -198,7 +198,7 @@ struct TestFailure final : public std::exception {
 /// ```cpp
 /// TEST(Hardware, GpuCompute) {
 ///     if (!hasGpu())
-///         VIPER_TEST_SKIP("No GPU available");
+///         ZANNA_TEST_SKIP("No GPU available");
 ///     // ... GPU tests ...
 /// }
 /// ```
@@ -378,7 +378,7 @@ inline void report_failure(std::string_view expr, const char *file, int line, bo
 }
 
 /// @brief Helper for SFINAE void_t (portable across all C++ standard library versions).
-template <typename...> using viper_void_t = void;
+template <typename...> using zanna_void_t = void;
 
 /// @brief SFINAE helper: detect whether T can be streamed to std::ostream.
 template <typename T, typename = void> struct is_streamable : std::false_type {};
@@ -386,13 +386,13 @@ template <typename T, typename = void> struct is_streamable : std::false_type {}
 template <typename T>
 struct is_streamable<
     T,
-    viper_void_t<decltype(std::declval<std::ostream &>() << std::declval<const T &>())>>
+    zanna_void_t<decltype(std::declval<std::ostream &>() << std::declval<const T &>())>>
     : std::true_type {};
 
 template <typename T, typename = void> struct decays_to_function_pointer : std::false_type {};
 
 template <typename T>
-struct decays_to_function_pointer<T, viper_void_t<decltype(+std::declval<const T &>())>>
+struct decays_to_function_pointer<T, zanna_void_t<decltype(+std::declval<const T &>())>>
     : std::bool_constant<
           std::is_pointer_v<decltype(+std::declval<const T &>())> &&
           std::is_function_v<std::remove_pointer_t<decltype(+std::declval<const T &>())>>> {};
@@ -463,7 +463,7 @@ inline void report_contains_failure(const std::string &haystack,
 
 /// @brief Skip the current test with an explanatory reason.
 ///
-/// @details Called by the VIPER_TEST_SKIP() macro to indicate that a test
+/// @details Called by the ZANNA_TEST_SKIP() macro to indicate that a test
 /// cannot run in the current environment. This function never returns;
 /// it always throws a TestSkip exception.
 ///
@@ -499,8 +499,8 @@ inline void report_contains_failure(const std::string &haystack,
 ///
 /// ```cpp
 /// int main(int argc, char** argv) {
-///     viper_test::init(&argc, argv);
-///     return viper_test::run_all_tests();
+///     zanna_test::init(&argc, argv);
+///     return zanna_test::run_all_tests();
 /// }
 /// ```
 ///
@@ -618,7 +618,7 @@ inline int run_all_tests() {
             xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
             xml << "<testsuites tests=\"" << total << "\" failures=\"" << failures
                 << "\" skipped=\"" << skips << "\">\n";
-            xml << "  <testsuite name=\"viper\" tests=\"" << total << "\" failures=\"" << failures
+            xml << "  <testsuite name=\"zanna\" tests=\"" << total << "\" failures=\"" << failures
                 << "\" skipped=\"" << skips << "\">\n";
             for (const auto &r : results) {
                 xml << "    <testcase classname=\"" << xml_escape(r.suite) << "\" name=\""
@@ -640,7 +640,7 @@ inline int run_all_tests() {
     return failures;
 }
 
-} // namespace viper_test
+} // namespace zanna_test
 
 //===----------------------------------------------------------------------===//
 // Implementation Detail Macros
@@ -648,9 +648,9 @@ inline int run_all_tests() {
 
 /// @cond INTERNAL
 /// Internal macro for token concatenation (indirection required for expansion).
-#define VIPER_TEST_DETAIL_CAT_INNER(a, b) a##b
+#define ZANNA_TEST_DETAIL_CAT_INNER(a, b) a##b
 /// Internal macro for token concatenation.
-#define VIPER_TEST_DETAIL_CAT(a, b) VIPER_TEST_DETAIL_CAT_INNER(a, b)
+#define ZANNA_TEST_DETAIL_CAT(a, b) ZANNA_TEST_DETAIL_CAT_INNER(a, b)
 /// @endcond
 
 //===----------------------------------------------------------------------===//
@@ -676,11 +676,11 @@ inline int run_all_tests() {
 /// @param SuiteName Identifier for the test suite (used for grouping).
 /// @param TestName Identifier for this specific test.
 #define TEST(SuiteName, TestName)                                                                  \
-    static void VIPER_TEST_DETAIL_CAT(SuiteName, TestName)();                                      \
-    static const ::viper_test::TestRegistrar VIPER_TEST_DETAIL_CAT(SuiteName,                      \
+    static void ZANNA_TEST_DETAIL_CAT(SuiteName, TestName)();                                      \
+    static const ::zanna_test::TestRegistrar ZANNA_TEST_DETAIL_CAT(SuiteName,                      \
                                                                    TestName##Registrar)(           \
-        #SuiteName, #TestName, VIPER_TEST_DETAIL_CAT(SuiteName, TestName));                        \
-    static void VIPER_TEST_DETAIL_CAT(SuiteName, TestName)()
+        #SuiteName, #TestName, ZANNA_TEST_DETAIL_CAT(SuiteName, TestName));                        \
+    static void ZANNA_TEST_DETAIL_CAT(SuiteName, TestName)()
 
 //===----------------------------------------------------------------------===//
 // Fixture Test Definition Macro
@@ -695,7 +695,7 @@ inline int run_all_tests() {
 /// ## Example
 ///
 /// ```cpp
-/// class MyFixture : public viper_test::TestFixture {
+/// class MyFixture : public zanna_test::TestFixture {
 /// protected:
 ///     int value;
 ///     void SetUp() override { value = 42; }
@@ -707,12 +707,12 @@ inline int run_all_tests() {
 /// }
 /// ```
 #define TEST_F(FixtureClass, TestName)                                                             \
-    class VIPER_TEST_DETAIL_CAT(FixtureClass, TestName) : public FixtureClass {                    \
+    class ZANNA_TEST_DETAIL_CAT(FixtureClass, TestName) : public FixtureClass {                    \
       public:                                                                                      \
         void TestBody();                                                                           \
     };                                                                                             \
-    static void VIPER_TEST_DETAIL_CAT(FixtureClass, TestName##_Run)() {                            \
-        VIPER_TEST_DETAIL_CAT(FixtureClass, TestName) fixture;                                     \
+    static void ZANNA_TEST_DETAIL_CAT(FixtureClass, TestName##_Run)() {                            \
+        ZANNA_TEST_DETAIL_CAT(FixtureClass, TestName) fixture;                                     \
         fixture.SetUp();                                                                           \
         try {                                                                                      \
             fixture.TestBody();                                                                    \
@@ -722,10 +722,10 @@ inline int run_all_tests() {
         }                                                                                          \
         fixture.TearDown();                                                                        \
     }                                                                                              \
-    static const ::viper_test::TestRegistrar VIPER_TEST_DETAIL_CAT(FixtureClass,                   \
+    static const ::zanna_test::TestRegistrar ZANNA_TEST_DETAIL_CAT(FixtureClass,                   \
                                                                    TestName##Registrar)(           \
-        #FixtureClass, #TestName, VIPER_TEST_DETAIL_CAT(FixtureClass, TestName##_Run));            \
-    void VIPER_TEST_DETAIL_CAT(FixtureClass, TestName)::TestBody()
+        #FixtureClass, #TestName, ZANNA_TEST_DETAIL_CAT(FixtureClass, TestName##_Run));            \
+    void ZANNA_TEST_DETAIL_CAT(FixtureClass, TestName)::TestBody()
 
 //===----------------------------------------------------------------------===//
 // Expectation Macros (Non-Fatal Assertions)
@@ -742,7 +742,7 @@ inline int run_all_tests() {
 #define EXPECT_TRUE(expr)                                                                          \
     do {                                                                                           \
         if (!(expr))                                                                               \
-            ::viper_test::report_failure(#expr, __FILE__, __LINE__, false);                        \
+            ::zanna_test::report_failure(#expr, __FILE__, __LINE__, false);                        \
     } while (false)
 
 /// @def EXPECT_FALSE(expr)
@@ -756,16 +756,16 @@ inline int run_all_tests() {
 // value-printing macros bind to const auto& which can trigger -Wsign-compare
 // when comparing signed and unsigned types (a very common pattern in tests).
 #if defined(__clang__) || defined(__GNUC__)
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
     _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_END _Pragma("GCC diagnostic pop")
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END _Pragma("GCC diagnostic pop")
 #elif defined(_MSC_VER)
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
     __pragma(warning(push)) __pragma(warning(disable : 4018 4389))
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_END __pragma(warning(pop))
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END __pragma(warning(pop))
 #else
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN
-#define VIPER_TEST_SUPPRESS_SIGN_COMPARE_END
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN
+#define ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END
 #endif
 
 /// @def EXPECT_EQ(val1, val2)
@@ -773,96 +773,96 @@ inline int run_all_tests() {
 /// On failure, prints both actual values.
 #define EXPECT_EQ(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ == viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "==", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ == zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "==", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_NE(val1, val2)
 /// @brief Assert that two values are not equal using operator!= (non-fatal).
 #define EXPECT_NE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ != viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "!=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ != zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "!=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_GT(val1, val2)
 /// @brief Assert val1 > val2 (non-fatal). Prints both values on failure.
 #define EXPECT_GT(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ > viper_test_rhs_))                                                  \
-            ::viper_test::report_comparison_failure(                                               \
-                ">", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ > zanna_test_rhs_))                                                  \
+            ::zanna_test::report_comparison_failure(                                               \
+                ">", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_LT(val1, val2)
 /// @brief Assert val1 < val2 (non-fatal). Prints both values on failure.
 #define EXPECT_LT(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ < viper_test_rhs_))                                                  \
-            ::viper_test::report_comparison_failure(                                               \
-                "<", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ < zanna_test_rhs_))                                                  \
+            ::zanna_test::report_comparison_failure(                                               \
+                "<", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_GE(val1, val2)
 /// @brief Assert val1 >= val2 (non-fatal). Prints both values on failure.
 #define EXPECT_GE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ >= viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                ">=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ >= zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                ">=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_LE(val1, val2)
 /// @brief Assert val1 <= val2 (non-fatal). Prints both values on failure.
 #define EXPECT_LE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ <= viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "<=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ <= zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "<=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, false);  \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def EXPECT_NEAR(val1, val2, epsilon)
 /// @brief Assert |val1 - val2| <= epsilon (non-fatal). For floating-point comparisons.
 #define EXPECT_NEAR(val1, val2, epsilon)                                                           \
     do {                                                                                           \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        const auto viper_test_eps_ = (epsilon);                                                    \
-        if (std::fabs(static_cast<double>(viper_test_lhs_) -                                       \
-                      static_cast<double>(viper_test_rhs_)) >                                      \
-            static_cast<double>(viper_test_eps_)) {                                                \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        const auto zanna_test_eps_ = (epsilon);                                                    \
+        if (std::fabs(static_cast<double>(zanna_test_lhs_) -                                       \
+                      static_cast<double>(zanna_test_rhs_)) >                                      \
+            static_cast<double>(zanna_test_eps_)) {                                                \
             std::cerr << __FILE__ << ":" << __LINE__ << ": failure\n";                             \
             std::cerr << "  expression: |" #val1 " - " #val2 "| <= " #epsilon "\n";                \
-            std::cerr << "  left value:  " << viper_test_lhs_ << "\n";                             \
-            std::cerr << "  right value: " << viper_test_rhs_ << "\n";                             \
-            std::cerr << "  epsilon:     " << viper_test_eps_ << "\n";                             \
-            throw ::viper_test::TestFailure(false);                                                \
+            std::cerr << "  left value:  " << zanna_test_lhs_ << "\n";                             \
+            std::cerr << "  right value: " << zanna_test_rhs_ << "\n";                             \
+            std::cerr << "  epsilon:     " << zanna_test_eps_ << "\n";                             \
+            throw ::zanna_test::TestFailure(false);                                                \
         }                                                                                          \
     } while (false)
 
@@ -870,26 +870,26 @@ inline int run_all_tests() {
 /// @brief Assert that haystack string contains needle (non-fatal).
 #define EXPECT_CONTAINS(haystack, needle)                                                          \
     do {                                                                                           \
-        const std::string viper_test_h_(haystack);                                                 \
-        const std::string viper_test_n_(needle);                                                   \
-        if (viper_test_h_.find(viper_test_n_) == std::string::npos)                                \
-            ::viper_test::report_contains_failure(                                                 \
-                viper_test_h_, viper_test_n_, #haystack, #needle, __FILE__, __LINE__, false);      \
+        const std::string zanna_test_h_(haystack);                                                 \
+        const std::string zanna_test_n_(needle);                                                   \
+        if (zanna_test_h_.find(zanna_test_n_) == std::string::npos)                                \
+            ::zanna_test::report_contains_failure(                                                 \
+                zanna_test_h_, zanna_test_n_, #haystack, #needle, __FILE__, __LINE__, false);      \
     } while (false)
 
 /// @def EXPECT_THROWS(expr, ExcType)
 /// @brief Assert that expr throws an exception of type ExcType (non-fatal).
 #define EXPECT_THROWS(expr, ExcType)                                                               \
     do {                                                                                           \
-        bool viper_test_caught_ = false;                                                           \
+        bool zanna_test_caught_ = false;                                                           \
         try {                                                                                      \
             (void)(expr);                                                                          \
         } catch (const ExcType &) {                                                                \
-            viper_test_caught_ = true;                                                             \
+            zanna_test_caught_ = true;                                                             \
         } catch (...) {                                                                            \
         }                                                                                          \
-        if (!viper_test_caught_)                                                                   \
-            ::viper_test::report_failure(#expr " throws " #ExcType, __FILE__, __LINE__, false);    \
+        if (!zanna_test_caught_)                                                                   \
+            ::zanna_test::report_failure(#expr " throws " #ExcType, __FILE__, __LINE__, false);    \
     } while (false)
 
 /// @def EXPECT_NO_THROW(expr)
@@ -899,7 +899,7 @@ inline int run_all_tests() {
         try {                                                                                      \
             (void)(expr);                                                                          \
         } catch (...) {                                                                            \
-            ::viper_test::report_failure(#expr " should not throw", __FILE__, __LINE__, false);    \
+            ::zanna_test::report_failure(#expr " should not throw", __FILE__, __LINE__, false);    \
         }                                                                                          \
     } while (false)
 
@@ -912,7 +912,7 @@ inline int run_all_tests() {
 #define ASSERT_TRUE(expr)                                                                          \
     do {                                                                                           \
         if (!(expr))                                                                               \
-            ::viper_test::report_failure(#expr, __FILE__, __LINE__, true);                         \
+            ::zanna_test::report_failure(#expr, __FILE__, __LINE__, true);                         \
     } while (false)
 
 /// @def ASSERT_FALSE(expr)
@@ -923,85 +923,85 @@ inline int run_all_tests() {
 /// @brief Assert that two values are equal using operator== (fatal). Prints values on failure.
 #define ASSERT_EQ(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ == viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "==", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ == zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "==", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def ASSERT_NE(val1, val2)
 /// @brief Assert that two values are not equal using operator!= (fatal).
 #define ASSERT_NE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ != viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "!=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ != zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "!=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def ASSERT_GT(val1, val2)
 /// @brief Assert val1 > val2 (fatal).
 #define ASSERT_GT(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ > viper_test_rhs_))                                                  \
-            ::viper_test::report_comparison_failure(                                               \
-                ">", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);    \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ > zanna_test_rhs_))                                                  \
+            ::zanna_test::report_comparison_failure(                                               \
+                ">", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);    \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def ASSERT_LT(val1, val2)
 /// @brief Assert val1 < val2 (fatal).
 #define ASSERT_LT(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ < viper_test_rhs_))                                                  \
-            ::viper_test::report_comparison_failure(                                               \
-                "<", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);    \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ < zanna_test_rhs_))                                                  \
+            ::zanna_test::report_comparison_failure(                                               \
+                "<", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);    \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def ASSERT_GE(val1, val2)
 /// @brief Assert val1 >= val2 (fatal).
 #define ASSERT_GE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ >= viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                ">=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ >= zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                ">=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 /// @def ASSERT_LE(val1, val2)
 /// @brief Assert val1 <= val2 (fatal).
 #define ASSERT_LE(val1, val2)                                                                      \
     do {                                                                                           \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
-        const auto viper_test_lhs_ = (val1);                                                       \
-        const auto viper_test_rhs_ = (val2);                                                       \
-        if (!(viper_test_lhs_ <= viper_test_rhs_))                                                 \
-            ::viper_test::report_comparison_failure(                                               \
-                "<=", viper_test_lhs_, viper_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
-        VIPER_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
+        const auto zanna_test_lhs_ = (val1);                                                       \
+        const auto zanna_test_rhs_ = (val2);                                                       \
+        if (!(zanna_test_lhs_ <= zanna_test_rhs_))                                                 \
+            ::zanna_test::report_comparison_failure(                                               \
+                "<=", zanna_test_lhs_, zanna_test_rhs_, #val1, #val2, __FILE__, __LINE__, true);   \
+        ZANNA_TEST_SUPPRESS_SIGN_COMPARE_END                                                       \
     } while (false)
 
 //===----------------------------------------------------------------------===//
 // Test Skip Macro
 //===----------------------------------------------------------------------===//
 
-/// @def VIPER_TEST_SKIP(reason)
+/// @def ZANNA_TEST_SKIP(reason)
 /// @brief Skip the current test with an explanatory reason.
 ///
 /// @details Use this macro when a test cannot run in the current environment
@@ -1013,13 +1013,13 @@ inline int run_all_tests() {
 /// ```cpp
 /// TEST(Network, WebSocket) {
 ///     if (!networkAvailable())
-///         VIPER_TEST_SKIP("No network connection");
+///         ZANNA_TEST_SKIP("No network connection");
 ///     // ... network tests ...
 /// }
 /// ```
 ///
 /// @param reason Human-readable string explaining why the test is skipped.
-#define VIPER_TEST_SKIP(reason)                                                                    \
+#define ZANNA_TEST_SKIP(reason)                                                                    \
     do {                                                                                           \
-        ::viper_test::skip(reason);                                                                \
+        ::zanna_test::skip(reason);                                                                \
     } while (false)

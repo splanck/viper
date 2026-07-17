@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
 /// @brief Rotate a 32-bit value left by @p bits (SHA-1 round operation).
@@ -242,4 +242,4 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
     return hexDigest(sha256Bytes(data, len));
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

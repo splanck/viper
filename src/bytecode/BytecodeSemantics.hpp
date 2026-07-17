@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 ///          those fields and @ref il::semantics::IntWidth so both dispatch loops,
 ///          the compiler, and validation use the same interpretation.
 
-namespace viper::bytecode::detail {
+namespace zanna::bytecode::detail {
 
 /// @brief Convert an IL type kind into shared integer-width metadata.
 /// @details Unsupported or non-integer kinds conservatively select I64 to match
@@ -151,4 +151,4 @@ namespace viper::bytecode::detail {
     }
 }
 
-} // namespace viper::bytecode::detail
+} // namespace zanna::bytecode::detail

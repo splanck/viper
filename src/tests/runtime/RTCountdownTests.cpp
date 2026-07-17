@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTCountdownTests.cpp
-// Purpose: Tests for Viper.Time.Countdown interval timing functions.
+// Purpose: Tests for Zanna.Time.Countdown interval timing functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -316,7 +316,7 @@ static void test_wrong_class_receiver_traps() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Time.Countdown Tests ===\n\n");
+    printf("=== Zanna.Time.Countdown Tests ===\n\n");
 
     // Basic creation
     test_new_countdown();

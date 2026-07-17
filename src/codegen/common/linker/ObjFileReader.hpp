@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 enum class ComdatSelection : uint8_t {
     None,
@@ -163,4 +163,4 @@ bool readMachOObj(
 bool readCoffObj(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

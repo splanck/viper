@@ -1,7 +1,7 @@
 // =============================================================================
 // CENTIPEDE - Configuration and Constants
 // =============================================================================
-// A comprehensive Centipede clone demonstrating Zia/Viper capabilities
+// A comprehensive Centipede clone demonstrating Zia/Zanna capabilities
 // =============================================================================
 
 module config;
@@ -77,7 +77,7 @@ final KEY_S = 83;
 final KEY_D = 68;
 
 // =============================================================================
-// ACTION NAMES (for Viper.Input.Action mapping)
+// ACTION NAMES (for Zanna.Input.Action mapping)
 // =============================================================================
 
 final ACT_LEFT = "move_left";

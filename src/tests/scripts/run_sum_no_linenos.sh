@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BIN="${1:-./build/src/tools/viper/viper}"
+BIN="${1:-./build/src/tools/zanna/zanna}"
 BASIC="src/tests/basic/sum_no_linenos.bas"
 OUT="$("$BIN" front basic -run "$BASIC")"
 # Expect exact output:

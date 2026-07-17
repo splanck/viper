@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 #include "frontends/basic/SelectModel.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
-#include "viper/il/IO.hpp"
+#include "zanna/il/IO.hpp"
 
 #include <charconv>
 #include <optional>

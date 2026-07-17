@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,8 +18,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_canvas3d.h"
@@ -274,17 +274,17 @@ bool test_probe_grid_sampling_and_roundtrip() {
     double nr = rt_vec3_x(near_s), fr = rt_vec3_x(far_s);
     EXPECT_TRUE(nr > fr, "probe irradiance is brighter near the light");
 
-    EXPECT_TRUE(rt_lightprobegrid3d_save(grid, rt_const_cstr("/tmp/viper_probe_grid.vlpg")) == 1,
+    EXPECT_TRUE(rt_lightprobegrid3d_save(grid, rt_const_cstr("/tmp/zanna_probe_grid.vlpg")) == 1,
                 "grid saves");
     void *gmin2 = rt_vec3_new(0.0, 0.0, 0.0);
     void *gmax2 = rt_vec3_new(1.0, 1.0, 1.0);
     void *grid2 = rt_lightprobegrid3d_new(gmin2, gmax2, 1.0);
-    EXPECT_TRUE(rt_lightprobegrid3d_load(grid2, rt_const_cstr("/tmp/viper_probe_grid.vlpg")) == 1,
+    EXPECT_TRUE(rt_lightprobegrid3d_load(grid2, rt_const_cstr("/tmp/zanna_probe_grid.vlpg")) == 1,
                 "grid loads");
     void *near_s2 = rt_lightprobegrid3d_sample(grid2, near_pos, up);
     EXPECT_TRUE(rt_vec3_x(near_s2) == nr, "loaded grid samples identically");
 
-    const char *truncated_path = "/tmp/viper_probe_grid_truncated.vlpg";
+    const char *truncated_path = "/tmp/zanna_probe_grid_truncated.vlpg";
     FILE *truncated = std::fopen(truncated_path, "wb");
     EXPECT_TRUE(truncated != nullptr, "truncated-grid fixture opens");
     EXPECT_TRUE(std::fwrite("VLPG0001", 1, 8, truncated) == 8, "truncated-grid header writes");

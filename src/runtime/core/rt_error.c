@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -190,9 +190,9 @@ static _Thread_local uint64_t tls_trap_ip = 0;
 static _Thread_local int32_t tls_trap_line = -1;
 static _Thread_local int8_t tls_trap_has_current = 0;
 
-/// @brief Immutable snapshot backing `Viper.Diagnostics.TrapInfo`.
+/// @brief Immutable snapshot backing `Zanna.Diagnostics.TrapInfo`.
 /// @details Captures thread-local trap metadata at the moment
-///          `Viper.Diagnostics.CurrentTrap` is called. String fields are owned
+///          `Zanna.Diagnostics.CurrentTrap` is called. String fields are owned
 ///          by the snapshot and released by @ref rt_trap_info_finalizer.
 typedef struct rt_trap_info {
     int64_t kind;
@@ -238,7 +238,7 @@ static rt_trap_info_t *rt_trap_info_checked(void *obj, const char *member) {
     char buffer[160];
     snprintf(buffer,
              sizeof(buffer),
-             "Viper.Diagnostics.TrapInfo.%s: invalid TrapInfo object",
+             "Zanna.Diagnostics.TrapInfo.%s: invalid TrapInfo object",
              member ? member : "member");
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     return NULL;
@@ -304,7 +304,7 @@ void *rt_diagnostics_current_trap(void) {
         snprintf(saved_error,
                  sizeof(saved_error),
                  "%s",
-                 err && err[0] ? err : "Viper.Diagnostics.CurrentTrap: allocation failed");
+                 err && err[0] ? err : "Zanna.Diagnostics.CurrentTrap: allocation failed");
         rt_trap_clear_recovery();
         rt_trap_info_release_maybe(info);
         rt_trap(saved_error);
@@ -318,31 +318,31 @@ void *rt_diagnostics_current_trap(void) {
     return option;
 }
 
-/// @brief Read the trap kind from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the trap kind from a `Zanna.Diagnostics.TrapInfo` snapshot.
 int64_t rt_trap_info_get_kind(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Kind");
     return info ? info->kind : 0;
 }
 
-/// @brief Read the runtime error code from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the runtime error code from a `Zanna.Diagnostics.TrapInfo` snapshot.
 int64_t rt_trap_info_get_code(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Code");
     return info ? info->code : 0;
 }
 
-/// @brief Read the instruction pointer from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the instruction pointer from a `Zanna.Diagnostics.TrapInfo` snapshot.
 int64_t rt_trap_info_get_ip(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Ip");
     return info ? info->ip : 0;
 }
 
-/// @brief Read the source line from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the source line from a `Zanna.Diagnostics.TrapInfo` snapshot.
 int64_t rt_trap_info_get_line(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Line");
     return info ? info->line : -1;
 }
 
-/// @brief Read the trap kind name from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the trap kind name from a `Zanna.Diagnostics.TrapInfo` snapshot.
 rt_string rt_trap_info_get_kind_name(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "KindName");
     if (!info || !info->kind_name)
@@ -350,7 +350,7 @@ rt_string rt_trap_info_get_kind_name(void *obj) {
     return rt_string_ref(info->kind_name);
 }
 
-/// @brief Read the message from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the message from a `Zanna.Diagnostics.TrapInfo` snapshot.
 rt_string rt_trap_info_get_message(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Message");
     if (!info || !info->message)
@@ -358,7 +358,7 @@ rt_string rt_trap_info_get_message(void *obj) {
     return rt_string_ref(info->message);
 }
 
-/// @brief Read the formatted location from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @brief Read the formatted location from a `Zanna.Diagnostics.TrapInfo` snapshot.
 rt_string rt_trap_info_get_location(void *obj) {
     rt_trap_info_t *info = rt_trap_info_checked(obj, "Location");
     if (!info || !info->location)

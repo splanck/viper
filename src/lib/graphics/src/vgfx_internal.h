@@ -1,15 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Internal Structures and Platform Abstraction
+// ZannaGFX Internal Structures and Platform Abstraction
 //
 // Defines the internal window representation, platform backend interface,
 // and internal helper functions.  This header is NOT part of the public API
-// and is only included by ViperGFX implementation files.
+// and is only included by ZannaGFX implementation files.
 //
 // Platform Backend Contract:
 //   Each platform backend (vgfx_platform_*.c) must implement the platform
@@ -27,7 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Internal structures and platform abstraction layer for ViperGFX.
+/// @brief Internal structures and platform abstraction layer for ZannaGFX.
 /// @details Not part of the public API.  Defines the complete window structure,
 ///          platform backend interface, and internal helper functions.
 
@@ -49,7 +49,7 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 typedef volatile long vgfx_atomic_flag_t;
 
-/// @brief Initialize a ViperGFX atomic flag to the unlocked state.
+/// @brief Initialize a ZannaGFX atomic flag to the unlocked state.
 /// @details MSVC's Interlocked-backed flag is a plain long-compatible value, so
 ///          writing zero before publication is sufficient and avoids depending
 ///          on calloc'd storage for synchronization state.
@@ -69,7 +69,7 @@ static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
 #else
 typedef atomic_bool vgfx_atomic_flag_t;
 
-/// @brief Initialize a ViperGFX atomic flag to the unlocked state.
+/// @brief Initialize a ZannaGFX atomic flag to the unlocked state.
 /// @details The internal non-MSVC flag is an atomic boolean instead of C11's
 ///          `atomic_flag` so heap-allocated window objects have a well-defined
 ///          runtime initialization path.
@@ -116,7 +116,7 @@ typedef struct vgfx_retired_framebuffer {
     struct vgfx_retired_framebuffer *next; ///< Next retired allocation, or NULL.
 } vgfx_retired_framebuffer_t;
 
-/// @brief Complete internal representation of a ViperGFX window.
+/// @brief Complete internal representation of a ZannaGFX window.
 /// @details Contains all state required to manage a window: framebuffer,
 ///          event queue, input tracking, timing, and platform-specific data.
 ///          The public API exposes this as an opaque vgfx_window_t handle.
@@ -589,12 +589,12 @@ void vgfx_platform_show_cursor(void);
 void vgfx_platform_macos_finish_launching_if_needed(void);
 
 /// @brief Install the standard macOS app/window menus as the active main menu.
-/// @details Replaces any current main menu with the default Viper menu set.
+/// @details Replaces any current main menu with the default Zanna menu set.
 ///          preferred_title is used for the application menu title when non-empty.
 void vgfx_platform_macos_install_default_main_menu(const char *preferred_title);
 
 /// @brief Ensure a default macOS main menu exists without clobbering custom menus.
-/// @details If the current main menu is absent or is already the default Viper
+/// @details If the current main menu is absent or is already the default Zanna
 ///          menu, this rebuilds it. If a custom menu is active, it is preserved.
 void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title);
 #endif
@@ -736,7 +736,7 @@ void vgfx_internal_clear_input_state(struct vgfx_window *win);
 ///          lock, and updates the sticky polling state used by
 ///          `vgfx_key_down()`.  Invalid keys are ignored.
 /// @param win Window whose key state should be updated.
-/// @param key Viper key code to update.
+/// @param key Zanna key code to update.
 /// @param down Non-zero when pressed, zero when released.
 void vgfx_internal_set_key_state(struct vgfx_window *win, int32_t key, int32_t down);
 

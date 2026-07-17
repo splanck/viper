@@ -1,14 +1,14 @@
-// seq_demo.zia - Comprehensive API audit for Viper.Collections.Seq
+// seq_demo.zia - Comprehensive API audit for Zanna.Collections.Seq
 // Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Capacity, IsEmpty, Find, FindOption, Has,
 //        Insert, Remove, Clear, Clone, First, Last, Peek, Slice, Reverse,
 //        Sort, SortDesc, Shuffle, Take, Drop, PushAll
 
 module SeqDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== Seq API Audit ===");

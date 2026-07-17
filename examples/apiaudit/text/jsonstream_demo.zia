@@ -1,8 +1,8 @@
 module JsonStreamDemo;
-bind Viper.Terminal;
-bind Viper.Data.JsonStream as JS;
+bind Zanna.Terminal;
+bind Zanna.Data.JsonStream as JS;
 func start() {
-    Say("=== Viper.Data.JsonStream API Audit ===");
+    Say("=== Zanna.Data.JsonStream API Audit ===");
 
     // --- New ---
     Say("--- New / NextResult / TokenType ---");

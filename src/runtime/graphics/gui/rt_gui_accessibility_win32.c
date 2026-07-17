@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_accessibility_win32.c
-// Purpose: Win32 accessibility-preference adapter for the Viper GUI runtime.
+// Purpose: Win32 accessibility-preference adapter for the Zanna GUI runtime.
 //
 // Key invariants:
 //   - SystemParametersInfo is queried on demand and results are normalized.
@@ -12,7 +12,7 @@
 //   - No registry keys or global process settings are modified.
 //
 // Ownership/Lifetime:
-//   - The supplied ViperGFX window is borrowed and not retained.
+//   - The supplied ZannaGFX window is borrowed and not retained.
 //   - All Win32 descriptors are stack-owned for the duration of a query.
 //
 // Links: src/runtime/graphics/gui/rt_gui_accessibility_platform.h,
@@ -61,7 +61,7 @@ int32_t rt_gui_accessibility_platform_reduced_motion(vgfx_window_t window) {
 /// @details `AppsUseLightTheme` is a DWORD maintained by Windows personalization settings. A
 ///          missing key, access failure, unexpected type, or malformed size uses the stable light
 ///          fallback. The registry handle is predefined and therefore requires no cleanup.
-/// @param window Borrowed ViperGFX window; unused because the setting is per-user.
+/// @param window Borrowed ZannaGFX window; unused because the setting is per-user.
 /// @return One when applications should use dark mode, otherwise zero.
 int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
     (void)window;

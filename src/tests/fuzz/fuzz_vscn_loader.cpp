@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,26 +23,26 @@
 #include "rt_scene3d.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (!viper_fuzz3d::input_is_bounded(size))
+    if (!zanna_fuzz3d::input_is_bounded(size))
         return 0;
 
-    std::string path = viper_fuzz3d::write_temp_asset("viper_fuzz_vscn_", ".vscn", data, size);
+    std::string path = zanna_fuzz3d::write_temp_asset("zanna_fuzz_vscn_", ".vscn", data, size);
     if (path.empty())
         return 0;
     rt_asset_error_clear();
-    rt_string runtime_path = viper_fuzz3d::runtime_string_from_path(path);
+    rt_string runtime_path = zanna_fuzz3d::runtime_string_from_path(path);
     if (runtime_path) {
         void *scene = rt_scene3d_load(runtime_path);
-        viper_fuzz3d::release_runtime_object(scene);
+        zanna_fuzz3d::release_runtime_object(scene);
         rt_string_unref(runtime_path);
     }
-    viper_fuzz3d::remove_temp_asset(path);
+    zanna_fuzz3d::remove_temp_asset(path);
 
     /* Also exercise the in-memory entry point, which has its own length handling
      * before delegating to the shared parser (rt_scene3d_load_from_memory). */
     rt_asset_error_clear();
     void *mem_scene =
         rt_scene3d_load_from_memory(nullptr, reinterpret_cast<const char *>(data), size);
-    viper_fuzz3d::release_runtime_object(mem_scene);
+    zanna_fuzz3d::release_runtime_object(mem_scene);
     return 0;
 }

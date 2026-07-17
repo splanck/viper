@@ -1,29 +1,29 @@
 module RuntimeTest45;
 
 bind "./_support";
-bind Viper.Data.Json;
-bind Viper.Text.Fmt;
-bind Viper.Math.Easing;
-bind Viper.Collections.Map;
-bind Viper.Option as Option;
+bind Zanna.Data.Json;
+bind Zanna.Text.Fmt;
+bind Zanna.Math.Easing;
+bind Zanna.Collections.Map;
+bind Zanna.Option as Option;
 
 // EXPECT_OUT: RESULT: ok
 
 func testCanonicalRuntimeSurface() {
-    assertEqStr(Viper.Text.Fmt.Int(42), "42", "fmt_int");
-    assertTrue(Viper.String.Contains(Viper.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
+    assertEqStr(Zanna.Text.Fmt.Int(42), "42", "fmt_int");
+    assertTrue(Zanna.String.Contains(Zanna.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
 
-    var seq = new Viper.Collections.Seq();
+    var seq = new Zanna.Collections.Seq();
     assertEqInt(seq.Count, 0, "seq_new_count");
     seq.Push("x");
-    assertEqStr(Viper.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
+    assertEqStr(Zanna.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
 
-    var list = Viper.Collections.List.New();
-    assertEqInt(Viper.Collections.List.get_Count(list), 0, "list_count");
+    var list = Zanna.Collections.List.New();
+    assertEqInt(Zanna.Collections.List.get_Count(list), 0, "list_count");
 }
 
 func testCollectionSnapshots() {
-    var map = new Viper.Collections.Map();
+    var map = new Zanna.Collections.Map();
     map.SetStr("name", "zia");
     map.SetInt("version", 1);
     assertEqInt(map.Keys().Count, 2, "map_keys_count");
@@ -31,11 +31,11 @@ func testCollectionSnapshots() {
 }
 
 func testConstructorsAndRandom() {
-    var ring = new Viper.Collections.Ring();
+    var ring = new Zanna.Collections.Ring();
     assertGtInt(ring.Capacity, 0, "ring_default_ctor");
 
-    var a = new Viper.Math.Random(123);
-    var b = new Viper.Math.Random(123);
+    var a = new Zanna.Math.Random(123);
+    var b = new Zanna.Math.Random(123);
     assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_first");
     assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_second");
     assertInRange(a.NextDouble(), 0.0, 1.0, "random_next_double");
@@ -46,31 +46,31 @@ func testConstructorsAndRandom() {
 
 func testJsonMachineVecAndEasing() {
     var obj = NewObject();
-    Viper.Collections.Map.SetStr(obj, "name", "zia");
-    Viper.Collections.Map.SetInt(obj, "version", 1);
-    Viper.Collections.Map.SetBool(obj, "ready", true);
-    assertEqStr(Viper.Collections.Map.GetStr(obj, "name"), "zia", "json_get_str");
-    assertEqInt(Viper.Collections.Map.GetInt(obj, "version"), 1, "json_get_int");
-    assertTrue(Viper.Collections.Map.GetBool(obj, "ready"), "json_get_bool");
-    assertTrue(Viper.Collections.Map.Has(obj, "name"), "json_has");
-    assertTrue(Viper.String.Contains(Viper.Data.Json.Format(obj), "zia"), "json_format");
+    Zanna.Collections.Map.SetStr(obj, "name", "zia");
+    Zanna.Collections.Map.SetInt(obj, "version", 1);
+    Zanna.Collections.Map.SetBool(obj, "ready", true);
+    assertEqStr(Zanna.Collections.Map.GetStr(obj, "name"), "zia", "json_get_str");
+    assertEqInt(Zanna.Collections.Map.GetInt(obj, "version"), 1, "json_get_int");
+    assertTrue(Zanna.Collections.Map.GetBool(obj, "ready"), "json_get_bool");
+    assertTrue(Zanna.Collections.Map.Has(obj, "name"), "json_has");
+    assertTrue(Zanna.String.Contains(Zanna.Data.Json.Format(obj), "zia"), "json_format");
 
-    assertNotEmpty(Viper.System.Machine.get_Os(), "environment_platform");
-    assertNotEmpty(Viper.System.Machine.get_Arch(), "machine_arch");
-    assertGtInt(Viper.System.Machine.get_PageSize(), 0, "machine_page_size");
-    assertGtInt(Viper.System.Machine.get_PointerSize(), 0, "machine_pointer_size");
+    assertNotEmpty(Zanna.System.Machine.get_Os(), "environment_platform");
+    assertNotEmpty(Zanna.System.Machine.get_Arch(), "machine_arch");
+    assertGtInt(Zanna.System.Machine.get_PageSize(), 0, "machine_page_size");
+    assertGtInt(Zanna.System.Machine.get_PointerSize(), 0, "machine_pointer_size");
 
-    var v = new Viper.Math.Vec2(3.0, 4.0);
+    var v = new Zanna.Math.Vec2(3.0, 4.0);
     assertApprox(v.Length(), 5.0, 0.0001, "vec2_length");
-    assertApprox(Viper.Math.Vec2.Dist(new Viper.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance");
-    assertApprox(Viper.Math.Easing.EaseInQuad(0.5), 0.25, 0.0001, "easing_in_quad");
+    assertApprox(Zanna.Math.Vec2.Dist(new Zanna.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance");
+    assertApprox(Zanna.Math.Easing.EaseInQuad(0.5), 0.25, 0.0001, "easing_in_quad");
 }
 
 var lazySupplierRuns: Integer = 0;
 
-func buildLazySeq() -> Viper.Collections.Seq {
+func buildLazySeq() -> Zanna.Collections.Seq {
     lazySupplierRuns = lazySupplierRuns + 1;
-    var s = new Viper.Collections.Seq();
+    var s = new Zanna.Collections.Seq();
     s.Push("computed");
     return s;
 }
@@ -78,59 +78,59 @@ func buildLazySeq() -> Viper.Collections.Seq {
 func testLazyDeferredFactory() {
     // Lazy.New defers: the supplier must not run until first access, must run
     // exactly once, and the result must be cached across accesses.
-    var deferred = Viper.Functional.Lazy.New(buildLazySeq);
+    var deferred = Zanna.Functional.Lazy.New(buildLazySeq);
     assertEqInt(lazySupplierRuns, 0, "lazy_new_not_evaluated_early");
     assertTrue(!deferred.get_IsEvaluated(), "lazy_new_is_evaluated_false");
 
     var first = deferred.Get();
     assertEqInt(lazySupplierRuns, 1, "lazy_new_supplier_ran_once");
     assertTrue(deferred.get_IsEvaluated(), "lazy_new_is_evaluated_true");
-    assertEqStr(Viper.Collections.Seq.GetStr(first, 0), "computed", "lazy_new_payload");
+    assertEqStr(Zanna.Collections.Seq.GetStr(first, 0), "computed", "lazy_new_payload");
 
     deferred.Get();
     deferred.Force();
     assertEqInt(lazySupplierRuns, 1, "lazy_new_supplier_cached");
 
     // Of* factories stay eager.
-    var eager = Viper.Functional.Lazy.OfI64(9);
+    var eager = Zanna.Functional.Lazy.OfI64(9);
     assertTrue(eager.get_IsEvaluated(), "lazy_of_is_evaluated");
     assertEqInt(eager.GetI64(), 9, "lazy_of_payload");
 }
 
-func combinatorTag(x: Viper.Collections.Seq) -> Viper.Collections.Seq {
+func combinatorTag(x: Zanna.Collections.Seq) -> Zanna.Collections.Seq {
     x.Push("mapped");
     return x;
 }
 
-func combinatorNonEmpty(x: Viper.Collections.Seq) -> Boolean {
+func combinatorNonEmpty(x: Zanna.Collections.Seq) -> Boolean {
     return x.Count > 0;
 }
 
-func combinatorFallback() -> Viper.Option {
-    var s = new Viper.Collections.Seq();
+func combinatorFallback() -> Zanna.Option {
+    var s = new Zanna.Collections.Seq();
     s.Push("fallback");
     return Option.Some(s);
 }
 
-func combinatorRecover(err: Viper.Collections.Seq) -> Viper.Result {
-    var s = new Viper.Collections.Seq();
+func combinatorRecover(err: Zanna.Collections.Seq) -> Zanna.Result {
+    var s = new Zanna.Collections.Seq();
     s.Push("recovered");
-    return Viper.Result.Ok(s);
+    return Zanna.Result.Ok(s);
 }
 
 func testOptionResultCombinatorCallbacks() {
     // Generic-payload combinator callbacks must execute on every engine
     // (VM bridges re-enter the interpreter; native calls the C pointer).
-    var payload = new Viper.Collections.Seq();
+    var payload = new Zanna.Collections.Seq();
     payload.Push("original");
 
     var mapped = Option.Some(payload).Map(combinatorTag);
-    assertEqInt(Viper.Collections.Seq.get_Count(mapped.Unwrap()), 2, "option_map_callback_ran");
+    assertEqInt(Zanna.Collections.Seq.get_Count(mapped.Unwrap()), 2, "option_map_callback_ran");
     assertTrue(Option.Some(payload).Filter(combinatorNonEmpty).IsSome, "option_filter_pred_ran");
     assertTrue(Option.None().OrElse(combinatorFallback).IsSome, "option_or_else_fallback_ran");
 
-    var errPayload = new Viper.Collections.Seq();
-    assertTrue(Viper.Result.Err(errPayload).OrElse(combinatorRecover).IsOk,
+    var errPayload = new Zanna.Collections.Seq();
+    assertTrue(Zanna.Result.Err(errPayload).OrElse(combinatorRecover).IsOk,
                "result_or_else_recovered");
 
     // Typed payloads keep the documented pass-through behavior.
@@ -138,7 +138,7 @@ func testOptionResultCombinatorCallbacks() {
 }
 
 func testOptionToResultTyping() {
-    // Option.OkOr/OkOrStr are registered as obj<Viper.Result>, so the returned
+    // Option.OkOr/OkOrStr are registered as obj<Zanna.Result>, so the returned
     // Result's members must type-check without an explicit receiver.
     var none = Option.None();
     var failed = none.OkOrStr("missing");
@@ -154,55 +154,55 @@ func testOptionToResultTyping() {
 func testTypedConcreteReturns() {
     // Registry rows for concrete collection results carry qualified types
     // (VDOC-020): natural chaining must type-check without explicit receivers.
-    var rows = Viper.Data.Csv.Parse("a,b\nc,d");
+    var rows = Zanna.Data.Csv.Parse("a,b\nc,d");
     assertEqInt(rows.Count, 2, "csv_parse_rows_count");
 
-    var texts = Viper.Text.Html.ExtractText("<p>hi</p>", "p");
+    var texts = Zanna.Text.Html.ExtractText("<p>hi</p>", "p");
     assertEqInt(texts.Count, 1, "html_extract_text_count");
 
-    var bus = new Viper.Core.MessageBus();
+    var bus = new Zanna.Core.MessageBus();
     assertEqInt(bus.Topics().Count, 0, "messagebus_topics_count");
 
-    var key = Viper.Crypto.Cipher.GenerateKey();
+    var key = Zanna.Crypto.Cipher.GenerateKey();
     assertEqInt(key.Length, 32, "cipher_generate_key_length");
 
-    var router = new Viper.Network.HttpRouter();
+    var router = new Zanna.Network.HttpRouter();
     assertTrue(router.Get("/x").Match("GET", "/x") != null, "http_router_chain_match");
 
-    var heap = new Viper.Collections.Heap();
+    var heap = new Zanna.Collections.Heap();
     heap.Push(1, "only");
     assertEqInt(heap.ToSeq().Count, 1, "heap_to_seq_count");
 
     // DefaultPool is typed as Pool, so Pool members chain fluently (VDOC-131).
-    assertGtInt(Viper.Threads.Parallel.DefaultPool().Size, 0, "default_pool_typed_chain");
+    assertGtInt(Zanna.Threads.Parallel.DefaultPool().Size, 0, "default_pool_typed_chain");
 
     // Queue/Stack expose SetOwnsElements on the class surface (VDOC-087).
-    var q = new Viper.Collections.Queue();
+    var q = new Zanna.Collections.Queue();
     q.SetOwnsElements(true);
     q.Push("kept");
     assertEqInt(q.Count, 1, "queue_owning_push");
-    var st = new Viper.Collections.Stack();
+    var st = new Zanna.Collections.Stack();
     st.SetOwnsElements(true);
     st.Push("kept");
     assertEqInt(st.Count, 1, "stack_owning_push");
 
     // FromSingle formats with single-precision semantics through a matched
     // f64 ABI on every dispatch path (VDOC-162; previously "0"/garbage).
-    assertEqStr(Viper.String.FromSingle(1.5), "1.5", "from_single_exact");
-    assertEqStr(Viper.String.FromSingle(3.14), "3.14000010490417", "from_single_narrowed");
+    assertEqStr(Zanna.String.FromSingle(1.5), "1.5", "from_single_exact");
+    assertEqStr(Zanna.String.FromSingle(3.14), "3.14000010490417", "from_single_narrowed");
 
     // Narrow-parameter runtime calls lower with checked narrowing (VDOC-163).
-    assertEqStr(Viper.String.FromI16(42), "42", "from_i16_narrowed_call");
-    assertEqStr(Viper.String.FromI32(70000), "70000", "from_i32_narrowed_call");
+    assertEqStr(Zanna.String.FromI16(42), "42", "from_i16_narrowed_call");
+    assertEqStr(Zanna.String.FromI32(70000), "70000", "from_i32_narrowed_call");
 
     // SplitFieldsResult enforces strict quoting (VDOC-164).
-    var goodSplit = Viper.String.SplitFieldsResult("a,\"b,c\",d");
+    var goodSplit = Zanna.String.SplitFieldsResult("a,\"b,c\",d");
     assertTrue(goodSplit.IsOk, "split_fields_result_ok");
-    var badSplit = Viper.String.SplitFieldsResult("\"a,b");
+    var badSplit = Zanna.String.SplitFieldsResult("\"a,b");
     assertTrue(badSplit.IsErr, "split_fields_result_err");
 
     // Template.Keys is a StringSet (deduplicated), typed as such (VDOC-044).
-    var keys = Viper.Text.Template.Keys("{{a}} {{b}} {{a}}");
+    var keys = Zanna.Text.Template.Keys("{{a}} {{b}} {{a}}");
     assertEqInt(keys.Count, 2, "template_keys_count");
     assertTrue(keys.Has("a"), "template_keys_has");
 }

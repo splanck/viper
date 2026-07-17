@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <unordered_set>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 namespace {
 
 enum class LinuxNeededLib : uint8_t {
@@ -206,4 +206,4 @@ bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

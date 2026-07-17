@@ -10,7 +10,7 @@ func check(name: String, actual: Integer, expected: Integer) {
         passed = passed + 1;
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.String.FromInt(expected) + ", got " + Viper.String.FromInt(actual));
+        Zanna.Terminal.Say("FAIL: " + name + " - expected " + Zanna.String.FromInt(expected) + ", got " + Zanna.String.FromInt(actual));
     }
 }
 
@@ -19,7 +19,7 @@ func checkStr(name: String, actual: String, expected: String) {
         passed = passed + 1;
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
+        Zanna.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
     }
 }
 
@@ -28,7 +28,7 @@ func checkBool(name: String, actual: Boolean, expected: Boolean) {
         passed = passed + 1;
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name);
+        Zanna.Terminal.Say("FAIL: " + name);
     }
 }
 
@@ -63,7 +63,7 @@ class Container {
 }
 
 func start() {
-    Viper.Terminal.Say("=== Expression Tests ===");
+    Zanna.Terminal.Say("=== Expression Tests ===");
 
     testFieldAccess();
     testMethodCalls();
@@ -73,14 +73,14 @@ func start() {
     testAssignmentExpressions();
 
     // Report results
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.String.FromInt(passed));
-    Viper.Terminal.Say("Failed: " + Viper.String.FromInt(failed));
+    Zanna.Terminal.Say("=== Results ===");
+    Zanna.Terminal.Say("Passed: " + Zanna.String.FromInt(passed));
+    Zanna.Terminal.Say("Failed: " + Zanna.String.FromInt(failed));
 
     if (failed == 0) {
-        Viper.Terminal.Say("RESULT: ok");
+        Zanna.Terminal.Say("RESULT: ok");
     } else {
-        Viper.Terminal.Say("RESULT: fail");
+        Zanna.Terminal.Say("RESULT: fail");
     }
 }
 
@@ -147,26 +147,26 @@ func sum4(a: Integer, b: Integer, c: Integer, d: Integer) -> Integer {
 }
 
 func testCollectionIndexing() {
-    // Using Viper.Collections.Seq (fixed-size array)
-    var arr: Viper.Collections.Seq = Viper.Collections.Seq.New(5);
-    Viper.Collections.Seq.Set(arr, 0, 10);
-    Viper.Collections.Seq.Set(arr, 1, 20);
-    Viper.Collections.Seq.Set(arr, 2, 30);
+    // Using Zanna.Collections.Seq (fixed-size array)
+    var arr: Zanna.Collections.Seq = Zanna.Collections.Seq.New(5);
+    Zanna.Collections.Seq.Set(arr, 0, 10);
+    Zanna.Collections.Seq.Set(arr, 1, 20);
+    Zanna.Collections.Seq.Set(arr, 2, 30);
 
-    check("Seq get index 0", Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 0)), 10);
-    check("Seq get index 1", Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 1)), 20);
-    check("Seq get index 2", Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 2)), 30);
+    check("Seq get index 0", Zanna.Core.Box.ToI64(Zanna.Collections.Seq.Get(arr, 0)), 10);
+    check("Seq get index 1", Zanna.Core.Box.ToI64(Zanna.Collections.Seq.Get(arr, 1)), 20);
+    check("Seq get index 2", Zanna.Core.Box.ToI64(Zanna.Collections.Seq.Get(arr, 2)), 30);
 
     // Modify through index
-    Viper.Collections.Seq.Set(arr, 0, 999);
-    check("Seq set modifies", Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 0)), 999);
+    Zanna.Collections.Seq.Set(arr, 0, 999);
+    check("Seq set modifies", Zanna.Core.Box.ToI64(Zanna.Collections.Seq.Get(arr, 0)), 999);
 
     // List indexing
-    var list: Viper.Collections.List = Viper.Collections.List.New();
-    Viper.Collections.List.Push(list, 100);
-    Viper.Collections.List.Push(list, 200);
-    check("List get index 0", Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 0)), 100);
-    check("List get index 1", Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 1)), 200);
+    var list: Zanna.Collections.List = Zanna.Collections.List.New();
+    Zanna.Collections.List.Push(list, 100);
+    Zanna.Collections.List.Push(list, 200);
+    check("List get index 0", Zanna.Core.Box.ToI64(Zanna.Collections.List.Get(list, 0)), 100);
+    check("List get index 1", Zanna.Core.Box.ToI64(Zanna.Collections.List.Get(list, 1)), 200);
 }
 
 func testTernaryExpressions() {

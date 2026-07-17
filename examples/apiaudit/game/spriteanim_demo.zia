@@ -1,9 +1,9 @@
-// API Audit: Viper.Game.SpriteAnimation (Zia)
+// API Audit: Zanna.Game.SpriteAnimation (Zia)
 module SpriteAnimDemo;
-bind Viper.Terminal;
-bind Viper.Game.SpriteAnimation as SA;
+bind Zanna.Terminal;
+bind Zanna.Game.SpriteAnimation as SA;
 func start() {
-    Say("=== API Audit: Viper.Game.SpriteAnimation ===");
+    Say("=== API Audit: Zanna.Game.SpriteAnimation ===");
 
     // --- New (takes 0 args), Setup ---
     Say("--- New / Setup ---");

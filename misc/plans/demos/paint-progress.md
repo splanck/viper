@@ -1,8 +1,8 @@
-# Viper Paint Overhaul — Progress Tracker
+# Zanna Paint Overhaul — Progress Tracker
 
 Plan: `paint.md` (same dir). Status legend: ☐ todo · ◐ in progress · ☑ done · ✗ blocked/dropped (with note).
 
-Baseline: `viper check examples/apps/paint/main.zia` → exit 0 (green) before changes. Only `W001` unused-param warnings present.
+Baseline: `zanna check examples/apps/paint/main.zia` → exit 0 (green) before changes. Only `W001` unused-param warnings present.
 
 ## Workstream A — Structure & correctness (foundation)
 - ☑ A0. Probe: confirmed Zia `interface` + `List[Tool]` storage + dynamic dispatch WORKS (`/tmp/zia_iface_probe.zia`). Caveats logged: W001 no-suppression (ISSUE-002), interface null-compare rejected → use Null-Object (ISSUE-003).
@@ -15,7 +15,7 @@ Baseline: `viper check examples/apps/paint/main.zia` → exit 0 (green) before c
 - ☑ A3. Alpha-aware eyedropper (`canvas.sampleColor` reads composite RGBA, skips alpha==0)
 - ☐ A3. Blur radius not hardcoded
 - ☐ A3. Color-math audit (prefer Color.* helpers)
-- ◐ A4. Display vs export composite — multi-layer alpha works (erase reveals lower layers); opaque "paper" base retained (MS-Paint model). Full transparent-canvas + checkerboard show-through deferred (needs region-alpha blit; see viper_bugs candidate).
+- ◐ A4. Display vs export composite — multi-layer alpha works (erase reveals lower layers); opaque "paper" base retained (MS-Paint model). Full transparent-canvas + checkerboard show-through deferred (needs region-alpha blit; see zanna_bugs candidate).
 
 ## Workstream B — Pro color system
 - ☑ B1. `ui/color_picker.zia` — modal HSL picker (cached S/L field + hue bar, crosshair, live preview). Opens by clicking fg/bg swatch.
@@ -55,16 +55,16 @@ Baseline: `viper check examples/apps/paint/main.zia` → exit 0 (green) before c
 - ☑ E7. Status bar polish — tool+size+opacity, accented status, coords+zoom+size+layer
 
 ## Verification / cleanup
-- ☑ V1. `viper check examples/apps/paint/main.zia` → 0 errors (59 W001 unused-param warnings, all ISSUE-002)
+- ☑ V1. `zanna check examples/apps/paint/main.zia` → 0 errors (59 W001 unused-param warnings, all ISSUE-002)
 - ☑ V2. App launches + renders (screenshot verified: menu bar, 2-col tools, layer panel, palette, canvas)
 - ☑ V3. Platform lint advisory-clean for paint (pure Zia; only pre-existing runtime headers flagged)
 - ☑ V4/V5. ctest CI harness: zia_smoke_paint + _runtime_features + _canvas_capture all pass (100%)
-- ☑ V6. Skipped full `build_viper_unix.sh` rebuild — no C/C++/runtime/compiler changed (pure-Zia demo); toolchain unchanged, ran the relevant ctest paint suite instead (cost/value).
+- ☑ V6. Skipped full `build_zanna_unix.sh` rebuild — no C/C++/runtime/compiler changed (pure-Zia demo); toolchain unchanged, ran the relevant ctest paint suite instead (cost/value).
 - ☑ V7. Removed 7 non-CI scratch files (class_gfx_test, gfx_test, handle_canvas_probe, minimal_test, palette_probe, simple_class, stroke_probe). Kept 3 CI-wired probes (updated smoke_probe to new API).
 - ☑ V8. Updated README.md feature list.
 
 ## Outcome
-First-class drawing app: 14 registry-driven tools, HSL colour picker, 5 layer blend modes + transforms/merge/flatten, menu bar, refined dark chrome. True-alpha eraser + alpha eyedropper fixed the flagged API misuse. All Viper/Zia issues hit are logged in `viper_bugs.md` (ISSUE-001..004).
+First-class drawing app: 14 registry-driven tools, HSL colour picker, 5 layer blend modes + transforms/merge/flatten, menu bar, refined dark chrome. True-alpha eraser + alpha eyedropper fixed the flagged API misuse. All Zanna/Zia issues hit are logged in `zanna_bugs.md` (ISSUE-001..004).
 
 ## Notes / decisions
-- Baseline `viper check` green (exit 0); uniform Tool signatures will add W001 unused-param warnings — acceptable, or use `_`-prefix convention if Zia supports it.
+- Baseline `zanna check` green (exit 0); uniform Tool signatures will add W001 unused-param warnings — acceptable, or use `_`-prefix convention if Zia supports it.

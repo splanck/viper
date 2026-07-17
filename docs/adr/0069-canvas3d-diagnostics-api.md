@@ -32,7 +32,7 @@ additive read-only accessors are the least disruptive shape.
 
 ## Decision
 
-Add the following `Viper.Graphics3D.Canvas3D` surface:
+Add the following `Zanna.Graphics3D.Canvas3D` surface:
 
 - `IsAvailable() -> Boolean`
 - `BackendFallbackReason -> String`

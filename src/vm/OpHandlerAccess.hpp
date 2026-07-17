@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -229,7 +229,7 @@ struct VMAccess {
     /// @brief Access the VM-level switch dispatch cache.
     /// @details The cache persists across function calls; entries are deterministic
     ///          (keyed by stable @c const @c Instr* and computed from case values).
-    static inline viper::vm::SwitchCache &switchCache(VM &vm) {
+    static inline zanna::vm::SwitchCache &switchCache(VM &vm) {
         return vm.switchCache_;
     }
 

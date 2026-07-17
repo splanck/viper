@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::tests {
+namespace zanna::tests {
 
 /// @brief Configuration for IL program generation.
 struct ILGeneratorConfig {
@@ -169,4 +169,4 @@ class ILGenerator {
 /// @return IL source text.
 [[nodiscard]] std::string printILToString(const il::core::Module &module);
 
-} // namespace viper::tests
+} // namespace zanna::tests

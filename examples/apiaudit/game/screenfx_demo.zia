@@ -1,4 +1,4 @@
-// screenfx_demo.zia - Comprehensive API audit for Viper.Game.ScreenFX
+// screenfx_demo.zia - Comprehensive API audit for Zanna.Game.ScreenFX
 // Tests: New, Shake, Flash, FadeIn, FadeOut, Update, IsActive, IsTypeActive,
 //        ShakeX, ShakeY, OverlayColor, OverlayAlpha, CancelAll, CancelType
 // Note: ScreenFX is designed for display effects but can be tested headlessly
@@ -6,8 +6,8 @@
 
 module ScreenFXDemo;
 
-bind Viper.Game;
-bind Viper.Terminal;
+bind Zanna.Game;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== ScreenFX API Audit ===");

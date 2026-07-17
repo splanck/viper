@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Per-function compact unwind entry for Mach-O __compact_unwind section.
 ///
@@ -703,4 +703,4 @@ class CodeSection {
     inline static std::atomic<uint64_t> nextSectionIdentity_{1};
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

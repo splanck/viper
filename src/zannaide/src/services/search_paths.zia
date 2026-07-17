@@ -1,0 +1,244 @@
+module search_paths;
+
+bind FileIndex = Zanna.Workspace.FileIndex;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: search_paths
+// PURPOSE: Pure path normalization, include/exclude glob, and ignore helpers
+//          for project-wide search.
+//
+// WHERE-THIS-FITS: commands/search_commands.zia decides when to enumerate
+//          files and where to show matches. This module decides whether a
+//          candidate path belongs in that enumeration.
+//
+// TEACHING-NOTE: The search UI accepts comma- or semicolon-separated glob
+//          lists. Normalize those lists once at the boundary, then compare
+//          forward-slash relative paths everywhere else.
+// ============================================================================
+
+/// @brief Test whether a file extension is included by the requested kinds.
+/// @param filePath Absolute or relative file path.
+/// @param fileKinds Comma-separated extension list such as `.zia,.md`.
+/// @return True when the file extension is allowed.
+expose func SearchKindMatches(filePath: String, fileKinds: String) -> Boolean {
+    if fileKinds == "" { return true; }
+    var ext = Str.ToLower(Path.Extension(filePath));
+    if ext == "" { return false; }
+    var normalized = "," + Str.ToLower(Str.Replace(fileKinds, " ", "")) + ",";
+    return Str.IndexOf(normalized, "," + ext + ",") != 0;
+}
+
+/// @brief Test whether a candidate path should be skipped by ignore patterns.
+/// @param rootPath Project or search root.
+/// @param fullPath Absolute candidate path.
+/// @param isDir Whether the candidate is a directory.
+/// @param ignorePatterns Comma-separated ignore pattern list.
+/// @return True when the candidate should be ignored.
+expose func ShouldSearchIgnore(rootPath: String,
+                               fullPath: String,
+                               isDir: Boolean,
+                               ignorePatterns: String) -> Boolean {
+    if rootPath == "" or fullPath == "" { return false; }
+    var rel = fullPath;
+    var prefix = rootPath;
+    if Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
+    }
+    if Str.StartsWith(fullPath, prefix) {
+        rel = Str.Mid(fullPath, Str.get_Length(prefix) + 1);
+    }
+    if isDir and Str.EndsWith(rel, "/") == false {
+        rel = rel + "/";
+    }
+    return FileIndex.ShouldIgnore(rootPath, rel, ignorePatterns);
+}
+
+/// @brief Test include and exclude glob filters for a candidate file.
+/// @param rootPath Project or search root.
+/// @param filePath Absolute candidate file path.
+/// @param includeGlobs Comma-separated include glob list.
+/// @param excludeGlobs Comma-separated exclude glob list.
+/// @return True when the file is included and not excluded.
+expose func SearchPathAllowed(rootPath: String,
+                              filePath: String,
+                              includeGlobs: String,
+                              excludeGlobs: String) -> Boolean {
+    var rel = RelativeSearchPath(rootPath, filePath);
+    if excludeGlobs != "" and AnySearchGlobMatches(rel, excludeGlobs) {
+        return false;
+    }
+    if includeGlobs == "" {
+        return true;
+    }
+    return AnySearchGlobMatches(rel, includeGlobs);
+}
+
+/// @brief Convert an absolute path to a normalized path relative to a root.
+/// @param rootPath Project or search root.
+/// @param filePath Absolute or relative candidate file path.
+/// @return Forward-slash relative path when under the root, otherwise normalized input.
+expose func RelativeSearchPath(rootPath: String, filePath: String) -> String {
+    var rel = filePath;
+    var prefix = rootPath;
+    if prefix != "" and Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
+    }
+    if prefix != "" and Str.StartsWith(filePath, prefix) {
+        rel = Str.Mid(filePath, Str.get_Length(prefix) + 1);
+    }
+    return NormalizeSearchPath(rel);
+}
+
+/// @brief Normalize platform separators to the search subsystem separator.
+/// @param path Path text from UI, filesystem, or cache.
+/// @return Path with `/` separators.
+expose func NormalizeSearchPath(path: String) -> String {
+    var normalized = Str.Replace(path, "\\", "/");
+    if Path.Separator() != "/" {
+        normalized = Str.Replace(normalized, Path.Separator(), "/");
+    }
+    return normalized;
+}
+
+/// @brief Normalize a comma- or semicolon-separated glob list.
+/// @param globs Raw UI text.
+/// @return Comma-separated normalized non-empty patterns.
+expose func NormalizeSearchGlobList(globs: String) -> String {
+    var raw = Str.Replace(globs, ";", ",");
+    var parts = Str.Split(raw, ",");
+    var result = "";
+    var i = 0;
+    while i < Seq.get_Count(parts) {
+        var part = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        i = i + 1;
+        if part == "" { continue; }
+        part = NormalizeSearchPath(part);
+        if result != "" {
+            result = result + ",";
+        }
+        result = result + part;
+    }
+    return result;
+}
+
+/// @brief Merge two glob or ignore-pattern lists.
+/// @param left First comma- or semicolon-separated list.
+/// @param right Second comma- or semicolon-separated list.
+/// @return Single normalized comma-separated list.
+expose func MergePatternLists(left: String, right: String) -> String {
+    var lhs = NormalizeSearchGlobList(left);
+    var rhs = NormalizeSearchGlobList(right);
+    if lhs == "" { return rhs; }
+    if rhs == "" { return lhs; }
+    return lhs + "," + rhs;
+}
+
+/// @brief Test a relative path against any pattern in a glob list.
+/// @param relativePath Project-relative path.
+/// @param globs Comma-separated glob list.
+/// @return True when at least one pattern matches.
+expose func AnySearchGlobMatches(relativePath: String, globs: String) -> Boolean {
+    var rel = NormalizeSearchPath(relativePath);
+    var normalizedGlobs = NormalizeSearchGlobList(globs);
+    if normalizedGlobs == "" { return false; }
+
+    var parts = Str.Split(normalizedGlobs, ",");
+    var i = 0;
+    while i < Seq.get_Count(parts) {
+        var pattern = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        i = i + 1;
+        if pattern == "" { continue; }
+        if SearchGlobMatches(rel, pattern) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Test a relative path against one search glob pattern.
+/// @param relativePath Project-relative path.
+/// @param pattern Glob pattern or plain path/name fragment.
+/// @return True when the pattern matches the path.
+expose func SearchGlobMatches(relativePath: String, pattern: String) -> Boolean {
+    var rel = Str.ToLower(NormalizeSearchPath(relativePath));
+    var pat = Str.ToLower(NormalizeSearchPath(Str.Trim(pattern)));
+    if rel == "" or pat == "" { return false; }
+
+    if ContainsGlobWildcard(pat) == false {
+        if rel == pat { return true; }
+        if SearchPathBaseName(rel) == pat { return true; }
+        return Str.IndexOf(rel, pat) != 0;
+    }
+
+    if GlobMatchesText(rel, pat) {
+        return true;
+    }
+    if Str.IndexOf(pat, "/") == 0 and GlobMatchesText(SearchPathBaseName(rel), pat) {
+        return true;
+    }
+    return false;
+}
+
+/// @brief Check whether a search pattern contains wildcard tokens.
+/// @param pattern Glob pattern to inspect.
+/// @return True when the pattern contains `*` or `?`.
+func ContainsGlobWildcard(pattern: String) -> Boolean {
+    return Str.IndexOf(pattern, "*") != 0 or Str.IndexOf(pattern, "?") != 0;
+}
+
+/// @brief Return the final path segment from a normalized path.
+/// @param path Forward-slash path text.
+/// @return Base name segment.
+func SearchPathBaseName(path: String) -> String {
+    var slash = Str.LastIndexOf(path, "/");
+    if slash == 0 { return path; }
+    return Str.Mid(path, slash + 1);
+}
+
+/// @brief Match a text path against a glob pattern using `*` and `?`.
+/// @param text Normalized path text.
+/// @param pattern Normalized glob pattern.
+/// @return True when the pattern matches the full text.
+func GlobMatchesText(text: String, pattern: String) -> Boolean {
+    var textLen = Str.get_Length(text);
+    var patLen = Str.get_Length(pattern);
+    var ti = 1;
+    var pi = 1;
+    var star = 0;
+    var match = 1;
+
+    while ti <= textLen {
+        if pi <= patLen and PatternCharMatches(Str.MidLen(text, ti, 1), Str.MidLen(pattern, pi, 1)) {
+            ti = ti + 1;
+            pi = pi + 1;
+        } else if pi <= patLen and Str.MidLen(pattern, pi, 1) == "*" {
+            star = pi;
+            match = ti;
+            pi = pi + 1;
+        } else if star != 0 {
+            pi = star + 1;
+            match = match + 1;
+            ti = match;
+        } else {
+            return false;
+        }
+    }
+
+    while pi <= patLen and Str.MidLen(pattern, pi, 1) == "*" {
+        pi = pi + 1;
+    }
+    return pi > patLen;
+}
+
+/// @brief Test one glob pattern character against one text character.
+/// @param textChar Character from the normalized path.
+/// @param patternChar Character from the normalized pattern.
+/// @return True when the pattern character accepts the text character.
+func PatternCharMatches(textChar: String, patternChar: String) -> Boolean {
+    if patternChar == "?" { return true; }
+    return textChar == patternChar;
+}

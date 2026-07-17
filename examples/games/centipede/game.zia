@@ -18,13 +18,13 @@ bind "./scorpion";
 bind "./particle";
 bind "./popup";
 
-bind Viper.Game;
-bind Viper.Game.ScreenFX as FX;
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Math.Random;
-bind Viper.Time;
-bind Viper.Text.Fmt;
+bind Zanna.Game;
+bind Zanna.Game.ScreenFX as FX;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Math.Random;
+bind Zanna.Time;
+bind Zanna.Text.Fmt;
 
 // =============================================================================
 // GAME ENTITY - Main game controller
@@ -146,7 +146,7 @@ class Game {
             }
 
             canvas.Flip();
-            Viper.Time.Clock.Sleep(config.FRAME_TIME);
+            Zanna.Time.Clock.Sleep(config.FRAME_TIME);
         }
 
         canvas.Close();

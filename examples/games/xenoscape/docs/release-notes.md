@@ -90,9 +90,9 @@ version 0.3.0; it does not replace cross-platform release certification.
     3,600-frame soak, expanded large-text render, ten-level reachability, full
     campaign, deterministic performance, package, save, settings, mechanics,
     world, and meta probes are registered and runnable directly.
-25. **Reproducible packaging.** `viper.project` packages the runtime assets and
+25. **Reproducible packaging.** `zanna.project` packages the runtime assets and
     tuning under version 0.3.0. Tarball dry-run, host compilation, inventory,
-    extraction, and `--viper-package-smoke` all have documented commands and
+    extraction, and `--zanna-package-smoke` all have documented commands and
     were exercised outside the source tree.
 
 ## Verification record
@@ -100,7 +100,7 @@ version 0.3.0; it does not replace cross-platform release certification.
 On 2026-07-10, the project directory type-checked cleanly and every direct
 Xenoscape probe reported `RESULT: ok`. All ten levels passed critical
 reachability. A macOS arm64 tarball was created and its extracted executable
-reported `RESULT: package_smoke_ok`. No Viper rebuild or Viper CTest run was
+reported `RESULT: package_smoke_ok`. No Zanna rebuild or Zanna CTest run was
 performed, honoring the shared-worktree constraint.
 
 ## Remaining release authority

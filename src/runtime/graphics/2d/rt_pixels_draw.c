@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_pixels_draw.c
-// Purpose: Drawing primitives for Viper.Graphics.Pixels. Provides Canvas-
+// Purpose: Drawing primitives for Zanna.Graphics.Pixels. Provides Canvas-
 //   compatible drawing operations (line, box, disc, ring, ellipse, triangle,
 //   Bezier, flood fill) that operate on a Pixels buffer using integer
 //   coordinates and 0x00RRGGBB color format.

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,4 +18,4 @@
 
 #pragma once
 
-#define IDI_VIPER_INSTALLER 101
+#define IDI_ZANNA_INSTALLER 101

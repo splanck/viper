@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -73,21 +73,21 @@ void buildCastUiNarrowChkFunction(Module &module, int64_t val, Type::Kind target
 int64_t runCastSiNarrowChk(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastSiNarrowChkFunction(module, val, targetKind);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 int64_t runCastUiNarrowChk(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastUiNarrowChkFunction(module, val, targetKind);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 void expectInvalidCastTrapSi(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastSiNarrowChkFunction(module, val, targetKind);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find("InvalidCast") != std::string::npos);
 }
@@ -95,7 +95,7 @@ void expectInvalidCastTrapSi(int64_t val, Type::Kind targetKind) {
 void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastUiNarrowChkFunction(module, val, targetKind);
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     assert(out.find("InvalidCast") != std::string::npos);
 }
@@ -103,7 +103,7 @@ void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     //=========================================================================

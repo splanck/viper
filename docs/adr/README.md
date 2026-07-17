@@ -15,6 +15,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 ## Process & Governance
 
 - [ADR 0006](0006-spec-currency-and-adr-triggers.md) — Spec Currency and ADR Triggers
+- [ADR 0110](0110-project-rename-viper-to-zanna.md) — Rename the Project from Viper to Zanna
 
 ## IL & Optimizer
 
@@ -27,12 +28,12 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 ## Concurrency & Threads
 
 - [ADR 0002](0002-threads-monitor-safe.md) — Shared-Memory Threads with FIFO Monitors and Safe Variables
-- [ADR 0020](0020-scheduler-generation-dimension.md) — Revision-Aware Scheduling (Viper.Threads.Scheduler generations)
+- [ADR 0020](0020-scheduler-generation-dimension.md) — Revision-Aware Scheduling (Zanna.Threads.Scheduler generations)
 
 ## Runtime API Design & Naming
 
 - [ADR 0001](0001-builtin-signatures-from-registry.md) — Derive BASIC Builtin Signatures from Registry
-- [ADR 0017](0017-string-lines-runtime-function.md) — CRLF-Aware Line Splitting (Viper.String.Lines)
+- [ADR 0017](0017-string-lines-runtime-function.md) — CRLF-Aware Line Splitting (Zanna.String.Lines)
 - [ADR 0027](0027-runtime-api-contract-metadata.md) — Add Contract Metadata to the Runtime API Dump
 - [ADR 0028](0028-terminal-option-result-input-apis.md) — Terminal Option and Result Input APIs
 - [ADR 0029](0029-diagnostics-current-trap-api.md) — Diagnostics Current Trap API
@@ -79,15 +80,15 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0011](0011-codeeditor-editing-runtime-api.md) — CodeEditor Editing Runtime API
 - [ADR 0012](0012-debug-conditional-breakpoints-logpoints.md) — Debug Conditional Breakpoints and Logpoints
 - [ADR 0013](0013-editor-input-popup-runtime-surface.md) — Editor Input and Popup Runtime Surface
-- [ADR 0014](0014-basic-language-service-runtime-bridge.md) — Viper BASIC Language-Service Runtime Bridge
+- [ADR 0014](0014-basic-language-service-runtime-bridge.md) — Zanna BASIC Language-Service Runtime Bridge
 - [ADR 0015](0015-workspace-file-index-paging.md) — Workspace File Index Paging
-- [ADR 0016](0016-pty-runtime-surface.md) — PTY Runtime Surface (Viper.System.Pty) and Integrated Terminal
-- [ADR 0018](0018-gui-command-binding-runtime-surface.md) — GUI Command Binding (Viper.GUI.Command / CommandRegistry)
-- [ADR 0019](0019-gui-text-cell-metrics-runtime-surface.md) — GUI Text/Cell Metrics (Viper.GUI.OutputPane measurement)
-- [ADR 0021](0021-gui-app-logical-unit-helpers.md) — HiDPI Logical-Unit Helpers (Viper.GUI.App)
-- [ADR 0022](0022-gui-layout-conveniences.md) — GUI Layout Conveniences (panel centering + Viper.GUI.Grid)
-- [ADR 0023](0023-gui-popuplist-widget.md) — Caret-Anchored Filtered Popup (Viper.GUI.PopupList)
-- [ADR 0024](0024-text-char-and-editor-insert-helpers.md) — Text/Editing Helpers (Viper.Text.Char + CodeEditor.InsertAndPlaceCursor)
+- [ADR 0016](0016-pty-runtime-surface.md) — PTY Runtime Surface (Zanna.System.Pty) and Integrated Terminal
+- [ADR 0018](0018-gui-command-binding-runtime-surface.md) — GUI Command Binding (Zanna.GUI.Command / CommandRegistry)
+- [ADR 0019](0019-gui-text-cell-metrics-runtime-surface.md) — GUI Text/Cell Metrics (Zanna.GUI.OutputPane measurement)
+- [ADR 0021](0021-gui-app-logical-unit-helpers.md) — HiDPI Logical-Unit Helpers (Zanna.GUI.App)
+- [ADR 0022](0022-gui-layout-conveniences.md) — GUI Layout Conveniences (panel centering + Zanna.GUI.Grid)
+- [ADR 0023](0023-gui-popuplist-widget.md) — Caret-Anchored Filtered Popup (Zanna.GUI.PopupList)
+- [ADR 0024](0024-text-char-and-editor-insert-helpers.md) — Text/Editing Helpers (Zanna.Text.Char + CodeEditor.InsertAndPlaceCursor)
 - [ADR 0058](0058-gui-lookup-option-apis.md) — GUI Lookup Option APIs
 - [ADR 0067](0067-gui-toolbar-named-icons.md) — GUI Toolbar Named Icon Runtime API
 - [ADR 0068](0068-gui-app-activation-api.md) — GUI App Activation API
@@ -131,7 +132,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0096](0096-cloth3d-verlet.md) — Cloth3D — Verlet Chains and Patches
 - [ADR 0097](0097-world-persistence.md) — Streamed-World Entity-State Persistence + Save Slots
 - [ADR 0098](0098-game3d-minimap-markers.md) — Minimap3D, Compass, and World Markers
-- [ADR 0099](0099-game-quests.md) — Viper.Game.Quests — Objective Tracker with SaveData Integration
+- [ADR 0099](0099-game-quests.md) — Zanna.Game.Quests — Objective Tracker with SaveData Integration
 - [ADR 0100](0100-profiling-depth.md) — Profiling Depth — Per-Pass Draw Attribution + Hitch Tracer
 - [ADR 0102](0102-graphics3d-runtime-boundary-and-contract-manifest.md) — Graphics3D Runtime Boundary and Contract Manifest
 - [ADR 0105](0105-game3d-character-controller-gravity.md) — CharacterController3D Gravity Magnitude

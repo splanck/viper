@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -64,7 +64,7 @@ enum Color {
 }
 
 func start() {    var c: Color = Color.Red;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum.zia"};
@@ -94,7 +94,7 @@ enum HttpStatus {
 }
 
 func start() {    var s: HttpStatus = HttpStatus.NotFound;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_explicit.zia"};
@@ -117,7 +117,7 @@ enum Priority {
 }
 
 func start() {    var p: Priority = Priority.High;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_autoinc.zia"};
@@ -143,7 +143,7 @@ enum Direction {
 
 func start() {    var d: Direction = Direction.East;
     if d == Direction.East {
-        Viper.Terminal.SayInt(1);
+        Zanna.Terminal.SayInt(1);
     }
 }
 )";
@@ -167,7 +167,7 @@ enum State {
 
 func start() {    var s: State = State.Running;
     if s != State.Done {
-        Viper.Terminal.SayInt(1);
+        Zanna.Terminal.SayInt(1);
     }
 }
 )";
@@ -262,7 +262,7 @@ func describeColor(c: Color) -> Integer {    if c == Color.Red {
 }
 
 func start() {    var result = describeColor(Color.Red);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_param.zia"};
@@ -298,7 +298,7 @@ func defaultDirection() -> Direction {    return Direction.North;
 }
 
 func start() {    var d = defaultDirection();
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_return.zia"};
@@ -322,7 +322,7 @@ enum Offset {
 }
 
 func start() {    var o: Offset = Offset.Backward;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_neg.zia"};
@@ -345,7 +345,7 @@ expose enum Visibility {
 }
 
 func start() {    var v: Visibility = Visibility.Visible;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_expose.zia"};
@@ -376,7 +376,7 @@ enum Size {
 
 func start() {    var c: Color = Color.Green;
     var s: Size = Size.Large;
-    Viper.Terminal.SayInt(0);
+    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_multi.zia"};
@@ -407,7 +407,7 @@ func colorValue(c: Color) -> Integer {    return match c {
 }
 
 func start() {    var result = colorValue(Color.Red);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_match.zia"};
@@ -444,7 +444,7 @@ func isNorth(d: Direction) -> Integer {    return match d {
 }
 
 func start() {    var result = isNorth(Direction.North);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_match_wild.zia"};
@@ -471,7 +471,7 @@ func colorValue(c: Color) -> Integer {    return match c {
     };
 }
 
-func start() {    Viper.Terminal.SayInt(0);
+func start() {    Zanna.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_match_nonexh.zia"};
@@ -494,9 +494,9 @@ enum State {
 
 func start() {    var s: State = State.Running;
     match s {
-        State.Idle => Viper.Terminal.SayInt(0);
-        State.Running => Viper.Terminal.SayInt(1);
-        State.Done => Viper.Terminal.SayInt(2);
+        State.Idle => Zanna.Terminal.SayInt(0);
+        State.Running => Zanna.Terminal.SayInt(1);
+        State.Done => Zanna.Terminal.SayInt(2);
     }
 }
 )";
@@ -520,7 +520,7 @@ TEST(ZiaEnums, LoweringPreservesAutoIncrementValues) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 enum Fruit {
     Apple,
@@ -528,7 +528,7 @@ enum Fruit {
     Cherry,
 }
 
-func start() {    Viper.Terminal.SayInt(Fruit.Banana);
+func start() {    Zanna.Terminal.SayInt(Fruit.Banana);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_lower_autoinc.zia"};
@@ -536,7 +536,7 @@ func start() {    Viper.Terminal.SayInt(Fruit.Banana);
 
     auto result = compile(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Viper.Terminal.SayInt", 1));
+    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Zanna.Terminal.SayInt", 1));
 }
 
 TEST(ZiaEnums, LoweringPreservesExplicitValues) {
@@ -544,14 +544,14 @@ TEST(ZiaEnums, LoweringPreservesExplicitValues) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 enum HttpStatus {
     Ok = 200,
     NotFound = 404,
 }
 
-func start() {    Viper.Terminal.SayInt(HttpStatus.NotFound);
+func start() {    Zanna.Terminal.SayInt(HttpStatus.NotFound);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_lower_explicit.zia"};
@@ -559,12 +559,12 @@ func start() {    Viper.Terminal.SayInt(HttpStatus.NotFound);
 
     auto result = compile(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Viper.Terminal.SayInt", 404));
+    EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Zanna.Terminal.SayInt", 404));
 }
 
 } // anonymous namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

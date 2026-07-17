@@ -1,0 +1,197 @@
+module perf_monitor;
+
+bind "../editor/project_index";
+
+bind Zanna.GUI as GUI;
+bind Env = Zanna.System.Environment;
+bind Clock = Zanna.Time.Clock;
+bind File = Zanna.IO.File;
+bind Log = Zanna.Diagnostics.Log;
+
+// ============================================================================
+// MODULE: perf_monitor
+// PURPOSE: Optional frame/controller performance counters for ZannaIDE dogfood.
+//
+// WHERE-THIS-FITS: main.zia starts and ends frame spans, editor controllers add
+//          their own elapsed-time buckets, and this monitor periodically writes
+//          a compact log when enabled through environment variables.
+//
+// TEACHING-NOTE: Instrumentation must stay opt-in and cheap when disabled. Keep
+//          counters centralized so hot-path probes can reason about what was
+//          measured without reading every controller.
+// ============================================================================
+
+class PerfMonitor {
+    expose Boolean enabled;
+    expose String logPath;
+    expose Integer frameStartUs;
+    expose Integer lastFlushMs;
+    expose Integer frameCount;
+    expose Integer maxFrameUs;
+    expose Integer totalFrameUs;
+    expose Integer completionUs;
+    expose Integer diagnosticsUs;
+    expose Integer hoverUs;
+    expose Integer signatureUs;
+    expose Integer inlayUs;
+    expose Integer symbolsUs;
+    expose Integer indexUs;
+    expose Integer searchUs;
+    expose Integer buildUs;
+    expose Integer renderUs;
+    expose Integer projectIndexUpdates;
+    expose Integer projectIndexBytes;
+
+    expose func init() {
+        enabled = Env.HasVariable("ZANNAIDE_PERF") or Env.HasVariable("ZANNAIDE_PERF_LOG");
+        logPath = Env.GetVariable("ZANNAIDE_PERF_LOG");
+        frameStartUs = 0;
+        lastFlushMs = Zanna.Time.Clock.NowMs();
+        ResetWindow();
+    }
+
+    expose func ResetWindow() {
+        frameCount = 0;
+        maxFrameUs = 0;
+        totalFrameUs = 0;
+        completionUs = 0;
+        diagnosticsUs = 0;
+        hoverUs = 0;
+        signatureUs = 0;
+        inlayUs = 0;
+        symbolsUs = 0;
+        indexUs = 0;
+        searchUs = 0;
+        buildUs = 0;
+        renderUs = 0;
+        projectIndexUpdates = 0;
+        projectIndexBytes = 0;
+    }
+
+    expose func BeginFrame() {
+        if enabled == false { return; }
+        frameStartUs = Clock.NowMicros();
+    }
+
+    expose func StartSpan() -> Integer {
+        if enabled == false { return 0; }
+        return Clock.NowMicros();
+    }
+
+    expose func AddCompletion(startUs: Integer) {
+        if enabled and startUs > 0 { completionUs = completionUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddDiagnostics(startUs: Integer) {
+        if enabled and startUs > 0 { diagnosticsUs = diagnosticsUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddHover(startUs: Integer) {
+        if enabled and startUs > 0 { hoverUs = hoverUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddSignature(startUs: Integer) {
+        if enabled and startUs > 0 { signatureUs = signatureUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddInlay(startUs: Integer) {
+        if enabled and startUs > 0 { inlayUs = inlayUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddSymbols(startUs: Integer) {
+        if enabled and startUs > 0 { symbolsUs = symbolsUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddIndex(startUs: Integer) {
+        if enabled and startUs > 0 { indexUs = indexUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddSearch(startUs: Integer) {
+        if enabled and startUs > 0 { searchUs = searchUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddBuild(startUs: Integer) {
+        if enabled and startUs > 0 { buildUs = buildUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func AddRender(startUs: Integer) {
+        if enabled and startUs > 0 { renderUs = renderUs + (Clock.NowMicros() - startUs); }
+    }
+
+    expose func EndFrame(editor: GUI.CodeEditor,
+                         indexer: project_index.ProjectIndexer) {
+        if enabled == false { return; }
+        var frameUs = Clock.NowMicros() - frameStartUs;
+        totalFrameUs = totalFrameUs + frameUs;
+        if frameUs > maxFrameUs { maxFrameUs = frameUs; }
+        frameCount = frameCount + 1;
+
+        var nowMs = Zanna.Time.Clock.NowMs();
+        if nowMs - lastFlushMs < 1000 { return; }
+
+        var avgUs = 0;
+        if frameCount > 0 {
+            avgUs = totalFrameUs / frameCount;
+        }
+
+        var copyCount = 0;
+        var copyBytes = 0;
+        var layoutScans = 0;
+        var highlightCalls = 0;
+        var syntaxScans = 0;
+        var spanChecks = 0;
+        var lineCount = 0;
+        if editor != null {
+            copyCount = editor.GetFullTextCopyCount();
+            copyBytes = editor.GetFullTextCopyByteCount();
+            layoutScans = editor.GetLayoutLinearScanCount();
+            highlightCalls = editor.GetSyntaxHighlightCallCount();
+            syntaxScans = editor.GetSyntaxStateLineScanCount();
+            spanChecks = editor.GetHighlightSpanCheckCount();
+            lineCount = editor.LineCount;
+        }
+        if indexer != null {
+            projectIndexUpdates = projectIndexUpdates + indexer.updateCount;
+            projectIndexBytes = projectIndexBytes + indexer.updateBytes;
+        }
+
+        var msg = "ZannaIDE perf"
+            + " frames=" + frameCount
+            + " avgFrameUs=" + avgUs
+            + " maxFrameUs=" + maxFrameUs
+            + " renderUs=" + renderUs
+            + " completionUs=" + completionUs
+            + " diagnosticsUs=" + diagnosticsUs
+            + " hoverUs=" + hoverUs
+            + " signatureUs=" + signatureUs
+            + " inlayUs=" + inlayUs
+            + " symbolsUs=" + symbolsUs
+            + " indexUs=" + indexUs
+            + " searchUs=" + searchUs
+            + " buildUs=" + buildUs
+            + " projectIndexUpdates=" + projectIndexUpdates
+            + " projectIndexBytes=" + projectIndexBytes
+            + " lines=" + lineCount
+            + " fullTextCopies=" + copyCount
+            + " fullTextBytes=" + copyBytes
+            + " layoutScans=" + layoutScans
+            + " highlightCalls=" + highlightCalls
+            + " syntaxStateScans=" + syntaxScans
+            + " highlightSpanChecks=" + spanChecks;
+
+        if logPath != "" {
+            File.AppendLine(logPath, msg);
+        } else {
+            Log.Info(msg);
+        }
+
+        if editor != null {
+            editor.ResetPerfStats();
+        }
+        if indexer != null {
+            indexer.ResetPerfStats();
+        }
+        lastFlushMs = nowMs;
+        ResetWindow();
+    }
+}

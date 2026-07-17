@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -276,7 +276,7 @@ void Parser::parseClassFieldSection(ClassDecl &declRef, std::optional<Access> &c
         std::string typeName; // BUG-082 fix: capture type name for object fields
         if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier)) {
             if (at(TokenKind::Identifier)) {
-                // BUG-OOP-039 fix: Parse qualified type names (e.g., Viper.Text.StringBuilder)
+                // BUG-OOP-039 fix: Parse qualified type names (e.g., Zanna.Text.StringBuilder)
                 typeName = peek().lexeme;
                 // Check if it's a primitive type first
                 std::string upper = typeName;

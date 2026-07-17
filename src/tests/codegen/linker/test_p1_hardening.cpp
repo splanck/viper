@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 //              OutputSection::tlvDescriptors flag instead of relying on the
 //              ".tdata" name (which ELF/PE reuse for TLS template data).
 //            - DynStubGen's synthetic GOT slots live in a dedicated
-//              ".got.viper_stubs" section instead of colliding with the
+//              ".got.zanna_stubs" section instead of colliding with the
 //              user's ".data" by name.
 // Key invariants:
 //   - The tests do not exercise the full link pipeline; each function-under-
@@ -42,7 +42,7 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -168,12 +168,12 @@ int main() {
 
         // The stub object always carries a null section at index 0, a .text
         // section, and a separate GOT section. We expect the GOT section to
-        // be named `.got.viper_stubs` — never `.data`.
+        // be named `.got.zanna_stubs` — never `.data`.
         bool foundGot = false;
         for (size_t i = 1; i < stub.sections.size(); ++i) {
             const auto &s = stub.sections[i];
             CHECK(s.name != ".data");
-            if (s.name == ".got.viper_stubs")
+            if (s.name == ".got.zanna_stubs")
                 foundGot = true;
         }
         CHECK(foundGot);
@@ -185,7 +185,7 @@ int main() {
         for (size_t i = 1; i < stub.sections.size(); ++i) {
             const auto &s = stub.sections[i];
             CHECK(s.name != ".data");
-            if (s.name == ".got.viper_stubs")
+            if (s.name == ".got.zanna_stubs")
                 foundGot = true;
         }
         CHECK(foundGot);

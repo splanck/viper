@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 // File: src/il/verify/InstructionChecker.cpp
@@ -612,19 +612,19 @@ std::optional<IntRange> computeInstructionRange(
 ///          the block's instructions up to (not including) the checked one.
 ///          This is the same prover CheckOpt uses to justify demotions, so
 ///          every demotion the optimizer performs re-verifies here.
-viper::analysis::RangeMap globalRangesBeforeInstruction(const VerifyCtx &ctx) {
-    const viper::analysis::IntRangeInfo info = viper::analysis::computeIntRanges(ctx.fn);
-    viper::analysis::RangeMap ranges;
-    if (const viper::analysis::RangeMap *seeded = info.entryFor(ctx.block.label))
+zanna::analysis::RangeMap globalRangesBeforeInstruction(const VerifyCtx &ctx) {
+    const zanna::analysis::IntRangeInfo info = zanna::analysis::computeIntRanges(ctx.fn);
+    zanna::analysis::RangeMap ranges;
+    if (const zanna::analysis::RangeMap *seeded = info.entryFor(ctx.block.label))
         ranges = *seeded;
     for (const Instr &instr : ctx.block.instructions) {
         if (&instr == &ctx.instr)
             break;
-        viper::analysis::applyRangeTransfer(instr, ranges);
+        zanna::analysis::applyRangeTransfer(instr, ranges);
         // Fill the gap the peephole srem-lowering leaves (see
         // matchPow2ModuloRange), so idiom-derived bounds flow to later uses.
         if (instr.result && ranges.find(*instr.result) == ranges.end())
-            if (auto idiom = viper::analysis::matchPow2ModuloRange(ctx.block, instr, ranges))
+            if (auto idiom = zanna::analysis::matchPow2ModuloRange(ctx.block, instr, ranges))
                 ranges[*instr.result] = *idiom;
     }
     return ranges;
@@ -654,11 +654,11 @@ bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
 
     // Local block facts were not enough; retry with the whole-function
     // value-range fixpoint (the prover CheckOpt's demotions rely on).
-    viper::analysis::RangeMap globalRanges = globalRangesBeforeInstruction(ctx);
-    if (viper::analysis::applyRangeTransfer(ctx.instr, globalRanges).has_value())
+    zanna::analysis::RangeMap globalRanges = globalRangesBeforeInstruction(ctx);
+    if (zanna::analysis::applyRangeTransfer(ctx.instr, globalRanges).has_value())
         return true;
     // The checked op may itself be the modulo idiom's inner subtract.
-    return viper::analysis::matchPow2ModuloRange(ctx.block, ctx.instr, globalRanges).has_value();
+    return zanna::analysis::matchPow2ModuloRange(ctx.block, ctx.instr, globalRanges).has_value();
 }
 
 const Instr *findLocalDefBefore(const BasicBlock &block, const Instr &limit, unsigned id) {
@@ -786,8 +786,8 @@ bool isRangeProvenDivRemDemotion(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 2)
         return false;
 
-    viper::analysis::RangeMap ranges = globalRangesBeforeInstruction(ctx);
-    auto divisorRange = viper::analysis::rangeForValue(ctx.instr.operands[1], ranges);
+    zanna::analysis::RangeMap ranges = globalRangesBeforeInstruction(ctx);
+    auto divisorRange = zanna::analysis::rangeForValue(ctx.instr.operands[1], ranges);
     if (!divisorRange)
         return false;
 
@@ -799,7 +799,7 @@ bool isRangeProvenDivRemDemotion(const VerifyCtx &ctx) {
     if (ctx.instr.op == Opcode::SDiv || ctx.instr.op == Opcode::SRem) {
         const bool excludesMinusOne = (divisorRange->lower && *divisorRange->lower > -1) ||
                                       (divisorRange->upper && *divisorRange->upper < -1);
-        auto dividendRange = viper::analysis::rangeForValue(ctx.instr.operands[0], ranges);
+        auto dividendRange = zanna::analysis::rangeForValue(ctx.instr.operands[0], ranges);
         const bool dividendNotMin = dividendRange && dividendRange->lower &&
                                     *dividendRange->lower > std::numeric_limits<int64_t>::min();
         if (!excludesMinusOne && !dividendNotMin)

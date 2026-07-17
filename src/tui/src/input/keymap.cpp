@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 
 #include "tui/input/keymap.hpp"
 
-namespace viper::tui::input {
+namespace zanna::tui::input {
 /// @brief Compare two key chords for matching code, modifiers, and codepoint.
 /// @details Equality requires the same key code, modifier mask, and Unicode
 ///          codepoint.  Treating chords as value types simplifies their use as
@@ -131,4 +131,4 @@ const std::vector<Command> &Keymap::commands() const {
     return commands_;
 }
 
-} // namespace viper::tui::input
+} // namespace zanna::tui::input

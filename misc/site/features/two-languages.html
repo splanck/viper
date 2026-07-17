@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Two Languages, One IL — Viper</title>
-  <meta name="description" content="Viper supports two programming languages — Zia (modern, statically typed) and BASIC (classic with OOP) — both compiling through the same typed SSA intermediate language.">
+  <title>Two Languages, One IL — Zanna</title>
+  <meta name="description" content="Zanna supports two programming languages — Zia (modern, statically typed) and BASIC (classic with OOP) — both compiling through the same typed SSA intermediate language.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -47,7 +47,7 @@
   <main class="page-main prose">
     <h1 id="overview">Two Languages, One IL</h1>
 
-    <p>Viper ships two complete programming languages that compile through the same typed, SSA-based intermediate language. This proves the IL architecture works as a genuine abstraction layer &mdash; not just an implementation detail.</p>
+    <p>Zanna ships two complete programming languages that compile through the same typed, SSA-based intermediate language. This proves the IL architecture works as a genuine abstraction layer &mdash; not just an implementation detail.</p>
 
     <h2 id="zia">Zia &mdash; The Modern Language</h2>
 
@@ -72,8 +72,8 @@
 
     <pre><code data-lang="zia">module GameDemo;
 
-bind Viper.Terminal;
-bind Canvas = Viper.Canvas;
+bind Zanna.Terminal;
+bind Canvas = Zanna.Canvas;
 
 class Player {
     hide Integer x;
@@ -102,7 +102,7 @@ class Player {
 
     <h2 id="basic">BASIC &mdash; The Classic Language</h2>
 
-    <p>Viper BASIC modernizes the classic language with OOP features while keeping its familiar syntax:</p>
+    <p>Zanna BASIC modernizes the classic language with OOP features while keeping its familiar syntax:</p>
 
     <ul>
       <li><strong>Classes</strong> with inheritance, interfaces, and constructors</li>
@@ -135,7 +135,7 @@ class Player {
     END FUNCTION
 
     SUB Draw()
-        Viper.Terminal.SetPosition(y, x)
+        Zanna.Terminal.SetPosition(y, x)
         IF health > 0 THEN
             PRINT "@";
         END IF
@@ -156,7 +156,7 @@ END CLASS</code></pre>
         <tr><td>String concat</td><td><code>"Hello " + name</code></td><td><code>"Hello " + name$</code></td></tr>
         <tr><td>Return values</td><td><code>return result</code></td><td><code>FuncName = result</code></td></tr>
         <tr><td>Visibility</td><td><code>expose</code> / <code>hide</code></td><td>PUBLIC / PRIVATE</td></tr>
-        <tr><td>Imports</td><td><code>bind Viper.Terminal</code></td><td><code>USING Viper.Terminal</code></td></tr>
+        <tr><td>Imports</td><td><code>bind Zanna.Terminal</code></td><td><code>USING Zanna.Terminal</code></td></tr>
       </tbody>
     </table>
 
@@ -186,7 +186,7 @@ END CLASS</code></pre>
 
     <h2 id="il">The Shared IL</h2>
 
-    <p>Both languages compile to the same <strong>Viper IL</strong> &mdash; a typed, SSA-inspired intermediate language. This means:</p>
+    <p>Both languages compile to the same <strong>Zanna IL</strong> &mdash; a typed, SSA-inspired intermediate language. This means:</p>
 
     <ul>
       <li>Both languages produce identical runtime behavior for equivalent programs</li>
@@ -208,7 +208,7 @@ entry(%self:ptr):
 
     <h2 id="own">Build Your Own Frontend</h2>
 
-    <p>The IL is a stable, documented interface. You can write your own language frontend that targets Viper IL and immediately get access to the optimizer, VM, native codegen, and entire 300-class runtime. The <a href="../docs/architecture.html">architecture documentation</a> and the existing frontends serve as reference implementations.</p>
+    <p>The IL is a stable, documented interface. You can write your own language frontend that targets Zanna IL and immediately get access to the optimizer, VM, native codegen, and entire 300-class runtime. The <a href="../docs/architecture.html">architecture documentation</a> and the existing frontends serve as reference implementations.</p>
 
   </main>
 </div>
@@ -233,13 +233,13 @@ entry(%self:ptr):
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

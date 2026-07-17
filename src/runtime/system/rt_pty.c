@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_pty.c
-// Purpose: Implements pseudo-terminal-backed child handles for Viper.System.Pty.
+// Purpose: Implements pseudo-terminal-backed child handles for Zanna.System.Pty.
 //          Mirrors rt_process.c (ring buffer, non-blocking drain, reap, GC
 //          finalizer) but establishes a controlling terminal so interactive
 //          programs see a real TTY, merges output into one ANSI-bearing stream,
@@ -1248,7 +1248,7 @@ void *rt_pty_open(
 /// @param env Environment sequence, or NULL.
 /// @param cols Initial terminal columns.
 /// @param rows Initial terminal rows.
-/// @return Owned `Viper.Result` carrying a PtySession or an error string.
+/// @return Owned `Zanna.Result` carrying a PtySession or an error string.
 void *rt_pty_open_result(
     rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
     jmp_buf recovery;

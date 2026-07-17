@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_material3d.c
-// Purpose: Viper.Graphics3D.Material3D — legacy + PBR surface appearance.
+// Purpose: Zanna.Graphics3D.Material3D — legacy + PBR surface appearance.
 //
 // Key invariants:
 //   - Defaults: diffuse=(1,1,1,1), specular=(1,1,1), shininess=32,
@@ -28,7 +28,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -145,12 +145,12 @@ static rt_material3d *material_checked(void *obj) {
     return (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
-/// @brief Validate that @p pixels is a live `Viper.Graphics.Pixels` handle.
+/// @brief Validate that @p pixels is a live `Zanna.Graphics.Pixels` handle.
 static int material_pixels_handle_valid(void *pixels) {
     return rt_pixels_checked_impl_or_null(pixels) != NULL;
 }
 
-/// @brief Validate that @p cubemap is a live `Viper.Graphics3D.Cubemap3D` handle.
+/// @brief Validate that @p cubemap is a live `Zanna.Graphics3D.Cubemap3D` handle.
 static int material_cubemap_handle_valid(void *cubemap) {
     return cubemap && rt_cubemap3d_is_complete(cubemap);
 }
@@ -1272,4 +1272,4 @@ void rt_material3d_set_depth_bias(void *obj, double constant_bias, double slope_
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

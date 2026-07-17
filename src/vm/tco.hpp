@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // Purpose: Tail-call optimisation helper for reusing the current frame.
 //
 // Key invariants:
-//   - VIPER_VM_TAILCALL must be defined and non-zero for TCO to apply.
+//   - ZANNA_VM_TAILCALL must be defined and non-zero for TCO to apply.
 //   - The callee function must have a non-empty blocks list with a valid entry.
 //   - Argument count must exactly match the entry block's parameter count.
 //   - The current execution state must be valid (non-null ExecState).
@@ -40,7 +40,7 @@ namespace il::vm {
 
 /// @brief Try to perform a tail call by reusing the current frame.
 ///
-/// @details When VIPER_VM_TAILCALL is enabled, this function attempts to
+/// @details When ZANNA_VM_TAILCALL is enabled, this function attempts to
 ///          reuse the current execution frame for the callee function,
 ///          avoiding stack growth for tail-recursive patterns. The frame's
 ///          register file is resized (using cached size when available),

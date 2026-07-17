@@ -2,7 +2,7 @@
 
 ## Goal
 
-Take `examples/games/crackman` from a functional but visibly prototype-grade demo to a polished, arcade-premium Crackman game that still fits Viper's native 2D canvas model.
+Take `examples/games/crackman` from a functional but visibly prototype-grade demo to a polished, arcade-premium Crackman game that still fits Zanna's native 2D canvas model.
 
 The target is not "more color." The target is:
 
@@ -20,7 +20,7 @@ The gameplay foundation is better than the presentation suggests. The demo alrea
 
 - full game-state flow through `StateMachine`
 - menu selection through `ButtonGroup`
-- action-mapped input through `Viper.Input.Action`
+- action-mapped input through `Zanna.Input.Action`
 - tweening, timers, smooth score display, particles, and screen FX
 - distinct entity modules for maze, player, ghosts, fruit, and particles
 
@@ -54,15 +54,15 @@ That means the demo is not "empty." It is mostly suffering from a prototype pres
 
 ## Concrete Problems Found In Code
 
-- `renderMenu()` in [game.zia](/Users/stephen/git/viper/examples/games/crackman/game.zia#L284) is a flat stack of `canvas.Text()` calls plus decorative discs. There is no card layout, no marquee, no hover/selection shell, and no animated attract layer.
-- `renderHighScores()` in [game.zia](/Users/stephen/git/viper/examples/games/crackman/game.zia#L330) is also plain text on black with fixed offsets and no framing.
-- The main in-game render path in [game.zia](/Users/stephen/git/viper/examples/games/crackman/game.zia#L651) clears black, draws the maze and entities, then drops text overlays directly into the center of the screen. It has no background atmosphere, no board frame, no dedicated HUD region, and no modal shell.
-- `drawUI()` in [game.zia](/Users/stephen/git/viper/examples/games/crackman/game.zia#L704) is only score, level, and lives as raw text. That is too bare for a polished arcade game.
-- `Maze.draw()` in [maze.zia](/Users/stephen/git/viper/examples/games/crackman/maze.zia#L164) renders walls as full blue boxes, dots as tiny discs, pellets as blinking discs, and the gate as a pink box. There is no wall shaping, line treatment, glow, or framing.
-- `PacMan.draw()` in [player.zia](/Users/stephen/git/viper/examples/games/crackman/player.zia#L165) is a yellow disc with a triangular mouth cutout. Functional, but still unmistakably prototype art.
-- `Ghost.draw()` in [ghost.zia](/Users/stephen/git/viper/examples/games/crackman/ghost.zia#L348) uses a disc plus box body with simple eyes. The logic is fine; the art direction is not finished.
-- `Fruit.draw()` in [fruit.zia](/Users/stephen/git/viper/examples/games/crackman/fruit.zia#L111) is a colored disc with a stem. That is enough for mechanics, not enough for presentation.
-- `main.zia` in [main.zia](/Users/stephen/git/viper/examples/games/crackman/main.zia#L31) still prints terminal banners and "Loading..." messages before opening the game.
+- `renderMenu()` in [game.zia](/Users/stephen/git/zanna/examples/games/crackman/game.zia#L284) is a flat stack of `canvas.Text()` calls plus decorative discs. There is no card layout, no marquee, no hover/selection shell, and no animated attract layer.
+- `renderHighScores()` in [game.zia](/Users/stephen/git/zanna/examples/games/crackman/game.zia#L330) is also plain text on black with fixed offsets and no framing.
+- The main in-game render path in [game.zia](/Users/stephen/git/zanna/examples/games/crackman/game.zia#L651) clears black, draws the maze and entities, then drops text overlays directly into the center of the screen. It has no background atmosphere, no board frame, no dedicated HUD region, and no modal shell.
+- `drawUI()` in [game.zia](/Users/stephen/git/zanna/examples/games/crackman/game.zia#L704) is only score, level, and lives as raw text. That is too bare for a polished arcade game.
+- `Maze.draw()` in [maze.zia](/Users/stephen/git/zanna/examples/games/crackman/maze.zia#L164) renders walls as full blue boxes, dots as tiny discs, pellets as blinking discs, and the gate as a pink box. There is no wall shaping, line treatment, glow, or framing.
+- `PacMan.draw()` in [player.zia](/Users/stephen/git/zanna/examples/games/crackman/player.zia#L165) is a yellow disc with a triangular mouth cutout. Functional, but still unmistakably prototype art.
+- `Ghost.draw()` in [ghost.zia](/Users/stephen/git/zanna/examples/games/crackman/ghost.zia#L348) uses a disc plus box body with simple eyes. The logic is fine; the art direction is not finished.
+- `Fruit.draw()` in [fruit.zia](/Users/stephen/git/zanna/examples/games/crackman/fruit.zia#L111) is a colored disc with a stem. That is enough for mechanics, not enough for presentation.
+- `main.zia` in [main.zia](/Users/stephen/git/zanna/examples/games/crackman/main.zia#L31) still prints terminal banners and "Loading..." messages before opening the game.
 
 ## Recommended Visual Direction
 
@@ -82,9 +82,9 @@ This should feel like a commercial retro arcade remake, not a runtime feature de
 
 ## Strategic Decisions
 
-### 1. Keep this on `Viper.Graphics`, not `Viper.GUI`
+### 1. Keep this on `Zanna.Graphics`, not `Zanna.GUI`
 
-The game is already custom-rendered. The board, characters, pellets, and overlays all belong in the same drawing model. Bringing `Viper.GUI` into this would split the visual system and make it harder to achieve a cohesive arcade look.
+The game is already custom-rendered. The board, characters, pellets, and overlays all belong in the same drawing model. Bringing `Zanna.GUI` into this would split the visual system and make it harder to achieve a cohesive arcade look.
 
 The right move is to build a compact internal canvas UI layer for menu, HUD, and overlays.
 

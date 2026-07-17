@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,10 +33,10 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
-constexpr std::string_view kHeader = "VIPER-WINDOWS-INSTALLER\t3";
+constexpr std::string_view kHeader = "ZANNA-WINDOWS-INSTALLER\t3";
 constexpr size_t kMaximumMetadataBytes = 16U * 1024U * 1024U;
 constexpr size_t kMaximumRecords = 200000U;
 
@@ -718,4 +718,4 @@ WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text) {
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

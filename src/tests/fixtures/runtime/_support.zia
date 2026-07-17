@@ -19,9 +19,9 @@ func pass() {
 func fail(msg: String) {
     failures = failures + 1;
     if (testName == "") {
-        Viper.Terminal.Say("FAIL: " + msg);
+        Zanna.Terminal.Say("FAIL: " + msg);
     } else {
-        Viper.Terminal.Say("FAIL [" + testName + "]: " + msg);
+        Zanna.Terminal.Say("FAIL [" + testName + "]: " + msg);
     }
 }
 
@@ -131,7 +131,7 @@ func assertEmpty(actual: String, msg: String) {
 
 // Assert string contains substring
 func assertContains(haystack: String, needle: String, msg: String) {
-    if (Viper.String.Contains(haystack, needle)) {
+    if (Zanna.String.Contains(haystack, needle)) {
         pass();
     } else {
         fail(msg + " (\"" + haystack + "\" does not contain \"" + needle + "\")");
@@ -140,7 +140,7 @@ func assertContains(haystack: String, needle: String, msg: String) {
 
 // Assert string starts with prefix
 func assertStartsWith(str: String, prefix: String, msg: String) {
-    if (Viper.String.StartsWith(str, prefix)) {
+    if (Zanna.String.StartsWith(str, prefix)) {
         pass();
     } else {
         fail(msg + " (\"" + str + "\" does not start with \"" + prefix + "\")");
@@ -149,7 +149,7 @@ func assertStartsWith(str: String, prefix: String, msg: String) {
 
 // Assert string ends with suffix
 func assertEndsWith(str: String, suffix: String, msg: String) {
-    if (Viper.String.EndsWith(str, suffix)) {
+    if (Zanna.String.EndsWith(str, suffix)) {
         pass();
     } else {
         fail(msg + " (\"" + str + "\" does not end with \"" + suffix + "\")");
@@ -158,7 +158,7 @@ func assertEndsWith(str: String, suffix: String, msg: String) {
 
 // Assert two numbers are approximately equal (within epsilon)
 func assertApprox(actual: Number, expected: Number, eps: Number, msg: String) {
-    if (Viper.Math.Abs(actual - expected) <= eps) {
+    if (Zanna.Math.Abs(actual - expected) <= eps) {
         pass();
     } else {
         fail(msg + " (got " + toString(actual) + ", want " + toString(expected) + " +/- " + toString(eps) + ")");
@@ -177,11 +177,11 @@ func assertInRange(actual: Number, min: Number, max: Number, msg: String) {
 // Print final test results and return exit status
 func report() {
     var total = passes + failures;
-    Viper.Terminal.Say("Tests: " + toString(total) + " | Passed: " + toString(passes) + " | Failed: " + toString(failures));
+    Zanna.Terminal.Say("Tests: " + toString(total) + " | Passed: " + toString(passes) + " | Failed: " + toString(failures));
     if (failures == 0) {
-        Viper.Terminal.Say("RESULT: ok");
+        Zanna.Terminal.Say("RESULT: ok");
     } else {
-        Viper.Terminal.Say("RESULT: fail " + toString(failures));
+        Zanna.Terminal.Say("RESULT: fail " + toString(failures));
     }
 }
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "il/core/Type.hpp"
 #include "rt_context.h"
 #include "rt_internal.h"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 #include "vm/Marshal.hpp"
 #include "vm/OpHandlers_Control.hpp"
 #include "vm/RuntimeBridge.hpp"
@@ -191,7 +191,7 @@ int main() {
     rt_arr_i32_release(static_cast<int32_t *>(arrSlot.ptr));
 
     const std::string embeddedLiteral("abc\0def", 7);
-    il::vm::ViperString embedded = il::vm::toViperString(embeddedLiteral);
+    il::vm::ZannaString embedded = il::vm::toZannaString(embeddedLiteral);
     assert(embedded != nullptr);
     const int64_t runtimeLen = rt_str_len(embedded);
     assert(runtimeLen == static_cast<int64_t>(embeddedLiteral.size()));
@@ -202,7 +202,7 @@ int main() {
     {
         std::string backing = "substring-check";
         il::vm::StringRef trimmed{backing.data() + 1, backing.size() - 2};
-        il::vm::ViperString substrHandle = il::vm::toViperString(trimmed);
+        il::vm::ZannaString substrHandle = il::vm::toZannaString(trimmed);
         assert(substrHandle != nullptr);
         const int64_t substrLen = rt_str_len(substrHandle);
         assert(substrLen == static_cast<int64_t>(trimmed.size()));
@@ -216,7 +216,7 @@ int main() {
     {
         std::array<char, 6> storage{'x', 'a', 'b', 'c', 'd', '\0'};
         il::vm::StringRef window{storage.data() + 1, 3};
-        il::vm::ViperString windowHandle = il::vm::toViperString(window);
+        il::vm::ZannaString windowHandle = il::vm::toZannaString(window);
         assert(windowHandle != nullptr);
         const int64_t windowLen = rt_str_len(windowHandle);
         assert(windowLen == static_cast<int64_t>(window.size()));
@@ -228,20 +228,20 @@ int main() {
     }
 
     il::vm::StringRef emptyRef{};
-    il::vm::ViperString emptyString = il::vm::toViperString(emptyRef);
+    il::vm::ZannaString emptyString = il::vm::toZannaString(emptyRef);
     assert(emptyString == nullptr);
-    il::vm::StringRef emptyView = il::vm::fromViperString(emptyString);
+    il::vm::StringRef emptyView = il::vm::fromZannaString(emptyString);
     assert(emptyView.data() == nullptr);
     assert(emptyView.size() == 0);
 
-    il::vm::ViperString roundTripEmpty = il::vm::toViperString(emptyView);
+    il::vm::ZannaString roundTripEmpty = il::vm::toZannaString(emptyView);
     assert(roundTripEmpty == nullptr);
 
     {
         std::string backing = "backing";
         std::string_view nonLiteralEmpty{backing.data(), static_cast<size_t>(0)};
         assert(nonLiteralEmpty.data() != nullptr);
-        il::vm::ViperString nonLiteralHandle = il::vm::toViperString(nonLiteralEmpty);
+        il::vm::ZannaString nonLiteralHandle = il::vm::toZannaString(nonLiteralEmpty);
         assert(nonLiteralHandle != nullptr);
         assert(rt_str_len(nonLiteralHandle) == 0);
         assert(nonLiteralHandle != emptyString);
@@ -263,7 +263,7 @@ int main() {
         rt_string_register_handle(reinterpret_cast<rt_string>(&simulated));
 
         il::vm::StringRef simulatedView =
-            il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
+            il::vm::fromZannaString(reinterpret_cast<rt_string>(&simulated));
         assert(!il::vm::detail::lengthWithinLimit(overflowLength, il::vm::kMaxBridgeStringBytes));
         assert(simulatedView.empty());
         rt_string_unregister_handle(reinterpret_cast<rt_string>(&simulated));

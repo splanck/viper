@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -144,7 +144,7 @@ static bool isRangeModifierChain(const Expr *expr, unsigned *stepCountOut = null
 }
 
 /// @brief Flatten an identifier / dotted-field expression into its dotted
-///        type-name string (e.g. `Viper.GUI.Canvas`) in @p out.
+///        type-name string (e.g. `Zanna.GUI.Canvas`) in @p out.
 /// @return false if @p expr is not a pure name/field chain.
 static bool exprToTypeName(const Expr *expr, std::string &out) {
     if (!expr)
@@ -530,7 +530,7 @@ bool Sema::shouldDeferDottedCalleeToQualifiedLookup(const CallExpr *expr) const 
         return false;
 
     std::string root = dottedName.substr(0, dotPos);
-    if (root == "Viper" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
+    if (root == "Zanna" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
         importedSymbols_.find(root) != importedSymbols_.end() ||
         hasModuleExports(root, expr->callee ? expr->callee->loc : expr->loc)) {
         return true;
@@ -554,11 +554,11 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
         };
         auto isTypedSeq = [](TypeRef type) {
             return type && type->kind == TypeKindSem::Ptr &&
-                   type->name == "Viper.Collections.Seq" && !type->typeArgs.empty();
+                   type->name == "Zanna.Collections.Seq" && !type->typeArgs.empty();
         };
         auto isConcreteRuntimeClass = [](TypeRef type) {
             return type && type->kind == TypeKindSem::Ptr && !type->name.empty() &&
-                   type->name != "Viper.Collections.Seq";
+                   type->name != "Zanna.Collections.Seq";
         };
 
         if (!fallback || fallback->kind == TypeKindSem::Unknown ||
@@ -601,88 +601,88 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
         return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
     };
 
-    if (calleeName == "Viper.Collections.Seq.Get" || calleeName == "Viper.Collections.Seq.First" ||
-        calleeName == "Viper.Collections.Seq.Last" || calleeName == "Viper.Collections.Seq.Peek" ||
-        calleeName == "Viper.Collections.Seq.Pop" || calleeName == "Viper.Collections.Seq.RemoveAt" ||
-        calleeName == "Viper.Collections.Seq.FindWhere") {
+    if (calleeName == "Zanna.Collections.Seq.Get" || calleeName == "Zanna.Collections.Seq.First" ||
+        calleeName == "Zanna.Collections.Seq.Last" || calleeName == "Zanna.Collections.Seq.Peek" ||
+        calleeName == "Zanna.Collections.Seq.Pop" || calleeName == "Zanna.Collections.Seq.RemoveAt" ||
+        calleeName == "Zanna.Collections.Seq.FindWhere") {
         return elementReceiver && elementReceiver->elementType()
                    ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.List.Get" ||
-        calleeName == "Viper.Collections.List.First" ||
-        calleeName == "Viper.Collections.List.Last" || calleeName == "Viper.Collections.List.Pop" ||
-        calleeName == "Viper.Collections.Queue.Peek" ||
-        calleeName == "Viper.Collections.Queue.Pop" ||
-        calleeName == "Viper.Collections.Queue.TryPop" ||
-        calleeName == "Viper.Collections.Stack.Peek" ||
-        calleeName == "Viper.Collections.Stack.Pop" ||
-        calleeName == "Viper.Collections.Stack.TryPop" ||
-        calleeName == "Viper.Collections.Ring.Get" || calleeName == "Viper.Collections.Ring.Peek" ||
-        calleeName == "Viper.Collections.Ring.Pop" || calleeName == "Viper.Collections.Heap.Peek" ||
-        calleeName == "Viper.Collections.Heap.Pop" ||
-        calleeName == "Viper.Collections.Heap.TryPeek" ||
-        calleeName == "Viper.Collections.Heap.TryPop" ||
-        calleeName == "Viper.Collections.Deque.Get" ||
-        calleeName == "Viper.Collections.Deque.PeekFront" ||
-        calleeName == "Viper.Collections.Deque.PeekBack" ||
-        calleeName == "Viper.Collections.Deque.PopFront" ||
-        calleeName == "Viper.Collections.Deque.PopBack" ||
-        calleeName == "Viper.Collections.Deque.TryPopFront" ||
-        calleeName == "Viper.Collections.Deque.TryPopBack") {
+    if (calleeName == "Zanna.Collections.List.Get" ||
+        calleeName == "Zanna.Collections.List.First" ||
+        calleeName == "Zanna.Collections.List.Last" || calleeName == "Zanna.Collections.List.Pop" ||
+        calleeName == "Zanna.Collections.Queue.Peek" ||
+        calleeName == "Zanna.Collections.Queue.Pop" ||
+        calleeName == "Zanna.Collections.Queue.TryPop" ||
+        calleeName == "Zanna.Collections.Stack.Peek" ||
+        calleeName == "Zanna.Collections.Stack.Pop" ||
+        calleeName == "Zanna.Collections.Stack.TryPop" ||
+        calleeName == "Zanna.Collections.Ring.Get" || calleeName == "Zanna.Collections.Ring.Peek" ||
+        calleeName == "Zanna.Collections.Ring.Pop" || calleeName == "Zanna.Collections.Heap.Peek" ||
+        calleeName == "Zanna.Collections.Heap.Pop" ||
+        calleeName == "Zanna.Collections.Heap.TryPeek" ||
+        calleeName == "Zanna.Collections.Heap.TryPop" ||
+        calleeName == "Zanna.Collections.Deque.Get" ||
+        calleeName == "Zanna.Collections.Deque.PeekFront" ||
+        calleeName == "Zanna.Collections.Deque.PeekBack" ||
+        calleeName == "Zanna.Collections.Deque.PopFront" ||
+        calleeName == "Zanna.Collections.Deque.PopBack" ||
+        calleeName == "Zanna.Collections.Deque.TryPopFront" ||
+        calleeName == "Zanna.Collections.Deque.TryPopBack") {
         return elementReceiver && elementReceiver->elementType()
                    ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.Map.Get" || calleeName == "Viper.Collections.Map.GetOr" ||
-        calleeName == "Viper.Collections.OrderedMap.Get" ||
-        calleeName == "Viper.Collections.SortedMap.Get" ||
-        calleeName == "Viper.Collections.Trie.Get" ||
-        calleeName == "Viper.Collections.FrozenMap.Get" ||
-        calleeName == "Viper.Collections.FrozenMap.GetOr" ||
-        calleeName == "Viper.Collections.DefaultMap.Get" ||
-        calleeName == "Viper.Collections.WeakMap.Get" ||
-        calleeName == "Viper.Collections.LruCache.Get" ||
-        calleeName == "Viper.Collections.LruCache.Peek" ||
-        calleeName == "Viper.Collections.MultiMap.Get" ||
-        calleeName == "Viper.Collections.MultiMap.GetFirst") {
+    if (calleeName == "Zanna.Collections.Map.Get" || calleeName == "Zanna.Collections.Map.GetOr" ||
+        calleeName == "Zanna.Collections.OrderedMap.Get" ||
+        calleeName == "Zanna.Collections.SortedMap.Get" ||
+        calleeName == "Zanna.Collections.Trie.Get" ||
+        calleeName == "Zanna.Collections.FrozenMap.Get" ||
+        calleeName == "Zanna.Collections.FrozenMap.GetOr" ||
+        calleeName == "Zanna.Collections.DefaultMap.Get" ||
+        calleeName == "Zanna.Collections.WeakMap.Get" ||
+        calleeName == "Zanna.Collections.LruCache.Get" ||
+        calleeName == "Zanna.Collections.LruCache.Peek" ||
+        calleeName == "Zanna.Collections.MultiMap.Get" ||
+        calleeName == "Zanna.Collections.MultiMap.GetFirst") {
         return mapReceiver && mapReceiver->valueType()
                    ? normalizeRuntimeSurfaceType(mapReceiver->valueType())
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.Map.Keys" ||
-        calleeName == "Viper.Collections.OrderedMap.Keys" ||
-        calleeName == "Viper.Collections.SortedMap.Keys" ||
-        calleeName == "Viper.Collections.Trie.Keys" ||
-        calleeName == "Viper.Collections.FrozenMap.Keys" ||
-        calleeName == "Viper.Collections.DefaultMap.Keys" ||
-        calleeName == "Viper.Collections.WeakMap.Keys" ||
-        calleeName == "Viper.Collections.LruCache.Keys" ||
-        calleeName == "Viper.Collections.MultiMap.Keys") {
+    if (calleeName == "Zanna.Collections.Map.Keys" ||
+        calleeName == "Zanna.Collections.OrderedMap.Keys" ||
+        calleeName == "Zanna.Collections.SortedMap.Keys" ||
+        calleeName == "Zanna.Collections.Trie.Keys" ||
+        calleeName == "Zanna.Collections.FrozenMap.Keys" ||
+        calleeName == "Zanna.Collections.DefaultMap.Keys" ||
+        calleeName == "Zanna.Collections.WeakMap.Keys" ||
+        calleeName == "Zanna.Collections.LruCache.Keys" ||
+        calleeName == "Zanna.Collections.MultiMap.Keys") {
         return mapReceiver && mapReceiver->keyType() ? asSeq(mapReceiver->keyType()) : fallback;
     }
 
-    if (calleeName == "Viper.Collections.Map.Values" ||
-        calleeName == "Viper.Collections.OrderedMap.Values" ||
-        calleeName == "Viper.Collections.SortedMap.Values" ||
-        calleeName == "Viper.Collections.FrozenMap.Values" ||
-        calleeName == "Viper.Collections.LruCache.Values") {
+    if (calleeName == "Zanna.Collections.Map.Values" ||
+        calleeName == "Zanna.Collections.OrderedMap.Values" ||
+        calleeName == "Zanna.Collections.SortedMap.Values" ||
+        calleeName == "Zanna.Collections.FrozenMap.Values" ||
+        calleeName == "Zanna.Collections.LruCache.Values") {
         return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType()) : fallback;
     }
 
-    if (calleeName == "Viper.Collections.Set.Items") {
+    if (calleeName == "Zanna.Collections.Set.Items") {
         return setReceiver && setReceiver->kind == TypeKindSem::Set && setReceiver->elementType()
                    ? asSeq(setReceiver->elementType())
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.List.ToSeq" ||
-        calleeName == "Viper.Collections.Queue.ToSeq" ||
-        calleeName == "Viper.Collections.Stack.ToSeq" ||
-        calleeName == "Viper.Collections.Deque.ToSeq") {
+    if (calleeName == "Zanna.Collections.List.ToSeq" ||
+        calleeName == "Zanna.Collections.Queue.ToSeq" ||
+        calleeName == "Zanna.Collections.Stack.ToSeq" ||
+        calleeName == "Zanna.Collections.Deque.ToSeq") {
         return elementReceiver && elementReceiver->elementType()
                    ? asSeq(elementReceiver->elementType())
                    : fallback;
@@ -1218,7 +1218,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     }
 
     // Check if callee is an imported symbol from a bound namespace
-    // This handles unqualified calls like Say() when Viper.Terminal is bound
+    // This handles unqualified calls like Say() when Zanna.Terminal is bound
     if (expr->callee->kind == ExprKind::Ident) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
         auto importIt = importedSymbols_.find(identExpr->name);
@@ -1302,16 +1302,16 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
     }
 
-    // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
+    // First, try to resolve dotted function names like Zanna.Terminal.Say or MyLib.helper
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
     if (extractDottedName(expr->callee.get(), dottedName)) {
         bool viaQualifiedModule = dottedName.find('.') != std::string::npos;
 
         // Check if the first part is a module alias or imported symbol that needs expansion
-        // e.g., "T.Say" where T is an alias for "Viper.Terminal" becomes "Viper.Terminal.Say"
-        // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes
-        // "Viper.Graphics.Canvas.New"
+        // e.g., "T.Say" where T is an alias for "Zanna.Terminal" becomes "Zanna.Terminal.Say"
+        // or "Canvas.New" where Canvas is imported from Zanna.Graphics becomes
+        // "Zanna.Graphics.Canvas.New"
         auto dotPos = dottedName.find('.');
         if (dotPos != std::string::npos) {
             std::string firstPart = dottedName.substr(0, dotPos);
@@ -1347,17 +1347,17 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             if (!dottedName.empty()) {
                 auto aliasIt = aliasToNamespace_.find(firstPart);
                 if (aliasIt != aliasToNamespace_.end()) {
-                    // Expand the alias: T.Say -> Viper.Terminal.Say
+                    // Expand the alias: T.Say -> Zanna.Terminal.Say
                     dottedName = aliasIt->second + "." + rest;
                     viaQualifiedModule = true;
                 }
             }
 
-            // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
+            // Check if firstPart is an imported symbol (e.g., Canvas from Zanna.Graphics)
             if (!dottedName.empty()) {
                 auto importIt = importedSymbols_.find(firstPart);
                 if (importIt != importedSymbols_.end()) {
-                    // Expand: Canvas.New -> Viper.Graphics.Canvas.New
+                    // Expand: Canvas.New -> Zanna.Graphics.Canvas.New
                     dottedName = importIt->second + "." + rest;
                     viaQualifiedModule = true;
                 }
@@ -1365,12 +1365,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
 
         if (!dottedName.empty()) {
-            if (dottedName == "Viper.Collections.Seq.New" && expr->args.size() == 1)
-                dottedName = "Viper.Collections.Seq.NewSized";
-            else if (dottedName == "Viper.String.FromInt")
-                dottedName = "Viper.Core.Convert.ToStringInt";
-            else if (dottedName == "Viper.String.FromDouble")
-                dottedName = "Viper.Core.Convert.ToStringDouble";
+            if (dottedName == "Zanna.Collections.Seq.New" && expr->args.size() == 1)
+                dottedName = "Zanna.Collections.Seq.NewSized";
+            else if (dottedName == "Zanna.String.FromInt")
+                dottedName = "Zanna.Core.Convert.ToStringInt";
+            else if (dottedName == "Zanna.String.FromDouble")
+                dottedName = "Zanna.Core.Convert.ToStringDouble";
 
             analyzeArgTypes();
 
@@ -1691,11 +1691,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
              baseType->kind == TypeKindSem::Map)) {
             std::string className;
             if (baseType->kind == TypeKindSem::Set)
-                className = "Viper.Collections.Set";
+                className = "Zanna.Collections.Set";
             else if (baseType->kind == TypeKindSem::List)
-                className = "Viper.Collections.List";
+                className = "Zanna.Collections.List";
             else
-                className = "Viper.Collections.Map";
+                className = "Zanna.Collections.Map";
 
             std::string fullMethodName = className + "." + fieldExpr->field;
             std::optional<il::runtime::ParsedMethod> resolvedRuntimeMethod;
@@ -1748,12 +1748,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
 
-            std::string fullMethodName = "Viper.String." + fieldExpr->field;
+            std::string fullMethodName = "Zanna.String." + fieldExpr->field;
             Symbol *sym = nullptr;
             const auto &registry = il::runtime::RuntimeRegistry::instance();
             std::optional<il::runtime::ParsedMethod> resolvedRuntimeMethod;
             if (auto method =
-                    registry.findMethod("Viper.String", fieldExpr->field, expr->args.size());
+                    registry.findMethod("Zanna.String", fieldExpr->field, expr->args.size());
                 method && method->target && *method->target) {
                 sym = lookupSymbol(method->target);
                 if (sym && sym->kind == Symbol::Kind::Function) {
@@ -1802,8 +1802,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
 
         // Handle runtime class method calls (e.g., canvas.Poll(), canvas.Clear())
-        // Runtime classes have names starting with "Viper." and are registered in typeRegistry_
-        if (baseType && baseType->name.find("Viper.") == 0) {
+        // Runtime classes have names starting with "Zanna." and are registered in typeRegistry_
+        if (baseType && baseType->name.find("Zanna.") == 0) {
             // Construct full method name: ClassName.MethodName
             std::string fullMethodName = baseType->name + "." + fieldExpr->field;
 
@@ -1841,11 +1841,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             // If not found and this is a GUI widget class, try falling back to Widget base class
             // This handles inherited methods like SetSize, AddChild, SetVisible, etc.
-            if (!sym && baseType->name.find("Viper.GUI.") == 0 &&
-                baseType->name != "Viper.GUI.Widget") {
+            if (!sym && baseType->name.find("Zanna.GUI.") == 0 &&
+                baseType->name != "Zanna.GUI.Widget") {
                 for (const auto &methodName : methodNames) {
                     if (auto method =
-                            registry.findMethod("Viper.GUI.Widget", methodName, expr->args.size());
+                            registry.findMethod("Zanna.GUI.Widget", methodName, expr->args.size());
                         method && method->target && *method->target) {
                         sym = lookupSymbol(method->target);
                         if (sym && sym->kind == Symbol::Kind::Function) {
@@ -1855,7 +1855,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                         }
                     }
 
-                    std::string widgetMethodName = "Viper.GUI.Widget." + methodName;
+                    std::string widgetMethodName = "Zanna.GUI.Widget." + methodName;
                     Symbol *widgetSym = lookupSymbol(widgetMethodName);
                     if (widgetSym && widgetSym->kind == Symbol::Kind::Function) {
                         sym = widgetSym;

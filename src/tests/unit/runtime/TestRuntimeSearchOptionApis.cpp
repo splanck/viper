@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -51,7 +51,7 @@ static int8_t is_twenty(void *value) {
 }
 
 /// @brief Assert that an Option contains the expected i64 value.
-/// @param option Opaque Viper.Option object.
+/// @param option Opaque Zanna.Option object.
 /// @param expected Expected integer payload.
 static void expect_some_i64(void *option, int64_t expected) {
     ASSERT_TRUE(option != nullptr);
@@ -60,7 +60,7 @@ static void expect_some_i64(void *option, int64_t expected) {
 }
 
 /// @brief Assert that an Option is None.
-/// @param option Opaque Viper.Option object.
+/// @param option Opaque Zanna.Option object.
 static void expect_none(void *option) {
     ASSERT_TRUE(option != nullptr);
     EXPECT_EQ(rt_option_is_none(option), 1);
@@ -208,5 +208,5 @@ TEST(RuntimeSearchOptionApis, SceneDocumentAudioAndLazySeqOptions) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/physics/rt_physics3d_collision_meshconvex.inc  (#included from
 // rt_physics3d_collision.c; not a standalone translation unit) Purpose: Physics3D GJK/EPA,
 // mesh-like tests, and the collider-pair dispatcher

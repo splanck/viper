@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_threads_primitives.cpp
 // Purpose: Cross-platform synchronization primitives backing the
-//          `Viper.Threads.Gate`, `Viper.Threads.Barrier`, and
-//          `Viper.Threads.RwLock` classes. Implemented in C++ to share one
+//          `Zanna.Threads.Gate`, `Zanna.Threads.Barrier`, and
+//          `Zanna.Threads.RwLock` classes. Implemented in C++ to share one
 //          portable `std::mutex` / `std::condition_variable` substrate across
 //          Windows, macOS, and Linux without pulling in external dependencies.
 //
@@ -39,7 +39,7 @@
 /// @file
 /// @brief Cross-platform implementations for Gate, Barrier, and RwLock.
 /// @details Provides FIFO-fair gates, reusable barriers, and writer-preferred
-///          reader-writer locks used by Viper.Threads.* runtime APIs.
+///          reader-writer locks used by Zanna.Threads.* runtime APIs.
 
 #include "rt_threads.h"
 
@@ -73,7 +73,7 @@
 namespace {
 
 // ============================================================================
-// Viper.Threads.Gate
+// Zanna.Threads.Gate
 // ============================================================================
 
 /// @brief Per-thread waiter state for gate acquisition.
@@ -265,7 +265,7 @@ static void gate_finalizer(void *obj) {
 }
 
 // ============================================================================
-// Viper.Threads.Barrier
+// Zanna.Threads.Barrier
 // ============================================================================
 
 /// @brief Shared barrier state for coordinating fixed parties.
@@ -332,7 +332,7 @@ static void barrier_finalizer(void *obj) {
 }
 
 // ============================================================================
-// Viper.Threads.RwLock
+// Zanna.Threads.RwLock
 // ============================================================================
 
 /// @brief Writer wait node for the reader-writer lock.
@@ -419,7 +419,7 @@ static void rwlock_finalizer(void *obj) {
 
 extern "C" {
 // ============================================================================
-// Viper.Threads.Gate
+// Zanna.Threads.Gate
 // ============================================================================
 
 /// @brief Create a new gate (counting semaphore) with initial permits.
@@ -672,7 +672,7 @@ int64_t rt_gate_get_permits(void *gate) {
 }
 
 // ============================================================================
-// Viper.Threads.Barrier
+// Zanna.Threads.Barrier
 // ============================================================================
 
 /// @brief Create a new reusable barrier.
@@ -839,7 +839,7 @@ int64_t rt_barrier_get_waiting(void *barrier) {
 }
 
 // ============================================================================
-// Viper.Threads.RwLock
+// Zanna.Threads.RwLock
 // ============================================================================
 
 /// @brief Create a new reader-writer lock instance.

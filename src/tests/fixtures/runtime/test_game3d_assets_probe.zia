@@ -1,9 +1,9 @@
 module test_game3d_assets_probe;
 
-bind Viper.Game3D as Game3D;
-bind Viper.Graphics3D as G3D;
-bind Viper.Terminal as Terminal;
-bind Viper.Threads.Thread as Thread;
+bind Zanna.Game3D as Game3D;
+bind Zanna.Graphics3D as G3D;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Threads.Thread as Thread;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);
@@ -53,8 +53,8 @@ func start() {
     }
     world.Destroy();
 
-    var tpl1: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
-    var tpl2: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
+    var tpl1: Game3D.SceneTemplate = Zanna.Game3D.Prefab.Load(path);
+    var tpl2: Game3D.SceneTemplate = Zanna.Game3D.Prefab.Load(path);
     if (tpl1 == null || tpl2 == null) {
         fail("LoadTemplate did not return cached templates");
         return;
@@ -72,13 +72,13 @@ func start() {
         return;
     }
 
-    var assetTpl: Game3D.SceneTemplate = Viper.Game3D.Prefab.LoadAsset(path);
+    var assetTpl: Game3D.SceneTemplate = Zanna.Game3D.Prefab.LoadAsset(path);
     if (assetTpl == null || assetTpl.IsAsset == false) {
         fail("LoadTemplateAsset did not record asset path");
         return;
     }
 
-    var missing: Game3D.AssetHandle3D = Viper.Game3D.Prefab.LoadAssetAsync("viper/missing/co3_missing.gltf");
+    var missing: Game3D.AssetHandle3D = Zanna.Game3D.Prefab.LoadAssetAsync("zanna/missing/co3_missing.gltf");
     if (missing == null) {
         fail("missing package asset did not return a diagnostic handle");
         return;
@@ -99,7 +99,7 @@ func start() {
 
     Game3D.Assets3D.Preload(path);
     Game3D.Assets3D.ClearCache();
-    var tpl3: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
+    var tpl3: Game3D.SceneTemplate = Zanna.Game3D.Prefab.Load(path);
     if (tpl3 == null) {
         fail("LoadTemplate failed after ClearCache");
         return;

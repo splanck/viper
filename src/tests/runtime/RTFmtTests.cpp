@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTFmtTests.cpp
-// Purpose: Tests for Viper.Text.Fmt value formatting functions.
+// Purpose: Tests for Zanna.Text.Fmt value formatting functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -314,7 +314,7 @@ static void test_fmt_oct() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Text.Fmt Tests ===\n\n");
+    printf("=== Zanna.Text.Fmt Tests ===\n\n");
 
     // Int formatting
     test_fmt_int();

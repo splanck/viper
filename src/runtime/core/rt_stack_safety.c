@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_stack_safety.c
 // Purpose: Implements stack overflow detection and graceful error reporting for
-//          the Viper runtime. On POSIX systems, installs a SIGSEGV handler on
+//          the Zanna runtime. On POSIX systems, installs a SIGSEGV handler on
 //          an alternate signal stack to catch stack overflows. On Windows,
 //          registers a Vectored Exception Handler for EXCEPTION_STACK_OVERFLOW.
 //
@@ -56,7 +56,7 @@ static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep) {
         // Cannot safely use fprintf here as we're out of stack space.
         // Use WriteFile to stderr directly.
         HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
-        const char *msg = "Viper runtime error: stack overflow\n"
+        const char *msg = "Zanna runtime error: stack overflow\n"
                           "Hint: Reduce recursion depth or use iterative algorithms.\n"
                           "      Consider using --stack-size=SIZE to increase stack.\n";
         DWORD written;
@@ -86,7 +86,7 @@ void rt_init_stack_safety(void) {
 void rt_trap_stack_overflow(void) {
     // Use WriteFile for safety in low-stack conditions
     HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
-    const char *msg = "Viper runtime trap: stack overflow\n";
+    const char *msg = "Zanna runtime trap: stack overflow\n";
     DWORD written;
     WriteFile(hStderr, msg, (DWORD)strlen(msg), &written, NULL);
     ExitProcess(1);
@@ -109,7 +109,7 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
     if (sig == SIGSEGV || sig == SIGBUS) {
         // Write directly to stderr using write() syscall
         // (safe to use in signal handlers)
-        const char *msg = "Viper runtime error: stack overflow (or segmentation fault)\n"
+        const char *msg = "Zanna runtime error: stack overflow (or segmentation fault)\n"
                           "Hint: Reduce recursion depth or use iterative algorithms.\n"
                           "      Consider increasing stack limit with ulimit -s.\n";
         write(STDERR_FILENO, msg, strlen(msg));
@@ -146,7 +146,7 @@ void rt_init_stack_safety(void) {
 }
 
 void rt_trap_stack_overflow(void) {
-    const char *msg = "Viper runtime trap: stack overflow\n";
+    const char *msg = "Zanna runtime trap: stack overflow\n";
     write(STDERR_FILENO, msg, strlen(msg));
     _exit(1);
 }
@@ -158,7 +158,7 @@ void rt_init_stack_safety(void) {
 }
 
 void rt_trap_stack_overflow(void) {
-    fprintf(stderr, "Viper runtime trap: stack overflow\n");
+    fprintf(stderr, "Zanna runtime trap: stack overflow\n");
     fflush(stderr);
     exit(1);
 }

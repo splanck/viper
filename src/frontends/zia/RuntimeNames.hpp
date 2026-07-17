@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -52,12 +52,12 @@ using namespace il::runtime::names;
 
 //=============================================================================
 /// @name String Aliases
-/// @brief Short names for Viper.String runtime functions.
+/// @brief Short names for Zanna.String runtime functions.
 /// @{
 //=============================================================================
 
-// kStringContains comes directly from the canonical catalog (Viper.String.Contains).
-/// @brief Get the length of a string. Maps to Viper.String.get_Length.
+// kStringContains comes directly from the canonical catalog (Zanna.String.Contains).
+/// @brief Get the length of a string. Maps to Zanna.String.get_Length.
 inline constexpr const char *kStringLength = kStringGetLength;
 /// @brief Convert an i64 integer to its string representation.
 inline constexpr const char *kStringFromInt = kCoreConvertToStringInt;
@@ -67,7 +67,7 @@ inline constexpr const char *kStringFromNum = kCoreConvertToStringDouble;
 
 //=============================================================================
 /// @name Core.Object Aliases
-/// @brief Short names for Viper.Core.Object runtime functions.
+/// @brief Short names for Zanna.Core.Object runtime functions.
 /// @{
 //=============================================================================
 
@@ -77,7 +77,7 @@ inline constexpr const char *kObjectToString = kCoreObjectToString;
 
 //=============================================================================
 /// @name Boxing Aliases
-/// @brief Short names for Viper.Core.Box boxing/unboxing functions.
+/// @brief Short names for Zanna.Core.Box boxing/unboxing functions.
 /// @details Boxing wraps primitive values (i64, f64, bool, str) into heap-
 ///          allocated Box objects for polymorphic storage in collections.
 /// @{
@@ -107,7 +107,7 @@ inline constexpr const char *kUnboxStr = kCoreBoxToStr;
 
 //=============================================================================
 /// @name Core.Convert Aliases
-/// @brief Short names for Viper.Core.Convert type conversion functions.
+/// @brief Short names for Zanna.Core.Convert type conversion functions.
 /// @{
 //=============================================================================
 
@@ -119,7 +119,7 @@ inline constexpr const char *kConvertToInt = kCoreConvertToInt64;
 
 //=============================================================================
 /// @name Core.Parse Aliases
-/// @brief Short names for Viper.Core.Parse string-to-number parsing functions.
+/// @brief Short names for Zanna.Core.Parse string-to-number parsing functions.
 /// @{
 //=============================================================================
 
@@ -131,7 +131,7 @@ inline constexpr const char *kParseInt64 = kCoreParseTryInt;
 
 //=============================================================================
 /// @name List Aliases
-/// @brief Short names for Viper.Collections.List functions.
+/// @brief Short names for Zanna.Collections.List functions.
 /// @details List is a dynamic growable array with O(1) amortized append.
 /// @{
 //=============================================================================
@@ -164,7 +164,7 @@ inline constexpr const char *kListPop = kCollectionsListPop;
 
 //=============================================================================
 /// @name Set Aliases
-/// @brief Short names for Viper.Collections.Set functions.
+/// @brief Short names for Zanna.Collections.Set functions.
 /// @details Set is a hash-based unordered collection of unique values.
 /// @{
 //=============================================================================
@@ -185,7 +185,7 @@ inline constexpr const char *kSetClear = kCollectionsSetClear;
 
 //=============================================================================
 /// @name Map Aliases
-/// @brief Short names for Viper.Collections.Map functions.
+/// @brief Short names for Zanna.Collections.Map functions.
 /// @details Map is a hash-based key-value dictionary with O(1) average lookups.
 /// @{
 //=============================================================================
@@ -218,7 +218,7 @@ inline constexpr const char *kMapValues = kCollectionsMapValues;
 
 //=============================================================================
 /// @name IntMap Aliases
-/// @brief Short names for Viper.Collections.IntMap functions.
+/// @brief Short names for Zanna.Collections.IntMap functions.
 /// @details IntMap is the integer-keyed runtime backing store used when Zia lowers
 ///          `Map[Integer, T]`. Values are stored as boxed objects just like string-keyed
 ///          Map values, while keys are passed as widened i64 integers.
@@ -249,7 +249,7 @@ inline constexpr const char *kIntMapValues = kCollectionsIntMapValues;
 
 //=============================================================================
 /// @name Seq Aliases
-/// @brief Short names for Viper.Collections.Seq (immutable sequence) functions.
+/// @brief Short names for Zanna.Collections.Seq (immutable sequence) functions.
 /// @{
 //=============================================================================
 
@@ -269,15 +269,15 @@ inline constexpr const char *kSeqGetStr = kCollectionsSeqGetStr;
 /// @{
 //=============================================================================
 
-/// @brief Generate a random number. Maps to Viper.Math.Random.NextDouble.
+/// @brief Generate a random number. Maps to Zanna.Math.Random.NextDouble.
 inline constexpr const char *kMathRandom = kMathRandomNextDouble;
-/// @brief Sleep for a given number of milliseconds. Maps to Viper.Time.Clock.Sleep.
+/// @brief Sleep for a given number of milliseconds. Maps to Zanna.Time.Clock.Sleep.
 inline constexpr const char *kSystemSleep = kTimeClockSleep;
 /// @}
 
 //=============================================================================
 /// @name Thread Aliases
-/// @brief Short names for Viper.Threads.Thread functions.
+/// @brief Short names for Zanna.Threads.Thread functions.
 /// @{
 //=============================================================================
 
@@ -291,7 +291,7 @@ inline constexpr const char *kThreadSleep = kThreadsThreadSleep;
 
 //=============================================================================
 /// @name Async/Future Aliases
-/// @brief Short names for Viper.Threads.Async and Viper.Threads.Future functions.
+/// @brief Short names for Zanna.Threads.Async and Zanna.Threads.Future functions.
 /// @{
 //=============================================================================
 
@@ -312,7 +312,7 @@ inline constexpr const char *kFutureGet = kThreadsFutureGet;
 inline constexpr size_t kMaxImportDepth = 50;
 
 /// @brief Maximum number of imported files to prevent runaway compilation.
-/// @details Raised to 256 to accommodate large dogfood projects (ViperIDE).
+/// @details Raised to 256 to accommodate large dogfood projects (ZannaIDE).
 inline constexpr size_t kMaxImportedFiles = 256;
 
 /// @brief Native machine word size used by Zia IL pointer/i64 stack slots.
@@ -339,7 +339,7 @@ inline constexpr size_t kClassFieldsOffset = kObjectHeaderSize + kVtablePtrSize;
 // Internal Runtime Functions
 //=============================================================================
 /// @name Internal Runtime Functions
-/// @brief Low-level runtime functions not in the Viper.* namespace.
+/// @brief Low-level runtime functions not in the Zanna.* namespace.
 /// @{
 
 /// @brief Allocate memory for a runtime object.
@@ -354,7 +354,7 @@ inline constexpr const char *kRtObjClassId = "rt_obj_class_id";
 
 //=============================================================================
 /// @name Memory Management Aliases
-/// @brief Short names for Viper.Memory retain/release functions.
+/// @brief Short names for Zanna.Memory retain/release functions.
 /// @{
 //=============================================================================
 

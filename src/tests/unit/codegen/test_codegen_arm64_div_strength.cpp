@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,8 +18,8 @@
 #include "codegen/aarch64/Peephole.hpp"
 #include "codegen/aarch64/peephole/PeepholeCommon.hpp"
 
-using namespace viper::codegen::aarch64;
-using namespace viper::codegen::aarch64::peephole;
+using namespace zanna::codegen::aarch64;
+using namespace zanna::codegen::aarch64::peephole;
 
 /// Unsigned division by 8 (power of 2) should become lsr by 3.
 TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr) {
@@ -362,6 +362,6 @@ TEST(AArch64DivStrength, SRemByPowerOf2BecomesSignCorrectedAnd) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Feature Parity Matrix — Viper</title>
-  <meta name="description" content="Viper documentation: Feature Parity Matrix">
+  <title>Feature Parity Matrix — Zanna</title>
+  <meta name="description" content="Zanna documentation: Feature Parity Matrix">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -44,9 +44,9 @@
   </aside>
   <main class="page-main prose">
     <h1>Feature Parity Matrix</h1>
-<h1 id="zia-vs-viper-basic-feature-parity-matrix">Zia vs Viper BASIC: Feature Parity Matrix</h1>
+<h1 id="zia-vs-zanna-basic-feature-parity-matrix">Zia vs Zanna BASIC: Feature Parity Matrix</h1>
 <h2 id="context">Context</h2>
-<p>This document is a comprehensive feature parity audit between the two Viper frontends: <strong>Zia</strong> (modern, Swift/Kotlin-influenced) and <strong>Viper BASIC</strong> (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn&#x27;t wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.</p>
+<p>This document is a comprehensive feature parity audit between the two Zanna frontends: <strong>Zia</strong> (modern, Swift/Kotlin-influenced) and <strong>Zanna BASIC</strong> (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn&#x27;t wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.</p>
 <p>---</p>
 <h2 id="1-feature-parity-matrix">1. Feature Parity Matrix</h2>
 <h3 id="legend">Legend</h3>
@@ -312,7 +312,7 @@
 <td>Async function declaration</td>
 <td>**Full** (`async func`, `expose async func`)</td>
 <td>None</td>
-<td>Zia only; returns `Viper.Threads.Future`</td>
+<td>Zia only; returns `Zanna.Threads.Future`</td>
 </tr>
 <tr>
 <td>Foreign function declaration</td>
@@ -561,13 +561,13 @@
 <tr>
 <td>Dynamic list</td>
 <td>**Full** (List literal `[1,2,3]`)</td>
-<td>Via runtime (`Viper.Collections.List`)</td>
+<td>Via runtime (`Zanna.Collections.List`)</td>
 <td>Zia has literal syntax + sugar</td>
 </tr>
 <tr>
 <td>Map / Dictionary</td>
 <td>**Full** (Map literal `{&quot;a&quot;:1}`)</td>
-<td>Via runtime (`Viper.Collections.Map`)</td>
+<td>Via runtime (`Zanna.Collections.Map`)</td>
 <td>Zia has literal syntax + sugar</td>
 </tr>
 <tr>
@@ -833,20 +833,20 @@
 </tr>
 <tr>
 <td>Namespace imports</td>
-<td>**Full** (`bind Viper.Terminal`)</td>
-<td>**Full** (`USING Viper.Terminal`)</td>
+<td>**Full** (`bind Zanna.Terminal`)</td>
+<td>**Full** (`USING Zanna.Terminal`)</td>
 <td></td>
 </tr>
 <tr>
 <td>Selective imports</td>
-<td>**Full** (`bind Viper.X { A, B }`)</td>
+<td>**Full** (`bind Zanna.X { A, B }`)</td>
 <td>None</td>
 <td>Zia only</td>
 </tr>
 <tr>
 <td>Alias imports</td>
-<td>**Full** (`bind X = Viper.Y`)</td>
-<td>**Full** (`USING Viper.Y AS X`)</td>
+<td>**Full** (`bind X = Zanna.Y`)</td>
+<td>**Full** (`USING Zanna.Y AS X`)</td>
 <td></td>
 </tr>
 <tr>
@@ -1025,7 +1025,7 @@
 </tr></thead><tbody>
 <tr>
 <td>Console print</td>
-<td>Via `bind Viper.Terminal`</td>
+<td>Via `bind Zanna.Terminal`</td>
 <td>**Full** (`PRINT`)</td>
 <td>BASIC has built-in syntax</td>
 </tr>
@@ -1085,7 +1085,7 @@
 </tr>
 <tr>
 <td>Math builtins</td>
-<td>Via `bind Viper.Math`</td>
+<td>Via `bind Zanna.Math`</td>
 <td>**Full** (SQR, SIN, COS, etc.)</td>
 <td>BASIC has 16+ built-in math functions</td>
 </tr>
@@ -1369,13 +1369,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

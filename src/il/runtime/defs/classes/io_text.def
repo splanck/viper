@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,13 +18,13 @@
 //===----------------------------------------------------------------------===//
 
 
-// Viper.IO.Dir - directory operations
+// Zanna.IO.Dir - directory operations
 /// @summary Provides directory enumeration, creation, movement, and removal operations.
 /// @details
-/// `Viper.IO.Dir` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.IO.Dir` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes operations including `Current`, `Dirs`,
 /// `Exists`, `Entries`.
-RT_CLASS_BEGIN("Viper.IO.Dir", Dir, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Dir", Dir, "obj", none)
     RT_METHOD("Current", "str()", DirCurrent)
     RT_METHOD("Dirs", "seq<str>(str)", DirDirs)
     RT_METHOD("Exists", "i1(str)", DirExists)
@@ -39,26 +39,26 @@ RT_CLASS_BEGIN("Viper.IO.Dir", Dir, "obj", none)
     RT_METHOD("SetCurrent", "void(str)", DirSetCurrent)
 RT_CLASS_END()
 
-// Viper.IO.Glob - glob pattern matching
+// Zanna.IO.Glob - glob pattern matching
 /// @summary Provides glob pattern matching.
 /// @details
-/// `Viper.IO.Glob` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.IO.Glob` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes operations including `Match`, `Files`,
 /// `FilesRecursive`, `Entries`.
-RT_CLASS_BEGIN("Viper.IO.Glob", Glob, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Glob", Glob, "obj", none)
     RT_METHOD("Match", "i1(str,str)", GlobMatch)
     RT_METHOD("Files", "seq<str>(str,str)", GlobFiles)
     RT_METHOD("FilesRecursive", "seq<str>(str,str)", GlobFilesRecursive)
     RT_METHOD("Entries", "seq<str>(str,str)", GlobEntries)
 RT_CLASS_END()
 
-// Viper.IO.TempFile - temporary file utilities
+// Zanna.IO.TempFile - temporary file utilities
 /// @summary Provides temporary file utilities.
 /// @details
-/// `Viper.IO.TempFile` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.TempFile` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Dir`, `Path`,
 /// `PathWithPrefix`, `PathWithExt`.
-RT_CLASS_BEGIN("Viper.IO.TempFile", TempFile, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.TempFile", TempFile, "obj", none)
     RT_METHOD("Dir", "str()", TempFileDir)
     RT_METHOD("Path", "str()", TempFilePath)
     RT_METHOD("PathWithPrefix", "str(str)", TempFilePathWithPrefix)
@@ -69,13 +69,13 @@ RT_CLASS_BEGIN("Viper.IO.TempFile", TempFile, "obj", none)
     RT_METHOD("CreateDirWithPrefix", "str(str)", TempDirCreateWithPrefix)
 RT_CLASS_END()
 
-// Viper.IO.File - static utility class
+// Zanna.IO.File - static utility class
 /// @summary Provides whole-file I/O, metadata, copying, moving, and deletion operations.
 /// @details
-/// `Viper.IO.File` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.IO.File` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes operations including `Append`, `AppendLine`,
 /// `Copy`, `Delete`.
-RT_CLASS_BEGIN("Viper.IO.File", File, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.File", File, "obj", none)
     RT_METHOD("Append", "void(str,str)", FileAppend)
     RT_METHOD("AppendLine", "void(str,str)", FileAppendLine)
     RT_METHOD("Copy", "void(str,str)", FileCopy)
@@ -83,23 +83,23 @@ RT_CLASS_BEGIN("Viper.IO.File", File, "obj", none)
     RT_METHOD("Exists", "i1(str)", FileExists)
     RT_METHOD("Modified", "i64(str)", FileModified)
     RT_METHOD("Move", "void(str,str)", FileMove)
-    RT_METHOD("ReadAllBytes", "obj<Viper.Collections.Bytes>(str)", FileReadAllBytes)
+    RT_METHOD("ReadAllBytes", "obj<Zanna.Collections.Bytes>(str)", FileReadAllBytes)
     RT_METHOD("ReadAllLines", "seq<str>(str)", FileReadAllLines)
     RT_METHOD("ReadAllText", "str(str)", FileReadAllText)
     RT_METHOD("SizeBytes", "i64(str)", FileSize)
     RT_METHOD("Touch", "void(str)", FileTouch)
-    RT_METHOD("WriteAllBytes", "void(str,obj<Viper.Collections.Bytes>)", FileWriteAllBytes)
+    RT_METHOD("WriteAllBytes", "void(str,obj<Zanna.Collections.Bytes>)", FileWriteAllBytes)
     RT_METHOD("WriteAllLines", "void(str,seq<str>)", FileWriteAllLines)
     RT_METHOD("WriteAllText", "void(str,str)", FileWriteAllText)
 RT_CLASS_END()
 
-// Viper.IO.Path - static utility class for path manipulation
+// Zanna.IO.Path - static utility class for path manipulation
 /// @summary Provides static utility class for path manipulation.
 /// @details
-/// `Viper.IO.Path` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.IO.Path` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes operations including `Absolute`, `Directory`,
 /// `Extension`, `ExeDir`.
-RT_CLASS_BEGIN("Viper.IO.Path", Path, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Path", Path, "obj", none)
     RT_METHOD("Absolute", "str(str)", PathAbs)
     RT_METHOD("Directory", "str(str)", PathDir)
     RT_METHOD("Extension", "str(str)", PathExt)
@@ -116,13 +116,13 @@ RT_CLASS_BEGIN("Viper.IO.Path", Path, "obj", none)
     RT_METHOD("WithExtension", "str(str,str)", PathWithExt)
 RT_CLASS_END()
 
-// Viper.IO.BinFile - binary file stream operations
+// Zanna.IO.BinFile - binary file stream operations
 /// @summary Provides binary file stream operations.
 /// @details
-/// `Viper.IO.BinFile` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.BinFile` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Eof`, `Position`,
 /// `SizeBytes` and operations including `Open`, `Close`, `Flush`, `Read`.
-RT_CLASS_BEGIN("Viper.IO.BinFile", BinFile, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.BinFile", BinFile, "obj", none)
     RT_PROP("Eof", "i1", BinFileEof, none)
     RT_PROP("Position", "i64", BinFilePos, none)
     RT_PROP("SizeBytes", "i64", BinFileSize, none)
@@ -136,14 +136,14 @@ RT_CLASS_BEGIN("Viper.IO.BinFile", BinFile, "obj", none)
     RT_METHOD("WriteByte", "void(i64)", BinFileWriteByte)
 RT_CLASS_END()
 
-// Viper.IO.MemStream - in-memory binary stream
+// Zanna.IO.MemStream - in-memory binary stream
 /// @summary Provides in-memory binary stream.
 /// @details
-/// Create `Viper.IO.MemStream` values through its registered constructor and use the returned
+/// Create `Zanna.IO.MemStream` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Position`, `Length`, `Capacity` and operations including `ReadI8`, `WriteI8`, `ReadU8`,
 /// `WriteU8`.
-RT_CLASS_BEGIN("Viper.IO.MemStream", MemStream, "obj", MemStreamNew)
+RT_CLASS_BEGIN("Zanna.IO.MemStream", MemStream, "obj", MemStreamNew)
     RT_PROP("Position", "i64", MemStreamGetPos, MemStreamSetPos)
     RT_PROP("Length", "i64", MemStreamGetLen, none)
     RT_PROP("Capacity", "i64", MemStreamGetCapacity, none)
@@ -175,14 +175,14 @@ RT_CLASS_BEGIN("Viper.IO.MemStream", MemStream, "obj", MemStreamNew)
     RT_METHOD("Skip", "void(i64)", MemStreamSkip)
 RT_CLASS_END()
 
-// Viper.IO.BinaryBuffer - positioned binary read/write buffer
+// Zanna.IO.BinaryBuffer - positioned binary read/write buffer
 /// @summary Provides positioned binary read/write buffer.
 /// @details
-/// Create `Viper.IO.BinaryBuffer` values through its registered constructor and use the returned
+/// Create `Zanna.IO.BinaryBuffer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Position`, `Length` and operations including `NewCapacity`, `FromBytes`, `WriteByte`,
 /// `WriteI16LittleEndian`.
-RT_CLASS_BEGIN("Viper.IO.BinaryBuffer", BinaryBuffer, "obj", BinBufNew)
+RT_CLASS_BEGIN("Zanna.IO.BinaryBuffer", BinaryBuffer, "obj", BinBufNew)
     RT_PROP("Position", "i64", BinBufGetPos, BinBufSetPos)
     RT_PROP("Length", "i64", BinBufGetLen, none)
     RT_METHOD("NewCapacity", "obj(i64)", BinBufNewCapacity)
@@ -217,14 +217,14 @@ RT_CLASS_BEGIN("Viper.IO.BinaryBuffer", BinaryBuffer, "obj", BinBufNew)
     RT_METHOD("Reset", "void()", BinBufReset)
 RT_CLASS_END()
 
-// Viper.IO.Stream - unified stream interface
+// Zanna.IO.Stream - unified stream interface
 /// @summary Provides unified stream interface.
 /// @details
-/// `Viper.IO.Stream` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.Stream` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Type`,
 /// `Position`, `Length` and operations including `OpenFile`, `OpenMemory`, `OpenBytes`,
 /// `FromBinFile`.
-RT_CLASS_BEGIN("Viper.IO.Stream", Stream, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Stream", Stream, "obj", none)
     // Static constructors
     RT_METHOD("OpenFile", "obj(str,str)", StreamOpenFile)
     RT_METHOD("OpenMemory", "obj()", StreamOpenMemory)
@@ -245,18 +245,18 @@ RT_CLASS_BEGIN("Viper.IO.Stream", Stream, "obj", none)
     RT_METHOD("Flush", "void()", StreamFlush)
     RT_METHOD("Close", "void()", StreamClose)
     // Conversion
-    RT_METHOD("AsBinFile", "obj<Viper.IO.BinFile>()", StreamAsBinFile)
-    RT_METHOD("AsMemStream", "obj<Viper.IO.MemStream>()", StreamAsMemStream)
+    RT_METHOD("AsBinFile", "obj<Zanna.IO.BinFile>()", StreamAsBinFile)
+    RT_METHOD("AsMemStream", "obj<Zanna.IO.MemStream>()", StreamAsMemStream)
     RT_METHOD("ToBytes", "obj()", StreamToBytes)
 RT_CLASS_END()
 
-// Viper.IO.LineReader - line-by-line text file reader
+// Zanna.IO.LineReader - line-by-line text file reader
 /// @summary Provides line-by-line text file reader.
 /// @details
-/// `Viper.IO.LineReader` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.LineReader` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Eof` and
 /// operations including `Open`, `Close`, `PeekChar`, `Read`.
-RT_CLASS_BEGIN("Viper.IO.LineReader", LineReader, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.LineReader", LineReader, "obj", none)
     RT_PROP("Eof", "i1", LineReaderEof, none)
     RT_METHOD("Open", "obj(str)", LineReaderOpen)
     RT_METHOD("Close", "void()", LineReaderClose)
@@ -266,13 +266,13 @@ RT_CLASS_BEGIN("Viper.IO.LineReader", LineReader, "obj", none)
     RT_METHOD("ReadChar", "i64()", LineReaderReadChar)
 RT_CLASS_END()
 
-// Viper.IO.LineWriter - buffered text file writer
+// Zanna.IO.LineWriter - buffered text file writer
 /// @summary Provides buffered text file writer.
 /// @details
-/// `Viper.IO.LineWriter` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.LineWriter` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `NewLine` and
 /// operations including `Open`, `Append`, `Close`, `Flush`.
-RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.LineWriter", LineWriter, "obj", none)
     RT_PROP("NewLine", "str", LineWriterNewLine, LineWriterSetNewLine)
     RT_METHOD("Open", "obj(str)", LineWriterOpen)
     RT_METHOD("Append", "obj(str)", LineWriterAppend)
@@ -283,13 +283,13 @@ RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", none)
     RT_METHOD("WriteLine", "void(str)", LineWriterWriteLn)
 RT_CLASS_END()
 
-// Viper.IO.SaveData - key-value game save persistence
+// Zanna.IO.SaveData - key-value game save persistence
 /// @summary Provides key-value game save persistence.
 /// @details
-/// Create `Viper.IO.SaveData` values through its registered constructor and use the returned object
+/// Create `Zanna.IO.SaveData` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Count`, `Path`
 /// and operations including `SetInt`, `SetString`, `GetInt`, `GetString`.
-RT_CLASS_BEGIN("Viper.IO.SaveData", SaveData, "obj", SaveDataNew)
+RT_CLASS_BEGIN("Zanna.IO.SaveData", SaveData, "obj", SaveDataNew)
     RT_PROP("Count", "i64", SaveDataCount, none)
     RT_PROP("Path", "str", SaveDataGetPath, none)
     RT_METHOD("SetInt", "void(str,i64)", SaveDataSetInt)
@@ -303,13 +303,13 @@ RT_CLASS_BEGIN("Viper.IO.SaveData", SaveData, "obj", SaveDataNew)
     RT_METHOD("Clear", "void()", SaveDataClear)
 RT_CLASS_END()
 
-// Viper.IO.Watcher - file system watcher
+// Zanna.IO.Watcher - file system watcher
 /// @summary Provides file system watcher.
 /// @details
-/// Create `Viper.IO.Watcher` values through its registered constructor and use the returned object
+/// Create `Zanna.IO.Watcher` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Path`,
 /// `IsWatching`, `EventNone` and operations including `Start`, `Stop`, `Poll`, `PollFor`.
-RT_CLASS_BEGIN("Viper.IO.Watcher", Watcher, "obj", WatcherNew)
+RT_CLASS_BEGIN("Zanna.IO.Watcher", Watcher, "obj", WatcherNew)
     RT_PROP("Path", "str", WatcherPath, none)
     RT_PROP("IsWatching", "i1", WatcherIsWatching, none)
     RT_PROP("EventNone", "i64", WatcherEventNone, none)
@@ -329,10 +329,10 @@ RT_CLASS_END()
 
 /// @summary Provides Compress functionality for filesystem and stream workflows.
 /// @details
-/// `Viper.IO.Compress` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.Compress` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Deflate`,
 /// `DeflateLvl`, `Inflate`, `Gzip`.
-RT_CLASS_BEGIN("Viper.IO.Compress", Compress, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Compress", Compress, "obj", none)
     RT_METHOD("Deflate", "obj(obj)", CompressDeflate)
     RT_METHOD("DeflateLvl", "obj(obj,i64)", CompressDeflateLvl)
     RT_METHOD("Inflate", "obj(obj)", CompressInflate)
@@ -345,15 +345,15 @@ RT_CLASS_BEGIN("Viper.IO.Compress", Compress, "obj", none)
     RT_METHOD("GunzipStr", "str(obj)", CompressGunzipStr)
 RT_CLASS_END()
 
-// Viper.IO.Archive - ZIP archive support
+// Zanna.IO.Archive - ZIP archive support
 // Instance class for reading and writing ZIP files.
 // Open(path) or FromBytes(data) for reading, Create(path) for writing.
 /// @summary Provides Archive functionality for filesystem and stream workflows.
 /// @details
-/// `Viper.IO.Archive` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.IO.Archive` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Path`, `Count`,
 /// `Names` and operations including `Open`, `Create`, `FromBytes`, `Has`.
-RT_CLASS_BEGIN("Viper.IO.Archive", Archive, "obj", none)
+RT_CLASS_BEGIN("Zanna.IO.Archive", Archive, "obj", none)
     // Static constructors
     RT_METHOD("Open", "obj(str)", ArchiveOpen)
     RT_METHOD("Create", "obj(str)", ArchiveCreate)
@@ -380,13 +380,13 @@ RT_CLASS_BEGIN("Viper.IO.Archive", Archive, "obj", none)
     RT_METHOD("IsZipBytes", "i1(obj)", ArchiveIsZipBytes)
 RT_CLASS_END()
 
-// Viper.Diagnostics.Log - simple logging utilities
+// Zanna.Diagnostics.Log - simple logging utilities
 /// @summary Provides simple logging utilities.
 /// @details
-/// `Viper.Diagnostics.Log` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Diagnostics.Log` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Level`,
 /// `LevelDebug`, `LevelInfo` and operations including `Debug`, `Info`, `Warn`, `Error`.
-RT_CLASS_BEGIN("Viper.Diagnostics.Log", Log, "obj", none)
+RT_CLASS_BEGIN("Zanna.Diagnostics.Log", Log, "obj", none)
     RT_PROP("Level", "i64", LogLevel, LogSetLevel)
     RT_PROP("LevelDebug", "i64", LogDEBUG, none)
     RT_PROP("LevelInfo", "i64", LogINFO, none)
@@ -400,13 +400,13 @@ RT_CLASS_BEGIN("Viper.Diagnostics.Log", Log, "obj", none)
     RT_METHOD("Enabled", "i1(i64)", LogEnabled)
 RT_CLASS_END()
 
-// Viper.System.Machine - system information queries
+// Zanna.System.Machine - system information queries
 /// @summary Provides system information queries.
 /// @details
-/// `Viper.System.Machine` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.System.Machine` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Arch`, `Cores`,
 /// `Endian`.
-RT_CLASS_BEGIN("Viper.System.Machine", Machine, "obj", none)
+RT_CLASS_BEGIN("Zanna.System.Machine", Machine, "obj", none)
     RT_PROP("Arch", "str", MachineArch, none)
     RT_PROP("Cores", "i64", MachineCores, none)
     RT_PROP("Endian", "str", MachineEndian, none)
@@ -422,13 +422,13 @@ RT_CLASS_BEGIN("Viper.System.Machine", Machine, "obj", none)
     RT_PROP("User", "str", MachineUser, none)
 RT_CLASS_END()
 
-// Viper.Math - static utility class
+// Zanna.Math - static utility class
 /// @summary Provides scalar mathematical functions and numeric utilities.
 /// @details
-/// `Viper.Math` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.Math` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes properties such as `Euler`, `Pi`, `Tau` and
 /// operations including `Abs`, `AbsInt`, `Acos`, `Asin`.
-RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
+RT_CLASS_BEGIN("Zanna.Math", Math, "obj", none)
     RT_PROP("Euler", "f64", MathE, none)
     RT_PROP("Pi", "f64", MathPi, none)
     RT_PROP("Tau", "f64", MathTau, none)
@@ -471,39 +471,39 @@ RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
     RT_METHOD("WrapInt", "i64(i64,i64,i64)", MathWrapInt)
 RT_CLASS_END()
 
-// Viper.Math.PerlinNoise - Perlin noise generator
+// Zanna.Math.PerlinNoise - Perlin noise generator
 /// @summary Provides perlin noise generator.
 /// @details
-/// Create `Viper.Math.PerlinNoise` values through its registered constructor and use the returned
+/// Create `Zanna.Math.PerlinNoise` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `Noise2D`, `Noise3D`, `Octave2D`, `Octave3D`.
-RT_CLASS_BEGIN("Viper.Math.PerlinNoise", PerlinNoise, "obj", PerlinNew)
+RT_CLASS_BEGIN("Zanna.Math.PerlinNoise", PerlinNoise, "obj", PerlinNew)
     RT_METHOD("Noise2D", "f64(obj,f64,f64)", PerlinNoise2D)
     RT_METHOD("Noise3D", "f64(obj,f64,f64,f64)", PerlinNoise3D)
     RT_METHOD("Octave2D", "f64(obj,f64,f64,i64,f64)", PerlinOctave2D)
     RT_METHOD("Octave3D", "f64(obj,f64,f64,f64,i64,f64)", PerlinOctave3D)
 RT_CLASS_END()
 
-// Viper.Math.Easing - static easing functions
+// Zanna.Math.Easing - static easing functions
 /// @summary Provides static easing functions.
 /// @details
-/// `Viper.Math.Easing` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Math.Easing` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Linear`,
 /// `EaseInQuad`, `EaseOutQuad`, `EaseInOutQuad`.
-RT_CLASS_BEGIN("Viper.Math.Easing", Easing, "obj", none)
+RT_CLASS_BEGIN("Zanna.Math.Easing", Easing, "obj", none)
     RT_METHOD("Linear", "f64(f64)", EaseLinear)
     RT_METHOD("EaseInQuad", "f64(f64)", EaseInQuad)
     RT_METHOD("EaseOutQuad", "f64(f64)", EaseOutQuad)
     RT_METHOD("EaseInOutQuad", "f64(f64)", EaseInOutQuad)
 RT_CLASS_END()
 
-// Viper.Core.Object - base class for all objects
+// Zanna.Core.Object - base class for all objects
 /// @summary Provides base class for all objects.
 /// @details
-/// `Viper.Core.Object` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Core.Object` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Equals`,
 /// `RefEquals`, `HashCode`, `ToString`.
-RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
+RT_CLASS_BEGIN("Zanna.Core.Object", Object, "obj", none)
     RT_METHOD("Equals", "i1(obj)", ObjEquals)
     RT_METHOD("RefEquals", "i1(obj,obj)", ObjRefEquals)
     RT_METHOD("HashCode", "i64()", ObjHashCode)
@@ -514,26 +514,26 @@ RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
     RT_METHOD("IsNull", "i1(obj)", ObjIsNull)
 RT_CLASS_END()
 
-// Viper.Random - RNG class with independent per-instance state
+// Zanna.Random - RNG class with independent per-instance state
 /// @summary Provides Random functionality for numeric and geometric calculations.
 /// @details
-/// Create `Viper.Math.Random` values through its registered constructor and use the returned object
+/// Create `Zanna.Math.Random` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `NextDouble`,
 /// `NextInt`, `Range`, `Seed`.
-RT_CLASS_BEGIN("Viper.Math.Random", Random, "obj", RandomNew)
+RT_CLASS_BEGIN("Zanna.Math.Random", Random, "obj", RandomNew)
     RT_METHOD("NextDouble", "f64()", RandomNextMethod)
     RT_METHOD("NextInt", "i64(i64)", RandomNextIntMethod)
     RT_METHOD("Range", "i64(i64,i64)", RandomRangeMethod)
     RT_METHOD("Seed", "void(i64)", RandomSeedMethod)
 RT_CLASS_END()
 
-// Viper.String - built-in string type
+// Zanna.String - built-in string type
 /// @summary Provides immutable runtime string values and common text operations.
 /// @details
-/// `Viper.String` exposes a registry-backed runtime surface without requiring callers to construct
+/// `Zanna.String` exposes a registry-backed runtime surface without requiring callers to construct
 /// the class directly. Its public surface exposes properties such as `IsEmpty`, `Length` and
 /// operations including `Asc`, `CamelCase`, `Chr`, `Compare`.
-RT_CLASS_BEGIN("Viper.String", String, "opaque*", none)
+RT_CLASS_BEGIN("Zanna.String", String, "opaque*", none)
     RT_PROP("IsEmpty", "i1", StrIsEmpty, none)
     RT_PROP("Length", "i64", Len, none)
     RT_METHOD("Asc", "i64()", Asc)
@@ -563,7 +563,7 @@ RT_CLASS_BEGIN("Viper.String", String, "opaque*", none)
     RT_METHOD("SnakeCase", "str()", StrSnakeCase)
     RT_METHOD("Split", "seq<str>(str)", StrSplit)
     RT_METHOD("SplitFields", "seq<str>(str)", SplitFields)
-    RT_METHOD("SplitFieldsResult", "obj<Viper.Result>(str)", SplitFieldsResult)
+    RT_METHOD("SplitFieldsResult", "obj<Zanna.Result>(str)", SplitFieldsResult)
     RT_METHOD("StartsWith", "i1(str)", StrStartsWith)
     RT_METHOD("Substring", "str(i64,i64)", Substr)
     RT_METHOD("ToLower", "str()", LCase)
@@ -575,14 +575,14 @@ RT_CLASS_BEGIN("Viper.String", String, "opaque*", none)
     RT_METHOD("LikeIgnoreCase", "i1(str)", StrLikeCI)
 RT_CLASS_END()
 
-// Viper.Terminal - terminal I/O, cursor control, and keyboard input
+// Zanna.Terminal - terminal I/O, cursor control, and keyboard input
 /// @summary Provides terminal input, output, styling, and screen-control operations.
 /// @details
-/// `Viper.Terminal` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Terminal` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `AskResult`,
 /// `BeginBatch`, `Bell`, `Clear`.
-RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
-    RT_METHOD("AskResult", "obj<Viper.Result>(str)", TermAskResult)
+RT_CLASS_BEGIN("Zanna.Terminal", Terminal, "obj", none)
+    RT_METHOD("AskResult", "obj<Zanna.Result>(str)", TermAskResult)
     RT_METHOD("BeginBatch", "void()", TermBeginBatch)
     RT_METHOD("Bell", "void()", TermBell)
     RT_METHOD("Clear", "void()", TermClear)
@@ -595,7 +595,7 @@ RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
     RT_METHOD("PrintInt", "void(i64)", TermPrintInt)
     RT_METHOD("PrintNum", "void(f64)", TermPrintNum)
     RT_METHOD("PrintBool", "void(i1)", TermPrintBool)
-    RT_METHOD("ReadLineResult", "obj<Viper.Result>()", TermReadLineResult)
+    RT_METHOD("ReadLineResult", "obj<Zanna.Result>()", TermReadLineResult)
     RT_METHOD("Say", "void(str)", TermSay)
     RT_METHOD("SayBool", "void(i1)", TermSayBool)
     RT_METHOD("SayInt", "void(i64)", TermSayInt)
@@ -604,17 +604,17 @@ RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
     RT_METHOD("SetColor", "void(i64,i64)", TermSetColor)
     RT_METHOD("SetCursorVisible", "void(i1)", TermSetCursorVisible)
     RT_METHOD("SetPosition", "void(i64,i64)", TermSetPosition)
-    RT_METHOD("TryAsk", "obj<Viper.Option>(str)", TermTryAsk)
-    RT_METHOD("TryReadLine", "obj<Viper.Option>()", TermTryReadLine)
+    RT_METHOD("TryAsk", "obj<Zanna.Option>(str)", TermTryAsk)
+    RT_METHOD("TryReadLine", "obj<Zanna.Option>()", TermTryReadLine)
 RT_CLASS_END()
 
-// Viper.Text.Codec - Base64, Hex, and URL encoding/decoding utilities
+// Zanna.Text.Codec - Base64, Hex, and URL encoding/decoding utilities
 /// @summary Provides base64, Hex, and URL encoding/decoding utilities.
 /// @details
-/// `Viper.Text.Codec` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Codec` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Base64Decode`,
 /// `Base64Encode`, `HexDecode`, `HexEncode`.
-RT_CLASS_BEGIN("Viper.Text.Codec", Codec, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Codec", Codec, "obj", none)
     RT_METHOD("Base64Decode", "str(str)", CodecBase64Dec)
     RT_METHOD("Base64Encode", "str(str)", CodecBase64Enc)
     RT_METHOD("HexDecode", "str(str)", CodecHexDec)
@@ -623,13 +623,13 @@ RT_CLASS_BEGIN("Viper.Text.Codec", Codec, "obj", none)
     RT_METHOD("UrlEncode", "str(str)", CodecUrlEncode)
 RT_CLASS_END()
 
-// Viper.Text.Csv - CSV parsing and formatting (RFC 4180)
+// Zanna.Text.Csv - CSV parsing and formatting (RFC 4180)
 /// @summary Provides CSV parsing and formatting (RFC 4180).
 /// @details
-/// `Viper.Text.Csv` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Csv` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Format`,
 /// `FormatLine`, `FormatLineWith`, `FormatWith`.
-RT_CLASS_BEGIN("Viper.Data.Csv", Csv, "obj", none)
+RT_CLASS_BEGIN("Zanna.Data.Csv", Csv, "obj", none)
     RT_METHOD("Format", "str(obj)", CsvFormat)
     RT_METHOD("FormatLine", "str(obj)", CsvFormatLine)
     RT_METHOD("FormatLineWith", "str(obj,str)", CsvFormatLineWith)
@@ -641,23 +641,23 @@ RT_CLASS_BEGIN("Viper.Data.Csv", Csv, "obj", none)
     RT_METHOD("ParseWith", "seq<obj>(str,str)", CsvParseWith)
 RT_CLASS_END()
 
-// Viper.Text.FuzzyMatch - quick-open and command ranking helpers
+// Zanna.Text.FuzzyMatch - quick-open and command ranking helpers
 /// @summary Provides quick-open and command ranking helpers.
 /// @details
-/// `Viper.Text.FuzzyMatch` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Text.FuzzyMatch` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Score`, `Match`.
-RT_CLASS_BEGIN("Viper.Text.FuzzyMatch", FuzzyMatch, "none", none)
+RT_CLASS_BEGIN("Zanna.Text.FuzzyMatch", FuzzyMatch, "none", none)
     RT_METHOD("Score", "i64(str,str)", FuzzyMatchScore)
-    RT_METHOD("Match", "obj<Viper.Collections.Map>(str,str)", FuzzyMatchMatch)
+    RT_METHOD("Match", "obj<Zanna.Collections.Map>(str,str)", FuzzyMatchMatch)
 RT_CLASS_END()
 
-// Viper.Text.Ini - INI config file parsing and formatting
+// Zanna.Text.Ini - INI config file parsing and formatting
 /// @summary Provides INI config file parsing and formatting.
 /// @details
-/// `Viper.Text.Ini` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Ini` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Parse`,
 /// `Format`, `Get`, `Set`.
-RT_CLASS_BEGIN("Viper.Data.Ini", Ini, "obj", none)
+RT_CLASS_BEGIN("Zanna.Data.Ini", Ini, "obj", none)
     RT_METHOD("Parse", "obj(str)", IniParse)
     RT_METHOD("Format", "str(obj)", IniFormat)
     RT_METHOD("Get", "str(obj,str,str)", IniGet)
@@ -667,17 +667,17 @@ RT_CLASS_BEGIN("Viper.Data.Ini", Ini, "obj", none)
     RT_METHOD("Remove", "i1(obj,str,str)", IniRemove)
 RT_CLASS_END()
 
-// Viper.Text.Json - JSON parsing and formatting (ECMA-404/RFC 8259)
+// Zanna.Text.Json - JSON parsing and formatting (ECMA-404/RFC 8259)
 /// @summary Provides JSON parsing and formatting (ECMA-404/RFC 8259).
 /// @details
-/// `Viper.Text.Json` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Json` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Format`,
 /// `FormatPretty`, `IsValid`, `NewObject`.
-RT_CLASS_BEGIN("Viper.Data.Json", Json, "obj", none)
+RT_CLASS_BEGIN("Zanna.Data.Json", Json, "obj", none)
     RT_METHOD("Format", "str(obj)", JsonFormat)
     RT_METHOD("FormatPretty", "str(obj,i64)", JsonFormatPretty)
     RT_METHOD("IsValid", "i1(str)", JsonIsValid)
-    RT_METHOD("NewObject", "obj<Viper.Collections.Map>()", JsonNewObject)
+    RT_METHOD("NewObject", "obj<Zanna.Collections.Map>()", JsonNewObject)
     RT_METHOD("Has", "i1(obj,str)", MapHas)
     RT_METHOD("GetStr", "str(obj,str)", MapGetStr)
     RT_METHOD("GetInt", "i64(obj,str)", MapGetInt)
@@ -687,35 +687,35 @@ RT_CLASS_BEGIN("Viper.Data.Json", Json, "obj", none)
     RT_METHOD("SetBool", "void(obj,str,i1)", MapSetBool)
     RT_METHOD("Parse", "obj(str)", JsonParse)
     RT_METHOD("ParseArray", "seq<obj>(str)", JsonParseArray)
-    RT_METHOD("ParseObject", "obj<Viper.Collections.Map>(str)", JsonParseObject)
+    RT_METHOD("ParseObject", "obj<Zanna.Collections.Map>(str)", JsonParseObject)
     RT_METHOD("TypeOf", "str(obj)", JsonTypeOf)
 RT_CLASS_END()
 
-// Viper.Text.JsonStream - SAX-style streaming JSON parser
+// Zanna.Text.JsonStream - SAX-style streaming JSON parser
 /// @summary Provides SAX-style streaming JSON parser.
 /// @details
-/// Create `Viper.Text.JsonStream` values through its registered constructor and use the returned
+/// Create `Zanna.Text.JsonStream` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Depth`,
 /// `TokenType` and operations including `BoolValue`, `HasNext`, `Next`, `NextResult`.
-RT_CLASS_BEGIN("Viper.Data.JsonStream", JsonStream, "obj(str)", JsonStreamNew)
+RT_CLASS_BEGIN("Zanna.Data.JsonStream", JsonStream, "obj(str)", JsonStreamNew)
     RT_PROP("Depth", "i64", JsonStreamDepth, none)
     RT_PROP("TokenType", "i64", JsonStreamTokenType, none)
     RT_METHOD("BoolValue", "i1()", JsonStreamBoolValue)
     RT_METHOD("HasNext", "i1()", JsonStreamHasNext)
     RT_METHOD("Next", "i64()", JsonStreamNext)
-    RT_METHOD("NextResult", "obj<Viper.Result>()", JsonStreamNextResult)
+    RT_METHOD("NextResult", "obj<Zanna.Result>()", JsonStreamNextResult)
     RT_METHOD("NumberValue", "f64()", JsonStreamNumberValue)
     RT_METHOD("Skip", "void()", JsonStreamSkip)
     RT_METHOD("StringValue", "str()", JsonStreamStringValue)
 RT_CLASS_END()
 
-// Viper.Text.Uuid - UUID generation and manipulation
+// Zanna.Text.Uuid - UUID generation and manipulation
 /// @summary Provides UUID generation and manipulation.
 /// @details
-/// `Viper.Text.Uuid` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Uuid` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Empty` and
 /// operations including `FromBytes`, `IsValid`, `Generate`, `ToBytes`.
-RT_CLASS_BEGIN("Viper.Text.Uuid", Uuid, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Uuid", Uuid, "obj", none)
     RT_PROP("Empty", "str", UuidEmpty, none)
     RT_METHOD("FromBytes", "str(obj)", UuidFromBytes)
     RT_METHOD("IsValid", "i1(str)", UuidIsValid)
@@ -723,25 +723,25 @@ RT_CLASS_BEGIN("Viper.Text.Uuid", Uuid, "obj", none)
     RT_METHOD("ToBytes", "obj(str)", UuidToBytes)
 RT_CLASS_END()
 
-// Viper.Text.Pluralize - English noun pluralization
+// Zanna.Text.Pluralize - English noun pluralization
 /// @summary Provides english noun pluralization.
 /// @details
-/// `Viper.Text.Pluralize` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Pluralize` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Count`,
 /// `Plural`, `Singular`.
-RT_CLASS_BEGIN("Viper.Text.Pluralize", Pluralize, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Pluralize", Pluralize, "obj", none)
     RT_METHOD("Count", "str(i64,str)", PluralizeCount)
     RT_METHOD("Plural", "str(str)", Pluralize)
     RT_METHOD("Singular", "str(str)", Singularize)
 RT_CLASS_END()
 
-// Viper.Text.Version - Semantic version parsing and comparison
+// Zanna.Text.Version - Semantic version parsing and comparison
 /// @summary Provides semantic version parsing and comparison.
 /// @details
-/// `Viper.Text.Version` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Version` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Build`, `Major`,
 /// `Minor` and operations including `BumpMajor`, `BumpMinor`, `BumpPatch`, `CompareTo`.
-RT_CLASS_BEGIN("Viper.Text.Version", Version, "obj(str)", none)
+RT_CLASS_BEGIN("Zanna.Text.Version", Version, "obj(str)", none)
     RT_PROP("Build", "str", VersionBuild, none)
     RT_PROP("Major", "i64", VersionMajor, none)
     RT_PROP("Minor", "i64", VersionMinor, none)
@@ -756,26 +756,26 @@ RT_CLASS_BEGIN("Viper.Text.Version", Version, "obj(str)", none)
     RT_METHOD("ToString", "str()", VersionToString)
 RT_CLASS_END()
 
-// Viper.Text.Diff - text diffing utilities
+// Zanna.Text.Diff - text diffing utilities
 /// @summary Provides text diffing utilities.
 /// @details
-/// `Viper.Text.Diff` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Diff` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `CountChanges`,
 /// `Lines`, `Patch`, `Unified`.
-RT_CLASS_BEGIN("Viper.Text.Diff", Diff, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Diff", Diff, "obj", none)
     RT_METHOD("CountChanges", "i64(str,str)", DiffCountChanges)
     RT_METHOD("Lines", "seq<str>(str,str)", DiffLines)
     RT_METHOD("Patch", "str(str,obj)", DiffPatch)
     RT_METHOD("Unified", "str(str,str,i64)", DiffUnified)
 RT_CLASS_END()
 
-// Viper.Text.Toml - TOML config parsing and formatting
+// Zanna.Text.Toml - TOML config parsing and formatting
 /// @summary Provides TOML config parsing and formatting.
 /// @details
-/// `Viper.Text.Toml` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Toml` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Parse`,
 /// `IsValid`, `Format`, `Get`.
-RT_CLASS_BEGIN("Viper.Data.Toml", Toml, "obj", none)
+RT_CLASS_BEGIN("Zanna.Data.Toml", Toml, "obj", none)
     RT_METHOD("Parse", "obj(str)", TomlParse)
     RT_METHOD("IsValid", "i1(str)", TomlIsValid)
     RT_METHOD("Format", "str(obj)", TomlFormat)
@@ -783,26 +783,26 @@ RT_CLASS_BEGIN("Viper.Data.Toml", Toml, "obj", none)
     RT_METHOD("GetStr", "str(obj,str)", TomlGetStr)
 RT_CLASS_END()
 
-// Viper.Text.Markdown - Markdown conversion and extraction
+// Zanna.Text.Markdown - Markdown conversion and extraction
 /// @summary Provides markdown conversion and extraction.
 /// @details
-/// `Viper.Text.Markdown` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Markdown` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `ToHtml`,
 /// `ToText`, `ExtractLinks`, `ExtractHeadings`.
-RT_CLASS_BEGIN("Viper.Text.Markdown", Markdown, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Markdown", Markdown, "obj", none)
     RT_METHOD("ToHtml", "str(str)", MarkdownToHtml)
     RT_METHOD("ToText", "str(str)", MarkdownToText)
     RT_METHOD("ExtractLinks", "seq<str>(str)", MarkdownExtractLinks)
     RT_METHOD("ExtractHeadings", "seq<str>(str)", MarkdownExtractHeadings)
 RT_CLASS_END()
 
-// Viper.Text.JsonPath - JSONPath query expressions
+// Zanna.Text.JsonPath - JSONPath query expressions
 /// @summary Provides JSONPath query expressions.
 /// @details
-/// `Viper.Text.JsonPath` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.JsonPath` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Get`, `GetOr`,
 /// `Has`, `Query`.
-RT_CLASS_BEGIN("Viper.Data.JsonPath", JsonPath, "obj", none)
+RT_CLASS_BEGIN("Zanna.Data.JsonPath", JsonPath, "obj", none)
     RT_METHOD("Get", "obj(obj,str)", JsonPathGet)
     RT_METHOD("GetOr", "obj(obj,str,obj)", JsonPathGetOr)
     RT_METHOD("Has", "i1(obj,str)", JsonPathHas)
@@ -811,13 +811,13 @@ RT_CLASS_BEGIN("Viper.Data.JsonPath", JsonPath, "obj", none)
     RT_METHOD("GetInt", "i64(obj,str)", JsonPathGetInt)
 RT_CLASS_END()
 
-// Viper.Text.StringBuilder
+// Zanna.Text.StringBuilder
 /// @summary Provides String Builder functionality for text processing workflows.
 /// @details
-/// Create `Viper.Text.StringBuilder` values through its registered constructor and use the returned
+/// Create `Zanna.Text.StringBuilder` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Capacity`, `Length` and operations including `Append`, `AppendLine`, `Clear`, `ToString`.
-RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
+RT_CLASS_BEGIN("Zanna.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_PROP("Capacity", "i64", SBGetCapacity, none)
     RT_PROP("Length", "i64", SBGetLength, none)
     RT_METHOD("Append", "obj(str)", SBAppend)
@@ -826,17 +826,17 @@ RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_METHOD("ToString", "str()", SBToString)
 RT_CLASS_END()
 
-// Viper.Text.Pattern - regular expression pattern matching
+// Zanna.Text.Pattern - regular expression pattern matching
 /// @summary Provides regular expression pattern matching.
 /// @details
-/// `Viper.Text.Pattern` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Pattern` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `IsMatch`,
 /// `Find`, `FindFrom`, `FindPos`.
-RT_CLASS_BEGIN("Viper.Text.Pattern", Pattern, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Pattern", Pattern, "obj", none)
     RT_METHOD("IsMatch", "i1(str,str)", PatternIsMatch)
-    RT_METHOD("Find", "obj<Viper.Option>(str,str)", PatternFindOption)
-    RT_METHOD("FindFrom", "obj<Viper.Option>(str,str,i64)", PatternFindFromOption)
-    RT_METHOD("FindPos", "obj<Viper.Option>(str,str)", PatternFindPosOption)
+    RT_METHOD("Find", "obj<Zanna.Option>(str,str)", PatternFindOption)
+    RT_METHOD("FindFrom", "obj<Zanna.Option>(str,str,i64)", PatternFindFromOption)
+    RT_METHOD("FindPos", "obj<Zanna.Option>(str,str)", PatternFindPosOption)
     RT_METHOD("FindAll", "seq<str>(str,str)", PatternFindAll)
     RT_METHOD("Replace", "str(str,str,str)", PatternReplace)
     RT_METHOD("ReplaceFirst", "str(str,str,str)", PatternReplaceFirst)
@@ -844,18 +844,18 @@ RT_CLASS_BEGIN("Viper.Text.Pattern", Pattern, "obj", none)
     RT_METHOD("Escape", "str(str)", PatternEscape)
 RT_CLASS_END()
 
-// Viper.Text.CompiledPattern - pre-compiled regex for efficient repeated use
+// Zanna.Text.CompiledPattern - pre-compiled regex for efficient repeated use
 /// @summary Provides pre-compiled regex for efficient repeated use.
 /// @details
-/// Create `Viper.Text.CompiledPattern` values through its registered constructor and use the
+/// Create `Zanna.Text.CompiledPattern` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Pattern` and operations including `IsMatch`, `Find`, `FindFrom`, `FindPos`.
-RT_CLASS_BEGIN("Viper.Text.CompiledPattern", CompiledPattern, "obj", CompiledPatternNew)
+RT_CLASS_BEGIN("Zanna.Text.CompiledPattern", CompiledPattern, "obj", CompiledPatternNew)
     RT_PROP("Pattern", "str", CompiledPatternGetPattern, none)
     RT_METHOD("IsMatch", "i1(str)", CompiledPatternIsMatch)
-    RT_METHOD("Find", "obj<Viper.Option>(str)", CompiledPatternFindOption)
-    RT_METHOD("FindFrom", "obj<Viper.Option>(str,i64)", CompiledPatternFindFromOption)
-    RT_METHOD("FindPos", "obj<Viper.Option>(str)", CompiledPatternFindPosOption)
+    RT_METHOD("Find", "obj<Zanna.Option>(str)", CompiledPatternFindOption)
+    RT_METHOD("FindFrom", "obj<Zanna.Option>(str,i64)", CompiledPatternFindFromOption)
+    RT_METHOD("FindPos", "obj<Zanna.Option>(str)", CompiledPatternFindPosOption)
     RT_METHOD("FindAll", "seq<str>(str)", CompiledPatternFindAll)
     RT_METHOD("Captures", "seq<str>(str)", CompiledPatternCaptures)
     RT_METHOD("CapturesFrom", "seq<str>(str,i64)", CompiledPatternCapturesFrom)
@@ -865,17 +865,17 @@ RT_CLASS_BEGIN("Viper.Text.CompiledPattern", CompiledPattern, "obj", CompiledPat
     RT_METHOD("Split", "seq<str>(str,i64)", CompiledPatternSplitN)
 RT_CLASS_END()
 
-// Viper.Text.Template - simple string templating
+// Zanna.Text.Template - simple string templating
 /// @summary Provides simple string templating.
 /// @details
-/// `Viper.Text.Template` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Text.Template` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Render`,
 /// `RenderSeq`, `RenderWith`, `Has`.
-RT_CLASS_BEGIN("Viper.Text.Template", Template, "obj", none)
+RT_CLASS_BEGIN("Zanna.Text.Template", Template, "obj", none)
     RT_METHOD("Render", "str(str,obj)", TemplateRender)
     RT_METHOD("RenderSeq", "str(str,obj)", TemplateRenderSeq)
     RT_METHOD("RenderWith", "str(str,obj,str,str)", TemplateRenderWith)
     RT_METHOD("Has", "i1(str,str)", TemplateHas)
-    RT_METHOD("Keys", "obj<Viper.Collections.StringSet>(str)", TemplateKeys)
+    RT_METHOD("Keys", "obj<Zanna.Collections.StringSet>(str)", TemplateKeys)
     RT_METHOD("Escape", "str(str)", TemplateEscape)
 RT_CLASS_END()

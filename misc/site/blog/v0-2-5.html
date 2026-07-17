@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>v0.2.5: Runtime Hardening, HTTP/2, Localization, Compiler Throughput — Viper</title>
-  <meta name="description" content="Viper v0.2.5 release notes: runtime hardening across all subsystems, ~40 new 2D graphics classes, full 3D asset pipeline, TLS HTTP/2 networking, Viper.Localization, structured diagnostics, parallel optimizer, zero-copy codegen.">
+  <title>v0.2.5: Runtime Hardening, HTTP/2, Localization, Compiler Throughput — Zanna</title>
+  <meta name="description" content="Zanna v0.2.5 release notes: runtime hardening across all subsystems, ~40 new 2D graphics classes, full 3D asset pipeline, TLS HTTP/2 networking, Zanna.Localization, structured diagnostics, parallel optimizer, zero-copy codegen.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/" class="active">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -33,7 +33,7 @@
     <h1>v0.2.5: Runtime Hardening, HTTP/2, Localization, Compiler Throughput</h1>
     <p><span class="version-badge">v0.2.5</span> <span class="release-date">May 2026</span></p>
 
-    <p>A hardening-and-polish cycle with several notable new capabilities. Integer-overflow, handle-validation, and lifetime-correctness passes were applied across every runtime subsystem. The network stack became a full platform with TLS-backed servers and from-scratch HTTP/2. A new eleven-class <code>Viper.Localization.*</code> namespace was added with zero external dependencies. Compiler throughput improved significantly through parallelism and a zero-copy pipeline. The full release notes are at <code>docs/release_notes/Viper_Release_Notes_0_2_5.md</code>; this is the highlight reel.</p>
+    <p>A hardening-and-polish cycle with several notable new capabilities. Integer-overflow, handle-validation, and lifetime-correctness passes were applied across every runtime subsystem. The network stack became a full platform with TLS-backed servers and from-scratch HTTP/2. A new eleven-class <code>Zanna.Localization.*</code> namespace was added with zero external dependencies. Compiler throughput improved significantly through parallelism and a zero-copy pipeline. The full release notes are at <code>docs/release_notes/Zanna_Release_Notes_0_2_5.md</code>; this is the highlight reel.</p>
 
     <h2>Runtime hardening</h2>
     <ul>
@@ -64,7 +64,7 @@
       <li><strong>Cookie jar, streaming downloads, connection pooling</strong> &mdash; Full HTTP client feature set.</li>
     </ul>
 
-    <h2>Viper.Localization.* &mdash; new</h2>
+    <h2>Zanna.Localization.* &mdash; new</h2>
     <ul>
       <li><strong>Eleven-class namespace</strong>: locale-aware number, date, time, and list formatting; translation catalogs; CLDR plural selection; text-direction utilities.</li>
       <li><strong>Zero external dependencies</strong> &mdash; all locale data compiled in-tree.</li>
@@ -83,12 +83,12 @@
       <li><strong>Parallel IL optimizer and codegen</strong> &mdash; Hardware-concurrency thread pool drives both optimization and code generation passes.</li>
       <li><strong>Zero-copy codegen pipeline</strong> &mdash; Verified IL module passed directly to the backend, eliminating the serialize &rarr; temp-file &rarr; re-parse round-trip.</li>
       <li><strong>Analytical AArch64 instruction sizing</strong> and bitset-backed liveness for reduced allocator overhead.</li>
-      <li><strong>Fast-link mode</strong> auto-enabled at <code>-O0</code>; <code>viper run</code> defaults to debug profile for quick script invocations.</li>
+      <li><strong>Fast-link mode</strong> auto-enabled at <code>-O0</code>; <code>zanna run</code> defaults to debug profile for quick script invocations.</li>
     </ul>
 
     <h2>Packaging &amp; distribution</h2>
     <ul>
-      <li><strong>Six-pass hardening</strong> of <code>viper install-package</code> and <code>viper package</code>: Windows long-path support, ProgID tagging, PATH deduplication, PE security flags (ASLR/NX/CFG/HEVA), manifest embedding validation, PNG full color-type support, ZIP central-directory cross-check.</li>
+      <li><strong>Six-pass hardening</strong> of <code>zanna install-package</code> and <code>zanna package</code>: Windows long-path support, ProgID tagging, PATH deduplication, PE security flags (ASLR/NX/CFG/HEVA), manifest embedding validation, PNG full color-type support, ZIP central-directory cross-check.</li>
       <li><strong>macOS signed app packaging</strong> with ad-hoc, Developer ID, hardened runtime, notarization, and stapling support.</li>
       <li><strong>Full /// @brief Doxygen pass</strong> across all 20+ packaging source files.</li>
     </ul>
@@ -109,9 +109,9 @@
     </ul>
 
     <h2>Demos shipped</h2>
-    <p>Text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ViperIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes and macOS package; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.</p>
+    <p>Text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ZannaIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes and macOS package; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.</p>
 
-    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/splanck/viper/blob/master/docs/release_notes/Viper_Release_Notes_0_2_5.md">Full release notes on GitHub &rarr;</a></p>
+    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/zannagames/zanna/blob/master/docs/release_notes/Zanna_Release_Notes_0_2_5.md">Full release notes on GitHub &rarr;</a></p>
   </div>
 </div>
 
@@ -135,13 +135,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

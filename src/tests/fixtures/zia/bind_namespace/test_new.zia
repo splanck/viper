@@ -2,8 +2,8 @@
 // EXPECT_OUT: RESULT: ok
 module TestNewImported;
 
-bind Viper.Terminal;
-bind Viper.Collections;
+bind Zanna.Terminal;
+bind Zanna.Collections;
 
 func start() {
     Say("Testing new with imported types...");
@@ -14,7 +14,7 @@ func start() {
     myList.add("second");
     myList.add("third");
 
-    Say("List created with " + Viper.Core.Convert.ToStringInt(myList.count) + " items");
+    Say("List created with " + Zanna.Core.Convert.ToStringInt(myList.count) + " items");
 
     // Iterate over the list
     for item in myList {

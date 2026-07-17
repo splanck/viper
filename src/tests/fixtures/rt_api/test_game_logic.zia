@@ -1,11 +1,11 @@
 // test_game_logic.zia — Grid2D, StateMachine, ButtonGroup, ObjectPool, Quadtree
 module TestGameLogic;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // --- Grid2D ---
-    var g = new Viper.Game.Grid2D(10, 10, 0);
+    var g = new Zanna.Game.Grid2D(10, 10, 0);
     SayInt(g.Width);
     SayInt(g.Height);
     SayInt(g.Size);
@@ -23,7 +23,7 @@ func start() {
     SayInt(g.Get(0, 0));
 
     // --- StateMachine ---
-    var sm = new Viper.Game.StateMachine();
+    var sm = new Zanna.Game.StateMachine();
     sm.AddState(0);
     sm.AddState(1);
     sm.AddState(2);
@@ -38,7 +38,7 @@ func start() {
     SayBool(sm.JustEntered);
 
     // --- ButtonGroup ---
-    var bg = new Viper.Game.ButtonGroup();
+    var bg = new Zanna.Game.ButtonGroup();
     bg.Add(10);
     bg.Add(20);
     bg.Add(30);
@@ -58,7 +58,7 @@ func start() {
     SayBool(bg.HasSelection);
 
     // --- ObjectPool ---
-    var op = new Viper.Game.ObjectPool(100);
+    var op = new Zanna.Game.ObjectPool(100);
     SayInt(op.Capacity);
     SayInt(op.ActiveCount);
     SayInt(op.FreeCount);
@@ -81,7 +81,7 @@ func start() {
     SayInt(op.ActiveCount);
 
     // --- Quadtree ---
-    var qt = new Viper.Game.Quadtree(0, 0, 1000, 1000);
+    var qt = new Zanna.Game.Quadtree(0, 0, 1000, 1000);
     SayInt(qt.ItemCount);
 
     qt.Insert(1, 100, 100, 20, 20);

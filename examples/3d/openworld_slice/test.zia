@@ -1,11 +1,11 @@
 module openworld_slice_test;
 
-bind Viper.Game3D;
-bind Viper.Graphics.Pixels as Pixels;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal as Terminal;
-bind Viper.Threads.Thread as Thread;
+bind Zanna.Game3D;
+bind Zanna.Graphics.Pixels as Pixels;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Threads.Thread as Thread;
 bind "./main";
 
 func near(a: Float, b: Float, eps: Float) -> Boolean {

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // RTAudioIntegrationTests.cpp - Integration tests for audio + playlist APIs
@@ -35,7 +35,7 @@ void vm_trap(const char *msg) {
 }
 }
 
-#include "VpaWriter.hpp"
+#include "ZpakWriter.hpp"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -644,7 +644,7 @@ static int read_file_bytes(const char *path, std::vector<uint8_t> &out) {
 }
 
 static void test_wav_zero_sample_rate() {
-    const char *path = "/tmp/viper_test_wav_zero_sr.wav";
+    const char *path = "/tmp/zanna_test_wav_zero_sr.wav";
     if (!write_test_wav(path, 0)) {
         ASSERT(1, "could not write temp WAV file (skip H-7 test)");
         return;
@@ -658,7 +658,7 @@ static void test_wav_zero_sample_rate() {
 
 static void test_wav_extreme_sample_rate() {
     // sample_rate > 384000 is also rejected (H-7 upper bound)
-    const char *path = "/tmp/viper_test_wav_extreme_sr.wav";
+    const char *path = "/tmp/zanna_test_wav_extreme_sr.wav";
     if (!write_test_wav(path, 999999999u)) {
         ASSERT(1, "could not write temp WAV file (skip)");
         return;
@@ -672,7 +672,7 @@ static void test_wav_extreme_sample_rate() {
 
 static void test_wav_valid_sample_rate() {
     // Positive control: a well-formed single-sample WAV at 44100 Hz
-    const char *path = "/tmp/viper_test_wav_valid_sr.wav";
+    const char *path = "/tmp/zanna_test_wav_valid_sr.wav";
     if (!write_test_wav(path, 44100)) {
         ASSERT(1, "could not write temp WAV file (skip)");
         return;
@@ -687,8 +687,8 @@ static void test_wav_valid_sample_rate() {
 }
 
 static void test_sound_load_asset_from_mounted_pack() {
-    const char *wav_path = "/tmp/viper_test_sound_load_asset.wav";
-    const char *pack_path = "/tmp/viper_test_sound_load_asset.vpa";
+    const char *wav_path = "/tmp/zanna_test_sound_load_asset.wav";
+    const char *pack_path = "/tmp/zanna_test_sound_load_asset.zpak";
     if (!write_test_wav_frames(wav_path, 44100, 128)) {
         ASSERT(1, "could not write temp WAV file (skip Sound.LoadAsset pack test)");
         return;
@@ -701,16 +701,16 @@ static void test_sound_load_asset_from_mounted_pack() {
         return;
     }
 
-    viper::asset::VpaWriter writer;
+    zanna::asset::ZpakWriter writer;
     writer.addEntry("audio/pack.wav", wav_bytes.data(), wav_bytes.size(), false);
     std::string err;
     if (!writer.writeToFile(pack_path, err)) {
-        ASSERT(1, "could not write VPA file (skip Sound.LoadAsset pack test)");
+        ASSERT(1, "could not write ZPAK file (skip Sound.LoadAsset pack test)");
         remove(wav_path);
         return;
     }
     if (rt_asset_mount(make_str(pack_path)) != 1) {
-        ASSERT(1, "could not mount VPA file (skip Sound.LoadAsset pack test)");
+        ASSERT(1, "could not mount ZPAK file (skip Sound.LoadAsset pack test)");
         remove(pack_path);
         remove(wav_path);
         return;
@@ -727,7 +727,7 @@ static void test_sound_load_asset_from_mounted_pack() {
 }
 
 static void test_destroy_loaded_handles_after_shutdown() {
-    const char *path = "/tmp/viper_test_destroy_after_shutdown.wav";
+    const char *path = "/tmp/zanna_test_destroy_after_shutdown.wav";
     if (!write_test_wav_frames(path, 44100, 128)) {
         ASSERT(1, "could not write temp WAV file (skip shutdown finalizer test)");
         return;
@@ -758,7 +758,7 @@ static void test_destroy_loaded_handles_after_shutdown() {
 }
 
 static void test_default_sound_play_survives_sfx_group_changes() {
-    const char *path = "/tmp/viper_test_default_sound_sfx_group.wav";
+    const char *path = "/tmp/zanna_test_default_sound_sfx_group.wav";
     if (!write_test_wav_frames(path, 44100, 256)) {
         ASSERT(1, "could not write temp WAV file (skip SFX group playback test)");
         return;
@@ -788,7 +788,7 @@ static void test_default_sound_play_survives_sfx_group_changes() {
 }
 
 static void test_music_seek_resampled_wav() {
-    const char *path = "/tmp/viper_test_music_seek_22050.wav";
+    const char *path = "/tmp/zanna_test_music_seek_22050.wav";
     if (!write_test_wav_frames(path, 22050, 22050)) {
         ASSERT(1, "could not write temp WAV file (skip music seek test)");
         return;
@@ -817,7 +817,7 @@ static void test_music_seek_resampled_wav() {
 }
 
 static void test_music_seek_to_duration_reaches_eof() {
-    const char *path = "/tmp/viper_test_music_seek_exact_eof.wav";
+    const char *path = "/tmp/zanna_test_music_seek_exact_eof.wav";
     if (!write_test_wav_frames(path, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV file (skip exact EOF seek test)");
         return;
@@ -843,7 +843,7 @@ static void test_music_seek_to_duration_reaches_eof() {
 }
 
 static void test_music_seek_huge_position_clamps_to_duration() {
-    const char *path = "/tmp/viper_test_music_seek_huge.wav";
+    const char *path = "/tmp/zanna_test_music_seek_huge.wav";
     if (!write_test_wav_frames(path, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV file (skip huge seek test)");
         return;
@@ -867,8 +867,8 @@ static void test_music_seek_huge_position_clamps_to_duration() {
 }
 
 static void test_playlist_stopped_jump_releases_old_music_before_play() {
-    const char *valid_path = "/tmp/viper_test_playlist_stopped_jump_valid.wav";
-    const char *missing_path = "/tmp/viper_test_playlist_stopped_jump_missing.wav";
+    const char *valid_path = "/tmp/zanna_test_playlist_stopped_jump_valid.wav";
+    const char *missing_path = "/tmp/zanna_test_playlist_stopped_jump_missing.wav";
     if (!write_test_wav_frames(valid_path, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV file (skip stopped-jump test)");
         return;
@@ -898,9 +898,9 @@ static void test_playlist_stopped_jump_releases_old_music_before_play() {
 }
 
 static void test_playlist_play_after_paused_jump_starts_new_track() {
-    const char *path1 = "/tmp/viper_test_playlist_paused_jump_1.wav";
-    const char *path2 = "/tmp/viper_test_playlist_paused_jump_2.wav";
-    const char *path3 = "/tmp/viper_test_playlist_paused_jump_3.wav";
+    const char *path1 = "/tmp/zanna_test_playlist_paused_jump_1.wav";
+    const char *path2 = "/tmp/zanna_test_playlist_paused_jump_2.wav";
+    const char *path3 = "/tmp/zanna_test_playlist_paused_jump_3.wav";
     if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 4410) ||
         !write_test_wav_frames(path3, 44100, 4410)) {
         ASSERT(1, "could not write temp WAV files (skip paused-jump test)");
@@ -942,8 +942,8 @@ static void test_playlist_play_after_paused_jump_starts_new_track() {
 }
 
 static void test_playlist_remove_current_failed_replacement_clears_state() {
-    const char *valid_path = "/tmp/viper_test_playlist_remove_current.wav";
-    const char *missing_path = "/tmp/viper_test_playlist_missing_replacement.wav";
+    const char *valid_path = "/tmp/zanna_test_playlist_remove_current.wav";
+    const char *missing_path = "/tmp/zanna_test_playlist_missing_replacement.wav";
     if (!write_test_wav_frames(valid_path, 44100, 4410)) {
         ASSERT(1, "could not write temp WAV file (skip remove-current test)");
         return;
@@ -972,8 +972,8 @@ static void test_playlist_remove_current_failed_replacement_clears_state() {
 }
 
 static void test_music_seek_does_not_stop_other_music() {
-    const char *path1 = "/tmp/viper_test_music_seek_other_1.wav";
-    const char *path2 = "/tmp/viper_test_music_seek_other_2.wav";
+    const char *path1 = "/tmp/zanna_test_music_seek_other_1.wav";
+    const char *path2 = "/tmp/zanna_test_music_seek_other_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip seek-other test)");
@@ -1013,8 +1013,8 @@ static void test_music_seek_does_not_stop_other_music() {
 }
 
 static void test_music_resume_reclaims_foreground() {
-    const char *path1 = "/tmp/viper_test_music_resume_fg_1.wav";
-    const char *path2 = "/tmp/viper_test_music_resume_fg_2.wav";
+    const char *path1 = "/tmp/zanna_test_music_resume_fg_1.wav";
+    const char *path2 = "/tmp/zanna_test_music_resume_fg_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip resume-foreground test)");
@@ -1058,8 +1058,8 @@ static void test_music_resume_reclaims_foreground() {
 }
 
 static void test_crossfade_pause_resume_holds_progress() {
-    const char *path1 = "/tmp/viper_test_crossfade_pause_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_pause_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_pause_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_pause_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip crossfade-pause test)");
@@ -1106,8 +1106,8 @@ static void test_crossfade_pause_resume_holds_progress() {
 }
 
 static void test_crossfade_preserves_destination_loop() {
-    const char *path1 = "/tmp/viper_test_crossfade_loop_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_loop_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_loop_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_loop_2.wav";
     if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 4410)) {
         ASSERT(1, "could not write temp WAV files (skip crossfade-loop test)");
         return;
@@ -1150,8 +1150,8 @@ static void test_crossfade_preserves_destination_loop() {
 }
 
 static void test_crossfade_query_is_pure() {
-    const char *path1 = "/tmp/viper_test_crossfade_query_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_query_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_query_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_query_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip crossfade-query test)");
@@ -1193,8 +1193,8 @@ static void test_crossfade_query_is_pure() {
 }
 
 static void test_crossfade_completion_after_external_destroy() {
-    const char *path1 = "/tmp/viper_test_crossfade_release_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_release_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_release_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_release_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip crossfade-release test)");
@@ -1235,8 +1235,8 @@ static void test_crossfade_completion_after_external_destroy() {
 }
 
 static void test_crossfade_stop_fade_out_keeps_destination() {
-    const char *path1 = "/tmp/viper_test_crossfade_stop_out_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_stop_out_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_stop_out_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_stop_out_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip stop-fade-out test)");
@@ -1280,8 +1280,8 @@ static void test_crossfade_stop_fade_out_keeps_destination() {
 }
 
 static void test_crossfade_stop_fade_in_restores_source_loop() {
-    const char *path1 = "/tmp/viper_test_crossfade_stop_in_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_stop_in_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_stop_in_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_stop_in_2.wav";
     if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip stop-fade-in test)");
         return;
@@ -1328,8 +1328,8 @@ static void test_crossfade_stop_fade_in_restores_source_loop() {
 }
 
 static void test_crossfade_set_loop_on_fade_out_still_completes() {
-    const char *path1 = "/tmp/viper_test_crossfade_loop_out_1.wav";
-    const char *path2 = "/tmp/viper_test_crossfade_loop_out_2.wav";
+    const char *path1 = "/tmp/zanna_test_crossfade_loop_out_1.wav";
+    const char *path2 = "/tmp/zanna_test_crossfade_loop_out_2.wav";
     if (!write_test_wav_frames(path1, 44100, 44100) ||
         !write_test_wav_frames(path2, 44100, 44100)) {
         ASSERT(1, "could not write temp WAV files (skip fade-out-loop test)");

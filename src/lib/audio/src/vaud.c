@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperAUD Core Implementation
+// ZannaAUD Core Implementation
 //
-// Platform-agnostic implementation of the ViperAUD API. Provides audio context
+// Platform-agnostic implementation of the ZannaAUD API. Provides audio context
 // management, sound/music loading, and playback control. Platform-specific
 // functionality is delegated to backend implementations.
 //
@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Core implementation of the ViperAUD API.
+/// @brief Core implementation of the ZannaAUD API.
 
 #if !defined(VAUD_PLATFORM_WINDOWS) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
@@ -402,7 +402,7 @@ vaud_context_t vaud_create(void) {
     /* Initialize state */
     ctx->master_volume = VAUD_DEFAULT_MASTER_VOLUME;
     {
-        const char *silent = getenv("VIPER_AUDIO_SILENT");
+        const char *silent = getenv("ZANNA_AUDIO_SILENT");
         ctx->device_output_silent =
             silent && silent[0] != '\0' && !(silent[0] == '0' && silent[1] == '\0');
     }

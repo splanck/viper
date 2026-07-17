@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_scene.c
-// Purpose: Hierarchical scene graph for Viper games. Manages a tree of named
+// Purpose: Hierarchical scene graph for Zanna games. Manages a tree of named
 //   nodes (entities), each with a 2D transform (position, scale, rotation)
 //   that accumulates parent transforms. Provides name-based lookup, child
 //   iteration, and batched Draw(canvas, camera) that traverses the tree in
@@ -33,7 +33,7 @@
 //
 // Links: src/runtime/graphics/rt_scene.h (public API),
 //        src/runtime/graphics/rt_sprite.h (node sprite payload),
-//        docs/viperlib/game.md (Scene section)
+//        docs/zannalib/game.md (Scene section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -895,7 +895,7 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
 ///          None.
 /// @param node_ptr Starting SceneNode handle.
 /// @param name Node name to search for.
-/// @return Opaque Viper.Option containing the first matching node, or None.
+/// @return Opaque Zanna.Option containing the first matching node, or None.
 void *rt_scene_node_find_option(void *node_ptr, rt_string name) {
     void *found = rt_scene_node_find(node_ptr, name);
     return found ? rt_option_some(found) : rt_option_none();
@@ -1163,7 +1163,7 @@ void *rt_scene_find(void *scene_ptr, rt_string name) {
 /// @brief Search the scene's node tree for a matching name as an Option.
 /// @param scene_ptr SceneGraph handle.
 /// @param name Node name to search for.
-/// @return Opaque Viper.Option containing the first matching node, or None.
+/// @return Opaque Zanna.Option containing the first matching node, or None.
 void *rt_scene_find_option(void *scene_ptr, rt_string name) {
     void *found = rt_scene_find(scene_ptr, name);
     return found ? rt_option_some(found) : rt_option_none();

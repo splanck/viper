@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_system.c
-// Purpose: System-level GUI services for the Viper runtime: clipboard read/write,
+// Purpose: System-level GUI services for the Zanna runtime: clipboard read/write,
 //   keyboard shortcut registration and frame-based polling, window management
 //   helpers (title, opacity, always-on-top, position, maximise/minimise), and
 //   cursor style control. These are global services not tied to a specific widget.
@@ -37,7 +37,7 @@
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Duplicate a NUL-terminated GUI string with malloc-backed ownership.
 /// @details Keeps this runtime-facing module independent of platform-specific
@@ -1056,7 +1056,7 @@ int64_t rt_app_get_paint_frames_partial(void *app) {
 }
 
 /// @brief Enable or disable damage-region rendering at runtime (kill switch).
-/// @details Complements the VIPER_GUI_FULL_REPAINT=1 env var. Passing 0 forces
+/// @details Complements the ZANNA_GUI_FULL_REPAINT=1 env var. Passing 0 forces
 ///          every dirty frame through the full-window repaint path.
 void rt_app_set_partial_paint(void *app, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
@@ -1211,7 +1211,7 @@ void rt_widget_reset_cursor(void *widget) {
     rt_cursor_reset();
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Copy text to the system clipboard.
 void rt_clipboard_set_text(rt_string text) {
@@ -1556,10 +1556,10 @@ void rt_widget_reset_cursor(void *widget) {
     (void)widget;
 }
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */
 
 //=============================================================================
-// Viper.System.Clipboard compatibility surface
+// Zanna.System.Clipboard compatibility surface
 //=============================================================================
 
 /// @brief Copy text to the system clipboard via the canonical GUI clipboard backend.

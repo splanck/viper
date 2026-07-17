@@ -4,18 +4,18 @@ audience: public
 last-verified: 2026-07-15
 ---
 
-# Viper.Graphics3D — User Guide
+# Zanna.Graphics3D — User Guide
 
 ## Overview
 
-Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a software rasterizer (always available) with GPU-accelerated backends for Metal (macOS), Direct3D 11 (Windows), and OpenGL 3.3 (Linux). The GPU backend is selected automatically with software fallback.
+Zanna.Graphics3D is a 3D rendering module for the Zanna runtime. It provides a software rasterizer (always available) with GPU-accelerated backends for Metal (macOS), Direct3D 11 (Windows), and OpenGL 3.3 (Linux). The GPU backend is selected automatically with software fallback.
 
-**Namespace:** `Viper.Graphics3D`
+**Namespace:** `Zanna.Graphics3D`
 
 For code-first game projects that want a world/entity/input layer over these
-primitives, use the runtime-backed `Viper.Game3D` API documented in
-[`docs/viperlib/graphics/game3d.md`](viperlib/graphics/game3d.md). Game3D is C
-runtime code like the rest of the Viper runtime, not a separate Zia helper
+primitives, use the runtime-backed `Zanna.Game3D` API documented in
+[`docs/zannalib/graphics/game3d.md`](zannalib/graphics/game3d.md). Game3D is C
+runtime code like the rest of the Zanna runtime, not a separate Zia helper
 library.
 
 ---
@@ -24,7 +24,7 @@ library.
 
 **Getting Started**
 - [Quick Start](#quick-start)
-- [Game3D](viperlib/graphics/game3d.md) — World/entity/input helpers for 3D games
+- [Game3D](zannalib/graphics/game3d.md) — World/entity/input helpers for 3D games
 
 **Core Classes**
 - [Canvas3D](#canvas3d) — Window, frame loop, drawing, lighting
@@ -99,13 +99,13 @@ library.
 ```zia
 module HelloCube;
 
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Graphics3D.Light3D;
-bind Viper.Math.Vec3;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Graphics3D.Light3D;
+bind Zanna.Math.Vec3;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("My 3D App", 640, 480);
@@ -140,8 +140,8 @@ func start() {
 ### BASIC
 
 ```basic
-USING Viper.Graphics3D
-USING Viper.Math
+USING Zanna.Graphics3D
+USING Zanna.Math
 
 DIM canvas AS Canvas3D = Canvas3D.New("My 3D App", 640, 480)
 DIM cam AS Camera3D = Camera3D.New(60.0, 640.0/480.0, 0.1, 100.0)
@@ -310,8 +310,8 @@ empty frame so streaming cannot stall forever.
 native compressed mip submissions, and validated IBL mip payloads drain. Use it
 to correlate async asset commits and streaming movement with GPU texture upload pressure.
 
-`Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
-`Viper.Input.Mouse`, gamepad state, and action mappings; most gameplay code
+`Poll()` is the live-loop input boundary. It updates `Zanna.Input.Keyboard`,
+`Zanna.Input.Mouse`, gamepad state, and action mappings; most gameplay code
 should read those APIs instead of branching on raw event codes. `Poll()` now
 returns only the open/closed status for the canvas. Low-level integrations can
 call `PollEvent()` until it returns `0` to drain the queued event types collected
@@ -394,13 +394,13 @@ or color grading.
 ```zia
 module Canvas3DDemo;
 
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Graphics3D.Light3D;
-bind Viper.Math.Vec3;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Graphics3D.Light3D;
+bind Zanna.Math.Vec3;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("Demo", 800, 600);
@@ -520,7 +520,7 @@ unloading the whole node or model template.
 ```zia
 module MeshDemo;
 
-bind Viper.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Mesh3D;
 
 func start() {
     // Procedural triangle
@@ -605,9 +605,9 @@ Camera constructors and control methods sanitize invalid numeric inputs at the A
 ```zia
 module CameraDemo;
 
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var canvas = Canvas3D.New("Camera Demo", 800, 600);
@@ -775,7 +775,7 @@ final-frame tolerance check for the selected capable backend.
 ```zia
 module MaterialDemo;
 
-bind Viper.Graphics3D.Material3D;
+bind Zanna.Graphics3D.Material3D;
 
 func start() {
     var base = Material3D.PBR(0.8, 0.6, 0.4);
@@ -837,9 +837,9 @@ Light colors are clamped to `[0, 1]`, intensities are clamped to non-negative va
 ```zia
 module LightDemo;
 
-bind Viper.Graphics3D.Light3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Light3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var canvas = Canvas3D.New("Lights", 800, 600);
@@ -880,7 +880,7 @@ GPU backends cull point and spot lights against a 16×9×24 view-space froxel gr
 - Per-cluster light lists are capped at 8192 total entries per frame; pathological scenes (many unbounded point lights covering the whole view) truncate later lights per cluster deterministically rather than failing.
 - Point/spot lights with zero attenuation are clamped to a small default falloff floor so clustered culling can still bound their influence.
 - D3D11 verifies the light revision, global/binned counts, depth range, every prefix offset, and every referenced light index before upload. A malformed or stale table uses the bounded flat-light loop, and HLSL clamps packed-buffer reads as a second line of defense.
-- The environment variable `VIPER_3D_CLUSTERS=0` disables clustering process-wide (bisection escape hatch).
+- The environment variable `ZANNA_3D_CLUSTERS=0` disables clustering process-wide (bisection escape hatch).
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
 
@@ -914,12 +914,12 @@ Offscreen rendering targets for render-to-texture effects (TV screens, mirrors, 
 ```zia
 module RenderTargetDemo;
 
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.RenderTarget3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.RenderTarget3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("RTT Demo", 800, 600);
@@ -976,10 +976,10 @@ Seam handling is also more consistent now: the software sampler remaps bilinear 
 ```zia
 module CubeMapDemo;
 
-bind Viper.Graphics3D.CubeMap3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.IO.Pixels;
+bind Zanna.Graphics3D.CubeMap3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.IO.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Skybox Demo", 800, 600);
@@ -1104,13 +1104,13 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 ```zia
 module SceneDemo;
 
-bind Viper.Graphics3D.SceneGraph;
-bind Viper.Graphics3D.SceneNode;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.Quat;
+bind Zanna.Graphics3D.SceneGraph;
+bind Zanna.Graphics3D.SceneNode;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.Quat;
 
 func start() {
     var canvas = Canvas3D.New("Scene Demo", 800, 600);
@@ -1197,23 +1197,23 @@ Current scope:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `LoadResult(path)` | `obj<Viper.Result>(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, or `.stl` as `Ok(SceneAsset)` or `Err(message)` |
-| `LoadAssetResult(path)` | `obj<Viper.Result>(str)` | Load through `Viper.IO.Assets` as `Ok(SceneAsset)` or `Err(message)`; `.gltf` external buffers/images resolve relative to the model asset |
+| `LoadResult(path)` | `obj<Zanna.Result>(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, or `.stl` as `Ok(SceneAsset)` or `Err(message)` |
+| `LoadAssetResult(path)` | `obj<Zanna.Result>(str)` | Load through `Zanna.IO.Assets` as `Ok(SceneAsset)` or `Err(message)`; `.gltf` external buffers/images resolve relative to the model asset |
 | `Load(path)` | `obj(str)` | Compatibility loader that returns `null` on routine content failure |
 | `LoadAsset(path)` | `obj(str)` | Compatibility asset-store loader that returns `null` on routine content failure |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
 | `GetAnimation(index)` | `obj(i64)` | Get a shared `Animation3D` by index |
-| `LoadAnimationResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a skeletal animation clip as `Ok(Animation3D)` or `Err(message)` |
-| `LoadAnimationAssetResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a skeletal animation clip through `Viper.IO.Assets` |
-| `LoadNodeAnimationResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
-| `LoadNodeAnimationAssetResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a node animation clip through `Viper.IO.Assets` |
+| `LoadAnimationResult(path, index)` | `obj<Zanna.Result>(str, i64)` | Load a skeletal animation clip as `Ok(Animation3D)` or `Err(message)` |
+| `LoadAnimationAssetResult(path, index)` | `obj<Zanna.Result>(str, i64)` | Load a skeletal animation clip through `Zanna.IO.Assets` |
+| `LoadNodeAnimationResult(path, index)` | `obj<Zanna.Result>(str, i64)` | Load a node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
+| `LoadNodeAnimationAssetResult(path, index)` | `obj<Zanna.Result>(str, i64)` | Load a node animation clip through `Zanna.IO.Assets` |
 | `GetCameraCount(sceneIndex)` | `i64(i64)` | Number of imported cameras in a scene |
 | `GetCamera(sceneIndex, index)` | `obj(i64, i64)` | Get an imported `Camera3D`, or `null` when absent/out of range |
 | `GetSceneName(index)` | `str(i64)` | Get the immutable scene name, or `""` when out of range |
 | `FindNode(name)` | `obj(str)` | Find a template `SceneNode` by name inside the imported hierarchy |
-| `FindNodeOption(name)` | `obj<Viper.Option>(str)` | Find a template `SceneNode` as `Some(node)`, or `None` |
+| `FindNodeOption(name)` | `obj<Zanna.Option>(str)` | Find a template `SceneNode` as `Some(node)`, or `None` |
 | `Instantiate()` | `obj()` | Clone the template hierarchy into a fresh `SceneNode` subtree |
 | `InstantiateScene()` | `obj()` | Create a fresh `SceneGraph` and attach cloned top-level imported nodes below its root |
 | `InstantiateSceneAt(index)` | `obj(i64)` | Create a fresh `SceneGraph` for an immutable scene index |
@@ -1236,8 +1236,8 @@ Current scope:
 ```zia
 module SceneAssetDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 func start() {
     var model = SceneAsset.LoadResult("tree.gltf").Unwrap();
@@ -1258,7 +1258,7 @@ func start() {
 }
 ```
 
-For game-facing asset loading, prefer `SceneAsset.LoadResult` for loose filesystem files during early development and `SceneAsset.LoadAssetResult` for code that should also work from embedded or mounted `.vpa` packages. `LoadAssetResult` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
+For game-facing asset loading, prefer `SceneAsset.LoadResult` for loose filesystem files during early development and `SceneAsset.LoadAssetResult` for code that should also work from embedded or mounted `.zpak` packages. `LoadAssetResult` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
@@ -1273,7 +1273,7 @@ Format note:
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import. Points and line modes are skipped because the current renderer has no line/point primitive surface.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `SceneGraph` / `SceneAsset` without manual material assignment.
 - VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
-- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
+- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Zanna.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF matrix-authored node transforms are decomposed to runtime TRS. Reflections preserve negative scale sign, while unsupported shear is reduced to an orthonormal rotation basis instead of leaking into unstable quaternions.
 - glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, and `KHR_lights_punctual` are accepted when the corresponding parser path is present. Optional `KHR_texture_basisu`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` can be interpreted as best-effort material/texture data, but assets that list them in `extensionsRequired` are rejected because the current renderer cannot guarantee full required-extension fidelity. Unsupported required extensions such as Draco, Meshopt, WebP, and DDS also fail load rather than rendering incomplete fallback data.
 
@@ -1300,7 +1300,7 @@ Bone hierarchy for skeletal animation.
 | `AddBone(name, parentIdx, bindPose)` | `i64(str, i64, obj)` | Add bone (returns index). parentIdx=-1 for root. bindPose is Mat4 |
 | `ComputeInverseBind()` | `void()` | Compute inverse bind matrices (call after all bones added) |
 | `FindBone(name)` | `i64(str)` | Find bone index by name (-1 if not found) |
-| `FindBoneOption(name)` | `obj<Viper.Option>(str)` | Find bone index by name as `Some(index)`, or `None` |
+| `FindBoneOption(name)` | `obj<Zanna.Option>(str)` | Find bone index by name as `Some(index)`, or `None` |
 | `GetBoneName(index)` | `str(i64)` | Get bone name by index |
 
 Prefer `FindBoneOption()` for new code. `FindBone()` remains available for
@@ -1389,15 +1389,15 @@ animation memory.
 ```zia
 module SkeletonDemo;
 
-bind Viper.Graphics3D.Skeleton3D;
-bind Viper.Graphics3D.Animation3D;
-bind Viper.Graphics3D.AnimPlayer3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.Mat4;
-bind Viper.Math.Vec3;
-bind Viper.Math.Quat;
+bind Zanna.Graphics3D.Skeleton3D;
+bind Zanna.Graphics3D.Animation3D;
+bind Zanna.Graphics3D.AnimPlayer3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.Mat4;
+bind Zanna.Math.Vec3;
+bind Zanna.Math.Quat;
 
 func start() {
     var canvas = Canvas3D.New("Skeleton", 800, 600);
@@ -1477,11 +1477,11 @@ Blend shapes for facial animation, muscle flex, and shape-based deformation.
 ```zia
 module MorphDemo;
 
-bind Viper.Graphics3D.MorphTarget3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.MorphTarget3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("Morph Demo", 800, 600);
@@ -1520,7 +1520,7 @@ func start() {
 
 Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `SceneAsset.LoadResult("asset.fbx")`.
 
-FBX reads are capped at 256 MiB by default to avoid accidental whole-file allocations on oversized content. Hosts that intentionally process larger files can set `VIPER_FBX_MAX_FILE_BYTES`; the runtime still clamps that value to the 1 GiB hard cap.
+FBX reads are capped at 256 MiB by default to avoid accidental whole-file allocations on oversized content. Hosts that intentionally process larger files can set `ZANNA_FBX_MAX_FILE_BYTES`; the runtime still clamps that value to the 1 GiB hard cap.
 
 ### Constructor
 
@@ -1552,11 +1552,11 @@ FBX reads are capped at 256 MiB by default to avoid accidental whole-file alloca
 ```zia
 module FBXDemo;
 
-bind Viper.Graphics3D.FBX;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.AnimPlayer3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.FBX;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.AnimPlayer3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("FBX Demo", 800, 600);
@@ -1597,7 +1597,7 @@ Low-level extractor API for meshes and materials from glTF 2.0 files. `SceneAsse
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `GLTF.Load(path)` | `obj(str)` | Parse glTF file |
-| `GLTF.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Viper.IO.Assets`, including package-relative external dependencies |
+| `GLTF.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Zanna.IO.Assets`, including package-relative external dependencies |
 | `GLTF.get_MeshCount(asset)` | `i64(obj)` | Number of meshes |
 | `GLTF.GetMesh(asset, index)` | `obj(obj, i64)` | Get Mesh3D by index |
 | `GLTF.get_MaterialCount(asset)` | `i64(obj)` | Number of materials |
@@ -1608,10 +1608,10 @@ Low-level extractor API for meshes and materials from glTF 2.0 files. `SceneAsse
 ```zia
 module GLTFDemo;
 
-bind Viper.Graphics3D.GLTF;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.GLTF;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("GLTF Demo", 800, 600);
@@ -1693,9 +1693,9 @@ array.
 ```zia
 module ParticleDemo;
 
-bind Viper.Graphics3D.Particles3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Particles3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
 
 func start() {
     var canvas = Canvas3D.New("Particles", 800, 600);
@@ -1777,8 +1777,8 @@ Bloom, Tonemap, FXAA, ColorGrade, and Vignette run on both GPU outputs and CPU r
 ```zia
 module PostFXDemo;
 
-bind Viper.Graphics3D.PostFX3D;
-bind Viper.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.PostFX3D;
+bind Zanna.Graphics3D.Canvas3D;
 
 func start() {
     var canvas = Canvas3D.New("PostFX Demo", 800, 600);
@@ -1870,11 +1870,11 @@ segment-to-box distance rather than only testing against the box center.
 ```zia
 module RaycastDemo;
 
-bind Viper.Graphics3D.Ray3D;
-bind Viper.Graphics3D.RayHit3D;
-bind Viper.Graphics3D.AABB3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Ray3D;
+bind Zanna.Graphics3D.RayHit3D;
+bind Zanna.Graphics3D.AABB3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
@@ -1910,10 +1910,10 @@ First-person camera controller with yaw/pitch mouse look and WASD movement. Thes
 ```zia
 module FPSDemo;
 
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Input.Mouse;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Input.Mouse;
+bind Zanna.Math.Vec3;
 
 func start() {
     var canvas = Canvas3D.New("FPS", 800, 600);
@@ -1946,7 +1946,7 @@ func start() {
 
 ## Spatial Audio
 
-Spatial-audio math and low-level `Viper.Audio.SpatialAudio3D` playback live in
+Spatial-audio math and low-level `Zanna.Audio.SpatialAudio3D` playback live in
 the audio runtime. Graphics3D keeps only the `SoundListener3D` and
 `SoundSource3D` wrappers that bind listeners/sources to `SceneNode` and
 `Camera3D`.
@@ -1957,8 +1957,8 @@ Recommended frame order for scene-driven audio:
 2. Call `SceneGraph.SyncBindings(dt)`.
 3. Trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` calls for the frame.
 
-See [Audio: Spatial Audio](viperlib/audio.md#spatial-audio) for the full
-spatial API and [Audio: Mix Group Effects](viperlib/audio.md#mix-group-effects)
+See [Audio: Spatial Audio](zannalib/audio.md#spatial-audio) for the full
+spatial API and [Audio: Mix Group Effects](zannalib/audio.md#mix-group-effects)
 for group-level low-pass, EQ, delay, and reverb.
 
 ### Zia Example
@@ -1966,9 +1966,9 @@ for group-level low-pass, EQ, delay, and reverb.
 ```zia
 module Sound3DObjectsDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Audio;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Audio;
 
 func start() {
     var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
@@ -2371,12 +2371,12 @@ load-scaled friction circle — unloaded wheels slide first.
 ```zia
 module PhysicsDemo;
 
-bind Viper.Graphics3D.Physics3DWorld;
-bind Viper.Graphics3D.Physics3DBody;
-bind Viper.Graphics3D.Character3D;
-bind Viper.Graphics3D.Trigger3D;
-bind Viper.Graphics3D.DistanceJoint3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Physics3DWorld;
+bind Zanna.Graphics3D.Physics3DBody;
+bind Zanna.Graphics3D.Character3D;
+bind Zanna.Graphics3D.Trigger3D;
+bind Zanna.Graphics3D.DistanceJoint3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     // Create physics world with gravity
@@ -2462,9 +2462,9 @@ Standalone 3D transform (position, rotation, scale) with lazy matrix computation
 ```zia
 module TransformDemo;
 
-bind Viper.Graphics3D.Transform3D;
-bind Viper.Math.Vec3;
-bind Viper.Math.Quat;
+bind Zanna.Graphics3D.Transform3D;
+bind Zanna.Math.Vec3;
+bind Zanna.Math.Quat;
 
 func start() {
     var xform = Transform3D.New();
@@ -2512,10 +2512,10 @@ Draw via `Canvas3D.DrawSprite3D(sprite, camera)`. Mesh and material are cached i
 ```zia
 module Sprite3DDemo;
 
-bind Viper.Graphics3D.Sprite3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.IO.Pixels;
+bind Zanna.Graphics3D.Sprite3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.IO.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Sprite3D", 800, 600);
@@ -2566,10 +2566,10 @@ Draw via `Canvas3D.DrawDecal(decal)`.
 ```zia
 module DecalDemo;
 
-bind Viper.Graphics3D.Decal3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Decal3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var canvas = Canvas3D.New("Decals", 800, 600);
@@ -2625,10 +2625,10 @@ Animated water surface with Gerstner wave simulation, texture support, and envir
 ```zia
 module WaterDemo;
 
-bind Viper.Graphics3D.Water3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.CubeMap3D;
+bind Zanna.Graphics3D.Water3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.CubeMap3D;
 
 func start() {
     var canvas = Canvas3D.New("Water", 800, 600);
@@ -2705,11 +2705,11 @@ Heightmap-based terrain with chunked rendering, LOD, and texture splatting.
 ```zia
 module TerrainDemo;
 
-bind Viper.Graphics3D.Terrain3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.PerlinNoise;
+bind Zanna.Graphics3D.Terrain3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.PerlinNoise;
 
 func start() {
     var canvas = Canvas3D.New("Terrain", 800, 600);
@@ -2804,12 +2804,12 @@ transient transform-buffer address, so reallocating an instance buffer does not 
 ```zia
 module InstanceDemo;
 
-bind Viper.Graphics3D.InstanceBatch3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Graphics3D.Material3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.InstanceBatch3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Graphics3D.Material3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("Instancing", 800, 600);
@@ -2862,7 +2862,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `FindPath(start, goal)` | `obj(obj, obj)` | A* pathfinding (Vec3 start/goal, returns waypoint list) |
-| `FindPathOption(start, goal)` | `obj<Viper.Option>(obj, obj)` | A* pathfinding as `Some(path)`, or `None` |
+| `FindPathOption(start, goal)` | `obj<Zanna.Option>(obj, obj)` | A* pathfinding as `Some(path)`, or `None` |
 | `SamplePosition(position)` | `obj(obj)` | Snap position to nearest point on navmesh (Vec3) |
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
 | `AddOffMeshLink(from, to, bidirectional)` | `i1(obj, obj, i1)` | Add a directed or bidirectional traversal edge between walkable points |
@@ -2892,9 +2892,9 @@ compatibility with existing `null` checks.
 ```zia
 module NavMeshDemo;
 
-bind Viper.Graphics3D.NavMesh3D;
-bind Viper.Graphics3D.Mesh3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.NavMesh3D;
+bind Zanna.Graphics3D.Mesh3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var level_mesh = Mesh3D.FromOBJ("level.obj");
@@ -2972,9 +2972,9 @@ When both a `Character3D` and a `SceneNode` are bound, the character controller 
 ```zia
 module NavAgentDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     var mesh = Mesh3D.Plane(20.0, 20.0);
@@ -3038,8 +3038,8 @@ Looping paths include the closing segment from the final control point back to t
 ```zia
 module PathDemo;
 
-bind Viper.Graphics3D.Path3D;
-bind Viper.Math.Vec3;
+bind Zanna.Graphics3D.Path3D;
+bind Zanna.Math.Vec3;
 
 func start() {
     var path = Path3D.New();
@@ -3100,11 +3100,11 @@ Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, materia
 ```zia
 module BlendDemo;
 
-bind Viper.Graphics3D.AnimBlend3D;
-bind Viper.Graphics3D.Skeleton3D;
-bind Viper.Graphics3D.Animation3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.AnimBlend3D;
+bind Zanna.Graphics3D.Skeleton3D;
+bind Zanna.Graphics3D.Animation3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Math.Mat4;
 
 func start() {
     var canvas = Canvas3D.New("Blend", 800, 600);
@@ -3167,9 +3167,9 @@ or a `BlendTree3D`; no separate extraction step is needed.
 ```zia
 module BlendTreeDemo;
 
-bind Viper.Graphics3D.BlendTree3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Math.Mat4;
+bind Zanna.Graphics3D.BlendTree3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Math.Mat4;
 
 func makeLocomotionTree(skel, idleAnim, walkAnim, runAnim) {
     var tree = BlendTree3D.New1D(skel);
@@ -3309,9 +3309,9 @@ Current limitation:
 ```zia
 module AnimController3DDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     var skel = Skeleton3D.New();
@@ -3381,8 +3381,8 @@ Each added layer is copied into the atlas with a duplicated 1-pixel edge/corner 
 ```zia
 module AtlasDemo;
 
-bind Viper.Graphics3D.TextureAtlas3D;
-bind Viper.IO.Pixels;
+bind Zanna.Graphics3D.TextureAtlas3D;
+bind Zanna.IO.Pixels;
 
 func start() {
     var atlas = TextureAtlas3D.New(256, 256);
@@ -3423,11 +3423,11 @@ Draw via `Canvas3D.DrawVegetation(vegetation)`. `SetSeed(seed)` pins reproducibl
 ```zia
 module VegetationDemo;
 
-bind Viper.Graphics3D.Vegetation3D;
-bind Viper.Graphics3D.Terrain3D;
-bind Viper.Graphics3D.Canvas3D;
-bind Viper.Graphics3D.Camera3D;
-bind Viper.IO.Pixels;
+bind Zanna.Graphics3D.Vegetation3D;
+bind Zanna.Graphics3D.Terrain3D;
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.IO.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Vegetation", 800, 600);
@@ -3606,7 +3606,7 @@ Backend correctness rules are shared where possible: skinning weights are normal
 - Constructor failures (New/Load) trap with a descriptive message
 - Out-of-bounds indices trap
 - GPU allocation failure falls back to software (no trap)
-- `VIPER_ENABLE_GRAPHICS=OFF` builds: constructors trap, all other functions are silent no-ops
+- `ZANNA_ENABLE_GRAPHICS=OFF` builds: constructors trap, all other functions are silent no-ops
 
 ## Threading
 

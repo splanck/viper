@@ -4,8 +4,8 @@
 
 Provide one explicit, cached runtime asset-catalog policy that works from the
 repository, a project directory, a packaged executable, embedded assets, and
-mounted packs. It must delegate actual resolution to `Viper.IO.Assets` and
-`Viper.Assets.Resolver`, distinguish optional from required assets, and emit a
+mounted packs. It must delegate actual resolution to `Zanna.IO.Assets` and
+`Zanna.Assets.Resolver`, distinguish optional from required assets, and emit a
 missing diagnostic once per logical asset.
 
 ## Problem statement
@@ -35,7 +35,7 @@ This plan can proceed independently of plans 03–07.
 ## ADR and API
 
 Required: public class/C ABI plus cross-layer use of generic asset resolution.
-The ADR must justify Game3D placement versus a generic `Viper.Assets.Catalog`,
+The ADR must justify Game3D placement versus a generic `Zanna.Assets.Catalog`,
 define resolution order, packaged-path representation, security constraints,
 required/optional behavior, cache invalidation, and diagnostics.
 
@@ -70,7 +70,7 @@ Out of scope:
 - a focused Game3D catalog implementation only if ADR keeps it Game3D-owned;
 - Game3D defs/IDs/CMake if a Game3D class is added;
 - IO asset security/path tests, Game3D asset tests, packaging fixtures;
-- `docs/viperlib/io/assets.md`, Game3D asset docs, starter/project files.
+- `docs/zannalib/io/assets.md`, Game3D asset docs, starter/project files.
 
 ## Resolution policy
 
@@ -109,9 +109,9 @@ sink.
 
 1. Test `IO.Assets.Exists/Load` and `Assets3D.Load*Asset` for embedded, mounted,
    and CWD loose paths.
-2. Test `Viper.Assets.Resolver.Resolve` result fields for scene, project,
+2. Test `Zanna.Assets.Resolver.Resolve` result fields for scene, project,
    asset-root, mounted, and missing sources. Its current public signature
-   returns `obj<Viper.Collections.Map>` (registered in
+   returns `obj<Zanna.Collections.Map>` (registered in
    `src/il/runtime/defs/api/audio_io.def`), which is why phase 1 requires a
    structured internal seam instead of re-parsing that Map.
 3. Reproduce documented edge cases: relative scene path interpretation and
@@ -177,7 +177,7 @@ behavior, CMake, docs, and surface audits. Tests cover:
 - catalog destruction during/after resolution;
 - bounded entry/path failures;
 - zero-byte assets distinguished from missing;
-- packaged and source-tree `viper.project` dry runs.
+- packaged and source-tree `zanna.project` dry runs.
 
 ### Phase 5 — Demo adoption spikes
 

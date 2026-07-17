@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -346,12 +346,12 @@ TEST(CompletionEngine, MaxResults_LimitsOutput) {
 // ---------------------------------------------------------------------------
 
 TEST(CompletionEngine, BoundAlias_MathMembers) {
-    // Source with "bind Viper.Math as Math" and "Math.Sq" as an expression.
+    // Source with "bind Zanna.Math as Math" and "Math.Sq" as an expression.
     // Cursor after "Sq" → prefix="Sq", trigger=MemberAccess, triggerExpr="Math".
     const std::string source = R"(
 module Test;
 
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 func compute() -> Number {    var r = Math.Sq
     return r;
 }
@@ -359,7 +359,7 @@ func compute() -> Number {    var r = Math.Sq
     CompletionEngine engine;
     // Line 7: "    var r = Math.Sq", col=19 gives prefix="Sq", triggerExpr="Math".
     auto items = engine.complete(source, 7, 19, "<test>", 0);
-    // Viper.Math should have at least some members (Sqrt, etc.)
+    // Zanna.Math should have at least some members (Sqrt, etc.)
     EXPECT_FALSE(items.empty());
 }
 
@@ -367,7 +367,7 @@ TEST(CompletionEngine, RuntimeClassCompletionCarriesAuthoredDocumentation) {
     const std::string source = R"(
 module Test;
 
-bind Viper.GUI as GUI;
+bind Zanna.GUI as GUI;
 
 func main() {
     GUI.Ap
@@ -380,14 +380,14 @@ func main() {
     ASSERT_NE(app, nullptr);
     EXPECT_EQ(app->kind, CompletionKind::RuntimeClass);
     EXPECT_TRUE(app->documentation.find("Owns a GUI application window") != std::string::npos);
-    EXPECT_TRUE(app->documentation.find("`Viper.GUI.App`") != std::string::npos);
+    EXPECT_TRUE(app->documentation.find("`Zanna.GUI.App`") != std::string::npos);
 }
 
 TEST(CompletionEngine, RuntimeMemberCompletionCarriesDocumentation) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 
 func main() {
     Terminal.Sa
@@ -399,9 +399,9 @@ func main() {
     const CompletionItem *say = findItem(items, "Say");
     ASSERT_NE(say, nullptr);
     EXPECT_TRUE(say->documentation.find("Writes text followed by a newline") != std::string::npos);
-    EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Runtime method Zanna.Terminal.Say.") != std::string::npos);
     EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") != std::string::npos);
-    EXPECT_TRUE(say->documentation.find("Target: Viper.Terminal.Say") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Target: Zanna.Terminal.Say") != std::string::npos);
 }
 
 TEST(CompletionEngine, BoundFileModuleNameAndExports) {
@@ -533,7 +533,7 @@ TEST(CompletionEngine, SignatureHelp_RuntimeAliasMethod) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 
 func main() {
     Terminal.Say("hello");
@@ -545,11 +545,11 @@ func main() {
 
     EXPECT_TRUE(help.find("Say(s: String) -> Void") != std::string::npos);
     EXPECT_TRUE(help.find("Writes text followed by a newline") != std::string::npos);
-    EXPECT_TRUE(help.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
+    EXPECT_TRUE(help.find("Runtime method Zanna.Terminal.Say.") != std::string::npos);
 }
 
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

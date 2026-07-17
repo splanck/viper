@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// Architecture-agnostic relocation kinds.
 ///
@@ -122,4 +122,4 @@ struct Relocation {
         0; ///< Stable CodeSection identity for section-offset relocations.
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

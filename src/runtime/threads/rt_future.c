@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_future.c
 // Purpose: Implements the Future/Promise async result pattern for the
-//          Viper.Threads.Future and Viper.Threads.Promise classes. A Promise
+//          Zanna.Threads.Future and Zanna.Threads.Promise classes. A Promise
 //          is the write end; a Future is the read end. Completion is signalled
 //          via a condition variable; waiting is blocking until resolved.
 //
@@ -1056,7 +1056,7 @@ void *rt_future_try_get_val(void *obj) {
 ///          as `Some(NULL)` and so owned payloads can be balanced after the
 ///          Option has retained them.
 /// @param obj Future object pointer.
-/// @return Opaque Viper.Option object containing the successful value, or None.
+/// @return Opaque Zanna.Option object containing the successful value, or None.
 void *rt_future_try_get_option(void *obj) {
     future_impl *f = future_require(obj, 0);
     if (!f)

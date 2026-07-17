@@ -1,0 +1,12 @@
+project openworld_slice
+version 0.1.0
+lang zia
+entry main.zia
+
+package-name "Open World Slice"
+package-description "A streamed Game3D vertical-slice smoke project"
+package-identifier org.zanna-lang.openworld-slice
+package-author "Zanna Project"
+package-license MIT
+
+asset assets assets

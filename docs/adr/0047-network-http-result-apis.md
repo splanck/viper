@@ -18,7 +18,7 @@ paths. `RestClient` also exposes `LastStatus`, `LastResponse`, and `LastOk`,
 which makes examples easy to write but leaves production code dependent on
 receiver-scoped mutable state.
 
-The runtime already has `Viper.Result`, and `HttpRes` already carries status,
+The runtime already has `Zanna.Result`, and `HttpRes` already carries status,
 headers, and body. The missing public shape is a result-returning request path
 that keeps transport failures explicit while leaving HTTP status on the
 response object.
@@ -27,13 +27,13 @@ response object.
 
 Add result-returning HTTP request APIs:
 
-- `Viper.Network.HttpReq.SendResult()`
-- `Viper.Network.RestClient.GetResult(path)`
-- `Viper.Network.RestClient.PostResult(path, body)`
-- `Viper.Network.RestClient.PutResult(path, body)`
-- `Viper.Network.RestClient.PatchResult(path, body)`
-- `Viper.Network.RestClient.DeleteResult(path)`
-- `Viper.Network.RestClient.HeadResult(path)`
+- `Zanna.Network.HttpReq.SendResult()`
+- `Zanna.Network.RestClient.GetResult(path)`
+- `Zanna.Network.RestClient.PostResult(path, body)`
+- `Zanna.Network.RestClient.PutResult(path, body)`
+- `Zanna.Network.RestClient.PatchResult(path, body)`
+- `Zanna.Network.RestClient.DeleteResult(path)`
+- `Zanna.Network.RestClient.HeadResult(path)`
 
 These methods return `Result<HttpRes>`. Transport setup failures, connection
 failures, timeouts, and recovered traps become `Result.ErrStr`. Any received

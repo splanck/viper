@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -109,14 +109,14 @@ static void runChild() {
 }
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
 #if defined(__APPLE__)
     std::fprintf(stderr, "switch-block-label: skipping on macOS sandbox environment\n");
     return 0;
 #else
-    auto result = viper::tests::runIsolated(runChild);
+    auto result = zanna::tests::runIsolated(runChild);
 
     // Accept any non-zero termination in constrained environments.
     if (!result.trapped()) {

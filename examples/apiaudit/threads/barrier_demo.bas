@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Barrier (BASIC)
+' API Audit: Zanna.Threads.Barrier (BASIC)
 ' =============================================================================
 ' Tests: New, Arrive, Reset, Parties, Waiting
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Barrier ==="
+PRINT "=== API Audit: Zanna.Threads.Barrier ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM b AS OBJECT = Viper.Threads.Barrier.New(1)
+DIM b AS OBJECT = Zanna.Threads.Barrier.New(1)
 PRINT "Created barrier with 1 party"
 
 ' --- Parties ---
@@ -41,13 +41,13 @@ PRINT "Parties after Reset: "; b.Parties
 
 ' --- New with 3 parties ---
 PRINT "--- New with 3 parties ---"
-DIM b2 AS OBJECT = Viper.Threads.Barrier.New(3)
+DIM b2 AS OBJECT = Zanna.Threads.Barrier.New(3)
 PRINT "Parties: "; b2.Parties
 PRINT "Waiting: "; b2.Waiting
 
 ' --- Multiple single-party cycles ---
 PRINT "--- Multiple single-party cycles ---"
-DIM b3 AS OBJECT = Viper.Threads.Barrier.New(1)
+DIM b3 AS OBJECT = Zanna.Threads.Barrier.New(1)
 b3.Arrive()
 b3.Arrive()
 b3.Arrive()

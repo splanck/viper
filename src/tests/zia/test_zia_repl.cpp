@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <filesystem>
 #include <string>
 
-using namespace viper::repl;
+using namespace zanna::repl;
 
 namespace {
 
@@ -258,14 +258,14 @@ TEST(ReplBinds, DefaultBinds) {
     ZiaReplAdapter adapter;
     auto binds = adapter.listBinds();
     EXPECT_EQ(binds.size(), 3u);
-    EXPECT_EQ(binds[0], "bind Viper.Terminal");
-    EXPECT_EQ(binds[1], "bind Viper.Text.Fmt as Fmt");
-    EXPECT_EQ(binds[2], "bind Viper.Core.Object as Obj");
+    EXPECT_EQ(binds[0], "bind Zanna.Terminal");
+    EXPECT_EQ(binds[1], "bind Zanna.Text.Fmt as Fmt");
+    EXPECT_EQ(binds[2], "bind Zanna.Core.Object as Obj");
 }
 
 TEST(ReplBinds, AddBind) {
     ZiaReplAdapter adapter;
-    auto r = adapter.eval("bind Viper.Math as Math");
+    auto r = adapter.eval("bind Zanna.Math as Math");
     EXPECT_TRUE(r.success);
 
     auto binds = adapter.listBinds();
@@ -274,7 +274,7 @@ TEST(ReplBinds, AddBind) {
 
 TEST(ReplBinds, DuplicateBindIgnored) {
     ZiaReplAdapter adapter;
-    auto r = adapter.eval("bind Viper.Terminal");
+    auto r = adapter.eval("bind Zanna.Terminal");
     EXPECT_TRUE(r.success);
     EXPECT_NE(r.output.find("already bound"), std::string::npos);
 }
@@ -529,7 +529,7 @@ TEST(ReplRuntimeOutput, LargeOutputDoesNotDeadlock) {
 
 TEST(ReplHistory, SaveAndLoadRoundtrip) {
     // Create a temp file path
-    auto tmpDir = std::filesystem::temp_directory_path() / "viper_test_repl";
+    auto tmpDir = std::filesystem::temp_directory_path() / "zanna_test_repl";
     std::filesystem::create_directories(tmpDir);
     auto histFile = tmpDir / "test_history";
 
@@ -558,7 +558,7 @@ TEST(ReplHistory, SaveAndLoadRoundtrip) {
 }
 
 TEST(ReplHistory, MultiLineEntryRoundtrip) {
-    auto tmpDir = std::filesystem::temp_directory_path() / "viper_test_repl_multiline";
+    auto tmpDir = std::filesystem::temp_directory_path() / "zanna_test_repl_multiline";
     std::filesystem::create_directories(tmpDir);
     auto histFile = tmpDir / "test_history";
 
@@ -601,7 +601,7 @@ TEST(ReplHistory, EmptySkipped) {
 
 TEST(ReplHistory, LoadNonexistentFileReturnsZero) {
     ReplLineEditor editor;
-    size_t loaded = editor.loadHistory("/tmp/viper_test_nonexistent_file_xyz");
+    size_t loaded = editor.loadHistory("/tmp/zanna_test_nonexistent_file_xyz");
     EXPECT_EQ(loaded, 0u);
 }
 
@@ -641,5 +641,5 @@ TEST(ReplIL, StringExpression) {
 } // anonymous namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

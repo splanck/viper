@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 
-#include "viper/il/IRBuilder.hpp"
+#include "zanna/il/IRBuilder.hpp"
 
 namespace il::frontends::basic {
 

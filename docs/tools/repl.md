@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-07-14
 ---
 
-# Viper REPL
+# Zanna REPL
 
-The Viper REPL (Read-Eval-Print Loop) provides an interactive environment for experimenting with Zia or BASIC code. Each line of input is compiled and executed immediately, with results displayed inline.
+The Zanna REPL (Read-Eval-Print Loop) provides an interactive environment for experimenting with Zia or BASIC code. Each line of input is compiled and executed immediately, with results displayed inline.
 
 ## Getting Started
 
@@ -14,20 +14,20 @@ Launch the REPL:
 
 ```bash
 # Zia REPL (default — only via the unified driver)
-viper repl
+zanna repl
 
 # BASIC REPL — both forms work
-viper repl basic
+zanna repl basic
 vbasic                  # zero-arg vbasic launches the BASIC REPL directly
 ```
 
 > Note: the standalone `zia` binary requires a source file argument and does **not** launch a REPL.
-> Use `viper repl` for an interactive Zia session.
+> Use `zanna repl` for an interactive Zia session.
 
 You'll see a prompt where you can type code:
 
 ```text
-Viper zia REPL v0.2.99.20260704
+Zanna zia REPL v0.2.99.20260704
 Type .help for commands, .quit to exit.
 
 zia> 2 + 3
@@ -117,11 +117,11 @@ The REPL maintains a history of previous inputs. Use the Up and Down arrow keys 
 History is automatically saved to disk when the REPL exits and loaded on startup. The history file location is:
 
 ```text
-~/.viper/repl_history_zia      # Zia REPL history
-~/.viper/repl_history_basic    # BASIC REPL history
+~/.zanna/repl_history_zia      # Zia REPL history
+~/.zanna/repl_history_basic    # BASIC REPL history
 ```
 
-The `~/.viper/` directory is created automatically if it doesn't exist. Each language has its own history file, so Zia and BASIC histories don't interfere with each other. The maximum history size is 1000 entries.
+The `~/.zanna/` directory is created automatically if it doesn't exist. Each language has its own history file, so Zia and BASIC histories don't interfere with each other. The maximum history size is 1000 entries.
 
 Use `.save <file>` to save your session history to a custom file for later reference.
 
@@ -140,7 +140,7 @@ Press **Tab** to trigger context-aware completions powered by the Zia `Completio
 zia> var myCounter = 42
 zia> myC<Tab>
 myCounter
-zia> Viper.Math.<Tab>
+zia> Zanna.Math.<Tab>
 Sqrt  AbsInt  AbsNum  ...
 ```
 
@@ -242,12 +242,12 @@ Hey there, World
 Import runtime modules using `bind`:
 
 ```text
-zia> bind Math = Viper.Math
+zia> bind Math = Zanna.Math
 zia> Math.Sqrt(16.0)
 4
 ```
 
-The default binds (`Viper.Terminal`, `Fmt = Viper.Text.Fmt`, and `Obj = Viper.Core.Object`) are available automatically.
+The default binds (`Zanna.Terminal`, `Fmt = Zanna.Text.Fmt`, and `Obj = Zanna.Core.Object`) are available automatically.
 
 ## Meta-Commands
 
@@ -296,8 +296,8 @@ il 0.3.0
 func @main() -> void {
 entry_0:
   %t0 = iadd.ovf 2, 3
-  %t1 = call @Viper.Text.Fmt.Int(%t0)
-  call @Viper.Terminal.Say(%t1)
+  %t1 = call @Zanna.Text.Fmt.Int(%t0)
+  call @Zanna.Terminal.Say(%t1)
   ...
 }
 
@@ -321,7 +321,7 @@ Saved 5 entries to: session.txt
 The REPL can also accept piped input for scripting:
 
 ```bash
-echo 'Say("Hello")' | viper repl
+echo 'Say("Hello")' | zanna repl
 ```
 
 In non-interactive mode, the REPL reads lines from stdin without a prompt and executes them sequentially. This is useful for testing and automation.

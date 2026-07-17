@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 //        rtgen --docs [--check] <input.def> <output_dir>
 //
 // Outputs:
-//   - RuntimeNameMap.inc     (canonical Viper.* -> rt_* symbol mapping)
+//   - RuntimeNameMap.inc     (canonical Zanna.* -> rt_* symbol mapping)
 //   - RuntimeClasses.inc     (OOP class/method/property catalog)
 //   - RuntimeSignatures.inc  (runtime descriptor rows)
 //   - RuntimeNames.hpp       (C++ constants for frontend use)
@@ -63,7 +63,7 @@ static constexpr std::uintmax_t kMaxRtgenTextFileBytes = 16ULL * 1024ULL * 1024U
 struct RuntimeFunc {
     std::string id;                       // Unique identifier (e.g., "PrintStr")
     std::string c_symbol;                 // C runtime symbol (e.g., "rt_print_str")
-    std::string canonical;                // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
+    std::string canonical;                // Canonical Zanna.* name (e.g., "Zanna.Console.PrintStr")
     std::string signature;                // Type signature (e.g., "void(str)")
     std::string lowering;                 // Lowering kind: "always" or "" (default: manual)
     std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
@@ -93,7 +93,7 @@ struct RuntimeDocumentation {
 
 /// @brief A runtime OOP class (RT_CLASS block) with its properties and methods.
 struct RuntimeClass {
-    std::string name;                   // Class name (e.g., "Viper.String")
+    std::string name;                   // Class name (e.g., "Zanna.String")
     std::string type_id;                // Type ID suffix (e.g., "String")
     std::string layout;                 // Layout type (e.g., "opaque*", "obj")
     std::string ctor_id;                // Constructor function id or empty
@@ -1285,7 +1285,7 @@ static std::string readTextFile(const fs::path &path) {
 ///          helper once. That keeps stale output intact if a later write fails and
 ///          avoids consumers observing partially-generated include files.
 static void writeGeneratedTextFile(const fs::path &path, const std::ostringstream &contents) {
-    viper::pkg::writeTextFileAtomic(path, contents.str());
+    zanna::pkg::writeTextFileAtomic(path, contents.str());
 }
 
 /// @brief Normalize @p path and return it with forward slashes.
@@ -1536,7 +1536,7 @@ static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &r
 
 /// @brief A flattened runtime function row used during code generation.
 struct RuntimeEntry {
-    std::string name;      ///< Canonical Viper.* name.
+    std::string name;      ///< Canonical Zanna.* name.
     std::string c_symbol;  ///< C runtime symbol.
     std::string signature; ///< IL type signature.
     std::string lowering;  ///< "always" or "" (default: manual)
@@ -1961,7 +1961,7 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.cSymbol << "},\n";
 }
 
-/// @brief Generate RuntimeNameMap.inc: canonical Viper.* → C rt_* symbol mappings.
+/// @brief Generate RuntimeNameMap.inc: canonical Zanna.* → C rt_* symbol mappings.
 /// @details Emits a RUNTIME_NAME_ALIAS row for every canonical function. Fatal
 ///          error on write failure.
 static void generateNameMap(const ParseState &state, const fs::path &outDir) {
@@ -1969,7 +1969,7 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     std::ostringstream out;
 
     out << fileHeader("RuntimeNameMap.inc",
-                      "Canonical Viper.* to C rt_* symbol mapping for native codegen.");
+                      "Canonical Zanna.* to C rt_* symbol mapping for native codegen.");
 
     for (const auto &func : state.functions) {
         out << "RUNTIME_NAME_ALIAS(" << cppStringLiteral(func.canonical) << ", "
@@ -2196,7 +2196,7 @@ static void generateZiaExterns(const ParseState &state,
     std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
 
     for (const auto &func : state.functions) {
-        // Extract namespace: "Viper.GUI.App.New" -> "Viper.GUI"
+        // Extract namespace: "Zanna.GUI.App.New" -> "Zanna.GUI"
         size_t firstDot = func.canonical.find('.');
         size_t secondDot = func.canonical.find('.', firstDot + 1);
         std::string ns = "Other";
@@ -2233,12 +2233,12 @@ static void generateZiaExterns(const ParseState &state,
 }
 
 /// @brief Convert a canonical name to a C++ constant identifier.
-/// @details "Viper.String.Concat" -> "kStringConcat"
-///          "Viper.Time.DateTime.Now" -> "kTimeDateTimeNow"
+/// @details "Zanna.String.Concat" -> "kStringConcat"
+///          "Zanna.Time.DateTime.Now" -> "kTimeDateTimeNow"
 static std::string canonicalToIdentifier(const std::string &canonical) {
-    // Skip "Viper." prefix
+    // Skip "Zanna." prefix
     std::string name = canonical;
-    if (name.substr(0, 6) == "Viper.") {
+    if (name.substr(0, 6) == "Zanna.") {
         name = name.substr(6);
     }
 
@@ -2266,8 +2266,8 @@ static std::string canonicalToIdentifier(const std::string &canonical) {
 
 /// @brief Convert a runtime class qualified name to a distinct C++ identifier.
 /// @details Class identifiers deliberately use a `kRuntimeClass` prefix so
-///          that `Viper.Collections.List` cannot collide with runtime function
-///          constants such as `Viper.Collections.List.New`.
+///          that `Zanna.Collections.List` cannot collide with runtime function
+///          constants such as `Zanna.Collections.List.New`.
 /// @param qname Fully qualified runtime class name from an RT_CLASS block.
 /// @return Constant identifier such as `kRuntimeClassCollectionsList`.
 static std::string runtimeClassToIdentifier(const std::string &qname) {
@@ -2302,7 +2302,7 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     out << "#pragma once\n\n";
     out << "namespace il::runtime::names {\n\n";
     out << "/// @brief Canonical prefix shared by all runtime functions and classes.\n";
-    out << "inline constexpr const char *kRuntimeNamespacePrefix = \"Viper.\";\n\n";
+    out << "inline constexpr const char *kRuntimeNamespacePrefix = \"Zanna.\";\n\n";
 
     if (!state.classes.empty()) {
         out << "// " << std::string(75, '=') << "\n";
@@ -2343,7 +2343,7 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::set<std::string> emittedIdentifiers; // Track duplicates
 
     for (const auto &func : state.functions) {
-        // Extract namespace: "Viper.String.Concat" -> "Viper.String"
+        // Extract namespace: "Zanna.String.Concat" -> "Zanna.String"
         size_t lastDot = func.canonical.rfind('.');
         std::string ns = "Other";
         if (lastDot != std::string::npos) {
@@ -2380,9 +2380,9 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::cout << "  Generated " << outPath << "\n";
 }
 
-/// @brief Return the first namespace segment beneath `Viper` for @p name.
+/// @brief Return the first namespace segment beneath `Zanna` for @p name.
 static std::string runtimeDocumentationDomain(std::string_view name) {
-    constexpr std::string_view prefix = "Viper.";
+    constexpr std::string_view prefix = "Zanna.";
     if (startsWith(name, prefix))
         name.remove_prefix(prefix.size());
     const size_t dot = name.find('.');
@@ -2481,10 +2481,10 @@ static bool generateRuntimeDocumentation(const ParseState &state,
     bool clean = true;
     std::ostringstream index;
     index << "<!-- AUTO-GENERATED by rtgen from src/il/runtime/runtime.def. DO NOT EDIT. -->\n\n";
-    index << "# Viper Runtime API Reference\n\n";
+    index << "# Zanna Runtime API Reference\n\n";
     index << "This exhaustive reference is generated from the modular runtime definition "
              "registry. Conceptual guides live under "
-             "[`docs/viperlib`](../../viperlib/README.md).\n\n";
+             "[`docs/zannalib`](../../zannalib/README.md).\n\n";
     index << "| Domain | Classes | Functions |\n";
     index << "|---|---:|---:|\n";
 
@@ -2499,7 +2499,7 @@ static bool generateRuntimeDocumentation(const ParseState &state,
         std::ostringstream page;
         page
             << "<!-- AUTO-GENERATED by rtgen from src/il/runtime/runtime.def. DO NOT EDIT. -->\n\n";
-        page << "# Viper " << domain << " Runtime Reference\n\n";
+        page << "# Zanna " << domain << " Runtime Reference\n\n";
         page << "[Back to the runtime reference index](README.md)\n\n";
         std::unordered_set<std::string> emittedPageAnchors;
 

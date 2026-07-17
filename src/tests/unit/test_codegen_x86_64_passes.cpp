@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 #include <memory>
 #include <string>
 
-using namespace viper::codegen::x64::passes;
+using namespace zanna::codegen::x64::passes;
 
 namespace {
 
@@ -470,7 +470,7 @@ std::size_t binarySizeForOptLevel(int optimizeLevel) {
     pm.addPass(std::make_unique<SchedulerPass>());
     pm.addPass(std::make_unique<PeepholePass>());
 
-    viper::codegen::x64::CodegenOptions opts{};
+    zanna::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = optimizeLevel;
     pm.addPass(std::make_unique<BinaryEmitPass>(opts));
 
@@ -493,21 +493,21 @@ bool runThroughRegAlloc(Module &module, Diagnostics &diags) {
     return pm.run(module, diags);
 }
 
-viper::codegen::x64::Operand physGpr(viper::codegen::x64::PhysReg reg) {
-    return viper::codegen::x64::OpReg{
-        true, viper::codegen::x64::RegClass::GPR, static_cast<uint16_t>(reg)};
+zanna::codegen::x64::Operand physGpr(zanna::codegen::x64::PhysReg reg) {
+    return zanna::codegen::x64::OpReg{
+        true, zanna::codegen::x64::RegClass::GPR, static_cast<uint16_t>(reg)};
 }
 
-viper::codegen::x64::Operand physXmm(viper::codegen::x64::PhysReg reg) {
-    return viper::codegen::x64::OpReg{
-        true, viper::codegen::x64::RegClass::XMM, static_cast<uint16_t>(reg)};
+zanna::codegen::x64::Operand physXmm(zanna::codegen::x64::PhysReg reg) {
+    return zanna::codegen::x64::OpReg{
+        true, zanna::codegen::x64::RegClass::XMM, static_cast<uint16_t>(reg)};
 }
 
-viper::codegen::x64::Operand rbpMem(int disp) {
-    viper::codegen::x64::OpMem mem{};
-    mem.base = viper::codegen::x64::OpReg{true,
-                                          viper::codegen::x64::RegClass::GPR,
-                                          static_cast<uint16_t>(viper::codegen::x64::PhysReg::RBP)};
+zanna::codegen::x64::Operand rbpMem(int disp) {
+    zanna::codegen::x64::OpMem mem{};
+    mem.base = zanna::codegen::x64::OpReg{true,
+                                          zanna::codegen::x64::RegClass::GPR,
+                                          static_cast<uint16_t>(zanna::codegen::x64::PhysReg::RBP)};
     mem.disp = disp;
     return mem;
 }
@@ -550,8 +550,8 @@ TEST(LoweringPass, PreservesF64ImmediateStoreOperandKind) {
         instrs.begin(), instrs.end(), [](const auto &instr) { return instr.opcode == "store"; });
     ASSERT_TRUE(it != instrs.end());
     ASSERT_GE(it->ops.size(), 2U);
-    EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
-    EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::F64);
+    EXPECT_EQ(it->ops[0].kind, zanna::codegen::x64::ILValue::Kind::PTR);
+    EXPECT_EQ(it->ops[1].kind, zanna::codegen::x64::ILValue::Kind::F64);
     EXPECT_EQ(it->ops[1].id, -1);
     EXPECT_NEAR(it->ops[1].f64, 50.0, 1e-12);
 }
@@ -573,8 +573,8 @@ TEST(LoweringPass, PreservesFunctionAddressStoreOperandKind) {
         instrs.begin(), instrs.end(), [](const auto &instr) { return instr.opcode == "store"; });
     ASSERT_TRUE(it != instrs.end());
     ASSERT_GE(it->ops.size(), 2U);
-    EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
-    EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::LABEL);
+    EXPECT_EQ(it->ops[0].kind, zanna::codegen::x64::ILValue::Kind::PTR);
+    EXPECT_EQ(it->ops[1].kind, zanna::codegen::x64::ILValue::Kind::LABEL);
     EXPECT_EQ(it->ops[1].label, "callee");
 }
 
@@ -591,11 +591,11 @@ TEST(LoweringPass, LowersErrGetMsgToRuntimeStringCall) {
     const auto &instrs = module.lowered->funcs[0].blocks[0].instrs;
     const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
         return instr.opcode == "call" && !instr.ops.empty() &&
-               instr.ops[0].kind == viper::codegen::x64::ILValue::Kind::LABEL &&
+               instr.ops[0].kind == zanna::codegen::x64::ILValue::Kind::LABEL &&
                instr.ops[0].label == "rt_throw_msg_get";
     });
     ASSERT_TRUE(it != instrs.end());
-    EXPECT_EQ(it->resultKind, viper::codegen::x64::ILValue::Kind::STR);
+    EXPECT_EQ(it->resultKind, zanna::codegen::x64::ILValue::Kind::STR);
 }
 
 TEST(LoweringPass, PreservesCheckedNarrowResultWidth) {
@@ -631,7 +631,7 @@ TEST(LoweringPass, PreRegistersBlockParamsBeforeTextualUse) {
     EXPECT_EQ(incInstrs[0].opcode, "iadd.ovf");
     ASSERT_FALSE(incInstrs[0].ops.empty());
     EXPECT_EQ(incInstrs[0].ops[0].id, 2);
-    EXPECT_EQ(incInstrs[0].ops[0].kind, viper::codegen::x64::ILValue::Kind::I64);
+    EXPECT_EQ(incInstrs[0].ops[0].kind, zanna::codegen::x64::ILValue::Kind::I64);
 }
 
 TEST(LoweringPass, PreRegistersInstructionResultsBeforeTextualUse) {
@@ -650,7 +650,7 @@ TEST(LoweringPass, PreRegistersInstructionResultsBeforeTextualUse) {
     EXPECT_EQ(useInstrs[0].opcode, "iadd.ovf");
     ASSERT_FALSE(useInstrs[0].ops.empty());
     EXPECT_EQ(useInstrs[0].ops[0].id, 2);
-    EXPECT_EQ(useInstrs[0].ops[0].kind, viper::codegen::x64::ILValue::Kind::I64);
+    EXPECT_EQ(useInstrs[0].ops[0].kind, zanna::codegen::x64::ILValue::Kind::I64);
 }
 
 TEST(LegalizePass, FailsWhenLoweringMissing) {
@@ -715,7 +715,7 @@ TEST(SchedulerPass, RequiresRegAlloc) {
 }
 
 TEST(SchedulerPass, PreservesWin64FrameSetupBeforeCalleeSaves) {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     MBasicBlock entry{};
     entry.label = "entry";
@@ -756,7 +756,7 @@ TEST(EmitPass, ProducesAssembly) {
     module.il = makeRetConstModule(42);
     Diagnostics diags{};
     ASSERT_TRUE(runThroughRegAlloc(module, diags));
-    EmitPass pass{viper::codegen::x64::CodegenOptions{}};
+    EmitPass pass{zanna::codegen::x64::CodegenOptions{}};
     EXPECT_TRUE(pass.run(module, diags));
     EXPECT_TRUE(module.codegenResult.has_value());
     EXPECT_TRUE(module.codegenResult->asmText.find("ret") != std::string::npos);
@@ -764,12 +764,12 @@ TEST(EmitPass, ProducesAssembly) {
 }
 
 TEST(CodegenOptions, OptimizeLevelDefaultsToOne) {
-    viper::codegen::x64::CodegenOptions opts{};
+    zanna::codegen::x64::CodegenOptions opts{};
     EXPECT_EQ(opts.optimizeLevel, 1);
 }
 
 TEST(CodegenOptions, OptimizeLevelZeroIsValid) {
-    viper::codegen::x64::CodegenOptions opts{};
+    zanna::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = 0;
     EXPECT_EQ(opts.optimizeLevel, 0);
 }
@@ -783,38 +783,38 @@ TEST(BinaryEmitPass, HonorsOptimizeLevel) {
 
 TEST(BinaryEmitPass, ReportsEncoderValidationFailures) {
     Module module{};
-    module.target = &viper::codegen::x64::hostTarget();
+    module.target = &zanna::codegen::x64::hostTarget();
     module.registersAllocated = true;
 
-    viper::codegen::x64::MFunction fn{};
+    zanna::codegen::x64::MFunction fn{};
     fn.name = "bad_mem_index";
 
-    viper::codegen::x64::MBasicBlock bb{};
+    zanna::codegen::x64::MBasicBlock bb{};
     bb.label = ".Lbad_mem_index";
 
-    viper::codegen::x64::OpMem badMem{};
+    zanna::codegen::x64::OpMem badMem{};
     badMem.base =
-        viper::codegen::x64::makePhysReg(viper::codegen::x64::RegClass::GPR,
-                                         static_cast<uint16_t>(viper::codegen::x64::PhysReg::RAX));
+        zanna::codegen::x64::makePhysReg(zanna::codegen::x64::RegClass::GPR,
+                                         static_cast<uint16_t>(zanna::codegen::x64::PhysReg::RAX));
     badMem.index =
-        viper::codegen::x64::makePhysReg(viper::codegen::x64::RegClass::GPR,
-                                         static_cast<uint16_t>(viper::codegen::x64::PhysReg::RSP));
+        zanna::codegen::x64::makePhysReg(zanna::codegen::x64::RegClass::GPR,
+                                         static_cast<uint16_t>(zanna::codegen::x64::PhysReg::RSP));
     badMem.scale = 1;
     badMem.hasIndex = true;
 
-    bb.append(viper::codegen::x64::MInstr::make(
-        viper::codegen::x64::MOpcode::MOVmr,
-        {viper::codegen::x64::makePhysRegOperand(
-             viper::codegen::x64::RegClass::GPR,
-             static_cast<uint16_t>(viper::codegen::x64::PhysReg::RAX)),
-         viper::codegen::x64::Operand{badMem}}));
+    bb.append(zanna::codegen::x64::MInstr::make(
+        zanna::codegen::x64::MOpcode::MOVmr,
+        {zanna::codegen::x64::makePhysRegOperand(
+             zanna::codegen::x64::RegClass::GPR,
+             static_cast<uint16_t>(zanna::codegen::x64::PhysReg::RAX)),
+         zanna::codegen::x64::Operand{badMem}}));
     fn.addBlock(std::move(bb));
 
     module.mir.push_back(std::move(fn));
-    module.frames.push_back(viper::codegen::x64::FrameInfo{});
+    module.frames.push_back(zanna::codegen::x64::FrameInfo{});
 
     Diagnostics diags{};
-    viper::codegen::x64::CodegenOptions opts{};
+    zanna::codegen::x64::CodegenOptions opts{};
     BinaryEmitPass pass{opts};
     EXPECT_FALSE(pass.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
@@ -826,13 +826,13 @@ TEST(PassManager, ShortCircuitsOnFailure) {
     PassManager pm{};
     pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
-    pm.addPass(std::make_unique<EmitPass>(viper::codegen::x64::CodegenOptions{}));
+    pm.addPass(std::make_unique<EmitPass>(zanna::codegen::x64::CodegenOptions{}));
     EXPECT_FALSE(pm.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
     EXPECT_FALSE(module.registersAllocated);
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

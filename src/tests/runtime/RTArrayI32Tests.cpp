@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/ProcessIsolation.hpp"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -71,11 +71,11 @@ static void expect_oob_message(const std::string &stderr_output) {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(invoke_oob_get);
-    viper::tests::registerChildFunction(invoke_oob_set);
-    viper::tests::registerChildFunction(invoke_copy_null_src);
-    viper::tests::registerChildFunction(invoke_copy_null_dst);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(invoke_oob_get);
+    zanna::tests::registerChildFunction(invoke_oob_set);
+    zanna::tests::registerChildFunction(invoke_copy_null_src);
+    zanna::tests::registerChildFunction(invoke_copy_null_dst);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     int32_t *arr = rt_arr_i32_new(0);
@@ -125,16 +125,16 @@ int main(int argc, char *argv[]) {
     rt_arr_i32_release(fresh);
 
     // Out-of-bounds and null-pointer trap tests
-    auto result = viper::tests::runIsolated(invoke_oob_get);
+    auto result = zanna::tests::runIsolated(invoke_oob_get);
     expect_oob_message(result.stderrText);
 
-    result = viper::tests::runIsolated(invoke_oob_set);
+    result = zanna::tests::runIsolated(invoke_oob_set);
     expect_oob_message(result.stderrText);
 
-    result = viper::tests::runIsolated(invoke_copy_null_src);
+    result = zanna::tests::runIsolated(invoke_copy_null_src);
     expect_oob_message(result.stderrText);
 
-    result = viper::tests::runIsolated(invoke_copy_null_dst);
+    result = zanna::tests::runIsolated(invoke_copy_null_dst);
     expect_oob_message(result.stderrText);
 
     return 0;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -14,15 +14,15 @@
 // Backend Selection:
 //   - On ARM64 hosts (Apple Silicon): Uses AArch64 backend automatically
 //   - On x86-64 hosts: Uses x86-64 backend (if available)
-//   - Force AArch64: Define VIPER_FORCE_ARM64_DIFF_TEST at compile time
-//   - Environment var: Set VIPER_DIFF_BACKEND=arm64 to force ARM64 at runtime
+//   - Force AArch64: Define ZANNA_FORCE_ARM64_DIFF_TEST at compile time
+//   - Environment var: Set ZANNA_DIFF_BACKEND=arm64 to force ARM64 at runtime
 //
 // Example usage:
 //   # Run tests normally (auto-detect backend):
 //   ./build/src/tests/unit/codegen/test_diff_vm_native_property
 //
 //   # Force ARM64 backend via environment:
-//   VIPER_DIFF_BACKEND=arm64 ./build/src/tests/unit/codegen/test_diff_vm_native_property
+//   ZANNA_DIFF_BACKEND=arm64 ./build/src/tests/unit/codegen/test_diff_vm_native_property
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,7 +32,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
+#include "tools/zanna/cmd_codegen_arm64.hpp"
 
 #include "tests/common/PosixCompat.h"
 #include <atomic>
@@ -44,8 +44,8 @@
 #include <sstream>
 #include <string>
 
-using namespace viper::tests;
-using namespace viper::tools::ilc;
+using namespace zanna::tests;
+using namespace zanna::tools::ilc;
 
 namespace {
 
@@ -54,7 +54,7 @@ namespace {
 constexpr std::size_t kDefaultIterations = 10;
 
 std::size_t iterationsForPropertyTest() {
-    if (const char *env = std::getenv("VIPER_DIFF_ITERATIONS")) {
+    if (const char *env = std::getenv("ZANNA_DIFF_ITERATIONS")) {
         char *end = nullptr;
         const unsigned long v = std::strtoul(env, &end, 10);
         if (end && *end == '\0' && v > 0)
@@ -102,18 +102,18 @@ bool isArm64HostAvailable() {
 
 /// @brief Check if ARM64 should be forced via compile-time or runtime config.
 bool isArm64Forced() {
-#ifdef VIPER_FORCE_ARM64_DIFF_TEST
+#ifdef ZANNA_FORCE_ARM64_DIFF_TEST
     return true;
 #else
-    const char *env = std::getenv("VIPER_DIFF_BACKEND");
+    const char *env = std::getenv("ZANNA_DIFF_BACKEND");
     return env && std::string(env) == "arm64";
 #endif
 }
 
 /// @brief Select the native backend to use for differential testing.
 /// @details Selection priority:
-///   1. Compile-time VIPER_FORCE_ARM64_DIFF_TEST -> AArch64
-///   2. Runtime VIPER_DIFF_BACKEND=arm64 -> AArch64
+///   1. Compile-time ZANNA_FORCE_ARM64_DIFF_TEST -> AArch64
+///   2. Runtime ZANNA_DIFF_BACKEND=arm64 -> AArch64
 ///   3. Host is ARM64 -> AArch64
 ///   4. Otherwise -> None (tests will be skipped)
 Backend selectBackend() {
@@ -189,20 +189,20 @@ bool isNativeAvailable() {
 }
 
 constexpr const char kMaterialAnisotropyRoundTripIl[] = R"(il 0.3.0
-extern @Viper.Graphics3D.Material3D.New() -> ptr
-extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
-extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
+extern @Zanna.Graphics3D.Material3D.New() -> ptr
+extern @Zanna.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
+extern @Zanna.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
 
 func @main() -> i64 {
 entry:
-  %mat = call @Viper.Graphics3D.Material3D.New()
-  %default = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
-  %low = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
-  %high = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
-  %round = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  %mat = call @Zanna.Graphics3D.Material3D.New()
+  %default = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
+  %low = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
+  %high = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
+  %round = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
   %a = iadd.ovf %default, %low
   %b = iadd.ovf %a, %high
   %sum = iadd.ovf %b, %round
@@ -312,7 +312,7 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
 
 TEST(DiffVmNativeProperty, RuntimeMaterial3DAnisotropyRoundTrip) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -336,7 +336,7 @@ TEST(DiffVmNativeProperty, RuntimeMaterial3DAnisotropyRoundTrip) {
 
 TEST(DiffVmNativeProperty, ArithmeticOnly) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -367,7 +367,7 @@ TEST(DiffVmNativeProperty, ArithmeticOnly) {
 
 TEST(DiffVmNativeProperty, ArithmeticWithComparisons) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -398,7 +398,7 @@ TEST(DiffVmNativeProperty, ArithmeticWithComparisons) {
 
 TEST(DiffVmNativeProperty, BitwiseAndShifts) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -429,7 +429,7 @@ TEST(DiffVmNativeProperty, BitwiseAndShifts) {
 
 TEST(DiffVmNativeProperty, MixedOperations) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -460,7 +460,7 @@ TEST(DiffVmNativeProperty, MixedOperations) {
 
 TEST(DiffVmNativeProperty, ControlFlow) {
     if (!isNativeAvailable()) {
-        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+        ZANNA_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
 
@@ -509,6 +509,6 @@ TEST(DiffVmNativeProperty, ReproducibilityWithSeed) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

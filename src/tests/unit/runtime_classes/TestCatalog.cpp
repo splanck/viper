@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@ using il::runtime::runtimeClassCatalog;
 TEST(RuntimeClassCatalogBasic, ContainsStringMembers) {
     const auto &cat = runtimeClassCatalog();
     auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.String";
+        return std::string(c.qname) == "Zanna.String";
     });
     ASSERT_NE(it, cat.end());
     // Properties include Length and IsEmpty
@@ -45,7 +45,7 @@ TEST(RuntimeClassCatalogBasic, ContainsStringMembers) {
 TEST(RuntimeClassCatalogBasic, ContainsTextStringBuilderMembers) {
     const auto &cat = runtimeClassCatalog();
     auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.Text.StringBuilder";
+        return std::string(c.qname) == "Zanna.Text.StringBuilder";
     });
     ASSERT_NE(it, cat.end());
     // Properties include Length and Capacity
@@ -71,12 +71,12 @@ TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes) {
                    return std::string(c.qname) == qname;
                }) != cat.end();
     };
-    EXPECT_TRUE(hasQ("Viper.Core.Object"));
-    EXPECT_TRUE(hasQ("Viper.IO.File"));
-    EXPECT_TRUE(hasQ("Viper.Collections.List"));
+    EXPECT_TRUE(hasQ("Zanna.Core.Object"));
+    EXPECT_TRUE(hasQ("Zanna.IO.File"));
+    EXPECT_TRUE(hasQ("Zanna.Collections.List"));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

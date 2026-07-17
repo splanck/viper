@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <sys/wait.h>
 #endif
 
-namespace viper::tests {
+namespace zanna::tests {
 [[nodiscard]] std::string quoteForShell(const std::filesystem::path &path) {
     const std::string raw = path.string();
     std::string quoted;
@@ -102,7 +102,7 @@ CodegenFixture::CodegenFixture() {
     }
 
     const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-    tempDir_ = base / ("viper_codegen_fixture_" + std::to_string(static_cast<long long>(now)));
+    tempDir_ = base / ("zanna_codegen_fixture_" + std::to_string(static_cast<long long>(now)));
 
     std::filesystem::create_directories(tempDir_, ec);
     if (ec) {
@@ -288,4 +288,4 @@ void CodegenFixture::removeAll() noexcept {
     tempDir_.clear();
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

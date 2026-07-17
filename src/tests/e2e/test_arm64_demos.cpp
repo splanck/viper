@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/e2e/test_arm64_demos.cpp
 // Purpose: End-to-end tests for ARM64 code generation with demo programs
@@ -101,7 +101,7 @@ TEST(ARM64E2E, MinimalPrintTest) {
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
 
     if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
@@ -135,7 +135,7 @@ TEST(ARM64E2E, ArrayOperationsTest) {
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
 
     if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
@@ -172,7 +172,7 @@ TEST(ARM64E2E, FroggerCompilesToAsm) {
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
     const std::string froggerBas = "../examples/games/frogger-basic/frogger.bas";
 
     if (!fileExists(vbasic) || !fileExists(ilc)) {
@@ -214,7 +214,7 @@ TEST(ARM64E2E, VtrisCompilesToAsm) {
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/viper/viper";
+    const std::string ilc = buildDir + "/src/tools/zanna/zanna";
     const std::string vtrisBas = "../examples/games/vtris/vtris.bas";
 
     if (!fileExists(vbasic) || !fileExists(ilc)) {
@@ -240,6 +240,6 @@ TEST(ARM64E2E, VtrisCompilesToAsm) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

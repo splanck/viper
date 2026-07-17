@@ -1,21 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/term/clipboard.cpp
 // Purpose: Implement OSC 52 clipboard integration and testing utilities for the
-//          Viper terminal UI toolkit.
-// Key invariants: The real clipboard honours the VIPERTUI_DISABLE_OSC52
+//          Zanna terminal UI toolkit.
+// Key invariants: The real clipboard honours the ZANNATUI_DISABLE_OSC52
 //                 safeguard, never stores global state, and always flushes the
 //                 terminal after emitting the escape sequence.  The mock variant
 //                 mirrors the encoded form so tests can inspect exact payloads.
 // Ownership/Lifetime: Osc52Clipboard borrows the TermIO interface supplied by
 //                     the embedder; MockClipboard owns its captured escape
 //                     sequence without touching the terminal.
-// Links: docs/internals/architecture.md#vipertui-architecture, ECMA-48 §8.3.93
+// Links: docs/internals/architecture.md#zannatui-architecture, ECMA-48 §8.3.93
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +33,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 namespace {
 static const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -94,13 +94,13 @@ std::string build_seq(std::string_view text) {
 }
 
 /// @brief Check whether OSC 52 clipboard integration is disabled.
-/// @details Reads the `VIPERTUI_DISABLE_OSC52` environment variable,
+/// @details Reads the `ZANNATUI_DISABLE_OSC52` environment variable,
 ///          treating a leading `1` as an affirmative disable signal.  This
 ///          allows developers to opt out of clipboard writes in environments
 ///          where OSC 52 is unsupported or undesirable.
 /// @return @c true when OSC 52 emission should be skipped.
 bool osc52_disabled() {
-    const char *v = std::getenv("VIPERTUI_DISABLE_OSC52");
+    const char *v = std::getenv("ZANNATUI_DISABLE_OSC52");
     return v && v[0] == '1';
 }
 } // namespace
@@ -231,4 +231,4 @@ void MockClipboard::clear() {
     last_.clear();
 }
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

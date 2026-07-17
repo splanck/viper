@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include "rt_platform_feature.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_asset_error.h"
 #include "rt_box.h"
@@ -588,7 +588,7 @@ static int8_t vjson_bool(void *obj, const char *key, int8_t def) {
     return value ? (vjson_value_i64(value, def) ? 1 : 0) : def;
 }
 
-/// @brief Read `obj[key]` as a Viper rt_string. NULL if missing or non-string.
+/// @brief Read `obj[key]` as a Zanna rt_string. NULL if missing or non-string.
 static rt_string vjson_string_value(void *obj, const char *key) {
     void *value = vjson_get(obj, key);
     return rt_string_is_handle(value) ? (rt_string)value : NULL;
@@ -1830,4 +1830,4 @@ void *rt_scene3d_load(rt_string path) {
     return scene;
 }
 
-#endif // VIPER_ENABLE_GRAPHICS
+#endif // ZANNA_ENABLE_GRAPHICS

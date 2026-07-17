@@ -1,0 +1,253 @@
+module file_watch_controller;
+
+bind "../core/document_manager";
+bind "../core/document";
+bind "../ui/app_shell";
+
+bind Zanna.GUI;
+bind IO = Zanna.IO;
+bind Time = Zanna.Time;
+
+// ============================================================================
+// MODULE: file_watch_controller
+// PURPOSE: Active-file watcher and open-document timestamp polling.
+//
+// WHERE-THIS-FITS: main.zia owns the frame loop. This controller owns the
+//          stateful file-watching details so the loop can call one Pump method
+//          instead of carrying watcher variables and timestamp polling inline.
+//
+// TEACHING-NOTE: The active document uses the platform watcher for fast user
+//          feedback. Inactive open tabs are polled by timestamp so the IDE can
+//          still mark changed documents without starting one watcher per tab.
+// ============================================================================
+
+/// @brief Tracks external file changes for active and inactive open documents.
+class FileWatchController {
+    expose String watchedPath;
+    expose Boolean hasWatcher;
+    expose IO.Watcher fileWatcher;
+    expose Boolean pendingReload;
+    expose Integer lastOpenDocPollMs;
+
+    /// @brief Initialize with no active watched path.
+    /// @details A placeholder watcher keeps the field non-null until the first
+    ///          real file is opened. It is not started until StartWatching().
+    expose func init() {
+        watchedPath = "";
+        hasWatcher = false;
+        fileWatcher = IO.Watcher.New(".");
+        pendingReload = false;
+        lastOpenDocPollMs = 0;
+    }
+
+    /// @brief Clear the pending reload flag after a user action resolved it.
+    expose func ResetPendingReload() {
+        pendingReload = false;
+    }
+
+    /// @brief Stop any active watcher before application shutdown.
+    expose func Destroy() {
+        if hasWatcher and fileWatcher != null {
+            fileWatcher.Stop();
+        }
+        hasWatcher = false;
+        watchedPath = "";
+        pendingReload = false;
+    }
+
+    /// @brief Pump active-file watch events and inactive-tab timestamp checks.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to inspect.
+    /// @param openDocPollMs Milliseconds between inactive-document timestamp scans.
+    /// @return True when the active document has an unresolved external change.
+    expose func Pump(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     openDocPollMs: Integer) -> Boolean {
+        PumpActiveDocument(shell, docMgr);
+        PumpOpenDocumentTimestamps(shell, docMgr, openDocPollMs);
+        return pendingReload;
+    }
+
+    /// @brief Watch the current active document when it has a saved path.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to inspect.
+    hide func PumpActiveDocument(shell: app_shell.AppShell,
+                                 docMgr: document_manager.DocumentManager) {
+        if docMgr == null {
+            StopWatching();
+            return;
+        }
+        var activeDoc = docMgr.GetActive();
+        if activeDoc == null {
+            StopWatching();
+            return;
+        }
+        var doc = activeDoc!;
+        if doc.isNew {
+            StopWatching();
+            return;
+        }
+        if IO.File.Exists(doc.filePath) == false {
+            StopWatching();
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_MISSING,
+                                doc.fileName + " is missing on disk");
+            return;
+        }
+        if doc.filePath != watchedPath {
+            StartWatching(doc.filePath);
+        }
+        if docMgr.HasExternalChange(docMgr.activeIndex) {
+            pendingReload = true;
+        }
+        if hasWatcher == false { return; }
+        var watchEvent = fileWatcher.Poll();
+        if watchEvent == fileWatcher.EventModified {
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_CHANGED,
+                                doc.fileName + " changed on disk");
+        } else if watchEvent == fileWatcher.EventDeleted {
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_DELETED,
+                                doc.fileName + " was deleted on disk");
+        } else if watchEvent == fileWatcher.EventRenamed {
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_RENAMED,
+                                doc.fileName + " was renamed or moved on disk");
+        } else if watchEvent == fileWatcher.EventOverflow {
+            var overflowState = docMgr.ExternalState(docMgr.activeIndex);
+            if overflowState != document.EXTERNAL_STATE_CLEAN {
+                NotifyExternalState(shell, docMgr, docMgr.activeIndex, overflowState,
+                                    docMgr.ExternalStateMessage(docMgr.activeIndex));
+            }
+        }
+    }
+
+    /// @brief Start watching a single saved file path.
+    /// @param path File path to watch.
+    hide func StartWatching(path: String) {
+        if hasWatcher {
+            fileWatcher.Stop();
+        }
+        if path == "" or IO.File.Exists(path) == false {
+            hasWatcher = false;
+            watchedPath = "";
+            pendingReload = false;
+            return;
+        }
+        watchedPath = path;
+        fileWatcher = IO.Watcher.New(watchedPath);
+        fileWatcher.Start();
+        hasWatcher = true;
+        pendingReload = false;
+    }
+
+    /// @brief Stop the active file watcher and clear watcher state.
+    hide func StopWatching() {
+        if hasWatcher {
+            fileWatcher.Stop();
+        }
+        hasWatcher = false;
+        watchedPath = "";
+        pendingReload = false;
+    }
+
+    /// @brief Poll inactive open documents for external timestamp changes.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to scan.
+    /// @param openDocPollMs Milliseconds between timestamp scans.
+    hide func PumpOpenDocumentTimestamps(shell: app_shell.AppShell,
+                                         docMgr: document_manager.DocumentManager,
+                                         openDocPollMs: Integer) {
+        if docMgr == null { return; }
+        var now = Zanna.Time.Clock.NowMs();
+        if now - lastOpenDocPollMs < openDocPollMs { return; }
+        lastOpenDocPollMs = now;
+        var changedOpenDocs = PollOpenDocumentExternalChanges(shell, docMgr);
+        if changedOpenDocs > 0 {
+            if docMgr.HasExternalChange(docMgr.activeIndex) {
+                pendingReload = true;
+            }
+        }
+    }
+
+    /// @brief Poll all open named documents for external timestamp changes.
+    /// @param shell Workbench shell used for status/toast feedback.
+    /// @param docMgr Open document manager to scan.
+    /// @return Number of newly detected external changes.
+    hide func PollOpenDocumentExternalChanges(shell: app_shell.AppShell,
+                                              docMgr: document_manager.DocumentManager) -> Integer {
+        if shell == null or docMgr == null { return 0; }
+        var changed = 0;
+        var firstName = "";
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.GetDocument(i);
+            if doc != null {
+                var state = docMgr.ExternalState(i);
+                if state != document.EXTERNAL_STATE_CLEAN and doc!.externalChangeNotified == false {
+                    docMgr.MarkExternalState(i, state, ExternalStateMessageForDoc(doc!, state));
+                    changed = changed + 1;
+                    if firstName == "" { firstName = doc!.fileName; }
+                }
+            }
+            i = i + 1;
+        }
+        if changed == 1 {
+            GUI.Toast.Warning("File changed on disk: " + firstName);
+            shell.SetStatusLeft("Warning: external change - " + firstName);
+        } else if changed > 1 {
+            GUI.Toast.Warning("" + changed + " open files changed on disk");
+            shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
+        }
+        return changed;
+    }
+
+    /// @brief Mark a document state and emit one concise user notification.
+    hide func NotifyExternalState(shell: app_shell.AppShell,
+                                  docMgr: document_manager.DocumentManager,
+                                  index: Integer,
+                                  state: Integer,
+                                  message: String) {
+        if docMgr == null or index < 0 or index >= docMgr.GetCount() { return; }
+        var maybeDoc = docMgr.GetDocument(index);
+        if maybeDoc == null { return; }
+        var doc = maybeDoc!;
+        if doc.externalChangeNotified == false or doc.externalState != state {
+            docMgr.MarkExternalState(index, state, message);
+            pendingReload = true;
+            if state == document.EXTERNAL_STATE_CHANGED {
+                GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+            } else if state == document.EXTERNAL_STATE_DELETED {
+                GUI.Toast.Warning("File deleted on disk. Save will recreate it after confirmation.");
+            } else if state == document.EXTERNAL_STATE_RENAMED {
+                GUI.Toast.Warning("File moved on disk. Save will recreate the original path after confirmation.");
+            } else {
+                GUI.Toast.Warning("File missing on disk. Save will recreate it after confirmation.");
+            }
+            if shell != null {
+                shell.SetStatusLeft("Warning: " + message);
+            }
+        } else if docMgr.HasExternalChange(index) {
+            pendingReload = true;
+        }
+    }
+
+    /// @brief Stable status text for inactive-tab polling.
+    hide func ExternalStateMessageForDoc(doc: document.Document,
+                                         state: Integer) -> String {
+        if state == document.EXTERNAL_STATE_CHANGED {
+            return doc.fileName + " changed on disk";
+        }
+        if state == document.EXTERNAL_STATE_DELETED {
+            return doc.fileName + " was deleted on disk";
+        }
+        if state == document.EXTERNAL_STATE_RENAMED {
+            return doc.fileName + " was renamed or moved on disk";
+        }
+        if state == document.EXTERNAL_STATE_MISSING {
+            return doc.fileName + " is missing on disk";
+        }
+        return doc.fileName + " changed on disk";
+    }
+}

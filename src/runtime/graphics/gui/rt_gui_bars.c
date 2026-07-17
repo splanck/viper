@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/gui/rt_gui_bars.c
-// Purpose: Status-bar and tool-bar GUI widgets (and their items) for the Viper
+// Purpose: Status-bar and tool-bar GUI widgets (and their items) for the Zanna
 //          runtime. Split out of rt_gui_menus.c; shares widget types and the
 //          status-bar/tool-bar cast + icon helpers via rt_gui_internal.h.
 //
@@ -15,7 +15,7 @@
 //     use, so a wrong-typed or stale handle is rejected rather than misread.
 //   - Item helpers operate relative to their owning bar; a detached item is a
 //     no-op rather than a crash.
-//   - Mirrors rt_gui_menus.c's VIPER_ENABLE_GRAPHICS guard: real widgets when
+//   - Mirrors rt_gui_menus.c's ZANNA_ENABLE_GRAPHICS guard: real widgets when
 //     graphics is enabled, no-op stubs otherwise.
 //
 // Ownership/Lifetime:
@@ -32,7 +32,7 @@
 
 #include <string.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 void rt_gui_set_clicked_statusbar_item(void *item);
 
@@ -438,7 +438,7 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
 ///          stable names instead of exposing those private glyph choices as UI
 ///          text. Unknown names return 0, which callers convert to VG_ICON_NONE.
 /// @param name Lowercase semantic icon name; may be NULL.
-/// @return Unicode codepoint used by ViperGUI vector toolbar drawing, or 0.
+/// @return Unicode codepoint used by ZannaGUI vector toolbar drawing, or 0.
 static uint32_t rt_toolbar_builtin_icon_codepoint(const char *name) {
     if (!name || name[0] == '\0')
         return 0;
@@ -944,7 +944,7 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
 }
 
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 
 /// @brief Stub: graphics disabled — returns NULL; no status bar widget is created.
@@ -1316,4 +1316,4 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
 }
 
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

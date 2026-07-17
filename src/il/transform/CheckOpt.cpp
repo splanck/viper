@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,10 +44,10 @@ using il::utils::addOverflows;
 using il::utils::IntRange;
 using il::utils::mulOverflows;
 using il::utils::subOverflows;
-using viper::analysis::applyRangeTransfer;
-using viper::analysis::IntRangeInfo;
-using viper::analysis::RangeMap;
-using viper::analysis::rangeForValue;
+using zanna::analysis::applyRangeTransfer;
+using zanna::analysis::IntRangeInfo;
+using zanna::analysis::RangeMap;
+using zanna::analysis::rangeForValue;
 
 /// @brief Check if an opcode is a check operation that can be optimized.
 bool isCheckOpcode(Opcode op) {
@@ -170,7 +170,7 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
             stampPlainI64ResultType(instr);
             return true;
         case Opcode::SRemChk0:
-            // MIN % -1 is defined as 0 for Viper's checked remainder semantics,
+            // MIN % -1 is defined as 0 for Zanna's checked remainder semantics,
             // but the plain opcode may lower through a native signed divide path.
             // Like sdiv, demotion to the plain form needs a known non-minimum
             // numerator when the divisor is -1.
@@ -365,7 +365,7 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
     for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
-        if (!viper::il::isTerminated(block))
+        if (!zanna::il::isTerminated(block))
             continue;
         const Instr &term = block.instructions.back();
         if (term.op != Opcode::Br || term.labels.size() != 1 || term.labels.front() != header.label)
@@ -478,7 +478,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
         return PreservedAnalyses::all();
 
     auto &domTree =
-        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
+        analysis.getFunctionResult<zanna::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
     // Fetch value ranges before this pass mutates anything. Later phases only
     // rewrite opcodes in place until Phase 1, so the facts stay valid where
@@ -494,7 +494,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     const auto predecessorCounts = computePredecessorCounts(function);
 
     // Build initial use-count info once for safe temp replacement queries.
-    viper::il::UseDefInfo useInfo(function);
+    zanna::il::UseDefInfo useInfo(function);
 
     // =========================================================================
     // Phase 0: Check opcode demotion
@@ -790,7 +790,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
 
                 // Insert before the terminator in the preheader
                 size_t insertIdx = preheader->instructions.size();
-                if (viper::il::isTerminated(*preheader) && insertIdx > 0)
+                if (zanna::il::isTerminated(*preheader) && insertIdx > 0)
                     --insertIdx;
                 auto inserted = preheader->instructions.insert(
                     preheader->instructions.begin() + static_cast<std::ptrdiff_t>(insertIdx),

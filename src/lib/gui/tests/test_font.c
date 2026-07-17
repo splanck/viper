@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -250,7 +250,7 @@ static void test_font_load_file(void) {
 
 /// @brief Run all font engine tests and report pass/fail counts.
 int main(int argc, char **argv) {
-    printf("Viper GUI Font Engine Tests\n");
+    printf("Zanna GUI Font Engine Tests\n");
     printf("============================\n\n");
 
     printf("UTF-8 Tests:\n");

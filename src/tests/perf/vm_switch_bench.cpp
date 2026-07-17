@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -203,9 +203,9 @@ struct BenchResult {
 
 BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations) {
     if (mode != nullptr)
-        ::setenv("VIPER_SWITCH_MODE", mode, 1);
+        ::setenv("ZANNA_SWITCH_MODE", mode, 1);
     else
-        ::unsetenv("VIPER_SWITCH_MODE");
+        ::unsetenv("ZANNA_SWITCH_MODE");
 
     Module module = buildSwitchModule(caseCount, iterations);
     il::vm::VM vm(module);
@@ -227,7 +227,7 @@ BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations
 
     const double elapsedMs =
         std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
-    std::cout << "VIPER_SWITCH_MODE=" << (mode ? mode : "<unset>") << " cases=" << caseCount
+    std::cout << "ZANNA_SWITCH_MODE=" << (mode ? mode : "<unset>") << " cases=" << caseCount
               << " iterations=" << iterations << " runs=" << kBenchmarkRuns << " checksum=" << total
               << " elapsed_ms=" << elapsedMs << '\n';
 
@@ -237,16 +237,16 @@ BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations
 class SwitchModeEnvGuard {
   public:
     SwitchModeEnvGuard() {
-        if (const char *value = std::getenv("VIPER_SWITCH_MODE"); value != nullptr) {
+        if (const char *value = std::getenv("ZANNA_SWITCH_MODE"); value != nullptr) {
             original = value;
         }
     }
 
     ~SwitchModeEnvGuard() {
         if (original.has_value())
-            ::setenv("VIPER_SWITCH_MODE", original->c_str(), 1);
+            ::setenv("ZANNA_SWITCH_MODE", original->c_str(), 1);
         else
-            ::unsetenv("VIPER_SWITCH_MODE");
+            ::unsetenv("ZANNA_SWITCH_MODE");
     }
 
   private:

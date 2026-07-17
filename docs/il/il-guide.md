@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-07-02
 ---
 
-# Viper IL — Complete Guide
+# Zanna IL — Complete Guide
 
-Comprehensive guide to Viper's Intermediate Language (IL), covering everything from quickstart to advanced topics. This
+Comprehensive guide to Zanna's Intermediate Language (IL), covering everything from quickstart to advanced topics. This
 document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked
 examples for IL v0.3.
 
@@ -29,11 +29,11 @@ examples for IL v0.3.
 ## Quickstart
 
 Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of
-Viper's intermediate language. **No prior compiler experience is required.**
+Zanna's intermediate language. **No prior compiler experience is required.**
 
-### What is Viper IL?
+### What is Zanna IL?
 
-Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual intermediate representation that
+Zanna IL is the **"thin waist"** of the Zanna toolchain — a versioned, textual intermediate representation that
 decouples frontends from backends:
 
 - **Frontends** (Zia, BASIC, etc.) compile to IL
@@ -78,18 +78,18 @@ Create a file `first.il` with the contents:
 ```llvm
 # Print the number 4 and exit.
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @Viper.Terminal.PrintI64(4)    # runtime prints `4\n`
+  call @Zanna.Terminal.PrintI64(4)    # runtime prints `4\n`
   ret 0                    # zero exit code
 }
 ```
 
-Run it with `viper`:
+Run it with `zanna`:
 
 ```bash
-viper -run first.il
+zanna -run first.il
 ```
 
 Expected output:
@@ -102,22 +102,22 @@ Expected output:
 
 - `# Print the number 4 and exit.` – comments start with `#` or `//` and are ignored by the VM.
 - `il 0.3.0` – required version header that pins the expected IL grammar version.
-- `extern @Viper.Terminal.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
+- `extern @Zanna.Terminal.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
 - `entry:` – the initial basic block label.
-- `call @Viper.Terminal.PrintI64(4)` – invoke the extern with the literal `4`.
+- `call @Zanna.Terminal.PrintI64(4)` – invoke the extern with the literal `4`.
 - `ret 0` – terminate the function and supply the process exit status.
 - `}` – close the function body.
 
 Compatibility:
 
-- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
-- New code should emit `@Viper.*`.
-- The current build default is `VIPER_RUNTIME_NS_DUAL=ON`, so legacy `@rt_*` aliases are
-  published alongside canonical names. Configure with `-DVIPER_RUNTIME_NS_DUAL=OFF` when
+- When built with `-DZANNA_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Zanna.*`.
+- New code should emit `@Zanna.*`.
+- The current build default is `ZANNA_RUNTIME_NS_DUAL=ON`, so legacy `@rt_*` aliases are
+  published alongside canonical names. Configure with `-DZANNA_RUNTIME_NS_DUAL=OFF` when
   legacy IL compatibility is not required.
 
-**What just happened?** `Viper.Terminal.PrintI64` is supplied by the runtime and prints its argument. Every function ends
+**What just happened?** `Zanna.Terminal.PrintI64` is supplied by the runtime and prints its argument. Every function ends
 with a terminator such as `ret` giving the program's exit code.
 
 **Gotcha:** Every module must start with a version line (e.g., `il 0.3.0`).
@@ -129,13 +129,13 @@ IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...).
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %p = alloca 8            # reserve 8 bytes on the stack
   store i64, %p, 10        # write constant 10 to memory
   %v0 = load i64, %p       # read it back
-  call @Viper.Terminal.PrintI64(%v0)  # prints 10
+  call @Zanna.Terminal.PrintI64(%v0)  # prints 10
   ret 0
 }
 ```
@@ -145,7 +145,7 @@ entry:
 - `%p = alloca 8` – allocate eight bytes of stack memory and bind its address to `%p` (type `ptr`).
 - `store i64, %p, 10` – store the 64‑bit constant `10` into the memory pointed to by `%p`.
 - `%v0 = load i64, %p` – load an `i64` from `%p` into `%v0`.
-- `call @Viper.Terminal.PrintI64(%v0)` – pass the loaded value to the runtime print routine.
+- `call @Zanna.Terminal.PrintI64(%v0)` – pass the loaded value to the runtime print routine.
 - `ret 0` – return from `main` with exit code 0.
 
 **What just happened?** `alloca` creates a stack slot, `store` writes to it, and `load` reads from it.
@@ -162,7 +162,7 @@ Functions declare typed parameters. Values are passed and returned explicitly.
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
   %sum = iadd.ovf %a, %b   # compute a + b (traps on overflow)
@@ -171,7 +171,7 @@ entry:
 func @main() -> i64 {
 entry:
   %v0 = call @add(2, 3)    # call with constants
-  call @Viper.Terminal.PrintI64(%v0)  # prints 5
+  call @Zanna.Terminal.PrintI64(%v0)  # prints 5
   ret 0
 }
 ```
@@ -183,7 +183,7 @@ entry:
 - `ret %sum` – return the computed sum.
 - `func @main() -> i64 { ... }` – define the entry point.
 - `%v0 = call @add(2, 3)` – call `@add` with literal arguments; result stored in `%v0`.
-- `call @Viper.Terminal.PrintI64(%v0)` – print the returned value.
+- `call @Zanna.Terminal.PrintI64(%v0)` – print the returned value.
 - `ret 0` – exit with status 0.
 
 **What just happened?** `call` pushes arguments and receives a result. Each function has one entry block.
@@ -195,13 +195,13 @@ must use the `.ovf` forms (`iadd.ovf`, `isub.ovf`, `imul.ovf`) — plain `add`/`
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %v0 = iadd.ovf 2, 2      # 4
   %v1 = scmp_gt %v0, 3     # 1 (true)
   %v2 = zext1 %v1          # widen i1 → i64 before printing
-  call @Viper.Terminal.PrintI64(%v2)  # prints 1
+  call @Zanna.Terminal.PrintI64(%v2)  # prints 1
   ret 0
 }
 ```
@@ -211,7 +211,7 @@ entry:
 - `%v0 = iadd.ovf 2, 2` – compute the constant expression `2 + 2` with overflow checking.
 - `%v1 = scmp_gt %v0, 3` – signed compare‑greater; result is `1` because 4 > 3.
 - `%v2 = zext1 %v1` – zero-extend the `i1` result to `i64` so it can be passed to `PrintI64`.
-- `call @Viper.Terminal.PrintI64(%v2)` – print the widened value.
+- `call @Zanna.Terminal.PrintI64(%v2)` – print the widened value.
 - `ret 0` – terminate `main` with success.
 
 **What just happened?** `scmp_gt` compares signed integers and yields an `i1` (0 or 1).
@@ -224,16 +224,16 @@ Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %flag = scmp_gt 5, 3     # 1 means take then
   cbr %flag, then, else    # conditional branch
 then:
-  call @Viper.Terminal.PrintI64(1)    # prints 1 if flag != 0
+  call @Zanna.Terminal.PrintI64(1)    # prints 1 if flag != 0
   br done                  # jump to exit
 else:
-  call @Viper.Terminal.PrintI64(0)    # prints 0 otherwise
+  call @Zanna.Terminal.PrintI64(0)    # prints 0 otherwise
   br done
 done:
   ret 0
@@ -261,26 +261,26 @@ instructions appear after that terminator in the same block.
 
 ### Strings and text
 
-Strings live in globals and use `Viper.Terminal.PrintStr` for output.
+Strings live in globals and use `Zanna.Terminal.PrintStr` for output.
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
 global const str @.msg = "hello"  # immutable global
 func @main() -> i64 {
 entry:
   %s = const_str @.msg     # load pointer to string
-  call @Viper.Terminal.PrintStr(%s)   # prints hello
+  call @Zanna.Terminal.PrintStr(%s)   # prints hello
   ret 0
 }
 ```
 
 **Line by line**
 
-- `extern @Viper.Terminal.PrintStr(str) -> void` – declare the runtime string printer.
+- `extern @Zanna.Terminal.PrintStr(str) -> void` – declare the runtime string printer.
 - `global const str @.msg = "hello"` – create an immutable global string named `@.msg`.
 - `%s = const_str @.msg` – get a pointer to the string constant.
-- `call @Viper.Terminal.PrintStr(%s)` – pass that pointer to the runtime for printing.
+- `call @Zanna.Terminal.PrintStr(%s)` – pass that pointer to the runtime for printing.
 - `ret 0` – exit normally.
 
 **What just happened?** `const_str` loads the address of a global string constant.
@@ -324,11 +324,11 @@ Lowered IL:
 
 ```llvm
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %t0 = iadd.ovf 2, 2
-  call @Viper.Terminal.PrintI64(%t0)
+  call @Zanna.Terminal.PrintI64(%t0)
   ret 0
 }
 ```
@@ -336,14 +336,14 @@ entry:
 **Line by line**
 
 - `%t0 = iadd.ovf 2, 2` – compute the arithmetic expression from the BASIC code with overflow checking.
-- `call @Viper.Terminal.PrintI64(%t0)` – print the result.
+- `call @Zanna.Terminal.PrintI64(%t0)` – print the result.
 - `ret 0` – exit with success.
 
 **What just happened?** The front end evaluated the expression, emitted an `iadd.ovf`, and called the print routine.
 
 ### Debugging IL
 
-- `viper -run --trace=il foo.il` prints each instruction as it executes (`--trace=src` prints source lines instead).
+- `zanna -run --trace=il foo.il` prints each instruction as it executes (`--trace=src` prints source lines instead).
 - `il-verify foo.il` checks structural rules without running.
 - Common errors like "type mismatch" or "undefined block" point to the offending line.
 
@@ -357,7 +357,7 @@ entry:
 
 - Read the full [IL reference](#reference) for all instructions.
 - Explore the `examples/` and `src/tests/golden/` directories for more programs.
-- Try adding your own IL file and running it with `viper`.
+- Try adding your own IL file and running it with `zanna`.
 
 ### Common mistakes
 
@@ -388,7 +388,7 @@ VM.
 
 #### Overview
 
-Viper IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends.
+Zanna IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends.
 Its goals are:
 
 * **Determinism** – VM and native back ends must produce identical observable behaviour.
@@ -481,10 +481,10 @@ functions defined in other IL modules.
 
 ```text
 il 0.3.0
-extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @Viper.Terminal.PrintI64(42)
+  call @Zanna.Terminal.PrintI64(42)
   ret 0
 }
 ```
@@ -613,7 +613,7 @@ operands.
 
 ##### Integer Arithmetic
 
-All signed integer arithmetic opcodes in Viper IL trap on overflow or divide-by-zero; the non-checking variants
+All signed integer arithmetic opcodes in Zanna IL trap on overflow or divide-by-zero; the non-checking variants
 (`add`, `sub`, `mul`, `sdiv`, `udiv`, `srem`, `urem`) are reserved in the opcode table but **rejected by the verifier**.
 Front ends must emit the checked forms.
 
@@ -854,37 +854,37 @@ before transferring control.
 
 #### Runtime ABI
 
-The IL runtime provides helper functions used by front ends and tests. All functions use canonical `Viper.*` namespace
-names. Legacy `@rt_*` aliases are maintained for compatibility when built with `-DVIPER_RUNTIME_NS_DUAL=ON`.
+The IL runtime provides helper functions used by front ends and tests. All functions use canonical `Zanna.*` namespace
+names. Legacy `@rt_*` aliases are maintained for compatibility when built with `-DZANNA_RUNTIME_NS_DUAL=ON`.
 
 ##### Console I/O
 
 | Function                   | Signature     | Notes                                  |
 |----------------------------|---------------|----------------------------------------|
-| `@Viper.Terminal.PrintF64` | `f64 -> void` | write float to stdout                  |
-| `@Viper.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
-| `@Viper.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
-| `@Viper.Terminal.TryReadLine` | `-> obj<Viper.Option>` | read line from stdin; `None` on EOF |
-| `@Viper.Terminal.ReadLineResult` | `-> obj<Viper.Result>` | read line from stdin; `Err` on EOF |
-| `@Viper.Terminal.ReadLine` | `-> str`      | compatibility read line; prefer `TryReadLine` or `ReadLineResult` for EOF |
+| `@Zanna.Terminal.PrintF64` | `f64 -> void` | write float to stdout                  |
+| `@Zanna.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
+| `@Zanna.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
+| `@Zanna.Terminal.TryReadLine` | `-> obj<Zanna.Option>` | read line from stdin; `None` on EOF |
+| `@Zanna.Terminal.ReadLineResult` | `-> obj<Zanna.Result>` | read line from stdin; `Err` on EOF |
+| `@Zanna.Terminal.ReadLine` | `-> str`      | compatibility read line; prefer `TryReadLine` or `ReadLineResult` for EOF |
 
 ##### String Operations
 
 | Function                              | Signature                | Notes                                          |
 |---------------------------------------|--------------------------|------------------------------------------------|
-| `@Viper.Core.Convert.ToStringDouble`  | `f64 -> str`             | convert double to string                       |
-| `@Viper.Core.Convert.ToStringInt`     | `i64 -> str`             | convert integer to string                      |
-| `@Viper.String.Concat`                | `str × str -> str`       | concatenate strings                            |
-| `@Viper.String.get_Length`            | `str -> i64`             | length in bytes                                |
-| `@Viper.String.Mid`                   | `str × i64 -> str`       | substring from start index to end              |
-| `@Viper.String.MidLen`                | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
+| `@Zanna.Core.Convert.ToStringDouble`  | `f64 -> str`             | convert double to string                       |
+| `@Zanna.Core.Convert.ToStringInt`     | `i64 -> str`             | convert integer to string                      |
+| `@Zanna.String.Concat`                | `str × str -> str`       | concatenate strings                            |
+| `@Zanna.String.get_Length`            | `str -> i64`             | length in bytes                                |
+| `@Zanna.String.Mid`                   | `str × i64 -> str`       | substring from start index to end              |
+| `@Zanna.String.MidLen`                | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
 
 ##### Type Conversion
 
 | Function                       | Signature    | Notes                                               |
 |--------------------------------|--------------|-----------------------------------------------------|
-| `@Viper.Core.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
-| `@Viper.Core.Convert.ToInt64`    | `str -> i64` | convert string to integer; traps on invalid numeric |
+| `@Zanna.Core.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
+| `@Zanna.Core.Convert.ToInt64`    | `str -> i64` | convert string to integer; traps on invalid numeric |
 
 ##### Memory Management
 
@@ -894,13 +894,13 @@ names. Legacy `@rt_*` aliases are maintained for compatibility when built with `
 
 #### Terminal & Keyboard Features
 
-RuntimeFeature → Canonical Viper name → C runtime symbol
+RuntimeFeature → Canonical Zanna name → C runtime symbol
 
-- `TermCls`    → `Viper.Terminal.Clear`       → `rt_term_cls`
-- `TermColor`  → `Viper.Terminal.SetColor`    → `rt_term_color_i32`
-- `TermLocate` → `Viper.Terminal.SetPosition` → `rt_term_locate_i32`
-- `GetKey`     → `Viper.Terminal.GetKey`      → `rt_getkey_str`
-- `InKey`      → `Viper.Terminal.InKey`       → `rt_inkey_str`
+- `TermCls`    → `Zanna.Terminal.Clear`       → `rt_term_cls`
+- `TermColor`  → `Zanna.Terminal.SetColor`    → `rt_term_color_i32`
+- `TermLocate` → `Zanna.Terminal.SetPosition` → `rt_term_locate_i32`
+- `GetKey`     → `Zanna.Terminal.GetKey`      → `rt_getkey_str`
+- `InKey`      → `Zanna.Terminal.InKey`       → `rt_inkey_str`
 
 These helpers are gated by feature requests during lowering rather than being emitted unconditionally.
 
@@ -1506,7 +1506,7 @@ value via parameter `%a1`.
 
 #### Stats
 
-`viper il-opt --mem2reg-stats` prints the number of promoted variables and the
+`zanna il-opt --mem2reg-stats` prints the number of promoted variables and the
 removed loads/stores when the pass runs.
 
 ## Examples
@@ -1517,12 +1517,12 @@ The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 
 modules. The examples below update that material to IL v0.3.0 while preserving the original teaching intent.
 
 **Legacy Notation:** The examples in this section use legacy `@rt_*` function names for compatibility. These work when
-the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical
-`@Viper.*` names documented in the Runtime ABI section above. For example:
+the runtime is built with `-DZANNA_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical
+`@Zanna.*` names documented in the Runtime ABI section above. For example:
 
-- `@rt_print_str` → `@Viper.Terminal.PrintStr`
-- `@rt_print_i64` → `@Viper.Terminal.PrintI64`
-- `@rt_str_len` → `@Viper.String.get_Length`
+- `@rt_print_str` → `@Zanna.Terminal.PrintStr`
+- `@rt_print_i64` → `@Zanna.Terminal.PrintI64`
+- `@rt_str_len` → `@Zanna.String.get_Length`
 
 #### Example 1 — Hello, arithmetic, and a conditional branch
 

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/anim/rt_animcontroller3d_api.inc  (#included from rt_animcontroller3d.c; not a standalone translation unit)
 // Purpose: AnimController3D public API: states, transitions, play/crossfade, update, IK, events
 //===----------------------------------------------------------------------===//

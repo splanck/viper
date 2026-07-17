@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_pqueue.h
-// Purpose: Runtime-backed priority queue (heap) for Viper.Collections.Heap, supporting min-heap and
+// Purpose: Runtime-backed priority queue (heap) for Zanna.Collections.Heap, supporting min-heap and
 // max-heap ordering with push/pop/peek operations.
 //
 // Key invariants:
@@ -83,7 +83,7 @@ void *rt_pqueue_try_pop(void *obj);
 ///          element is removed. A stored NULL value is represented as
 ///          `Some(NULL)`, unlike @ref rt_pqueue_try_pop.
 /// @param obj Opaque Heap object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_pqueue_try_pop_option(void *obj);
 
 /// @brief Try to return the highest priority element without removing it.
@@ -95,7 +95,7 @@ void *rt_pqueue_try_peek(void *obj);
 /// @details Returns `None` when the heap is empty and `Some(value)` when an
 ///          element exists. A stored NULL value is represented as `Some(NULL)`.
 /// @param obj Opaque Heap object pointer.
-/// @return Opaque Viper.Option object.
+/// @return Opaque Zanna.Option object.
 void *rt_pqueue_try_peek_option(void *obj);
 
 /// @brief Remove all elements from the heap.

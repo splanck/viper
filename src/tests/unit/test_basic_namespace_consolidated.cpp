@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -363,14 +363,14 @@ TEST(NsDiagnostics, TestNs008ScopedUsingAllowed) {
     ASSERT_TRUE(msg.empty());
 }
 
-// Test E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"
+// Test E_NS_009: "reserved root namespace 'Zanna' cannot be declared or imported"
 TEST(NsDiagnostics, TestNs009ExactMessage) {
     std::string source = R"(
-100 NAMESPACE Viper
+100 NAMESPACE Zanna
 110 END NAMESPACE
 )";
     std::string msg = getFirstDiagnostic(source);
-    ASSERT_TRUE(msg.find("reserved root namespace 'Viper' cannot be declared or imported") !=
+    ASSERT_TRUE(msg.find("reserved root namespace 'Zanna' cannot be declared or imported") !=
                 std::string::npos);
 }
 
@@ -584,18 +584,18 @@ TEST(NsIntegration, TestTypeNotFoundInNamespace) {
     ASSERT_TRUE(errorCount > 0);                    // Should have at least one error
 }
 
-// Additional scenario: Reserved namespace Viper (E_NS_009)
-TEST(NsIntegration, TestReservedNamespaceViper) {
+// Additional scenario: Reserved namespace Zanna (E_NS_009)
+TEST(NsIntegration, TestReservedNamespaceZanna) {
     std::string source = R"(
-100 NAMESPACE Viper.Core
+100 NAMESPACE Zanna.Core
 110   CLASS MyClass
 120   END CLASS
 130 END NAMESPACE
 )";
 
-    // Should produce E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"
+    // Should produce E_NS_009: "reserved root namespace 'Zanna' cannot be declared or imported"
     bool hasError =
-        hasDiagnostic(source, "reserved root namespace 'Viper' cannot be declared or imported");
+        hasDiagnostic(source, "reserved root namespace 'Zanna' cannot be declared or imported");
     ASSERT_TRUE(hasError);
 }
 
@@ -1359,10 +1359,10 @@ USING A = B
     ASSERT_TRUE(errorCount > 0);
 }
 
-// Test: NAMESPACE Viper … → E_NS_009
-TEST(UsingSemantics, TestReservedViperNamespace) {
+// Test: NAMESPACE Zanna … → E_NS_009
+TEST(UsingSemantics, TestReservedZannaNamespace) {
     std::string source = R"(
-NAMESPACE Viper
+NAMESPACE Zanna
 END NAMESPACE
 )";
 
@@ -1371,12 +1371,12 @@ END NAMESPACE
     ASSERT_TRUE(errorCount > 0);
 }
 
-// Test: USING Viper … → E_NS_009
-TEST(UsingSemantics, TestReservedViperUsing) {
+// Test: USING Zanna … → E_NS_009
+TEST(UsingSemantics, TestReservedZannaUsing) {
     std::string source = R"(
-NAMESPACE Viper
+NAMESPACE Zanna
 END NAMESPACE
-USING Viper
+USING Zanna
 )";
 
     DiagnosticEngine de;
@@ -1416,10 +1416,10 @@ TEST(UsingSemantics, TestValidUsingWithAlias) {
     ASSERT_TRUE(errorCount == 0);
 }
 
-// Test: Case-insensitive Viper check
-TEST(UsingSemantics, TestReservedViperCaseInsensitive) {
+// Test: Case-insensitive Zanna check
+TEST(UsingSemantics, TestReservedZannaCaseInsensitive) {
     std::string source = R"(
-NAMESPACE viper
+NAMESPACE zanna
 END NAMESPACE
 )";
 
@@ -1603,6 +1603,6 @@ TEST(UsingCompiletimeOnly, TestEmptyProgramBaseline) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

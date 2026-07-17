@@ -1,4 +1,4 @@
-# Tests for ViperTUI
+# Tests for ZannaTUI
 
 # Make TestHarness.hpp available via "tests/TestHarness.hpp"
 include_directories(${CMAKE_SOURCE_DIR}/src)

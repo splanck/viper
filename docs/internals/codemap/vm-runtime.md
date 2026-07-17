@@ -6,7 +6,7 @@ last-verified: 2026-05-31
 
 # CODEMAP: Virtual Machine
 
-The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch strategies.
+The Virtual Machine (`src/vm/`) interprets Zanna IL with configurable dispatch strategies.
 For the separate bytecode interpreter in `src/bytecode/`, see
 [CODEMAP: Bytecode VM](bytecode-vm.md).
 
@@ -142,7 +142,7 @@ For the separate bytecode interpreter in `src/bytecode/`, see
 
 | File                  | Purpose                                |
 |-----------------------|----------------------------------------|
-| `ViperStringHandle.hpp`| String handle type for runtime interop|
+| `ZannaStringHandle.hpp`| String handle type for runtime interop|
 
 ## Threading
 
@@ -154,7 +154,7 @@ For the separate bytecode interpreter in `src/bytecode/`, see
 
 | File                | Purpose                                                       |
 |---------------------|---------------------------------------------------------------|
-| `NetworkRuntime.cpp`| VM-aware helpers for `Viper.Network.HttpServer` handler binding |
+| `NetworkRuntime.cpp`| VM-aware helpers for `Zanna.Network.HttpServer` handler binding |
 
 ## Debug Infrastructure (`debug/`)
 

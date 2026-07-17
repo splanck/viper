@@ -90,7 +90,7 @@ Scans for boolean type mismatches between Import and Export function pairs. When
 ## Dependencies
 
 - `il::core` — Module, Function, BasicBlock, Instr, Linkage, Type, Value, Opcode
-- Used by: `src/tools/viper/cmd_run.cpp` (mixed-language compilation pipeline)
+- Used by: `src/tools/zanna/cmd_run.cpp` (mixed-language compilation pipeline)
 
 ## Related
 

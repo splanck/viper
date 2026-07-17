@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 
 static void set_no_tty_env() {
 #if defined(_WIN32)
-    _putenv_s("VIPERTUI_NO_TTY", "1");
+    _putenv_s("ZANNATUI_NO_TTY", "1");
 #else
-    setenv("VIPERTUI_NO_TTY", "1", 1);
+    setenv("ZANNATUI_NO_TTY", "1", 1);
 #endif
 }
 
@@ -37,6 +37,6 @@ TEST(TUI, DemoHeadless) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

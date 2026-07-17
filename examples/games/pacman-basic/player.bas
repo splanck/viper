@@ -192,8 +192,8 @@ Class Pacman
         screenX = MAZE_LEFT + x
         screenY = MAZE_TOP + y
 
-        Viper.Terminal.SetPosition(screenY, screenX)
-        Viper.Terminal.SetColor(COLOR_PACMAN, 0)
+        Zanna.Terminal.SetPosition(screenY, screenX)
+        Zanna.Terminal.SetColor(COLOR_PACMAN, 0)
 
         ' Choose character based on direction and mouth state
         If mouthOpen = 1 Then
@@ -214,7 +214,7 @@ Class Pacman
 
         PRINT ch;
 
-        Viper.Terminal.SetColor(7, 0)
+        Zanna.Terminal.SetColor(7, 0)
     End Sub
 
     ' Clear Pacman from current position (redraw cell)

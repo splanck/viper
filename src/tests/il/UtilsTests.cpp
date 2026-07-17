@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include "tests/TestHarness.hpp"
 
 TEST(IL, UtilsTests) {
-    using namespace viper::il;
+    using namespace zanna::il;
     using il::core::BasicBlock;
     using il::core::Instr;
     using il::core::Opcode;
@@ -113,7 +113,7 @@ TEST(IL, UtilsTests) {
     }
     fn.blocks.push_back(std::move(entry));
 
-    viper::il::UseDefInfo useInfo(fn);
+    zanna::il::UseDefInfo useInfo(fn);
     ASSERT_EQ(useInfo.useCount(1), 1u);
     ASSERT_EQ(useInfo.useCount(3), 1u);
 
@@ -133,6 +133,6 @@ TEST(IL, UtilsTests) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

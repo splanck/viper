@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_gltf_draco.inc  (#included from rt_gltf.c;
 // not a standalone translation unit)
 // Purpose: KHR_draco_mesh_compression decoding — clean-room implementation from the
@@ -3055,7 +3055,7 @@ done:
 /// @brief Decode a complete Draco payload (spec Decode()) — sequential and
 ///        edgebreaker triangular meshes.
 /// @return 1 on success, 0 with @p out_unsupported set when the payload uses an
-///         encoding Viper does not handle (point clouds) rather than being corrupt.
+///         encoding Zanna does not handle (point clouds) rather than being corrupt.
 static int draco_decode_mesh(const uint8_t *data,
                              size_t size,
                              draco_mesh *mesh,

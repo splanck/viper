@@ -12,7 +12,7 @@ Status: Accepted
 
 ## Context
 
-ViperIDE uses `Viper.Workspace.FileIndex.Enumerate` to populate project files and
+ZannaIDE uses `Zanna.Workspace.FileIndex.Enumerate` to populate project files and
 semantic workspace indexes. `Enumerate` returns one map per matching entry and
 silently caps output at the runtime's file-index limit. That is fine for normal
 project traversal, but editor tooling also needs a cheap way to explain large or
@@ -24,7 +24,7 @@ so this addition is recorded explicitly.
 
 ## Decision
 
-Add `Viper.Workspace.FileIndex.Status(root, extensionsCsv, excludesCsv,
+Add `Zanna.Workspace.FileIndex.Status(root, extensionsCsv, excludesCsv,
 includeDirs)`.
 
 The method performs the same root validation, extension filtering, hard excludes,

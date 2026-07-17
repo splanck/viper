@@ -12,8 +12,8 @@ Status: Accepted
 
 ## Context
 
-`viper --dump-runtime-api` is the machine-readable inventory for the public
-`Viper.*` runtime surface. Before this change it exposed names and compact
+`zanna --dump-runtime-api` is the machine-readable inventory for the public
+`Zanna.*` runtime surface. Before this change it exposed names and compact
 signatures for global functions, plus classes with properties and methods. That
 was enough for simple discovery, but not enough for production tools and docs:
 callers still had to infer class kind, fallibility, ownership, capability
@@ -115,4 +115,4 @@ heuristics with source-authored metadata while keeping the schema shape stable.
 
 No IL opcode, verifier, VM, native-codegen, runtime C ABI, or language syntax
 change. This is an additive machine-readable registry contract change for the
-`viper --dump-runtime-api` tool output.
+`zanna --dump-runtime-api` tool output.

@@ -1,49 +1,49 @@
 ' =============================================================================
-' API Audit: Viper.Time.RelativeTime - Human-Readable Time Formatting
+' API Audit: Zanna.Time.RelativeTime - Human-Readable Time Formatting
 ' =============================================================================
 ' Tests: Format, FormatFrom, FormatDuration, FormatShort
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Time.RelativeTime ==="
+PRINT "=== API Audit: Zanna.Time.RelativeTime ==="
 
 DIM now AS INTEGER
-now = Viper.Time.DateTime.Now()
+now = Zanna.Time.DateTime.Now()
 
 ' --- Format ---
 PRINT "--- Format ---"
-PRINT "Format(now): "; Viper.Time.RelativeTime.Format(now)
+PRINT "Format(now): "; Zanna.Time.RelativeTime.Format(now)
 
 DIM hourAgo AS INTEGER
-hourAgo = Viper.Time.DateTime.AddSeconds(now, -3600)
-PRINT "Format(1h ago): "; Viper.Time.RelativeTime.Format(hourAgo)
+hourAgo = Zanna.Time.DateTime.AddSeconds(now, -3600)
+PRINT "Format(1h ago): "; Zanna.Time.RelativeTime.Format(hourAgo)
 
 DIM dayAgo AS INTEGER
-dayAgo = Viper.Time.DateTime.AddDays(now, -1)
-PRINT "Format(1d ago): "; Viper.Time.RelativeTime.Format(dayAgo)
+dayAgo = Zanna.Time.DateTime.AddDays(now, -1)
+PRINT "Format(1d ago): "; Zanna.Time.RelativeTime.Format(dayAgo)
 
 DIM weekAgo AS INTEGER
-weekAgo = Viper.Time.DateTime.AddDays(now, -7)
-PRINT "Format(7d ago): "; Viper.Time.RelativeTime.Format(weekAgo)
+weekAgo = Zanna.Time.DateTime.AddDays(now, -7)
+PRINT "Format(7d ago): "; Zanna.Time.RelativeTime.Format(weekAgo)
 
 ' --- FormatFrom ---
 PRINT "--- FormatFrom ---"
 DIM ts1 AS INTEGER
 DIM ts2 AS INTEGER
-ts1 = Viper.Time.DateTime.Create(2024, 1, 1, 0, 0, 0)
-ts2 = Viper.Time.DateTime.Create(2024, 1, 2, 0, 0, 0)
-PRINT "FormatFrom(Jan1, Jan2): "; Viper.Time.RelativeTime.FormatFrom(ts1, ts2)
+ts1 = Zanna.Time.DateTime.Create(2024, 1, 1, 0, 0, 0)
+ts2 = Zanna.Time.DateTime.Create(2024, 1, 2, 0, 0, 0)
+PRINT "FormatFrom(Jan1, Jan2): "; Zanna.Time.RelativeTime.FormatFrom(ts1, ts2)
 
 ' --- FormatDuration ---
 PRINT "--- FormatDuration ---"
-PRINT "FormatDuration(5s): "; Viper.Time.RelativeTime.FormatDuration(Viper.Time.Duration.FromSeconds(5))
-PRINT "FormatDuration(90s): "; Viper.Time.RelativeTime.FormatDuration(Viper.Time.Duration.FromSeconds(90))
-PRINT "FormatDuration(2h): "; Viper.Time.RelativeTime.FormatDuration(Viper.Time.Duration.FromHours(2))
+PRINT "FormatDuration(5s): "; Zanna.Time.RelativeTime.FormatDuration(Zanna.Time.Duration.FromSeconds(5))
+PRINT "FormatDuration(90s): "; Zanna.Time.RelativeTime.FormatDuration(Zanna.Time.Duration.FromSeconds(90))
+PRINT "FormatDuration(2h): "; Zanna.Time.RelativeTime.FormatDuration(Zanna.Time.Duration.FromHours(2))
 
 ' --- FormatShort ---
 PRINT "--- FormatShort ---"
-PRINT "FormatShort(now): "; Viper.Time.RelativeTime.FormatShort(now)
-PRINT "FormatShort(1h ago): "; Viper.Time.RelativeTime.FormatShort(hourAgo)
-PRINT "FormatShort(1d ago): "; Viper.Time.RelativeTime.FormatShort(dayAgo)
+PRINT "FormatShort(now): "; Zanna.Time.RelativeTime.FormatShort(now)
+PRINT "FormatShort(1h ago): "; Zanna.Time.RelativeTime.FormatShort(hourAgo)
+PRINT "FormatShort(1d ago): "; Zanna.Time.RelativeTime.FormatShort(dayAgo)
 
 PRINT "=== RelativeTime Demo Complete ==="
 END

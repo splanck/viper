@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 //   - Byte values are in [0, 255]; get returns 0 for out-of-bounds indices.
 //   - Set traps on out-of-bounds indices.
 //   - Base64 and hex conversions produce rt_string results allocated via the
-//     Viper string allocator; the Bytes object is not modified.
+//     Zanna string allocator; the Bytes object is not modified.
 //   - Not thread-safe; external synchronization required for concurrent writes.
 //
 // Ownership/Lifetime:
@@ -201,7 +201,7 @@ static int b64_digit_value(char c) {
 /// @brief Creates a new Bytes object with the specified length.
 ///
 /// Allocates and initializes a new byte array of the given length. All bytes
-/// are initialized to zero. The Bytes object is allocated through Viper's
+/// are initialized to zero. The Bytes object is allocated through Zanna's
 /// GC-managed object system and will be automatically freed when no longer
 /// referenced.
 ///
@@ -983,7 +983,7 @@ int64_t rt_bytes_find(void *obj, int64_t val) {
 ///          returns `None`.
 /// @param obj Bytes object pointer, or NULL.
 /// @param val Byte value to search for; only the low 8 bits are used.
-/// @return Opaque Viper.Option containing the first index, or None.
+/// @return Opaque Zanna.Option containing the first index, or None.
 void *rt_bytes_find_option(void *obj, int64_t val) {
     int64_t index = rt_bytes_find(obj, val);
     return index >= 0 ? rt_option_some_i64(index) : rt_option_none();

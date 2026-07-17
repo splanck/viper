@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,8 +26,8 @@
 ///          linker symbol.
 /// @return Zero when all invariants hold.
 int main() {
-    using viper::common::DemangleLink;
-    using viper::common::MangleLink;
+    using zanna::common::DemangleLink;
+    using zanna::common::MangleLink;
 
     assert(MangleLink("main") == "main");
     assert(DemangleLink("main") == "main");

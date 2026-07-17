@@ -1,26 +1,26 @@
 // =============================================================================
-// API Audit: Viper.IO.File - File Operations
+// API Audit: Zanna.IO.File - File Operations
 // =============================================================================
 // Tests: Exists, WriteAllText, ReadAllText, AppendLine, ReadAllLines, Size,
 //        Delete, Copy, Move, Touch, Modified
 // =============================================================================
 
 module FileDemo;
-bind Viper.Terminal;
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
+bind Zanna.Terminal;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
 func start() {
-    Say("=== API Audit: Viper.IO.File ===");
+    Say("=== API Audit: Zanna.IO.File ===");
 
     var tmpDir = TempFile.Dir();
-    var testFile = Path.Join(tmpDir, "viper_file_audit.txt");
-    var copyFile = Path.Join(tmpDir, "viper_file_audit_copy.txt");
-    var moveFile = Path.Join(tmpDir, "viper_file_audit_moved.txt");
+    var testFile = Path.Join(tmpDir, "zanna_file_audit.txt");
+    var copyFile = Path.Join(tmpDir, "zanna_file_audit_copy.txt");
+    var moveFile = Path.Join(tmpDir, "zanna_file_audit_moved.txt");
 
     // --- WriteAllText ---
     Say("--- WriteAllText ---");
-    File.WriteAllText(testFile, "Hello from Viper!");
+    File.WriteAllText(testFile, "Hello from Zanna!");
     Say("WriteAllText done");
 
     // --- Exists ---
@@ -78,7 +78,7 @@ func start() {
 
     // --- Touch ---
     Say("--- Touch ---");
-    var touchFile = Path.Join(tmpDir, "viper_touch_audit.txt");
+    var touchFile = Path.Join(tmpDir, "zanna_touch_audit.txt");
     File.Touch(touchFile);
     Say("Touch done");
     Say("Touched file exists:");

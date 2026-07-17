@@ -13,7 +13,7 @@ Accepted
 ## Context
 
 Several collection and thread APIs exposed capacity as `Cap`, and
-`Viper.IO.BinaryBuffer` exposed `NewCap`. These abbreviations are short but not
+`Zanna.IO.BinaryBuffer` exposed `NewCap`. These abbreviations are short but not
 as readable as the rest of the public runtime surface. Other runtime classes
 already use `Capacity`, including `MemStream`, `StringBuilder`, `SpriteBatch`,
 and `ObjectPool`.
@@ -25,17 +25,17 @@ additive.
 
 Add canonical aliases:
 
-- `Viper.Collections.LruCache.Capacity`
-- `Viper.Collections.Ring.Capacity`
-- `Viper.Collections.Seq.Capacity`
-- `Viper.Collections.Deque.Capacity`
-- `Viper.Threads.Channel.Capacity`
-- `Viper.IO.BinaryBuffer.NewCapacity(capacity)`
+- `Zanna.Collections.LruCache.Capacity`
+- `Zanna.Collections.Ring.Capacity`
+- `Zanna.Collections.Seq.Capacity`
+- `Zanna.Collections.Deque.Capacity`
+- `Zanna.Threads.Channel.Capacity`
+- `Zanna.IO.BinaryBuffer.NewCapacity(capacity)`
 
 Keep compatibility aliases:
 
 - `Cap` on the affected collection/channel classes
-- `Viper.IO.BinaryBuffer.NewCap`
+- `Zanna.IO.BinaryBuffer.NewCap`
 
 All aliases lower to the same runtime C implementations.
 

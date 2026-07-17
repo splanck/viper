@@ -16,7 +16,7 @@ file(MAKE_DIRECTORY "${TEST_WORK_DIR}/positive/nested")
 file(WRITE "${TEST_WORK_DIR}/positive/runtime.def"
      "#include \"domain.def\"\n")
 file(WRITE "${TEST_WORK_DIR}/positive/domain.def"
-     "RT_FUNC(ExampleNew, rt_example_new, \"Viper.Example.New\", \"obj()\")\n"
+     "RT_FUNC(ExampleNew, rt_example_new, \"Zanna.Example.New\", \"obj()\")\n"
      "#include \"nested/class.def\"\n")
 file(WRITE "${TEST_WORK_DIR}/positive/nested/class.def"
      "/// @summary Provides an example runtime class.\n"
@@ -24,7 +24,7 @@ file(WRITE "${TEST_WORK_DIR}/positive/nested/class.def"
      "/// Exercises nested manifests and multiline documentation.\n"
      "///\n"
      "/// The paragraph break must be preserved.\n"
-     "RT_CLASS_BEGIN(\"Viper.Example\", Example, \"obj\", ExampleNew)\n"
+     "RT_CLASS_BEGIN(\"Zanna.Example\", Example, \"obj\", ExampleNew)\n"
      "    RT_METHOD(\"New\", \"obj()\", ExampleNew)\n"
      "RT_CLASS_END()\n")
 
@@ -61,7 +61,7 @@ expect_rtgen_failure(cycle "#include \"a.def\"\n" "cyclic runtime definition inc
 
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}/duplicate")
 file(WRITE "${TEST_WORK_DIR}/duplicate/row.def"
-     "RT_FUNC(One, rt_one, \"Viper.One\", \"void()\")\n")
+     "RT_FUNC(One, rt_one, \"Zanna.One\", \"void()\")\n")
 expect_rtgen_failure(duplicate
      "#include \"row.def\"\n#include \"row.def\"\n"
      "duplicate runtime definition include")
@@ -73,7 +73,7 @@ expect_rtgen_failure(escape "#include \"../outside.def\"\n"
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}/inside_class")
 file(WRITE "${TEST_WORK_DIR}/inside_class/row.def" "// row\n")
 expect_rtgen_failure(inside_class
-     "RT_CLASS_BEGIN(\"Viper.Bad\", Bad, \"obj\", none)\n#include \"row.def\"\nRT_CLASS_END()\n"
+     "RT_CLASS_BEGIN(\"Zanna.Bad\", Bad, \"obj\", none)\n#include \"row.def\"\nRT_CLASS_END()\n"
      "include is not allowed inside a class block")
 
 expect_rtgen_failure(orphan_docs
@@ -81,5 +81,5 @@ expect_rtgen_failure(orphan_docs
      "orphaned runtime documentation block")
 
 expect_rtgen_failure(missing_details
-     "/// @summary Missing long documentation.\nRT_CLASS_BEGIN(\"Viper.Bad\", Bad, \"obj\", none)\nRT_CLASS_END()\n"
+     "/// @summary Missing long documentation.\nRT_CLASS_BEGIN(\"Zanna.Bad\", Bad, \"obj\", none)\nRT_CLASS_END()\n"
      "documentation is missing @details")

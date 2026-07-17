@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //   - Returned strings are freshly allocated rt_string values.
 // Links: src/runtime/localization/rt_timezone.h,
 //        src/runtime/localization/rt_tzdata_generated.inc,
-//        docs/viperlib/time.md
+//        docs/zannalib/time.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -91,7 +91,7 @@ static const char *tz_cstr(rt_string s, size_t *len_out) {
 
 static const rt_tz_zone_t *tz_expect(void *timezone_obj) {
     if (!timezone_obj)
-        rt_trap("Viper.Time.TimeZone: null TimeZone");
+        rt_trap("Zanna.Time.TimeZone: null TimeZone");
     return (const rt_tz_zone_t *)timezone_obj;
 }
 
@@ -240,14 +240,14 @@ void *rt_tz_find(rt_string name) {
     size_t len = 0;
     const char *text = tz_cstr(name, &len);
     if (!text)
-        rt_trap("Viper.Time.TimeZone.Find: zone name required");
+        rt_trap("Zanna.Time.TimeZone.Find: zone name required");
 
     for (size_t i = 0; i < sizeof(g_tz_zones) / sizeof(g_tz_zones[0]); ++i) {
         rt_tz_zone_t *zone = &g_tz_zones[i];
         if (strlen(zone->name) == len && memcmp(zone->name, text, len) == 0)
             return zone;
     }
-    rt_trap("Viper.Time.TimeZone.Find: unknown IANA zone");
+    rt_trap("Zanna.Time.TimeZone.Find: unknown IANA zone");
     return NULL;
 }
 
@@ -287,7 +287,7 @@ rt_string rt_datetime_to_zone(int64_t timestamp, void *timezone_obj) {
                        tm_buf.tm_sec,
                        offset);
     if (len < 0 || (size_t)len >= sizeof(buffer)) {
-        rt_trap("Viper.Time.DateTime.ToZone: formatted output truncated");
+        rt_trap("Zanna.Time.DateTime.ToZone: formatted output truncated");
         return rt_string_from_bytes("", 0);
     }
     return rt_string_from_bytes(buffer, (size_t)len);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //                 library organization; archive names are generated from the
 //                 runtime build graph.
 // Ownership/Lifetime: Header-only stateless utilities with no global state.
-// Links: src/tools/viper/cmd_codegen_arm64.cpp
+// Links: src/tools/zanna/cmd_codegen_arm64.cpp
 //        src/codegen/x86_64/CodegenPipeline.cpp
 // Cross-platform touchpoints: runtime archive composition, native-link
 //                             archive discovery, host-dependent optional
@@ -21,14 +21,14 @@
 
 #pragma once
 
-#include "viper/runtime/RuntimeComponentManifest.hpp"
+#include "zanna/runtime/RuntimeComponentManifest.hpp"
 
 #include <optional>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 /// @brief Runtime library components for selective linking.
 /// @details Native backends use these to determine which runtime archives
@@ -120,7 +120,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::IoFs;
 
     // Exec component. rt_shutdown_* lives in the same rt_exec archive, so native
-    // programs using Viper.System.Shutdown must pull it in too — omitting it left
+    // programs using Zanna.System.Shutdown must pull it in too — omitting it left
     // every native Shutdown user with an undefined-symbol link error (VDOC-210).
     if (starts("rt_exec_") || starts("rt_process_") || starts("rt_machine_") ||
         starts("rt_shutdown_"))
@@ -202,38 +202,38 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Base;
 
     // -------------------------------------------------------------------------
-    // Viper.* namespace-qualified symbols (from OOP-style IL / Zia frontend).
-    // These are emitted as extern calls like @Viper.String.Left in IL and
-    // become assembly symbols like _Viper.String.Left.
+    // Zanna.* namespace-qualified symbols (from OOP-style IL / Zia frontend).
+    // These are emitted as extern calls like @Zanna.String.Left in IL and
+    // become assembly symbols like _Zanna.String.Left.
     // -------------------------------------------------------------------------
-    if (starts("Viper.Terminal.") || starts("Viper.String.") || starts("Viper.Math.") ||
-        starts("Viper.Core.") || starts("Viper.System.Environment."))
+    if (starts("Zanna.Terminal.") || starts("Zanna.String.") || starts("Zanna.Math.") ||
+        starts("Zanna.Core.") || starts("Zanna.System.Environment."))
         return RtComponent::Base;
-    if (starts("Viper.Collections."))
+    if (starts("Zanna.Collections."))
         return RtComponent::Collections;
-    if (starts("Viper.Game."))
+    if (starts("Zanna.Game."))
         return RtComponent::Game;
-    if (starts("Viper.Text."))
+    if (starts("Zanna.Text."))
         return RtComponent::Text;
-    if (starts("Viper.IO.") || starts("Viper.File.") || starts("Viper.Dir.") ||
-        starts("Viper.Path.") || starts("Viper.Workspace.") || starts("Viper.Assets.") ||
-        starts("Viper.Project."))
+    if (starts("Zanna.IO.") || starts("Zanna.File.") || starts("Zanna.Dir.") ||
+        starts("Zanna.Path.") || starts("Zanna.Workspace.") || starts("Zanna.Assets.") ||
+        starts("Zanna.Project."))
         return RtComponent::IoFs;
-    if (starts("Viper.Net.") || starts("Viper.Http.") || starts("Viper.WebSocket."))
+    if (starts("Zanna.Net.") || starts("Zanna.Http.") || starts("Zanna.WebSocket."))
         return RtComponent::Network;
-    if (starts("Viper.Canvas.") || starts("Viper.Input.") || starts("Viper.GUI.") ||
-        starts("Viper.Graphics.") || starts("Viper.Graphics3D.") || starts("Viper.Color."))
+    if (starts("Zanna.Canvas.") || starts("Zanna.Input.") || starts("Zanna.GUI.") ||
+        starts("Zanna.Graphics.") || starts("Zanna.Graphics3D.") || starts("Zanna.Color."))
         return RtComponent::Graphics;
-    if (starts("Viper.Sound.") || starts("Viper.Music."))
+    if (starts("Zanna.Sound.") || starts("Zanna.Music."))
         return RtComponent::Audio;
-    if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
+    if (starts("Zanna.Thread.") || starts("Zanna.Channel.") || starts("Zanna.Future."))
         return RtComponent::Threads;
-    if (starts("Viper.System.Exec.") || starts("Viper.System.Machine.") ||
-        starts("Viper.System.Process.") || starts("Viper.System.Shutdown."))
+    if (starts("Zanna.System.Exec.") || starts("Zanna.System.Machine.") ||
+        starts("Zanna.System.Process.") || starts("Zanna.System.Shutdown."))
         return RtComponent::Exec;
-    if (starts("Viper.Debug."))
+    if (starts("Zanna.Debug."))
         return RtComponent::Base;
-    if (starts("Viper.Localization."))
+    if (starts("Zanna.Localization."))
         return RtComponent::Localization;
 
     return std::nullopt;
@@ -241,15 +241,15 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 
 /// @brief Get the static library archive name for a runtime component.
 /// @param comp The runtime component.
-/// @return Library base name (e.g., "viper_rt_collections").
+/// @return Library base name (e.g., "zanna_rt_collections").
 inline std::string_view archiveNameForComponent(RtComponent comp) {
-    static_assert(viper::runtime_manifest::kRuntimeComponentArchives.size() ==
+    static_assert(zanna::runtime_manifest::kRuntimeComponentArchives.size() ==
                   static_cast<size_t>(RtComponent::Count));
     const size_t index = static_cast<size_t>(comp);
-    if (index < viper::runtime_manifest::kRuntimeComponentArchives.size()) {
-        return viper::runtime_manifest::kRuntimeComponentArchives[index];
+    if (index < zanna::runtime_manifest::kRuntimeComponentArchives.size()) {
+        return zanna::runtime_manifest::kRuntimeComponentArchives[index];
     }
-    return viper::runtime_manifest::kRuntimeComponentArchives[0];
+    return zanna::runtime_manifest::kRuntimeComponentArchives[0];
 }
 
 /// @brief Resolve the full set of required runtime components from referenced symbols.
@@ -324,4 +324,4 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
     return result;
 }
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

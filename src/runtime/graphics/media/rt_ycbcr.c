@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@ static inline int32_t clamp255(int32_t v) {
     return v;
 }
 
-/// @brief Convert one limited-range BT.601 YCbCr sample to Viper RGBA.
+/// @brief Convert one limited-range BT.601 YCbCr sample to Zanna RGBA.
 ///
 /// @param y_sample  Luma sample exactly as stored in the Y plane.
 /// @param cb_sample Blue-difference chroma sample.
@@ -99,7 +99,7 @@ static void ycbcr_to_rgba_subsampled(const uint8_t *y_plane,
     }
 }
 
-/// @brief Convert a YCbCr 4:2:0 planar image to packed RGBA (Viper 0xRRGGBBAA format).
+/// @brief Convert a YCbCr 4:2:0 planar image to packed RGBA (Zanna 0xRRGGBBAA format).
 /// @details Uses BT.601 limited-range coefficients with ×256 fixed-point scaling
 ///   (shift by 8 after accumulation) to avoid floating-point overhead in the inner
 ///   loop. The chroma planes are 2× subsampled in both axes (4:2:0), so each Cb/Cr

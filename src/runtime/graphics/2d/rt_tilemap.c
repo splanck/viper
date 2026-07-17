@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_tilemap.c
-// Purpose: Tile-based 2D map renderer for Viper games. Manages a 2D array of
+// Purpose: Tile-based 2D map renderer for Zanna games. Manages a 2D array of
 //   tile IDs, a corresponding SpriteSheet atlas, and draws the visible portion
 //   of the map to a Canvas each frame by blitting individual tile cells from
 //   the sheet. Supports scrolling via a camera offset, solid/passable tile
@@ -36,7 +36,7 @@
 //
 // Links: src/runtime/graphics/rt_tilemap.h (public API),
 //        src/runtime/graphics/rt_spritesheet.h (tile atlas),
-//        docs/viperlib/game.md (Tilemap section)
+//        docs/zannalib/game.md (Tilemap section)
 //
 //===----------------------------------------------------------------------===//
 

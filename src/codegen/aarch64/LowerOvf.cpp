@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 //   - Rewrites MFunction in place; borrows fn only during the call.
 // Links: codegen/aarch64/LowerOvf.hpp,
 //        codegen/aarch64/passes/LoweringPass.cpp (caller),
-//        docs/viperlib/game/core.md (overflow semantics)
+//        docs/zannalib/game/core.md (overflow semantics)
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +30,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 namespace {
 
@@ -219,4 +219,4 @@ void lowerOverflowOps(MFunction &fn) {
     // can still benefit from leaf-function optimizations.
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

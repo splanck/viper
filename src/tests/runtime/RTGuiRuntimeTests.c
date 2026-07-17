@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -1625,9 +1625,9 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
 
     char icon_path[256];
 #ifdef _WIN32
-    snprintf(icon_path, sizeof(icon_path), "viper_gui_icon_test.bmp");
+    snprintf(icon_path, sizeof(icon_path), "zanna_gui_icon_test.bmp");
 #else
-    snprintf(icon_path, sizeof(icon_path), "/tmp/viper_gui_icon_%ld.bmp", (long)getpid());
+    snprintf(icon_path, sizeof(icon_path), "/tmp/zanna_gui_icon_%ld.bmp", (long)getpid());
 #endif
     assert(rt_pixels_save_bmp(pixels, rt_const_cstr(icon_path)) == 1);
     void *path_item_handle =
@@ -1934,7 +1934,7 @@ static void test_widget_focus_null_is_noop(void) {
     printf("test_widget_focus_null_is_noop: PASSED\n");
 }
 
-static void test_image_set_pixels_converts_viper_pixels_to_rgba(void) {
+static void test_image_set_pixels_converts_zanna_pixels_to_rgba(void) {
     void *pixels = rt_pixels_new(1, 1);
     assert(pixels);
     rt_pixels_set(pixels, 0, 0, 0x11223344);
@@ -1962,7 +1962,7 @@ static void test_image_set_pixels_converts_viper_pixels_to_rgba(void) {
     vg_widget_destroy(&image->base);
     if (rt_obj_release_check0(pixels))
         rt_obj_free(pixels);
-    printf("test_image_set_pixels_converts_viper_pixels_to_rgba: PASSED\n");
+    printf("test_image_set_pixels_converts_zanna_pixels_to_rgba: PASSED\n");
 }
 
 /// @brief Verify status-returning image upload and source/destination region conversion.
@@ -3861,12 +3861,12 @@ static void test_filedialog_complete_async_contract(void) {
     rt_filedialog_set_confirm_overwrite(dialog, 1);
     rt_filedialog_set_default_extension(dialog, rt_const_cstr(".zia"));
     rt_filedialog_clear_bookmarks(dialog);
-    rt_filedialog_add_bookmark(dialog, rt_const_cstr("/tmp/Viper Projects"));
+    rt_filedialog_add_bookmark(dialog, rt_const_cstr("/tmp/Zanna Projects"));
     assert(view->dialog->show_hidden);
     assert(view->dialog->confirm_overwrite);
     assert(strcmp(view->dialog->default_extension, ".zia") == 0);
     assert(view->dialog->bookmark_count == 1);
-    assert(strcmp(view->dialog->bookmarks[0].path, "/tmp/Viper Projects") == 0);
+    assert(strcmp(view->dialog->bookmarks[0].path, "/tmp/Zanna Projects") == 0);
 
     assert(rt_filedialog_show_async(dialog) == 0);
     assert(rt_filedialog_get_status(dialog) == RT_GUI_DIALOG_STATUS_FAILED);
@@ -4165,7 +4165,7 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
 }
 
 /// @brief Verify the runtime read-only flag blocks text mutation APIs.
-/// @details ViperIDE uses read-only CodeEditor instances for unsupported binary
+/// @details ZannaIDE uses read-only CodeEditor instances for unsupported binary
 ///          or preview documents. This test ensures the public runtime flag
 ///          round-trips and `InsertAtCursor` respects it.
 static void test_codeeditor_runtime_read_only_blocks_insertions(void) {
@@ -5067,7 +5067,7 @@ int main(void) {
     test_runtime_widget_parent_validation_rejects_leaf_and_invalid_handles();
     test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs();
     test_widget_focus_null_is_noop();
-    test_image_set_pixels_converts_viper_pixels_to_rgba();
+    test_image_set_pixels_converts_zanna_pixels_to_rgba();
     test_image_atomic_runtime_mutation_contract();
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();

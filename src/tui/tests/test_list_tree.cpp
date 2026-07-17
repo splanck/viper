@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,16 +27,16 @@
 #include <string>
 #include <vector>
 
-using viper::tui::render::Renderer;
-using viper::tui::render::ScreenBuffer;
-using viper::tui::style::Role;
-using viper::tui::style::Theme;
-using viper::tui::term::KeyEvent;
-using viper::tui::term::StringTermIO;
-using viper::tui::ui::Event;
-using viper::tui::widgets::ListView;
-using viper::tui::widgets::TreeNode;
-using viper::tui::widgets::TreeView;
+using zanna::tui::render::Renderer;
+using zanna::tui::render::ScreenBuffer;
+using zanna::tui::style::Role;
+using zanna::tui::style::Theme;
+using zanna::tui::term::KeyEvent;
+using zanna::tui::term::StringTermIO;
+using zanna::tui::ui::Event;
+using zanna::tui::widgets::ListView;
+using zanna::tui::widgets::TreeNode;
+using zanna::tui::widgets::TreeView;
 
 TEST(TUI, ListTree) {
     Theme theme;
@@ -127,6 +127,6 @@ TEST(TUI, ListTree) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

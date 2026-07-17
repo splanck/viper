@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include "MachineIR.hpp"
 #include "TargetX64.hpp"
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// \brief Canonicalises lowered Machine IR into concrete x86-64 forms.
 /// \details The instruction selector fixes operand modes for integer and
@@ -88,4 +88,4 @@ class ISel {
     void synthesizeValueLea(MFunction &func) const;
 };
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

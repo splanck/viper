@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_vec2.h
-// Purpose: 2D vector math utilities for Viper.Vec2 with immutable value semantics, providing
+// Purpose: 2D vector math utilities for Zanna.Vec2 with immutable value semantics, providing
 // arithmetic, dot product, magnitude, normalization, rotation, and lerp.
 //
 // Key invariants:

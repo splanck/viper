@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 #include <span>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief How an ABI consumes register argument slots.
 enum class CallSlotModel : uint8_t {
@@ -68,4 +68,4 @@ CallArgLayout planCallArgs(std::span<const CallArg> args, const CallArgLayoutCon
 CallArgLayout planParamClasses(std::span<const CallArgClass> classes,
                                const CallArgLayoutConfig &config);
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

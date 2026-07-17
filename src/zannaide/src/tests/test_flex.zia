@@ -1,0 +1,86 @@
+module test_flex;
+
+bind Zanna.GUI as GUI;
+
+// ============================================================================
+// MODULE: test_flex
+// PURPOSE: Layout-flex bench test. Builds a mid-sized IDE-shaped layout
+//          (menu / toolbar / split / tab / status) so the SplitPane and
+//          flex propagation can be visually verified.
+//
+// WHERE-THIS-FITS: Bench test, not part of the IDE proper. Step up from
+//          test_minimal — exercises SplitPane.SetFlex(1.0) which was a
+//          key bring-up risk.
+//
+// KEY-DESIGN-CHOICES:
+//   * NO BUSINESS LOGIC. Just enough widgets to exercise the layout.
+//     Click-to-act and document state are out of scope.
+//   * SAME LAYOUT BACKBONE AS app_shell. Mirrors the structure of the
+//     real IDE so a layout regression in the IDE typically reproduces
+//     here too — making it easier to bisect.
+// ============================================================================
+
+/// @brief Layout-only test shell: menu + toolbar + split + tab + status.
+class TestShell {
+    expose GUI.App app;
+    expose GUI.VBox mainVBox;
+    expose GUI.MenuBar menuBar;
+    expose GUI.Menu fileMenu;
+    expose GUI.Toolbar toolbar;
+    expose GUI.ToolbarItem tbNew;
+    expose GUI.SplitPane splitPane;
+    expose GUI.TreeView sidebarTree;
+    expose GUI.VBox editorArea;
+    expose GUI.TabBar tabBar;
+    expose GUI.StatusBar statusBar;
+
+    /// @brief Construct the layout: VBox(menu, toolbar, splitPane, statusBar).
+    expose func Build() {
+        app = GUI.App.New("Flex Test", 1280, 800);
+        GUI.Theme.SetDark();
+
+        mainVBox = GUI.VBox.New();
+        mainVBox.SetSpacing(0.0);
+        mainVBox.SetPadding(0.0);
+        var root: GUI.Widget = app.Root;
+        root.AddChild(mainVBox);
+
+        menuBar = GUI.MenuBar.New(mainVBox);
+        fileMenu = menuBar.AddMenu("File");
+        var miNew: GUI.MenuItem = fileMenu.AddItem("New");
+
+        toolbar = GUI.Toolbar.New(mainVBox);
+        tbNew = toolbar.AddButtonWithText("", "New", "New File");
+
+        splitPane = GUI.SplitPane.New(mainVBox, 1);
+        splitPane.SetFlex(1.0);
+        splitPane.SetPosition(0.20);
+
+        var leftPanel: GUI.Widget = splitPane.First;
+        sidebarTree = GUI.TreeView.New(leftPanel);
+
+        var rightPanel: GUI.Widget = splitPane.Second;
+        editorArea = GUI.VBox.New();
+        editorArea.SetSpacing(0.0);
+        editorArea.SetPadding(0.0);
+        rightPanel.AddChild(editorArea);
+
+        tabBar = GUI.TabBar.New(editorArea);
+
+        statusBar = GUI.StatusBar.New(mainVBox);
+        statusBar.SetLeftText("Ready");
+        statusBar.SetRightText("Flex Test");
+    }
+}
+
+/// @brief Entry point: build then loop until window close.
+func main() {
+    var shell = new TestShell();
+    shell.Build();
+
+    while shell.app.ShouldClose == false {
+        shell.app.Poll();
+        shell.app.Render();
+    }
+    shell.app.Destroy();
+}

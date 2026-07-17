@@ -1,20 +1,20 @@
 module matrix;
 
 // ============================================================================
-// MATRIX.VIPER - Matrix Digital Rain Effect
+// MATRIX.ZANNA - Matrix Digital Rain Effect
 // ============================================================================
 // Recreates the iconic "digital rain" effect from The Matrix.
 // ============================================================================
 
 bind "./colors";
 
-bind Viper.Math.Random;
-bind Viper.Graphics;
-bind Viper.Graphics.Canvas;
-bind Viper.Graphics.Color;
-bind Viper.Core.Convert as Convert;
-bind Viper.Math;
-bind Viper.Time;
+bind Zanna.Math.Random;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Canvas;
+bind Zanna.Graphics.Color;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Time;
 
 var CHARS: List[String];
 
@@ -239,6 +239,6 @@ func matrixRun(canvas: Canvas) {
         }
 
         canvas.Flip();
-        Viper.Time.Clock.Sleep(33);
+        Zanna.Time.Clock.Sleep(33);
     }
 }

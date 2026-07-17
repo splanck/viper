@@ -10,7 +10,7 @@
 // =============================================================================
 module render_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "../config" as config;
 bind "../game" as game;
 bind "../core/mathutil" as M;

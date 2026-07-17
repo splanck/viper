@@ -8,11 +8,11 @@ large and still moving.
 
 ## Source Inputs
 
-- Live API dump: `/tmp/viper_runtime_api_overhaul2.json`.
+- Live API dump: `/tmp/zanna_runtime_api_overhaul2.json`.
 - Registry source: `src/il/runtime/runtime.def`.
 - Generator: `src/tools/rtgen/rtgen.cpp`.
 - Runtime class lookup: `src/il/runtime/classes/RuntimeClasses.cpp`.
-- CLI catalog emission: `src/tools/viper/main.cpp`.
+- CLI catalog emission: `src/tools/zanna/main.cpp`.
 - Stub implementations: `src/runtime/core/*_stub.c` and
   `src/runtime/graphics/common/*_stubs.c`.
 
@@ -69,16 +69,16 @@ groups involving 352 public names.
 
 Representative groups:
 
-- `Viper.Math.Bits.LeadZ` and `CountLeadingZeros`.
-- `Viper.Math.Bits.Rotl` and `RotateLeft`.
-- `Viper.Collections.BloomFilter.Fpr` and `FalsePositiveRate`.
-- `Viper.Collections.LruCache.Put` and `Set`.
-- `Viper.Collections.MultiMap.Put` and `Add`.
-- `Viper.IO.BinaryBuffer.NewCap` and `NewCapacity`.
-- `Viper.Math.Vec2.Len` and `Length`.
-- `Viper.Math.Vec3.Norm` and `Normalize`.
-- `Viper.Runtime.GC.*` and `Viper.Runtime.GC.*`.
-- `Viper.Memory.Retain/Release` and `Viper.Runtime.Unsafe.*`.
+- `Zanna.Math.Bits.LeadZ` and `CountLeadingZeros`.
+- `Zanna.Math.Bits.Rotl` and `RotateLeft`.
+- `Zanna.Collections.BloomFilter.Fpr` and `FalsePositiveRate`.
+- `Zanna.Collections.LruCache.Put` and `Set`.
+- `Zanna.Collections.MultiMap.Put` and `Add`.
+- `Zanna.IO.BinaryBuffer.NewCap` and `NewCapacity`.
+- `Zanna.Math.Vec2.Len` and `Length`.
+- `Zanna.Math.Vec3.Norm` and `Normalize`.
+- `Zanna.Runtime.GC.*` and `Zanna.Runtime.GC.*`.
+- `Zanna.Memory.Retain/Release` and `Zanna.Runtime.Unsafe.*`.
 
 Decision: each concept gets one canonical public name. Compatibility names are
 either removed before release, hidden from normal discovery, or marked legacy
@@ -148,11 +148,11 @@ docs target.
 
 ## Focused Bugs Found
 
-- Five `Viper.GUI.CodeEditor` setters accept `i1` but matching getters return
+- Five `Zanna.GUI.CodeEditor` setters accept `i1` but matching getters return
   `i64`: `ShowLineNumbers`, `InsertSpaces`, `WordWrap`, `ShowIndentGuides`,
   and `ReadOnly`.
 - Two public names still have non-PascalCase leaves:
-  `Viper.Core.Convert.ToString_Int` and `ToString_Double`.
+  `Zanna.Core.Convert.ToString_Int` and `ToString_Double`.
 - `RuntimeRegistry` method lookup keys only by class, method, and arity. No
   current conflict exists, but type-different overloads with the same arity
   would overwrite in the index.

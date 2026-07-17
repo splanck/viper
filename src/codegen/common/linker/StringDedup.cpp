@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
@@ -57,7 +57,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
     auto makeDedupSymbolName = [&](size_t &counter) -> std::string {
         for (;;) {
-            std::string name = "__viper_dedup_str_" + std::to_string(counter++);
+            std::string name = "__zanna_dedup_str_" + std::to_string(counter++);
             if (usedSymbolNames.insert(name).second)
                 return name;
         }
@@ -285,4 +285,4 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     return eliminated;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

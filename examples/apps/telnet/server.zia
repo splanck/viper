@@ -2,12 +2,12 @@
 // Provides file system navigation and basic commands
 module main;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Network as Network;
-bind Viper.String as String;
-bind Viper.IO as IO;
-bind Viper.Time as Time;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Network as Network;
+bind Zanna.String as String;
+bind Zanna.IO as IO;
+bind Zanna.Time as Time;
+bind Zanna.Text.Fmt as Fmt;
 
 // ============================================================================
 // CONFIGURATION
@@ -86,7 +86,7 @@ func executeCommand(command: String) -> String {
         result = username + "\n";
     }
     if cmdName == "hostname" {
-        result = "viper-telnet-server\n";
+        result = "zanna-telnet-server\n";
     }
     if cmdName == "date" {
         result = dateCommand();
@@ -98,7 +98,7 @@ func executeCommand(command: String) -> String {
         result = "EXIT";
     }
     if cmdName == "version" {
-        result = "Viper Telnet Server v" + VERSION + "\n";
+        result = "Zanna Telnet Server v" + VERSION + "\n";
     }
     if cmdName == "clear" {
         // Send ANSI clear screen
@@ -118,7 +118,7 @@ func splitCommand(cmd: String) -> List[String] {
     var result: List[String] = [];
     var current = "";
     var i = 0;
-    var len = Viper.String.get_Length(cmd);
+    var len = Zanna.String.get_Length(cmd);
 
     while i < len {
         var ch = String.Substring(cmd, i, 1);
@@ -168,7 +168,7 @@ func cdCommand(path: String) -> String {
     var newPath = path;
 
     // Handle relative paths
-    var pathLen = Viper.String.get_Length(path);
+    var pathLen = Zanna.String.get_Length(path);
     if pathLen > 0 {
         var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
@@ -190,7 +190,7 @@ func lsCommand(path: String) -> String {
     var targetPath = path;
 
     // Handle relative paths
-    var pathLen = Viper.String.get_Length(path);
+    var pathLen = Zanna.String.get_Length(path);
     if pathLen > 0 {
         var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
@@ -226,7 +226,7 @@ func catCommand(filename: String) -> String {
     var filepath = filename;
 
     // Handle relative paths
-    var fnLen = Viper.String.get_Length(filename);
+    var fnLen = Zanna.String.get_Length(filename);
     if fnLen > 0 {
         var firstChar = String.Substring(filename, 0, 1);
         if firstChar != "/" {
@@ -251,7 +251,7 @@ func dateCommand() -> String {
 // ECHO command
 func echoCommand(cmd: String) -> String {
     // Remove "echo " prefix
-    var len = Viper.String.get_Length(cmd);
+    var len = Zanna.String.get_Length(cmd);
     if len > 5 {
         var sublen = len - 5;
         return String.Substring(cmd, 5, sublen) + "\n";
@@ -263,14 +263,14 @@ func echoCommand(cmd: String) -> String {
 // CLIENT SESSION HANDLING (Functional API style)
 // ============================================================================
 
-func handleClient(client: Viper.Network.Tcp) {
+func handleClient(client: Zanna.Network.Tcp) {
     // Initialize session
     initSession();
 
     // Send welcome banner
     Network.Tcp.SendStr(client, "\n");
     Network.Tcp.SendStr(client, "=================================\n");
-    Network.Tcp.SendStr(client, "  Viper Telnet Server v" + VERSION + "\n");
+    Network.Tcp.SendStr(client, "  Zanna Telnet Server v" + VERSION + "\n");
     Network.Tcp.SendStr(client, "=================================\n");
     Network.Tcp.SendStr(client, "Type 'help' for available commands.\n");
     Network.Tcp.SendStr(client, "\n");
@@ -317,7 +317,7 @@ func handleClient(client: Viper.Network.Tcp) {
 func main() {
     var port = DEFAULT_PORT;
 
-    Terminal.Print("Starting Viper Telnet Server on port ");
+    Terminal.Print("Starting Zanna Telnet Server on port ");
     Terminal.PrintInt(port);
     Terminal.Say("...");
 

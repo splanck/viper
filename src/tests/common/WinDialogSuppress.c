@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/common/WinDialogSuppress.c
 // Purpose: Suppress all MSVC debug/error dialogs so tests run non-interactively.
@@ -23,7 +23,7 @@
 #endif
 
 // .CRT$XIB initializers must return int (0 = success, non-zero = abort).
-static int viper_suppress_win_dialogs(void) {
+static int zanna_suppress_win_dialogs(void) {
     // Suppress abort() message box and Windows Error Reporting.
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 
@@ -44,16 +44,16 @@ static int viper_suppress_win_dialogs(void) {
 
 // Place function pointer in CRT initializer section (.CRT$XIB) so it runs
 // before main() and before C++ static constructors.
-typedef int (*_viper_crt_init_fn)(void);
+typedef int (*_zanna_crt_init_fn)(void);
 #pragma section(".CRT$XIB", long, read)
 #if defined(__clang__)
-#define VIPER_CRT_SECTION_USED __attribute__((used))
+#define ZANNA_CRT_SECTION_USED __attribute__((used))
 #else
-#define VIPER_CRT_SECTION_USED
+#define ZANNA_CRT_SECTION_USED
 #endif
 __declspec(allocate(
-    ".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_ VIPER_CRT_SECTION_USED =
-    viper_suppress_win_dialogs;
-#undef VIPER_CRT_SECTION_USED
+    ".CRT$XIB")) static _zanna_crt_init_fn zanna_suppress_init_ ZANNA_CRT_SECTION_USED =
+    zanna_suppress_win_dialogs;
+#undef ZANNA_CRT_SECTION_USED
 
 #endif // _WIN32

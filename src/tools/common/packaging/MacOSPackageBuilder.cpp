@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -45,14 +45,14 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg {
+namespace zanna::pkg {
 namespace {
 
-constexpr std::string_view kMacOSToolchainInstallRoot = "/usr/local/viper";
+constexpr std::string_view kMacOSToolchainInstallRoot = "/usr/local/zanna";
 constexpr std::string_view kMacOSLocalBinDir = "/usr/local/bin";
-constexpr std::string_view kMacOSLocalCMakeViperDir = "/usr/local/lib/cmake/Viper";
+constexpr std::string_view kMacOSLocalCMakeZannaDir = "/usr/local/lib/cmake/Zanna";
 constexpr std::string_view kMacOSLocalManDir = "/usr/local/share/man";
-constexpr std::string_view kMacOSToolchainAppPath = "/Applications/Viper Toolchain.app";
+constexpr std::string_view kMacOSToolchainAppPath = "/Applications/Zanna Toolchain.app";
 
 /// @brief Create a unique temporary packaging directory under the system temp directory.
 /// @details Uses exclusive directory creation with a randomized suffix and never removes
@@ -90,19 +90,19 @@ std::string macOSBundleIdentifierComponent(std::string_view text) {
 
 /// @brief Build and validate the default macOS bundle identifier.
 /// @details The package manifest may override the identifier. When it does not,
-///          Viper uses a stable `com.viper.<component>` identifier derived from
+///          Zanna uses a stable `com.zanna.<component>` identifier derived from
 ///          the project name with macOS-safe component rules.
 /// @param projectName Project name from the manifest.
 /// @return Valid reverse-DNS bundle identifier.
 std::string defaultMacOSBundleIdentifier(const std::string &projectName) {
-    std::string bundleId = "com.viper." + macOSBundleIdentifierComponent(projectName);
+    std::string bundleId = "com.zanna." + macOSBundleIdentifierComponent(projectName);
     validateMacOSBundleIdentifier(bundleId, "macOS bundle identifier");
     return bundleId;
 }
 
 /// @brief Map freedesktop-style package categories to Apple bundle categories.
 /// @details The manifest uses the existing cross-platform `package-category`
-///          field. This helper maps the broad freedesktop categories Viper
+///          field. This helper maps the broad freedesktop categories Zanna
 ///          already validates to the nearest LaunchServices category string.
 /// @param category Manifest category string.
 /// @return Empty string when no reasonable macOS category is declared.
@@ -352,7 +352,7 @@ void verifyMountedMacOSDmgContents(const fs::path &dmgPath,
                                    const std::vector<std::string> &directories,
                                    const std::vector<std::string> &symlinks,
                                    const std::string &what) {
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-dmg-verify");
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-dmg-verify");
     TempDirGuard cleanup(tmpRoot);
     const fs::path mountPoint = tmpRoot / "mnt";
     fs::create_directories(mountPoint);
@@ -762,10 +762,10 @@ void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const
 }
 
 /// @brief Compute the relative symlink target from a system man path back into
-///        the Viper install tree's `share/man`.
+///        the Zanna install tree's `share/man`.
 /// @details Builds the right number of `../` hops (accounting for the
 ///          `share/man/` prefix plus any subdirectories) followed by
-///          `viper/share/man/<manRelPath>`, so the installed man page is a stable
+///          `zanna/share/man/<manRelPath>`, so the installed man page is a stable
 ///          relative link regardless of install root.
 fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
     const fs::path relPath = fs::path(manRelPath);
@@ -776,7 +776,7 @@ fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
     fs::path target;
     for (size_t i = 0; i < upLevels; ++i)
         target /= "..";
-    target /= "viper";
+    target /= "zanna";
     target /= "share";
     target /= "man";
     target /= relPath;
@@ -793,34 +793,34 @@ std::string fileAssociationExtensionWithoutDot(const FileAssoc &assoc) {
 
 /// @brief Map a file association to its Uniform Type Identifier (UTI).
 /// @details Uses well-known UTIs for the built-in zia/bas/il types and a
-///          generic "org.viper.<ext>" for anything else.
+///          generic "org.zanna.<ext>" for anything else.
 std::string macOSFileAssociationUTI(const FileAssoc &assoc) {
     std::string ext = fileAssociationExtensionWithoutDot(assoc);
     for (char &c : ext)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (ext == "zia")
-        return "org.viper.zia-source";
+        return "org.zanna.zia-source";
     if (ext == "bas")
-        return "org.viper.basic-source";
+        return "org.zanna.basic-source";
     if (ext == "il")
-        return "org.viper.il-module";
+        return "org.zanna.il-module";
     for (char &c : ext) {
         const unsigned char uc = static_cast<unsigned char>(c);
         if (!std::isalnum(uc) && c != '-')
             c = '-';
     }
-    const std::string uti = "org.viper." + ext;
+    const std::string uti = "org.zanna." + ext;
     validateMacOSBundleIdentifier(uti, "macOS file association UTI");
     return uti;
 }
 
-/// @brief Locate the staged `libexec/viper/viper-file-handler` entry, if present.
+/// @brief Locate the staged `libexec/zanna/zanna-file-handler` entry, if present.
 /// @return Pointer to the manifest entry, or nullptr when no handler is staged.
 const ToolchainFileEntry *findMacOSFileHandler(const ToolchainInstallManifest &manifest) {
     auto it = std::find_if(manifest.files.begin(), manifest.files.end(), [](const auto &file) {
         return !file.symlink &&
                sanitizePackageRelativePath(file.stagedRelativePath, "macOS file handler path") ==
-                   "libexec/viper/viper-file-handler";
+                   "libexec/zanna/zanna-file-handler";
     });
     return it == manifest.files.end() ? nullptr : &*it;
 }
@@ -840,12 +840,12 @@ std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &p
     xml << "<plist version=\"1.0\">\n";
     xml << "<dict>\n";
     xml << "  <key>CFBundleDevelopmentRegion</key><string>en</string>\n";
-    xml << "  <key>CFBundleDisplayName</key><string>Viper Toolchain</string>\n";
-    xml << "  <key>CFBundleExecutable</key><string>viper-file-handler</string>\n";
-    xml << "  <key>CFBundleIconFile</key><string>Viper.icns</string>\n";
+    xml << "  <key>CFBundleDisplayName</key><string>Zanna Toolchain</string>\n";
+    xml << "  <key>CFBundleExecutable</key><string>zanna-file-handler</string>\n";
+    xml << "  <key>CFBundleIconFile</key><string>Zanna.icns</string>\n";
     xml << "  <key>CFBundleIdentifier</key><string>"
         << xmlEscape(params.identifier + ".filehandler") << "</string>\n";
-    xml << "  <key>CFBundleName</key><string>Viper Toolchain</string>\n";
+    xml << "  <key>CFBundleName</key><string>Zanna Toolchain</string>\n";
     xml << "  <key>CFBundlePackageType</key><string>APPL</string>\n";
     xml << "  <key>CFBundleShortVersionString</key><string>" << xmlEscape(pkgVersion)
         << "</string>\n";
@@ -911,8 +911,8 @@ std::string macOSInstallManifestText(const ToolchainInstallManifest &manifest) {
     for (const auto &file : manifest.files)
         paths.push_back(
             sanitizePackageRelativePath(file.stagedRelativePath, "macOS manifest path"));
-    paths.push_back("share/viper/install_manifest.txt");
-    paths.push_back("share/viper/uninstall.sh");
+    paths.push_back("share/zanna/install_manifest.txt");
+    paths.push_back("share/zanna/uninstall.sh");
     std::sort(paths.begin(), paths.end());
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
     std::ostringstream out;
@@ -929,11 +929,11 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
     sh << "ROOT=" << shQuote(std::string(kMacOSToolchainInstallRoot)) << "\n";
-    sh << "MANIFEST=\"$ROOT/share/viper/install_manifest.txt\"\n";
+    sh << "MANIFEST=\"$ROOT/share/zanna/install_manifest.txt\"\n";
     sh << "APP=" << shQuote(std::string(kMacOSToolchainAppPath)) << "\n";
     sh << "LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/"
           "LaunchServices.framework/Support/lsregister\n";
-    sh << "if [ \"$(id -u)\" != \"0\" ]; then echo \"Run with sudo to remove Viper Toolchain\" "
+    sh << "if [ \"$(id -u)\" != \"0\" ]; then echo \"Run with sudo to remove Zanna Toolchain\" "
           ">&2; exit 1; fi\n";
     sh << "if [ -x \"$LSREGISTER\" ] && [ -d \"$APP\" ]; then \"$LSREGISTER\" -u \"$APP\" "
           ">/dev/null 2>&1 || true; fi\n";
@@ -946,12 +946,12 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     sh << "      bin/*) link=" << shQuote(std::string(kMacOSLocalBinDir))
        << "/${rel#bin/}; if [ -L \"$link\" ]; then "
           "target=$(readlink \"$link\" || true); case \"$target\" in "
-          "../viper/bin/*|";
+          "../zanna/bin/*|";
     sh << std::string(kMacOSToolchainInstallRoot) << "/bin/*) rm -f \"$link\" ;; esac; fi ;;\n";
     sh << "      share/man/*) link=" << shQuote(std::string(kMacOSLocalManDir))
        << "/${rel#share/man/}; if [ -L \"$link\" "
           "]; then target=$(readlink \"$link\" || true); case \"$target\" in "
-          "*../viper/share/man/*|";
+          "*../zanna/share/man/*|";
     sh << std::string(kMacOSToolchainInstallRoot)
        << "/share/man/*) rm -f \"$link\" ;; esac; fi ;;\n";
     sh << "    esac\n";
@@ -959,11 +959,11 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     sh << "  done < \"$MANIFEST\"\n";
     sh << "fi\n";
     sh << "rm -rf \"$APP\"\n";
-    sh << "rm -f " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfig.cmake") << " "
-       << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfigVersion.cmake") << "\n";
+    sh << "rm -f " << shQuote(std::string(kMacOSLocalCMakeZannaDir) + "/ZannaConfig.cmake") << " "
+       << shQuote(std::string(kMacOSLocalCMakeZannaDir) + "/ZannaConfigVersion.cmake") << "\n";
     sh << "if [ -d \"$ROOT\" ]; then find \"$ROOT\" -depth -type d -empty -delete 2>/dev/null || "
           "true; fi\n";
-    sh << "for dir in " << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " "
+    sh << "for dir in " << shQuote(std::string(kMacOSLocalCMakeZannaDir)) << " "
        << shQuote(std::string(kMacOSLocalManDir) + "/man1") << " "
        << shQuote(std::string(kMacOSLocalManDir) + "/man7") << " "
        << shQuote(std::string(kMacOSToolchainInstallRoot))
@@ -985,7 +985,7 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
     sh << "ROOT=" << shQuote(std::string(kMacOSToolchainInstallRoot)) << "\n";
-    sh << "OLD=\"$ROOT/share/viper/install_manifest.txt\"\n";
+    sh << "OLD=\"$ROOT/share/zanna/install_manifest.txt\"\n";
     sh << "SCRIPT_DIR=$(cd \"$(dirname \"$0\")\" && pwd)\n";
     sh << "NEW=\"$SCRIPT_DIR/install_manifest.txt\"\n";
     sh << "if [ -f \"$OLD\" ] && [ -f \"$NEW\" ]; then\n";
@@ -999,7 +999,7 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "          link=" << shQuote(std::string(kMacOSLocalBinDir)) << "/${rel#bin/}\n";
     sh << "          if [ -L \"$link\" ]; then\n";
     sh << "            target=$(readlink \"$link\" || true)\n";
-    sh << "            case \"$target\" in ../viper/bin/*|"
+    sh << "            case \"$target\" in ../zanna/bin/*|"
        << std::string(kMacOSToolchainInstallRoot) << "/bin/*) rm -f \"$link\" ;; esac\n";
     sh << "          fi\n";
     sh << "          ;;\n";
@@ -1007,7 +1007,7 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "          link=" << shQuote(std::string(kMacOSLocalManDir)) << "/${rel#share/man/}\n";
     sh << "          if [ -L \"$link\" ]; then\n";
     sh << "            target=$(readlink \"$link\" || true)\n";
-    sh << "            case \"$target\" in *../viper/share/man/*|"
+    sh << "            case \"$target\" in *../zanna/share/man/*|"
        << std::string(kMacOSToolchainInstallRoot) << "/share/man/*) rm -f \"$link\" ;; esac\n";
     sh << "          fi\n";
     sh << "          ;;\n";
@@ -1020,12 +1020,12 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
         sh << "link=" << shQuote(std::string(kMacOSLocalBinDir) + "/" + name) << "\n";
         sh << "if [ -L \"$link\" ]; then\n";
         sh << "  target=$(readlink \"$link\" || true)\n";
-        sh << "  case \"$target\" in ../viper/bin/*|" << std::string(kMacOSToolchainInstallRoot)
+        sh << "  case \"$target\" in ../zanna/bin/*|" << std::string(kMacOSToolchainInstallRoot)
            << "/bin/*) rm -f \"$link\" ;; esac\n";
         sh << "fi\n";
     }
-    sh << "if [ -L " << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " ]; then rm -f "
-       << shQuote(std::string(kMacOSLocalCMakeViperDir)) << "; fi\n";
+    sh << "if [ -L " << shQuote(std::string(kMacOSLocalCMakeZannaDir)) << " ]; then rm -f "
+       << shQuote(std::string(kMacOSLocalCMakeZannaDir)) << "; fi\n";
     sh << "exit 0\n";
     return sh.str();
 }
@@ -1041,14 +1041,14 @@ std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolN
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
     sh << "mkdir -p " << shQuote(std::string(kMacOSLocalBinDir)) << " "
-       << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " "
+       << shQuote(std::string(kMacOSLocalCMakeZannaDir)) << " "
        << shQuote(std::string(kMacOSLocalManDir)) << "\n";
     for (const auto &name : toolNames) {
         sh << "if [ -e " << shQuote(std::string(kMacOSToolchainInstallRoot) + "/bin/" + name)
            << " ]; then\n";
         sh << "  link=" << shQuote(std::string(kMacOSLocalBinDir) + "/" + name) << "\n";
         sh << "  if [ ! -e \"$link\" ] || [ -L \"$link\" ]; then\n";
-        sh << "    ln -sfn ../viper/bin/" << shQuote(name) << " \"$link\"\n";
+        sh << "    ln -sfn ../zanna/bin/" << shQuote(name) << " \"$link\"\n";
         sh << "  fi\n";
         sh << "fi\n";
     }
@@ -1135,7 +1135,7 @@ std::string minimumMacOSVersion(const MacOSToolchainBuildParams &params) {
 
 /// @brief Build the product archive `Distribution` XML wrapping the component pkg.
 /// @details Declares the title, host-architecture options, install size, and the
-///          single choice referencing the embedded ViperToolchain.pkg component.
+///          single choice referencing the embedded ZannaToolchain.pkg component.
 /// @param params Toolchain build parameters (display name, identifier, arch).
 /// @param pkgVersion Dotted-numeric package version string.
 /// @param installKBytes Estimated installed size in KiB.
@@ -1188,7 +1188,7 @@ std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &
     xml << "  </choice>\n";
     xml << "  <pkg-ref id=\"" << escapedId << "\" version=\"" << escapedVersion
         << "\" onConclusion=\"none\" installKBytes=\"" << installKBytes
-        << "\" updateKBytes=\"0\" auth=\"Root\">#ViperToolchain.pkg</pkg-ref>\n";
+        << "\" updateKBytes=\"0\" auth=\"Root\">#ZannaToolchain.pkg</pkg-ref>\n";
     xml << "  <product id=\"" << escapedProductId << "\" version=\"" << escapedVersion << "\"/>\n";
     xml << "</installer-gui-script>\n";
     return xml.str();
@@ -1226,7 +1226,7 @@ PkgImage defaultMacOSInstallerBackground(bool dark) {
         }
     }
 
-    const PkgImage icon = imageResize(defaultViperToolchainIconImage(), 160, 160);
+    const PkgImage icon = imageResize(defaultZannaToolchainIconImage(), 160, 160);
     constexpr uint32_t iconX = 430;
     constexpr uint32_t iconY = 126;
     for (uint32_t y = 0; y < icon.height; ++y) {
@@ -1253,15 +1253,15 @@ std::string generateMacOSToolchainWelcomeHtml(const std::string &displayName,
             "style=\"font-family:-apple-system,Helvetica,Arial,sans-serif;\">\n";
     html << "<h2>" << xmlEscape(displayName) << " " << xmlEscape(version) << "</h2>\n";
     html
-        << "<p>This installer sets up the Viper compiler toolchain &mdash; the <code>viper</code>, "
+        << "<p>This installer sets up the Zanna compiler toolchain &mdash; the <code>zanna</code>, "
            "<code>vbasic</code>, <code>zia</code>, language servers, IL utilities, and "
-           "<code>viperide</code> together with the runtime libraries, headers, CMake package "
+           "<code>zannaide</code> together with the runtime libraries, headers, CMake package "
            "files, "
            "and manual pages.</p>\n";
-    html << "<p>The toolchain installs under <code>/usr/local/viper</code> with convenience "
+    html << "<p>The toolchain installs under <code>/usr/local/zanna</code> with convenience "
             "symlinks in <code>/usr/local/bin</code>. Click Continue to proceed.</p>\n";
     html << "<p>An uninstall helper is installed at "
-            "<code>/usr/local/viper/share/viper/uninstall.sh</code>. Source and IL file opens are "
+            "<code>/usr/local/zanna/share/zanna/uninstall.sh</code>. Source and IL file opens are "
             "handled by a small helper app in <code>/Applications</code>.</p>\n";
     html << "</body></html>\n";
     return html.str();
@@ -1273,11 +1273,11 @@ std::string generateMacOSToolchainReadmeHtml(const std::string &minimumVersion) 
     html << "<!DOCTYPE html>\n<html><body "
             "style=\"font-family:-apple-system,Helvetica,Arial,sans-serif;\">\n";
     html << "<h2>What will be installed</h2>\n";
-    html << "<ul><li>The toolchain under <code>/usr/local/viper</code>.</li>"
+    html << "<ul><li>The toolchain under <code>/usr/local/zanna</code>.</li>"
             "<li>Command links under <code>/usr/local/bin</code> and manual-page links under "
             "<code>/usr/local/share/man</code>.</li>"
             "<li>A lightweight file-opening helper in <code>/Applications</code>.</li></ul>\n";
-    html << "<p>Administrator approval is required. Existing Viper-owned files are upgraded in "
+    html << "<p>Administrator approval is required. Existing Zanna-owned files are upgraded in "
             "place; unrelated files are preserved. Requires macOS "
          << xmlEscape(minimumVersion) << " or newer.</p>\n";
     html << "</body></html>\n";
@@ -1288,11 +1288,11 @@ std::string generateMacOSToolchainReadmeHtml(const std::string &minimumVersion) 
 std::string generateMacOSToolchainConclusionHtml() {
     return "<!DOCTYPE html>\n<html><body "
            "style=\"font-family:-apple-system,Helvetica,Arial,sans-serif;\">\n"
-           "<h2>Viper Toolchain is ready</h2>\n"
-           "<p>Open a new Terminal window and run <code>viper --version</code> to verify the "
+           "<h2>Zanna Toolchain is ready</h2>\n"
+           "<p>Open a new Terminal window and run <code>zanna --version</code> to verify the "
            "installation.</p>\n"
-           "<p>To remove Viper later, run "
-           "<code>sudo /usr/local/viper/share/viper/uninstall.sh</code>.</p>\n"
+           "<p>To remove Zanna later, run "
+           "<code>sudo /usr/local/zanna/share/zanna/uninstall.sh</code>.</p>\n"
            "</body></html>\n";
 }
 
@@ -1300,17 +1300,17 @@ std::string generateMacOSToolchainConclusionHtml() {
 std::string generateMacOSToolchainLicenseText(const std::string &spdx) {
     const std::string id = spdx.empty() ? std::string("GPL-3.0-only") : spdx;
     std::ostringstream txt;
-    txt << "Viper Compiler Toolchain\n\n";
+    txt << "Zanna Compiler Toolchain\n\n";
     txt << "This software is distributed under the " << id << " license.\n\n";
-    txt << "The complete license text ships with the Viper source distribution and is available "
+    txt << "The complete license text ships with the Zanna source distribution and is available "
            "online at https://www.gnu.org/licenses/. By choosing Agree you accept the terms of the "
         << id << " license.\n";
     return txt.str();
 }
 
-/// @brief Find the staged Viper license file for the macOS installer license pane.
+/// @brief Find the staged Zanna license file for the macOS installer license pane.
 /// @details Prefers a manifest entry whose leaf name is exactly `LICENSE`, which
-///          matches the CMake install layout under share/doc/viper. Returns
+///          matches the CMake install layout under share/doc/zanna. Returns
 ///          nullptr when the staged tree does not contain a suitable file.
 /// @param manifest Staged toolchain manifest.
 /// @return Pointer to the license entry, or nullptr.
@@ -1599,7 +1599,7 @@ static void addStagedAppToDmg(const MacOSBuildParams &params,
         throw std::runtime_error(
             "macOS .dmg volume name must be non-empty and free of '/' and ':'");
 
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-app-dmg");
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-app-dmg");
     TempDirGuard cleanup(tmpRoot);
     const fs::path stage = tmpRoot / "stage";
     fs::create_directories(stage);
@@ -1717,7 +1717,7 @@ static void addStagedAppToDmg(const MacOSBuildParams &params,
 /// optionally signs it with codesign, then packs the result into a ZIP at `params.outputPath`.
 void buildMacOSPackage(const MacOSBuildParams &params) {
     const fs::path stageRoot =
-        uniqueTempPackagingDir("viper-macos-app-" + normalizeExecName(params.projectName));
+        uniqueTempPackagingDir("zanna-macos-app-" + normalizeExecName(params.projectName));
     TempDirGuard cleanup(stageRoot);
     const StagedMacOSApp staged = stageMacOSAppBundle(params, stageRoot);
     addStagedAppToZip(stageRoot, staged.appPath, staged.stagedExec, params.outputPath);
@@ -1731,14 +1731,14 @@ void buildMacOSAppDmg(const MacOSBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const fs::path stageRoot =
-        uniqueTempPackagingDir("viper-macos-app-dmg-" + normalizeExecName(params.projectName));
+        uniqueTempPackagingDir("zanna-macos-app-dmg-" + normalizeExecName(params.projectName));
     TempDirGuard cleanup(stageRoot);
     const StagedMacOSApp staged = stageMacOSAppBundle(params, stageRoot);
     addStagedAppToDmg(params, staged.appPath, displayName, params.outputPath);
 }
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.
-/// Stages files under `/usr/local/viper/`, creates receipt-owned command and
+/// Stages files under `/usr/local/zanna/`, creates receipt-owned command and
 /// manpage symlinks, emits native CPIO/XAR archives, and wraps the component in
 /// a product distribution package.
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
@@ -1760,11 +1760,11 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     validateDebVersion(version, "macOS toolchain manifest version");
     const std::string minimumVersion = minimumMacOSVersion(params);
 
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-macos-toolchain-" + version);
     TempDirGuard cleanup(tmpRoot);
 
     const fs::path payloadRoot = tmpRoot / "root";
-    const fs::path installRoot = payloadRoot / "usr" / "local" / "viper";
+    const fs::path installRoot = payloadRoot / "usr" / "local" / "zanna";
     fs::create_directories(installRoot);
     fs::create_directories(payloadRoot / "usr" / "local" / "bin");
 
@@ -1806,17 +1806,17 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     appendLeafNamesFromDirectory(toolNames, installRoot / "bin");
     for (const auto &name : toolNames)
         createPackageSymlink(payloadRoot / "usr" / "local" / "bin" / name,
-                             fs::path("../viper/bin") / name);
+                             fs::path("../zanna/bin") / name);
 
-    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" / "ViperConfig.cmake",
+    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Zanna" / "ZannaConfig.cmake",
                     "include(\"" + std::string(kMacOSToolchainInstallRoot) +
-                        "/lib/cmake/Viper/ViperConfig.cmake\")\n",
+                        "/lib/cmake/Zanna/ZannaConfig.cmake\")\n",
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                         fs::perms::others_read);
-    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" /
-                        "ViperConfigVersion.cmake",
+    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Zanna" /
+                        "ZannaConfigVersion.cmake",
                     "include(\"" + std::string(kMacOSToolchainInstallRoot) +
-                        "/lib/cmake/Viper/ViperConfigVersion.cmake\")\n",
+                        "/lib/cmake/Zanna/ZannaConfigVersion.cmake\")\n",
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                         fs::perms::others_read);
 
@@ -1831,7 +1831,7 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
         const ToolchainFileEntry *handler = findMacOSFileHandler(params.manifest);
         if (handler == nullptr) {
             throw std::runtime_error("macOS toolchain file associations require staged "
-                                     "libexec/viper/viper-file-handler");
+                                     "libexec/zanna/zanna-file-handler");
         }
         const fs::path appContents = payloadRoot /
                                      fs::path(std::string(kMacOSToolchainAppPath)).relative_path() /
@@ -1848,7 +1848,7 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                         generatePkgInfo(),
                         fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                             fs::perms::others_read);
-        const fs::path appHandler = appMacOS / "viper-file-handler";
+        const fs::path appHandler = appMacOS / "zanna-file-handler";
         fs::copy_file(
             handler->stagedAbsolutePath, appHandler, fs::copy_options::overwrite_existing);
         fs::permissions(appHandler,
@@ -1856,17 +1856,17 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                             fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
                             fs::perms::others_exec,
                         fs::perm_options::replace);
-        const auto icns = generateIcns(defaultViperToolchainIconImage());
-        writeFileBytes(appResources / "Viper.icns",
+        const auto icns = generateIcns(defaultZannaToolchainIconImage());
+        writeFileBytes(appResources / "Zanna.icns",
                        icns,
                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                            fs::perms::others_read);
     }
 
-    writeExecutableScript(installRoot / "share" / "viper" / "uninstall.sh",
+    writeExecutableScript(installRoot / "share" / "zanna" / "uninstall.sh",
                           generateMacOSUninstallScript(params.identifier));
     const std::string installManifest = macOSInstallManifestText(params.manifest);
-    writeFileString(installRoot / "share" / "viper" / "install_manifest.txt",
+    writeFileString(installRoot / "share" / "zanna" / "install_manifest.txt",
                     installManifest,
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                         fs::perms::others_read);
@@ -1941,11 +1941,11 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     if (!output.parent_path().empty())
         fs::create_directories(output.parent_path());
     XarWriter product;
-    product.addDirectory("ViperToolchain.pkg", 0700);
-    product.addFileVec("ViperToolchain.pkg/Bom", readFile(bomPath.string()), false);
-    product.addFileVec("ViperToolchain.pkg/Payload", payloadGzip, false);
-    product.addFileVec("ViperToolchain.pkg/Scripts", scriptsGzip, false);
-    product.addFileString("ViperToolchain.pkg/PackageInfo", packageInfo, true);
+    product.addDirectory("ZannaToolchain.pkg", 0700);
+    product.addFileVec("ZannaToolchain.pkg/Bom", readFile(bomPath.string()), false);
+    product.addFileVec("ZannaToolchain.pkg/Payload", payloadGzip, false);
+    product.addFileVec("ZannaToolchain.pkg/Scripts", scriptsGzip, false);
+    product.addFileString("ZannaToolchain.pkg/PackageInfo", packageInfo, true);
     product.addFileString("Distribution", distribution, true);
     product.addFileString("welcome.html", welcomeHtml, true);
     product.addFileString("readme.html", readmeHtml, true);
@@ -1989,13 +1989,13 @@ void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
             "macOS .dmg volume name must be non-empty and free of '/' and ':'");
 
     std::error_code ec;
-    const fs::path tmpRoot = uniqueTempPackagingDir("viper-dmg");
+    const fs::path tmpRoot = uniqueTempPackagingDir("zanna-dmg");
     TempDirGuard cleanup(tmpRoot);
     const fs::path stage = tmpRoot / "stage";
     fs::create_directories(stage);
 
     const std::string pkgName = validateDmgItemName(
-        params.pkgDisplayName.empty() ? std::string("Viper Toolchain.pkg") : params.pkgDisplayName,
+        params.pkgDisplayName.empty() ? std::string("Zanna Toolchain.pkg") : params.pkgDisplayName,
         "macOS DMG package display name");
     fs::copy_file(params.pkgPath, stage / pkgName, fs::copy_options::overwrite_existing);
 
@@ -2023,7 +2023,7 @@ void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
         fs::copy_file(
             params.volumeIcns, stage / ".VolumeIcon.icns", fs::copy_options::overwrite_existing);
     } else {
-        const std::vector<uint8_t> icon = generateIcns(defaultViperToolchainIconImage());
+        const std::vector<uint8_t> icon = generateIcns(defaultZannaToolchainIconImage());
         writeFileBytes(stage / ".VolumeIcon.icns",
                        icon,
                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
@@ -2111,4 +2111,4 @@ void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
 #endif
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

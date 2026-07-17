@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -35,7 +35,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::ra {
+namespace zanna::codegen::ra {
 
 /// @brief Control-flow classification of a single MIR instruction.
 /// @details Returned by the backend-supplied classifier callback. The
@@ -142,4 +142,4 @@ std::vector<std::vector<std::size_t>> extractSuccessors(
     return succs;
 }
 
-} // namespace viper::codegen::ra
+} // namespace zanna::codegen::ra

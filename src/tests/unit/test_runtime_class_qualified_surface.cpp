@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //     expansion, not by text scraping.
 //   - Class-qualified runtime functions must resolve to a callable class member with the
 //     same public member name.
-//   - Direct runtime class leaf names under Viper.* must not collide unless
+//   - Direct runtime class leaf names under Zanna.* must not collide unless
 //     they are intentionally reused across 2D/3D namespaces.
 //   - Instance method signatures omit the leading obj receiver from RT_FUNC.
 // Ownership/Lifetime:
@@ -43,31 +43,31 @@ struct SignatureException {
 };
 
 static const std::vector<SignatureException> kSignatureExceptions = {
-    {"Viper.Graphics3D.IKSolver3D",
+    {"Zanna.Graphics3D.IKSolver3D",
      "TwoBone",
      "IKSolver3DTwoBone",
      "Static IK-solver factory; the leading obj is the skeleton input, not a receiver."},
-    {"Viper.Graphics3D.IKSolver3D",
+    {"Zanna.Graphics3D.IKSolver3D",
      "LookAt",
      "IKSolver3DLookAt",
      "Static IK-solver factory; the leading obj is the skeleton input, not a receiver."},
-    {"Viper.Graphics3D.IKSolver3D",
+    {"Zanna.Graphics3D.IKSolver3D",
      "FABRIK",
      "IKSolver3DFABRIK",
      "Static IK-solver factory; the leading obj is the chain input, not a receiver."},
-    {"Viper.Graphics3D.Material3D",
+    {"Zanna.Graphics3D.Material3D",
      "Textured",
      "Material3DTextured",
      "Static factory alias; the leading obj is the texture input, not a receiver."},
-    {"Viper.Graphics3D.Light3D",
+    {"Zanna.Graphics3D.Light3D",
      "Directional",
      "Light3DDirectional",
      "Static factory alias; the leading obj is the direction input, not a receiver."},
-    {"Viper.Graphics3D.Light3D",
+    {"Zanna.Graphics3D.Light3D",
      "Point",
      "Light3DPoint",
      "Static factory alias; the leading obj is the position input, not a receiver."},
-    {"Viper.Graphics3D.Light3D",
+    {"Zanna.Graphics3D.Light3D",
      "Spot",
      "Light3DSpot",
      "Static factory alias; the leading object parameters are direction and position inputs."},
@@ -173,7 +173,7 @@ bool starts_with(std::string_view value, std::string_view prefix) {
 }
 
 bool is_scoped_class(std::string_view class_name) {
-    return starts_with(class_name, "Viper.Graphics3D.") || starts_with(class_name, "Viper.Game3D.");
+    return starts_with(class_name, "Zanna.Graphics3D.") || starts_with(class_name, "Zanna.Game3D.");
 }
 
 std::string lower_ascii(std::string_view value) {
@@ -572,11 +572,11 @@ bool check_method_signatures(const RuntimeSurface &surface, const RuntimeIndex &
 }
 
 std::string direct_leaf_name(std::string_view class_name) {
-    constexpr std::string_view kViperPrefix = "Viper.";
-    if (!starts_with(class_name, kViperPrefix))
+    constexpr std::string_view kZannaPrefix = "Zanna.";
+    if (!starts_with(class_name, kZannaPrefix))
         return {};
 
-    std::string_view tail = class_name.substr(kViperPrefix.size());
+    std::string_view tail = class_name.substr(kZannaPrefix.size());
     size_t dot = tail.rfind('.');
     if (dot == std::string_view::npos)
         return {};
@@ -752,55 +752,55 @@ bool is_allowed_duplicate_function_export(std::string_view key,
 
     if (starts_with(symbol, "rt_keyboard_key_")) {
         return all_names_start_with_one_of(names,
-                                           {"Viper.Input.Keyboard.get_", "Viper.Input.Key.get_"});
+                                           {"Zanna.Input.Keyboard.get_", "Zanna.Input.Key.get_"});
     }
 
     if (starts_with(symbol, "rt_hash_") || starts_with(symbol, "rt_aes_")) {
-        return any_name_starts_with(names, "Viper.Crypto.Legacy.") &&
+        return any_name_starts_with(names, "Zanna.Crypto.Legacy.") &&
                all_names_start_with_one_of(names,
-                                           {"Viper.Crypto.Hash.",
-                                            "Viper.Crypto.Aes.",
-                                            "Viper.Crypto.Legacy.Hash.",
-                                            "Viper.Crypto.Legacy.Aes."});
+                                           {"Zanna.Crypto.Hash.",
+                                            "Zanna.Crypto.Aes.",
+                                            "Zanna.Crypto.Legacy.Hash.",
+                                            "Zanna.Crypto.Legacy.Aes."});
     }
 
     if (starts_with(symbol, "rt_gc_")) {
-        return all_names_start_with_one_of(names, {"Viper.Runtime.GC.", "Viper.Runtime.GC."});
+        return all_names_start_with_one_of(names, {"Zanna.Runtime.GC.", "Zanna.Runtime.GC."});
     }
 
     if (starts_with(symbol, "rt_memory_")) {
-        return all_names_start_with_one_of(names, {"Viper.Memory.", "Viper.Runtime.Unsafe."});
+        return all_names_start_with_one_of(names, {"Zanna.Memory.", "Zanna.Runtime.Unsafe."});
     }
 
     if (starts_with(symbol, "rt_throw_msg_") || starts_with(symbol, "rt_trap_")) {
-        return all_names_start_with_one_of(names, {"Viper.Error.", "Viper.Runtime.Unsafe."});
+        return all_names_start_with_one_of(names, {"Zanna.Error.", "Zanna.Runtime.Unsafe."});
     }
 
     if (starts_with(symbol, "rt_game3d_assets_load_model_template") ||
         symbol == "rt_game3d_asset_handle_get_template") {
         return all_names_start_with_one_of(
             names,
-            {"Viper.Game3D.Prefab.", "Viper.Game3D.Assets3D.", "Viper.Game3D.AssetHandle3D."});
+            {"Zanna.Game3D.Prefab.", "Zanna.Game3D.Assets3D.", "Zanna.Game3D.AssetHandle3D."});
     }
 
     if (starts_with(symbol, "rt_game3d_world_new_with")) {
-        return all_names_start_with_one_of(names, {"Viper.Game3D.World3D."});
+        return all_names_start_with_one_of(names, {"Zanna.Game3D.World3D."});
     }
 
     if (starts_with(symbol, "rt_mesh3d_new_")) {
-        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Mesh3D."});
+        return all_names_start_with_one_of(names, {"Zanna.Graphics3D.Mesh3D."});
     }
 
     if (starts_with(symbol, "rt_collider3d_new_")) {
-        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Collider3D."});
+        return all_names_start_with_one_of(names, {"Zanna.Graphics3D.Collider3D."});
     }
 
     if (starts_with(symbol, "rt_light3d_new_")) {
-        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Light3D."});
+        return all_names_start_with_one_of(names, {"Zanna.Graphics3D.Light3D."});
     }
 
     if (starts_with(symbol, "rt_material3d_new_")) {
-        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Material3D."});
+        return all_names_start_with_one_of(names, {"Zanna.Graphics3D.Material3D."});
     }
 
     static const std::set<std::string_view> allowed_symbols = {
@@ -819,7 +819,7 @@ bool is_allowed_duplicate_function_export(std::string_view key,
         "rt_channel_get_cap",
         "rt_crypto_module_disable_approved_mode",
         "rt_crypto_module_enable_approved_mode",
-        "rt_crypto_module_is_approved_mode_viper",
+        "rt_crypto_module_is_approved_mode_zanna",
         "rt_deque_cap",
         "rt_f64_to_str",
         "rt_fmt_bool_yn",
@@ -931,14 +931,14 @@ bool check_no_copied_gui_widget_methods(const RuntimeSurface &surface, const Run
     std::vector<std::string> failures;
 
     for (const RuntimeClass &runtime_class : surface.classes) {
-        if (!starts_with(runtime_class.name, "Viper.GUI.") ||
-            runtime_class.name == "Viper.GUI.Widget") {
+        if (!starts_with(runtime_class.name, "Zanna.GUI.") ||
+            runtime_class.name == "Zanna.GUI.Widget") {
             continue;
         }
 
         for (const RuntimeMethod &method : runtime_class.methods) {
             const RuntimeFunc *target = resolve_func(index, method.target_id);
-            if (target && starts_with(target->canonical, "Viper.GUI.Widget.")) {
+            if (target && starts_with(target->canonical, "Zanna.GUI.Widget.")) {
                 failures.push_back(runtime_class.name + "." + method.name +
                                    " copies base widget target " + target->canonical);
             }
@@ -948,7 +948,7 @@ bool check_no_copied_gui_widget_methods(const RuntimeSurface &surface, const Run
     if (failures.empty())
         return true;
 
-    std::cerr << "Concrete GUI classes must not copy Viper.GUI.Widget methods:\n";
+    std::cerr << "Concrete GUI classes must not copy Zanna.GUI.Widget methods:\n";
     for (const std::string &failure : failures)
         std::cerr << "  " << failure << "\n";
     return false;
@@ -1011,26 +1011,26 @@ bool check_constructor_targets_are_canonical_new(const RuntimeSurface &surface,
 
 bool is_allowed_length_property(std::string_view qualified_name) {
     static const std::set<std::string_view> allowed = {
-        "Viper.Collections.BitSet.Length",
-        "Viper.Collections.Bytes.Length",
-        "Viper.Collections.F64Buffer.Length",
-        "Viper.Collections.I64Buffer.Length",
-        "Viper.Game.Physics2D.DistanceJoint.Length",
-        "Viper.Graphics3D.Path3D.Length",
-        "Viper.IO.BinaryBuffer.Length",
-        "Viper.IO.MemStream.Length",
-        "Viper.IO.Stream.Length",
-        "Viper.Audio.MusicGen.Length",
-        "Viper.String.Length",
-        "Viper.Text.Scanner.Length",
-        "Viper.Text.StringBuilder.Length",
+        "Zanna.Collections.BitSet.Length",
+        "Zanna.Collections.Bytes.Length",
+        "Zanna.Collections.F64Buffer.Length",
+        "Zanna.Collections.I64Buffer.Length",
+        "Zanna.Game.Physics2D.DistanceJoint.Length",
+        "Zanna.Graphics3D.Path3D.Length",
+        "Zanna.IO.BinaryBuffer.Length",
+        "Zanna.IO.MemStream.Length",
+        "Zanna.IO.Stream.Length",
+        "Zanna.Audio.MusicGen.Length",
+        "Zanna.String.Length",
+        "Zanna.Text.Scanner.Length",
+        "Zanna.Text.StringBuilder.Length",
     };
     return allowed.count(qualified_name) != 0;
 }
 
 bool is_legacy_length_alias(std::string_view qualified_name) {
     static const std::set<std::string_view> allowed = {
-        "Viper.Game.PathResult.Length",
+        "Zanna.Game.PathResult.Length",
     };
     return allowed.count(qualified_name) != 0;
 }
@@ -1051,7 +1051,7 @@ bool check_length_properties_are_semantic_lengths(const RuntimeSurface &surface)
 
     for (const RuntimeFunc &func : surface.funcs) {
         constexpr std::string_view suffix = ".get_Length";
-        if (!func.public_surface || !starts_with(func.canonical, "Viper.") ||
+        if (!func.public_surface || !starts_with(func.canonical, "Zanna.") ||
             func.canonical.size() < suffix.size() ||
             func.canonical.substr(func.canonical.size() - suffix.size()) != suffix) {
             continue;

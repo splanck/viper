@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 // ── Test: loadSourceBuffer rejects files > 256 MB ───────────────────────────
 static void test_source_too_large() {
 #if !defined(_WIN32)
-    const char *path = "/tmp/viper_large_source_test.vpr";
+    const char *path = "/tmp/zanna_large_source_test.vpr";
 
     // Create a sparse file > 256 MB using ftruncate (no actual disk usage)
     int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 #include <sstream>
 #include <vector>
 
-using namespace viper::codegen::linker;
+using namespace zanna::codegen::linker;
 
 static int gFail = 0;
 
@@ -137,7 +137,7 @@ static uint64_t readLE64(const uint8_t *p) {
 
 /// Create a temporary file path for test output.
 static std::string tmpPath(const std::string &name) {
-    auto dir = std::filesystem::temp_directory_path() / "viper_elf_test";
+    auto dir = std::filesystem::temp_directory_path() / "zanna_elf_test";
     std::filesystem::create_directories(dir);
     return (dir / name).string();
 }
@@ -145,7 +145,7 @@ static std::string tmpPath(const std::string &name) {
 /// Clean up temp directory.
 static void cleanupTmp() {
     std::error_code ec;
-    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "viper_elf_test", ec);
+    std::filesystem::remove_all(std::filesystem::temp_directory_path() / "zanna_elf_test", ec);
 }
 
 /// Build a minimal LinkLayout with the given sections.

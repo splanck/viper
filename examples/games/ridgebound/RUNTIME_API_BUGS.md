@@ -1,6 +1,6 @@
 # Runtime / API Bug Log — ridgebound enhancement work
 
-A running record of Viper compiler / runtime / 3D-API issues found while extending this demo.
+A running record of Zanna compiler / runtime / 3D-API issues found while extending this demo.
 Each entry: date, severity, area, symptom, repro, workaround/status.
 
 Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaround · **P2** papercut/inconsistency.
@@ -22,26 +22,26 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   over a shallow graded/rippled heightfield and asserts forward travel, rise, and grounded state.
   Ridgebound's standalone no-jump route replay additionally passes with the existing executable.
 - **Status:** Fixed in source. The C++ regression was not executed during this work because the
-  explicit task constraint prohibited rebuilding Viper and running CTest.
+  explicit task constraint prohibited rebuilding Zanna and running CTest.
 
 ---
 
-> Note on tooling: the in-tree `build/install-check/bin/viper` is **stale** (predates
-> `Viper.Game3D`) and must not be used for validation — it reports phantom errors such as
-> "Unknown runtime namespace: Viper.Game3D". The authoritative current binary is
-> `/usr/local/bin/viper` (equivalently `build/src/tools/viper/viper`). Two findings first
+> Note on tooling: the in-tree `build/install-check/bin/zanna` is **stale** (predates
+> `Zanna.Game3D`) and must not be used for validation — it reports phantom errors such as
+> "Unknown runtime namespace: Zanna.Game3D". The authoritative current binary is
+> `/usr/local/bin/zanna` (equivalently `build/src/tools/zanna/zanna`). Two findings first
 > attributed to "bugs" were actually this stale binary; they have been retracted below.
 
 ## BUG-002 — `SceneAsset.Load` traps (DomainError) on a missing file instead of returning null
 - **Date:** 2026-06-03
 - **Severity:** P1 (no graceful failure path)
-- **Area:** `Viper.Graphics3D.SceneAsset` / FBX loader
+- **Area:** `Zanna.Graphics3D.SceneAsset` / FBX loader
 - **Symptom:** When the path cannot be opened, the call raises an uncatchable
   `DomainError (code=0): FBX.Load: cannot open file` trap that aborts execution. The documented
   `if (m == null)` recovery pattern never runs, so a script cannot detect/skip a missing asset.
 - **Repro:** `SceneAsset.Load("definitely_missing.fbx")` →
   `Trap @main...: DomainError (code=0): FBX.Load: cannot open file` (statements after never run).
-- **Workaround:** Historical: probe with `Viper.IO.File.Exists(path)` before loading. Now obsolete —
+- **Workaround:** Historical: probe with `Zanna.IO.File.Exists(path)` before loading. Now obsolete —
   the demo's `spawnForest` relies on the `null` return to try candidate paths
   (`MapleTree_1.fbx`, then `examples/games/ridgebound/MapleTree_1.fbx`) and uses whichever loads,
   so the forest resolves whether the demo is run from the repo root or from inside the folder.
@@ -54,9 +54,9 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 ## BUG-003 — `Material3D.SetMetallic` / `SetRoughness` methods advertised but not callable
 - **Date:** 2026-06-03
 - **Severity:** P2 (inconsistency)
-- **Area:** `Viper.Graphics3D.Material3D`
+- **Area:** `Zanna.Graphics3D.Material3D`
 - **Symptom:** Introspection lists `SetMetallic(f64)` and `SetRoughness(f64)` as methods, but the
-  compiler (current binary) rejects them: `V-ZIA-SEMA: Runtime class 'Viper.Graphics3D.Material3D'
+  compiler (current binary) rejects them: `V-ZIA-SEMA: Runtime class 'Zanna.Graphics3D.Material3D'
   has no method 'SetRoughness'`. The scalar factors must instead be set via the property setters
   `set_Metallic` / `set_Roughness` (and likewise `set_AmbientOcclusion`, `set_EmissiveIntensity`,
   `set_NormalScale`, `set_Reflectivity`). The *map* setters (`SetAlbedoMap`, `SetNormalMap`, …)
@@ -91,7 +91,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 ## Note N2 — `PostFX3D.AddColorGrade` brightness is an additive offset, not a multiplier
 - **Date:** 2026-06-03
 - **Severity:** P2 (documentation ambiguity)
-- **Area:** `Viper.Graphics3D.PostFX3D.AddColorGrade(brightness, contrast, saturation)`
+- **Area:** `Zanna.Graphics3D.PostFX3D.AddColorGrade(brightness, contrast, saturation)`
 - **Symptom:** Passing `brightness = 1.02` (intending a 2% multiplicative lift) blows the entire
   frame to pure white. The parameter is an **additive** exposure offset centered on `0.0`; sane
   values are ~`0.0–0.03` (existing demos use `0.015`). Contrast/saturation, by contrast, ARE
@@ -106,17 +106,17 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 ## Retracted (stale-binary artifacts, not real bugs)
 - ~~`SceneAsset.get_SceneCount` has no bound getter~~ — **false positive.** Works on the current
   binary (`scenes=1`); the failure was the stale `install-check` binary.
-- ~~Binding `Viper.IO.File as FileSys` breaks `Viper.Game3D`~~ — **false positive.** Both binds
-  coexist fine on the current binary; the stale binary simply lacked `Viper.Game3D`.
+- ~~Binding `Zanna.IO.File as FileSys` breaks `Zanna.Game3D`~~ — **false positive.** Both binds
+  coexist fine on the current binary; the stale binary simply lacked `Zanna.Game3D`.
 
 ---
 
 ## BUG-003 — `Material3D.SetMetallic` / `SetRoughness` methods advertised but not callable
 - **Date:** 2026-06-03
 - **Severity:** P2 (inconsistency)
-- **Area:** `Viper.Graphics3D.Material3D`
+- **Area:** `Zanna.Graphics3D.Material3D`
 - **Symptom:** Introspection lists `SetMetallic(f64)` and `SetRoughness(f64)` as methods, but the
-  compiler rejects them: `V-ZIA-SEMA: Runtime class 'Viper.Graphics3D.Material3D' has no method
+  compiler rejects them: `V-ZIA-SEMA: Runtime class 'Zanna.Graphics3D.Material3D' has no method
   'SetRoughness'`. The scalar factors must instead be set via the property setters
   `set_Metallic` / `set_Roughness` (and likewise `set_AmbientOcclusion`, `set_EmissiveIntensity`,
   `set_NormalScale`, `set_Reflectivity`). Note the asymmetry: the *map* setters (`SetAlbedoMap`,
@@ -128,16 +128,16 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 
 ---
 
-## BUG-004 — Native asset embedding defined `viper_asset_blob` twice (multiply-defined symbol)
+## BUG-004 — Native asset embedding defined `zanna_asset_blob` twice (multiply-defined symbol)
 - **Date:** 2026-06-04
 - **Severity:** P0 (native `embed` never worked)
-- **Area:** `src/tools/viper/cmd_run.cpp` + `src/tools/common/native_compiler.cpp`
+- **Area:** `src/tools/zanna/cmd_run.cpp` + `src/tools/common/native_compiler.cpp`
 - **Symptom:** A single-step native build of a project with an `embed` directive failed to link:
-  `error: multiply defined symbol 'viper_asset_blob'`. `cmd_run.cpp` both injected the VPA blob into
+  `error: multiply defined symbol 'zanna_asset_blob'`. `cmd_run.cpp` both injected the ZPAK blob into
   `.rodata` via codegen (`--asset-blob`) **and** wrote/linked a separate asset `.o`
   (`writeAssetBlobObject`), and `native_compiler.cpp` set both `opts.asset_blob_path` and pushed the
   `.o` onto `extra_objects` — two definitions of the same symbol. (The two-step demo pipeline
-  `viper build -o file.il` + `viper codegen` passed neither, so packaged binaries silently had no
+  `zanna build -o file.il` + `zanna codegen` passed neither, so packaged binaries silently had no
   embedded assets at all.)
 - **Fix:** `cmd_run.cpp` now embeds via the `.rodata` injection path only and leaves `assetObjPath`
   empty, so the redundant object is never linked. Verified: a native build embeds the blob
@@ -178,7 +178,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   before its defining block had populated `tempRegClass`, so lowering defaulted it to GPR and emitted
   `LdrRegFpImm` + `SCvtF` instead of `LdrFprFpImm`. That converted the raw double bits to a huge
   numeric value and made the floating-point bounds checks fail.
-- **Repro:** `viper build examples/games/ridgebound -o /tmp/g3d -O1` → "planted 0";
+- **Repro:** `zanna build examples/games/ridgebound -o /tmp/g3d -O1` → "planted 0";
   same with `-O0` → "planted 152".
 - **Workaround:** Historical: build the showcase at `-O0`.
 - **Status:** Fixed 2026-06-04. `LowerILToMIR` now seeds temp register classes from the whole IL
@@ -191,7 +191,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 ## Note N3 — `PostFX3D.AddSSAO` / `AddDOF` / `AddMotionBlur` trap on the CPU post-FX path
 - **Date:** 2026-06-04
 - **Severity:** P2 (papercut — a clear trap, but easy to hit)
-- **Area:** `Viper.Graphics3D.PostFX3D`
+- **Area:** `Zanna.Graphics3D.PostFX3D`
 - **Symptom:** Adding SSAO, depth-of-field, or motion blur to a chain that is later applied on the
   **software backend or to a RenderTarget3D** raises `DomainError: SSAO, DOF, and motion blur require
   GPU window postfx; RenderTarget3D and software CPU postfx support Bloom, Tonemap, FXAA, ColorGrade,
@@ -212,4 +212,4 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   DrawMeshWind(mesh,xform,mat,dirX,dirZ,strength,phase)` (CPU height-weighted vertex sway), and
   `Game3D.Keys.get_KeyF11`. Also: `Canvas3D.DrawMeshSkinned` now accepts an `AnimController3D` as well
   as an `AnimPlayer3D`. Unit coverage in `src/tests/unit/test_rt_canvas3d.cpp` (wind deform + NULL
-  safety); docs in `docs/viperlib/graphics/rendering3d.md`.
+  safety); docs in `docs/zannalib/graphics/rendering3d.md`.

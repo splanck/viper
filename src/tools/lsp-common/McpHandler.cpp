@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <limits>
 #include <optional>
 
-namespace viper::server {
+namespace zanna::server {
 namespace {
 
 // Each validator returns std::nullopt when the input is acceptable, or an error
@@ -310,25 +310,25 @@ JsonValue McpHandler::buildToolDefinitions() const {
 
     // <prefix>/runtime-classes
     tools.push_back(toolDef(prefix + "/runtime-classes",
-                            "List all Viper runtime classes with method and property counts",
+                            "List all Zanna runtime classes with method and property counts",
                             {},
                             {}));
 
     // <prefix>/runtime-methods
     tools.push_back(toolDef(prefix + "/runtime-methods",
-                            "List methods and properties for a specific Viper runtime class",
+                            "List methods and properties for a specific Zanna runtime class",
                             {
                                 {"className",
                                  schemaProp("string",
                                             "Fully qualified class name (e.g., "
-                                            "\"Viper.Terminal\")")},
+                                            "\"Zanna.Terminal\")")},
                             },
                             {"className"}));
 
     // <prefix>/runtime-search
     tools.push_back(
         toolDef(prefix + "/runtime-search",
-                "Search Viper runtime APIs by keyword (case-insensitive substring match)",
+                "Search Zanna runtime APIs by keyword (case-insensitive substring match)",
                 {
                     {"keyword", schemaProp("string", "Search keyword")},
                 },
@@ -651,4 +651,4 @@ McpHandler::ToolCallResult McpHandler::callRuntimeSearch(const JsonValue &args) 
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-} // namespace viper::server
+} // namespace zanna::server

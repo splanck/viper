@@ -1,8 +1,8 @@
 module StringBuilderDemo;
-bind Viper.Terminal;
-bind Viper.Text.StringBuilder as SB;
+bind Zanna.Terminal;
+bind Zanna.Text.StringBuilder as SB;
 func start() {
-    Say("=== Viper.Text.StringBuilder API Audit ===");
+    Say("=== Zanna.Text.StringBuilder API Audit ===");
 
     // --- New ---
     Say("--- New ---");

@@ -9,7 +9,7 @@ keep current `Canvas3D.SetQuality` and `Game3D.Quality.Apply` compatible.
 
 ## Problem statement
 
-Viper already has three overlapping quality entry points:
+Zanna already has three overlapping quality entry points:
 
 - `Canvas3D.SetQuality` installs backend-safe post-FX profiles and exposes
   requested/active/fallback status;

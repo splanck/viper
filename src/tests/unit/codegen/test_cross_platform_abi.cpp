@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,18 +41,18 @@
 TEST(CrossPlatformABI, X64SysVShadowSpaceIsZero) {
     // SysV AMD64 has no shadow space — stack args start immediately above the
     // return address after prologue.
-    EXPECT_EQ(viper::codegen::x64::sysvTarget().shadowSpace, std::size_t{0});
+    EXPECT_EQ(zanna::codegen::x64::sysvTarget().shadowSpace, std::size_t{0});
 }
 
 TEST(CrossPlatformABI, X64Win64ShadowSpaceIs32) {
     // Windows x64 requires 32 bytes of shadow space above the return address.
     // Stack-passed arguments start at RBP+48 (= 32 shadow + 8 saved-RBP + 8 ret addr).
-    EXPECT_EQ(viper::codegen::x64::win64Target().shadowSpace, std::size_t{32});
+    EXPECT_EQ(zanna::codegen::x64::win64Target().shadowSpace, std::size_t{32});
 }
 
 TEST(CrossPlatformABI, X64SysVStackArgOffsetFormula) {
     // Verify the offset formula: shadowSpace + 16 + stackArgIdx*8
-    const auto &sysv = viper::codegen::x64::sysvTarget();
+    const auto &sysv = zanna::codegen::x64::sysvTarget();
     const std::size_t shadowSpace = sysv.shadowSpace; // 0
 
     // First stack arg: offset = 0 + 16 + 0 = 16
@@ -66,7 +66,7 @@ TEST(CrossPlatformABI, X64Win64StackArgOffsetFormula) {
     // Windows x64: shadow space is 32 bytes.
     // First stack arg: offset = 32 + 16 + 0 = 48
     // Second stack arg: offset = 32 + 16 + 8 = 56
-    const auto &win64 = viper::codegen::x64::win64Target();
+    const auto &win64 = zanna::codegen::x64::win64Target();
     const std::size_t shadowSpace = win64.shadowSpace; // 32
 
     EXPECT_EQ(shadowSpace + 16 + 0 * 8, std::size_t{48});
@@ -77,7 +77,7 @@ TEST(CrossPlatformABI, X64Win64StackArgOffsetFormula) {
 TEST(CrossPlatformABI, X64Win64RegisterArgOrder) {
     // Windows x64 integer arg order: RCX, RDX, R8, R9 (4 registers).
     // SysV order: RDI, RSI, RDX, RCX, R8, R9 (6 registers).
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     const auto &win64 = win64Target();
     const auto &sysv = sysvTarget();
@@ -102,9 +102,9 @@ TEST(CrossPlatformABI, X64Win64RegisterArgOrder) {
 // =============================================================================
 
 /// @brief Emit a simple function header using the given target and return it.
-static std::string emitAarch64FunctionHeader(const viper::codegen::aarch64::TargetInfo &ti,
+static std::string emitAarch64FunctionHeader(const zanna::codegen::aarch64::TargetInfo &ti,
                                              const std::string &name) {
-    viper::codegen::aarch64::AsmEmitter emitter{ti};
+    zanna::codegen::aarch64::AsmEmitter emitter{ti};
     std::ostringstream oss;
     emitter.emitFunctionHeader(oss, name);
     return oss.str();
@@ -112,15 +112,15 @@ static std::string emitAarch64FunctionHeader(const viper::codegen::aarch64::Targ
 
 TEST(CrossPlatformABI, AArch64WindowsTargetExists) {
     // windowsTarget() must return a valid reference without crashing.
-    const auto &ti = viper::codegen::aarch64::windowsTarget();
+    const auto &ti = zanna::codegen::aarch64::windowsTarget();
     EXPECT_TRUE(ti.isWindows());
     EXPECT_FALSE(ti.isLinux());
 }
 
 TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux) {
     // Windows ARM64 uses identical AAPCS64 register conventions to Linux.
-    const auto &linux_ti = viper::codegen::aarch64::linuxTarget();
-    const auto &windows_ti = viper::codegen::aarch64::windowsTarget();
+    const auto &linux_ti = zanna::codegen::aarch64::linuxTarget();
+    const auto &windows_ti = zanna::codegen::aarch64::windowsTarget();
 
     EXPECT_EQ(windows_ti.intArgOrder, linux_ti.intArgOrder);
     EXPECT_EQ(windows_ti.f64ArgOrder, linux_ti.f64ArgOrder);
@@ -133,7 +133,7 @@ TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux) {
 
 TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoELFType) {
     // PE/COFF does not support ELF .type directives.
-    const auto &ti = viper::codegen::aarch64::windowsTarget();
+    const auto &ti = zanna::codegen::aarch64::windowsTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
 
     // Must not contain .type
@@ -142,7 +142,7 @@ TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoELFType) {
 
 TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoUnderscorePrefix) {
     // Windows ARM64 does not use underscore-prefixed symbols (unlike Darwin).
-    const auto &ti = viper::codegen::aarch64::windowsTarget();
+    const auto &ti = zanna::codegen::aarch64::windowsTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
 
     // The function label itself must appear without a leading underscore.
@@ -152,14 +152,14 @@ TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoUnderscorePrefix) {
 
 TEST(CrossPlatformABI, AArch64DarwinFunctionHeaderHasUnderscorePrefix) {
     // Darwin uses underscore-prefixed symbols.
-    const auto &ti = viper::codegen::aarch64::darwinTarget();
+    const auto &ti = zanna::codegen::aarch64::darwinTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
 
     EXPECT_NE(out.find("_myfunc"), std::string::npos);
 }
 
 TEST(CrossPlatformABI, AArch64DarwinLocalLabelsAreNotMangledOrGlobal) {
-    const auto &ti = viper::codegen::aarch64::darwinTarget();
+    const auto &ti = zanna::codegen::aarch64::darwinTarget();
 
     const std::string tmp = emitAarch64FunctionHeader(ti, "Ltmp0");
     EXPECT_NE(tmp.find("Ltmp0:\n"), std::string::npos);
@@ -178,7 +178,7 @@ TEST(CrossPlatformABI, AArch64DarwinLocalLabelsAreNotMangledOrGlobal) {
 
 TEST(CrossPlatformABI, AArch64LinuxFunctionHeaderHasELFType) {
     // Linux ELF emits .type for function metadata.
-    const auto &ti = viper::codegen::aarch64::linuxTarget();
+    const auto &ti = zanna::codegen::aarch64::linuxTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
 
     EXPECT_NE(out.find(".type"), std::string::npos);
@@ -192,7 +192,7 @@ TEST(CrossPlatformABI, LinkerSupportArchiveExtension) {
     // On non-Windows platforms, the runtime archive must end in ".a".
     // On Windows, it must end in ".lib".
     const std::filesystem::path path =
-        viper::codegen::common::runtimeArchivePath({}, "viper_rt_base");
+        zanna::codegen::common::runtimeArchivePath({}, "zanna_rt_base");
 
 #if defined(_WIN32)
     const std::string ext = path.extension().string();
@@ -209,7 +209,7 @@ TEST(CrossPlatformABI, LinkerSupportArchiveExtension) {
 
 TEST(CrossPlatformABI, LinkerSupportArchivePathContainsBaseName) {
     // The archive path must contain the base name regardless of platform.
-    const std::filesystem::path path = viper::codegen::common::runtimeArchivePath({}, "my_lib");
+    const std::filesystem::path path = zanna::codegen::common::runtimeArchivePath({}, "my_lib");
     EXPECT_NE(path.string().find("my_lib"), std::string::npos);
 }
 
@@ -218,7 +218,7 @@ TEST(CrossPlatformABI, LinkerSupportAssemblerHelperPreservesExitCode) {
     std::ostringstream out;
     std::ostringstream err;
 
-    const int exitCode = viper::codegen::common::invokeAssembler(
+    const int exitCode = zanna::codegen::common::invokeAssembler(
         {"/bin/sh", "-c", "exit 7"}, "ignored-input.s", "ignored-output.o", out, err);
 
     EXPECT_EQ(exitCode, 7);
@@ -228,5 +228,5 @@ TEST(CrossPlatformABI, LinkerSupportAssemblerHelperPreservesExitCode) {
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

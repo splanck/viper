@@ -1,10 +1,10 @@
-if (NOT DEFINED VIPER_EXE)
-    message(FATAL_ERROR "VIPER_EXE is required")
+if (NOT DEFINED ZANNA_EXE)
+    message(FATAL_ERROR "ZANNA_EXE is required")
 endif ()
 
 function(run_help_case name)
     execute_process(
-            COMMAND "${VIPER_EXE}" ${ARGN}
+            COMMAND "${ZANNA_EXE}" ${ARGN}
             RESULT_VARIABLE _rv
             OUTPUT_VARIABLE _out
             ERROR_VARIABLE _err)
@@ -18,7 +18,7 @@ endfunction()
 
 function(run_fail_case name)
     execute_process(
-            COMMAND "${VIPER_EXE}" ${ARGN}
+            COMMAND "${ZANNA_EXE}" ${ARGN}
             RESULT_VARIABLE _rv
             OUTPUT_VARIABLE _out
             ERROR_VARIABLE _err)
@@ -32,7 +32,7 @@ run_help_case(TOP --help)
 if (TOP_TEXT MATCHES "Intrinsics:" OR TOP_TEXT MATCHES "FUNCTION must RETURN")
     message(FATAL_ERROR "top-level help still contains BASIC-specific details\n${TOP_TEXT}")
 endif ()
-if (NOT TOP_TEXT MATCHES "viper help package")
+if (NOT TOP_TEXT MATCHES "zanna help package")
     message(FATAL_ERROR "top-level help does not point to package help\n${TOP_TEXT}")
 endif ()
 
@@ -50,7 +50,7 @@ if (NOT BENCH_TEXT MATCHES "Maximum interpreter steps")
 endif ()
 
 run_help_case(ILOPT il-opt --help)
-if (NOT ILOPT_TEXT MATCHES "viper il-opt")
+if (NOT ILOPT_TEXT MATCHES "zanna il-opt")
     message(FATAL_ERROR "il-opt help output was not shown\n${ILOPT_TEXT}")
 endif ()
 

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: il/core/Param.hpp
 // Purpose: Declares the Param struct -- parameters for both functions and
-//          basic blocks in Viper IL. Serves as the IL's equivalent of phi
+//          basic blocks in Zanna IL. Serves as the IL's equivalent of phi
 //          nodes in traditional SSA form, with optional semantic attributes
 //          (noalias, nocapture, nonnull) for optimisation hints.
 // Key invariants:

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTCanvasUnavailableTests.cpp
 // Purpose: Verify that rt_canvas_new traps cleanly when graphics are
-//          unavailable — either the stub build (no VIPER_ENABLE_GRAPHICS)
+//          unavailable — either the stub build (no ZANNA_ENABLE_GRAPHICS)
 //          or the real build when the display server can't be reached.
 // Key invariants: No silent NULL return — the runtime must report why.
 // Ownership/Lifetime: Uses vm_trap override to capture trap message.

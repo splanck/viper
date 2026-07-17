@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -140,20 +140,20 @@ TypeRef Sema::analyzeExpr(Expr *expr) {
             if (awaitedType && awaitedType->kind != TypeKindSem::Any &&
                 awaitedType->kind != TypeKindSem::Unknown &&
                 !(awaitedType->kind == TypeKindSem::Ptr &&
-                  awaitedType->name == "Viper.Threads.Future")) {
-                error(expr->loc, "`await` expects Viper.Threads.Future");
+                  awaitedType->name == "Zanna.Threads.Future")) {
+                error(expr->loc, "`await` expects Zanna.Threads.Future");
             }
 
             result = types::unknown();
             if (awaitedType && awaitedType->kind == TypeKindSem::Ptr &&
-                awaitedType->name == "Viper.Threads.Future" && !awaitedType->typeArgs.empty() &&
+                awaitedType->name == "Zanna.Threads.Future" && !awaitedType->typeArgs.empty() &&
                 awaitedType->typeArgs[0]) {
                 result = awaitedType->typeArgs[0];
                 break;
             }
             if (awaitedType && awaitedType->kind == TypeKindSem::Ptr &&
-                awaitedType->name == "Viper.Threads.Future") {
-                error(expr->loc, "`await` requires a typed Viper.Threads.Future[T]");
+                awaitedType->name == "Zanna.Threads.Future") {
+                error(expr->loc, "`await` requires a typed Zanna.Threads.Future[T]");
                 break;
             }
             if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get())) {
@@ -349,7 +349,7 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr) {
         auto importIt = importedSymbols_.find(expr->name);
         if (importIt != importedSymbols_.end()) {
             const std::string &fullName = importIt->second;
-            if (fullName.rfind("Viper.", 0) == 0) {
+            if (fullName.rfind("Zanna.", 0) == 0) {
                 Symbol *fnSym = lookupSymbol(fullName);
                 if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern) {
                     if (fnSym->type && fnSym->type->kind == TypeKindSem::Function &&

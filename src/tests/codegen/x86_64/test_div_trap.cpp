@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,10 +33,10 @@
 #include <process.h>
 #endif
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 namespace {
-#ifndef VIPER_ILC_PATH
-#define VIPER_ILC_PATH "ilc"
+#ifndef ZANNA_ILC_PATH
+#define ZANNA_ILC_PATH "ilc"
 #endif
 
 [[nodiscard]] ILValue makeParam(int id) noexcept {
@@ -165,11 +165,11 @@ struct DivTrapSequence {
 }
 
 [[nodiscard]] std::optional<std::string> nativeExecDisabledReason() {
-    if (envFlagEnabled("VIPER_TESTS_DISABLE_NATIVE_EXEC")) {
-        return std::string("Native execution disabled via VIPER_TESTS_DISABLE_NATIVE_EXEC");
+    if (envFlagEnabled("ZANNA_TESTS_DISABLE_NATIVE_EXEC")) {
+        return std::string("Native execution disabled via ZANNA_TESTS_DISABLE_NATIVE_EXEC");
     }
-    if (envFlagEnabled("VIPER_TESTS_DISABLE_SUBPROCESS")) {
-        return std::string("Native execution disabled via VIPER_TESTS_DISABLE_SUBPROCESS");
+    if (envFlagEnabled("ZANNA_TESTS_DISABLE_SUBPROCESS")) {
+        return std::string("Native execution disabled via ZANNA_TESTS_DISABLE_SUBPROCESS");
     }
     return std::nullopt;
 }
@@ -192,14 +192,14 @@ struct DivTrapSequence {
 }
 
 [[nodiscard]] std::string makeRunNativeCommand(const std::filesystem::path &ilPath) {
-    return viper::tests::quoteForShell(std::filesystem::path(VIPER_ILC_PATH)) + " codegen x64 " +
-           viper::tests::quoteForShell(ilPath) + " -run-native";
+    return zanna::tests::quoteForShell(std::filesystem::path(ZANNA_ILC_PATH)) + " codegen x64 " +
+           zanna::tests::quoteForShell(ilPath) + " -run-native";
 }
 
 [[nodiscard]] int runNativeCommand(const std::filesystem::path &ilPath,
                                    const std::string &command) {
 #ifdef _WIN32
-    const std::string exePath = std::filesystem::path(VIPER_ILC_PATH).string();
+    const std::string exePath = std::filesystem::path(ZANNA_ILC_PATH).string();
     const std::string ilPathString = ilPath.string();
     const char *const argv[] = {
         exePath.c_str(), "codegen", "x64", ilPathString.c_str(), "-run-native", nullptr};
@@ -321,7 +321,7 @@ entry:
 }
 )";
 
-    return runNativeIl("viper_div_trap_", "div_trap.il", kDivTrapProgram);
+    return runNativeIl("zanna_div_trap_", "div_trap.il", kDivTrapProgram);
 }
 
 [[nodiscard]] NativeRunResult runCheckedRemainderNative() {
@@ -339,14 +339,14 @@ entry:
 }
 )";
 
-    return runNativeIl("viper_checked_rem_", "checked_rem.il", kRemainderProgram);
+    return runNativeIl("zanna_checked_rem_", "checked_rem.il", kRemainderProgram);
 }
 
 } // namespace
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64
 
 int main() {
-    using namespace viper::codegen::x64;
+    using namespace zanna::codegen::x64;
 
     const ILModule module = makeDivModule();
     const CodegenResult result = emitModuleToAssembly(module, {});

@@ -1,7 +1,7 @@
 // ============================================================================
 // MODULE: music_tracks
 // PURPOSE: Procedurally synthesizes the menu and in-game background
-//          music via Viper.Mixer.MusicGen. Four or five channels each
+//          music via Zanna.Mixer.MusicGen. Four or five channels each
 //          with their own envelope, volume, pan, and note schedule.
 //
 // KEY-DESIGN-CHOICES:
@@ -21,7 +21,7 @@
 
 module music_tracks;
 
-bind Viper.Audio;
+bind Zanna.Audio;
 
 /// @brief Build the menu-screen pad+arp+bass+bell loop.
 hide func buildMenuSong() -> Sound {

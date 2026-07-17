@@ -1,4 +1,4 @@
-' Test Viper.DateTime infrastructure
+' Test Zanna.DateTime infrastructure
 ' Note: Full BASIC DateTime integration pending frontend runtime lookup
 
 ' Test 1: Verify timestamp arithmetic logic

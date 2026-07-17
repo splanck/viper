@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_serialize.h
-// Purpose: Unified serialization façade for Viper.Data.Serialize. Provides
+// Purpose: Unified serialization façade for Zanna.Data.Serialize. Provides
 //          format-agnostic parse/format/convert/detect operations over JSON,
 //          XML, YAML, TOML, and CSV via a single rt_format_t enum or
 //          heuristic auto-detection.
@@ -48,29 +48,29 @@ typedef enum {
 // Unified Parse / Format
 //=========================================================================
 
-/// @brief Parse text in the specified format into a Viper value.
+/// @brief Parse text in the specified format into a Zanna value.
 /// @param text Input text.
 /// @param format Format enum (RT_FORMAT_JSON, etc.).
 /// @return Parsed value (Map, Seq, String, boxed primitive).
 ///         Returns NULL on parse error (check rt_serialize_error()).
 void *rt_serialize_parse(rt_string text, int64_t format);
 
-/// @brief Parse text in the specified format into a Viper.Result.
+/// @brief Parse text in the specified format into a Zanna.Result.
 /// @details Returns `Ok(value)` for valid input, including valid null values
 ///          that map to NULL, and `Err(message)` for invalid input, nil input,
 ///          or unknown format values.
 /// @param text Input text.
 /// @param format Format enum (RT_FORMAT_JSON, etc.).
-/// @return Opaque Viper.Result object containing the parsed value or error.
+/// @return Opaque Zanna.Result object containing the parsed value or error.
 void *rt_serialize_parse_result(rt_string text, int64_t format);
 
-/// @brief Format a Viper value as text in the specified format.
+/// @brief Format a Zanna value as text in the specified format.
 /// @param obj Value to format.
 /// @param format Format enum.
 /// @return Formatted string.
 rt_string rt_serialize_format(void *obj, int64_t format);
 
-/// @brief Format a Viper value as pretty-printed text.
+/// @brief Format a Zanna value as pretty-printed text.
 /// @param obj Value to format.
 /// @param format Format enum.
 /// @param indent Spaces per indentation level (ignored for CSV).
@@ -104,12 +104,12 @@ int64_t rt_serialize_detect(rt_string text);
 /// @return Parsed value, or NULL on error.
 void *rt_serialize_auto_parse(rt_string text);
 
-/// @brief Parse text by auto-detecting the format and return a Viper.Result.
+/// @brief Parse text by auto-detecting the format and return a Zanna.Result.
 /// @details Returns `Ok(value)` after successful detection and parsing, or
 ///          `Err(message)` when detection fails or the detected parser rejects
 ///          the input.
 /// @param text Input text.
-/// @return Opaque Viper.Result object containing the parsed value or error.
+/// @return Opaque Zanna.Result object containing the parsed value or error.
 void *rt_serialize_auto_parse_result(rt_string text);
 
 //=========================================================================

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //          shares GUI types via rt_gui_internal.h.
 //
 // Key invariants:
-//   - Mirrors rt_gui_widgets_complex.c's VIPER_ENABLE_GRAPHICS guard: real
+//   - Mirrors rt_gui_widgets_complex.c's ZANNA_ENABLE_GRAPHICS guard: real
 //     widgets when graphics is enabled, no-op stubs otherwise.
 //   - Handles are validated via the rt_*_checked casts before use.
 //
@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Resolve a parent-container handle to its widget (file-local copy).
 static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
@@ -714,7 +714,7 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
 
 //=============================================================================
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — returns NULL; no dropdown widget is created.
 void *rt_dropdown_new(void *parent) {
@@ -990,4 +990,4 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
 }
 
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

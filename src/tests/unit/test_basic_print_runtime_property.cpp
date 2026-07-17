@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -50,7 +50,7 @@ int main() {
     // Line 20 prints a string-valued runtime property (owned result); line 40
     // prints a borrowed string variable (must still be retained for the call).
     const std::string src =
-        "10 DIM CONN AS Viper.Crypto.Tls = Viper.Crypto.Tls.Connect(\"127.0.0.1\", 1)\n"
+        "10 DIM CONN AS Zanna.Crypto.Tls = Zanna.Crypto.Tls.Connect(\"127.0.0.1\", 1)\n"
         "20 PRINT CONN.Host\n"
         "30 DIM S AS STRING = \"hi\"\n"
         "40 PRINT S\n";

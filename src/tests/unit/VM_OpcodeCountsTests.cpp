@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 #include "VMTestHook.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Opcode.hpp"
-#include "viper/vm/VM.hpp"
+#include "zanna/vm/VM.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -97,7 +97,7 @@ int main() {
     {
         il::vm::VM vm(m);
         vm.resetOpcodeCounts();
-#if VIPER_VM_OPCOUNTS
+#if ZANNA_VM_OPCOUNTS
         il::vm::VMTestHook::setOpcodeCountsEnabled(vm, false);
 #endif
         (void)vm.run();

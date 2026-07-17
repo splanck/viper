@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestMethodBinding.cpp
-// Purpose: Ensure method binding for Viper.String emits canonical externs with receiver.
+// Purpose: Ensure method binding for Zanna.String emits canonical externs with receiver.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/internals/architecture.md
@@ -35,17 +35,17 @@ constexpr std::string_view kSrc = R"BASIC(
 }
 } // namespace
 
-TEST(RuntimeMethodBinding, EmitsViperStringSubstringExtern) {
+TEST(RuntimeMethodBinding, EmitsZannaStringSubstringExtern) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     std::string source(kSrc);
     il::frontends::basic::BasicCompilerInput input{source, "method_substring.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.String.Substring"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.String.Substring"));
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

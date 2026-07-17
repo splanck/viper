@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,10 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 // Bring the shared compaction helper into this namespace scope.
-using viper::codegen::common::removeMarkedInstructions;
+using zanna::codegen::common::removeMarkedInstructions;
 
 // ---- Statistics -------------------------------------------------------------
 
@@ -377,4 +377,4 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
     return false;
 }
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

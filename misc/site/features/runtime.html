@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Full-Stack Runtime — Viper</title>
-  <meta name="description" content="Viper's 300-class runtime library covers 2D + 3D graphics, audio, video, networking, crypto, threading, GUI, I/O, collections, text processing, and more — all built from scratch in portable C.">
+  <title>Full-Stack Runtime — Zanna</title>
+  <meta name="description" content="Zanna's 300-class runtime library covers 2D + 3D graphics, audio, video, networking, crypto, threading, GUI, I/O, collections, text processing, and more — all built from scratch in portable C.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -53,7 +53,7 @@
   <main class="page-main prose">
     <h1 id="overview">Full-Stack Runtime</h1>
 
-    <p>Viper's runtime library is portable C implementing <strong>300 classes across 22 modules</strong>. It rivals the standard libraries of established platforms like Python, Java, or C# &mdash; but every line is hand-written with zero external dependencies.</p>
+    <p>Zanna's runtime library is portable C implementing <strong>300 classes across 22 modules</strong>. It rivals the standard libraries of established platforms like Python, Java, or C# &mdash; but every line is hand-written with zero external dependencies.</p>
 
     <p>Platform-specific backends use only OS-native APIs: Cocoa / Metal on macOS, X11 / OpenGL on Linux, Win32 / D3D11 on Windows. A pure-software 3D rasterizer is always available as a fallback.</p>
 
@@ -185,7 +185,7 @@
         <tr><td>Watcher</td><td>File system change detection (FSEvents / inotify / ReadDirectoryChangesW) with debounced coalescing</td></tr>
         <tr><td>SaveData</td><td>Persistent save file management with versioned JSON migration</td></tr>
         <tr><td>TempFile</td><td>Atomic temporary file creation (O_CREAT|O_EXCL / CREATE_NEW)</td></tr>
-        <tr><td>Assets</td><td>VPA asset embedding (compile-time `embed`/`pack`/`pack-compressed`) with mountable archives</td></tr>
+        <tr><td>Assets</td><td>ZPAK asset embedding (compile-time `embed`/`pack`/`pack-compressed`) with mountable archives</td></tr>
       </tbody>
     </table>
 
@@ -291,13 +291,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

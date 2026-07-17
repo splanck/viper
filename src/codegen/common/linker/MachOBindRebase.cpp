@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 
 #include <algorithm>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 using encoding::writeLE32;
 using encoding::writeLE64;
@@ -273,4 +273,4 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
         strtabData.push_back(0);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

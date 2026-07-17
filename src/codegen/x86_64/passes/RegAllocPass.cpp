@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include <string>
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// @brief Run register allocation on legalized MIR.
 /// @details The pass checks the @p module bookkeeping flags and concrete MIR
@@ -59,4 +59,4 @@ bool RegAllocPass::run(Module &module, Diagnostics &diags) {
     return true;
 }
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Configuration for parameterizing shared LSP/MCP handlers.
 struct ServerConfig {
@@ -34,7 +34,7 @@ struct ServerConfig {
     std::string sourceName; ///< "zia" or "vbasic" (LSP diagnostic source)
     std::string toolPrefix; ///< "zia" or "basic" (MCP tool name prefix)
     std::string defaultExt; ///< ".zia" or ".bas"
-    std::string langLabel;  ///< "Zia" or "Viper BASIC" (for tool descriptions)
+    std::string langLabel;  ///< "Zia" or "Zanna BASIC" (for tool descriptions)
 };
 
 /// @brief Abstract interface for protocol-agnostic compiler facades.
@@ -153,4 +153,4 @@ class ICompilerBridge {
     virtual std::vector<RuntimeMemberInfo> runtimeSearch(const std::string &keyword);
 };
 
-} // namespace viper::server
+} // namespace zanna::server

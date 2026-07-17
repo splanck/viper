@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,9 +19,9 @@
 
 module profile_flow;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Text.Fmt;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Text.Fmt;
 bind "./accessibility";
 bind "./config";
 bind "./difficulty";

@@ -1,8 +1,8 @@
-' API Audit: Viper.Game.Physics2D (BASIC)
-PRINT "=== API Audit: Viper.Game.Physics2D ==="
-DIM world AS OBJECT = Viper.Game.Physics2D.World.New(0, 980)
+' API Audit: Zanna.Game.Physics2D (BASIC)
+PRINT "=== API Audit: Zanna.Game.Physics2D ==="
+DIM world AS OBJECT = Zanna.Game.Physics2D.World.New(0, 980)
 PRINT world.BodyCount
-DIM body AS OBJECT = Viper.Game.Physics2D.Body.New(100, 0, 32, 32, 0)
+DIM body AS OBJECT = Zanna.Game.Physics2D.Body.New(100, 0, 32, 32, 0)
 world.Add(body)
 PRINT world.BodyCount
 PRINT body.X

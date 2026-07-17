@@ -1,8 +1,8 @@
-' API Audit: Viper.Game.UI.HudTable and TableClickResult (BASIC)
-PRINT "=== API Audit: Viper.Game.UI.HudTable ==="
+' API Audit: Zanna.Game.UI.HudTable and TableClickResult (BASIC)
+PRINT "=== API Audit: Zanna.Game.UI.HudTable ==="
 
 DIM table AS OBJECT
-table = Viper.Game.UI.HudTable.New(0, 0, 220, 96)
+table = Zanna.Game.UI.HudTable.New(0, 0, 220, 96)
 table.AddColumn("Name", 100, 0)
 table.AddColumn("Score", 80, 0)
 table.SetColumnSortable(1, 1, 1)

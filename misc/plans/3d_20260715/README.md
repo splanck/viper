@@ -1,4 +1,4 @@
-# Viper 3D Application-Layer Improvement Program
+# Zanna 3D Application-Layer Improvement Program
 
 Date prepared: 2026-07-15  
 Evidence baseline: current working tree and build outputs inspected on 2026-07-15  
@@ -9,7 +9,7 @@ Status: implementation plans; no implementation is authorized by this package al
 ## Purpose
 
 This package converts the review of `3dbowling`, `ridgebound`, `ashfall`, the
-complete `Viper.Game3D` surface, and the underlying Graphics3D runtime into an
+complete `Zanna.Game3D` surface, and the underlying Graphics3D runtime into an
 ordered implementation program. It is intentionally explicit enough for an
 execution agent that has not performed the original architectural review.
 
@@ -47,7 +47,7 @@ plans in the same documentation change.
 
 ## Current conclusion
 
-Today a Viper 3D game normally follows this pattern:
+Today a Zanna 3D game normally follows this pattern:
 
 1. Construct a `Game3D.World3D` or independently construct Canvas3D,
    SceneGraph, Camera3D, and PhysicsWorld3D.
@@ -84,7 +84,7 @@ common responsibilities first-class and composable.
 | 09 | [Quality profile system](09-quality-profile-system.md) | Capability-resolved policy shared by renderer and gameplay subsystems | 05, 08 |
 | 10 | [Entity-aware queries and event stream](10-entity-aware-queries-and-event-stream.md) | World queries/events that return Game3D identities | 00 |
 | 11 | [Pooled effects and audio cues](11-pooled-effects-and-audio-cues.md) | Named, bounded, reusable visual/audio feedback | 04, 09, 10 |
-| 12 | [Game application, scene, and UI framework](12-game-application-scene-ui-framework.md) | Production-grade `GameBase3D` without duplicating `Viper.Game.UI` | 03, 04, 01, 02 |
+| 12 | [Game application, scene, and UI framework](12-game-application-scene-ui-framework.md) | Production-grade `GameBase3D` without duplicating `Zanna.Game.UI` | 03, 04, 01, 02 |
 | 13 | [Ranged combat and hurt regions](13-ranged-combat-and-hurt-regions.md) | Hitscan, penetration, radial damage, and hurt-region resolution | 10, 11 |
 | 14 | [Versioned save-game composition](14-versioned-savegame-composition.md) | Atomic slots combining custom data and `World3D.SaveState` | 04, 08 |
 | 15 | [Deterministic 3D scenario harness](15-deterministic-3d-scenario-harness.md) | Shared input, stepping, capture, and assertion conventions | 03, 10 |
@@ -130,8 +130,8 @@ coordinated integration branch.
   additive; custom games must still be able to own their frame phases.
 - Do not replace already-landed systems merely to fit this plan. Compose
   `ThirdPersonController`, `CharacterController3D`, persistence,
-  `EffectRegistry3D`, `Environment3D`, `Viper.Game.UI`, and
-  `Viper.Assets.Resolver` where possible.
+  `EffectRegistry3D`, `Environment3D`, `Zanna.Game.UI`, and
+  `Zanna.Assets.Resolver` where possible.
 - Public classes receive permanent appended class IDs, real and
   disabled-graphics implementations, registry definitions, docs, surface
   audits, and VM/native coverage as applicable. Never renumber an existing ID.

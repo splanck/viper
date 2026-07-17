@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_packaging.cpp
-// Purpose: Unit tests for the VAPS packaging subsystem — verifies binary
+// Purpose: Unit tests for the ZAPS packaging subsystem — verifies binary
 //          format correctness for ZIP, tar, ar, PE, DEFLATE, ICO/ICNS,
 //          .lnk, .desktop, and Info.plist generators.
 //
@@ -53,8 +53,8 @@
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
 #include "common/RunProcess.hpp"
-#include "viper/platform/Capabilities.hpp"
-#include "viper/runtime/RuntimeComponentManifest.hpp"
+#include "zanna/platform/Capabilities.hpp"
+#include "zanna/runtime/RuntimeComponentManifest.hpp"
 
 #include <algorithm>
 #include <array>
@@ -67,7 +67,7 @@
 #include <sstream>
 #include <utility>
 
-using namespace viper::pkg;
+using namespace zanna::pkg;
 
 extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
@@ -96,21 +96,21 @@ static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
     WindowsInstallerMetadata metadata;
     metadata.packageMode = "setup";
     metadata.productKind = "toolchain";
-    metadata.identifier = "org.viper.toolchain";
-    metadata.displayName = "Viper Tools \xE2\x80\x93 Developer Edition";
+    metadata.identifier = "org.zanna.toolchain";
+    metadata.displayName = "Zanna Tools \xE2\x80\x93 Developer Edition";
     metadata.version = "1.2.3-rc.1";
-    metadata.publisher = "Viper Project";
+    metadata.publisher = "Zanna Project";
     metadata.description = "Compiler, VM, IDE, and SDK";
     metadata.contact = "support@example.invalid";
-    metadata.homepage = "https://example.invalid/viper";
-    metadata.documentationUrl = "https://example.invalid/viper/docs";
+    metadata.homepage = "https://example.invalid/zanna";
+    metadata.documentationUrl = "https://example.invalid/zanna/docs";
     metadata.architecture = "x64";
     metadata.defaultScope = "user";
-    metadata.defaultInstallDir = "Viper";
-    metadata.executableName = "bin/viper.exe";
-    metadata.associationExecutable = "bin/viperide.exe";
+    metadata.defaultInstallDir = "Zanna";
+    metadata.executableName = "bin/zanna.exe";
+    metadata.associationExecutable = "bin/zannaide.exe";
     metadata.pathRelativePath = "bin";
-    metadata.displayIconRelativePath = "share/viper/viper.ico";
+    metadata.displayIconRelativePath = "share/zanna/zanna.ico";
     metadata.cleanupSha256 = std::string(64, 'c');
     metadata.addToPath = true;
     metadata.registerFileAssociations = true;
@@ -118,26 +118,26 @@ static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
     metadata.components.push_back(
         {"core", "Core developer tools", "Required compiler and runtime", true, true, 70});
     metadata.components.push_back(
-        {"ide", "ViperIDE", "Editor, debugger, and language services", false, true, 70});
-    metadata.payloadFiles.push_back({"bin/viper.exe", std::string(64, 'a'), 30, std::string{}});
-    metadata.payloadFiles.push_back({"bin/viperide.exe", std::string(64, 'b'), 70, "ide"});
+        {"ide", "ZannaIDE", "Editor, debugger, and language services", false, true, 70});
+    metadata.payloadFiles.push_back({"bin/zanna.exe", std::string(64, 'a'), 30, std::string{}});
+    metadata.payloadFiles.push_back({"bin/zannaide.exe", std::string(64, 'b'), 70, "ide"});
     metadata.outerFiles.push_back(
         {"meta/uninstall.exe", "uninstall.exe", std::string(64, 'e'), 40, std::string{}});
     metadata.shortcuts.push_back({"start-menu",
-                                  "ViperIDE.lnk",
+                                  "ZannaIDE.lnk",
                                   "install",
-                                  "bin/viperide.exe",
+                                  "bin/zannaide.exe",
                                   "profile",
                                   {},
                                   {},
                                   {},
-                                  "ViperIDE",
+                                  "ZannaIDE",
                                   "install",
-                                  "bin/viperide.ico",
+                                  "bin/zannaide.ico",
                                   0,
                                   "ide"});
     metadata.associations.push_back(
-        {".zia", "Zia source", "text/x-zia", "org.viper.toolchain.Zia.1", ""});
+        {".zia", "Zia source", "text/x-zia", "org.zanna.toolchain.Zia.1", ""});
     metadata.installedSizeBytes = 140;
     return metadata;
 }
@@ -694,7 +694,7 @@ static std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &app
 }
 
 /**
- * @brief Locate the first byte of the gzip payload appended to a Viper AppImage.
+ * @brief Locate the first byte of the gzip payload appended to a Zanna AppImage.
  *
  * The runtime stub is plain shell text followed by kLinuxRuntimePayloadMarker
  * and then the gzip-compressed tar payload. Returning appImage.size() signals
@@ -718,19 +718,19 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     namespace fs = std::filesystem;
     const fs::path stage = tmpRoot / "stage";
     fs::create_directories(stage / "bin");
-    fs::create_directories(stage / "lib" / "cmake" / "Viper");
-    fs::create_directories(stage / "include" / "viper");
+    fs::create_directories(stage / "lib" / "cmake" / "Zanna");
+    fs::create_directories(stage / "include" / "zanna");
     fs::create_directories(stage / "share" / "man" / "man1");
     fs::create_directories(stage / "share" / "man" / "man7");
-    fs::create_directories(stage / "share" / "doc" / "viper");
+    fs::create_directories(stage / "share" / "doc" / "zanna");
 
 #if defined(_WIN32)
     auto binaryName = [](std::string_view base) { return std::string(base) + ".exe"; };
-    const std::string exeName = binaryName("viper");
+    const std::string exeName = binaryName("zanna");
     auto archiveName = [](std::string_view base) { return std::string(base) + ".lib"; };
 #else
     auto binaryName = [](std::string_view base) { return std::string(base); };
-    const std::string exeName = "viper";
+    const std::string exeName = "zanna";
     auto archiveName = [](std::string_view base) { return "lib" + std::string(base) + ".a"; };
 #endif
     {
@@ -751,7 +751,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
                              "vbasic-server",
                              "basic-ast-dump",
                              "basic-lex-dump",
-                             "viperide"}) {
+                             "zannaide"}) {
         const fs::path toolPath = stage / "bin" / binaryName(tool);
         std::ofstream out(toolPath, std::ios::binary);
         out << "stub";
@@ -763,35 +763,35 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
                         fs::perm_options::replace);
     }
     {
-        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperConfig.cmake");
+        std::ofstream out(stage / "lib" / "cmake" / "Zanna" / "ZannaConfig.cmake");
         out << "# mock\n";
     }
     {
-        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperTargets.cmake");
+        std::ofstream out(stage / "lib" / "cmake" / "Zanna" / "ZannaTargets.cmake");
         out << "# mock\n";
     }
     {
-        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperConfigVersion.cmake");
+        std::ofstream out(stage / "lib" / "cmake" / "Zanna" / "ZannaConfigVersion.cmake");
         out << "set(PACKAGE_VERSION \"9.8.7\")\n";
     }
     {
-        std::ofstream out(stage / "include" / "viper" / "version.hpp");
-        out << "#define VIPER_VERSION_STR \"9.8.7\"\n"
-               "#define VIPER_SNAPSHOT_STR \"9.8.7-0-g0123456789ab\"\n"
-               "#define VIPER_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
-               "#define VIPER_SOURCE_STATE_STR \"clean\"\n";
+        std::ofstream out(stage / "include" / "zanna" / "version.hpp");
+        out << "#define ZANNA_VERSION_STR \"9.8.7\"\n"
+               "#define ZANNA_SNAPSHOT_STR \"9.8.7-0-g0123456789ab\"\n"
+               "#define ZANNA_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
+               "#define ZANNA_SOURCE_STATE_STR \"clean\"\n";
     }
     {
-        std::ofstream out(stage / "share" / "man" / "man1" / "viper.1");
-        out << ".TH viper 1\n";
+        std::ofstream out(stage / "share" / "man" / "man1" / "zanna.1");
+        out << ".TH zanna 1\n";
     }
     {
-        std::ofstream out(stage / "share" / "man" / "man7" / "viper.7");
-        out << ".TH viper 7\n";
+        std::ofstream out(stage / "share" / "man" / "man7" / "zanna.7");
+        out << ".TH zanna 7\n";
     }
     {
-        std::ofstream out(stage / "share" / "doc" / "viper" / "README.md");
-        out << "Viper\n";
+        std::ofstream out(stage / "share" / "doc" / "zanna" / "README.md");
+        out << "Zanna\n";
     }
     {
         std::ofstream out(stage / "LICENSE");
@@ -799,25 +799,25 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     }
 
     fs::create_directories(stage / "lib");
-    for (std::string_view archive : viper::runtime_manifest::kRuntimeComponentArchives) {
+    for (std::string_view archive : zanna::runtime_manifest::kRuntimeComponentArchives) {
         std::ofstream out(stage / "lib" / archiveName(archive), std::ios::binary);
         out << "ar";
     }
-#if VIPER_BUILD_HAS_GRAPHICS
+#if ZANNA_BUILD_HAS_GRAPHICS
     {
-        std::ofstream out(stage / "lib" / archiveName("vipergfx"), std::ios::binary);
+        std::ofstream out(stage / "lib" / archiveName("zannagfx"), std::ios::binary);
         out << "gfx";
     }
 #endif
-#if VIPER_BUILD_HAS_GUI
+#if ZANNA_BUILD_HAS_GUI
     {
-        std::ofstream out(stage / "lib" / archiveName("vipergui"), std::ios::binary);
+        std::ofstream out(stage / "lib" / archiveName("zannagui"), std::ios::binary);
         out << "gui";
     }
 #endif
-#if VIPER_BUILD_HAS_AUDIO
+#if ZANNA_BUILD_HAS_AUDIO
     {
-        std::ofstream out(stage / "lib" / archiveName("viperaud"), std::ios::binary);
+        std::ofstream out(stage / "lib" / archiveName("zannaaud"), std::ios::binary);
         out << "aud";
     }
 #endif
@@ -826,7 +826,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
 
 /// @brief Make a mock toolchain stage look like a Windows install tree.
 /// @details Non-Windows test hosts create the primary mock executable as
-///          `bin/viper`; Windows toolchain installer tests need `bin/viper.exe`
+///          `bin/zanna`; Windows toolchain installer tests need `bin/zanna.exe`
 ///          so the manifest and payload names match the target platform.
 /// @param stage Mock stage root returned by createMockToolchainStage().
 static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &stage) {
@@ -851,8 +851,8 @@ static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &s
 /// @brief Add deterministic branding and samples to exercise optional Windows toolchain payloads.
 static void addMockWindowsToolchainBranding(const std::filesystem::path &stage) {
     namespace fs = std::filesystem;
-    fs::create_directories(stage / "share" / "viper" / "branding");
-    fs::create_directories(stage / "share" / "viper" / "samples" / "hello");
+    fs::create_directories(stage / "share" / "zanna" / "branding");
+    fs::create_directories(stage / "share" / "zanna" / "samples" / "hello");
     PkgImage logo;
     logo.width = 64;
     logo.height = 64;
@@ -879,20 +879,20 @@ static void addMockWindowsToolchainBranding(const std::filesystem::path &stage) 
             pixel[3] = 255;
         }
     }
-    pngWrite((stage / "share" / "viper" / "branding" / "viperlogo2.png").string(), logo);
-    pngWrite((stage / "share" / "viper" / "branding" / "viperwallpaper2.png").string(), wallpaper);
-    std::ofstream sample(stage / "share" / "viper" / "samples" / "hello" / "main.zia");
+    pngWrite((stage / "share" / "zanna" / "branding" / "zannalogo2.png").string(), logo);
+    pngWrite((stage / "share" / "zanna" / "branding" / "zannawallpaper2.png").string(), wallpaper);
+    std::ofstream sample(stage / "share" / "zanna" / "samples" / "hello" / "main.zia");
     sample << "func main() { print(\"hello\") }\n";
-    std::ofstream sampleReadme(stage / "share" / "viper" / "samples" / "hello" / "README.md");
+    std::ofstream sampleReadme(stage / "share" / "zanna" / "samples" / "hello" / "README.md");
     sampleReadme << "Sample documentation, not the toolchain README.\n";
-    std::ofstream sampleLicense(stage / "share" / "viper" / "samples" / "hello" / "LICENSE");
+    std::ofstream sampleLicense(stage / "share" / "zanna" / "samples" / "hello" / "LICENSE");
     sampleLicense << "Sample-specific terms, not the toolchain license.\n";
 }
 
 static void addMockMacOSFileHandler(const std::filesystem::path &stage) {
     namespace fs = std::filesystem;
-    fs::create_directories(stage / "libexec" / "viper");
-    const fs::path handlerPath = stage / "libexec" / "viper" / "viper-file-handler";
+    fs::create_directories(stage / "libexec" / "zanna");
+    const fs::path handlerPath = stage / "libexec" / "zanna" / "zanna-file-handler";
     std::ofstream out(handlerPath, std::ios::binary);
     out << "handler";
     out.close();
@@ -926,7 +926,7 @@ TEST(WindowsInstallerMetadata, RoundTripsCanonicalSchemaWithUnicode) {
     ASSERT_EQ(parsed.shortcuts.size(), 1U);
     EXPECT_EQ(parsed.shortcuts[0].root, "start-menu");
     ASSERT_EQ(parsed.associations.size(), 1U);
-    EXPECT_EQ(parsed.associations[0].progId, "org.viper.toolchain.Zia.1");
+    EXPECT_EQ(parsed.associations[0].progId, "org.zanna.toolchain.Zia.1");
     EXPECT_EQ(serializeWindowsInstallerMetadata(parsed), encoded);
 }
 
@@ -973,7 +973,7 @@ TEST(WindowsInstallerMetadata, RejectsUnknownFieldsAndComponentReferences) {
 TEST(WindowsInstallerMetadata, RequiresEveryScalarAndSafeExecutablePaths) {
     const std::string encoded = serializeWindowsInstallerMetadata(sampleWindowsInstallerMetadata());
     std::string missing = encoded;
-    const std::string publisher = "publisher\tViper Project\n";
+    const std::string publisher = "publisher\tZanna Project\n";
     const size_t publisherOffset = missing.find(publisher);
     ASSERT_TRUE(publisherOffset != std::string::npos);
     missing.erase(publisherOffset, publisher.size());
@@ -986,13 +986,13 @@ TEST(WindowsInstallerMetadata, RequiresEveryScalarAndSafeExecutablePaths) {
     metadata.displayIconRelativePath = "../icon.ico";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
-    metadata.defaultInstallDir = "Viper/child";
+    metadata.defaultInstallDir = "Zanna/child";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.defaultInstallDir = "CON.txt";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
-    metadata.defaultInstallDir = "Viper. ";
+    metadata.defaultInstallDir = "Zanna. ";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.channel = "Preview Channel";
@@ -1001,7 +1001,7 @@ TEST(WindowsInstallerMetadata, RequiresEveryScalarAndSafeExecutablePaths) {
 
 TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
     WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
-    metadata.updateManifestUrl = "https://updates.example.test/viper.txt";
+    metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
     metadata.updateRsaModulus = "a1" + std::string(510, '0');
     metadata.updateRsaExponent = "010001";
     EXPECT_NO_THROW(serializeWindowsInstallerMetadata(metadata));
@@ -1009,12 +1009,12 @@ TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
     metadata.updateRsaExponent.clear();
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
-    metadata.updateManifestUrl = "https://updates.example.test/viper.txt";
+    metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
     metadata.updateRsaModulus = "a1" + std::string(510, '0');
     metadata.updateRsaExponent = "010000";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
-    metadata.updateManifestUrl = "http://updates.example.test/viper.txt";
+    metadata.updateManifestUrl = "http://updates.example.test/zanna.txt";
     metadata.updateRsaModulus = "a1" + std::string(510, '0');
     metadata.updateRsaExponent = "010001";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
@@ -1072,24 +1072,24 @@ TEST(CpioWriter, EmitsPortableAsciiPayloadWithSymlinksAndTrailer) {
     CpioWriter cpio;
     cpio.addDirectory(".");
     cpio.addDirectory("usr/local/bin");
-    cpio.addDirectory("usr/local/viper/bin");
-    cpio.addFileString("usr/local/viper/bin/viper", "stub", 0755);
-    cpio.addSymlink("usr/local/bin/viper", "../viper/bin/viper");
+    cpio.addDirectory("usr/local/zanna/bin");
+    cpio.addFileString("usr/local/zanna/bin/zanna", "stub", 0755);
+    cpio.addSymlink("usr/local/bin/zanna", "../zanna/bin/zanna");
     const auto bytes = cpio.finish();
     ASSERT_GE(bytes.size(), static_cast<size_t>(110));
     EXPECT_TRUE(std::memcmp(bytes.data(), "070707", 6) == 0);
     const std::string text(bytes.begin(), bytes.end());
-    EXPECT_TRUE(text.find("./usr/local/viper/bin/viper") != std::string::npos);
+    EXPECT_TRUE(text.find("./usr/local/zanna/bin/zanna") != std::string::npos);
     EXPECT_TRUE(text.find("TRAILER!!!") != std::string::npos);
     std::ostringstream err;
     EXPECT_TRUE(
-        verifyCpioNewcPayload(bytes, {"usr/local/viper/bin/viper", "usr/local/bin/viper"}, err));
+        verifyCpioNewcPayload(bytes, {"usr/local/zanna/bin/zanna", "usr/local/bin/zanna"}, err));
 }
 
 TEST(XarWriter, EmitsVerifiableSha1ZlibArchive) {
     XarWriter xar;
     xar.addFileString("Distribution", "<installer-gui-script/>", true);
-    xar.addFileString("ViperToolchain.pkg", "component", false);
+    xar.addFileString("ZannaToolchain.pkg", "component", false);
     const auto bytes = xar.finish();
     ASSERT_GE(bytes.size(), static_cast<size_t>(28));
     EXPECT_EQ(bytes[0], static_cast<uint8_t>('x'));
@@ -1115,7 +1115,7 @@ TEST(ZipWriter, ProducesByteIdenticalArchivesForIdenticalInput) {
     // independent of wall-clock time or host timezone (the DOS date field is the usual culprit).
     auto build = [] {
         ZipWriter zip;
-        zip.addFileString("readme.txt", "hello viper", 0100644);
+        zip.addFileString("readme.txt", "hello zanna", 0100644);
         zip.addDirectory("data");
         zip.addFileString("data/payload.bin", std::string(256, 'x'), 0100644);
         return zip.finishToVector();
@@ -1128,7 +1128,7 @@ TEST(ZipWriter, ProducesByteIdenticalArchivesForIdenticalInput) {
 }
 
 TEST(Deflate, RoundTripSmall) {
-    const char *msg = "Hello, VAPS packaging!";
+    const char *msg = "Hello, ZAPS packaging!";
     auto len = std::strlen(msg);
     auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), len);
     auto decompressed = inflate(compressed.data(), compressed.size());
@@ -2205,7 +2205,7 @@ TEST(MimeXml, ContainsGlobPattern) {
 
 TEST(MimeXml, EscapesXmlFields) {
     std::vector<FileAssoc> assocs;
-    assocs.push_back({".vp", "A & B <C>", "application/x-viper", ""});
+    assocs.push_back({".vp", "A & B <C>", "application/x-zanna", ""});
 
     auto xml = generateMimeTypeXml("mypackage", assocs);
     EXPECT_CONTAINS(xml, "A &amp; B &lt;C&gt;");
@@ -2592,7 +2592,7 @@ TEST(PE, ImportsAndCustomRdataCoexist) {
     PEBuildParams params;
     params.textSection = {0xC3};
     params.imports = {{"kernel32.dll", {"ExitProcess"}}};
-    params.rdataSection = {'V', 'I', 'P', 'E', 'R'};
+    params.rdataSection = {'Z', 'A', 'N', 'N', 'A'};
     auto pe = buildPE(params);
 
     std::ostringstream err;
@@ -2600,7 +2600,7 @@ TEST(PE, ImportsAndCustomRdataCoexist) {
 
     bool foundMarker = false;
     for (size_t i = 0; i + 5 <= pe.size(); ++i) {
-        if (std::memcmp(pe.data() + i, "VIPER", 5) == 0) {
+        if (std::memcmp(pe.data() + i, "ZANNA", 5) == 0) {
             foundMarker = true;
             break;
         }
@@ -2614,7 +2614,7 @@ TEST(PE, EmbedsVersionInfoResource) {
     params.versionInfo.enabled = true;
     params.versionInfo.fileVersion = {1, 2, 3, 4};
     params.versionInfo.productVersion = {1, 2, 3, 4};
-    params.versionInfo.companyName = "Viper Project";
+    params.versionInfo.companyName = "Zanna Project";
     params.versionInfo.fileDescription = "Versioned Test Stub";
     params.versionInfo.fileVersionText = "1.2.3.4";
     params.versionInfo.internalName = "versioned.exe";
@@ -2696,7 +2696,7 @@ TEST(PackageUtils, ValidatesMacOSSigningSemantics) {
 #if !defined(_WIN32)
 TEST(PackageUtils, SafeDirectoryIterateFollowsInternalSymlinkDirectories) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_symlink_dir";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_safe_iter_symlink_dir";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "project" / "assets");
     fs::create_directories(tmpRoot / "project" / "shared");
@@ -2721,7 +2721,7 @@ TEST(PackageUtils, SafeDirectoryIterateFollowsInternalSymlinkDirectories) {
 
 TEST(PackageUtils, SafeDirectoryIterateResolvedReportsValidatedReadPath) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_resolved_path";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_safe_iter_resolved_path";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "project" / "assets");
     fs::create_directories(tmpRoot / "project" / "shared");
@@ -2746,7 +2746,7 @@ TEST(PackageUtils, SafeDirectoryIterateResolvedReportsValidatedReadPath) {
 
 TEST(PackageUtils, SafeDirectoryIterateRejectsEscapingSymlink) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_escape_symlink";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_safe_iter_escape_symlink";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "project" / "assets");
     {
@@ -2808,11 +2808,11 @@ TEST(PackageUtils, ValidatesDebianVersionGrammar) {
 }
 
 TEST(PackageUtils, ValidatesTargetSpecificIdentifiers) {
-    EXPECT_NO_THROW(validateMacOSBundleIdentifier("org.viper.test-app"));
-    EXPECT_THROWS(validateMacOSBundleIdentifier("org.viper.test_app"), std::runtime_error);
-    EXPECT_THROWS(validateMacOSBundleIdentifier("org.-viper.test"), std::runtime_error);
-    EXPECT_NO_THROW(validateWindowsProgIdBase("viper.test_app"));
-    EXPECT_THROWS(validateWindowsProgIdBase("viper."), std::runtime_error);
+    EXPECT_NO_THROW(validateMacOSBundleIdentifier("org.zanna.test-app"));
+    EXPECT_THROWS(validateMacOSBundleIdentifier("org.zanna.test_app"), std::runtime_error);
+    EXPECT_THROWS(validateMacOSBundleIdentifier("org.-zanna.test"), std::runtime_error);
+    EXPECT_NO_THROW(validateWindowsProgIdBase("zanna.test_app"));
+    EXPECT_THROWS(validateWindowsProgIdBase("zanna."), std::runtime_error);
 }
 
 TEST(PackageUtils, ValidatesDottedVersionComponentCountAndRange) {
@@ -2825,7 +2825,7 @@ TEST(PackageUtils, ValidatesDottedVersionComponentCountAndRange) {
 
 TEST(PackageUtils, RejectsSourcePathEscape) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_pkg_source_escape_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_pkg_source_escape_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "project");
 
@@ -3147,8 +3147,8 @@ TEST(InstallerStub, GeneratesValidPE) {
     layout.installDirName = "TestApp";
     layout.version = "1.0.0";
     layout.executableName = "testapp.exe";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.overlayFileOffset = 0x400;
     layout.installDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
     layout.uninstallDirectories = layout.installDirectories;
@@ -3220,10 +3220,10 @@ TEST(InstallerStub, EmitsWindowsAddRemoveProgramsMetadata) {
     layout.installDirName = "TestApp";
     layout.version = "1.2.3";
     layout.executableName = "testapp.exe";
-    layout.publisher = "Viper";
+    layout.publisher = "Zanna";
     layout.description = "Test app installer comments";
     layout.contact = "support@example.invalid";
-    layout.identifier = "org.viper.testapp";
+    layout.identifier = "org.zanna.testapp";
     layout.homepage = "https://example.invalid/testapp";
     layout.displayIconRelativePath = "testapp.ico";
     layout.estimatedSizeKb = 42;
@@ -3289,30 +3289,30 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
 
 TEST(InstallerStub, EmbedsBrandedComponentWizardAndResponsiveProgress) {
     WindowsPackageLayout layout;
-    layout.displayName = "Viper Toolchain";
-    layout.installDirName = "Viper";
-    layout.executableName = "viper.exe";
+    layout.displayName = "Zanna Toolchain";
+    layout.installDirName = "Zanna";
+    layout.executableName = "zanna.exe";
     layout.licenseText = "GPL-3.0-only";
     layout.wizardImageWidth = 2;
     layout.wizardImageHeight = 1;
     layout.wizardImageRgba = {10, 20, 30, 255, 40, 50, 60, 255};
-    layout.optionalComponents = {{"viperide", "ViperIDE", "Integrated developer environment", true},
+    layout.optionalComponents = {{"zannaide", "ZannaIDE", "Integrated developer environment", true},
                                  {"samples", "Samples", "Example projects", true}};
     layout.installFiles.push_back(
-        {WindowsInstallRoot::InstallDir, "bin/viperide.exe", 0, 4, 0, "", "viperide"});
+        {WindowsInstallRoot::InstallDir, "bin/zannaide.exe", 0, 4, 0, "", "zannaide"});
     layout.installFiles.push_back(
-        {WindowsInstallRoot::InstallDir, "share/viper/samples/main.zia", 4, 4, 0, "", "samples"});
+        {WindowsInstallRoot::InstallDir, "share/zanna/samples/main.zia", 4, 4, 0, "", "samples"});
 
     const auto installer = buildInstallerStub(layout, "x64");
     EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "StretchDIBits"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SetWindowLongPtrW"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "DispatchMessageW"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ViperIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZannaIDE"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "Samples"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-viperide"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-zannaide"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-samples"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VIPER_INSTALLER_COMPONENT_VIPERIDE"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VIPER_INSTALLER_PROGRESS"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZANNA_INSTALLER_COMPONENT_ZANNAIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZANNA_INSTALLER_PROGRESS"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData,
                                 "Setup stays visible while files are verified and installed. "
                                 "Please wait."));
@@ -3328,10 +3328,10 @@ TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
     layout.displayName = "TestApp";
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
-    layout.identifier = "org.viper.testapp";
+    layout.identifier = "org.zanna.testapp";
     layout.overlayFileOffset = 0x400;
     layout.fileAssociations.push_back(
-        {".zia", "Zia Source", "text/x-zia", "org.viper.testapp.zia", {}});
+        {".zia", "Zia Source", "text/x-zia", "org.zanna.testapp.zia", {}});
 
     auto installer = buildInstallerStub(layout, "x64");
     auto uninstaller = buildUninstallerStub(layout, "x64");
@@ -3349,8 +3349,8 @@ TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
     EXPECT_TRUE(hasImport(uninstaller, "advapi32.dll", "RegQueryValueExW"));
     EXPECT_TRUE(hasImport(uninstaller, "kernel32.dll", "lstrcmpW"));
     EXPECT_TRUE(hasImport(uninstaller, "kernel32.dll", "lstrcmpiW"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VAPSContentTypeOwner"));
-    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "VAPSContentTypeOwner"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZAPSContentTypeOwner"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "ZAPSContentTypeOwner"));
 }
 
 TEST(InstallerStub, UsesModernKnownFoldersAndRecursiveRegistryCleanup) {
@@ -3358,11 +3358,11 @@ TEST(InstallerStub, UsesModernKnownFoldersAndRecursiveRegistryCleanup) {
     layout.displayName = "TestApp";
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
-    layout.identifier = "org.viper.testapp";
+    layout.identifier = "org.zanna.testapp";
     layout.createDesktopShortcut = true;
     layout.createStartMenuShortcut = true;
     layout.fileAssociations.push_back(
-        {".zia", "Zia Source", "text/x-zia", "org.viper.testapp.zia", {}});
+        {".zia", "Zia Source", "text/x-zia", "org.zanna.testapp.zia", {}});
 
     auto installer = buildInstallerStub(layout, "x64");
     auto uninstaller = buildUninstallerStub(layout, "x64");
@@ -3464,8 +3464,8 @@ TEST(InstallerStub, UninstallerGeneratesValidPE) {
     layout.installDirName = "TestApp";
     layout.version = "1.0.0";
     layout.executableName = "testapp.exe";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.uninstallDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
     layout.uninstallFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
     auto stub = buildUninstallerStub(layout, "x64");
@@ -3498,8 +3498,8 @@ TEST(InstallerStub, UninstallerDoesNotScheduleInstallRootForRebootDeletion) {
     layout.installDirName = "TestApp";
     layout.version = "1.0.0";
     layout.executableName = "testapp.exe";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.uninstallDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
     layout.uninstallFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
     auto stub = buildUninstallerStub(layout, "x64");
@@ -3629,8 +3629,8 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
     layout.version = "1.0.0";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.overlayFileOffset = 0x800;
     layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x800, 16});
     const auto stub = buildInstallerStub(layout, "arm64");
@@ -3656,8 +3656,8 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("RegisterAssoc") != std::string::npos);
     EXPECT_TRUE(script.find("UnregisterAssoc") != std::string::npos);
     EXPECT_TRUE(script.find("BroadcastEnv") != std::string::npos);
-    EXPECT_TRUE(script.find("$quiet=($env:VIPER_INSTALLER_QUIET -eq '1')") != std::string::npos);
-    EXPECT_TRUE(script.find("$noRestart=($env:VIPER_INSTALLER_NORESTART -eq '1')") !=
+    EXPECT_TRUE(script.find("$quiet=($env:ZANNA_INSTALLER_QUIET -eq '1')") != std::string::npos);
+    EXPECT_TRUE(script.find("$noRestart=($env:ZANNA_INSTALLER_NORESTART -eq '1')") !=
                 std::string::npos);
     EXPECT_TRUE(script.find("if($quiet){return}") != std::string::npos);
     EXPECT_TRUE(script.find("exit 1602") != std::string::npos);
@@ -3668,14 +3668,14 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("function LegacyInstallOwned") != std::string::npos);
     EXPECT_TRUE(script.find("migrating generated legacy installation") != std::string::npos);
     EXPECT_TRUE(script.find("WriteInstallerLog 'ERROR'") != std::string::npos);
-    EXPECT_TRUE(script.find("VIPER_INSTALLER_LOG") != std::string::npos);
-    EXPECT_TRUE(script.find("VIPER_INSTALLER_NATIVE_STAGE") != std::string::npos);
+    EXPECT_TRUE(script.find("ZANNA_INSTALLER_LOG") != std::string::npos);
+    EXPECT_TRUE(script.find("ZANNA_INSTALLER_NATIVE_STAGE") != std::string::npos);
     EXPECT_TRUE(script.find("refusing to replace unowned path") != std::string::npos);
     EXPECT_TRUE(script.find("refusing reparse-point installer parent") != std::string::npos);
     EXPECT_TRUE(script.find("compressed installer payload contains an unmanifested file") !=
                 std::string::npos);
     // The layout's identifier must survive into the script (registry/uninstall key).
-    EXPECT_TRUE(script.find("org.viper.testapp") != std::string::npos);
+    EXPECT_TRUE(script.find("org.zanna.testapp") != std::string::npos);
 }
 
 TEST(InstallerStub, ARM64LargeLicenseUsesCompactBootstrapNotice) {
@@ -3684,8 +3684,8 @@ TEST(InstallerStub, ARM64LargeLicenseUsesCompactBootstrapNotice) {
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
     layout.version = "1.0.0";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.overlayFileOffset = 0x800;
     layout.licenseText.assign(25000, 'L');
     layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x800, 16});
@@ -3703,8 +3703,8 @@ TEST(InstallerStub, ARM64UninstallerUsesDetachedOwnedCleanup) {
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
     layout.version = "1.0.0";
-    layout.publisher = "Viper";
-    layout.identifier = "org.viper.testapp";
+    layout.publisher = "Zanna";
+    layout.identifier = "org.zanna.testapp";
     layout.installDate = "20000101";
 
     const auto stub = buildUninstallerStub(layout, "arm64");
@@ -3729,7 +3729,7 @@ TEST(InstallerStub, AllowsZeroBytePayloadFile) {
 
 TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_builder_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_builder_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets" / "themes");
 
@@ -3755,8 +3755,8 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
 
     PackageConfig pkg;
     pkg.displayName = "Test App";
-    pkg.identifier = "org.viper.testapp";
-    pkg.author = "Viper";
+    pkg.identifier = "org.zanna.testapp";
+    pkg.author = "Zanna";
     pkg.shortcutDesktop = true;
     pkg.shortcutMenu = true;
     pkg.iconPath = "icon.png";
@@ -3791,7 +3791,7 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Test App\\testapp.ico"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia\\OpenWithProgids"));
-    EXPECT_TRUE(containsUtf16LE(pe, "org.viper.testapp.zia"));
+    EXPECT_TRUE(containsUtf16LE(pe, "org.zanna.testapp.zia"));
     EXPECT_TRUE(containsUtf16LE(pe, "DefaultIcon"));
     EXPECT_TRUE(containsUtf16LE(pe, "QuietUninstallString"));
     const std::string deleteValueImport = "RegDeleteValueW";
@@ -3810,21 +3810,21 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
                                     "data/themes/dark.json",
                                     "data/themes/repeat.txt",
                                     "uninstall.exe",
-                                    ".viper-install-manifest.txt"}));
+                                    ".zanna-install-manifest.txt"}));
     EXPECT_TRUE(zipEntryUsesDeflate(payloadZip, "data/themes/repeat.txt"));
     const auto nextManifest = extractPeOverlayZipEntry(pe, "meta/install_manifest.next");
     ASSERT_FALSE(nextManifest.empty());
     const std::string nextManifestText(nextManifest.begin(), nextManifest.end());
     EXPECT_CONTAINS(nextManifestText, "testapp.exe\n");
     EXPECT_CONTAINS(nextManifestText, "data/themes/repeat.txt\n");
-    EXPECT_CONTAINS(nextManifestText, ".viper-install-manifest.txt\n");
+    EXPECT_CONTAINS(nextManifestText, ".zanna-install-manifest.txt\n");
 
     fs::remove_all(tmpRoot);
 }
 
 TEST(AppImage, BuildsVerifiableApplicationImage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appimage_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_appimage_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets" / "levels");
 
@@ -3887,7 +3887,7 @@ TEST(AppImage, BuildsVerifiableApplicationImage) {
     EXPECT_EQ(appImage[1], static_cast<uint8_t>('!'));
     const std::string appImageRuntime(appImage.begin(), appImage.end());
     EXPECT_CONTAINS(appImageRuntime, "--appimage-help");
-    EXPECT_CONTAINS(appImageRuntime, "VIPER_APPIMAGE_CLEAN_CACHE");
+    EXPECT_CONTAINS(appImageRuntime, "ZANNA_APPIMAGE_CLEAN_CACHE");
 
     // The appended gzip payload must contain the expected portable layout.
     const auto payloadGz = appImagePayloadBytes(appImage);
@@ -3909,7 +3909,7 @@ TEST(AppImage, BuildsVerifiableApplicationImage) {
 
 TEST(LinuxAppPackage, DebUsesSharedAppFhsLayout) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appdeb_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_appdeb_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets" / "levels");
     {
@@ -3963,7 +3963,7 @@ TEST(LinuxAppPackage, DebUsesSharedAppFhsLayout) {
 
 TEST(LinuxAppPackage, RpmBuildsOrReportsMissingRpmbuild) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_apprpm_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_apprpm_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     {
@@ -4020,7 +4020,7 @@ TEST(LinuxAppPackage, RpmBuildsOrReportsMissingRpmbuild) {
 
 TEST(LinuxPackageSigning, ReportsMissingSigningToolClearly) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_sign_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_sign_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     const fs::path pkgPath = tmpRoot / "pkg.deb";
@@ -4035,7 +4035,7 @@ TEST(LinuxPackageSigning, ReportsMissingSigningToolClearly) {
     bool threw = false;
     std::string what;
     try {
-        signLinuxPackage(pkgPath.string(), "Viper Test Signing Key", /*isRpm=*/false);
+        signLinuxPackage(pkgPath.string(), "Zanna Test Signing Key", /*isRpm=*/false);
     } catch (const std::exception &ex) {
         threw = true;
         what = ex.what();
@@ -4056,12 +4056,12 @@ TEST(LinuxPackageSigning, ReportsMissingSigningToolClearly) {
 }
 
 TEST(MacOSAppDmg, BuildsVerifiableDiskImage) {
-#if !VIPER_HOST_MACOS
+#if !ZANNA_HOST_MACOS
     // hdiutil is macOS-only; nothing to build or verify on other hosts.
     return;
 #else
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appdmg_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_appdmg_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets");
     {
@@ -4113,7 +4113,7 @@ TEST(MacOSAppDmg, BuildsVerifiableDiskImage) {
 
 TEST(MacOSPackageBuilder, PreservesExecutableAssetModeInAppZip) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_macos_asset_mode";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_macos_asset_mode";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "scripts");
     {
@@ -4137,7 +4137,7 @@ TEST(MacOSPackageBuilder, PreservesExecutableAssetModeInAppZip) {
     params.projectRoot = tmpRoot.string();
     params.outputPath = (tmpRoot / "assetmode.zip").string();
     params.pkgConfig.displayName = "Asset Mode";
-    params.pkgConfig.identifier = "org.viper.assetmode";
+    params.pkgConfig.identifier = "org.zanna.assetmode";
     params.pkgConfig.macosSignMode = "none";
     params.pkgConfig.assets.push_back({"scripts", "tools"});
 
@@ -4164,7 +4164,7 @@ TEST(WindowsPackageBuilder, ImportedDllNamesFromPeReadsImportTableOnly) {
 
 TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDlls) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_user_scope_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_user_scope_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4176,8 +4176,8 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
 
     PackageConfig pkg;
     pkg.displayName = "User App";
-    pkg.identifier = "org.viper.userapp";
-    pkg.author = "Viper";
+    pkg.identifier = "org.zanna.userapp";
+    pkg.author = "Zanna";
     pkg.homepage = "https://example.invalid/userapp";
     pkg.shortcutDesktop = true;
     pkg.shortcutMenu = true;
@@ -4215,14 +4215,14 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
     EXPECT_TRUE(zipContainsEntries(
-        payloadZip, {"userapp.exe", "helper.dll", "uninstall.exe", ".viper-install-manifest.txt"}));
+        payloadZip, {"userapp.exe", "helper.dll", "uninstall.exe", ".zanna-install-manifest.txt"}));
 
     fs::remove_all(tmpRoot);
 }
 
 TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_custom_dir_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_custom_dir_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4230,12 +4230,12 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
 
     PackageConfig pkg;
     pkg.displayName = "Display App";
-    pkg.identifier = "org.viper.displayapp";
-    pkg.author = "Viper";
+    pkg.identifier = "org.zanna.displayapp";
+    pkg.author = "Zanna";
     pkg.windowsInstallDir = "DisplayAppCustom";
     pkg.minOsWindows = "10.0";
     pkg.fileAssociations.push_back(
-        {".vap", "Viper App Project", "text/x-viper-app", "--open-project"});
+        {".zap", "Zanna App Project", "text/x-zanna-app", "--open-project"});
 
     WindowsBuildParams params;
     params.projectName = "displayapp";
@@ -4263,7 +4263,7 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
     EXPECT_TRUE(zipContainsEntries(
-        payloadZip, {"displayapp.exe", "uninstall.exe", ".viper-install-manifest.txt"}));
+        payloadZip, {"displayapp.exe", "uninstall.exe", ".zanna-install-manifest.txt"}));
 
     fs::remove_all(tmpRoot);
 }
@@ -4271,7 +4271,7 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
 TEST(WindowsPackageBuilder, BundlesRecursiveDllsAndSkipsSystemNamedLocals) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_recursive_dll_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_recursive_dll_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4314,7 +4314,7 @@ TEST(WindowsPackageBuilder, BundlesRecursiveDllsAndSkipsSystemNamedLocals) {
 TEST(WindowsPackageBuilder, SkipsKnownWindowsGameRuntimeDlls) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_game_system_dll_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_game_system_dll_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4359,7 +4359,7 @@ TEST(WindowsPackageBuilder, SkipsKnownWindowsGameRuntimeDlls) {
 TEST(WindowsPackageBuilder, RejectsMissingDebugRuntimeDllDependency) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_debug_runtime_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_debug_runtime_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4384,7 +4384,7 @@ TEST(WindowsPackageBuilder, RejectsMissingDebugRuntimeDllDependency) {
 TEST(WindowsPackageBuilder, BundlesAdjacentReleaseRuntimeDllDependencies) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_release_runtime_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_release_runtime_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4419,7 +4419,7 @@ TEST(WindowsPackageBuilder, BundlesAdjacentReleaseRuntimeDllDependencies) {
 TEST(WindowsPackageBuilder, RejectsMissingReleaseRuntimeDllDependency) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_missing_release_runtime_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_missing_release_runtime_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4444,7 +4444,7 @@ TEST(WindowsPackageBuilder, RejectsMissingReleaseRuntimeDllDependency) {
 TEST(WindowsPackageBuilder, SignsOwnedNestedPesBeforePayloadHashing) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_nested_signing_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_nested_signing_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4466,7 +4466,7 @@ TEST(WindowsPackageBuilder, SignsOwnedNestedPesBeforePayloadHashing) {
     params.peSigner = [&](std::string_view logicalName, const std::vector<uint8_t> &input) {
         signedNames.emplace_back(logicalName);
         std::vector<uint8_t> output = input;
-        const std::string marker = "VAPS-NESTED-SIGNED";
+        const std::string marker = "ZAPS-NESTED-SIGNED";
         output.insert(output.end(), marker.begin(), marker.end());
         return output;
     };
@@ -4478,9 +4478,9 @@ TEST(WindowsPackageBuilder, SignsOwnedNestedPesBeforePayloadHashing) {
     const auto app = extractZipEntry(payloadZip, "nestedsigning.exe");
     const auto runtime = extractZipEntry(payloadZip, "vcruntime140.dll");
     const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
-    EXPECT_TRUE(containsAscii(app, "VAPS-NESTED-SIGNED"));
-    EXPECT_FALSE(containsAscii(runtime, "VAPS-NESTED-SIGNED"));
-    EXPECT_TRUE(containsAscii(uninstaller, "VAPS-NESTED-SIGNED"));
+    EXPECT_TRUE(containsAscii(app, "ZAPS-NESTED-SIGNED"));
+    EXPECT_FALSE(containsAscii(runtime, "ZAPS-NESTED-SIGNED"));
+    EXPECT_TRUE(containsAscii(uninstaller, "ZAPS-NESTED-SIGNED"));
     EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "nestedsigning.exe") !=
                 signedNames.end());
     EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "uninstall.exe") !=
@@ -4492,18 +4492,18 @@ TEST(WindowsPackageBuilder, SignsOwnedNestedPesBeforePayloadHashing) {
 
 TEST(WindowsPackageBuilder, BuildsNativeHostSetupAndNonRecursiveMaintenancePayload) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_native_host_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_native_host_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
     writeTestWindowsPe(tmpRoot / "app.exe");
-    writeTestWindowsPe(tmpRoot / "viper-installer-host.exe");
-    writeTestWindowsPe(tmpRoot / "viper-installer-cleanup.exe");
+    writeTestWindowsPe(tmpRoot / "zanna-installer-host.exe");
+    writeTestWindowsPe(tmpRoot / "zanna-installer-cleanup.exe");
 
     PackageConfig pkg;
     pkg.displayName = "Native Host App";
-    pkg.identifier = "org.viper.native-host-test";
-    pkg.windowsPublisher = "Viper Test Publisher";
+    pkg.identifier = "org.zanna.native-host-test";
+    pkg.windowsPublisher = "Zanna Test Publisher";
 
     WindowsBuildParams params;
     params.projectName = "nativehostapp";
@@ -4513,8 +4513,8 @@ TEST(WindowsPackageBuilder, BuildsNativeHostSetupAndNonRecursiveMaintenancePaylo
     params.pkgConfig = pkg;
     params.outputPath = (tmpRoot / "native_host_setup.exe").string();
     params.archStr = "x64";
-    params.installerHostPath = (tmpRoot / "viper-installer-host.exe").string();
-    params.installerCleanupPath = (tmpRoot / "viper-installer-cleanup.exe").string();
+    params.installerHostPath = (tmpRoot / "zanna-installer-host.exe").string();
+    params.installerCleanupPath = (tmpRoot / "zanna-installer-cleanup.exe").string();
     params.peSigner = [](std::string_view logicalName, const std::vector<uint8_t> &input) {
         std::vector<uint8_t> output = input;
         if (logicalName == "uninstall.exe") {
@@ -4561,7 +4561,7 @@ TEST(WindowsPackageBuilder, BuildsNativeHostSetupAndNonRecursiveMaintenancePaylo
 TEST(WindowsPackageBuilder, RejectsDynamicRuntimeNativeHostTemplate) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_dynamic_host_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_dynamic_host_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     writeTestWindowsPe(tmpRoot / "app.exe");
@@ -4570,7 +4570,7 @@ TEST(WindowsPackageBuilder, RejectsDynamicRuntimeNativeHostTemplate) {
 
     PackageConfig pkg;
     pkg.displayName = "Dynamic Host App";
-    pkg.identifier = "org.viper.dynamic-host-test";
+    pkg.identifier = "org.zanna.dynamic-host-test";
     WindowsBuildParams params;
     params.projectName = "dynamichostapp";
     params.version = "1.0.0";
@@ -4588,7 +4588,7 @@ TEST(WindowsPackageBuilder, RejectsDynamicRuntimeNativeHostTemplate) {
 TEST(WindowsPackageBuilder, RejectsMissingCustomDllWithMsvcPrefix) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_msvc_prefix_custom_dll_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_msvc_prefix_custom_dll_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4612,7 +4612,7 @@ TEST(WindowsPackageBuilder, RejectsMissingCustomDllWithMsvcPrefix) {
 
 TEST(WindowsPackageBuilder, RejectsMissingAdjacentDllDependency) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_missing_dll_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_missing_dll_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -4644,7 +4644,7 @@ TEST(WindowsPackageBuilder, RejectsMissingAdjacentDllDependency) {
 
 TEST(WindowsPackageBuilder, RejectsNonPePayload) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_non_pe_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_non_pe_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     writeBytes(tmpRoot / "app.exe", std::vector<uint8_t>{'M', 'Z', 's', 't', 'u', 'b'});
@@ -4668,7 +4668,7 @@ TEST(WindowsPackageBuilder, RejectsNonPePayload) {
 TEST(WindowsPackageBuilder, RejectsPayloadArchitectureMismatch) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_arch_mismatch_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_arch_mismatch_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     writeTestWindowsPe(tmpRoot / "app.exe", "arm64");
@@ -4692,7 +4692,7 @@ TEST(WindowsPackageBuilder, RejectsPayloadArchitectureMismatch) {
 TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithNativeBootstrap) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_builder_arm64_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_builder_arm64_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     writeTestWindowsPe(tmpRoot / "app.exe", "arm64");
@@ -4720,7 +4720,7 @@ TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithNativeBootstrap) {
 
 TEST(WindowsPackageBuilder, RejectsUnsafeDisplayName) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_bad_name_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_windows_bad_name_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     {
@@ -4747,7 +4747,7 @@ TEST(WindowsPackageBuilder, RejectsUnsafeDisplayName) {
 TEST(WindowsPackageBuilder, RejectsMissingAsset) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_missing_asset_test";
+        fs::temp_directory_path() / "zanna_packaging_windows_missing_asset_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     {
@@ -4774,7 +4774,7 @@ TEST(WindowsPackageBuilder, RejectsMissingAsset) {
 
 TEST(LinuxPackageBuilder, TarballDoesNotValidateDebianOnlyMetadata) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_metadata_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_tarball_metadata_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     {
@@ -4805,7 +4805,7 @@ TEST(LinuxPackageBuilder, TarballDoesNotValidateDebianOnlyMetadata) {
 
 TEST(LinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_epoch_version";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_tarball_epoch_version";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     {
@@ -4832,7 +4832,7 @@ TEST(LinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
 #if !defined(_WIN32)
 TEST(LinuxPackageBuilder, TarballSingleFileSymlinkAssetKeepsLogicalName) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_symlink_asset";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_tarball_symlink_asset";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets");
     {
@@ -4871,7 +4871,7 @@ TEST(LinuxPackageBuilder, TarballSingleFileSymlinkAssetKeepsLogicalName) {
 
 TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_dup_asset_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_tarball_dup_asset_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "a");
     fs::create_directories(tmpRoot / "b");
@@ -4908,7 +4908,7 @@ TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
 
 TEST(LinuxPackageBuilder, DebPreservesHiddenMimeDesktopEntryAndEmptyAssetDir) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_deb_mime_empty_dir";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_deb_mime_empty_dir";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "empty-assets");
     {
@@ -4946,7 +4946,7 @@ TEST(LinuxPackageBuilder, DebPreservesHiddenMimeDesktopEntryAndEmptyAssetDir) {
 
 TEST(LinuxPackageBuilder, DebPreservesExecutableAssetMode) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_deb_asset_mode";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_deb_asset_mode";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "scripts");
     {
@@ -4983,7 +4983,7 @@ TEST(LinuxPackageBuilder, DebPreservesExecutableAssetMode) {
 
 TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
 
@@ -5003,7 +5003,7 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
     EXPECT_TRUE(std::any_of(
         manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
             return entry.kind == ToolchainFileKind::CMakeConfig &&
-                   entry.stagedRelativePath == "lib/cmake/Viper/ViperTargets.cmake";
+                   entry.stagedRelativePath == "lib/cmake/Zanna/ZannaTargets.cmake";
         }));
     for (const std::string &binary : requiredToolchainBinaryNames()) {
         EXPECT_TRUE(std::any_of(
@@ -5018,7 +5018,7 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
 
 TEST(ToolchainInstallManifest, RequiresAllToolchainBinaries) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_no_tool";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_no_tool";
     for (const std::string &binary : requiredToolchainBinaryNames()) {
         fs::remove_all(tmpRoot);
         const fs::path stage = createMockToolchainStage(tmpRoot);
@@ -5036,11 +5036,11 @@ TEST(ToolchainInstallManifest, RequiresAllToolchainBinaries) {
 
 TEST(ToolchainInstallManifest, RequiresDetectedVersion) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_no_version";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_no_version";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-    fs::remove(stage / "lib" / "cmake" / "Viper" / "ViperConfigVersion.cmake");
-    fs::remove(stage / "include" / "viper" / "version.hpp");
+    fs::remove(stage / "lib" / "cmake" / "Zanna" / "ZannaConfigVersion.cmake");
+    fs::remove(stage / "include" / "zanna" / "version.hpp");
 
     EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
     fs::remove_all(tmpRoot);
@@ -5048,7 +5048,7 @@ TEST(ToolchainInstallManifest, RequiresDetectedVersion) {
 
 TEST(ToolchainInstallManifest, AllowsUniversalOnlyForMacOS) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_universal";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_universal";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5064,11 +5064,11 @@ TEST(ToolchainInstallManifest, AllowsUniversalOnlyForMacOS) {
 
 TEST(ToolchainInstallManifest, ParsesFat32AndFat64MachOSlices) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_macho";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_fat_macho";
     for (const bool fat64 : {false, true}) {
         fs::remove_all(tmpRoot);
         const fs::path stage = createMockToolchainStage(tmpRoot);
-        writeBytes(mockToolchainBinaryPath(stage, "viper"),
+        writeBytes(mockToolchainBinaryPath(stage, "zanna"),
                    makeSyntheticFatMachO(fat64, {0x01000007, 0x0100000c}));
 
         const auto manifest = gatherToolchainInstallManifest(stage);
@@ -5080,10 +5080,10 @@ TEST(ToolchainInstallManifest, ParsesFat32AndFat64MachOSlices) {
 
 TEST(ToolchainInstallManifest, DoesNotMislabelSingleSliceFatMachOAsUniversal) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_single";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_fat_single";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-    writeBytes(mockToolchainBinaryPath(stage, "viper"), makeSyntheticFatMachO(false, {0x01000007}));
+    writeBytes(mockToolchainBinaryPath(stage, "zanna"), makeSyntheticFatMachO(false, {0x01000007}));
 
     const auto manifest = gatherToolchainInstallManifest(stage);
     EXPECT_EQ(manifest.platform, std::string("macos"));
@@ -5093,10 +5093,10 @@ TEST(ToolchainInstallManifest, DoesNotMislabelSingleSliceFatMachOAsUniversal) {
 
 TEST(ToolchainInstallManifest, RejectsMismatchedMacOSPayloadArchitecture) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_macho_mismatch";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_macho_mismatch";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-    writeBytes(mockToolchainBinaryPath(stage, "viper"),
+    writeBytes(mockToolchainBinaryPath(stage, "zanna"),
                makeSyntheticFatMachO(false, {0x01000007, 0x0100000c}));
     std::vector<uint8_t> thinX64(32, 0);
     thinX64[0] = 0xCF;
@@ -5112,12 +5112,12 @@ TEST(ToolchainInstallManifest, RejectsMismatchedMacOSPayloadArchitecture) {
 
 TEST(ToolchainInstallManifest, RejectsFatMachOSliceOutsideFile) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_bounds";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_fat_bounds";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto malformed = makeSyntheticFatMachO(false, {0x01000007, 0x0100000c});
     malformed.resize(48);
-    writeBytes(mockToolchainBinaryPath(stage, "viper"), malformed);
+    writeBytes(mockToolchainBinaryPath(stage, "zanna"), malformed);
 
     EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
     fs::remove_all(tmpRoot);
@@ -5126,35 +5126,35 @@ TEST(ToolchainInstallManifest, RejectsFatMachOSliceOutsideFile) {
 TEST(ToolchainInstallManifest, InstallPathMappingPreservesRelativeLayout) {
     ToolchainFileEntry file;
     file.kind = ToolchainFileKind::CMakeConfig;
-    file.stagedRelativePath = "lib/cmake/Viper/ViperConfig.cmake";
+    file.stagedRelativePath = "lib/cmake/Zanna/ZannaConfig.cmake";
 
     EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::PortableArchive),
-              std::string("lib/cmake/Viper/ViperConfig.cmake"));
-    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::MacOSUsrLocalViperRoot),
-              std::string("/usr/local/viper/lib/cmake/Viper/ViperConfig.cmake"));
+              std::string("lib/cmake/Zanna/ZannaConfig.cmake"));
+    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::MacOSUsrLocalZannaRoot),
+              std::string("/usr/local/zanna/lib/cmake/Zanna/ZannaConfig.cmake"));
     EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::LinuxUsrRoot),
-              std::string("/usr/lib/cmake/Viper/ViperConfig.cmake"));
+              std::string("/usr/lib/cmake/Zanna/ZannaConfig.cmake"));
     EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::WindowsProgramFilesRoot),
-              std::string("C:\\Program Files\\Viper\\lib\\cmake\\Viper\\ViperConfig.cmake"));
+              std::string("C:\\Program Files\\Zanna\\lib\\cmake\\Zanna\\ZannaConfig.cmake"));
 
     ToolchainFileEntry doc;
     doc.kind = ToolchainFileKind::Doc;
     doc.stagedRelativePath = "LICENSE";
     EXPECT_EQ(mapInstallPath(doc, InstallPathPolicy::LinuxUsrRoot),
-              std::string("/usr/share/doc/viper/LICENSE"));
+              std::string("/usr/share/doc/zanna/LICENSE"));
 }
 
 TEST(ToolchainInstallManifest, ValidationAcceptsCaseVariantCMakeConfigPath) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_cmake_case";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_cmake_case";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
     for (auto &entry : manifest.files) {
-        if (entry.stagedRelativePath == "lib/cmake/Viper/ViperConfig.cmake")
-            entry.stagedRelativePath = "lib/cmake/viper/ViperConfig.cmake";
-        else if (entry.stagedRelativePath == "lib/cmake/Viper/ViperTargets.cmake")
-            entry.stagedRelativePath = "lib/cmake/viper/ViperTargets.cmake";
+        if (entry.stagedRelativePath == "lib/cmake/Zanna/ZannaConfig.cmake")
+            entry.stagedRelativePath = "lib/cmake/zanna/ZannaConfig.cmake";
+        else if (entry.stagedRelativePath == "lib/cmake/Zanna/ZannaTargets.cmake")
+            entry.stagedRelativePath = "lib/cmake/zanna/ZannaTargets.cmake";
     }
     EXPECT_NO_THROW(validateToolchainInstallManifest(manifest));
     fs::remove_all(tmpRoot);
@@ -5172,7 +5172,7 @@ TEST(ToolchainInstallManifest, TotalSizeDetectsOverflow) {
 
 TEST(ToolchainInstallManifest, RejectsInvalidArchitecture) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_bad_arch";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_bad_arch";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5188,18 +5188,18 @@ TEST(ToolchainInstallManifest, RejectsInvalidArchitecture) {
 
 TEST(ToolchainInstallManifest, RequiresOptionalLibraryOnlyWhenStagedMetadataReferencesIt) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_optional_refs";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_optional_refs";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     {
-        std::ofstream targets(stage / "lib" / "cmake" / "Viper" / "ViperTargets.cmake",
+        std::ofstream targets(stage / "lib" / "cmake" / "Zanna" / "ZannaTargets.cmake",
                               std::ios::app);
-        targets << "vipergfx\n";
+        targets << "zannagfx\n";
     }
     std::error_code ec;
-    fs::remove(stage / "lib" / "libvipergfx.a", ec);
+    fs::remove(stage / "lib" / "libzannagfx.a", ec);
     ec.clear();
-    fs::remove(stage / "lib" / "vipergfx.lib", ec);
+    fs::remove(stage / "lib" / "zannagfx.lib", ec);
 
     EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
     fs::remove_all(tmpRoot);
@@ -5208,14 +5208,14 @@ TEST(ToolchainInstallManifest, RequiresOptionalLibraryOnlyWhenStagedMetadataRefe
 #if !defined(_WIN32)
 TEST(ToolchainInstallManifest, RejectsSymlinkEscapingStage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_symlink_escape";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_symlink_escape";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     {
         std::ofstream outside(tmpRoot / "outside.txt");
         outside << "outside";
     }
-    fs::create_symlink(tmpRoot / "outside.txt", stage / "share" / "doc" / "viper" / "escape.txt");
+    fs::create_symlink(tmpRoot / "outside.txt", stage / "share" / "doc" / "zanna" / "escape.txt");
 
     EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
     fs::remove_all(tmpRoot);
@@ -5224,25 +5224,25 @@ TEST(ToolchainInstallManifest, RejectsSymlinkEscapingStage) {
 TEST(ToolchainInstallManifest, PreservesInternalSymlinkTargets) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_toolchain_manifest_symlink_internal";
+        fs::temp_directory_path() / "zanna_toolchain_manifest_symlink_internal";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-    fs::create_symlink("../share/doc/viper/README.md", stage / "bin" / "viper-readme");
+    fs::create_symlink("../share/doc/zanna/README.md", stage / "bin" / "zanna-readme");
 
     const auto manifest = gatherToolchainInstallManifest(stage);
     auto it = std::find_if(
         manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
-            return entry.stagedRelativePath == "bin/viper-readme";
+            return entry.stagedRelativePath == "bin/zanna-readme";
         });
     ASSERT_TRUE(it != manifest.files.end());
     EXPECT_TRUE(it->symlink);
-    EXPECT_EQ(it->symlinkTarget, std::string("../share/doc/viper/README.md"));
+    EXPECT_EQ(it->symlinkTarget, std::string("../share/doc/zanna/README.md"));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainInstallManifest, HandlesSymlinkedStageDirWithAbsoluteInstallManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage_alias";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_manifest_stage_alias";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     const fs::path stageLink = tmpRoot / "stage-link";
@@ -5263,19 +5263,19 @@ TEST(ToolchainInstallManifest, HandlesSymlinkedStageDirWithAbsoluteInstallManife
     const auto manifest = gatherToolchainInstallManifest(stageLink, installManifest);
     EXPECT_TRUE(std::any_of(
         manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
-            return entry.stagedRelativePath == "bin/viper" ||
-                   entry.stagedRelativePath == "bin/viper.exe";
+            return entry.stagedRelativePath == "bin/zanna" ||
+                   entry.stagedRelativePath == "bin/zanna.exe";
         }));
     EXPECT_TRUE(std::any_of(
         manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
-            return entry.stagedRelativePath == "lib/cmake/Viper/ViperConfig.cmake";
+            return entry.stagedRelativePath == "lib/cmake/Zanna/ZannaConfig.cmake";
         }));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainWindowsPackageBuilder, RejectsDirectorySymlinkDereference) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_dir_symlink";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_windows_dir_symlink";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     fs::create_directory_symlink("../share/doc", stage / "bin" / "doc-link");
@@ -5294,7 +5294,7 @@ TEST(ToolchainWindowsPackageBuilder, RejectsDirectorySymlinkDereference) {
 
 TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5302,7 +5302,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    params.outputPath = (tmpRoot / "zanna_9.8.7_amd64.deb").string();
     buildToolchainDebPackage(params);
 
     const auto debBytes = readFile(params.outputPath);
@@ -5312,22 +5312,22 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     std::vector<std::string> requiredDebPayload;
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredDebPayload.push_back("usr/bin/" + binary);
-    requiredDebPayload.push_back("usr/share/applications/viperide.desktop");
-    requiredDebPayload.push_back("usr/share/applications/viper-source.desktop");
-    requiredDebPayload.push_back("usr/share/applications/viper-il.desktop");
-    requiredDebPayload.push_back("usr/share/icons/hicolor/256x256/apps/viper.png");
-    requiredDebPayload.push_back("usr/share/mime/packages/viper.xml");
-    requiredDebPayload.push_back("usr/share/doc/viper/LICENSE");
+    requiredDebPayload.push_back("usr/share/applications/zannaide.desktop");
+    requiredDebPayload.push_back("usr/share/applications/zanna-source.desktop");
+    requiredDebPayload.push_back("usr/share/applications/zanna-il.desktop");
+    requiredDebPayload.push_back("usr/share/icons/hicolor/256x256/apps/zanna.png");
+    requiredDebPayload.push_back("usr/share/mime/packages/zanna.xml");
+    requiredDebPayload.push_back("usr/share/doc/zanna/LICENSE");
     EXPECT_TRUE(verifyDebPayload(debBytes, requiredDebPayload, payloadErr));
     const std::string control = debControlText(debBytes);
     EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6 | libc++1, libgcc-s1");
     EXPECT_CONTAINS(control,
                     "Recommends: cmake, g++ | clang, make, desktop-file-utils, "
                     "shared-mime-info, man-db");
-#if VIPER_BUILD_HAS_GRAPHICS || VIPER_BUILD_HAS_GUI
+#if ZANNA_BUILD_HAS_GRAPHICS || ZANNA_BUILD_HAS_GUI
     EXPECT_CONTAINS(control, "libx11-6");
 #endif
-#if VIPER_BUILD_HAS_AUDIO
+#if ZANNA_BUILD_HAS_AUDIO
     EXPECT_CONTAINS(control, "libasound2 | libasound2t64");
 #endif
     const std::string postrm = debControlEntryText(debBytes, "postrm");
@@ -5341,9 +5341,9 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
 // (little-endian, x86-64) so the manifest's architecture detector also accepts it.
 static void writeSyntheticElfBinary(const std::filesystem::path &stage, const std::string &soname) {
     namespace fs = std::filesystem;
-    fs::path binPath = stage / "bin" / "viper";
+    fs::path binPath = stage / "bin" / "zanna";
     if (!fs::exists(binPath))
-        binPath = stage / "bin" / "viper.exe";
+        binPath = stage / "bin" / "zanna.exe";
     unsigned char header[64] = {0};
     header[0] = 0x7F;
     header[1] = 'E';
@@ -5363,29 +5363,29 @@ static void writeSyntheticElfBinary(const std::filesystem::path &stage, const st
 
 TEST(ToolchainLinuxPackageBuilder, DebUsesConfiguredMaintainerAndHomepage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_maintainer";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_maintainer";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "linux";
     manifest.maintainer = "Acme Tools";
     manifest.maintainerEmail = "dev@acme.test";
-    manifest.homepage = "https://viper.example.com";
+    manifest.homepage = "https://zanna.example.com";
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    params.outputPath = (tmpRoot / "zanna_9.8.7_amd64.deb").string();
     buildToolchainDebPackage(params);
 
     const std::string control = debControlText(readFile(params.outputPath));
     EXPECT_CONTAINS(control, "Maintainer: Acme Tools <dev@acme.test>");
-    EXPECT_CONTAINS(control, "Homepage: https://viper.example.com");
+    EXPECT_CONTAINS(control, "Homepage: https://zanna.example.com");
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainLinuxPackageBuilder, DebDefaultsToProjectContactAndHomepage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_default_maint";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_default_maint";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5393,18 +5393,18 @@ TEST(ToolchainLinuxPackageBuilder, DebDefaultsToProjectContactAndHomepage) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    params.outputPath = (tmpRoot / "zanna_9.8.7_amd64.deb").string();
     buildToolchainDebPackage(params);
 
     const std::string control = debControlText(readFile(params.outputPath));
-    EXPECT_CONTAINS(control, "Maintainer: Viper Project <splanck@users.noreply.github.com>");
-    EXPECT_CONTAINS(control, "Homepage: https://github.com/splanck/viper");
+    EXPECT_CONTAINS(control, "Maintainer: Zanna Project <splanck@users.noreply.github.com>");
+    EXPECT_CONTAINS(control, "Homepage: https://github.com/zannagames/zanna");
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibstdcxxForElf) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_libstdcxx";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_libstdcxx";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     writeSyntheticElfBinary(stage, "libstdc++.so.6");
@@ -5413,7 +5413,7 @@ TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibstdcxxForElf) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    params.outputPath = (tmpRoot / "zanna_9.8.7_amd64.deb").string();
     buildToolchainDebPackage(params);
 
     const std::string control = debControlText(readFile(params.outputPath));
@@ -5423,7 +5423,7 @@ TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibstdcxxForElf) {
 
 TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibcxxForElf) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_libcxx";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_libcxx";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     writeSyntheticElfBinary(stage, "libc++.so.1");
@@ -5432,7 +5432,7 @@ TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibcxxForElf) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    params.outputPath = (tmpRoot / "zanna_9.8.7_amd64.deb").string();
     buildToolchainDebPackage(params);
 
     const std::string control = debControlText(readFile(params.outputPath));
@@ -5443,7 +5443,7 @@ TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibcxxForElf) {
 #if defined(__APPLE__)
 TEST(MacOSToolchainDmgBuilder, WrapsPkgIntoValidUdifImage) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_dmg_builder";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_dmg_builder";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
     const fs::path pkgPath = tmpRoot / "fake.pkg";
@@ -5454,10 +5454,10 @@ TEST(MacOSToolchainDmgBuilder, WrapsPkgIntoValidUdifImage) {
 
     MacOSToolchainDmgParams params;
     params.pkgPath = pkgPath.string();
-    params.volumeName = "Viper Toolchain Test";
+    params.volumeName = "Zanna Toolchain Test";
     params.outputPath = pkgPath.string();
     EXPECT_THROWS(buildMacOSToolchainDmg(params), std::runtime_error);
-    params.outputPath = (tmpRoot / "viper.dmg").string();
+    params.outputPath = (tmpRoot / "zanna.dmg").string();
     buildMacOSToolchainDmg(params);
 
     ASSERT_TRUE(fs::is_regular_file(params.outputPath));
@@ -5473,11 +5473,11 @@ TEST(MacOSToolchainDmgBuilder, WrapsPkgIntoValidUdifImage) {
 
 TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_tar_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     {
-        const fs::path helperPath = stage / "share" / "doc" / "viper" / "helper.sh";
+        const fs::path helperPath = stage / "share" / "doc" / "zanna" / "helper.sh";
         std::ofstream helper(helperPath);
         helper << "#!/bin/sh\n";
         helper.close();
@@ -5491,7 +5491,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-9.8.7-linux-x64.tar.gz").string();
+    params.outputPath = (tmpRoot / "zanna-9.8.7-linux-x64.tar.gz").string();
     buildToolchainTarball(params);
 
     const auto tarGz = readFile(params.outputPath);
@@ -5500,18 +5500,18 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     EXPECT_EQ(tarGz[1], static_cast<uint8_t>(0x8B));
     const auto tarBytes = inflateGzipPayload(tarGz);
     const std::string topDir =
-        std::string("viper-9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
+        std::string("zanna-9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
     EXPECT_EQ(tarFirstEntryName(tarBytes), topDir);
     std::ostringstream payloadErr;
     std::vector<std::string> requiredTarballPayload;
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredTarballPayload.push_back(topDir + "bin/" + binary);
-    requiredTarballPayload.push_back(topDir + "share/applications/viperide.desktop");
-    requiredTarballPayload.push_back(topDir + "share/applications/viper-source.desktop");
-    requiredTarballPayload.push_back(topDir + "share/applications/viper-il.desktop");
-    requiredTarballPayload.push_back(topDir + "share/icons/hicolor/256x256/apps/viper.png");
-    requiredTarballPayload.push_back(topDir + "share/mime/packages/viper.xml");
-    requiredTarballPayload.push_back(topDir + "share/viper/install_manifest.txt");
+    requiredTarballPayload.push_back(topDir + "share/applications/zannaide.desktop");
+    requiredTarballPayload.push_back(topDir + "share/applications/zanna-source.desktop");
+    requiredTarballPayload.push_back(topDir + "share/applications/zanna-il.desktop");
+    requiredTarballPayload.push_back(topDir + "share/icons/hicolor/256x256/apps/zanna.png");
+    requiredTarballPayload.push_back(topDir + "share/mime/packages/zanna.xml");
+    requiredTarballPayload.push_back(topDir + "share/zanna/install_manifest.txt");
     requiredTarballPayload.push_back(topDir + "install.sh");
     requiredTarballPayload.push_back(topDir + "uninstall.sh");
     requiredTarballPayload.push_back(topDir + "README.install");
@@ -5544,35 +5544,35 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     EXPECT_EQ(uninstallMode, static_cast<uint32_t>(0755));
     std::vector<uint8_t> installManifest;
     ASSERT_TRUE(
-        tarEntryData(tarBytes, topDir + "share/viper/install_manifest.txt", installManifest));
+        tarEntryData(tarBytes, topDir + "share/zanna/install_manifest.txt", installManifest));
     const std::string installManifestText(installManifest.begin(), installManifest.end());
-    EXPECT_CONTAINS(installManifestText, "bin/viper\n");
-    EXPECT_CONTAINS(installManifestText, "share/viper/install_manifest.txt\n");
-    EXPECT_CONTAINS(installManifestText, "share/viper/install_metadata\n");
-    EXPECT_CONTAINS(installManifestText, "share/viper/uninstall.sh\n");
+    EXPECT_CONTAINS(installManifestText, "bin/zanna\n");
+    EXPECT_CONTAINS(installManifestText, "share/zanna/install_manifest.txt\n");
+    EXPECT_CONTAINS(installManifestText, "share/zanna/install_metadata\n");
+    EXPECT_CONTAINS(installManifestText, "share/zanna/uninstall.sh\n");
     std::vector<uint8_t> sourceDesktop;
     ASSERT_TRUE(
-        tarEntryData(tarBytes, topDir + "share/applications/viper-source.desktop", sourceDesktop));
-    EXPECT_CONTAINS(std::string(sourceDesktop.begin(), sourceDesktop.end()), "Exec=viper run %f");
+        tarEntryData(tarBytes, topDir + "share/applications/zanna-source.desktop", sourceDesktop));
+    EXPECT_CONTAINS(std::string(sourceDesktop.begin(), sourceDesktop.end()), "Exec=zanna run %f");
     std::vector<uint8_t> ilDesktop;
-    ASSERT_TRUE(tarEntryData(tarBytes, topDir + "share/applications/viper-il.desktop", ilDesktop));
-    EXPECT_CONTAINS(std::string(ilDesktop.begin(), ilDesktop.end()), "Exec=viper -run %f");
+    ASSERT_TRUE(tarEntryData(tarBytes, topDir + "share/applications/zanna-il.desktop", ilDesktop));
+    EXPECT_CONTAINS(std::string(ilDesktop.begin(), ilDesktop.end()), "Exec=zanna -run %f");
     uint32_t helperMode = 0;
-    EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "share/doc/viper/helper.sh", helperMode));
+    EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "share/doc/zanna/helper.sh", helperMode));
     EXPECT_EQ(helperMode, static_cast<uint32_t>(0750));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedFiles) {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     return;
 #else
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_lifecycle";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_tar_lifecycle";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     {
-        std::ofstream oldOnly(stage / "share" / "doc" / "viper" / "old-only.txt");
+        std::ofstream oldOnly(stage / "share" / "doc" / "zanna" / "old-only.txt");
         oldOnly << "removed by upgrade";
     }
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5580,7 +5580,7 @@ TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedF
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.tar.gz").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.tar.gz").string();
     buildToolchainTarball(params);
 
     const fs::path extractRoot = tmpRoot / "extract";
@@ -5588,13 +5588,13 @@ TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedF
     const RunResult extract =
         run_process({"tar", "xzf", params.outputPath, "-C", extractRoot.string()});
     ASSERT_EQ(extract.exit_code, 0);
-    const fs::path topDir = extractRoot / ("viper-9.8.7-linux-" + manifest.arch);
+    const fs::path topDir = extractRoot / ("zanna-9.8.7-linux-" + manifest.arch);
     const fs::path installScript = topDir / "install.sh";
 
     const fs::path canonicalRoot = fs::weakly_canonical(tmpRoot) / "target-root";
     fs::create_directories(canonicalRoot / "usr" / "bin");
     {
-        std::ofstream conflict(canonicalRoot / "usr" / "bin" / "viper");
+        std::ofstream conflict(canonicalRoot / "usr" / "bin" / "zanna");
         conflict << "unowned";
     }
     const std::vector<std::pair<std::string, std::string>> env = {
@@ -5608,26 +5608,26 @@ TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedF
     if (install.exit_code != 0)
         std::cerr << install.out << install.err;
     ASSERT_EQ(install.exit_code, 0);
-    EXPECT_TRUE(fs::is_regular_file(canonicalRoot / "usr" / "bin" / "viper"));
-    const fs::path uninstaller = canonicalRoot / "usr" / "share" / "viper" / "uninstall.sh";
+    EXPECT_TRUE(fs::is_regular_file(canonicalRoot / "usr" / "bin" / "zanna"));
+    const fs::path uninstaller = canonicalRoot / "usr" / "share" / "zanna" / "uninstall.sh";
     EXPECT_TRUE(fs::is_regular_file(uninstaller));
     EXPECT_TRUE(
-        fs::is_regular_file(canonicalRoot / "usr" / "share" / "viper" / "install_metadata"));
+        fs::is_regular_file(canonicalRoot / "usr" / "share" / "zanna" / "install_metadata"));
     EXPECT_TRUE(
-        fs::is_regular_file(canonicalRoot / "usr" / "share" / "doc" / "viper" / "old-only.txt"));
+        fs::is_regular_file(canonicalRoot / "usr" / "share" / "doc" / "zanna" / "old-only.txt"));
 
-    const fs::path unrelated = canonicalRoot / "usr" / "share" / "viper" / "user.keep";
+    const fs::path unrelated = canonicalRoot / "usr" / "share" / "zanna" / "user.keep";
     {
         std::ofstream keep(unrelated);
         keep << "preserve me";
     }
 
-    fs::remove(stage / "share" / "doc" / "viper" / "old-only.txt");
+    fs::remove(stage / "share" / "doc" / "zanna" / "old-only.txt");
     auto upgradeManifest = gatherToolchainInstallManifest(stage);
     upgradeManifest.platform = "linux";
     LinuxToolchainBuildParams upgradeParams;
     upgradeParams.manifest = upgradeManifest;
-    upgradeParams.outputPath = (tmpRoot / "viper-toolchain-upgrade.tar.gz").string();
+    upgradeParams.outputPath = (tmpRoot / "zanna-toolchain-upgrade.tar.gz").string();
     buildToolchainTarball(upgradeParams);
     const fs::path upgradeExtractRoot = tmpRoot / "upgrade-extract";
     fs::create_directories(upgradeExtractRoot);
@@ -5635,25 +5635,25 @@ TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedF
         run_process({"tar", "xzf", upgradeParams.outputPath, "-C", upgradeExtractRoot.string()});
     ASSERT_EQ(extractUpgrade.exit_code, 0);
     const fs::path upgradeTopDir =
-        upgradeExtractRoot / ("viper-9.8.7-linux-" + upgradeManifest.arch);
+        upgradeExtractRoot / ("zanna-9.8.7-linux-" + upgradeManifest.arch);
     const RunResult upgrade =
         run_process({(upgradeTopDir / "install.sh").string()}, upgradeTopDir.string(), env);
     if (upgrade.exit_code != 0)
         std::cerr << upgrade.out << upgrade.err;
     ASSERT_EQ(upgrade.exit_code, 0);
-    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "share" / "doc" / "viper" / "old-only.txt"));
+    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "share" / "doc" / "zanna" / "old-only.txt"));
     EXPECT_TRUE(fs::is_regular_file(unrelated));
 
     const RunResult dryUninstall =
         run_process({uninstaller.string(), "--dry-run"}, upgradeTopDir.string(), env);
     EXPECT_EQ(dryUninstall.exit_code, 0);
-    EXPECT_TRUE(fs::exists(canonicalRoot / "usr" / "bin" / "viper"));
+    EXPECT_TRUE(fs::exists(canonicalRoot / "usr" / "bin" / "zanna"));
 
     const RunResult uninstall = run_process({uninstaller.string()}, upgradeTopDir.string(), env);
     if (uninstall.exit_code != 0)
         std::cerr << uninstall.out << uninstall.err;
     EXPECT_EQ(uninstall.exit_code, 0);
-    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "bin" / "viper"));
+    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "bin" / "zanna"));
     EXPECT_FALSE(fs::exists(uninstaller));
     EXPECT_TRUE(fs::is_regular_file(unrelated));
     fs::remove_all(tmpRoot);
@@ -5668,7 +5668,7 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
 
     LinuxRuntimeStubParams params;
-    params.cacheName = "viper-test-linux-x64";
+    params.cacheName = "zanna-test-linux-x64";
     params.entryPath = "AppRun";
     const auto appImage = buildLinuxAppImage(params, tarGz);
 
@@ -5683,9 +5683,9 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
     EXPECT_TRUE(containsAscii(appImage, "cache_key=$cache_name-$payload_sha256"));
     EXPECT_TRUE(containsAscii(appImage, "check_no_symlink_components"));
     EXPECT_TRUE(containsAscii(appImage, "while ! mkdir \"$lock_dir\""));
-    EXPECT_TRUE(containsAscii(appImage, "VIPER_BUNDLE_REFRESH"));
-    EXPECT_TRUE(containsAscii(appImage, "--viper-bundle-extract"));
-    EXPECT_TRUE(containsAscii(appImage, "./viper-bundle-root"));
+    EXPECT_TRUE(containsAscii(appImage, "ZANNA_BUNDLE_REFRESH"));
+    EXPECT_TRUE(containsAscii(appImage, "--zanna-bundle-extract"));
+    EXPECT_TRUE(containsAscii(appImage, "./zanna-bundle-root"));
     const auto payload = appImagePayloadBytes(appImage);
     ASSERT_TRUE(payload.size() >= 2);
     EXPECT_EQ(payload[0], static_cast<uint8_t>(0x1F));
@@ -5702,7 +5702,7 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
     invalidNameParams.entryPath = "AppRun";
     EXPECT_THROWS(buildLinuxRuntimeStub(invalidNameParams), std::runtime_error);
     LinuxRuntimeStubParams invalidHashParams;
-    invalidHashParams.cacheName = "viper-test-linux-x64";
+    invalidHashParams.cacheName = "zanna-test-linux-x64";
     invalidHashParams.entryPath = "AppRun";
     invalidHashParams.payloadSha256 = "not-a-sha256";
     EXPECT_THROWS(buildLinuxRuntimeStub(invalidHashParams), std::runtime_error);
@@ -5710,11 +5710,11 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
 }
 
 TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     return;
 #else
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_linux_bundle_runtime_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_linux_bundle_runtime_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
@@ -5724,10 +5724,10 @@ TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
     LinuxRuntimeStubParams params;
-    params.cacheName = "viper-runtime-test";
+    params.cacheName = "zanna-runtime-test";
     params.entryPath = "AppRun";
     const std::vector<uint8_t> bundle = buildLinuxAppImage(params, tarGz);
-    const fs::path bundlePath = tmpRoot / "viper-runtime-test.run";
+    const fs::path bundlePath = tmpRoot / "zanna-runtime-test.run";
     writeBytes(bundlePath, bundle);
     fs::permissions(bundlePath,
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec,
@@ -5735,7 +5735,7 @@ TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
 
     const fs::path cacheRoot = fs::weakly_canonical(tmpRoot) / "cache";
     const std::vector<std::pair<std::string, std::string>> env = {
-        {"XDG_CACHE_HOME", cacheRoot.string()}, {"VIPER_BUNDLE_QUIET", "1"}};
+        {"XDG_CACHE_HOME", cacheRoot.string()}, {"ZANNA_BUNDLE_QUIET", "1"}};
     const RunResult first = run_process({bundlePath.string()}, std::nullopt, env);
     EXPECT_EQ(first.exit_code, 0);
     EXPECT_CONTAINS(first.out, "bundle-ok");
@@ -5749,16 +5749,16 @@ TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
     }
     EXPECT_EQ(stampCount, static_cast<size_t>(1));
     const RunResult cachePath =
-        run_process({bundlePath.string(), "--viper-bundle-cache"}, std::nullopt, env);
+        run_process({bundlePath.string(), "--zanna-bundle-cache"}, std::nullopt, env);
     EXPECT_EQ(cachePath.exit_code, 0);
-    EXPECT_CONTAINS(cachePath.out, "viper-runtime-test-");
+    EXPECT_CONTAINS(cachePath.out, "zanna-runtime-test-");
 
     fs::create_directories(tmpRoot / "real-cache");
     fs::create_directory_symlink(tmpRoot / "real-cache", tmpRoot / "cache-link");
     const RunResult symlinked = run_process(
         {bundlePath.string()},
         std::nullopt,
-        {{"XDG_CACHE_HOME", (tmpRoot / "cache-link").string()}, {"VIPER_BUNDLE_QUIET", "1"}});
+        {{"XDG_CACHE_HOME", (tmpRoot / "cache-link").string()}, {"ZANNA_BUNDLE_QUIET", "1"}});
     EXPECT_NE(symlinked.exit_code, 0);
     EXPECT_CONTAINS(symlinked.err, "symlinked cache path component");
 
@@ -5768,7 +5768,7 @@ TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
 
 TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_bundle_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_bundle_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5776,16 +5776,16 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-9.8.7-linux-x64.run").string();
+    params.outputPath = (tmpRoot / "zanna-9.8.7-linux-x64.run").string();
     buildToolchainBundle(params);
 
     const auto bundle = readFile(params.outputPath);
     std::string err;
     EXPECT_TRUE(verifyLinuxAppImage(bundle, &err));
     const std::string runtimeText(bundle.begin(), bundle.end());
-    EXPECT_TRUE(runtimeText.find("--viper-bundle-help") != std::string::npos);
+    EXPECT_TRUE(runtimeText.find("--zanna-bundle-help") != std::string::npos);
     EXPECT_TRUE(runtimeText.find("--appimage-help") == std::string::npos);
-    EXPECT_TRUE(runtimeText.find("VIPER_APPIMAGE_CLEAN_CACHE") == std::string::npos);
+    EXPECT_TRUE(runtimeText.find("ZANNA_APPIMAGE_CLEAN_CACHE") == std::string::npos);
     const auto payloadGz = appImagePayloadBytes(bundle);
     const auto payloadTar = inflateGzipPayload(payloadGz);
     std::ostringstream payloadErr;
@@ -5793,26 +5793,26 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
     requiredBundlePayload.push_back("AppRun");
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredBundlePayload.push_back("bin/" + binary);
-    requiredBundlePayload.push_back("share/applications/viperide.desktop");
-    requiredBundlePayload.push_back("share/applications/viper-source.desktop");
-    requiredBundlePayload.push_back("share/applications/viper-il.desktop");
-    requiredBundlePayload.push_back("share/icons/hicolor/256x256/apps/viper.png");
-    requiredBundlePayload.push_back("share/mime/packages/viper.xml");
+    requiredBundlePayload.push_back("share/applications/zannaide.desktop");
+    requiredBundlePayload.push_back("share/applications/zanna-source.desktop");
+    requiredBundlePayload.push_back("share/applications/zanna-il.desktop");
+    requiredBundlePayload.push_back("share/icons/hicolor/256x256/apps/zanna.png");
+    requiredBundlePayload.push_back("share/mime/packages/zanna.xml");
     requiredBundlePayload.push_back(".DirIcon");
-    requiredBundlePayload.push_back("viper.desktop");
-    requiredBundlePayload.push_back("viper.png");
+    requiredBundlePayload.push_back("zanna.desktop");
+    requiredBundlePayload.push_back("zanna.png");
     EXPECT_TRUE(verifyTarGzPayload(payloadGz, requiredBundlePayload, payloadErr));
     std::vector<uint8_t> appRun;
     ASSERT_TRUE(tarEntryData(payloadTar, "AppRun", appRun));
     const std::string appRunText(appRun.begin(), appRun.end());
-    EXPECT_CONTAINS(appRunText, "bin/viperide");
-    EXPECT_CONTAINS(appRunText, "bin/viper");
+    EXPECT_CONTAINS(appRunText, "bin/zannaide");
+    EXPECT_CONTAINS(appRunText, "bin/zanna");
     std::vector<uint8_t> desktop;
-    ASSERT_TRUE(tarEntryData(payloadTar, "viper.desktop", desktop));
+    ASSERT_TRUE(tarEntryData(payloadTar, "zanna.desktop", desktop));
     EXPECT_CONTAINS(std::string(desktop.begin(), desktop.end()), "Exec=AppRun");
     EXPECT_CONTAINS(std::string(desktop.begin(), desktop.end()), "Terminal=false");
     std::vector<uint8_t> icon;
-    ASSERT_TRUE(tarEntryData(payloadTar, "viper.png", icon));
+    ASSERT_TRUE(tarEntryData(payloadTar, "zanna.png", icon));
     ASSERT_TRUE(icon.size() >= 8);
     EXPECT_EQ(icon[0], static_cast<uint8_t>(137));
     EXPECT_EQ(icon[1], static_cast<uint8_t>('P'));
@@ -5826,7 +5826,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
 
 TEST(ToolchainLinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_epoch_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_tar_epoch_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5835,22 +5835,22 @@ TEST(ToolchainLinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirec
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-epoch.tar.gz").string();
+    params.outputPath = (tmpRoot / "zanna-epoch.tar.gz").string();
     buildToolchainTarball(params);
 
     const auto tarGz = readFile(params.outputPath);
     const auto tarBytes = inflateGzipPayload(tarGz);
     const std::string topDir =
-        std::string("viper-2_9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
+        std::string("zanna-2_9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
     EXPECT_EQ(tarFirstEntryName(tarBytes), topDir);
     std::ostringstream err;
-    EXPECT_TRUE(verifyTarGzPayload(tarGz, {topDir + "bin/viper"}, err));
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, {topDir + "bin/zanna"}, err));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainLinuxPackageBuilder, NonLinuxTarballOmitsLinuxDesktopMetadata) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_nonlinux_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_tar_nonlinux_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -5858,23 +5858,23 @@ TEST(ToolchainLinuxPackageBuilder, NonLinuxTarballOmitsLinuxDesktopMetadata) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-9.8.7-macos-x64.tar.gz").string();
+    params.outputPath = (tmpRoot / "zanna-9.8.7-macos-x64.tar.gz").string();
     buildToolchainTarball(params);
 
     const auto tarGz = readFile(params.outputPath);
     const auto tarBytes = inflateGzipPayload(tarGz);
     const std::string topDir =
-        std::string("viper-9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
+        std::string("zanna-9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
     std::vector<uint8_t> ignored;
     EXPECT_FALSE(
-        tarEntryData(tarBytes, topDir + "share/applications/viper-source.desktop", ignored));
-    EXPECT_FALSE(tarEntryData(tarBytes, topDir + "share/mime/packages/viper.xml", ignored));
+        tarEntryData(tarBytes, topDir + "share/applications/zanna-source.desktop", ignored));
+    EXPECT_FALSE(tarEntryData(tarBytes, topDir + "share/mime/packages/zanna.xml", ignored));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_windows_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
@@ -5885,7 +5885,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
     params.archStr = "x64";
     buildWindowsToolchainInstaller(params);
 
@@ -5896,39 +5896,39 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(verifyPEZipOverlayPayload(pe,
                                           {"meta/payload.zip",
                                            "meta/install_manifest.next",
-                                           "meta/viper_developer_prompt.lnk",
-                                           "meta/viperide.lnk",
+                                           "meta/zanna_developer_prompt.lnk",
+                                           "meta/zannaide.lnk",
                                            "meta/manifest.sha256"},
                                           payloadErr));
     const auto outerZip = extractFirstZipOverlay(pe);
-    EXPECT_FALSE(zipContainsEntries(outerZip, {"meta/viper_vscode_extension.lnk"}));
+    EXPECT_FALSE(zipContainsEntries(outerZip, {"meta/zanna_vscode_extension.lnk"}));
     const auto licenseMetadata = extractZipEntry(outerZip, "meta/license.txt");
     const auto readmeMetadata = extractZipEntry(outerZip, "meta/readme.txt");
     const std::string licenseMetadataText(licenseMetadata.begin(), licenseMetadata.end());
     const std::string readmeMetadataText(readmeMetadata.begin(), readmeMetadata.end());
     EXPECT_CONTAINS(licenseMetadataText, "GPL");
     EXPECT_TRUE(licenseMetadataText.find("Sample-specific") == std::string::npos);
-    EXPECT_CONTAINS(readmeMetadataText, "Viper");
+    EXPECT_CONTAINS(readmeMetadataText, "Zanna");
     EXPECT_TRUE(readmeMetadataText.find("Sample documentation") == std::string::npos);
     EXPECT_GE(peOptionalHeaderField64(pe, 72), static_cast<uint64_t>(0x200000));
     EXPECT_GE(peOptionalHeaderField64(pe, 80), static_cast<uint64_t>(0x100000));
     EXPECT_TRUE(containsUtf16LE(pe, "Environment"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Viper\\share\\viper\\viper.ico"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Zanna\\share\\zanna\\zanna.ico"));
     EXPECT_TRUE(containsAscii(pe, "asInvoker"));
-    EXPECT_TRUE(containsUtf16LE(pe, "VAPSOriginalPath"));
-    EXPECT_TRUE(containsUtf16LE(pe, "VAPSPathEntry"));
-    EXPECT_TRUE(containsUtf16LE(pe, "bin\\viperide.exe"));
-    EXPECT_TRUE(containsUtf16LE(pe, "share\\viper\\viper.ico"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_SELF"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_MODE"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_LOG"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_PROGRESS"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_COMPONENT_VIPERIDE"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_COMPONENT_SAMPLES"));
-    EXPECT_TRUE(containsUtf16LE(pe, "/no-viperide"));
+    EXPECT_TRUE(containsUtf16LE(pe, "ZAPSOriginalPath"));
+    EXPECT_TRUE(containsUtf16LE(pe, "ZAPSPathEntry"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannaide.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "share\\zanna\\zanna.ico"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_SELF"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_MODE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_LOG"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_PROGRESS"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_COMPONENT_ZANNAIDE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_COMPONENT_SAMPLES"));
+    EXPECT_TRUE(containsUtf16LE(pe, "/no-zannaide"));
     EXPECT_TRUE(containsUtf16LE(pe, "/no-samples"));
     EXPECT_TRUE(containsUtf16LE(pe, "msctls_progress32"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_NATIVE_STAGE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_NATIVE_STAGE"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "PATH registration"));
     EXPECT_TRUE(containsUtf16LE(pe, "DarkMode_Explorer"));
     const std::string transactionScript = decodedEmbeddedPowerShellSource(pe);
@@ -5938,14 +5938,14 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_CONTAINS(transactionScript, "$payloadComponentPrefixes");
     EXPECT_CONTAINS(transactionScript, "$payloadComponents");
     EXPECT_CONTAINS(transactionScript, "function PayloadComponent");
-    EXPECT_CONTAINS(transactionScript, "share\\viper\\samples\\");
-    EXPECT_TRUE(transactionScript.find("share\\viper\\samples\\hello\\main.zia") ==
+    EXPECT_CONTAINS(transactionScript, "share\\zanna\\samples\\");
+    EXPECT_TRUE(transactionScript.find("share\\zanna\\samples\\hello\\main.zia") ==
                 std::string::npos);
     EXPECT_CONTAINS(transactionScript, "Installing the selected developer tools");
     EXPECT_CONTAINS(transactionScript, "function LegacyInstallOwned");
     EXPECT_CONTAINS(transactionScript, "migrating generated legacy installation");
     EXPECT_CONTAINS(transactionScript, "WriteInstallerLog 'ERROR'");
-    EXPECT_CONTAINS(transactionScript, "Viper Developer Prompt.lnk");
+    EXPECT_CONTAINS(transactionScript, "Zanna Developer Prompt.lnk");
     EXPECT_CONTAINS(transactionScript, "refusing to replace unowned path");
     EXPECT_TRUE(containsUtf16LEStringData(pe, "install-files"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "commit"));
@@ -5962,42 +5962,42 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                             shellFileOperationImport.end()) != pe.end());
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
-    const auto developerPrompt = extractZipEntry(payloadZip, "bin/viper-dev.cmd");
+    const auto developerPrompt = extractZipEntry(payloadZip, "bin/zanna-dev.cmd");
     ASSERT_FALSE(developerPrompt.empty());
     const std::string developerPromptText(developerPrompt.begin(), developerPrompt.end());
-    EXPECT_CONTAINS(developerPromptText, "for %%I in (\"%~dp0..\") do set \"VIPER_HOME=%%~fI\"");
-    EXPECT_CONTAINS(developerPromptText, "set \"Viper_DIR=%VIPER_HOME%\\lib\\cmake\\Viper\"");
+    EXPECT_CONTAINS(developerPromptText, "for %%I in (\"%~dp0..\") do set \"ZANNA_HOME=%%~fI\"");
+    EXPECT_CONTAINS(developerPromptText, "set \"Zanna_DIR=%ZANNA_HOME%\\lib\\cmake\\Zanna\"");
     EXPECT_CONTAINS(developerPromptText,
-                    "set \"CMAKE_PREFIX_PATH=%VIPER_HOME%;%CMAKE_PREFIX_PATH%\"");
+                    "set \"CMAKE_PREFIX_PATH=%ZANNA_HOME%;%CMAKE_PREFIX_PATH%\"");
     std::vector<std::string> requiredWindowsPayload;
     for (const auto &file : manifest.files) {
         requiredWindowsPayload.push_back(sanitizePackageRelativePath(
             file.stagedRelativePath, "windows toolchain test payload path"));
     }
-    requiredWindowsPayload.push_back("bin/viper-dev.cmd");
-    requiredWindowsPayload.push_back("share/viper/README.windows-prerequisites.txt");
-    requiredWindowsPayload.push_back("share/viper/viper.ico");
-    requiredWindowsPayload.push_back("bin/viperide.ico");
+    requiredWindowsPayload.push_back("bin/zanna-dev.cmd");
+    requiredWindowsPayload.push_back("share/zanna/README.windows-prerequisites.txt");
+    requiredWindowsPayload.push_back("share/zanna/zanna.ico");
+    requiredWindowsPayload.push_back("bin/zannaide.ico");
     requiredWindowsPayload.push_back("uninstall.exe");
-    requiredWindowsPayload.push_back(".viper-install-manifest.txt");
+    requiredWindowsPayload.push_back(".zanna-install-manifest.txt");
     EXPECT_TRUE(zipContainsEntries(payloadZip, requiredWindowsPayload));
-    const auto viperIdeIcon = extractZipEntry(payloadZip, "bin/viperide.ico");
-    ASSERT_GE(viperIdeIcon.size(), static_cast<size_t>(6));
-    EXPECT_EQ(readLE16(viperIdeIcon.data()), static_cast<uint16_t>(0));
-    EXPECT_EQ(readLE16(viperIdeIcon.data() + 2), static_cast<uint16_t>(1));
-    EXPECT_GE(readLE16(viperIdeIcon.data() + 4), static_cast<uint16_t>(4));
+    const auto zannaIdeIcon = extractZipEntry(payloadZip, "bin/zannaide.ico");
+    ASSERT_GE(zannaIdeIcon.size(), static_cast<size_t>(6));
+    EXPECT_EQ(readLE16(zannaIdeIcon.data()), static_cast<uint16_t>(0));
+    EXPECT_EQ(readLE16(zannaIdeIcon.data() + 2), static_cast<uint16_t>(1));
+    EXPECT_GE(readLE16(zannaIdeIcon.data() + 4), static_cast<uint16_t>(4));
     const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
     ASSERT_FALSE(uninstaller.empty());
     std::ostringstream uninstallerErr;
     EXPECT_TRUE(verifyPE(uninstaller, uninstallerErr));
-    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "VIPER_INSTALLER_MODE"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "ZANNA_INSTALLER_MODE"));
     EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "uninstall-files"));
-    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "org.viper.toolchain"));
-    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, ".viper-install-manifest.txt"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "org.zanna.toolchain"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, ".zanna-install-manifest.txt"));
     const std::string uninstallerScript = decodedEmbeddedPowerShellSource(uninstaller);
     EXPECT_CONTAINS(uninstallerScript, "function RestoreTransaction");
     EXPECT_CONTAINS(uninstallerScript, "if($mode -eq 'uninstall-files')");
-    EXPECT_CONTAINS(uninstallerScript, "VAPSShortcutPaths");
+    EXPECT_CONTAINS(uninstallerScript, "ZAPSShortcutPaths");
     EXPECT_CONTAINS(uninstallerScript, "selected payload files and shortcuts removed");
     fs::remove_all(tmpRoot);
 }
@@ -6005,12 +6005,12 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
 TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDeveloperPayload) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_toolchain_windows_bootstrap_filter_stage";
+        fs::temp_directory_path() / "zanna_toolchain_windows_bootstrap_filter_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
-    writeTestWindowsPe(stage / "bin" / "viper-installer-host.exe");
-    writeTestWindowsPe(stage / "bin" / "viper-installer-cleanup.exe");
+    writeTestWindowsPe(stage / "bin" / "zanna-installer-host.exe");
+    writeTestWindowsPe(stage / "bin" / "zanna-installer-cleanup.exe");
 
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
@@ -6018,11 +6018,11 @@ TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDevel
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
     params.archStr = "x64";
-    params.installDirName = "Viper development";
-    params.installerHostPath = (stage / "bin" / "viper-installer-host.exe").string();
-    params.installerCleanupPath = (stage / "bin" / "viper-installer-cleanup.exe").string();
+    params.installDirName = "Zanna development";
+    params.installerHostPath = (stage / "bin" / "zanna-installer-host.exe").string();
+    params.installerCleanupPath = (stage / "bin" / "zanna-installer-cleanup.exe").string();
     buildWindowsToolchainInstaller(params);
 
     const auto setup = readFile(params.outputPath);
@@ -6030,21 +6030,21 @@ TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDevel
     EXPECT_TRUE(verifyWindowsNativeInstaller(setup, verifyError));
     const auto payloadZip = extractPeOverlayZipEntry(setup, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
-    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-host.exe").empty());
-    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-cleanup.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/zanna-installer-host.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/zanna-installer-cleanup.exe").empty());
     const auto prerequisites =
-        extractZipEntry(payloadZip, "share/viper/README.windows-prerequisites.txt");
+        extractZipEntry(payloadZip, "share/zanna/README.windows-prerequisites.txt");
     const std::string prerequisitesText(prerequisites.begin(), prerequisites.end());
-    EXPECT_CONTAINS(prerequisitesText, "%LOCALAPPDATA%\\Programs\\Viper development");
-    EXPECT_CONTAINS(prerequisitesText, "%ProgramFiles%\\Viper development");
+    EXPECT_CONTAINS(prerequisitesText, "%LOCALAPPDATA%\\Programs\\Zanna development");
+    EXPECT_CONTAINS(prerequisitesText, "%ProgramFiles%\\Zanna development");
 
     const auto metadataBytes = extractPeOverlayZipEntry(setup, "meta/installer-v2.txt");
     ASSERT_FALSE(metadataBytes.empty());
     const auto metadata = parseWindowsInstallerMetadata(
         std::string(reinterpret_cast<const char *>(metadataBytes.data()), metadataBytes.size()));
     for (const WindowsInstallerPayloadMetadata &file : metadata.payloadFiles) {
-        EXPECT_NE(file.path, "bin/viper-installer-host.exe");
-        EXPECT_NE(file.path, "bin/viper-installer-cleanup.exe");
+        EXPECT_NE(file.path, "bin/zanna-installer-host.exe");
+        EXPECT_NE(file.path, "bin/zanna-installer-cleanup.exe");
     }
     fs::remove_all(tmpRoot);
 }
@@ -6052,12 +6052,12 @@ TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDevel
 TEST(ToolchainWindowsPackageBuilder, RejectsMissingAppLocalMsvcRuntime) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_toolchain_windows_missing_runtime_stage";
+        fs::temp_directory_path() / "zanna_toolchain_windows_missing_runtime_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
     writeTestWindowsPe(
-        stage / "bin" / "viper.exe",
+        stage / "bin" / "zanna.exe",
         "x64",
         {{"vcruntime140.dll", {"runtime_entry"}}, {"msvcp140.dll", {"standard_library_entry"}}});
 
@@ -6067,7 +6067,7 @@ TEST(ToolchainWindowsPackageBuilder, RejectsMissingAppLocalMsvcRuntime) {
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
     params.archStr = "x64";
     EXPECT_THROWS(buildWindowsToolchainInstaller(params), std::runtime_error);
 
@@ -6083,13 +6083,13 @@ TEST(ToolchainWindowsPackageBuilder, RejectsMissingAppLocalMsvcRuntime) {
 TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntime) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_toolchain_windows_nested_signing_stage";
+        fs::temp_directory_path() / "zanna_toolchain_windows_nested_signing_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
     writeTestWindowsPe(
-        stage / "bin" / "viper.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
-    writeTestWindowsPe(stage / "bin" / "viperide.exe");
+        stage / "bin" / "zanna.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
+    writeTestWindowsPe(stage / "bin" / "zannaide.exe");
     writeTestWindowsPe(stage / "bin" / "vcruntime140.dll");
 
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -6099,12 +6099,12 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
     std::vector<std::string> signedNames;
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
     params.archStr = "x64";
     params.peSigner = [&](std::string_view logicalName, const std::vector<uint8_t> &input) {
         signedNames.emplace_back(logicalName);
         std::vector<uint8_t> output = input;
-        const std::string marker = "VAPS-TOOLCHAIN-SIGNED";
+        const std::string marker = "ZAPS-TOOLCHAIN-SIGNED";
         output.insert(output.end(), marker.begin(), marker.end());
         return output;
     };
@@ -6114,16 +6114,16 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
     EXPECT_TRUE(
-        containsAscii(extractZipEntry(payloadZip, "bin/viper.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+        containsAscii(extractZipEntry(payloadZip, "bin/zanna.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_TRUE(
-        containsAscii(extractZipEntry(payloadZip, "bin/viperide.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+        containsAscii(extractZipEntry(payloadZip, "bin/zannaide.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_TRUE(
-        containsAscii(extractZipEntry(payloadZip, "uninstall.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+        containsAscii(extractZipEntry(payloadZip, "uninstall.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_FALSE(containsAscii(extractZipEntry(payloadZip, "bin/vcruntime140.dll"),
-                               "VAPS-TOOLCHAIN-SIGNED"));
-    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/viper.exe") !=
+                               "ZAPS-TOOLCHAIN-SIGNED"));
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/zanna.exe") !=
                 signedNames.end());
-    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/viperide.exe") !=
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/zannaide.exe") !=
                 signedNames.end());
     EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "uninstall.exe") !=
                 signedNames.end());
@@ -6135,7 +6135,7 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
 TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Installer) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_toolchain_windows_arm64_license_stage";
+        fs::temp_directory_path() / "zanna_toolchain_windows_arm64_license_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
@@ -6146,8 +6146,8 @@ TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Inst
     }
     for (const fs::path &executable : stagedExecutables)
         writeTestWindowsPe(executable, "arm64");
-    writeTestWindowsPe(stage / "bin" / "viper-installer-host.exe", "arm64");
-    writeTestWindowsPe(stage / "bin" / "viper-installer-cleanup.exe", "arm64");
+    writeTestWindowsPe(stage / "bin" / "zanna-installer-host.exe", "arm64");
+    writeTestWindowsPe(stage / "bin" / "zanna-installer-cleanup.exe", "arm64");
     {
         std::ofstream license(stage / "LICENSE", std::ios::binary | std::ios::trunc);
         license << std::string(25000, 'L');
@@ -6158,10 +6158,10 @@ TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Inst
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-arm64-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-arm64-setup.exe").string();
     params.archStr = "arm64";
-    params.installerHostPath = (stage / "bin" / "viper-installer-host.exe").string();
-    params.installerCleanupPath = (stage / "bin" / "viper-installer-cleanup.exe").string();
+    params.installerHostPath = (stage / "bin" / "zanna-installer-host.exe").string();
+    params.installerCleanupPath = (stage / "bin" / "zanna-installer-cleanup.exe").string();
     buildWindowsToolchainInstaller(params);
 
     const auto pe = readFile(params.outputPath);
@@ -6172,8 +6172,8 @@ TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Inst
     ASSERT_FALSE(payloadZip.empty());
     const auto installedLicense = extractZipEntry(payloadZip, "LICENSE");
     EXPECT_EQ(installedLicense.size(), static_cast<size_t>(25000));
-    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-host.exe").empty());
-    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-cleanup.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/zanna-installer-host.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/zanna-installer-cleanup.exe").empty());
 
     const auto metadataBytes = extractPeOverlayZipEntry(pe, "meta/installer-v2.txt");
     ASSERT_FALSE(metadataBytes.empty());
@@ -6192,16 +6192,16 @@ TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Inst
 
 TEST(ToolchainWindowsPackageBuilder, AddsVSCodeShortcutWhenVSIXIsStaged) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_vscode_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_windows_vscode_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
-    fs::create_directories(stage / "share" / "viper" / "vscode");
+    fs::create_directories(stage / "share" / "zanna" / "vscode");
     {
         ZipWriter vsix;
         static constexpr std::string_view kContentTypes = "<Types/>";
         static constexpr std::string_view kManifest = "<PackageManifest/>";
-        static constexpr std::string_view kPackage = "{\"name\":\"viper-lang\"}";
+        static constexpr std::string_view kPackage = "{\"name\":\"zanna-lang\"}";
         vsix.addFile("[Content_Types].xml",
                      reinterpret_cast<const uint8_t *>(kContentTypes.data()),
                      kContentTypes.size());
@@ -6211,7 +6211,7 @@ TEST(ToolchainWindowsPackageBuilder, AddsVSCodeShortcutWhenVSIXIsStaged) {
         vsix.addFile("extension/package.json",
                      reinterpret_cast<const uint8_t *>(kPackage.data()),
                      kPackage.size());
-        writeBytes(stage / "share" / "viper" / "vscode" / "viper-lang.vsix", vsix.finishToVector());
+        writeBytes(stage / "share" / "zanna" / "vscode" / "zanna-lang.vsix", vsix.finishToVector());
     }
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
@@ -6219,22 +6219,22 @@ TEST(ToolchainWindowsPackageBuilder, AddsVSCodeShortcutWhenVSIXIsStaged) {
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
     params.archStr = "x64";
     buildWindowsToolchainInstaller(params);
 
     const auto pe = readFile(params.outputPath);
     std::ostringstream payloadErr;
-    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"meta/viper_vscode_extension.lnk"}, payloadErr));
+    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"meta/zanna_vscode_extension.lnk"}, payloadErr));
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
-    EXPECT_TRUE(zipContainsEntries(payloadZip, {"share/viper/vscode/viper-lang.vsix"}));
+    EXPECT_TRUE(zipContainsEntries(payloadZip, {"share/zanna/vscode/zanna-lang.vsix"}));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_machine_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_windows_machine_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
@@ -6244,7 +6244,7 @@ TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain-machine-setup.exe").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain-machine-setup.exe").string();
     params.archStr = "x64";
     params.installScope = "machine";
     params.registerFileAssociations = true;
@@ -6258,17 +6258,17 @@ TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
         containsUtf16LE(pe, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
     EXPECT_TRUE(containsAscii(pe, "requireAdministrator"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
-    EXPECT_TRUE(containsUtf16LE(pe, "org.viper.toolchain.zia"));
+    EXPECT_TRUE(containsUtf16LE(pe, "org.zanna.toolchain.zia"));
     EXPECT_FALSE(containsUtf16LE(pe, " run"));
     EXPECT_FALSE(containsUtf16LE(pe, " -run"));
-    EXPECT_TRUE(containsUtf16LE(pe, "bin\\viperide.exe"));
-    EXPECT_FALSE(containsUtf16LE(pe, "Viper Developer Prompt"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannaide.exe"));
+    EXPECT_FALSE(containsUtf16LE(pe, "Zanna Developer Prompt"));
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainMacOSPackageBuilder, RejectsLossyManifestVersionWithoutOverride) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_version_lossy";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_pkg_version_lossy";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     addMockMacOSFileHandler(stage);
@@ -6279,7 +6279,7 @@ TEST(ToolchainMacOSPackageBuilder, RejectsLossyManifestVersionWithoutOverride) {
 
     MacOSToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.pkg").string();
     EXPECT_THROWS(buildMacOSToolchainPackage(params), std::runtime_error);
     params.packageVersion = "1.2.3.4";
 #if defined(__APPLE__)
@@ -6292,7 +6292,7 @@ TEST(ToolchainMacOSPackageBuilder, RejectsLossyManifestVersionWithoutOverride) {
 
 TEST(ToolchainMacOSPackageBuilder, RequiresFileHandlerForAssociations) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_missing_handler";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_pkg_missing_handler";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -6301,14 +6301,14 @@ TEST(ToolchainMacOSPackageBuilder, RequiresFileHandlerForAssociations) {
 
     MacOSToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.pkg").string();
     EXPECT_THROWS(buildMacOSToolchainPackage(params), std::runtime_error);
     fs::remove_all(tmpRoot);
 }
 
 TEST(ToolchainMacOSPackageBuilder, RejectsInvalidMinimumOSVersionBeforePackaging) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_bad_min_os";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_pkg_bad_min_os";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     addMockMacOSFileHandler(stage);
@@ -6318,7 +6318,7 @@ TEST(ToolchainMacOSPackageBuilder, RejectsInvalidMinimumOSVersionBeforePackaging
 
     MacOSToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.pkg").string();
     params.minimumMacOSVersion = "not-a-version";
     EXPECT_THROWS(buildMacOSToolchainPackage(params), std::runtime_error);
     fs::remove_all(tmpRoot);
@@ -6327,7 +6327,7 @@ TEST(ToolchainMacOSPackageBuilder, RejectsInvalidMinimumOSVersionBeforePackaging
 #if defined(__APPLE__)
 TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_pkg_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     addMockMacOSFileHandler(stage);
@@ -6335,7 +6335,7 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
 
     MacOSToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.pkg").string();
     buildMacOSToolchainPackage(params);
 
     const auto pkgBytes = readFile(params.outputPath);
@@ -6346,22 +6346,22 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     EXPECT_EQ(pkgBytes[3], static_cast<uint8_t>('!'));
     std::vector<std::string> requiredMacPayload;
     for (const std::string &binary : requiredToolchainBinaryNames()) {
-        requiredMacPayload.push_back("usr/local/viper/bin/" + binary);
+        requiredMacPayload.push_back("usr/local/zanna/bin/" + binary);
         requiredMacPayload.push_back("usr/local/bin/" + binary);
     }
-    requiredMacPayload.push_back("usr/local/viper/share/man/man1/viper.1");
-    requiredMacPayload.push_back("usr/local/share/man/man1/viper.1");
-    requiredMacPayload.push_back("usr/local/viper/share/man/man7/viper.7");
-    requiredMacPayload.push_back("usr/local/share/man/man7/viper.7");
-    requiredMacPayload.push_back("usr/local/viper/share/viper/install_manifest.txt");
-    requiredMacPayload.push_back("usr/local/viper/share/viper/uninstall.sh");
-    requiredMacPayload.push_back("usr/local/lib/cmake/Viper/ViperConfig.cmake");
-    requiredMacPayload.push_back("usr/local/lib/cmake/Viper/ViperConfigVersion.cmake");
-    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/Info.plist");
-    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/PkgInfo");
-    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/Resources/Viper.icns");
+    requiredMacPayload.push_back("usr/local/zanna/share/man/man1/zanna.1");
+    requiredMacPayload.push_back("usr/local/share/man/man1/zanna.1");
+    requiredMacPayload.push_back("usr/local/zanna/share/man/man7/zanna.7");
+    requiredMacPayload.push_back("usr/local/share/man/man7/zanna.7");
+    requiredMacPayload.push_back("usr/local/zanna/share/zanna/install_manifest.txt");
+    requiredMacPayload.push_back("usr/local/zanna/share/zanna/uninstall.sh");
+    requiredMacPayload.push_back("usr/local/lib/cmake/Zanna/ZannaConfig.cmake");
+    requiredMacPayload.push_back("usr/local/lib/cmake/Zanna/ZannaConfigVersion.cmake");
+    requiredMacPayload.push_back("Applications/Zanna Toolchain.app/Contents/Info.plist");
+    requiredMacPayload.push_back("Applications/Zanna Toolchain.app/Contents/PkgInfo");
+    requiredMacPayload.push_back("Applications/Zanna Toolchain.app/Contents/Resources/Zanna.icns");
     requiredMacPayload.push_back(
-        "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
+        "Applications/Zanna Toolchain.app/Contents/MacOS/zanna-file-handler");
     std::ostringstream err;
     const bool verified = verifyMacOSPkgPayload(pkgBytes, requiredMacPayload, err);
     if (!verified)
@@ -6372,7 +6372,7 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
 
 TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_branding";
+    const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_pkg_branding";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     addMockMacOSFileHandler(stage);
@@ -6380,7 +6380,7 @@ TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
 
     MacOSToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.outputPath = (tmpRoot / "zanna-toolchain.pkg").string();
     buildMacOSToolchainPackage(params);
 
     // Installer panes and light/dark artwork are top-level XAR members alongside Distribution;
@@ -6409,6 +6409,6 @@ TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
 // ============================================================================
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

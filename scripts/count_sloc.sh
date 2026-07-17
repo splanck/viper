@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# count_sloc.sh — Consistent LOC/SLOC counter for the Viper project
+# count_sloc.sh — Consistent LOC/SLOC counter for the Zanna project
 # =============================================================================
 # Usage: ./scripts/count_sloc.sh [--summary | --json | --subsystem | --all]
 #   --summary    One-line totals only (default)
@@ -17,8 +17,8 @@
 #                Block comments (/* ... */) are NOT filtered (complex to parse
 #                without a real lexer; treating them as code is the conservative
 #                choice and matches cloc/sloccount behavior for mixed lines).
-#   Zia:         same as C/C++ (// comments). The ViperIDE application is
-#                counted separately from src/viperide/src/ (not lumped with demos).
+#   Zia:         same as C/C++ (// comments). The ZannaIDE application is
+#                counted separately from src/zannaide/src/ (not lumped with demos).
 #   BASIC:       blank lines, or lines starting with REM or '
 #   Shell:       blank lines, or lines starting with #
 #   CMake:       blank lines, or lines starting with #
@@ -99,8 +99,8 @@ SUB_LIB=$(find_c_files src/lib | sloc_c)
 SUB_TOOLS=$(find_c_files src/tools | sloc_c)
 SUB_TESTS=$(find_c_files src/tests | sloc_c)
 
-# ViperIDE — the IDE application, written in Zia (src/viperide/src/*.zia)
-SLOC_VIPERIDE=$(find src/viperide/src -name '*.zia' 2>/dev/null | sloc_c)
+# ZannaIDE — the IDE application, written in Zia (src/zannaide/src/*.zia)
+SLOC_ZANNAIDE=$(find src/zannaide/src -name '*.zia' 2>/dev/null | sloc_c)
 
 # Non-production
 SLOC_ZIA=$(find examples src/tests/fixtures -name '*.zia' 2>/dev/null | sloc_c)
@@ -115,12 +115,12 @@ SLOC_IL=$(find src/tests/fixtures examples -name '*.il' 2>/dev/null | sloc_c)
 # File counts
 FILES_SRC=$(count_files src)
 FILES_ZIA=$(find . -name '*.zia' | grep -v build | wc -l | tr -d ' ')
-FILES_VIPERIDE=$(find src/viperide/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
+FILES_ZANNAIDE=$(find src/zannaide/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
 FILES_IL=$(find . -name '*.il' | grep -v build | wc -l | tr -d ' ')
 FILES_TOTAL=$(find src examples scripts docs -type f 2>/dev/null | grep -v build | wc -l | tr -d ' ')
 
 # Overall SLOC
-SLOC_ALL=$((SLOC_SRC + SLOC_VIPERIDE + SLOC_ZIA + SLOC_BASIC + SLOC_IL + SLOC_SCRIPTS))
+SLOC_ALL=$((SLOC_SRC + SLOC_ZANNAIDE + SLOC_ZIA + SLOC_BASIC + SLOC_IL + SLOC_SCRIPTS))
 
 # ─── Output modes ────────────────────────────────────────────────────────────
 
@@ -129,12 +129,12 @@ fmt_num() {
 }
 
 print_summary() {
-    echo -e "${BOLD}Viper Project SLOC Summary${NC}"
+    echo -e "${BOLD}Zanna Project SLOC Summary${NC}"
     echo "=========================="
     printf "  Production SLOC:    %'10d  (src/ minus tests)\n" "$SLOC_PROD"
     printf "  Test SLOC:          %'10d  (src/tests/)\n" "$SLOC_TESTS"
     printf "  All src/ SLOC:      %'10d\n" "$SLOC_SRC"
-    printf "  ViperIDE SLOC:      %'10d  (src/viperide/src, Zia)\n" "$SLOC_VIPERIDE"
+    printf "  ZannaIDE SLOC:      %'10d  (src/zannaide/src, Zia)\n" "$SLOC_ZANNAIDE"
     printf "  Demo code SLOC:     %'10d  (Zia + BASIC + IL)\n" "$((SLOC_ZIA + SLOC_BASIC + SLOC_IL))"
     printf "  Overall SLOC:       %'10d  (all code)\n" "$SLOC_ALL"
     echo ""
@@ -163,7 +163,7 @@ print_subsystem() {
 
 print_all() {
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}  ${BOLD}Viper Project — LOC / SLOC Report${NC}                       ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  ${BOLD}Zanna Project — LOC / SLOC Report${NC}                       ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  $(date '+%Y-%m-%d')                                          ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -188,8 +188,8 @@ print_all() {
 
     echo -e "${GREEN}Applications (Zia)${NC}"
     echo "─────────────────────────────────────────"
-    printf "  %-24s %'10d SLOC\n"  "ViperIDE (src/viperide/src)" "$SLOC_VIPERIDE"
-    printf "  %-24s %'10d files\n" "  source files"          "$FILES_VIPERIDE"
+    printf "  %-24s %'10d SLOC\n"  "ZannaIDE (src/zannaide/src)" "$SLOC_ZANNAIDE"
+    printf "  %-24s %'10d files\n" "  source files"          "$FILES_ZANNAIDE"
     echo ""
 
     echo -e "${YELLOW}Non-Production${NC}"
@@ -206,7 +206,7 @@ print_all() {
     echo "─────────────────────────────────────────"
     printf "  %-24s %'10d\n" "Production SLOC"     "$SLOC_PROD"
     printf "  %-24s %'10d\n" "Test SLOC"           "$SLOC_TESTS"
-    printf "  %-24s %'10d\n" "ViperIDE SLOC"       "$SLOC_VIPERIDE"
+    printf "  %-24s %'10d\n" "ZannaIDE SLOC"       "$SLOC_ZANNAIDE"
     printf "  %-24s %'10d\n" "Demo SLOC"           "$((SLOC_ZIA + SLOC_BASIC + SLOC_IL))"
     printf "  %-24s %'10d\n" "Overall SLOC"        "$SLOC_ALL"
     echo ""
@@ -249,9 +249,9 @@ print_json() {
     "sloc": $SLOC_SRC,
     "loc": $LOC_SRC
   },
-  "viperide": {
-    "sloc": $SLOC_VIPERIDE,
-    "files": $FILES_VIPERIDE
+  "zannaide": {
+    "sloc": $SLOC_ZANNAIDE,
+    "files": $FILES_ZANNAIDE
   },
   "demos": {
     "zia_sloc": $SLOC_ZIA,
@@ -262,7 +262,7 @@ print_json() {
   "files": {
     "src": $FILES_SRC,
     "zia": $FILES_ZIA,
-    "viperide": $FILES_VIPERIDE,
+    "zannaide": $FILES_ZANNAIDE,
     "il": $FILES_IL,
     "total": $FILES_TOTAL
   }

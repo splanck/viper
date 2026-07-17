@@ -1,7 +1,7 @@
 module TestFbxAscii;
 
-bind Viper.Graphics3D;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Terminal;
 
 // Doc-09 E31 coverage:
 //   - ASCII FBX exports (";FBX" comment signature) load through the ASCII

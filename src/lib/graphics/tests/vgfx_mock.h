@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/vgfx_mock.h
-// Purpose: Simple mocks/fakes for the ViperGFX C API used in tests.
+// Purpose: Simple mocks/fakes for the ZannaGFX C API used in tests.
 // Key invariants: Provide ABI-compatible signatures; avoid platform-specific
 //                 behavior; explicit, predictable defaults.
 // Ownership/Lifetime: Header-only declarations; concrete fakes defined in tests.
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Mock Platform Backend API (Tests Only)
+ * ZannaGFX - Mock Platform Backend API (Tests Only)
  * Declarations for event injection and time control functions
  */
 
@@ -118,13 +118,13 @@ void vgfx_mock_push_relative_delta(vgfx_window_t window, double dx, double dy);
 #endif
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/tests/vgfx_mock.h
-// Purpose: Simple mocks/fakes for the ViperGFX C API used in tests.
+// Purpose: Simple mocks/fakes for the ZannaGFX C API used in tests.
 // Key invariants: Provide ABI-compatible signatures; avoid platform-specific
 //                 behavior; explicit, predictable defaults.
 // Ownership/Lifetime: Header-only declarations; concrete fakes defined in tests.

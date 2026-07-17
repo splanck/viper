@@ -1,6 +1,6 @@
 ' test_map_bag.bas — Map, Bag, CountMap, OrderedMap
-DIM m AS Viper.Collections.Map
-m = Viper.Collections.Map.New()
+DIM m AS Zanna.Collections.Map
+m = Zanna.Collections.Map.New()
 PRINT "map empty: "; m.IsEmpty
 m.Set("a", "1")
 m.Set("b", "2")
@@ -14,8 +14,8 @@ PRINT "map len after remove: "; m.Count
 m.Clear()
 PRINT "map empty after clear: "; m.IsEmpty
 
-DIM b AS Viper.Collections.StringSet
-b = Viper.Collections.StringSet.New()
+DIM b AS Zanna.Collections.StringSet
+b = Zanna.Collections.StringSet.New()
 PRINT "bag empty: "; b.IsEmpty
 b.Add("x")
 b.Add("y")
@@ -29,8 +29,8 @@ PRINT "bag len after remove: "; b.Count
 b.Clear()
 PRINT "bag empty after clear: "; b.IsEmpty
 
-DIM cm AS Viper.Collections.CountMap
-cm = Viper.Collections.CountMap.New()
+DIM cm AS Zanna.Collections.CountMap
+cm = Zanna.Collections.CountMap.New()
 cm.Inc("a")
 cm.Inc("a")
 cm.Inc("b")
@@ -47,8 +47,8 @@ PRINT "cm has d: "; cm.Has("d")
 cm.Remove("d")
 PRINT "cm has d after remove: "; cm.Has("d")
 
-DIM om AS Viper.Collections.OrderedMap
-om = Viper.Collections.OrderedMap.New()
+DIM om AS Zanna.Collections.OrderedMap
+om = Zanna.Collections.OrderedMap.New()
 om.Set("first", "1")
 om.Set("second", "2")
 om.Set("third", "3")

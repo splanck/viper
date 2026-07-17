@@ -164,7 +164,7 @@ Column A is index 0, column B is index 1, and so on. The array is the row; the i
 To access an individual element, use the array name followed by the index in square brackets:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -297,7 +297,7 @@ var numbers: List[Integer] = [];  // Empty array of integers
 var words: List[String] = []; // Empty array of strings
 ```
 
-When creating an empty array, you must specify the type because Viper can't infer it from non-existent values. The `: List[Integer]` part says "this will hold 64-bit integers."
+When creating an empty array, you must specify the type because Zanna can't infer it from non-existent values. The `: List[Integer]` part says "this will hold 64-bit integers."
 
 ### Repeating a Value
 
@@ -319,7 +319,7 @@ This is especially useful for initializing game boards, buffers, or any structur
 Every array knows how many elements it contains. Access this with the `.Length` property:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = ["Alice", "Bob", "Carol"];
 Say(names.Length);  // 3
@@ -347,7 +347,7 @@ var scores = [85, 92, 78, 95, 88];
 Arrays are mutable — you can change individual elements after creation:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -364,7 +364,7 @@ scores[4] = 91;
 You can also use an element's current value in the calculation:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var counts = [10, 20, 30];
 
@@ -378,14 +378,14 @@ Say(counts[1]);  // 25
 
 ## Adding and Removing Elements
 
-Unlike the fixed arrays in some languages, Viper arrays can grow and shrink dynamically.
+Unlike the fixed arrays in some languages, Zanna arrays can grow and shrink dynamically.
 
 ### Adding Elements with push()
 
 The `push` operation adds an element to the end of an array:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = ["Alice", "Bob"];
 Say(names.Length);  // 2
@@ -406,7 +406,7 @@ Think of `push` like adding a new car to the end of a train — the train gets l
 The `pop` operation removes the last element and returns it:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [1, 2, 3, 4, 5];
 Say(numbers.Length);  // 5
@@ -445,14 +445,14 @@ if numbers.Length > 0 {
 These operations let you build arrays piece by piece:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var userInputs: List[Integer] = [];
 
 Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Viper.Core.Convert.ToInt64(InputLine());
+    var num = Zanna.Core.Convert.ToInt64(InputLine());
     if num == 0 {
         break;
     }
@@ -475,7 +475,7 @@ A common task is searching for a value in an array.
 The simplest approach is to check each element one by one:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = ["Alice", "Bob", "Carol", "Dave", "Eve"];
 var target = "Carol";
@@ -504,7 +504,7 @@ This is called *linear search* because you go through the array in a line, one e
 Sometimes you just need to know yes or no, not where:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 25, 30, 45, 50];
 var lookingFor = 30;
@@ -529,7 +529,7 @@ if found {
 How many times does a value appear?
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grades = ["A", "B", "A", "C", "A", "B", "A", "D"];
 var countA = 0;
@@ -551,10 +551,10 @@ Sorting puts array elements in order — smallest to largest (ascending) or larg
 
 ### Using Built-in Sort
 
-Viper provides a built-in sort method:
+Zanna provides a built-in sort method:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [64, 34, 25, 12, 22, 11, 90];
 numbers.Sort();
@@ -568,7 +568,7 @@ for n in numbers {
 For strings, sort orders alphabetically:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var names = ["Charlie", "Alice", "Bob", "Diana"];
 names.Sort();
@@ -623,7 +623,7 @@ Processing every element in an array is so common that there are several pattern
 The cleanest way when you just need each value:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var fruits = ["apple", "banana", "cherry", "date"];
 
@@ -641,7 +641,7 @@ The variable `fruit` takes on each value in sequence: first "apple", then "banan
 When you need to know *where* each element is:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
 
@@ -672,7 +672,7 @@ Notice `i + 1` to display human-friendly numbering (1, 2, 3) while using program
 Sometimes you need more control than a for loop provides:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 20, 30, 40, 50];
 var i = 0;
@@ -690,7 +690,7 @@ while i < numbers.Length {
 To process elements from last to first:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var countdown = [5, 4, 3, 2, 1];
 
@@ -718,7 +718,7 @@ while j >= 0 {
 Skip elements as needed:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -746,7 +746,7 @@ while i < numbers.Length {
 Stop early when you find what you need:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var values = [10, 20, -5, 30, 40];
 
@@ -763,7 +763,7 @@ for v in values {
 Or skip certain elements:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [1, -2, 3, -4, 5, -6];
 
@@ -791,7 +791,7 @@ var y = arr[100];  // Error: way out of bounds
 var z = arr[-1];   // Error: negative indices don't exist
 ```
 
-Viper performs *bounds checking* — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:
+Zanna performs *bounds checking* — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:
 
 ```text
 Runtime Error: Array index out of bounds
@@ -810,7 +810,7 @@ In languages without bounds checking (like C), accessing `arr[100]` when the arr
 2. **Security exploits:** Attackers can use out-of-bounds access to hack programs.
 3. **Incredibly hard-to-find bugs:** The symptom might appear far from the cause.
 
-Viper's bounds checking catches these mistakes immediately, making bugs much easier to find and fix.
+Zanna's bounds checking catches these mistakes immediately, making bugs much easier to find and fix.
 
 ### Common Causes of Index Errors
 
@@ -832,7 +832,7 @@ var x = empty[0];  // Error! Array is empty, no index 0
 This version is expected to trap at runtime:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3];
 for i in 0..=arr.Length {  // Wrong! 0..= includes the endpoint
@@ -843,7 +843,7 @@ for i in 0..=arr.Length {  // Wrong! 0..= includes the endpoint
 This version uses the half-open range and should run:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3];
 for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
@@ -853,20 +853,20 @@ for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
 
 **Calculated index going wrong:**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Viper.Core.Convert.ToInt64(InputLine());
+var userInput = Zanna.Core.Convert.ToInt64(InputLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
 To prevent this, validate indices before using them:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Viper.Core.Convert.ToInt64(InputLine());
+var userInput = Zanna.Core.Convert.ToInt64(InputLine());
 
 if userInput >= 0 && userInput < arr.Length {
     var value = arr[userInput];
@@ -883,7 +883,7 @@ if userInput >= 0 && userInput < arr.Length {
 Arrays can hold any type. Strings are especially common:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var fruits = ["apple", "banana", "cherry", "date", "elderberry"];
 
@@ -913,7 +913,7 @@ String arrays are how you'd store:
 ### Working with String Arrays
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var words = ["The", "quick", "brown", "fox"];
 
@@ -990,7 +990,7 @@ Let's break down `grid[1][2]`:
 2. `[2]` gets the third element of that row: `6`
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -1008,7 +1008,7 @@ Say(grid[1][1]);  // 5 (center)
 ### Modifying Elements
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -1026,7 +1026,7 @@ Say(grid[1][1]);  // 50
 To visit every element, you need nested loops — one for rows, one for columns:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var grid = [
     [1, 2, 3],
@@ -1052,7 +1052,7 @@ Output:
 ### Example: Tic-Tac-Toe Board
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Print the board nicely
 func printBoard(board: List[List[String]]) {
@@ -1094,7 +1094,7 @@ Output:
 ### Example: Multiplication Table
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // Create a 10x10 multiplication table
 var table: List[List[Integer]] = [];
@@ -1130,7 +1130,7 @@ for i in 0..table.Length {
 A grayscale image is just a 2D array of brightness values (0 = black, 255 = white):
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 // A tiny 5x5 "image" of a plus sign
 var image = [
@@ -1171,7 +1171,7 @@ Let's build a functional todo list manager:
 
 ```rust
 module TodoList;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var tasks: List[String] = [];
@@ -1209,7 +1209,7 @@ func start() {
             }
         } else if input == "done" {
             Print("Task number to mark done: ");
-            var num = Viper.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(InputLine());
             if num >= 1 && num <= tasks.Length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Say("Marked done: " + tasks[num - 1]);
@@ -1218,7 +1218,7 @@ func start() {
             }
         } else if input == "remove" {
             Print("Task number to remove: ");
-            var num = Viper.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(InputLine());
             if num >= 1 && num <= tasks.Length {
                 // Rebuild arrays without this task
                 var newTasks: List[String] = [];
@@ -1289,7 +1289,7 @@ A simple game inventory:
 
 ```rust
 module Inventory;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var items: List[String] = [];
@@ -1313,14 +1313,14 @@ func start() {
             Print("Item name: ");
             var item = InputLine();
             Print("Quantity: ");
-            var qty = Viper.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(InputLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
             Print("Item name: ");
             var item = InputLine();
             Print("Quantity: ");
-            var qty = Viper.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(InputLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
@@ -1428,7 +1428,7 @@ func useItem(items: List[String], quantities: List[Integer], name: String) {
 
 ```rust
 module HighScores;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // Start with some default scores
@@ -1446,7 +1446,7 @@ func start() {
     Print("Enter your name: ");
     var playerName = InputLine();
     Print("Enter your score: ");
-    var playerScore = Viper.Core.Convert.ToInt64(InputLine());
+    var playerScore = Zanna.Core.Convert.ToInt64(InputLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -1515,7 +1515,7 @@ Different languages handle arrays with different syntax, but the concepts are id
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var numbers = [10, 20, 30];
 
@@ -1585,7 +1585,7 @@ Remember: Length tells you *how many* elements. The highest index is always one 
 ### Forgetting Zero-Based Indexing
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var scores = [85, 92, 78];
 
@@ -1614,7 +1614,7 @@ if arr.Length > 0 {
 This version is expected to trap at runtime:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3, 4, 5];
 
@@ -1627,7 +1627,7 @@ for i in 0..=arr.Length {
 This version uses the half-open range and should run:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var arr = [1, 2, 3, 4, 5];
 
@@ -1655,11 +1655,11 @@ for n in nums {
 ### Index From User Input Without Validation
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var items = ["Sword", "Shield", "Potion"];
 Print("Choose item (1-3): ");
-var choice = Viper.Core.Convert.ToInt64(InputLine());
+var choice = Zanna.Core.Convert.ToInt64(InputLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1681,7 +1681,7 @@ Let's build a comprehensive grade tracker that brings everything together:
 
 ```rust
 module GradeTracker;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var grades: List[Integer] = [];
@@ -1693,7 +1693,7 @@ func start() {
     // Collect grades with validation
     while true {
         Print("Grade: ");
-        var input = Viper.Core.Convert.ToInt64(InputLine());
+        var input = Zanna.Core.Convert.ToInt64(InputLine());
 
         if input == -1 {
             break;
@@ -1881,7 +1881,7 @@ Arrays are one of the most fundamental and widely-used concepts in programming. 
 - Use nested loops to iterate
 
 **Safety:**
-- Viper checks bounds and prevents invalid access
+- Zanna checks bounds and prevents invalid access
 - Always validate user input before using as an index
 - Check `array.Length > 0` before accessing elements
 

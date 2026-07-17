@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,13 +21,13 @@
 
 #include <sstream>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Map a Machine IR opcode to a descriptive string for diagnostics.
 /// @details Generated from MOpcodeDef.inc — the single source of truth.
 [[nodiscard]] const char *opcodeName(MOpcode opc) noexcept {
     switch (opc) {
-#define VIPER_MIR_OPCODE(name)                                                                     \
+#define ZANNA_MIR_OPCODE(name)                                                                     \
     case MOpcode::name:                                                                            \
         return #name;
 #include "codegen/aarch64/MOpcodeDef.inc"
@@ -113,4 +113,4 @@ std::string toString(const MFunction &func) {
     return os.str();
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

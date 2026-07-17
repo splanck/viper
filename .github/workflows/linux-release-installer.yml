@@ -24,10 +24,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VIPER_BUILD_DIR: build
-      VIPER_BUILD_TYPE: Release
-      VIPER_SKIP_INSTALL: "1"
-      VIPER_EXTRA_CMAKE_ARGS: -DVIPER_INSTALL_VIPERIDE=ON
+      ZANNA_BUILD_DIR: build
+      ZANNA_BUILD_TYPE: Release
+      ZANNA_SKIP_INSTALL: "1"
+      ZANNA_EXTRA_CMAKE_ARGS: -DZANNA_INSTALL_ZANNAIDE=ON
 
     steps:
       - name: Check out source
@@ -45,7 +45,7 @@ jobs:
 
       - name: Build and test with the canonical Linux script
         shell: bash
-        run: ./scripts/build_viper_linux.sh
+        run: ./scripts/build_zanna_linux.sh
 
       - name: Stage the release payload
         shell: bash
@@ -57,39 +57,39 @@ jobs:
         if: ${{ inputs.release }}
         shell: bash
         env:
-          LINUX_GPG_PRIVATE_KEY_BASE64: ${{ secrets.VIPER_LINUX_GPG_PRIVATE_KEY_BASE64 }}
-          LINUX_GPG_KEY_ID: ${{ secrets.VIPER_LINUX_GPG_KEY_ID }}
+          LINUX_GPG_PRIVATE_KEY_BASE64: ${{ secrets.ZANNA_LINUX_GPG_PRIVATE_KEY_BASE64 }}
+          LINUX_GPG_KEY_ID: ${{ secrets.ZANNA_LINUX_GPG_KEY_ID }}
         run: |
           set -euo pipefail
           if [[ -z "$LINUX_GPG_PRIVATE_KEY_BASE64" || -z "$LINUX_GPG_KEY_ID" ]]; then
-            echo "release=true requires VIPER_LINUX_GPG_PRIVATE_KEY_BASE64 and VIPER_LINUX_GPG_KEY_ID" >&2
+            echo "release=true requires ZANNA_LINUX_GPG_PRIVATE_KEY_BASE64 and ZANNA_LINUX_GPG_KEY_ID" >&2
             exit 1
           fi
-          key_file="$RUNNER_TEMP/viper-linux-release-key.asc"
+          key_file="$RUNNER_TEMP/zanna-linux-release-key.asc"
           printf '%s' "$LINUX_GPG_PRIVATE_KEY_BASE64" | base64 --decode > "$key_file"
           chmod 600 "$key_file"
           gpg --batch --import "$key_file"
           rm -f "$key_file"
           gpg --batch --list-secret-keys "$LINUX_GPG_KEY_ID" >/dev/null
-          echo "VIPER_LINUX_SIGN_KEY=$LINUX_GPG_KEY_ID" >> "$GITHUB_ENV"
+          echo "ZANNA_LINUX_SIGN_KEY=$LINUX_GPG_KEY_ID" >> "$GITHUB_ENV"
 
       - name: Generate verified developer artifacts
         if: ${{ !inputs.release }}
         shell: bash
         run: |
           mkdir -p artifacts
-          build/src/tools/viper/viper install-package \
+          build/src/tools/zanna/zanna install-package \
             --stage-dir build/release-stage --target all \
-            --output-dir artifacts --artifact-manifest artifacts/viper-artifacts.json
+            --output-dir artifacts --artifact-manifest artifacts/zanna-artifacts.json
 
       - name: Generate signed release artifacts
         if: ${{ inputs.release }}
         shell: bash
         run: |
           mkdir -p artifacts
-          build/src/tools/viper/viper install-package \
+          build/src/tools/zanna/zanna install-package \
             --stage-dir build/release-stage --target all \
-            --output-dir artifacts --artifact-manifest artifacts/viper-artifacts.json \
+            --output-dir artifacts --artifact-manifest artifacts/zanna-artifacts.json \
             --release
 
       - name: Reverify every artifact and checksum
@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           count=0
           while IFS= read -r -d '' artifact; do
-            build/src/tools/viper/viper install-package --verify-only "$artifact" --require-checksum
+            build/src/tools/zanna/zanna install-package --verify-only "$artifact" --require-checksum
             count=$((count + 1))
           done < <(find artifacts -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.run' -o -name '*.tar.gz' \) -print0)
           [[ "$count" -eq 4 ]]
@@ -121,20 +121,20 @@ jobs:
         if: ${{ inputs.lifecycle }}
         shell: bash
         run: |
-          sudo env VIPER_RUN_LINUX_INSTALLER_SMOKE=1 \
+          sudo env ZANNA_RUN_LINUX_INSTALLER_SMOKE=1 \
             ctest --test-dir "$PWD/build" --output-on-failure -R '^linux_toolchain_deb_installer_smoke$'
 
       - name: Exercise RPM install, upgrade, functionality, and removal
         if: ${{ inputs.lifecycle }}
         shell: bash
         run: |
-          sudo env VIPER_RUN_LINUX_INSTALLER_SMOKE=1 \
+          sudo env ZANNA_RUN_LINUX_INSTALLER_SMOKE=1 \
             ctest --test-dir "$PWD/build" --output-on-failure -R '^linux_toolchain_rpm_installer_smoke$'
 
       - name: Upload verified artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: viper-toolchain-linux-x64
+          name: zanna-toolchain-linux-x64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14

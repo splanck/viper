@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Windows Win32 Backend
+// ZannaGFX Windows Win32 Backend
 //
 // Platform-specific implementation using Win32 GDI on Windows systems.
 // Provides window creation, event handling, framebuffer blitting via DIB
@@ -30,7 +30,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Windows Win32 backend implementation for ViperGFX.
+/// @brief Windows Win32 backend implementation for ZannaGFX.
 /// @details Uses Win32 GDI and DIB sections to provide window management
 ///          and framebuffer presentation on Windows systems.
 
@@ -305,9 +305,9 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
 }
 
 /// @brief Load an application icon placed beside the running executable.
-/// @details The convention `<executable-basename>.ico` lets packaged Viper applications carry
-///          their own identity without adding icon concerns to the runtime C ABI.  ViperIDE is
-///          installed as `viperide.exe` plus `viperide.ico`; other applications fall back to the
+/// @details The convention `<executable-basename>.ico` lets packaged Zanna applications carry
+///          their own identity without adding icon concerns to the runtime C ABI.  ZannaIDE is
+///          installed as `zannaide.exe` plus `zannaide.ico`; other applications fall back to the
 ///          standard Windows application icon when no adjacent icon is present.
 static HICON win32_load_adjacent_application_icon(int width, int height) {
     WCHAR path[32768];
@@ -337,7 +337,7 @@ static HICON win32_load_adjacent_application_icon(int width, int height) {
         NULL, path, IMAGE_ICON, width, height, LR_LOADFROMFILE | LR_DEFAULTSIZE);
 }
 
-/// @brief Register the ViperGFX Win32 window class exactly once per process.
+/// @brief Register the ZannaGFX Win32 window class exactly once per process.
 /// @details Multiple windows may be created from different threads.  This
 ///          callback is executed by InitOnceExecuteOnce so RegisterClassExW is
 ///          not raced by a plain static flag.  ERROR_CLASS_ALREADY_EXISTS is
@@ -368,7 +368,7 @@ static BOOL CALLBACK win32_register_window_class_once(PINIT_ONCE init_once,
         wc.hIconSm = LoadIconW(NULL, MAKEINTRESOURCEW(32512));
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wc.lpszClassName = L"ViperGFXClass";
+    wc.lpszClassName = L"ZannaGFXClass";
 
     if (RegisterClassExW(&wc))
         return TRUE;
@@ -520,7 +520,7 @@ static int win32_resize_backing_store(struct vgfx_window *win,
 //===----------------------------------------------------------------------===//
 
 /// @brief Translate Win32 virtual key code to vgfx_key_t.
-/// @details Maps VK_* constants to ViperGFX key codes.  Handles A-Z, 0-9,
+/// @details Maps VK_* constants to ZannaGFX key codes.  Handles A-Z, 0-9,
 ///          Space, arrows, Enter, Escape.  Unrecognized keys return
 ///          VGFX_KEY_UNKNOWN.
 ///
@@ -650,7 +650,7 @@ static size_t win32_utf16_codepoint_count(const WCHAR *text, size_t unit_count) 
 /// @details IMM32 exposes one attribute byte per UTF-16 code unit. A contiguous target-converted
 ///          or target-not-converted segment becomes the visible preedit selection. If no target
 ///          exists, `GCS_CURSORPOS` becomes a zero-length caret. Results are converted from UTF-16
-///          units to the ViperGFX event contract's Unicode-codepoint offsets.
+///          units to the ZannaGFX event contract's Unicode-codepoint offsets.
 /// @param context Active IMM32 input context.
 /// @param text Borrowed preedit UTF-16 code units.
 /// @param unit_count Number of readable code units in @p text.
@@ -704,7 +704,7 @@ static void win32_ime_selection(
         end_codepoints >= start_codepoints ? (int32_t)(end_codepoints - start_codepoints) : 0;
 }
 
-/// @brief Copy an IMM32 composition/result string into one queued ViperGFX event.
+/// @brief Copy an IMM32 composition/result string into one queued ZannaGFX event.
 /// @details Retrieves a bounded native UTF-16 value, converts it to UTF-8 using Win32's Unicode
 ///          conversion API, derives target selection for preedit updates, and queues the complete
 ///          value-type lifecycle event. Allocation or native conversion failure records an event
@@ -806,8 +806,8 @@ static void win32_enqueue_ime_boundary(struct vgfx_window *win,
 // Window Procedure
 //===----------------------------------------------------------------------===//
 
-/// @brief Window procedure for ViperGFX Win32 windows.
-/// @details Processes Win32 messages and translates them to ViperGFX events.
+/// @brief Window procedure for ZannaGFX Win32 windows.
+/// @details Processes Win32 messages and translates them to ZannaGFX events.
 ///          The vgfx_window* pointer is stored in GWLP_USERDATA during window
 ///          creation, allowing us to access the window state from messages.
 ///
@@ -950,7 +950,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_IME_SETCONTEXT:
-            /* ViperGUI renders preedit itself. Keep candidate/status UI enabled
+            /* ZannaGUI renders preedit itself. Keep candidate/status UI enabled
                while suppressing the legacy system composition window. */
             if (wparam)
                 lparam &= ~ISC_SHOWUICOMPOSITIONWINDOW;
@@ -1295,7 +1295,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 ///          DPI_AWARENESS_CONTEXT_SYSTEM_AWARE is loaded dynamically so the
 ///          code compiles against older SDKs. With system awareness active,
 ///          raw Win32 window, mouse, and WM_SIZE coordinates are physical
-///          screen pixels. ViperGFX keeps its public Canvas coordinates
+///          screen pixels. ZannaGFX keeps its public Canvas coordinates
 ///          logical by scaling the requested client size and dividing through
 ///          coord_scale at the public API boundary.
 ///
@@ -1344,7 +1344,7 @@ int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
 ///          section for framebuffer, and makes window visible.  The DIB section
 ///          allows direct pixel access for efficient blitting.
 ///
-/// @param win    Pointer to the ViperGFX window structure (framebuffer already allocated)
+/// @param win    Pointer to the ZannaGFX window structure (framebuffer already allocated)
 /// @param params Window creation parameters (title, dimensions, resizable flag)
 /// @return 1 on success, 0 on failure
 ///
@@ -1413,7 +1413,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Create window */
     w32->hwnd = CreateWindowExW(0,                /* Extended style */
-                                L"ViperGFXClass", /* Class name */
+                                L"ZannaGFXClass", /* Class name */
                                 wtitle,           /* Window title */
                                 style,            /* Style */
                                 CW_USEDEFAULT,    /* X position (default) */
@@ -1483,7 +1483,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @details Destroys Win32 window, deletes device contexts and DIB section,
 ///          and frees platform data.  Safe to call even if init failed.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 ///
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
@@ -1530,14 +1530,14 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
     win->platform_data = NULL;
 }
 
-/// @brief Process pending Win32 messages and translate to ViperGFX events.
+/// @brief Process pending Win32 messages and translate to ZannaGFX events.
 /// @details Polls the Win32 message queue in non-blocking mode (PeekMessage
 ///          with PM_REMOVE).  Messages are translated and dispatched to the
 ///          window procedure, which enqueues vgfx_event_t.  Also updates
 ///          win->key_state, win->mouse_x, win->mouse_y, and
 ///          win->mouse_button_state.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL
@@ -1584,11 +1584,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 }
 
 /// @brief Present (blit) the framebuffer to the Win32 window.
-/// @details Copies the ViperGFX framebuffer (win->pixels, RGBA format) to the
+/// @details Copies the ZannaGFX framebuffer (win->pixels, RGBA format) to the
 ///          DIB section (BGRA format) with pixel format conversion, then blits
 ///          the DIB to the window using BitBlt.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL

@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Throttler (BASIC)
+' API Audit: Zanna.Threads.Throttler (BASIC)
 ' =============================================================================
 ' Tests: New, Try, CanProceed, Reset, Interval, Count, RemainingMs
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Throttler ==="
+PRINT "=== API Audit: Zanna.Threads.Throttler ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM t AS OBJECT = Viper.Threads.Throttler.New(1000)
+DIM t AS OBJECT = Zanna.Threads.Throttler.New(1000)
 PRINT "Created throttler with 1000ms interval"
 
 ' --- Interval ---
@@ -53,7 +53,7 @@ PRINT "Try after Reset: "; ok3
 
 ' --- New with 0 interval ---
 PRINT "--- New with 0 interval ---"
-DIM t2 AS OBJECT = Viper.Threads.Throttler.New(0)
+DIM t2 AS OBJECT = Zanna.Threads.Throttler.New(0)
 PRINT "Interval: "; t2.Interval
 DIM a AS INTEGER = t2.TryAcquire()
 DIM b AS INTEGER = t2.TryAcquire()

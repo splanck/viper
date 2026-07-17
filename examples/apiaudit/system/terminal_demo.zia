@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Terminal - Terminal I/O
+// API Audit: Zanna.Terminal - Terminal I/O
 // =============================================================================
 // Tests: Say, SayInt, SayNum, SayBool, Print, PrintInt, PrintNum,
 //        Bell, Clear, BeginBatch, EndBatch, Flush
@@ -8,10 +8,10 @@
 // =============================================================================
 
 module TerminalDemo;
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Terminal ===");
+    Say("=== API Audit: Zanna.Terminal ===");
 
     // --- Say (string with newline) ---
     Say("--- Say ---");

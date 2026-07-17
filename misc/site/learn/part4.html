@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Part 4: Applications — Viper</title>
-  <meta name="description" content="Viper documentation: Part 4: Applications">
+  <title>Part 4: Applications — Zanna</title>
+  <meta name="description" content="Zanna documentation: Part 4: Applications">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/" class="active">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -290,7 +290,7 @@ Color.Magenta   // (255, 0, 255)
 <h2 id="your-first-canvas">Your First Canvas</h2>
 <p>Now that we understand the concepts, let&#x27;s write code. Everything starts with creating a canvas — a window where we can draw:</p>
 <pre><code data-lang="rust">
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var canvas = Canvas.New(&quot;My First Window&quot;, 800, 600);  // 800 pixels wide, 600 tall
@@ -472,7 +472,7 @@ canvas.Text(100, 100, &quot;Hello, y&quot;, color)
 <pre><code data-lang="rust">
 module DrawingDemo;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 func start() {
     var canvas = Canvas.New(&quot;Drawing Demo&quot;, 640, 480);
@@ -577,8 +577,8 @@ while !canvas.ShouldClose {
 <pre><code data-lang="rust">
 module BouncingBall;
 
-bind Viper.Graphics;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Zanna.Time;
 
 func start() {
     var canvas = Canvas.New(&quot;Bouncing Ball&quot;, 800, 600);
@@ -702,7 +702,7 @@ Frame 4:   ●●●●             Frame 4:      ●
 <h3 id="the-solution-delta-time">The Solution: Delta Time</h3>
 <p>Instead of moving a fixed amount per frame, we move based on how much time has passed:</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
+bind Zanna.Time;
 
 var lastTime = Time.Clock.Ticks();
 
@@ -736,7 +736,7 @@ while !canvas.ShouldClose {
 <p>Same distance covered in the same real-world time, regardless of frame rate!</p>
 <h3 id="delta-time-in-practice">Delta Time in Practice</h3>
 <pre><code data-lang="rust">
-bind Viper.Time;
+bind Zanna.Time;
 
 var x = 400.0;
 var y = 300.0;
@@ -852,8 +852,8 @@ Without transparency:          With transparency:
 <pre><code data-lang="rust">
 module GameFramework;
 
-bind Viper.Graphics;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Zanna.Time;
 
 struct Vec2 {
     x: Number;
@@ -1074,7 +1074,7 @@ if x + radius &gt; 800 {
 <h3 id="step-1-add-diagnostic-output">Step 1: Add Diagnostic Output</h3>
 <p>Print key values to the console:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 Say(&quot;x=&quot; + x + &quot;, y=&quot; + y + &quot;, dx=&quot; + dx);
 </code></pre>
@@ -1095,7 +1095,7 @@ canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy 
 <h3 id="step-3-slow-down-time">Step 3: Slow Down Time</h3>
 <p>Make things move slowly so you can watch:</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
+bind Zanna.Time;
 
 Time.Clock.Sleep(500);  // Half second between frames
 </code></pre>
@@ -1137,7 +1137,7 @@ canvas.Text(405, 315, &quot;(400,300)&quot;, Color.White);
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 var canvas = Canvas.New(&quot;Demo&quot;, 800, 600);
 canvas.Box(100, 100, 200, 150, Color.Red);
@@ -1245,7 +1245,7 @@ REFRESH
 <p>A key press event occurs once, at the instant a key goes from up to down. A key release event occurs once, at the instant a key goes from down to up.</p>
 <p>This distinction matters enormously:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 // This fires continuously while the key is held
 if Keyboard.IsDown(Keyboard.KeySpace) {
@@ -1274,9 +1274,9 @@ if Keyboard.IsPressed(Keyboard.KeySpace) {
 </ul>
 <h3 id="text-input-events">Text Input Events</h3>
 <p>Games typically use key codes (like <code>KeyA</code>), but text input is more complex. When the user presses Shift+A, they probably want an uppercase &#x27;A&#x27;, not separate events for Shift and A. When they&#x27;re typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.</p>
-<p>For text input (like typing a player&#x27;s name), Viper provides text input events that handle all this complexity:</p>
+<p>For text input (like typing a player&#x27;s name), Zanna provides text input events that handle all this complexity:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.HasTextInput() {
     var text = Keyboard.GetTextInput();  // Gets the actual characters typed
@@ -1287,15 +1287,15 @@ if Keyboard.HasTextInput() {
 <h2 id="tracing-a-key-press-what-really-happens">Tracing a Key Press: What Really Happens</h2>
 <p>Let&#x27;s trace exactly what happens when a player presses the Space bar to jump. Understanding this flow will help you debug input problems.</p>
 <p><strong>Frame 0:</strong> The player&#x27;s finger pushes down the Space bar. The keyboard hardware detects this and sends a signal to the computer.</p>
-<p><strong>Frame 1:</strong> The operating system receives the signal and creates a key-down event for Space. This event goes into your program&#x27;s input queue. At the start of this frame, Viper&#x27;s input system reads all queued events. It notices that Space just went from &quot;up&quot; to &quot;down&quot;, so it:</p>
+<p><strong>Frame 1:</strong> The operating system receives the signal and creates a key-down event for Space. This event goes into your program&#x27;s input queue. At the start of this frame, Zanna&#x27;s input system reads all queued events. It notices that Space just went from &quot;up&quot; to &quot;down&quot;, so it:</p>
 <ul>
 <li>Sets the internal state of Space to &quot;down&quot;</li>
 <li>Sets a flag indicating Space was &quot;just pressed&quot; this frame</li>
 </ul>
 <p>Your game loop runs. When it calls <code>Keyboard.IsPressed(Keyboard.KeySpace)</code>, the function returns <code>true</code> because the &quot;just pressed&quot; flag is set. Your code calls <code>player.jump()</code>, and the character begins rising into the air.</p>
-<p><strong>Frame 2:</strong> No new Space events (the player is still holding the key). At the start of this frame, Viper clears all the &quot;just pressed&quot; flags from the previous frame. The state of Space is still &quot;down&quot;, but it&#x27;s no longer &quot;just pressed.&quot;</p>
+<p><strong>Frame 2:</strong> No new Space events (the player is still holding the key). At the start of this frame, Zanna clears all the &quot;just pressed&quot; flags from the previous frame. The state of Space is still &quot;down&quot;, but it&#x27;s no longer &quot;just pressed.&quot;</p>
 <p>Your game loop runs. <code>Keyboard.IsPressed(Keyboard.KeySpace)</code> now returns <code>false</code> because the flag was cleared. But <code>Keyboard.IsDown(Keyboard.KeySpace)</code> still returns <code>true</code> because the key is still being held. Your physics code continues the jump — the character rises and then falls.</p>
-<p><strong>Frame 10:</strong> The player releases the Space bar. The OS creates a key-up event. Viper reads it and:</p>
+<p><strong>Frame 10:</strong> The player releases the Space bar. The OS creates a key-up event. Zanna reads it and:</p>
 <ul>
 <li>Sets the internal state of Space to &quot;up&quot;</li>
 <li>Sets a flag indicating Space was &quot;just released&quot; this frame</li>
@@ -1308,7 +1308,7 @@ if Keyboard.HasTextInput() {
 <h3 id="checking-key-state">Checking Key State</h3>
 <p>To check if a key is currently held down, use <code>Keyboard.IsDown</code>:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 while gameRunning {
     if Keyboard.IsDown(Keyboard.KeyLeft) {
@@ -1336,7 +1336,7 @@ while gameRunning {
 <h3 id="detecting-key-presses">Detecting Key Presses</h3>
 <p>For one-time actions, use <code>Keyboard.IsPressed</code>:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.IsPressed(Keyboard.KeySpace) {
     player.jump();
@@ -1359,7 +1359,7 @@ if Keyboard.IsPressed(Keyboard.KeyR) {
 <h3 id="detecting-key-release">Detecting Key Release</h3>
 <p>Sometimes you need to know when a key is released:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.IsReleased(Keyboard.KeyLeftControl) {
     // Player released the aim button
@@ -1368,7 +1368,7 @@ if Keyboard.IsReleased(Keyboard.KeyLeftControl) {
 </code></pre>
 <p>This is common in &quot;charge and release&quot; mechanics. The player holds a button to charge an attack, then releases to fire.</p>
 <h3 id="common-key-codes">Common Key Codes</h3>
-<p>Viper provides named constants for all standard keys:</p>
+<p>Zanna provides named constants for all standard keys:</p>
 <pre><code data-lang="rust">
 // Arrow keys
 KeyLeft, KeyRight, KeyUp, KeyDown
@@ -1399,7 +1399,7 @@ KeyLeft_ALT, KeyRight_ALT
 <h3 id="checking-modifier-keys">Checking Modifier Keys</h3>
 <p>Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 if Keyboard.IsPressed(Keyboard.KeyS) &amp;&amp; Keyboard.IsDown(Keyboard.KeyLeftControl) {
     saveGame();  // Ctrl+S to save
@@ -1417,7 +1417,7 @@ if Keyboard.IsDown(Keyboard.KeyLeftShift) {
 <p>The mouse provides position and button information. Let&#x27;s explore both.</p>
 <h3 id="reading-mouse-position">Reading Mouse Position</h3>
 <pre><code data-lang="rust">
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 var mouseX = Mouse.X();
 var mouseY = Mouse.Y();
@@ -1425,8 +1425,8 @@ var mouseY = Mouse.Y();
 <p>These return the mouse position in canvas coordinates. The top-left corner of your canvas is (0, 0).</p>
 <p>You can use mouse position for many things:</p>
 <pre><code data-lang="rust">
-bind Mouse = Viper.Input.Mouse;
-bind Viper.Math as Math;
+bind Mouse = Zanna.Input.Mouse;
+bind Zanna.Math as Math;
 
 // Make something follow the mouse
 cursor.x = Mouse.X();
@@ -1449,7 +1449,7 @@ turret.angle = Math.Atan2(dy, dx);
 <h3 id="mouse-buttons">Mouse Buttons</h3>
 <p>Mouse buttons work like keyboard keys:</p>
 <pre><code data-lang="rust">
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 // Check if button is currently held (0 = left, 1 = right, 2 = middle)
 if Mouse.IsDown(0) {
@@ -1475,7 +1475,7 @@ if Mouse.IsReleased(1) {
 <h3 id="the-scroll-wheel">The Scroll Wheel</h3>
 <p>The scroll wheel reports how much it moved:</p>
 <pre><code data-lang="rust">
-bind Mouse = Viper.Input.Mouse;
+bind Mouse = Zanna.Input.Mouse;
 
 var scroll = Mouse.Scroll();  // Positive = up, negative = down
 if scroll != 0 {
@@ -1488,9 +1488,9 @@ if scroll != 0 {
 <pre><code data-lang="rust">
 module MouseDraw;
 
-bind Viper.Graphics;
-bind Mouse = Viper.Input.Mouse;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Mouse = Zanna.Input.Mouse;
+bind Zanna.Time;
 
 func start() {
     var canvas = Canvas.New(&quot;Draw with Mouse&quot;, 800, 600);
@@ -1601,7 +1601,7 @@ Axis.RIGHT_TRIGGER          // Right trigger (0 to 1)
 <h3 id="dead-zones">Dead Zones</h3>
 <p>Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func applyDeadZone(value: Number, threshold: Number) -&gt; Number {
     if Math.Abs(value) &lt; threshold {
@@ -1617,7 +1617,7 @@ var moveX = applyDeadZone(rawX, 0.15);  // Ignore values under 0.15
 <p>A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and the stick feels unresponsive.</p>
 <p>A more sophisticated dead zone smoothly scales the value to avoid a &quot;jump&quot; when crossing the threshold:</p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 func applyDeadZoneSmooth(value: Number, threshold: Number) -&gt; Number {
     var absValue = Math.Abs(value);
@@ -1633,8 +1633,8 @@ func applyDeadZoneSmooth(value: Number, threshold: Number) -&gt; Number {
 <h3 id="input-abstraction">Input Abstraction</h3>
 <p>Games should abstract input so the same action can come from different sources. This lets players use their preferred input device and makes your code cleaner:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Math as Math;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Math as Math;
 
 class InputManager {
     func getMoveX() -&gt; Number {
@@ -1709,7 +1709,7 @@ while gameRunning {
 <h3 id="key-mapping-rebindable-controls">Key Mapping (Rebindable Controls)</h3>
 <p>Players appreciate customizable controls. A key map stores the current bindings:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
+bind Keyboard = Zanna.Input.Keyboard;
 
 class KeyMap {
     hide bindings: Map[String, Integer];
@@ -1747,8 +1747,8 @@ class KeyMap {
 </code></pre>
 <p>To let the player rebind a key:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time;
 
 func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
     // Wait for any key press
@@ -1885,9 +1885,9 @@ while inMenu {
 <pre><code data-lang="rust">
 module CharacterDemo;
 
-bind Viper.Graphics;
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time;
 
 struct Player {
     x: Number;
@@ -2075,7 +2075,7 @@ player.x += stickX * speed * dt;  // Character slowly drifts even with stick cen
 </code></pre>
 <p><strong>Right:</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Math as Math;
+bind Zanna.Math as Math;
 
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
 if Math.Abs(stickX) &lt; 0.15 {
@@ -2108,7 +2108,7 @@ if input.isJumpPressed() { player.jump(); }
 <h3 id="mistake-6-checking-input-for-unfocused-windows">Mistake 6: Checking Input for Unfocused Windows</h3>
 <p>When your game window isn&#x27;t focused (the player clicked on another window), you might still receive input events in some situations, or the input state might be stale. Good practice:</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
+bind Zanna.Time;
 
 while !canvas.ShouldClose {
     canvas.Poll();
@@ -2183,9 +2183,9 @@ canvas.Text(10, 110, &quot;Has focus: &quot; + canvas.HasFocus(), Color.White);
 <h3 id="log-timing-issues">Log Timing Issues</h3>
 <p>For input buffering and timing-sensitive code:</p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 if Keyboard.IsPressed(Keyboard.KeySpace) {
     Say(&quot;Jump pressed at time: &quot; + Time.Clock.Ticks());
@@ -2203,8 +2203,8 @@ if player.onGround {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Keyboard = Viper.Input.Keyboard;
-bind Mouse = Viper.Input.Mouse;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Mouse = Zanna.Input.Mouse;
 
 // Keyboard
 if Keyboard.IsDown(Keyboard.KeySpace) {
@@ -2989,7 +2989,7 @@ module Renderer;
 
 bind Config;
 bind Game;
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
@@ -3102,9 +3102,9 @@ module Main;
 bind Config;
 bind Game;
 bind Renderer;
-bind Viper.Graphics;
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time;
 
 func start() {
     // Create the game window
@@ -3349,7 +3349,7 @@ if !paused || stepOneFrame {
 <h3 id="add-sound">Add Sound</h3>
 <p>Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:</p>
 <pre><code data-lang="rust">
-bind Viper.Sound;
+bind Zanna.Sound;
 
 var hopSound = Sound.Load(&quot;hop.wav&quot;);
 var splatSound = Sound.Load(&quot;splat.wav&quot;);
@@ -3370,7 +3370,7 @@ if deathByVehicle {
 <h3 id="animated-sprites">Animated Sprites</h3>
 <p>Replace colored rectangles with proper artwork. Load sprite images and draw them instead of <code>Box</code>:</p>
 <pre><code data-lang="rust">
-bind Sprite = Viper.Graphics.Sprite;
+bind Sprite = Zanna.Graphics.Sprite;
 
 var frogSprite = Sprite.Load(&quot;frog.png&quot;);
 var frogLeft = Sprite.Load(&quot;frog_left.png&quot;);
@@ -3391,8 +3391,8 @@ canvas.Blit(sprite, frog.x - 20, frog.y);
 <h3 id="high-score-system">High Score System</h3>
 <p>Save the highest score to a file so players can compete with themselves:</p>
 <pre><code data-lang="rust">
-bind Convert = Viper.Core.Convert;
-bind Viper.Text.Fmt as Fmt;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Text.Fmt as Fmt;
 
 func loadHighScore() -&gt; Integer {
     var file = File.open(&quot;highscore.txt&quot;, &quot;r&quot;);
@@ -3505,7 +3505,7 @@ if powerUp.containsPoint(frog.x, frog.y) {
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
 <p>These exercises progressively build on the Frogger project, from small modifications to significant new features.</p>
-<p><strong>Exercise 21.1 - Sound Effects</strong>: Add sound effects for hopping, dying, and scoring. Use the Viper.Sound module to load and play WAV files. <code>Viper.Audio</code> remains available as a compatibility alias for older projects. Make the death sound different for cars versus drowning.</p>
+<p><strong>Exercise 21.1 - Sound Effects</strong>: Add sound effects for hopping, dying, and scoring. Use the Zanna.Sound module to load and play WAV files. <code>Zanna.Audio</code> remains available as a compatibility alias for older projects. Make the death sound different for cars versus drowning.</p>
 <p><strong>Exercise 21.2 - High Score</strong>: Implement a high score system that persists between game sessions. Display the high score on the title screen and the game over screen. Show a special message when the player beats their previous best.</p>
 <p><strong>Exercise 21.3 - Animated Sprites</strong>: Replace the solid rectangles with sprite images. Create or find simple pixel art for the frog (ideally with different facing directions), cars, trucks, logs, and turtles. The frog should face the direction it last moved.</p>
 <p><strong>Exercise 21.4 - Time Limit</strong>: Add a time limit for each frog. Display the remaining time prominently. Award bonus points for reaching home quickly. The timer resets when the frog respawns.</p>
@@ -3801,8 +3801,8 @@ Step 6: Connection Close
 <h2 id="making-http-requests">Making HTTP Requests</h2>
 <p>The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer Protocol) is the language of the web --- the format that browsers and servers use to communicate.</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 func start() {
     // Fetch a web page
@@ -3886,9 +3886,9 @@ var deleted = Http.Delete(&quot;https://api.example.com/users/123&quot;);
 <h3 id="working-with-json-apis">Working with JSON APIs</h3>
 <p>Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. JSON is a text format for structured data that&#x27;s easy for both humans and computers to read.</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Json = Viper.Data.Json;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Json = Zanna.Data.Json;
+bind Zanna.Terminal;
 
 struct Weather {
     temperature: Number;
@@ -3957,8 +3957,8 @@ weather.humidity = 45.0
 <h3 id="tcp-client">TCP Client</h3>
 <p>Here&#x27;s how to connect to a server and communicate:</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 func start() {
     // Connect to a server
@@ -4016,8 +4016,8 @@ Step 4: socket.Close()
 <h3 id="tcp-server">TCP Server</h3>
 <p>A server listens for incoming connections instead of initiating them:</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 func start() {
     // Create a server socket that listens on port 8080
@@ -4102,10 +4102,10 @@ When Alice sends &quot;Hello&quot;:
 <pre><code data-lang="rust">
 module ChatServer;
 
-bind Viper.Network;
-bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Network;
+bind Zanna.Collections;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 class ChatServer {
     // The server socket that accepts new connections
@@ -4237,10 +4237,10 @@ Time 0:30 - Alice sends &quot;/quit&quot;
 <pre><code data-lang="rust">
 module ChatClient;
 
-bind Viper.Network;
-bind Thread = Viper.Threads.Thread;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Network;
+bind Thread = Zanna.Threads.Thread;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 class ChatClient {
     hide socket: TcpSocket;
@@ -4348,8 +4348,8 @@ User types &quot;Hello&quot;              Server sends &quot;Bob: Hi&quot;
 <p>UDP trades reliability for speed. When you can tolerate lost packets or have your own way of handling them, UDP&#x27;s lower overhead and faster delivery are attractive.</p>
 <h3 id="basic-udp-communication">Basic UDP Communication</h3>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 // UDP sender
 func sendUdpMessage() {
@@ -4391,9 +4391,9 @@ func receiveUdpMessages() {
 <h3 id="game-networking-with-udp">Game Networking with UDP</h3>
 <p>Games often need to send player state many times per second. Lost packets don&#x27;t matter because new state arrives constantly. Here&#x27;s a typical pattern:</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Time;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Network;
+bind Zanna.Time;
+bind Convert = Zanna.Core.Convert;
 
 // Player state that we&#x27;ll send frequently
 struct PlayerState {
@@ -4471,8 +4471,8 @@ func unpackPlayerState(data: String) -&gt; PlayerState {
 <p>HTTP was designed for request-response: the client asks, the server answers, done. But what if the server needs to send data to the client without being asked? What if you want continuous, two-way communication?</p>
 <p><strong>WebSockets</strong> provide full-duplex communication over a single connection. After an initial HTTP handshake, the connection stays open and either side can send messages at any time.</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 class WebSocketClient {
     hide ws: WebSocket;
@@ -4550,8 +4550,8 @@ func start() {
 <p>Networks are inherently unreliable. Connections drop. Servers go down. Packets get lost. WiFi cuts out. Your programs must handle these failures gracefully.</p>
 <h3 id="the-many-ways-networks-fail">The Many Ways Networks Fail</h3>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 func demonstrateFailures() {
     // Failure 1: Cannot connect
@@ -4585,9 +4585,9 @@ func demonstrateFailures() {
 <h3 id="robust-networking-with-retries">Robust Networking with Retries</h3>
 <p>For important operations, implement retry logic with exponential backoff:</p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Network;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 func robustFetch(url: String, maxRetries: Integer) -&gt; String? {
     var retries = 0;
@@ -4722,7 +4722,7 @@ func onButtonClick() {
 }
 
 // GOOD: Use a separate thread
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func onButtonClick() {
     Thread.Start(func() {
@@ -4819,8 +4819,8 @@ while true {
 // If socket breaks, readLine returns null, and process(null) crashes
 
 // GOOD: Detect disconnection and reconnect
-bind Viper.Terminal;
-bind Viper.Time;
+bind Zanna.Terminal;
+bind Zanna.Time;
 
 func reliableConnection(host: String, port: Integer) {
     var socket: TcpSocket? = null;
@@ -4916,7 +4916,7 @@ var contents = File.Read(&quot;/data/&quot; + filename);
 <h3 id="rate-limiting">Rate Limiting</h3>
 <p>Without limits, attackers can flood your server with requests.</p>
 <pre><code data-lang="rust">
-bind Viper.Time;
+bind Zanna.Time;
 
 class RateLimitedServer {
     // Track requests per IP address
@@ -4965,7 +4965,7 @@ var response = Http.Get(&quot;https://api.example.com/data?key=sk_live_abc123xyz
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.System.Environment.Get(&quot;API_KEY&quot;);
+var apiKey = Zanna.System.Environment.Get(&quot;API_KEY&quot;);
 var response = Http.Get(&quot;https://api.example.com/data?key=&quot; + apiKey);
 </code></pre>
 <p>---</p>
@@ -4974,7 +4974,7 @@ var response = Http.Get(&quot;https://api.example.com/data?key=&quot; + apiKey);
 <h3 id="print-everything">Print Everything</h3>
 <p>When network code doesn&#x27;t work, add logging at every step:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func debugFetch(url: String) -&gt; String? {
     Terminal.Say(&quot;[DEBUG] Starting fetch of: &quot; + url);
@@ -5009,7 +5009,7 @@ func debugFetch(url: String) -&gt; String? {
 <ol>
 <li>**Can you reach the host at all?**</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var socket = Tcp.Connect(host, port, { timeout: 3000 });
 if socket == null {
@@ -5022,7 +5022,7 @@ if socket == null {
 <ol>
 <li>**Can you send data?**</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 socket.Write(&quot;test\n&quot;);
 Terminal.Say(&quot;Data sent successfully&quot;);
@@ -5032,7 +5032,7 @@ Terminal.Say(&quot;Data sent successfully&quot;);
 <ol>
 <li>**Can you receive data?**</li>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var response = socket.ReadLine();
 if response == null {
@@ -5108,10 +5108,10 @@ Terminal.Say(&quot;Body: &quot; + body);
 <pre><code data-lang="rust">
 module WeatherDashboard;
 
-bind Viper.Network;
-bind Json = Viper.Data.Json;
-bind Viper.Time;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Json = Zanna.Data.Json;
+bind Zanna.Time;
+bind Zanna.Terminal;
 
 // Data type for weather information
 struct CityWeather {
@@ -5267,8 +5267,8 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Viper.Network;
-bind Viper.Terminal;
+bind Zanna.Network;
+bind Zanna.Terminal;
 
 // HTTP request
 var response = Http.Get(&quot;https://api.example.com/data&quot;);
@@ -5561,11 +5561,11 @@ null
 <li>The <code>guild</code> is null, indicating the player is not in a guild</li>
 </ul>
 <h3 id="parsing-json-in-zia">Parsing JSON in Zia</h3>
-<blockquote><p>**Note:** The examples in this chapter use <code>bind Json = Viper.Data.Json;</code> for JSON operations. For value extraction, use <code>Viper.Unbox.Str()</code> / <code>Viper.Unbox.I64()</code> / <code>Viper.Unbox.F64()</code>. See Appendix D for the complete runtime reference.</p></blockquote>
+<blockquote><p>**Note:** The examples in this chapter use <code>bind Json = Zanna.Data.Json;</code> for JSON operations. For value extraction, use <code>Zanna.Unbox.Str()</code> / <code>Zanna.Unbox.I64()</code> / <code>Zanna.Unbox.F64()</code>. See Appendix D for the complete runtime reference.</p></blockquote>
 <p>Parsing means reading JSON text and creating program data structures from it:</p>
 <pre><code data-lang="rust">
-bind Json = Viper.Data.Json;
-bind Viper.Terminal;
+bind Json = Zanna.Data.Json;
+bind Zanna.Terminal;
 
 func start() {
     var jsonText = &#x27;{&quot;name&quot;: &quot;Alice&quot;, &quot;score&quot;: 100, &quot;active&quot;: true}&#x27;;
@@ -5604,8 +5604,8 @@ func start() {
 <h3 id="creating-json-in-zia">Creating JSON in Zia</h3>
 <p>To save program data as JSON, you build a JSON structure programmatically:</p>
 <pre><code data-lang="rust">
-bind Json = Viper.Data.Json;
-bind Viper.Terminal;
+bind Json = Zanna.Data.Json;
+bind Zanna.Terminal;
 
 func start() {
     // Create a JSON object
@@ -5718,7 +5718,7 @@ class Player {
 </code></pre>
 <p>Usage becomes elegant:</p>
 <pre><code data-lang="rust">
-bind File = Viper.IO.File;
+bind File = Zanna.IO.File;
 
 // Save a player
 func saveGame(player: Player, filename: String) {
@@ -5782,9 +5782,9 @@ Warrior,7,120.0,80.0,220.0
 <p><strong>Escaping is tricky</strong>: What if a value contains a comma? What if it contains a newline? The rules for escaping exist but vary between implementations.</p>
 <h3 id="reading-csv">Reading CSV</h3>
 <pre><code data-lang="rust">
-bind Csv = Viper.Data.Csv;
-bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Csv = Zanna.Data.Csv;
+bind Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func start() {
     var csv = Csv.Load(&quot;players.csv&quot;);
@@ -5807,7 +5807,7 @@ func start() {
 </ul>
 <h3 id="writing-csv">Writing CSV</h3>
 <pre><code data-lang="rust">
-bind Csv = Viper.Data.Csv;
+bind Csv = Zanna.Data.Csv;
 
 func start() {
     // Create a CSV with column headers
@@ -6115,9 +6115,9 @@ player.y = 200.0
 <pre><code data-lang="rust">
 module ContactManager;
 
-bind Json = Viper.Data.Json;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind Json = Zanna.Data.Json;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 // ============================================
 // Data Model
@@ -6491,7 +6491,7 @@ var data = Json.Parse(&quot;this is { not valid json&quot;);
 </code></pre>
 <p>Handle parse errors:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var result = Json.TryParse(jsonText);
 if result.isError() {
@@ -6525,7 +6525,7 @@ player.level = level;
 <h3 id="technique-1-print-the-raw-data">Technique 1: Print the Raw Data</h3>
 <p>Before parsing, see exactly what you received:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var jsonText = File.ReadAllText(&quot;data.json&quot;);
 Terminal.Say(&quot;=== RAW JSON ===&quot;);
@@ -6546,7 +6546,7 @@ var data = Json.Parse(jsonText);
 <h3 id="technique-3-inspect-the-parsed-structure">Technique 3: Inspect the Parsed Structure</h3>
 <p>After parsing, inspect what you got:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func debugJSON(data: JSONValue, indent: String) {
     if data.isObject() {
@@ -6601,7 +6601,7 @@ if original.level != restored.level {
 <h3 id="technique-5-handle-errors-gracefully">Technique 5: Handle Errors Gracefully</h3>
 <p>Instead of crashing on bad data, log the problem and continue:</p>
 <pre><code data-lang="rust">
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func loadPlayerSafe(filename: String) -&gt; Player? {
     if !File.Exists(filename) {
@@ -6642,7 +6642,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Json = Viper.Data.Json;
+bind Json = Zanna.Data.Json;
 
 var data = Json.Parse(&#x27;{&quot;name&quot;: &quot;test&quot;, &quot;value&quot;: 42}&#x27;);
 var name = data[&quot;name&quot;].asString();
@@ -6677,7 +6677,7 @@ json = JSON_TOSTRING(obj)
 </ul>
 <h3 id="designing-a-binary-format">Designing a Binary Format</h3>
 <p>A well-designed binary format includes:</p>
-<p><strong>1. Magic number</strong> --- A unique identifier that tells you &quot;this is a ViperSave file&quot;</p>
+<p><strong>1. Magic number</strong> --- A unique identifier that tells you &quot;this is a ZannaSave file&quot;</p>
 <pre><code data-lang="rust">
 final MAGIC = 0x56535631;  // &quot;VSV1&quot; in ASCII
 </code></pre>
@@ -6689,8 +6689,8 @@ final VERSION = 1;
 <p><strong>4. Length prefixes</strong> --- For variable-length data like strings and arrays</p>
 <p>Here is a complete binary save example:</p>
 <pre><code data-lang="rust">
-bind Viper.IO;
-bind Viper.Terminal;
+bind Zanna.IO;
+bind Zanna.Terminal;
 
 struct GameSave {
     version: Integer;
@@ -6773,9 +6773,9 @@ func loadBinary(filename: String) -&gt; GameSave? {
 <pre><code data-lang="rust">
 module ConfigSystem;
 
-bind Json = Viper.Data.Json;
-bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind Json = Zanna.Data.Json;
+bind File = Zanna.IO.File;
+bind Zanna.Terminal;
 
 class Config {
     hide data: JSONValue;
@@ -7019,7 +7019,7 @@ func start() {
 <p>Consider a program that downloads 100 images:</p>
 <pre><code data-lang="rust">
 // Sequential: ~100 seconds (1 second per image)
-bind Http = Viper.Network.Http;
+bind Http = Zanna.Network.Http;
 
 for url in urls {
     var image = Http.Get(url);
@@ -7038,20 +7038,20 @@ for url in urls {
 <p>---</p>
 <h2 id="24-1-threads">24.1 Threads</h2>
 <p>A <em>thread</em> is an independent path of execution within your program. All threads share the same memory, but each has its own instruction pointer — its own &quot;place&quot; in the code.</p>
-<p>Viper provides threads through the <code>Viper.Threads.Thread</code> class.</p>
+<p>Zanna provides threads through the <code>Zanna.Threads.Thread</code> class.</p>
 <h3 id="starting-a-thread">Starting a Thread</h3>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func start() {
     // Start a new thread that runs a function
     var t = Thread.Start(func() {
-        Viper.Terminal.Say(&quot;Hello from another thread!&quot;);
+        Zanna.Terminal.Say(&quot;Hello from another thread!&quot;);
     });
 
     // Wait for the thread to finish
     t.Join();
-    Viper.Terminal.Say(&quot;Thread completed.&quot;);
+    Zanna.Terminal.Say(&quot;Thread completed.&quot;);
 }
 </code></pre>
 <p><code>Thread.Start</code> takes a function and runs it on a new OS thread. It returns a thread handle that you use to manage the thread&#x27;s lifecycle.</p>
@@ -7084,24 +7084,24 @@ func start() {
 </tr>
 </tbody></table>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func start() {
     var t = Thread.Start(func() {
         Thread.Sleep(100);  // Sleep 100 milliseconds
     });
 
-    Viper.Terminal.Say(&quot;Thread ID: &quot; + toString(t.Id));
-    Viper.Terminal.Say(&quot;Alive? &quot; + toString(t.IsAlive));
+    Zanna.Terminal.Say(&quot;Thread ID: &quot; + toString(t.Id));
+    Zanna.Terminal.Say(&quot;Alive? &quot; + toString(t.IsAlive));
 
     t.Join();
-    Viper.Terminal.Say(&quot;Still alive? &quot; + toString(t.IsAlive));
+    Zanna.Terminal.Say(&quot;Still alive? &quot; + toString(t.IsAlive));
 }
 </code></pre>
 <h3 id="joining-threads">Joining Threads</h3>
 <p><code>Join()</code> blocks the calling thread until the target thread finishes. Without joining, the main thread might exit before worker threads complete.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func start() {
     var t = Thread.Start(func() {
@@ -7119,7 +7119,7 @@ func start() {
 <h3 id="safe-thread-operations">Safe Thread Operations</h3>
 <p><code>StartSafe</code> wraps the thread body in error handling, so unhandled errors don&#x27;t crash the program:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
+bind Thread = Zanna.Threads.Thread;
 
 func start() {
     var t = Thread.StartSafe(func() {
@@ -7130,7 +7130,7 @@ func start() {
     t.SafeJoin();  // Safe join that won&#x27;t propagate errors
 
     if (t.HasError) {
-        Viper.Terminal.Say(&quot;Thread error: &quot; + t.Error);
+        Zanna.Terminal.Say(&quot;Thread error: &quot; + t.Error);
     }
 }
 </code></pre>
@@ -7154,8 +7154,8 @@ func start() {
 <h3 id="monitor-mutual-exclusion">Monitor (Mutual Exclusion)</h3>
 <p>A <code>Monitor</code> provides mutual exclusion: only one thread can hold the monitor at a time. Other threads that try to enter will block until it&#x27;s released.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
 
 var counter = 0;
 var lock = new Object();  // Any object can serve as a monitor target
@@ -7184,7 +7184,7 @@ func start() {
         Thread.Join(t);
     }
 
-    Viper.Terminal.Say(&quot;Counter: &quot; + toString(counter));  // Should be 1000
+    Zanna.Terminal.Say(&quot;Counter: &quot; + toString(counter));  // Should be 1000
 }
 </code></pre>
 <h3 id="monitor-methods">Monitor Methods</h3>
@@ -7227,8 +7227,8 @@ func start() {
 </tbody></table>
 <h3 id="producer-consumer-with-monitor">Producer-Consumer with Monitor</h3>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
 
 var buffer: List[Integer] = [];
 var lock = new Object();
@@ -7259,7 +7259,7 @@ func consumer(id: Integer) {
             var item = buffer.get(0);
             buffer.RemoveAt(0);
             Monitor.Exit(lock);
-            Viper.Terminal.Say(&quot;Consumer &quot; + toString(id) + &quot; got: &quot; + toString(item));
+            Zanna.Terminal.Say(&quot;Consumer &quot; + toString(id) + &quot; got: &quot; + toString(item));
         } else {
             Monitor.Exit(lock);
             if (done) { break; }
@@ -7270,8 +7270,8 @@ func consumer(id: Integer) {
 <h3 id="safei64-atomic-integer">SafeI64 (Atomic Integer)</h3>
 <p>For simple numeric shared state, <code>SafeI64</code> provides lock-free atomic operations:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind SafeI64 = Viper.Threads.SafeI64;
+bind Thread = Zanna.Threads.Thread;
+bind SafeI64 = Zanna.Threads.SafeI64;
 
 func start() {
     var counter = SafeI64.New(0);  // Create atomic counter starting at 0
@@ -7291,7 +7291,7 @@ func start() {
     t1.Join();
     t2.Join();
 
-    Viper.Terminal.Say(&quot;Counter: &quot; + toString(counter.Get()));  // Always 2000
+    Zanna.Terminal.Say(&quot;Counter: &quot; + toString(counter.Get()));  // Always 2000
 }
 </code></pre>
 <table><thead><tr>
@@ -7321,7 +7321,7 @@ func start() {
 </tbody></table>
 <p>The <code>CompareExchange</code> operation (CAS) is the building block for lock-free algorithms:</p>
 <pre><code data-lang="rust">
-bind SafeI64 = Viper.Threads.SafeI64;
+bind SafeI64 = Zanna.Threads.SafeI64;
 
 // Lock-free maximum update
 func atomicMax(atom: SafeI64, candidate: Integer) {
@@ -7336,12 +7336,12 @@ func atomicMax(atom: SafeI64, candidate: Integer) {
 </code></pre>
 <p>---</p>
 <h2 id="24-3-synchronization-primitives">24.3 Synchronization Primitives</h2>
-<p>Beyond monitors, Viper provides specialized synchronization tools for different coordination patterns.</p>
+<p>Beyond monitors, Zanna provides specialized synchronization tools for different coordination patterns.</p>
 <h3 id="gate-semaphore">Gate (Semaphore)</h3>
 <p>A <code>Gate</code> controls access to a limited resource. It maintains a count of available permits. Threads enter (consuming a permit) and leave (releasing a permit).</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Gate = Viper.Threads.Gate;
+bind Thread = Zanna.Threads.Thread;
+bind Gate = Zanna.Threads.Gate;
 
 func start() {
     // Allow up to 3 concurrent database connections
@@ -7350,7 +7350,7 @@ func start() {
     for i in 0..10 {
         Thread.Start(func() {
             dbGate.Enter();              // Wait for a permit
-            Viper.Terminal.Say(&quot;Query &quot; + toString(i) + &quot; running&quot;);
+            Zanna.Terminal.Say(&quot;Query &quot; + toString(i) + &quot; running&quot;);
             Thread.Sleep(200);           // Simulate query
             dbGate.Leave();              // Release permit
         });
@@ -7393,17 +7393,17 @@ func start() {
 <h3 id="barrier">Barrier</h3>
 <p>A <code>Barrier</code> makes multiple threads wait until all of them have arrived at a synchronization point before any can proceed. Useful for phased algorithms.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Barrier = Viper.Threads.Barrier;
+bind Thread = Zanna.Threads.Thread;
+bind Barrier = Zanna.Threads.Barrier;
 
 func start() {
     var barrier = Barrier.New(3);  // Wait for 3 threads
 
     for i in 0..3 {
         Thread.Start(func() {
-            Viper.Terminal.Say(&quot;Thread &quot; + toString(i) + &quot; phase 1 done&quot;);
+            Zanna.Terminal.Say(&quot;Thread &quot; + toString(i) + &quot; phase 1 done&quot;);
             barrier.Arrive();  // Wait until all 3 threads arrive
-            Viper.Terminal.Say(&quot;Thread &quot; + toString(i) + &quot; phase 2 starting&quot;);
+            Zanna.Terminal.Say(&quot;Thread &quot; + toString(i) + &quot; phase 2 starting&quot;);
         });
     }
 }
@@ -7436,8 +7436,8 @@ func start() {
 <h3 id="rwlock-reader-writer-lock">RwLock (Reader-Writer Lock)</h3>
 <p>A <code>RwLock</code> allows multiple simultaneous readers <em>or</em> one exclusive writer. This is more efficient than a Monitor when reads vastly outnumber writes.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind RwLock = Viper.Threads.RwLock;
+bind Thread = Zanna.Threads.Thread;
+bind RwLock = Zanna.Threads.RwLock;
 
 var cache: List[String] = [];
 var rwLock = RwLock.New();
@@ -7492,8 +7492,8 @@ func writeCache(value: String) {
 <h2 id="24-4-channels">24.4 Channels</h2>
 <p>Channels provide safe communication between threads without shared mutable state. One thread <em>sends</em> data into the channel; another thread <em>receives</em> it. This is the &quot;communicate by sharing&quot; approach to concurrency.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Channel = Viper.Threads.Channel;
+bind Thread = Zanna.Threads.Thread;
+bind Channel = Zanna.Threads.Channel;
 
 func start() {
     var ch = Channel.New(5);  // Buffered channel with capacity 5
@@ -7502,7 +7502,7 @@ func start() {
     var producer = Thread.Start(func() {
         for i in 1..=10 {
             ch.Send(i);
-            Viper.Terminal.Say(&quot;Sent: &quot; + toString(i));
+            Zanna.Terminal.Say(&quot;Sent: &quot; + toString(i));
         }
         ch.Close();
     });
@@ -7512,7 +7512,7 @@ func start() {
         while (!ch.IsClosed || !ch.IsEmpty) {
             var item = ch.Recv();
             if (item != null) {
-                Viper.Terminal.Say(&quot;Received: &quot; + toString(item));
+                Zanna.Terminal.Say(&quot;Received: &quot; + toString(item));
             }
         }
     });
@@ -7594,8 +7594,8 @@ func start() {
 <h3 id="pipeline-pattern">Pipeline Pattern</h3>
 <p>Channels naturally compose into pipelines where each stage processes data and passes results to the next:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Channel = Viper.Threads.Channel;
+bind Thread = Zanna.Threads.Thread;
+bind Channel = Zanna.Threads.Channel;
 
 func start() {
     var raw = Channel.New(10);
@@ -7624,7 +7624,7 @@ func start() {
     while (!processed.IsClosed || !processed.IsEmpty) {
         var result = processed.Recv();
         if (result != null) {
-            Viper.Terminal.Say(&quot;Result: &quot; + toString(result));
+            Zanna.Terminal.Say(&quot;Result: &quot; + toString(result));
         }
     }
 }
@@ -7633,7 +7633,7 @@ func start() {
 <h2 id="24-5-thread-pools">24.5 Thread Pools</h2>
 <p>Creating a new OS thread for every task is expensive. A <em>thread pool</em> maintains a set of reusable worker threads. You submit tasks; the pool assigns them to available workers.</p>
 <pre><code data-lang="rust">
-bind Pool = Viper.Threads.Pool;
+bind Pool = Zanna.Threads.Pool;
 
 func start() {
     var pool = Pool.New(4);  // 4 worker threads
@@ -7641,7 +7641,7 @@ func start() {
     // Submit 20 tasks to the pool
     for i in 0..20 {
         pool.Submit(func() {
-            Viper.Terminal.Say(&quot;Task &quot; + toString(i) + &quot; running&quot;);
+            Zanna.Terminal.Say(&quot;Task &quot; + toString(i) + &quot; running&quot;);
             Thread.Sleep(100);
         });
     }
@@ -7649,8 +7649,8 @@ func start() {
     pool.Wait();      // Wait for all tasks to complete
     pool.Shutdown();   // Clean up pool resources
 
-    Viper.Terminal.Say(&quot;All tasks done.&quot;);
-    Viper.Terminal.Say(&quot;Pool processed &quot; + toString(pool.Size) + &quot; workers.&quot;);
+    Zanna.Terminal.Say(&quot;All tasks done.&quot;);
+    Zanna.Terminal.Say(&quot;Pool processed &quot; + toString(pool.Size) + &quot; workers.&quot;);
 }
 </code></pre>
 <h3 id="pool-methods">Pool Methods</h3>
@@ -7714,8 +7714,8 @@ func start() {
 <h2 id="24-6-promises-and-futures">24.6 Promises and Futures</h2>
 <p>A <code>Promise</code> represents a value that will be provided later. A <code>Future</code> is the read-side of a promise — it lets another thread wait for and retrieve the result.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Promise = Viper.Threads.Promise;
+bind Thread = Zanna.Threads.Thread;
+bind Promise = Zanna.Threads.Promise;
 
 func start() {
     var p = Promise.New();
@@ -7729,14 +7729,14 @@ func start() {
 
     // Main thread waits for the result
     var result = f.Get();  // Blocks until the promise is fulfilled
-    Viper.Terminal.Say(&quot;Got: &quot; + toString(result));  // &quot;Got: 42&quot;
+    Zanna.Terminal.Say(&quot;Got: &quot; + toString(result));  // &quot;Got: 42&quot;
 }
 </code></pre>
 <h3 id="error-propagation">Error Propagation</h3>
 <p>Promises can propagate errors to futures:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Promise = Viper.Threads.Promise;
+bind Thread = Zanna.Threads.Thread;
+bind Promise = Zanna.Threads.Promise;
 
 func start() {
     var p = Promise.New();
@@ -7748,7 +7748,7 @@ func start() {
 
     f.Wait();
     if (f.IsError) {
-        Viper.Terminal.Say(&quot;Error: &quot; + f.Error);
+        Zanna.Terminal.Say(&quot;Error: &quot; + f.Error);
     }
 }
 </code></pre>
@@ -7802,7 +7802,7 @@ func start() {
 <h3 id="async-combinators">Async Combinators</h3>
 <p>The <code>Async</code> class provides higher-level operations built on futures:</p>
 <pre><code data-lang="rust">
-bind Async = Viper.Threads.Async;
+bind Async = Zanna.Threads.Async;
 
 func start() {
     // Run a function asynchronously, get a Future back
@@ -7851,12 +7851,12 @@ func start() {
 </tbody></table>
 <p>---</p>
 <h2 id="24-7-concurrent-collections">24.7 Concurrent Collections</h2>
-<p>Regular collections (<code>List</code>, <code>Map</code>) are <strong>not</strong> thread-safe. Accessing them from multiple threads without locks leads to corruption. Viper provides two thread-safe collections.</p>
+<p>Regular collections (<code>List</code>, <code>Map</code>) are <strong>not</strong> thread-safe. Accessing them from multiple threads without locks leads to corruption. Zanna provides two thread-safe collections.</p>
 <h3 id="concurrentqueue">ConcurrentQueue</h3>
 <p>A thread-safe FIFO queue, ideal for producer-consumer patterns:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind ConcurrentQueue = Viper.Threads.ConcurrentQueue;
+bind Thread = Zanna.Threads.Thread;
+bind ConcurrentQueue = Zanna.Threads.ConcurrentQueue;
 
 func start() {
     var queue = ConcurrentQueue.New();
@@ -7873,7 +7873,7 @@ func start() {
     Thread.Start(func() {
         for i in 0..10 {
             var item = queue.Dequeue();  // Blocks if empty
-            Viper.Terminal.Say(&quot;Got: &quot; + toString(item));
+            Zanna.Terminal.Say(&quot;Got: &quot; + toString(item));
         }
     });
 }
@@ -7922,8 +7922,8 @@ func start() {
 <h3 id="concurrentmap">ConcurrentMap</h3>
 <p>A thread-safe key-value store with string keys:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind ConcurrentMap = Viper.Threads.ConcurrentMap;
+bind Thread = Zanna.Threads.Thread;
+bind ConcurrentMap = Zanna.Threads.ConcurrentMap;
 
 func start() {
     var config = ConcurrentMap.New();
@@ -7937,7 +7937,7 @@ func start() {
     // Reader thread (safe to read concurrently)
     Thread.Start(func() {
         var host = config.GetOr(&quot;host&quot;, &quot;127.0.0.1&quot;);
-        Viper.Terminal.Say(&quot;Connecting to &quot; + host);
+        Zanna.Terminal.Say(&quot;Connecting to &quot; + host);
     });
 }
 </code></pre>
@@ -7998,7 +7998,7 @@ func start() {
 <h2 id="24-8-parallel-utilities">24.8 Parallel Utilities</h2>
 <p>The <code>Parallel</code> class provides high-level utilities for common parallel patterns without manual thread management:</p>
 <pre><code data-lang="rust">
-bind Parallel = Viper.Threads.Parallel;
+bind Parallel = Zanna.Threads.Parallel;
 
 func start() {
     // Parallel for loop (partitioned across cores)
@@ -8009,7 +8009,7 @@ func start() {
     // Parallel for-each over a collection
     var items: List[String] = [&quot;a&quot;, &quot;b&quot;, &quot;c&quot;, &quot;d&quot;];
     Parallel.ForEach(items, func(item: String) {
-        Viper.Terminal.Say(&quot;Processing: &quot; + item);
+        Zanna.Terminal.Say(&quot;Processing: &quot; + item);
     });
 
     // Parallel map: transform each element concurrently
@@ -8021,8 +8021,8 @@ func start() {
 <h3 id="using-a-custom-pool">Using a Custom Pool</h3>
 <p>By default, <code>Parallel</code> uses a shared default pool. You can provide your own:</p>
 <pre><code data-lang="rust">
-bind Parallel = Viper.Threads.Parallel;
-bind Pool = Viper.Threads.Pool;
+bind Parallel = Zanna.Threads.Parallel;
+bind Pool = Zanna.Threads.Pool;
 
 func start() {
     var pool = Pool.New(2);  // Only 2 workers
@@ -8092,8 +8092,8 @@ func start() {
 <h2 id="24-9-cancellation">24.9 Cancellation</h2>
 <p>Long-running tasks should be cancellable. The <code>CancelToken</code> provides cooperative cancellation — a way for one part of the program to signal &quot;stop&quot; and for the running task to check periodically and comply.</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind CancelToken = Viper.Threads.CancelToken;
+bind Thread = Zanna.Threads.Thread;
+bind CancelToken = Zanna.Threads.CancelToken;
 
 func start() {
     var token = CancelToken.New();
@@ -8102,7 +8102,7 @@ func start() {
         for i in 0..1000000 {
             // Periodically check for cancellation
             if (token.IsCancelled) {
-                Viper.Terminal.Say(&quot;Cancelled at iteration &quot; + toString(i));
+                Zanna.Terminal.Say(&quot;Cancelled at iteration &quot; + toString(i));
                 return;
             }
             // Do work...
@@ -8117,7 +8117,7 @@ func start() {
 <h3 id="linked-tokens">Linked Tokens</h3>
 <p>Create a child token that cancels when the parent does:</p>
 <pre><code data-lang="rust">
-bind CancelToken = Viper.Threads.CancelToken;
+bind CancelToken = Zanna.Threads.CancelToken;
 
 var parentToken = CancelToken.New();
 var childToken = parentToken.Linked(parentToken);
@@ -8162,7 +8162,7 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 <h3 id="debouncer">Debouncer</h3>
 <p>A <code>Debouncer</code> suppresses repeated signals that arrive within a quiet period. Only after the signals stop for the configured delay does the debouncer become &quot;ready&quot;. This is useful for UI events like search-as-you-type, where you want to wait until the user stops typing.</p>
 <pre><code data-lang="rust">
-bind Debouncer = Viper.Threads.Debouncer;
+bind Debouncer = Zanna.Threads.Debouncer;
 
 func start() {
     var debounce = Debouncer.New(300);  // 300ms quiet period
@@ -8178,7 +8178,7 @@ func start() {
     Thread.Sleep(400);
 
     if (debounce.IsReady) {
-        Viper.Terminal.Say(&quot;Now execute the search!&quot;);
+        Zanna.Terminal.Say(&quot;Now execute the search!&quot;);
     }
 }
 </code></pre>
@@ -8214,16 +8214,16 @@ func start() {
 <h3 id="throttler">Throttler</h3>
 <p>A <code>Throttler</code> limits how often an action can occur. At most one action per interval.</p>
 <pre><code data-lang="rust">
-bind Throttler = Viper.Threads.Throttler;
+bind Throttler = Zanna.Threads.Throttler;
 
 func start() {
     var throttle = Throttler.New(1000);  // At most once per second
 
     for i in 0..10 {
         if (throttle.Try()) {
-            Viper.Terminal.Say(&quot;Action executed at iteration &quot; + toString(i));
+            Zanna.Terminal.Say(&quot;Action executed at iteration &quot; + toString(i));
         } else {
-            Viper.Terminal.Say(&quot;Throttled at iteration &quot; + toString(i));
+            Zanna.Terminal.Say(&quot;Throttled at iteration &quot; + toString(i));
         }
         Thread.Sleep(200);
     }
@@ -8266,7 +8266,7 @@ func start() {
 <h2 id="24-11-scheduling">24.11 Scheduling</h2>
 <p>The <code>Scheduler</code> manages named tasks that should execute at scheduled times:</p>
 <pre><code data-lang="rust">
-bind Scheduler = Viper.Threads.Scheduler;
+bind Scheduler = Zanna.Threads.Scheduler;
 
 func start() {
     var sched = Scheduler.New();
@@ -8279,7 +8279,7 @@ func start() {
     while (sched.Pending &gt; 0) {
         var dueTask = sched.Poll();  // Returns name of due task, or null
         if (dueTask != null) {
-            Viper.Terminal.Say(&quot;Running: &quot; + dueTask);
+            Zanna.Terminal.Say(&quot;Running: &quot; + dueTask);
         }
         Thread.Sleep(100);
     }
@@ -8344,7 +8344,7 @@ t.Join();
 var t = Thread.StartSafe(func() { riskyOperation(); });
 t.SafeJoin();
 if (t.HasError) {
-    Viper.Terminal.Say(&quot;Thread failed: &quot; + t.Error);
+    Zanna.Terminal.Say(&quot;Thread failed: &quot; + t.Error);
 }
 </code></pre>
 <h3 id="4-prefer-thread-pools-over-raw-threads">4. Prefer Thread Pools Over Raw Threads</h3>
@@ -8473,11 +8473,11 @@ token.Cancel();
 <td>Time-based task management</td>
 </tr>
 </tbody></table>
-<p>All concurrency types live under <code>Viper.Threads</code>. Import them with:</p>
+<p>All concurrency types live under <code>Zanna.Threads</code>. Import them with:</p>
 <pre><code data-lang="rust">
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
-bind Channel = Viper.Threads.Channel;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
+bind Channel = Zanna.Threads.Channel;
 // ... etc.
 </code></pre>
 <p>Concurrency is powerful but demands discipline. Start simple — use channels and thread pools before reaching for low-level primitives. Test under load. And remember: the best concurrent code is code where threads don&#x27;t share state at all.</p>
@@ -8504,13 +8504,13 @@ bind Channel = Viper.Threads.Channel;
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

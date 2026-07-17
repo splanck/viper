@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Raise a standardized diagnostic for Phase A unsupported features.
 /// @param feature The name of the unsupported feature encountered.
@@ -29,4 +29,4 @@ namespace viper::codegen::x64 {
     throw std::runtime_error(std::string("x86-64 Phase A does not support: ") + feature);
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

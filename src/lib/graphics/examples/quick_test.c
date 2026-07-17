@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/examples/quick_test.c
-// Purpose: Minimal ViperGFX smoke test for CI and manual verification.
+// Purpose: Minimal ZannaGFX smoke test for CI and manual verification.
 // Key invariants: Keeps runtime short; prints clear diagnostics; exits cleanly.
 // Ownership/Lifetime: Demonstration code; owns and releases any created
 //                     resources.
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX Quick Test - Creates window, draws, and auto-exits
+ * ZannaGFX Quick Test - Creates window, draws, and auto-exits
  * Used for automated testing of the macOS backend
  */
 
@@ -23,7 +23,7 @@
 #include <vgfx.h>
 
 int main(void) {
-    printf("ViperGFX macOS Backend Test\n");
+    printf("ZannaGFX macOS Backend Test\n");
     printf("============================\n\n");
 
     /* Create window */
@@ -31,7 +31,7 @@ int main(void) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 400;
     params.height = 300;
-    params.title = "ViperGFX - Quick Test";
+    params.title = "ZannaGFX - Quick Test";
     params.resizable = 0;
 
     vgfx_window_t win = vgfx_create_window(&params);
@@ -118,13 +118,13 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/graphics/examples/quick_test.c
-// Purpose: Minimal ViperGFX smoke test for CI and manual verification.
+// Purpose: Minimal ZannaGFX smoke test for CI and manual verification.
 // Key invariants: Keeps runtime short; prints clear diagnostics; exits cleanly.
 // Ownership/Lifetime: Demonstration code; owns and releases any created
 //                     resources.

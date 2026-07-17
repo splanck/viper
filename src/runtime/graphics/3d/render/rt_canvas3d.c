@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_canvas3d.c
-// Purpose: Viper.Graphics3D.Canvas3D — 3D rendering surface that dispatches
+// Purpose: Zanna.Graphics3D.Canvas3D — 3D rendering surface that dispatches
 //   through the vgfx3d_backend_t vtable. Backend selection is automatic
 //   and platform-specific, with software fallback always available.
 //
@@ -22,7 +22,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_action.h"
@@ -108,7 +108,7 @@ uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
 /// @brief Report whether the graphics-enabled Canvas3D implementation is compiled in.
 /// @details This mirrors `Canvas.IsAvailable()` for 2D graphics. It is intentionally cheap and
 ///          state-free so applications can guard optional 3D paths before constructing a window.
-/// @return 1 in this translation unit because it is compiled only when `VIPER_ENABLE_GRAPHICS`
+/// @return 1 in this translation unit because it is compiled only when `ZANNA_ENABLE_GRAPHICS`
 ///         selects the real Graphics3D runtime.
 int8_t rt_canvas3d_is_available(void) {
     return 1;
@@ -232,14 +232,14 @@ static double canvas3d_accumulate_synthetic_mouse_delta(double current, double d
 }
 
 /// @brief Return the valid synthetic mouse-button bit mask without an undefined-width shift.
-/// @details VIPER_MOUSE_BUTTON_MAX is small today, but this guard keeps the mask calculation
+/// @details ZANNA_MOUSE_BUTTON_MAX is small today, but this guard keeps the mask calculation
 ///          defined if the input API grows. Values at or above 63 use every positive int64 bit.
 /// @return Bit mask of supported synthetic mouse buttons.
 static int64_t canvas3d_synthetic_mouse_button_mask(void) {
-#if VIPER_MOUSE_BUTTON_MAX >= 63
+#if ZANNA_MOUSE_BUTTON_MAX >= 63
     return INT64_MAX;
 #else
-    return (int64_t)((UINT64_C(1) << VIPER_MOUSE_BUTTON_MAX) - UINT64_C(1));
+    return (int64_t)((UINT64_C(1) << ZANNA_MOUSE_BUTTON_MAX) - UINT64_C(1));
 #endif
 }
 
@@ -311,7 +311,7 @@ static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
 
     for (int32_t i = 0; i < c->synthetic_key_count; i++) {
         int64_t key = c->synthetic_key_keys[i];
-        if (key <= 0 || key >= VIPER_KEY_MAX)
+        if (key <= 0 || key >= ZANNA_KEY_MAX)
             continue;
         if (c->synthetic_key_downs[i]) {
             rt_keyboard_on_key_down(key);
@@ -331,7 +331,7 @@ static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
     c->synthetic_mouse_dy = 0.0;
 
     if (c->synthetic_mouse_has_buttons) {
-        for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+        for (int i = 0; i < ZANNA_MOUSE_BUTTON_MAX; i++) {
             uint8_t down = (uint8_t)((c->synthetic_mouse_buttons >> i) & 1LL);
             if (down && !c->synthetic_mouse_button_state[i]) {
                 rt_mouse_button_down(i);
@@ -355,13 +355,13 @@ static void canvas3d_apply_synthetic_input(rt_canvas3d *c) {
 static void canvas3d_release_synthetic_state(rt_canvas3d *c) {
     if (!c)
         return;
-    for (int i = 1; i < VIPER_KEY_MAX; i++) {
+    for (int i = 1; i < ZANNA_KEY_MAX; i++) {
         if (c->synthetic_key_state[i]) {
             rt_keyboard_on_key_up(i);
             c->synthetic_key_state[i] = 0;
         }
     }
-    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
+    for (int i = 0; i < ZANNA_MOUSE_BUTTON_MAX; i++) {
         if (c->synthetic_mouse_button_state[i]) {
             rt_mouse_button_up(i);
             c->synthetic_mouse_button_state[i] = 0;
@@ -708,7 +708,7 @@ static int canvas3d_matrices_f32_are_finite(const float *matrices, int32_t count
     return 1;
 }
 
-/// @brief Validate @p obj is a live `Viper.Math.Mat4` heap object, NULL otherwise.
+/// @brief Validate @p obj is a live `Zanna.Math.Mat4` heap object, NULL otherwise.
 static mat4_impl *canvas3d_mat4_checked(void *obj) {
     if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
@@ -1751,9 +1751,9 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
 
     /* Plan 07: clustered forward+ defaults on for GPU backends (identified by the
      * present_postfx hook; software keeps the 16-light flat path and its perf
-     * profile). VIPER_3D_CLUSTERS=0 is the bisection escape hatch. */
+     * profile). ZANNA_3D_CLUSTERS=0 is the bisection escape hatch. */
     {
-        const char *clusters_env = getenv("VIPER_3D_CLUSTERS");
+        const char *clusters_env = getenv("ZANNA_3D_CLUSTERS");
         if (!(clusters_env && clusters_env[0] == '0' && clusters_env[1] == '\0') &&
             c->backend->present_postfx)
             c->clustered_lighting = 1;
@@ -2416,7 +2416,7 @@ void rt_canvas3d_set_input_source(void *obj, int64_t mode) {
 /// @brief Queue a synthetic keyboard transition for the next synthetic input frame.
 void rt_canvas3d_push_synthetic_key(void *obj, int64_t key, int8_t down) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    if (!c || key <= 0 || key >= VIPER_KEY_MAX)
+    if (!c || key <= 0 || key >= ZANNA_KEY_MAX)
         return;
     if (c->synthetic_key_count >= CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX)
         return;
@@ -2542,7 +2542,7 @@ int8_t rt_canvas3d_try_set_clustered_lighting(void *obj, int8_t enabled) {
         c->clustered_lighting = 0;
         return 1;
     }
-    clusters_env = getenv("VIPER_3D_CLUSTERS");
+    clusters_env = getenv("ZANNA_3D_CLUSTERS");
     if (clusters_env && clusters_env[0] == '0' && clusters_env[1] == '\0') {
         c->clustered_lighting = 0; /* env kill switch wins over explicit enables */
         return 0;
@@ -3065,4 +3065,4 @@ void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

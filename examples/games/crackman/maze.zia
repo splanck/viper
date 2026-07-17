@@ -10,12 +10,12 @@
 //          AI for navigation and wall queries.
 //
 // KEY-DESIGN-CHOICES:
-//   * Viper.Game.Grid2D. A 2D integer grid with bounds-safe get/set
+//   * Zanna.Game.Grid2D. A 2D integer grid with bounds-safe get/set
 //     — saves us from reimplementing a tile map from scratch.
-//   * Viper.Game.Pathfinder. Shared across ghosts for "eaten" mode
+//   * Zanna.Game.Pathfinder. Shared across ghosts for "eaten" mode
 //     routing back to the ghost house. A single A* instance is
 //     cheaper than per-ghost pathfinders.
-//   * Viper.Graphics.SpriteBatch. Wall tiles + dots + pellets all
+//   * Zanna.Graphics.SpriteBatch. Wall tiles + dots + pellets all
 //     batch through one SpriteBatch so the draw call count stays
 //     tiny even on a 28×31 maze.
 // ============================================================================
@@ -23,7 +23,7 @@
 // =============================================================================
 // CRACKMAN - Maze Entity
 // =============================================================================
-// Uses new Viper runtime features:
+// Uses new Zanna runtime features:
 // - Grid2D for 2D tile storage with bounds checking
 // - SpriteBatch for cleaner batched tile and collectible rendering
 // - Timer for pellet blink animation
@@ -32,9 +32,9 @@
 
 module maze;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.String;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.String;
 
 bind "./config";
 bind "./utils";

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -210,7 +210,7 @@ static inline wchar_t *rt_dir_win_utf8_to_wide(const char *utf8) {
     return wide;
 }
 
-/// @brief Convert a wide-char string to a Viper rt_string (UTF-8).
+/// @brief Convert a wide-char string to a Zanna rt_string (UTF-8).
 /// Returns the empty string on conversion / allocation failure.
 static inline rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
     if (!wide)

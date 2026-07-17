@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_time.c
-// Purpose: Provides portable cross-platform timing utilities for the Viper
+// Purpose: Provides portable cross-platform timing utilities for the Zanna
 //          runtime. Implements millisecond-precision sleep (rt_sleep_ms) and
 //          a high-resolution monotonic tick counter (rt_get_tick_count_ms)
 //          that powers BASIC SLEEP statements, TIMER functions, and game loops.
@@ -34,7 +34,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include "rt_atomic_compat.h"
 
@@ -105,7 +105,7 @@ static int64_t rt_time_scale_seconds(int64_t seconds, int64_t scale, int64_t fra
 ///          floor when the candidate is newer and otherwise returns the retained
 ///          floor (VDOC-223). The monotonic fast path never touches this state.
 ///          Shared with the Stopwatch and Countdown fallbacks so all three
-///          Viper.Time surfaces ratchet identically.
+///          Zanna.Time surfaces ratchet identically.
 /// @param floor Process-local monotonic floor for this scale/call site.
 /// @param candidate Freshly sampled fallback value.
 /// @return The greater of the candidate and the retained floor.
@@ -390,13 +390,13 @@ int64_t rt_clock_ticks_us(void) {
 #endif
 
 //=============================================================================
-// Viper.Time.Clock wrappers (i64 interface)
+// Zanna.Time.Clock wrappers (i64 interface)
 //=============================================================================
 
 /// @brief Suspends execution for the specified number of milliseconds (64-bit).
 ///
 /// High-level wrapper around rt_sleep_ms that accepts 64-bit durations. Values
-/// outside the valid range are clamped. This is the function exposed to Viper
+/// outside the valid range are clamped. This is the function exposed to Zanna
 /// BASIC code via the Clock class.
 ///
 /// **Value clamping:**
@@ -432,7 +432,7 @@ void rt_clock_sleep(int64_t ms) {
 /// @brief Returns monotonic time in milliseconds (Clock wrapper).
 ///
 /// High-level wrapper that returns the current monotonic time in milliseconds.
-/// This is the function exposed to Viper BASIC code as Clock.Ticks().
+/// This is the function exposed to Zanna BASIC code as Clock.Ticks().
 ///
 /// **Usage example:**
 /// ```

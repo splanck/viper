@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -11,7 +11,7 @@
 //                 normalize removes redundant components, and absolute detection
 //                 considers platform conventions.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated strings.
-// Links: docs/viperlib.md
+// Links: docs/zannalib.md
 
 #include "rt.hpp"
 #include "rt_path.h"
@@ -352,7 +352,7 @@ int main() {
 #ifdef _WIN32
     // Skip on Windows: tests use Unix-style paths (/foo/bar) that have different
     // semantics on Windows (not considered absolute paths)
-    VIPER_PLATFORM_SKIP("Unix path conventions not applicable on Windows");
+    ZANNA_PLATFORM_SKIP("Unix path conventions not applicable on Windows");
 #endif
     printf("=== RT Path Tests ===\n\n");
 

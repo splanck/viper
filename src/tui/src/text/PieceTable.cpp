@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,12 +17,12 @@
 //                     contiguous strings.  Change objects capture copies of the
 //                     affected text to guarantee that callback receivers observe
 //                     stable payloads even if the table mutates again.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Concrete implementation of the @ref viper::tui::text::PieceTable data
+/// @brief Concrete implementation of the @ref zanna::tui::text::PieceTable data
 ///        structure.
 /// @details The piece table stores document text as a list of spans referencing
 ///          either the original file contents or an append-only "add" buffer.
@@ -36,7 +36,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace viper::tui::text {
+namespace zanna::tui::text {
 /// @brief Remember an inserted span so observers can be notified later.
 /// @details Stores a copy of the inserted text along with the byte offset at
 ///          which it appeared.  Empty strings clear the tracked span to signal
@@ -326,4 +326,4 @@ std::list<PieceTable::Piece>::const_iterator PieceTable::findPiece(std::size_t p
     offset = 0;
     return pieces_.cend();
 }
-} // namespace viper::tui::text
+} // namespace zanna::tui::text

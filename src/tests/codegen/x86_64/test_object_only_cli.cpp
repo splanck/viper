@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,8 +30,8 @@
 
 namespace {
 
-#if defined(VIPER_ILC_PATH)
-constexpr const char kIlcExecutable[] = VIPER_ILC_PATH;
+#if defined(ZANNA_ILC_PATH)
+constexpr const char kIlcExecutable[] = ZANNA_ILC_PATH;
 #else
 constexpr const char kIlcExecutable[] = "ilc";
 #endif
@@ -102,7 +102,7 @@ class TempDirGuard {
     TempDirGuard() {
         const auto timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
         std::ostringstream builder;
-        builder << "viper_object_only-" << timestamp;
+        builder << "zanna_object_only-" << timestamp;
         std::filesystem::path candidate = std::filesystem::temp_directory_path() / builder.str();
 
         std::error_code ec;

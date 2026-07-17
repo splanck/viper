@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,13 +18,13 @@
 //===----------------------------------------------------------------------===//
 
 
-// Viper.Input.Keyboard - keyboard input handling (static class)
+// Zanna.Input.Keyboard - keyboard input handling (static class)
 /// @summary Provides keyboard input handling.
 /// @details
-/// `Viper.Input.Keyboard` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Input.Keyboard` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `IsDown`,
 /// `IsUp`, `AnyDown`, `GetDown`.
-RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
+RT_CLASS_BEGIN("Zanna.Input.Keyboard", Keyboard, "obj", none)
     // Polling methods (current state)
     RT_METHOD("IsDown", "i1(i64)", KeyboardIsDown)
     RT_METHOD("IsUp", "i1(i64)", KeyboardIsUp)
@@ -34,8 +34,8 @@ RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
     // Event methods (since last Poll)
     RT_METHOD("WasPressed", "i1(i64)", KeyboardWasPressed)
     RT_METHOD("WasReleased", "i1(i64)", KeyboardWasReleased)
-    RT_METHOD("GetPressed", "obj<Viper.Collections.Seq>()", KeyboardGetPressed)
-    RT_METHOD("GetReleased", "obj<Viper.Collections.Seq>()", KeyboardGetReleased)
+    RT_METHOD("GetPressed", "obj<Zanna.Collections.Seq>()", KeyboardGetPressed)
+    RT_METHOD("GetReleased", "obj<Zanna.Collections.Seq>()", KeyboardGetReleased)
 
     // Text input
     RT_METHOD("GetText", "str()", KeyboardGetText)
@@ -66,12 +66,12 @@ RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
     // Numpad
 	RT_CLASS_END()
 
-// Viper.Input.Key - canonical keyboard key-code constants (static class)
+// Zanna.Input.Key - canonical keyboard key-code constants (static class)
 /// @summary Defines canonical keyboard key-code constants.
 /// @details
-/// `Viper.Input.Key` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Input.Key` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `Unknown`, `A`, `B`.
-RT_CLASS_BEGIN("Viper.Input.Key", InputKey, "none", none)
+RT_CLASS_BEGIN("Zanna.Input.Key", InputKey, "none", none)
     RT_PROP("Unknown", "i64", InputKeyUnknown, none)
     RT_PROP("A", "i64", InputKeyA, none)
     RT_PROP("B", "i64", InputKeyB, none)
@@ -171,13 +171,13 @@ RT_CLASS_BEGIN("Viper.Input.Key", InputKey, "none", none)
     RT_PROP("NumpadDecimal", "i64", InputKeyNumpadDecimal, none)
 RT_CLASS_END()
 
-// Viper.Input.Mouse - mouse input handling (static class)
+// Zanna.Input.Mouse - mouse input handling (static class)
 /// @summary Provides mouse input handling.
 /// @details
-/// `Viper.Input.Mouse` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Input.Mouse` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `RelativeMode`, `RelativeModeNative`,
 /// `ButtonLeft` and operations including `X`, `Y`, `DeltaX`, `DeltaY`.
-RT_CLASS_BEGIN("Viper.Input.Mouse", Mouse, "none", none)
+RT_CLASS_BEGIN("Zanna.Input.Mouse", Mouse, "none", none)
     // Position (relative to canvas)
     RT_METHOD("X", "i64()", MouseX)
     RT_METHOD("Y", "i64()", MouseY)
@@ -227,13 +227,13 @@ RT_CLASS_BEGIN("Viper.Input.Mouse", Mouse, "none", none)
     RT_PROP("ButtonX2", "i64", MouseButtonX2, none)
 RT_CLASS_END()
 
-// Viper.Input.Pad - gamepad/controller input handling (static class)
+// Zanna.Input.Pad - gamepad/controller input handling (static class)
 /// @summary Provides gamepad/controller input handling.
 /// @details
-/// `Viper.Input.Pad` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Input.Pad` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `ButtonA`, `ButtonB`, `ButtonX` and operations
 /// including `Count`, `IsConnected`, `Name`, `IsDown`.
-RT_CLASS_BEGIN("Viper.Input.Pad", Pad, "none", none)
+RT_CLASS_BEGIN("Zanna.Input.Pad", Pad, "none", none)
     // Controller enumeration
     RT_METHOD("Count", "i64()", PadCount)
     RT_METHOD("IsConnected", "i1(i64)", PadIsConnected)
@@ -281,13 +281,13 @@ RT_CLASS_BEGIN("Viper.Input.Pad", Pad, "none", none)
     RT_PROP("ButtonGuide", "i64", PadButtonGuide, none)
 RT_CLASS_END()
 
-// Viper.Input.Action - action mapping system (static class)
+// Zanna.Input.Action - action mapping system (static class)
 /// @summary Provides action mapping system.
 /// @details
-/// `Viper.Input.Action` is a static runtime surface and does not require an instance. Its public
+/// `Zanna.Input.Action` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes properties such as `AxisLeftX`, `AxisLeftY`, `AxisRightX` and
 /// operations including `Clear`, `Define`, `DefineAxis`, `Exists`.
-RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
+RT_CLASS_BEGIN("Zanna.Input.Action", Action, "none", none)
     // Action definition
     RT_METHOD("Clear", "void()", ActionClear)
     RT_METHOD("Define", "i1(str)", ActionDefine)
@@ -353,13 +353,13 @@ RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
     RT_PROP("AxisRightTrigger", "i64", ActionAxisRightTrigger, none)
 RT_CLASS_END()
 
-// Viper.Grid2D - 2D array container
+// Zanna.Grid2D - 2D array container
 /// @summary Provides Grid 2D functionality for game applications.
 /// @details
-/// Create `Viper.Game.Grid2D` values through its registered constructor and use the returned object
+/// Create `Zanna.Game.Grid2D` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Width`,
 /// `Height`, `IsEmpty` and operations including `Get`, `Set`, `Fill`, `Clear`.
-RT_CLASS_BEGIN("Viper.Game.Grid2D", Grid2D, "obj", Grid2DNew)
+RT_CLASS_BEGIN("Zanna.Game.Grid2D", Grid2D, "obj", Grid2DNew)
     RT_PROP("Width", "i64", Grid2DWidth, none)
     RT_PROP("Height", "i64", Grid2DHeight, none)
     RT_PROP("IsEmpty", "i1", Grid2DIsEmpty, none)
@@ -374,14 +374,14 @@ RT_CLASS_BEGIN("Viper.Game.Grid2D", Grid2D, "obj", Grid2DNew)
     RT_METHOD("Replace", "i64(i64,i64)", Grid2DReplace)
 RT_CLASS_END()
 
-// Viper.Timer - frame-based timer
+// Zanna.Timer - frame-based timer
 /// @summary Provides Timer functionality for game applications.
 /// @details
-/// Create `Viper.Game.Timer` values through its registered constructor and use the returned object
+/// Create `Zanna.Game.Timer` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `IsRunning`,
 /// `IsExpired`, `IsRepeating` and operations including `Start`, `StartRepeating`, `Stop`,
 /// `Reset`.
-RT_CLASS_BEGIN("Viper.Game.Timer", Timer, "obj", TimerNew)
+RT_CLASS_BEGIN("Zanna.Game.Timer", Timer, "obj", TimerNew)
     RT_PROP("IsRunning", "i1", TimerIsRunning, none)
     RT_PROP("IsExpired", "i1", TimerIsExpired, none)
     RT_PROP("IsRepeating", "i1", TimerIsRepeating, none)
@@ -402,14 +402,14 @@ RT_CLASS_BEGIN("Viper.Game.Timer", Timer, "obj", TimerNew)
     RT_PROP("RemainingMs", "i64", TimerRemainingMs, none)
 RT_CLASS_END()
 
-// Viper.StateMachine - game/app state management
+// Zanna.StateMachine - game/app state management
 /// @summary Provides State Machine functionality for game applications.
 /// @details
-/// Create `Viper.Game.StateMachine` values through its registered constructor and use the returned
+/// Create `Zanna.Game.StateMachine` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Current`, `Previous`, `JustEntered` and operations including `AddState`, `SetInitial`,
 /// `IsState`, `Transition`.
-RT_CLASS_BEGIN("Viper.Game.StateMachine", StateMachine, "obj", StateMachineNew)
+RT_CLASS_BEGIN("Zanna.Game.StateMachine", StateMachine, "obj", StateMachineNew)
     RT_PROP("Current", "i64", StateMachineCurrent, none)
     RT_PROP("Previous", "i64", StateMachinePrevious, none)
     RT_PROP("JustEntered", "i1", StateMachineJustEntered, none)
@@ -425,14 +425,14 @@ RT_CLASS_BEGIN("Viper.Game.StateMachine", StateMachine, "obj", StateMachineNew)
     RT_METHOD("HasState", "i1(i64)", StateMachineHasState)
 RT_CLASS_END()
 
-// Viper.AnimStateMachine - combined state + animation playback
+// Zanna.AnimStateMachine - combined state + animation playback
 /// @summary Provides Anim State Machine functionality for game applications.
 /// @details
-/// Create `Viper.Game.AnimStateMachine` values through its registered constructor and use the
+/// Create `Zanna.Game.AnimStateMachine` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `CurrentState`, `PreviousState`, `JustEntered` and operations including `AddState`,
 /// `AddNamed`, `AddEvent`, `ClearEvents`.
-RT_CLASS_BEGIN("Viper.Game.AnimStateMachine", AnimStateMachine, "obj", AnimStateNew)
+RT_CLASS_BEGIN("Zanna.Game.AnimStateMachine", AnimStateMachine, "obj", AnimStateNew)
     RT_PROP("CurrentState", "i64", AnimStateCurrent, none)
     RT_PROP("PreviousState", "i64", AnimStatePrevious, none)
     RT_PROP("JustEntered", "i1", AnimStateJustEntered, none)
@@ -446,7 +446,7 @@ RT_CLASS_BEGIN("Viper.Game.AnimStateMachine", AnimStateMachine, "obj", AnimState
     RT_METHOD("AddNamed", "void(str,i64,i64,i64,i1)", AnimStateAddNamed)
     RT_METHOD("AddEvent", "i1(i64,i64,i64)", AnimStateAddEvent)
     RT_METHOD("ClearEvents", "void(i64)", AnimStateClearEvents)
-    RT_METHOD("PollEvents", "obj<Viper.Game.AnimationEventBatch>()", AnimStatePollEvents)
+    RT_METHOD("PollEvents", "obj<Zanna.Game.AnimationEventBatch>()", AnimStatePollEvents)
     RT_METHOD("SetInitial", "i1(i64)", AnimStateSetInitial)
     RT_METHOD("Transition", "i1(i64)", AnimStateTransition)
     RT_METHOD("Play", "void(str)", AnimStatePlay)
@@ -456,23 +456,23 @@ RT_CLASS_END()
 
 /// @summary Provides Animation Event Batch functionality for game applications.
 /// @details
-/// `Viper.Game.AnimationEventBatch` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Game.AnimationEventBatch` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as `Count`
 /// and operations including `GetId`, `Contains`, `Ids`.
-RT_CLASS_BEGIN("Viper.Game.AnimationEventBatch", AnimationEventBatch, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.AnimationEventBatch", AnimationEventBatch, "obj", none)
     RT_PROP("Count", "i64", AnimationEventBatchCount, none)
     RT_METHOD("GetId", "i64(i64)", AnimationEventBatchGetId)
     RT_METHOD("Contains", "i1(i64)", AnimationEventBatchContains)
-    RT_METHOD("Ids", "obj<Viper.Collections.Seq>()", AnimationEventBatchIds)
+    RT_METHOD("Ids", "obj<Zanna.Collections.Seq>()", AnimationEventBatchIds)
 RT_CLASS_END()
 
 /// @summary Provides Anim Timeline functionality for game applications.
 /// @details
-/// Create `Viper.Game.AnimTimeline` values through its registered constructor and use the returned
+/// Create `Zanna.Game.AnimTimeline` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `IsPlaying`, `IsFinished`, `CurrentFrame` and operations including `AddAnimTrack`,
 /// `AddTweenTrack`, `AddMarker`, `Play`.
-RT_CLASS_BEGIN("Viper.Game.AnimTimeline", AnimTimeline, "obj", AnimTimelineNew)
+RT_CLASS_BEGIN("Zanna.Game.AnimTimeline", AnimTimeline, "obj", AnimTimelineNew)
     RT_PROP("IsPlaying", "i1", AnimTimelineIsPlaying, none)
     RT_PROP("IsFinished", "i1", AnimTimelineIsFinished, none)
     RT_PROP("CurrentFrame", "i64", AnimTimelineFrame, none)
@@ -484,7 +484,7 @@ RT_CLASS_BEGIN("Viper.Game.AnimTimeline", AnimTimeline, "obj", AnimTimelineNew)
     RT_METHOD("Pause", "void()", AnimTimelinePause)
     RT_METHOD("Stop", "void()", AnimTimelineStop)
     RT_METHOD("Advance", "void(i64)", AnimTimelineAdvance)
-    RT_METHOD("PollEvents", "obj<Viper.Game.AnimationEventBatch>()", AnimTimelinePollEvents)
+    RT_METHOD("PollEvents", "obj<Zanna.Game.AnimationEventBatch>()", AnimTimelinePollEvents)
     RT_METHOD("TrackIsActive", "i1(i64)", AnimTimelineTrackActive)
     RT_METHOD("TrackProgress", "f64(i64)", AnimTimelineTrackProg)
     RT_METHOD("TrackPayloadA", "i64(i64)", AnimTimelinePayloadA)
@@ -492,13 +492,13 @@ RT_CLASS_BEGIN("Viper.Game.AnimTimeline", AnimTimeline, "obj", AnimTimelineNew)
     RT_METHOD("TrackPayloadC", "i64(i64)", AnimTimelinePayloadC)
 RT_CLASS_END()
 
-// Viper.Tween - animation and interpolation
+// Zanna.Tween - animation and interpolation
 /// @summary Provides Tween functionality for game applications.
 /// @details
-/// Create `Viper.Game.Tween` values through its registered constructor and use the returned object
+/// Create `Zanna.Game.Tween` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value`,
 /// `ValueI64`, `IsRunning` and operations including `Start`, `StartI64`, `Update`, `Stop`.
-RT_CLASS_BEGIN("Viper.Game.Tween", Tween, "obj", TweenNew)
+RT_CLASS_BEGIN("Zanna.Game.Tween", Tween, "obj", TweenNew)
     RT_PROP("Value", "f64", TweenValue, none)
     RT_PROP("ValueI64", "i64", TweenValueI64, none)
     RT_PROP("IsRunning", "i1", TweenIsRunning, none)
@@ -520,13 +520,13 @@ RT_CLASS_BEGIN("Viper.Game.Tween", Tween, "obj", TweenNew)
 RT_CLASS_END()
 
 
-// Viper.ButtonGroup - mutually exclusive selection
+// Zanna.ButtonGroup - mutually exclusive selection
 /// @summary Provides Button Group functionality for game applications.
 /// @details
-/// Create `Viper.Game.ButtonGroup` values through its registered constructor and use the returned
+/// Create `Zanna.Game.ButtonGroup` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
 /// `Selected`, `HasSelection` and operations including `Add`, `Remove`, `Has`, `Select`.
-RT_CLASS_BEGIN("Viper.Game.ButtonGroup", ButtonGroup, "obj", ButtonGroupNew)
+RT_CLASS_BEGIN("Zanna.Game.ButtonGroup", ButtonGroup, "obj", ButtonGroupNew)
     RT_PROP("Count", "i64", ButtonGroupCount, none)
     RT_PROP("Selected", "i64", ButtonGroupSelected, none)
     RT_PROP("HasSelection", "i1", ButtonGroupHasSelection, none)
@@ -543,13 +543,13 @@ RT_CLASS_BEGIN("Viper.Game.ButtonGroup", ButtonGroup, "obj", ButtonGroupNew)
     RT_METHOD("SelectPrevious", "i64()", ButtonGroupSelectPrev)
 RT_CLASS_END()
 
-// Viper.SmoothValue - smooth value interpolation
+// Zanna.SmoothValue - smooth value interpolation
 /// @summary Provides Smooth Value functionality for game applications.
 /// @details
-/// Create `Viper.Game.SmoothValue` values through its registered constructor and use the returned
+/// Create `Zanna.Game.SmoothValue` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Value`,
 /// `ValueI64`, `Target` and operations including `SetImmediate`, `Update`, `Impulse`.
-RT_CLASS_BEGIN("Viper.Game.SmoothValue", SmoothValue, "obj", SmoothValueNew)
+RT_CLASS_BEGIN("Zanna.Game.SmoothValue", SmoothValue, "obj", SmoothValueNew)
     RT_PROP("Value", "f64", SmoothValueGet, none)
     RT_PROP("ValueI64", "i64", SmoothValueGetI64, none)
     RT_PROP("Target", "f64", SmoothValueTarget, SmoothValueSetTarget)
@@ -561,14 +561,14 @@ RT_CLASS_BEGIN("Viper.Game.SmoothValue", SmoothValue, "obj", SmoothValueNew)
     RT_METHOD("Impulse", "void(f64)", SmoothValueImpulse)
 RT_CLASS_END()
 
-// Viper.ParticleEmitter - particle effects system
+// Zanna.ParticleEmitter - particle effects system
 /// @summary Provides Particle Emitter functionality for game applications.
 /// @details
-/// Create `Viper.Game.ParticleEmitter` values through its registered constructor and use the
+/// Create `Zanna.Game.ParticleEmitter` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `X`, `Y`, `Rate` and operations including `SetPosition`, `SetLifetime`, `SetVelocity`,
 /// `SetGravity`.
-RT_CLASS_BEGIN("Viper.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmitterNew)
+RT_CLASS_BEGIN("Zanna.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmitterNew)
     RT_PROP("X", "f64", ParticleEmitterX, none)
     RT_PROP("Y", "f64", ParticleEmitterY, none)
     RT_PROP("Rate", "f64", ParticleEmitterRate, ParticleEmitterSetRate)
@@ -588,7 +588,7 @@ RT_CLASS_BEGIN("Viper.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmi
     RT_METHOD("Update", "void()", ParticleEmitterUpdate)
     RT_METHOD("Clear", "void()", ParticleEmitterClear)
     RT_METHOD("Destroy", "void()", ParticleEmitterDestroy)
-    RT_METHOD("ParticleAt", "obj<Viper.Option>(i64)", ParticleEmitterParticleAt)
+    RT_METHOD("ParticleAt", "obj<Zanna.Option>(i64)", ParticleEmitterParticleAt)
     RT_METHOD("Draw", "i64(obj)", ParticleEmitterDraw)
     RT_METHOD("DrawAt", "i64(obj,i64,i64)", ParticleEmitterDrawAt)
     RT_METHOD("DrawToPixels", "i64(obj,i64,i64)", ParticleEmitterDrawToPixels)
@@ -596,10 +596,10 @@ RT_CLASS_END()
 
 /// @summary Provides Particle Snapshot functionality for game applications.
 /// @details
-/// Create `Viper.Game.ParticleSnapshot` values through its registered constructor and use the
+/// Create `Zanna.Game.ParticleSnapshot` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `X`, `Y`, `Size`.
-RT_CLASS_BEGIN("Viper.Game.ParticleSnapshot", ParticleSnapshot, "obj", ParticleSnapshotNew)
+RT_CLASS_BEGIN("Zanna.Game.ParticleSnapshot", ParticleSnapshot, "obj", ParticleSnapshotNew)
     RT_PROP("X", "f64", ParticleSnapshotX, none)
     RT_PROP("Y", "f64", ParticleSnapshotY, none)
     RT_PROP("Size", "f64", ParticleSnapshotSize, none)
@@ -608,14 +608,14 @@ RT_CLASS_END()
 
 
 
-// Viper.SpriteAnimation - frame-based animation
+// Zanna.SpriteAnimation - frame-based animation
 /// @summary Provides Sprite Animation functionality for game applications.
 /// @details
-/// Create `Viper.Game.SpriteAnimation` values through its registered constructor and use the
+/// Create `Zanna.Game.SpriteAnimation` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Frame`, `FrameDuration`, `FrameCount` and operations including `Setup`, `Play`, `Stop`,
 /// `Pause`.
-RT_CLASS_BEGIN("Viper.Game.SpriteAnimation", SpriteAnimation, "obj", SpriteAnimNew)
+RT_CLASS_BEGIN("Zanna.Game.SpriteAnimation", SpriteAnimation, "obj", SpriteAnimNew)
     RT_PROP("Frame", "i64", SpriteAnimFrame, SpriteAnimSetFrame)
     RT_PROP("FrameDuration", "i64", SpriteAnimFrameDuration, SpriteAnimSetFrameDuration)
     RT_PROP("FrameCount", "i64", SpriteAnimFrameCount, none)
@@ -636,13 +636,13 @@ RT_CLASS_BEGIN("Viper.Game.SpriteAnimation", SpriteAnimation, "obj", SpriteAnimN
     RT_METHOD("Update", "i1()", SpriteAnimUpdate)
 RT_CLASS_END()
 
-// Viper.CollisionRect - AABB collision detection
+// Zanna.CollisionRect - AABB collision detection
 /// @summary Provides Collision Rect functionality for game applications.
 /// @details
-/// Create `Viper.Game.CollisionRect` values through its registered constructor and use the returned
+/// Create `Zanna.Game.CollisionRect` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `X`,
 /// `Y`, `Width` and operations including `SetPosition`, `SetSize`, `Set`, `SetCenter`.
-RT_CLASS_BEGIN("Viper.Game.CollisionRect", CollisionRect, "obj", CollisionRectNew)
+RT_CLASS_BEGIN("Zanna.Game.CollisionRect", CollisionRect, "obj", CollisionRectNew)
     RT_PROP("X", "f64", CollisionRectX, none)
     RT_PROP("Y", "f64", CollisionRectY, none)
     RT_PROP("Width", "f64", CollisionRectWidth, none)
@@ -665,13 +665,13 @@ RT_CLASS_BEGIN("Viper.Game.CollisionRect", CollisionRect, "obj", CollisionRectNe
     RT_METHOD("ContainsRect", "i1(obj)", CollisionRectContainsRect)
 RT_CLASS_END()
 
-// Viper.Game.Collision - static collision helpers
+// Zanna.Game.Collision - static collision helpers
 /// @summary Provides static collision helpers.
 /// @details
-/// `Viper.Game.Collision` exposes a registry-backed runtime surface without requiring callers to
+/// `Zanna.Game.Collision` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `RectsOverlap`,
 /// `PointInRect`, `CirclesOverlap`, `PointInCircle`.
-RT_CLASS_BEGIN("Viper.Game.Collision", Collision, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.Collision", Collision, "obj", none)
     RT_METHOD("RectsOverlap", "i1(f64,f64,f64,f64,f64,f64,f64,f64)", CollisionRectsOverlap)
     RT_METHOD("PointInRect", "i1(f64,f64,f64,f64,f64,f64)", CollisionPointInRect)
     RT_METHOD("CirclesOverlap", "i1(f64,f64,f64,f64,f64,f64)", CollisionCirclesOverlap)
@@ -681,13 +681,13 @@ RT_CLASS_BEGIN("Viper.Game.Collision", Collision, "obj", none)
     RT_METHOD("DistanceSquared", "f64(f64,f64,f64,f64)", CollisionDistanceSquared)
 RT_CLASS_END()
 
-// Viper.Game.WorldToScreenProjection - static projection helpers
+// Zanna.Game.WorldToScreenProjection - static projection helpers
 /// @summary Provides static projection helpers.
 /// @details
-/// `Viper.Game.WorldToScreenProjection` exposes a registry-backed runtime surface without requiring
+/// `Zanna.Game.WorldToScreenProjection` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes operations including
 /// `LinearX`, `LinearY`, `IsometricX`, `IsometricY`.
-RT_CLASS_BEGIN("Viper.Game.WorldToScreenProjection", WorldToScreenProjection, "obj", none)
+RT_CLASS_BEGIN("Zanna.Game.WorldToScreenProjection", WorldToScreenProjection, "obj", none)
     RT_METHOD("LinearX", "f64(f64,f64,f64,f64)", WorldProjectionLinearX)
     RT_METHOD("LinearY", "f64(f64,f64,f64,f64,i1)", WorldProjectionLinearY)
     RT_METHOD("IsometricX", "f64(f64,f64,f64,f64)", WorldProjectionIsometricX)
@@ -697,33 +697,33 @@ RT_CLASS_BEGIN("Viper.Game.WorldToScreenProjection", WorldToScreenProjection, "o
     RT_METHOD("PerspectiveY", "f64(f64,f64,f64,f64,i1)", WorldProjectionPerspectiveY)
 RT_CLASS_END()
 
-// Viper.Graphics.SpriteSheet - sprite atlas with named regions
+// Zanna.Graphics.SpriteSheet - sprite atlas with named regions
 /// @summary Provides sprite atlas with named regions.
 /// @details
-/// Create `Viper.Graphics.SpriteSheet` values through its registered constructor and use the
+/// Create `Zanna.Graphics.SpriteSheet` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `RegionCount`, `Width`, `Height` and operations including `FromGrid`, `SetRegion`,
 /// `GetRegion`, `HasRegion`.
-RT_CLASS_BEGIN("Viper.Graphics.SpriteSheet", SpriteSheet, "obj", SpriteSheetNew)
+RT_CLASS_BEGIN("Zanna.Graphics.SpriteSheet", SpriteSheet, "obj", SpriteSheetNew)
     RT_PROP("RegionCount", "i64", SpriteSheetRegionCount, none)
     RT_PROP("Width", "i64", SpriteSheetWidth, none)
     RT_PROP("Height", "i64", SpriteSheetHeight, none)
-    RT_METHOD("FromGrid", "obj<Viper.Graphics.SpriteSheet>(obj,i64,i64)", SpriteSheetFromGrid)
+    RT_METHOD("FromGrid", "obj<Zanna.Graphics.SpriteSheet>(obj,i64,i64)", SpriteSheetFromGrid)
     RT_METHOD("SetRegion", "void(str,i64,i64,i64,i64)", SpriteSheetSetRegion)
-    RT_METHOD("GetRegion", "obj<Viper.Graphics.Pixels>(str)", SpriteSheetGetRegion)
+    RT_METHOD("GetRegion", "obj<Zanna.Graphics.Pixels>(str)", SpriteSheetGetRegion)
     RT_METHOD("HasRegion", "i1(str)", SpriteSheetHasRegion)
-    RT_METHOD("RegionNames", "obj<Viper.Collections.Seq>()", SpriteSheetRegionNames)
+    RT_METHOD("RegionNames", "obj<Zanna.Collections.Seq>()", SpriteSheetRegionNames)
     RT_METHOD("RemoveRegion", "i1(str)", SpriteSheetRemoveRegion)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.World - 2D physics world
+// Zanna.Game.Physics2D.World - 2D physics world
 /// @summary Provides 2D physics world.
 /// @details
-/// Create `Viper.Game.Physics2D.World` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.World` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `BodyCount`, `ContactCount`, `ContactOverflowed` and operations including `Step`, `Add`,
 /// `Remove`, `SetGravity`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWorldNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWorldNew)
     RT_PROP("BodyCount", "i64", Physics2DWorldBodyCount, none)
     RT_PROP("ContactCount", "i64", Physics2DWorldContactCount, none)
     RT_PROP("ContactOverflowed", "i1", Physics2DWorldContactOverflowed, none)
@@ -741,14 +741,14 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWor
     RT_METHOD("RemoveJoint", "void(obj)", WorldRemoveJoint)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.Body - 2D rigid body
+// Zanna.Game.Physics2D.Body - 2D rigid body
 /// @summary Provides 2D rigid body.
 /// @details
-/// Create `Viper.Game.Physics2D.Body` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.Body` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `X`, `Y`, `PrevX` and operations including `NewCircle`, `SetPosition`, `SetVelocity`,
 /// `ApplyForce`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyNew)
     RT_METHOD("NewCircle", "obj(f64,f64,f64,f64)", Physics2DBodyNewCircle)
     RT_PROP("X", "f64", Physics2DBodyX, none)
     RT_PROP("Y", "f64", Physics2DBodyY, none)
@@ -772,13 +772,13 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyN
     RT_PROP("IsCircle", "i1", Physics2DBodyIsCircle, none)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.Projectile2D - analytic 2D projectile helper
+// Zanna.Game.Physics2D.Projectile2D - analytic 2D projectile helper
 /// @summary Provides analytic 2D projectile helper.
 /// @details
-/// Create `Viper.Game.Physics2D.Projectile2D` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.Projectile2D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `HasLanded`, `TotalTime` and operations including `SetDrag`, `SetGroundY`, `Reset`, `Advance`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.Projectile2D", Projectile2D, "obj", Projectile2DNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.Projectile2D", Projectile2D, "obj", Projectile2DNew)
     RT_PROP("HasLanded", "i1", Projectile2DHasLanded, none)
     RT_PROP("TotalTime", "f64", Projectile2DTotalTime, none)
     RT_METHOD("SetDrag", "void(f64)", Projectile2DSetDrag)
@@ -792,15 +792,15 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.Projectile2D", Projectile2D, "obj", Project
     RT_METHOD("TimeToGround", "f64()", Projectile2DTimeToGround)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.CircleBody - circular 2D rigid body constructor
+// Zanna.Game.Physics2D.CircleBody - circular 2D rigid body constructor
 
-// Viper.Game.Physics2D.DistanceJoint
+// Zanna.Game.Physics2D.DistanceJoint
 /// @summary Provides Distance Joint functionality for game applications.
 /// @details
-/// Create `Viper.Game.Physics2D.DistanceJoint` values through its registered constructor and use
+/// Create `Zanna.Game.Physics2D.DistanceJoint` values through its registered constructor and use
 /// the returned object with the instance members below. Its public surface exposes properties
 /// such as `Length`, `Type`, `BodyA`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.DistanceJoint", DistanceJoint, "obj", DistanceJointNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.DistanceJoint", DistanceJoint, "obj", DistanceJointNew)
     RT_PROP("Length", "f64", DistanceJointGetLen, DistanceJointSetLen)
     RT_PROP("Type", "i64", JointGetType, none)
     RT_PROP("BodyA", "obj", JointGetBodyA, none)
@@ -808,13 +808,13 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.DistanceJoint", DistanceJoint, "obj", Dista
     RT_PROP("IsActive", "i1", JointIsActive, none)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.SpringJoint
+// Zanna.Game.Physics2D.SpringJoint
 /// @summary Provides Spring Joint functionality for game applications.
 /// @details
-/// Create `Viper.Game.Physics2D.SpringJoint` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.SpringJoint` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Stiffness`, `Damping`, `Type`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.SpringJoint", SpringJoint, "obj", SpringJointNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.SpringJoint", SpringJoint, "obj", SpringJointNew)
     RT_PROP("Stiffness", "f64", SpringJointGetStiff, SpringJointSetStiff)
     RT_PROP("Damping", "f64", SpringJointGetDamp, SpringJointSetDamp)
     RT_PROP("Type", "i64", JointGetType, none)
@@ -823,13 +823,13 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.SpringJoint", SpringJoint, "obj", SpringJoi
     RT_PROP("IsActive", "i1", JointIsActive, none)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.HingeJoint
+// Zanna.Game.Physics2D.HingeJoint
 /// @summary Provides Hinge Joint functionality for game applications.
 /// @details
-/// Create `Viper.Game.Physics2D.HingeJoint` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.HingeJoint` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Angle`, `Type`, `BodyA`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.HingeJoint", HingeJoint, "obj", HingeJointNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.HingeJoint", HingeJoint, "obj", HingeJointNew)
     RT_PROP("Angle", "f64", HingeJointGetAngle, none)
     RT_PROP("Type", "i64", JointGetType, none)
     RT_PROP("BodyA", "obj", JointGetBodyA, none)
@@ -837,13 +837,13 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.HingeJoint", HingeJoint, "obj", HingeJointN
     RT_PROP("IsActive", "i1", JointIsActive, none)
 RT_CLASS_END()
 
-// Viper.Game.Physics2D.RopeJoint
+// Zanna.Game.Physics2D.RopeJoint
 /// @summary Provides Rope Joint functionality for game applications.
 /// @details
-/// Create `Viper.Game.Physics2D.RopeJoint` values through its registered constructor and use the
+/// Create `Zanna.Game.Physics2D.RopeJoint` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `MaxLength`, `Type`, `BodyA`.
-RT_CLASS_BEGIN("Viper.Game.Physics2D.RopeJoint", RopeJoint, "obj", RopeJointNew)
+RT_CLASS_BEGIN("Zanna.Game.Physics2D.RopeJoint", RopeJoint, "obj", RopeJointNew)
     RT_PROP("MaxLength", "f64", RopeJointGetMaxLen, RopeJointSetMaxLen)
     RT_PROP("Type", "i64", JointGetType, none)
     RT_PROP("BodyA", "obj", JointGetBodyA, none)
@@ -851,14 +851,14 @@ RT_CLASS_BEGIN("Viper.Game.Physics2D.RopeJoint", RopeJoint, "obj", RopeJointNew)
     RT_PROP("IsActive", "i1", JointIsActive, none)
 RT_CLASS_END()
 
-// Viper.Input.Manager - high-level input manager
+// Zanna.Input.Manager - high-level input manager
 /// @summary Provides high-level input manager.
 /// @details
-/// Create `Viper.Input.Manager` values through its registered constructor and use the returned
+/// Create `Zanna.Input.Manager` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `DebounceDelay`, `MouseX`, `MouseY` and operations including `Update`, `KeyPressed`,
 /// `KeyReleased`, `KeyHeld`.
-RT_CLASS_BEGIN("Viper.Input.Manager", InputMgr, "obj", InputMgrNew)
+RT_CLASS_BEGIN("Zanna.Input.Manager", InputMgr, "obj", InputMgrNew)
     RT_PROP("DebounceDelay", "i64", InputMgrGetDebounceDelay, InputMgrSetDebounceDelay)
     RT_PROP("MouseX", "i64", InputMgrMouseX, none)
     RT_PROP("MouseY", "i64", InputMgrMouseY, none)
@@ -895,13 +895,13 @@ RT_CLASS_BEGIN("Viper.Input.Manager", InputMgr, "obj", InputMgrNew)
     RT_METHOD("PadRightTrigger", "f64(i64)", InputMgrPadRightTrigger)
 RT_CLASS_END()
 
-// Viper.Input.KeyChord - key chord and combo detection
+// Zanna.Input.KeyChord - key chord and combo detection
 /// @summary Provides key chord and combo detection.
 /// @details
-/// Create `Viper.Input.KeyChord` values through its registered constructor and use the returned
+/// Create `Zanna.Input.KeyChord` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Active`, `Clear`, `Define`, `DefineCombo`.
-RT_CLASS_BEGIN("Viper.Input.KeyChord", KeyChord, "obj", KeyChordNew)
+RT_CLASS_BEGIN("Zanna.Input.KeyChord", KeyChord, "obj", KeyChordNew)
     RT_PROP("Count", "i64", KeyChordCount, none)
     RT_METHOD("Active", "i1(str)", KeyChordActive)
     RT_METHOD("Clear", "void()", KeyChordClear)

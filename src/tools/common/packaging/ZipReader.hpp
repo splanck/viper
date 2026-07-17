@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief A single entry in a ZIP archive.
 struct ZipEntry {
@@ -80,4 +80,4 @@ class ZipReader {
     void parseCentralDirectory();
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

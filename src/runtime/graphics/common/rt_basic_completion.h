@@ -1,18 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/common/rt_basic_completion.h
-// Purpose: C ABI for the Viper BASIC IDE language-service bridge (completion,
+// Purpose: C ABI for the Zanna BASIC IDE language-service bridge (completion,
 //          diagnostics, hover, symbols), mirroring the Zia bridge. The strong
 //          implementations live in src/frontends/basic/rt_basic_completion.cpp
 //          (part of fe_basic); weak stubs in src/runtime/core/
-//          rt_basic_completion_stub.c keep viper_runtime frontend-free. Symbols
+//          rt_basic_completion_stub.c keep zanna_runtime frontend-free. Symbols
 //          resolve at final link when the binary links both fe_basic and
-//          viper_runtime.
+//          zanna_runtime.
 // Key invariants:
 //   - All functions are side-effect-free queries over a source string + path.
 //   - Returned runtime objects (Seq/Map) and rt_string are owned by the caller.
@@ -22,8 +22,8 @@
 //        docs/adr/0014-basic-language-service-runtime-bridge.md
 //
 //===----------------------------------------------------------------------===//
-#ifndef VIPER_RT_BASIC_COMPLETION_H
-#define VIPER_RT_BASIC_COMPLETION_H
+#ifndef ZANNA_RT_BASIC_COMPLETION_H
+#define ZANNA_RT_BASIC_COMPLETION_H
 
 #include "runtime/core/rt_string.h"
 
@@ -61,4 +61,4 @@ void *rt_basic_completion_hover_info_for_file(rt_string source,
 }
 #endif
 
-#endif // VIPER_RT_BASIC_COMPLETION_H
+#endif // ZANNA_RT_BASIC_COMPLETION_H

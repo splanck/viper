@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -92,7 +92,7 @@ int8_t rt_pathfinder_get_last_found(void *pf);
 // PathResult
 //=========================================================================
 
-/// @brief Query whether a Viper.Game.PathResult contains a path.
+/// @brief Query whether a Zanna.Game.PathResult contains a path.
 /// @param result PathResult object.
 /// @return 1 when the search found a path, otherwise 0.
 int8_t rt_path_result_found(void *result);
@@ -123,7 +123,7 @@ int64_t rt_path_result_step_count(void *result);
 int64_t rt_path_result_length(void *result);
 
 /// @brief Return a retained path list from a PathResult.
-/// @details The path is a Viper.Collections.List of two-integer Seq waypoints,
+/// @details The path is a Zanna.Collections.List of two-integer Seq waypoints,
 ///          matching rt_pathfinder_find_path. The caller receives a retained
 ///          reference and may keep it after releasing the PathResult.
 /// @param result PathResult object.
@@ -143,7 +143,7 @@ void *rt_pathfinder_find_path(void *pf, int64_t sx, int64_t sy, int64_t gx, int6
 ///          returning found-state, node expansion count, path length, movement
 ///          cost, and path list in one object. This avoids reading mutable
 ///          LastFound and LastSteps after the search.
-/// @return New Viper.Game.PathResult object, or NULL on allocation failure.
+/// @return New Zanna.Game.PathResult object, or NULL on allocation failure.
 void *rt_pathfinder_find_path_result(void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
 /// @brief Find path length from (sx,sy) to (gx,gy) without returning the path.
@@ -158,7 +158,7 @@ void *rt_pathfinder_find_nearest(void *pf, int64_t sx, int64_t sy, int64_t targe
 /// @details Uses the same breadth-first nearest-value search as
 ///          rt_pathfinder_find_nearest. The Cost property is -1 because this
 ///          operation does not compute weighted A* movement cost.
-/// @return New Viper.Game.PathResult object, or NULL on allocation failure.
+/// @return New Zanna.Game.PathResult object, or NULL on allocation failure.
 void *rt_pathfinder_find_nearest_result(void *pf, int64_t sx, int64_t sy, int64_t target_value);
 
 #ifdef __cplusplus

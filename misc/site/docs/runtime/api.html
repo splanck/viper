@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Complete API Reference — Viper</title>
-  <meta name="description" content="Viper documentation: Complete API Reference">
+  <title>Complete API Reference — Zanna</title>
+  <meta name="description" content="Zanna documentation: Complete API Reference">
   <link rel="stylesheet" href="../../style.css">
   <link rel="icon" href="../../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Viper logo">Viper</a>
+  <a href="../../" class="nav-logo"><img src="../../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../../docs/" class="active">Docs</a>
     <a href="../../learn/">Learn</a>
     <a href="../../showcase/">Showcase</a>
     <a href="../../performance/">Performance</a>
     <a href="../../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -34,35 +34,35 @@
       <h4>On This Page</h4>
       <ul>
         <li><a href="#table-of-contents">Table of Contents</a></li>
-        <li><a href="#viper-math-bits">Viper.Math.Bits</a></li>
-        <li><a href="#viper-core-box">Viper.Core.Box</a></li>
-        <li><a href="#viper-core-convert">Viper.Core.Convert</a></li>
-        <li><a href="#viper-time-datetime">Viper.Time.DateTime</a></li>
-        <li><a href="#viper-core-diagnostics">Viper.Core.Diagnostics</a></li>
-        <li><a href="#viper-exec">Viper.System.Exec</a></li>
-        <li><a href="#viper-fmt">Viper.Text.Fmt</a></li>
-        <li><a href="#viper-io">Viper.IO</a></li>
-        <li><a href="#viper-log">Viper.Diagnostics.Log</a></li>
-        <li><a href="#viper-machine">Viper.System.Machine</a></li>
-        <li><a href="#viper-core-parse">Viper.Core.Parse</a></li>
-        <li><a href="#viper-math-random">Viper.Math.Random</a></li>
-        <li><a href="#viper-sound">Viper.Sound</a></li>
-        <li><a href="#viper-string">Viper.String</a></li>
-        <li><a href="#viper-string-additional-utilities">Viper.String (Additional Utilities)</a></li>
-        <li><a href="#viper-text">Viper.Text</a></li>
-        <li><a href="#viper-math-vec2">Viper.Math.Vec2</a></li>
-        <li><a href="#viper-math-vec3">Viper.Math.Vec3</a></li>
+        <li><a href="#zanna-math-bits">Zanna.Math.Bits</a></li>
+        <li><a href="#zanna-core-box">Zanna.Core.Box</a></li>
+        <li><a href="#zanna-core-convert">Zanna.Core.Convert</a></li>
+        <li><a href="#zanna-time-datetime">Zanna.Time.DateTime</a></li>
+        <li><a href="#zanna-core-diagnostics">Zanna.Core.Diagnostics</a></li>
+        <li><a href="#zanna-exec">Zanna.System.Exec</a></li>
+        <li><a href="#zanna-fmt">Zanna.Text.Fmt</a></li>
+        <li><a href="#zanna-io">Zanna.IO</a></li>
+        <li><a href="#zanna-log">Zanna.Diagnostics.Log</a></li>
+        <li><a href="#zanna-machine">Zanna.System.Machine</a></li>
+        <li><a href="#zanna-core-parse">Zanna.Core.Parse</a></li>
+        <li><a href="#zanna-math-random">Zanna.Math.Random</a></li>
+        <li><a href="#zanna-sound">Zanna.Sound</a></li>
+        <li><a href="#zanna-string">Zanna.String</a></li>
+        <li><a href="#zanna-string-additional-utilities">Zanna.String (Additional Utilities)</a></li>
+        <li><a href="#zanna-text">Zanna.Text</a></li>
+        <li><a href="#zanna-math-vec2">Zanna.Math.Vec2</a></li>
+        <li><a href="#zanna-math-vec3">Zanna.Math.Vec3</a></li>
         <li><a href="#appendix-type-abbreviations">Appendix: Type Abbreviations</a></li>
-        <li><a href="#viper-collections">Viper.Collections</a></li>
-        <li><a href="#viper-time-stopwatch">Viper.Time.Stopwatch</a></li>
+        <li><a href="#zanna-collections">Zanna.Collections</a></li>
+        <li><a href="#zanna-time-stopwatch">Zanna.Time.Stopwatch</a></li>
         <li><a href="#see-also">See Also</a></li>
       </ul>
     </nav>
   </aside>
   <main class="page-main prose">
     <h1>Complete API Reference</h1>
-<h1 id="viper-runtime-api-complete-reference">Viper Runtime API - Complete Reference</h1>
-<p>This document provides comprehensive documentation for all Viper runtime namespaces. It supplements the main runtime reference in <code>bible/appendices/d-runtime-reference.md</code>.</p>
+<h1 id="zanna-runtime-api-complete-reference">Zanna Runtime API - Complete Reference</h1>
+<p>This document provides comprehensive documentation for all Zanna runtime namespaces. It supplements the main runtime reference in <code>bible/appendices/d-runtime-reference.md</code>.</p>
 <p><strong>Auto-generated from:</strong> <code>src/il/runtime/runtime.def</code></p>
 <p><strong>Total Functions:</strong> 2,902</p>
 <p><strong>Total Classes:</strong> 197</p>
@@ -71,30 +71,30 @@
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ul>
-<li>[Viper.Collections](#vipercollections) - Data structures (Bytes, Seq, List, Map, etc.)</li>
-<li>[Viper.Core.Box](#vipercorebox) - Value boxing/unboxing</li>
-<li>[Viper.Core.Convert](#vipercoreconvert) - Type conversions</li>
-<li>[Viper.Core.Diagnostics](#vipercorediagnostics) - Assertions and debugging</li>
-<li>[Viper.Core.Parse](#vipercoreparse) - String parsing</li>
-<li>[Viper.System.Exec](#viperexec) - Process execution</li>
-<li>[Viper.Text.Fmt](#viperfmt) - Number formatting</li>
-<li>[Viper.IO](#viperio) - File and directory operations</li>
-<li>[Viper.Diagnostics.Log](#viperlog) - Logging utilities</li>
-<li>[Viper.System.Machine](#vipermachine) - System information</li>
-<li>[Viper.Math.Bits](#vipermathbits) - Bitwise operations</li>
-<li>[Viper.Math.Random](#vipermathrandom) - Random number generation</li>
-<li>[Viper.Math.Vec2](#vipermathvec2) - 2D vector math</li>
-<li>[Viper.Math.Vec3](#vipermathvec3) - 3D vector math</li>
-<li>[Viper.Sound](#vipersound) - Audio playback</li>
-<li>[Viper.String](#viperstring) - String manipulation</li>
-<li>[Viper.Text](#vipertext) - Text processing utilities</li>
-<li>[Viper.Time.DateTime](#vipertimedatetime) - Date and time operations</li>
-<li>[Viper.Time.Stopwatch](#vipertimestopwatch) - High-precision timing</li>
+<li>[Zanna.Collections](#zannacollections) - Data structures (Bytes, Seq, List, Map, etc.)</li>
+<li>[Zanna.Core.Box](#zannacorebox) - Value boxing/unboxing</li>
+<li>[Zanna.Core.Convert](#zannacoreconvert) - Type conversions</li>
+<li>[Zanna.Core.Diagnostics](#zannacorediagnostics) - Assertions and debugging</li>
+<li>[Zanna.Core.Parse](#zannacoreparse) - String parsing</li>
+<li>[Zanna.System.Exec](#zannaexec) - Process execution</li>
+<li>[Zanna.Text.Fmt](#zannafmt) - Number formatting</li>
+<li>[Zanna.IO](#zannaio) - File and directory operations</li>
+<li>[Zanna.Diagnostics.Log](#zannalog) - Logging utilities</li>
+<li>[Zanna.System.Machine](#zannamachine) - System information</li>
+<li>[Zanna.Math.Bits](#zannamathbits) - Bitwise operations</li>
+<li>[Zanna.Math.Random](#zannamathrandom) - Random number generation</li>
+<li>[Zanna.Math.Vec2](#zannamathvec2) - 2D vector math</li>
+<li>[Zanna.Math.Vec3](#zannamathvec3) - 3D vector math</li>
+<li>[Zanna.Sound](#zannasound) - Audio playback</li>
+<li>[Zanna.String](#zannastring) - String manipulation</li>
+<li>[Zanna.Text](#zannatext) - Text processing utilities</li>
+<li>[Zanna.Time.DateTime](#zannatimedatetime) - Date and time operations</li>
+<li>[Zanna.Time.Stopwatch](#zannatimestopwatch) - High-precision timing</li>
 </ul>
 <blockquote><p>**Note:** The table of contents lists sections alphabetically by namespace. Sections in the document</p></blockquote>
 <blockquote><p>body appear in the original authoring order; use the links above to navigate.</p></blockquote>
 <p>---</p>
-<h2 id="viper-math-bits">Viper.Math.Bits</h2>
+<h2 id="zanna-math-bits">Zanna.Math.Bits</h2>
 <p>Bitwise operations for low-level integer manipulation. All functions work with 64-bit integers.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -196,20 +196,20 @@
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Bitwise operations
-var flags = Viper.Math.Bits.Or(0x01, 0x04);  // flags = 0x05
-var masked = Viper.Math.Bits.And(flags, 0x0F);
+var flags = Zanna.Math.Bits.Or(0x01, 0x04);  // flags = 0x05
+var masked = Zanna.Math.Bits.And(flags, 0x0F);
 
 // Bit manipulation
 var value = 0;
-value = Viper.Math.Bits.Set(value, 3);    // Set bit 3: value = 8
-var isSet = Viper.Math.Bits.Get(value, 3); // true
+value = Zanna.Math.Bits.Set(value, 3);    // Set bit 3: value = 8
+var isSet = Zanna.Math.Bits.Get(value, 3); // true
 
 // Counting
-var ones = Viper.Math.Bits.Count(0xFF);   // 8 set bits
-var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
+var ones = Zanna.Math.Bits.Count(0xFF);   // 8 set bits
+var leading = Zanna.Math.Bits.LeadZ(0x0F); // 60 leading zeros
 </code></pre>
 <p>---</p>
-<h2 id="viper-core-box">Viper.Core.Box</h2>
+<h2 id="zanna-core-box">Zanna.Core.Box</h2>
 <p>Boxing and unboxing of primitive values to/from objects. Used for storing primitives in collections.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -280,7 +280,7 @@ var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
 <tr>
 <td>`ValueType(size)`</td>
 <td>`obj(i64)`</td>
-<td>Compatibility alias; use Viper.Runtime.Unsafe.ValueType</td>
+<td>Compatibility alias; use Zanna.Runtime.Unsafe.ValueType</td>
 </tr>
 </tbody></table>
 <h3 id="type-constants">Type Constants</h3>
@@ -293,17 +293,17 @@ var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Boxing values for heterogeneous collections
-var boxedInt = Viper.Core.Box.I64(42);
-var boxedStr = Viper.Core.Box.Str(&quot;hello&quot;);
+var boxedInt = Zanna.Core.Box.I64(42);
+var boxedStr = Zanna.Core.Box.Str(&quot;hello&quot;);
 
 // Type checking
-var type = Viper.Core.Box.Type(boxedInt);  // 0 (integer)
+var type = Zanna.Core.Box.Type(boxedInt);  // 0 (integer)
 
 // Unboxing
-var value = Viper.Core.Box.ToI64(boxedInt);  // 42
+var value = Zanna.Core.Box.ToI64(boxedInt);  // 42
 </code></pre>
 <p>---</p>
-<h2 id="viper-core-convert">Viper.Core.Convert</h2>
+<h2 id="zanna-core-convert">Zanna.Core.Convert</h2>
 <p>Type conversion functions between strings and numeric types.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -339,12 +339,12 @@ var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var n = Viper.Core.Convert.ToInt64(&quot;42&quot;);        // 42
-var f = Viper.Core.Convert.ToDouble(&quot;3.14&quot;);   // 3.14
-var s = Viper.Core.Convert.ToStringInt(100);  // &quot;100&quot;
+var n = Zanna.Core.Convert.ToInt64(&quot;42&quot;);        // 42
+var f = Zanna.Core.Convert.ToDouble(&quot;3.14&quot;);   // 3.14
+var s = Zanna.Core.Convert.ToStringInt(100);  // &quot;100&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-time-datetime">Viper.Time.DateTime</h2>
+<h2 id="zanna-time-datetime">Zanna.Time.DateTime</h2>
 <p>Date and time operations using Unix timestamps (seconds since epoch).</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -449,7 +449,7 @@ var s = Viper.Core.Convert.ToStringInt(100);  // &quot;100&quot;
 </tr>
 <tr>
 <td>`TryParseOption(s)`</td>
-<td>`obj<Viper.Option>(str)`</td>
+<td>`obj<Zanna.Option>(str)`</td>
 <td>Try parse date/time string; returns None on failure</td>
 </tr>
 <tr>
@@ -469,17 +469,17 @@ var s = Viper.Core.Convert.ToStringInt(100);  // &quot;100&quot;
 </ul>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var now = Viper.Time.DateTime.Now();
-var year = Viper.Time.DateTime.Year(now);
-var formatted = Viper.Time.DateTime.Format(now, &quot;%Y-%m-%d %H:%M:%S&quot;);
-var iso = Viper.Time.DateTime.ToISO(now);  // &quot;2024-01-15T10:30:00Z&quot;
+var now = Zanna.Time.DateTime.Now();
+var year = Zanna.Time.DateTime.Year(now);
+var formatted = Zanna.Time.DateTime.Format(now, &quot;%Y-%m-%d %H:%M:%S&quot;);
+var iso = Zanna.Time.DateTime.ToISO(now);  // &quot;2024-01-15T10:30:00Z&quot;
 
-var tomorrow = Viper.Time.DateTime.AddDays(now, 1);
-var future = Viper.Time.DateTime.Create(2025, 6, 15, 12, 0, 0);
+var tomorrow = Zanna.Time.DateTime.AddDays(now, 1);
+var future = Zanna.Time.DateTime.Create(2025, 6, 15, 12, 0, 0);
 </code></pre>
 <p>---</p>
-<h2 id="viper-core-diagnostics">Viper.Core.Diagnostics</h2>
-<p>Assertion functions and debugging utilities. Stopwatch (timing) is in <code>Viper.Time.Stopwatch</code>.</p>
+<h2 id="zanna-core-diagnostics">Zanna.Core.Diagnostics</h2>
+<p>Assertion functions and debugging utilities. Stopwatch (timing) is in <code>Zanna.Time.Stopwatch</code>.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
 <th>Function</th>
@@ -555,15 +555,15 @@ var future = Viper.Time.DateTime.Create(2025, 6, 15, 12, 0, 0);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Assertions
-Viper.Core.Diagnostics.Assert(x &gt; 0, &quot;x must be positive&quot;);
-Viper.Core.Diagnostics.AssertEq(result, expected, &quot;result mismatch&quot;);
-Viper.Core.Diagnostics.AssertNotNull(obj, &quot;object is null&quot;);
+Zanna.Core.Diagnostics.Assert(x &gt; 0, &quot;x must be positive&quot;);
+Zanna.Core.Diagnostics.AssertEq(result, expected, &quot;result mismatch&quot;);
+Zanna.Core.Diagnostics.AssertNotNull(obj, &quot;object is null&quot;);
 
 // Trigger a fatal trap
-Viper.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
+Zanna.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-exec">Viper.System.Exec</h2>
+<h2 id="zanna-exec">Zanna.System.Exec</h2>
 <p>Execute external processes and capture output.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -605,23 +605,23 @@ Viper.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Run command
-var exitCode = Viper.System.Exec.Run(&quot;ls&quot;);
+var exitCode = Zanna.System.Exec.Run(&quot;ls&quot;);
 
 // Capture output
-var output = Viper.System.Exec.Capture(&quot;date&quot;);
-Viper.Terminal.Say(&quot;Date: &quot; + output);
+var output = Zanna.System.Exec.Capture(&quot;date&quot;);
+Zanna.Terminal.Say(&quot;Date: &quot; + output);
 
 // With arguments
-var args = Viper.Collections.List.New();
-Viper.Collections.List.Push(args, &quot;-l&quot;);
-Viper.Collections.List.Push(args, &quot;-a&quot;);
-var listing = Viper.System.Exec.CaptureArgs(&quot;ls&quot;, args);
+var args = Zanna.Collections.List.New();
+Zanna.Collections.List.Push(args, &quot;-l&quot;);
+Zanna.Collections.List.Push(args, &quot;-a&quot;);
+var listing = Zanna.System.Exec.CaptureArgs(&quot;ls&quot;, args);
 
 // Shell command (supports pipes, redirects)
-var result = Viper.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
+var result = Zanna.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-fmt">Viper.Text.Fmt</h2>
+<h2 id="zanna-fmt">Zanna.Text.Fmt</h2>
 <p>Number formatting utilities.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -722,18 +722,18 @@ var result = Viper.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&qu
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var hex = Viper.Text.Fmt.IntRadix(255, 16);      // &quot;ff&quot;
-var bin = Viper.Text.Fmt.IntRadix(10, 2);        // &quot;1010&quot;
-var padded = Viper.Text.Fmt.IntPad(42, 5, &quot;0&quot;);  // &quot;00042&quot;
-var fixed = Viper.Text.Fmt.NumFixed(3.14159, 2); // &quot;3.14&quot;
-var size = Viper.Text.Fmt.Size(1536);            // &quot;1.5 KB&quot;
-var grp = Viper.Text.Fmt.IntGrouped(1234567, &quot;,&quot;); // &quot;1,234,567&quot;
-var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
+var hex = Zanna.Text.Fmt.IntRadix(255, 16);      // &quot;ff&quot;
+var bin = Zanna.Text.Fmt.IntRadix(10, 2);        // &quot;1010&quot;
+var padded = Zanna.Text.Fmt.IntPad(42, 5, &quot;0&quot;);  // &quot;00042&quot;
+var fixed = Zanna.Text.Fmt.NumFixed(3.14159, 2); // &quot;3.14&quot;
+var size = Zanna.Text.Fmt.Size(1536);            // &quot;1.5 KB&quot;
+var grp = Zanna.Text.Fmt.IntGrouped(1234567, &quot;,&quot;); // &quot;1,234,567&quot;
+var words = Zanna.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-io">Viper.IO</h2>
+<h2 id="zanna-io">Zanna.IO</h2>
 <p>File and directory operations.</p>
-<h3 id="viper-io-file">Viper.IO.File</h3>
+<h3 id="zanna-io-file">Zanna.IO.File</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -810,7 +810,7 @@ var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 <td>Append line to file</td>
 </tr>
 </tbody></table>
-<h3 id="viper-io-dir">Viper.IO.Dir</h3>
+<h3 id="zanna-io-dir">Zanna.IO.Dir</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -877,7 +877,7 @@ var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 <td>List entries as sequence</td>
 </tr>
 </tbody></table>
-<h3 id="viper-io-path">Viper.IO.Path</h3>
+<h3 id="zanna-io-path">Zanna.IO.Path</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -934,7 +934,7 @@ var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 <td>Get path separator (&quot;/&quot; or &quot;\\&quot;)</td>
 </tr>
 </tbody></table>
-<h3 id="viper-io-binfile">Viper.IO.BinFile</h3>
+<h3 id="zanna-io-binfile">Zanna.IO.BinFile</h3>
 <p>Binary file operations with random access.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -995,24 +995,24 @@ var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // File operations
-if (Viper.IO.File.Exists(&quot;data.txt&quot;)) {
-    var content = Viper.IO.File.ReadAllText(&quot;data.txt&quot;);
-    Viper.IO.File.WriteAllText(&quot;backup.txt&quot;, content);
+if (Zanna.IO.File.Exists(&quot;data.txt&quot;)) {
+    var content = Zanna.IO.File.ReadAllText(&quot;data.txt&quot;);
+    Zanna.IO.File.WriteAllText(&quot;backup.txt&quot;, content);
 }
 
 // Directory operations
-Viper.IO.Dir.MakeAll(&quot;/tmp/myapp/data&quot;);
-var files = Viper.IO.Dir.Files(&quot;/tmp/myapp&quot;);
+Zanna.IO.Dir.MakeAll(&quot;/tmp/myapp/data&quot;);
+var files = Zanna.IO.Dir.Files(&quot;/tmp/myapp&quot;);
 
 // Path manipulation
-var full = Viper.IO.Path.Join(&quot;/home/user&quot;, &quot;documents/file.txt&quot;);
-var dir = Viper.IO.Path.Dir(full);   // &quot;/home/user/documents&quot;
-var name = Viper.IO.Path.Name(full); // &quot;file.txt&quot;
-var stem = Viper.IO.Path.Stem(full); // &quot;file&quot;
-var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
+var full = Zanna.IO.Path.Join(&quot;/home/user&quot;, &quot;documents/file.txt&quot;);
+var dir = Zanna.IO.Path.Dir(full);   // &quot;/home/user/documents&quot;
+var name = Zanna.IO.Path.Name(full); // &quot;file.txt&quot;
+var stem = Zanna.IO.Path.Stem(full); // &quot;file&quot;
+var ext = Zanna.IO.Path.Ext(full);   // &quot;.txt&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-log">Viper.Diagnostics.Log</h2>
+<h2 id="zanna-log">Zanna.Diagnostics.Log</h2>
 <p>Logging utilities with configurable log levels.</p>
 <h3 id="log-levels">Log Levels</h3>
 <table><thead><tr>
@@ -1091,16 +1091,16 @@ var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Set log level
-Viper.Diagnostics.Log.set_Level(Viper.Diagnostics.Log.get_LevelDebug);
+Zanna.Diagnostics.Log.set_Level(Zanna.Diagnostics.Log.get_LevelDebug);
 
 // Log messages
-Viper.Diagnostics.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToStringInt(i));
-Viper.Diagnostics.Log.Info(&quot;Server started on port 8080&quot;);
-Viper.Diagnostics.Log.Warn(&quot;Connection pool running low&quot;);
-Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
+Zanna.Diagnostics.Log.Debug(&quot;Processing item &quot; + Zanna.Core.Convert.ToStringInt(i));
+Zanna.Diagnostics.Log.Info(&quot;Server started on port 8080&quot;);
+Zanna.Diagnostics.Log.Warn(&quot;Connection pool running low&quot;);
+Zanna.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-machine">Viper.System.Machine</h2>
+<h2 id="zanna-machine">Zanna.System.Machine</h2>
 <p>System and hardware information.</p>
 <h3 id="properties">Properties</h3>
 <table><thead><tr>
@@ -1161,12 +1161,12 @@ Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-Viper.Terminal.Say(&quot;OS: &quot; + Viper.System.Machine.get_Os);
-Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToStringInt(Viper.System.Machine.get_Cores));
-Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToStringInt(Viper.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
+Zanna.Terminal.Say(&quot;OS: &quot; + Zanna.System.Machine.get_Os);
+Zanna.Terminal.Say(&quot;Cores: &quot; + Zanna.Core.Convert.ToStringInt(Zanna.System.Machine.get_Cores));
+Zanna.Terminal.Say(&quot;Memory: &quot; + Zanna.Core.Convert.ToStringInt(Zanna.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-core-parse">Viper.Core.Parse</h2>
+<h2 id="zanna-core-parse">Zanna.Core.Parse</h2>
 <p>Safe string parsing with error handling.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -1223,20 +1223,20 @@ Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToStringInt(Viper.S
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Safe parsing with defaults
-var port = Viper.Core.Parse.IntOr(portStr, 8080);
-var timeout = Viper.Core.Parse.NumOr(timeoutStr, 30.0);
-var enabled = Viper.Core.Parse.BoolOr(enabledStr, false);
+var port = Zanna.Core.Parse.IntOr(portStr, 8080);
+var timeout = Zanna.Core.Parse.NumOr(timeoutStr, 30.0);
+var enabled = Zanna.Core.Parse.BoolOr(enabledStr, false);
 
 // Validation
-if (Viper.Core.Parse.IsInt(input)) {
-    var value = Viper.Core.Convert.ToInt64(input);
+if (Zanna.Core.Parse.IsInt(input)) {
+    var value = Zanna.Core.Convert.ToInt64(input);
 }
 
 // Parse hex
-var color = Viper.Core.Parse.IntRadix(&quot;FF00FF&quot;, 16, 0);
+var color = Zanna.Core.Parse.IntRadix(&quot;FF00FF&quot;, 16, 0);
 </code></pre>
 <p>---</p>
-<h2 id="viper-math-random">Viper.Math.Random</h2>
+<h2 id="zanna-math-random">Zanna.Math.Random</h2>
 <p>Deterministic pseudo-random number generation using a 64-bit LCG (Knuth MMIX constants). Produces identical sequences across all platforms for a given seed.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -1303,19 +1303,19 @@ var color = Viper.Core.Parse.IntRadix(&quot;FF00FF&quot;, 16, 0);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Seed for reproducibility
-Viper.Math.Random.Seed(12345);
+Zanna.Math.Random.Seed(12345);
 
 // Random values
-var roll = Viper.Math.Random.Dice(6);           // Dice roll 1-6
-var chance = Viper.Math.Random.Next();           // 0.0 to 1.0
-var percent = Viper.Math.Random.NextInt(100);    // 0 to 99
-var range = Viper.Math.Random.Range(10, 20);     // 10 to 20
-var coin = Viper.Math.Random.Chance(0.5);        // 50% true
+var roll = Zanna.Math.Random.Dice(6);           // Dice roll 1-6
+var chance = Zanna.Math.Random.Next();           // 0.0 to 1.0
+var percent = Zanna.Math.Random.NextInt(100);    // 0 to 99
+var range = Zanna.Math.Random.Range(10, 20);     // 10 to 20
+var coin = Zanna.Math.Random.Chance(0.5);        // 50% true
 </code></pre>
 <p>---</p>
-<h2 id="viper-sound">Viper.Sound</h2>
+<h2 id="zanna-sound">Zanna.Sound</h2>
 <p>Audio playback for sound effects and music.</p>
-<h3 id="viper-sound-audio-global">Viper.Sound.Audio (Global)</h3>
+<h3 id="zanna-sound-audio-global">Zanna.Sound.Audio (Global)</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1357,7 +1357,7 @@ var coin = Viper.Math.Random.Chance(0.5);        // 50% true
 <td>Stop all sounds</td>
 </tr>
 </tbody></table>
-<h3 id="viper-sound-sound-effects">Viper.Sound.Sound (Effects)</h3>
+<h3 id="zanna-sound-sound-effects">Zanna.Sound.Sound (Effects)</h3>
 <table><thead><tr>
 <th>Method</th>
 <th>Signature</th>
@@ -1389,7 +1389,7 @@ var coin = Viper.Math.Random.Chance(0.5);        // 50% true
 <td>Play looping</td>
 </tr>
 </tbody></table>
-<h3 id="viper-sound-voice-playback-control">Viper.Sound.Voice (Playback Control)</h3>
+<h3 id="zanna-sound-voice-playback-control">Zanna.Sound.Voice (Playback Control)</h3>
 <table><thead><tr>
 <th>Method</th>
 <th>Signature</th>
@@ -1416,7 +1416,7 @@ var coin = Viper.Math.Random.Chance(0.5);        // 50% true
 <td>Check if playing</td>
 </tr>
 </tbody></table>
-<h3 id="viper-sound-music-streaming">Viper.Sound.Music (Streaming)</h3>
+<h3 id="zanna-sound-music-streaming">Zanna.Sound.Music (Streaming)</h3>
 <table><thead><tr>
 <th>Method</th>
 <th>Signature</th>
@@ -1481,19 +1481,19 @@ var coin = Viper.Math.Random.Chance(0.5);        // 50% true
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Initialize audio
-Viper.Sound.Audio.Init();
+Zanna.Sound.Audio.Init();
 
 // Load and play sound effect
-var explosion = Viper.Sound.Sound.Load(&quot;assets/explosion.wav&quot;);
-Viper.Sound.Sound.Play(explosion);
+var explosion = Zanna.Sound.Sound.Load(&quot;assets/explosion.wav&quot;);
+Zanna.Sound.Sound.Play(explosion);
 
 // Background music
-var bgm = Viper.Sound.Music.Load(&quot;assets/music.ogg&quot;);
-Viper.Sound.Music.Play(bgm, -1);  // Loop forever
-Viper.Sound.Music.SetVolume(bgm, 50);
+var bgm = Zanna.Sound.Music.Load(&quot;assets/music.ogg&quot;);
+Zanna.Sound.Music.Play(bgm, -1);  // Loop forever
+Zanna.Sound.Music.SetVolume(bgm, 50);
 </code></pre>
 <p>---</p>
-<h2 id="viper-string">Viper.String</h2>
+<h2 id="zanna-string">Zanna.String</h2>
 <p>Core string manipulation functions.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -1650,18 +1650,18 @@ Viper.Sound.Music.SetVolume(bgm, 50);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 var s = &quot;  Hello, World!  &quot;;
-var trimmed = Viper.String.Trim(s);        // &quot;Hello, World!&quot;
-var upper = Viper.String.ToUpper(trimmed); // &quot;HELLO, WORLD!&quot;
-var words = Viper.String.Split(trimmed, &quot; &quot;);
-var has = Viper.String.Has(s, &quot;World&quot;);    // true
-var pos = Viper.String.IndexOf(s, &quot;World&quot;); // 9
+var trimmed = Zanna.String.Trim(s);        // &quot;Hello, World!&quot;
+var upper = Zanna.String.ToUpper(trimmed); // &quot;HELLO, WORLD!&quot;
+var words = Zanna.String.Split(trimmed, &quot; &quot;);
+var has = Zanna.String.Has(s, &quot;World&quot;);    // true
+var pos = Zanna.String.IndexOf(s, &quot;World&quot;); // 9
 
-var padded = Viper.String.PadLeft(&quot;42&quot;, 5, &quot;0&quot;);  // &quot;00042&quot;
-var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;--------------------&quot;
+var padded = Zanna.String.PadLeft(&quot;42&quot;, 5, &quot;0&quot;);  // &quot;00042&quot;
+var repeated = Zanna.String.Repeat(&quot;-&quot;, 20);      // &quot;--------------------&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-string-additional-utilities">Viper.String (Additional Utilities)</h2>
-<p>Additional string utilities and conversion functions. All are part of the <code>Viper.String</code> namespace.</p>
+<h2 id="zanna-string-additional-utilities">Zanna.String (Additional Utilities)</h2>
+<p>Additional string utilities and conversion functions. All are part of the <code>Zanna.String</code> namespace.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
 <th>Function</th>
@@ -1704,11 +1704,11 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Split on whitespace fields into raw array</td>
 </tr>
 </tbody></table>
-<blockquote><p>**Note**: For integer/double to string conversion, use <code>Viper.Core.Convert.ToStringInt</code> and <code>Viper.Core.Convert.ToStringDouble</code>.</p></blockquote>
+<blockquote><p>**Note**: For integer/double to string conversion, use <code>Zanna.Core.Convert.ToStringInt</code> and <code>Zanna.Core.Convert.ToStringDouble</code>.</p></blockquote>
 <p>---</p>
-<h2 id="viper-text">Viper.Text</h2>
+<h2 id="zanna-text">Zanna.Text</h2>
 <p>Text processing utilities including encoding, CSV, GUID, templates, and patterns.</p>
-<h3 id="viper-text-codec">Viper.Text.Codec</h3>
+<h3 id="zanna-text-codec">Zanna.Text.Codec</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1745,7 +1745,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>URL-decode string</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-csv">Viper.Data.Csv</h3>
+<h3 id="zanna-text-csv">Zanna.Data.Csv</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1792,7 +1792,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Format row with delimiter</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-guid">Viper.Text.Guid</h3>
+<h3 id="zanna-text-guid">Zanna.Text.Guid</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1824,7 +1824,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Convert from 16 bytes</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-stringbuilder">Viper.Text.StringBuilder</h3>
+<h3 id="zanna-text-stringbuilder">Zanna.Text.StringBuilder</h3>
 <table><thead><tr>
 <th>Method</th>
 <th>Signature</th>
@@ -1866,7 +1866,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Current capacity</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-pattern-regex">Viper.Text.Pattern (Regex)</h3>
+<h3 id="zanna-text-pattern-regex">Zanna.Text.Pattern (Regex)</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1918,7 +1918,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Escape regex metacharacters</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-template">Viper.Text.Template</h3>
+<h3 id="zanna-text-template">Zanna.Text.Template</h3>
 <p>Simple string templating with <code>{{key}}</code> placeholders.</p>
 <table><thead><tr>
 <th>Function</th>
@@ -1959,35 +1959,35 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Base64 encoding
-var encoded = Viper.Text.Codec.Base64Enc(&quot;Hello, World!&quot;);
-var decoded = Viper.Text.Codec.Base64Dec(encoded);
+var encoded = Zanna.Text.Codec.Base64Enc(&quot;Hello, World!&quot;);
+var decoded = Zanna.Text.Codec.Base64Dec(encoded);
 
 // CSV parsing
 var csv = &quot;name,age,city\nAlice,30,NYC\nBob,25,LA&quot;;
-var data = Viper.Data.Csv.Parse(csv);
+var data = Zanna.Data.Csv.Parse(csv);
 
 // GUID generation
-var id = Viper.Text.Guid.New();  // &quot;550e8400-e29b-41d4-a716-446655440000&quot;
+var id = Zanna.Text.Guid.New();  // &quot;550e8400-e29b-41d4-a716-446655440000&quot;
 
 // StringBuilder for efficient string building
-var sb = Viper.Text.StringBuilder.New();
-Viper.Text.StringBuilder.Append(sb, &quot;Hello&quot;);
-Viper.Text.StringBuilder.AppendLine(sb, &quot; World!&quot;);
-var result = Viper.Text.StringBuilder.ToString(sb);
+var sb = Zanna.Text.StringBuilder.New();
+Zanna.Text.StringBuilder.Append(sb, &quot;Hello&quot;);
+Zanna.Text.StringBuilder.AppendLine(sb, &quot; World!&quot;);
+var result = Zanna.Text.StringBuilder.ToString(sb);
 
 // Pattern matching
-var emails = Viper.Text.Pattern.FindAll(text, &quot;[a-z]+@[a-z]+\\.[a-z]+&quot;);
-var cleaned = Viper.Text.Pattern.Replace(html, &quot;&lt;[^&gt;]+&gt;&quot;, &quot;&quot;);
+var emails = Zanna.Text.Pattern.FindAll(text, &quot;[a-z]+@[a-z]+\\.[a-z]+&quot;);
+var cleaned = Zanna.Text.Pattern.Replace(html, &quot;&lt;[^&gt;]+&gt;&quot;, &quot;&quot;);
 
 // Templating
 var template = &quot;Hello, {{name}}! You have {{count}} messages.&quot;;
-var vars = Viper.Collections.Map.New();
-Viper.Collections.Map.SetStr(vars, &quot;name&quot;, &quot;Alice&quot;);
-Viper.Collections.Map.SetStr(vars, &quot;count&quot;, &quot;5&quot;);
-var message = Viper.Text.Template.Render(template, vars);
+var vars = Zanna.Collections.Map.New();
+Zanna.Collections.Map.SetStr(vars, &quot;name&quot;, &quot;Alice&quot;);
+Zanna.Collections.Map.SetStr(vars, &quot;count&quot;, &quot;5&quot;);
+var message = Zanna.Text.Template.Render(template, vars);
 </code></pre>
 <p>---</p>
-<h2 id="viper-math-vec2">Viper.Math.Vec2</h2>
+<h2 id="zanna-math-vec2">Zanna.Math.Vec2</h2>
 <p>2D vector mathematics for games and graphics.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -2093,25 +2093,25 @@ var message = Viper.Text.Template.Render(template, vars);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var pos = Viper.Math.Vec2.New(100.0, 200.0);
-var vel = Viper.Math.Vec2.New(5.0, -3.0);
+var pos = Zanna.Math.Vec2.New(100.0, 200.0);
+var vel = Zanna.Math.Vec2.New(5.0, -3.0);
 
 // Movement
-pos = Viper.Math.Vec2.Add(pos, vel);
+pos = Zanna.Math.Vec2.Add(pos, vel);
 
 // Distance calculation
-var target = Viper.Math.Vec2.New(300.0, 400.0);
-var dist = Viper.Math.Vec2.Dist(pos, target);
+var target = Zanna.Math.Vec2.New(300.0, 400.0);
+var dist = Zanna.Math.Vec2.Dist(pos, target);
 
 // Normalize velocity
-var dir = Viper.Math.Vec2.Norm(vel);
-var speed = Viper.Math.Vec2.Len(vel);
+var dir = Zanna.Math.Vec2.Norm(vel);
+var speed = Zanna.Math.Vec2.Len(vel);
 
 // Interpolation
-var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
+var midpoint = Zanna.Math.Vec2.Lerp(pos, target, 0.5);
 </code></pre>
 <p>---</p>
-<h2 id="viper-math-vec3">Viper.Math.Vec3</h2>
+<h2 id="zanna-math-vec3">Zanna.Math.Vec3</h2>
 <p>3D vector mathematics.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -2212,15 +2212,15 @@ var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var pos = Viper.Math.Vec3.New(10.0, 20.0, 30.0);
-var forward = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
-var up = Viper.Math.Vec3.New(0.0, 1.0, 0.0);
+var pos = Zanna.Math.Vec3.New(10.0, 20.0, 30.0);
+var forward = Zanna.Math.Vec3.New(0.0, 0.0, 1.0);
+var up = Zanna.Math.Vec3.New(0.0, 1.0, 0.0);
 
 // Cross product for perpendicular vector
-var right = Viper.Math.Vec3.Cross(forward, up);
+var right = Zanna.Math.Vec3.Cross(forward, up);
 
 // Normalize
-var dir = Viper.Math.Vec3.Norm(pos);
+var dir = Zanna.Math.Vec3.Norm(pos);
 </code></pre>
 <p>---</p>
 <h2 id="appendix-type-abbreviations">Appendix: Type Abbreviations</h2>
@@ -2281,9 +2281,9 @@ var dir = Viper.Math.Vec3.Norm(pos);
 </tbody></table>
 <p>---</p>
 <p>---</p>
-<h2 id="viper-collections">Viper.Collections</h2>
+<h2 id="zanna-collections">Zanna.Collections</h2>
 <p>Comprehensive collection types for data storage and manipulation.</p>
-<h3 id="viper-collections-bytes">Viper.Collections.Bytes</h3>
+<h3 id="zanna-collections-bytes">Zanna.Collections.Bytes</h3>
 <p>Raw byte array for binary data manipulation.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2366,7 +2366,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Encode to hex string</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-seq">Viper.Collections.Seq</h3>
+<h3 id="zanna-collections-seq">Zanna.Collections.Seq</h3>
 <p>Dynamic sequence (array list) that can hold any object type.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2494,7 +2494,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Create with pre-allocated capacity</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-list">Viper.Collections.List</h3>
+<h3 id="zanna-collections-list">Zanna.Collections.List</h3>
 <p>Ordered list with value-semantics API.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2597,7 +2597,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Sort descending in place</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-map">Viper.Collections.Map</h3>
+<h3 id="zanna-collections-map">Zanna.Collections.Map</h3>
 <p>Hash map with string keys.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2710,7 +2710,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Get all values as Seq</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-stack">Viper.Collections.Stack</h3>
+<h3 id="zanna-collections-stack">Zanna.Collections.Stack</h3>
 <p>LIFO (Last In, First Out) stack.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2753,7 +2753,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Clear all items</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-queue">Viper.Collections.Queue</h3>
+<h3 id="zanna-collections-queue">Zanna.Collections.Queue</h3>
 <p>FIFO (First In, First Out) queue.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2796,7 +2796,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Clear all items</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-ring">Viper.Collections.Ring</h3>
+<h3 id="zanna-collections-ring">Zanna.Collections.Ring</h3>
 <p>Fixed-capacity circular buffer.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2854,7 +2854,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Clear all items</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-bag">Viper.Collections.Bag</h3>
+<h3 id="zanna-collections-bag">Zanna.Collections.Bag</h3>
 <p>Unordered set of unique strings.</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2917,7 +2917,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Difference</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-heap">Viper.Collections.Heap</h3>
+<h3 id="zanna-collections-heap">Zanna.Collections.Heap</h3>
 <p>Priority queue (min-heap or max-heap).</p>
 <table><thead><tr>
 <th>Method</th>
@@ -2976,12 +2976,12 @@ var dir = Viper.Math.Vec3.Norm(pos);
 </tr>
 <tr>
 <td>`TryPopOption(heap)`</td>
-<td>`obj<Viper.Option>(obj)`</td>
+<td>`obj<Zanna.Option>(obj)`</td>
 <td>Pop or return None when empty</td>
 </tr>
 <tr>
 <td>`TryPeekOption(heap)`</td>
-<td>`obj<Viper.Option>(obj)`</td>
+<td>`obj<Zanna.Option>(obj)`</td>
 <td>Peek or return None when empty</td>
 </tr>
 <tr>
@@ -2995,7 +2995,7 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>Convert to sequence</td>
 </tr>
 </tbody></table>
-<h3 id="viper-collections-treemap">Viper.Collections.TreeMap</h3>
+<h3 id="zanna-collections-treemap">Zanna.Collections.TreeMap</h3>
 <p>Sorted map with string keys (red-black tree).</p>
 <table><thead><tr>
 <th>Method</th>
@@ -3076,54 +3076,54 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <h3 id="collection-examples">Collection Examples</h3>
 <pre><code data-lang="rust">
 // Bytes for binary data
-var data = Viper.Collections.Bytes.New(1024);
-Viper.Collections.Bytes.Set(data, 0, 0xFF);
-var hex = Viper.Collections.Bytes.ToHex(data);
+var data = Zanna.Collections.Bytes.New(1024);
+Zanna.Collections.Bytes.Set(data, 0, 0xFF);
+var hex = Zanna.Collections.Bytes.ToHex(data);
 
 // Seq for dynamic arrays
-var items = Viper.Collections.Seq.New();
-Viper.Collections.Seq.Push(items, &quot;apple&quot;);
-Viper.Collections.Seq.Push(items, &quot;banana&quot;);
-var first = Viper.Collections.Seq.First(items);
+var items = Zanna.Collections.Seq.New();
+Zanna.Collections.Seq.Push(items, &quot;apple&quot;);
+Zanna.Collections.Seq.Push(items, &quot;banana&quot;);
+var first = Zanna.Collections.Seq.First(items);
 
 // List for simple collections
-var numbers = Viper.Collections.List.New();
-Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(1));
-Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(2));
-var count = Viper.Collections.List.get_Count(numbers);
+var numbers = Zanna.Collections.List.New();
+Zanna.Collections.List.Push(numbers, Zanna.Core.Box.I64(1));
+Zanna.Collections.List.Push(numbers, Zanna.Core.Box.I64(2));
+var count = Zanna.Collections.List.get_Count(numbers);
 
 // Map for key-value storage
-var config = Viper.Collections.Map.New();
-Viper.Collections.Map.Set(config, &quot;host&quot;, &quot;localhost&quot;);
-Viper.Collections.Map.Set(config, &quot;port&quot;, &quot;8080&quot;);
-var host = Viper.Collections.Map.Get(config, &quot;host&quot;);
+var config = Zanna.Collections.Map.New();
+Zanna.Collections.Map.Set(config, &quot;host&quot;, &quot;localhost&quot;);
+Zanna.Collections.Map.Set(config, &quot;port&quot;, &quot;8080&quot;);
+var host = Zanna.Collections.Map.Get(config, &quot;host&quot;);
 
 // Stack for LIFO operations
-var stack = Viper.Collections.Stack.New();
-Viper.Collections.Stack.Push(stack, &quot;first&quot;);
-Viper.Collections.Stack.Push(stack, &quot;second&quot;);
-var top = Viper.Collections.Stack.Pop(stack);  // &quot;second&quot;
+var stack = Zanna.Collections.Stack.New();
+Zanna.Collections.Stack.Push(stack, &quot;first&quot;);
+Zanna.Collections.Stack.Push(stack, &quot;second&quot;);
+var top = Zanna.Collections.Stack.Pop(stack);  // &quot;second&quot;
 
 // Queue for FIFO operations
-var queue = Viper.Collections.Queue.New();
-Viper.Collections.Queue.Add(queue, &quot;task1&quot;);
-Viper.Collections.Queue.Add(queue, &quot;task2&quot;);
-var next = Viper.Collections.Queue.Take(queue);  // &quot;task1&quot;
+var queue = Zanna.Collections.Queue.New();
+Zanna.Collections.Queue.Add(queue, &quot;task1&quot;);
+Zanna.Collections.Queue.Add(queue, &quot;task2&quot;);
+var next = Zanna.Collections.Queue.Take(queue);  // &quot;task1&quot;
 
 // Heap for priority queue
-var pq = Viper.Collections.Heap.New();
-Viper.Collections.Heap.Push(pq, 3, &quot;low priority&quot;);
-Viper.Collections.Heap.Push(pq, 1, &quot;high priority&quot;);
-var urgent = Viper.Collections.Heap.Pop(pq);  // &quot;high priority&quot;
+var pq = Zanna.Collections.Heap.New();
+Zanna.Collections.Heap.Push(pq, 3, &quot;low priority&quot;);
+Zanna.Collections.Heap.Push(pq, 1, &quot;high priority&quot;);
+var urgent = Zanna.Collections.Heap.Pop(pq);  // &quot;high priority&quot;
 
 // TreeMap for sorted keys
-var sorted = Viper.Collections.TreeMap.New();
-Viper.Collections.TreeMap.Set(sorted, &quot;zebra&quot;, &quot;last&quot;);
-Viper.Collections.TreeMap.Set(sorted, &quot;apple&quot;, &quot;first&quot;);
-var smallest = Viper.Collections.TreeMap.First(sorted);  // &quot;apple&quot;
+var sorted = Zanna.Collections.TreeMap.New();
+Zanna.Collections.TreeMap.Set(sorted, &quot;zebra&quot;, &quot;last&quot;);
+Zanna.Collections.TreeMap.Set(sorted, &quot;apple&quot;, &quot;first&quot;);
+var smallest = Zanna.Collections.TreeMap.First(sorted);  // &quot;apple&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-time-stopwatch">Viper.Time.Stopwatch</h2>
+<h2 id="zanna-time-stopwatch">Zanna.Time.Stopwatch</h2>
 <p>High-precision timing for performance measurement. Stopwatch objects are heap-allocated.</p>
 <h3 id="functions-and-methods">Functions and Methods</h3>
 <table><thead><tr>
@@ -3185,14 +3185,14 @@ var smallest = Viper.Collections.TreeMap.First(sorted);  // &quot;apple&quot;
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Measure execution time
-var sw = Viper.Time.Stopwatch.StartNew();
+var sw = Zanna.Time.Stopwatch.StartNew();
 // ... code to measure ...
 sw.Stop();
 var elapsed = sw.get_ElapsedMs;
-Viper.Terminal.Say(&quot;Took &quot; + elapsed + &quot; ms&quot;);
+Zanna.Terminal.Say(&quot;Took &quot; + elapsed + &quot; ms&quot;);
 
 // Reusable stopwatch
-var timer = Viper.Time.Stopwatch.New();
+var timer = Zanna.Time.Stopwatch.New();
 timer.Start();
 // ... first section ...
 timer.Stop();
@@ -3232,13 +3232,13 @@ var section2 = timer.get_ElapsedUs;
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../../contributing/">Contributing</a>
       <a href="../../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../../main.js"></script>

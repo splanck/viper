@@ -7,18 +7,18 @@ last-verified: 2026-07-16
 # Threading Model and Global State
 
 This document describes the VM's concurrency model and the scope of process-global state shared across VM instances.
-It also covers how `Viper.Threads` is implemented in the VM.
+It also covers how `Zanna.Threads` is implemented in the VM.
 
 ---
 
 ## Overview
 
-Viper supports two distinct (and compatible) concurrency patterns:
+Zanna supports two distinct (and compatible) concurrency patterns:
 
 1. **Host-level concurrency (multiple independent VMs)**: the embedder runs different VM instances in parallel. Each VM
    has its own isolated runtime context and module globals.
-2. **Language-level concurrency (`Viper.Threads`)**: a single Viper program starts threads via
-   `Viper.Threads.Thread.Start`. In the VM this is implemented by spawning host OS threads, each running its own VM
+2. **Language-level concurrency (`Zanna.Threads`)**: a single Zanna program starts threads via
+   `Zanna.Threads.Thread.Start`. In the VM this is implemented by spawning host OS threads, each running its own VM
    interpreter state while sharing a *single* program instance state (globals + runtime context).
 
 In both cases:
@@ -95,22 +95,22 @@ ActiveVMGuard g2(&vm2);  // Assertion failure in debug builds
 
 ## VM Program State (Shared-Memory Threads)
 
-`Viper.Threads` requires shared memory: module globals and the runtime context must be shared across threads. In the VM,
+`Zanna.Threads` requires shared memory: module globals and the runtime context must be shared across threads. In the VM,
 this is implemented by introducing a shared **ProgramState** object:
 
 - `VM::ProgramState` lives in `src/vm/VM.hpp` and is owned by `std::shared_ptr`.
 - A normal VM creates a fresh `ProgramState` during init (`src/vm/VMInit.cpp`).
-- A VM thread spawned via `Viper.Threads.Thread.Start` constructs a new VM with the parent’s `ProgramState`, so:
+- A VM thread spawned via `Zanna.Threads.Thread.Start` constructs a new VM with the parent’s `ProgramState`, so:
   - module global storage is shared,
   - the runtime context (`RtContext`) is shared, and
   - function pointers (`addr_of @fn`) resolve to the same module functions.
 
-This keeps the “one VM instance per host thread” invariant while still providing a shared-memory model for Viper
+This keeps the “one VM instance per host thread” invariant while still providing a shared-memory model for Zanna
 program threads.
 
-### `Viper.Threads.Thread.Start` in the VM
+### `Zanna.Threads.Thread.Start` in the VM
 
-In the VM, `Viper.Threads.Thread.Start` is overridden via the extern registry (see `src/vm/ThreadsRuntime.cpp`). The VM
+In the VM, `Zanna.Threads.Thread.Start` is overridden via the extern registry (see `src/vm/ThreadsRuntime.cpp`). The VM
 implementation:
 
 1. validates the entry pointer (must be `addr_of @function` with signature `void()` or `void(ptr)`),
@@ -170,7 +170,7 @@ RuntimeBridge::registerExtern(desc);
 
 **Per-VM override:**
 
-Viper also supports an optional per-VM extern registry. When present, extern
+Zanna also supports an optional per-VM extern registry. When present, extern
 resolution checks the active VM's registry first and then falls back to the
 process-global registry. Worker VMs spawned by `Thread.Start`, `Async.Run`, and
 HTTP handler dispatch inherit the parent's per-VM registry and retain its
@@ -187,7 +187,7 @@ The BASIC frontend exposes process-global feature flags for controlling compilat
 
 | Flag                          | Default | Description                      |
 |-------------------------------|---------|----------------------------------|
-| `enableRuntimeNamespaces`     | true    | Allow `USING Viper.*` imports    |
+| `enableRuntimeNamespaces`     | true    | Allow `USING Zanna.*` imports    |
 | `enableRuntimeTypeBridging`   | true    | Direct runtime type constructors |
 | `enableSelectCaseConstLabels` | true    | CONST labels in SELECT CASE      |
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <system_error>
 #include <unordered_map>
 
-namespace viper::server {
+namespace zanna::server {
 
 // Static members
 const std::string JsonValue::kEmptyString;
@@ -704,4 +704,4 @@ JsonValue JsonValue::parse(std::string_view input) {
     return parser.parse();
 }
 
-} // namespace viper::server
+} // namespace zanna::server

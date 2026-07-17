@@ -1,30 +1,30 @@
 cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED VIPER_SOURCE_DIR)
-    message(FATAL_ERROR "VIPER_SOURCE_DIR must be provided to NoAssertFalseTest.cmake")
+if (NOT DEFINED ZANNA_SOURCE_DIR)
+    message(FATAL_ERROR "ZANNA_SOURCE_DIR must be provided to NoAssertFalseTest.cmake")
 endif ()
 
 set(_no_assert_false_globs
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/vm/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/vm/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/vm/RuntimeBridge.cpp"
-        "${VIPER_SOURCE_DIR}/src/il/transform/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/il/transform/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*/*.cpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*/*.hpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.cpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.hpp"
-        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/passes/LoweringPass.cpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*/*/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/frontends/basic/*/*/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/vm/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/vm/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/vm/RuntimeBridge.cpp"
+        "${ZANNA_SOURCE_DIR}/src/il/transform/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/il/transform/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*/*/*.cpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/aarch64/*/*/*.hpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.cpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.hpp"
+        "${ZANNA_SOURCE_DIR}/src/codegen/x86_64/passes/LoweringPass.cpp"
 )
 
 set(_no_assert_false_offenders)

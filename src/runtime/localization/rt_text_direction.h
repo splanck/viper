@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_text_direction.h
-// Purpose: Public C API for Viper.Localization.TextDirection — a static
+// Purpose: Public C API for Zanna.Localization.TextDirection — a static
 //          utility class that classifies text as left-to-right (LTR),
 //          right-to-left (RTL), or mixed, based on UTF-8 codepoint scanning
 //          against a fixed RTL-script range table.
@@ -27,7 +27,7 @@
 //     parameters and return fresh strings.
 //
 // Links: src/runtime/localization/rt_text_direction.c (implementation),
-//        docs/viperlib/localization/collation.md (user documentation).
+//        docs/zannalib/localization/collation.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

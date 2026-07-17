@@ -4,15 +4,15 @@ audience: public
 last-verified: 2026-04-09
 ---
 
-# Viper Game Engine
+# Zanna Game Engine
 
 > Build 2D and 3D games entirely from scratch — zero external dependencies.
 
-**Part of [Viper Documentation](../README.md)**
+**Part of [Zanna Documentation](../README.md)**
 
 ---
 
-The Viper Game Engine is a comprehensive game development platform built into the Viper runtime. Every system — from PNG decoding and MP3 playback to OpenGL rendering and A* pathfinding — is implemented from scratch in pure C with **zero external dependencies**. The engine targets macOS, Windows, and Linux through platform-specific backends plus documented fallbacks; platform parity claims should be backed by current test output for each host.
+The Zanna Game Engine is a comprehensive game development platform built into the Zanna runtime. Every system — from PNG decoding and MP3 playback to OpenGL rendering and A* pathfinding — is implemented from scratch in pure C with **zero external dependencies**. The engine targets macOS, Windows, and Linux through platform-specific backends plus documented fallbacks; platform parity claims should be backed by current test output for each host.
 
 Two language frontends are supported: **Zia** (modern, expressive) and **BASIC** (classic, beginner-friendly). Both compile to the same IL and have access to the full engine API.
 
@@ -29,7 +29,7 @@ Create a window, draw shapes, and respond to input — all in under 20 lines.
 ```zia
 module MyGame;
 
-bind Viper.Graphics.Canvas;
+bind Zanna.Graphics.Canvas;
 
 func start() {
     var c = Canvas.New("My Game", 640, 480);
@@ -50,8 +50,8 @@ func start() {
 ### BASIC
 
 ```basic
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("My Game", 640, 480)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("My Game", 640, 480)
 DIM x AS INTEGER = 320
 
 DO WHILE canvas.ShouldClose = 0
@@ -87,7 +87,7 @@ LOOP
 | **Game UI** | UILabel, UIBar, UIPanel, NineSlice, MenuList, Dialogue | HUD widgets, typewriter text, health bars |
 | **Effects** | ScreenFX, ParticleEmitter, Lighting2D | Shake, fade, wipe, dissolve, particles, dynamic lighting |
 | **Pathfinding** | Pathfinder, Quadtree, Raycast2D | A* grid, spatial partitioning, line-of-sight |
-| **Persistence** | SaveData, Assets, VPA | Cross-platform saves, embed/pack assets, VPA archives |
+| **Persistence** | SaveData, Assets, ZPAK | Cross-platform saves, embed/pack assets, ZPAK archives |
 | **Utilities** | Timer, Tween, StateMachine, ObjectPool, PlatformerController | Easing curves, coyote time, jump buffer, achievement tracking |
 | **Math** | Vec2, Vec3, Mat3, Mat4, Quaternion | Full vector/matrix/quaternion ops, slerp, easing functions |
 | **3D Advanced** | Terrain3D, Water3D, NavMesh3D, InstanceBatch3D, Particles3D | Vegetation, decals, post-processing, morph targets |
@@ -99,7 +99,7 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 ## Guides by Topic
 
 > **Note:** Guide pages below marked *(planned)* are not yet written. For current API details, see the
-> [Runtime Library Reference](../viperlib/README.md) and [Graphics3D Guide](../graphics3d-guide.md).
+> [Runtime Library Reference](../zannalib/README.md) and [Graphics3D Guide](../graphics3d-guide.md).
 
 ### Rendering
 
@@ -125,7 +125,7 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 ### Infrastructure
 
 - Input *(planned)* — Keyboard, mouse, gamepad, action mapping, InputManager
-- Persistence & Assets *(planned)* — SaveData, VPA archives, asset embedding and loading
+- Persistence & Assets *(planned)* — SaveData, ZPAK archives, asset embedding and loading
 - Game Utilities *(planned)* — Timer, Tween, StateMachine, ObjectPool, PlatformerController, and more
 - Math for Games *(planned)* — Vec2/3, Mat3/4, Quaternion, easing functions, noise
 - Cross-Platform *(planned)* — macOS/Windows/Linux differences, GPU backend selection
@@ -143,7 +143,7 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 
 ## Example Games
 
-Viper ships with 14 example games demonstrating the engine at every scale:
+Zanna ships with 14 example games demonstrating the engine at every scale:
 
 | Game | LOC | Genre | Key Engine Features |
 |------|-----|-------|---------------------|
@@ -167,19 +167,19 @@ See the [Example Games Gallery](examples/README.md) for detailed descriptions an
 
 The topical guides above explain concepts and patterns. For exhaustive method signatures, see the runtime library API docs:
 
-- [Game Utilities API](../viperlib/game/README.md) — 28 game classes (Entity, Timer, Tween, Physics2D, etc.)
-- [Graphics API](../viperlib/graphics/README.md) — Canvas, Pixels, Scene, Fonts
+- [Game Utilities API](../zannalib/game/README.md) — 28 game classes (Entity, Timer, Tween, Physics2D, etc.)
+- [Graphics API](../zannalib/graphics/README.md) — Canvas, Pixels, Scene, Fonts
 - [3D Graphics API](../graphics3d-guide.md) — 45 classes (Canvas3D, Mesh3D, SceneGraph, etc.)
-- [Audio API](../viperlib/audio.md) — Sound, Music, Synth, SoundBank, Playlist
-- [Input API](../viperlib/input.md) — Keyboard, Mouse, Pad, Action, InputManager
-- [Math API](../viperlib/math.md) — Vec2/3, Mat3/4, Quaternion, Easing, Noise
-- [GUI API](../viperlib/gui/README.md) — 46 desktop GUI widgets (distinct from game UI)
+- [Audio API](../zannalib/audio.md) — Sound, Music, Synth, SoundBank, Playlist
+- [Input API](../zannalib/input.md) — Keyboard, Mouse, Pad, Action, InputManager
+- [Math API](../zannalib/math.md) — Vec2/3, Mat3/4, Quaternion, Easing, Noise
+- [GUI API](../zannalib/gui/README.md) — 46 desktop GUI widgets (distinct from game UI)
 
 ---
 
 ## See Also
 
-- [The Viper Book](../book/README.md) — Chapters 19-21 cover graphics, input, and building a complete game project
+- [The Zanna Book](../book/README.md) — Chapters 19-21 cover graphics, input, and building a complete game project
 - [Zia Reference](../languages/zia-reference.md) — Complete Zia language specification
 - [BASIC Reference](../languages/basic-reference.md) — Complete BASIC language specification
-- [Architecture Overview](../internals/architecture.md) — Full Viper system architecture (compiler, VM, codegen, runtime)
+- [Architecture Overview](../internals/architecture.md) — Full Zanna system architecture (compiler, VM, codegen, runtime)

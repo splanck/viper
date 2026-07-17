@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Template-based copy propagation for machine IR basic blocks.
 ///
@@ -205,4 +205,4 @@ std::size_t propagateCopies(std::vector<typename Traits::MInstr> &instrs) {
     return propagated;
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

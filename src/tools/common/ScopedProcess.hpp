@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,7 +37,7 @@
 #include <unistd.h>
 #endif
 
-namespace viper::tools {
+namespace zanna::tools {
 
 #ifdef _WIN32
 inline int scopedDup(int fd) {
@@ -277,4 +277,4 @@ class ScopedEnvVar {
     std::string error_;
 };
 
-} // namespace viper::tools
+} // namespace zanna::tools

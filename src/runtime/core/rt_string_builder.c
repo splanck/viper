@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -384,7 +384,7 @@ rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...) {
 }
 
 // --------------------
-// Bridge functions for Viper.Text.StringBuilder
+// Bridge functions for Zanna.Text.StringBuilder
 // These functions provide the runtime interface for the OOP StringBuilder class.
 // The StringBuilder object layout has a vptr at offset 0 and an embedded
 // rt_string_builder struct at offset 8 (after the vptr).

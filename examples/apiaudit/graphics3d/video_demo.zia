@@ -4,10 +4,10 @@
 
 module VideoDemo;
 
-bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Input.Key as Key;
-bind Viper.Terminal;
+bind Zanna.Graphics;
+bind Zanna.Input;
+bind Zanna.Input.Key as Key;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Video Playback Demo ===");

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <optional>
 #include <string>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief MCP protocol handler.
 ///
@@ -92,4 +92,4 @@ class McpHandler {
     JsonValue buildToolDefinitions() const;
 };
 
-} // namespace viper::server
+} // namespace zanna::server

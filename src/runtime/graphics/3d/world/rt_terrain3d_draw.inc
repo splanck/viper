@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/world/rt_terrain3d_draw.inc  (#included from rt_terrain3d.c; not a
 // standalone translation unit) Purpose: Terrain3D culling, prewarm, draw, nav-mesh build, and
 // public LOD/stat API

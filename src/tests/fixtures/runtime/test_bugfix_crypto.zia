@@ -1,12 +1,12 @@
 module TestBugfixCrypto;
 
 bind "./_support";
-bind Viper.Terminal;
-bind Viper.Crypto.SecureRandom as CRand;
-bind Viper.Crypto.Cipher as Cipher;
-bind Viper.Crypto.KeyDerive as KD;
-bind Viper.Collections.Bytes as Bytes;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal;
+bind Zanna.Crypto.SecureRandom as CRand;
+bind Zanna.Crypto.Cipher as Cipher;
+bind Zanna.Crypto.KeyDerive as KD;
+bind Zanna.Collections.Bytes as Bytes;
+bind Zanna.Text.Fmt as Fmt;
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Bug #7  - Crypto function return types as Bytes
@@ -22,7 +22,7 @@ func start() {
 
     // Bug #5: Static Bytes.ToHex should work
     var hex = Bytes.ToHex(randBytes);
-    assertEqInt(Viper.String.get_Length(hex), 32, "Bytes.ToHex(16 bytes) is 32 hex chars");
+    assertEqInt(Zanna.String.get_Length(hex), 32, "Bytes.ToHex(16 bytes) is 32 hex chars");
 
     // --- Bug #7: Cipher.GenerateKey returns proper Bytes type ---
     setTest("Bug7_CipherGenerateKeyType");
@@ -32,7 +32,7 @@ func start() {
 
     // Static Bytes.ToHex on cipher key
     var keyHex = Bytes.ToHex(key);
-    assertGtInt(Viper.String.get_Length(keyHex), 0, "Cipher.GenerateKey().ToHex() is non-empty");
+    assertGtInt(Zanna.String.get_Length(keyHex), 0, "Cipher.GenerateKey().ToHex() is non-empty");
 
     // --- Bug #7: Cipher.Encrypt returns proper Bytes type ---
     setTest("Bug7_CipherEncryptType");

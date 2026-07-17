@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_network_udp.c
-// Purpose: UDP socket support for Viper.Network.Udp. Provides creation, binding,
+// Purpose: UDP socket support for Zanna.Network.Udp. Provides creation, binding,
 //   send/receive, multicast group management, broadcast, and timeout control.
 //
 // Key invariants:

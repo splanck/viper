@@ -15,7 +15,7 @@ missing_proto_docs="$(mktemp)"
 trap 'rm -f "$missing_proto_docs"' EXIT
 
 has_header() {
-  head -n 12 "$1" | grep -Eq 'Part of the Viper project|^// File:|^/// @file'
+  head -n 12 "$1" | grep -Eq 'Part of the Zanna project|^// File:|^/// @file'
 }
 
 audit_runtime_header() {

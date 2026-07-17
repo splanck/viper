@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_path.h
-// Purpose: Cross-platform file path manipulation utilities for Viper.IO.Path, providing join,
+// Purpose: Cross-platform file path manipulation utilities for Zanna.IO.Path, providing join,
 // dirname, basename, extension, normalization, and existence queries.
 //
 // Key invariants:

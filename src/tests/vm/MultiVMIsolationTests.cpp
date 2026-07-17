@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: src/tests/vm/MultiVMIsolationTests.cpp
 // Purpose: Verify per-VM isolation for RNG, module variables, file channels,
@@ -13,7 +13,7 @@
 #include "rt_oop.h"
 #include "rt_random.h"
 #include "tests/TestHarness.hpp"
-#include "viper/runtime/rt.h"
+#include "zanna/runtime/rt.h"
 
 #include <cmath>
 #include <cstring>
@@ -24,7 +24,7 @@
 static std::string makeTempPath(const char *tag) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
-    auto path = dir / (std::string("viper_multivm_") + tag + ".txt");
+    auto path = dir / (std::string("zanna_multivm_") + tag + ".txt");
     return path.string();
 }
 
@@ -434,6 +434,6 @@ TEST(MultiVMIsolation, TypeRegistry_ClassInfoFromVptrIsolated) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

@@ -17,9 +17,9 @@
 // file_service.zia - Paint file dialogs and image IO
 module file_service;
 
-bind Viper.GUI as GUI;
-bind Viper.Graphics;
-bind Str = Viper.String;
+bind Zanna.GUI as GUI;
+bind Zanna.Graphics;
+bind Str = Zanna.String;
 
 bind "./canvas";
 

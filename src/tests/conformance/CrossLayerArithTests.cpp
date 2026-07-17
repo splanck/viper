@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 //          VM returns full i64; native returns process exit code (low 8 bits).
 //          Tests verify full value via VM, then agreement via exit code.
 //
-// Platform: On non-ARM64 hosts, native tests are skipped via VIPER_TEST_SKIP.
+// Platform: On non-ARM64 hosts, native tests are skipped via ZANNA_TEST_SKIP.
 //
 // Reference: docs/languages/arithmetic-semantics.md
 //
@@ -26,10 +26,10 @@
 #include "tests/TestHarness.hpp"
 
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
-#include "tools/viper/cmd_codegen_arm64.hpp"
-#define VIPER_HAS_ARM64 1
+#include "tools/zanna/cmd_codegen_arm64.hpp"
+#define ZANNA_HAS_ARM64 1
 #else
-#define VIPER_HAS_ARM64 0
+#define ZANNA_HAS_ARM64 0
 #endif
 
 #include <cassert>
@@ -39,7 +39,7 @@
 #include <limits>
 #include <string>
 
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
 #include <filesystem>
 #include <fstream>
 #endif
@@ -237,16 +237,16 @@ void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t o
 //=============================================================================
 
 int64_t runVm(Module &module) {
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
 std::string captureVmTrap(Module &module) {
-    viper::tests::VmFixture fixture;
+    zanna::tests::VmFixture fixture;
     return fixture.captureTrap(module);
 }
 
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
 int runNative(Module &module) {
     // Serialize IL to string, write to temp file, run native
     const std::string ilSource = il::io::Serializer::toString(module);
@@ -262,7 +262,7 @@ int runNative(Module &module) {
     out.close();
 
     const char *argv[] = {ilPath.c_str(), "-run-native"};
-    int result = viper::tools::ilc::cmd_codegen_arm64(2, const_cast<char **>(argv));
+    int result = zanna::tools::ilc::cmd_codegen_arm64(2, const_cast<char **>(argv));
 
     std::error_code ec;
     fs::remove(ilPath, ec);
@@ -275,7 +275,7 @@ int runNative(Module &module) {
 int64_t runCrossLayer(Module &module) {
     int64_t vmResult = runVm(module);
 
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
     Module nativeModule = module; // copy
     int nativeResult = runNative(nativeModule);
 
@@ -295,7 +295,7 @@ void expectTrapCrossLayer(Module &module, std::string_view needle) {
     const std::string vmTrap = captureVmTrap(module);
     ASSERT_TRUE(vmTrap.find(needle) != std::string::npos);
 
-#if VIPER_HAS_ARM64
+#if ZANNA_HAS_ARM64
     Module nativeModule = module;
     const int nativeResult = runNative(nativeModule);
     ASSERT_NE((nativeResult & 0xFF), 0);
@@ -553,8 +553,8 @@ TEST(CrossLayerArith, URemTreatAsUnsigned) {
 //=============================================================================
 
 int main(int argc, char **argv) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

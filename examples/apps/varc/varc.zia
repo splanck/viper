@@ -1,16 +1,16 @@
-// varc_test.zia - Single-file test for Viper Archive utility
+// varc_test.zia - Single-file test for Zanna Archive utility
 // Tests archive creation, listing, testing, and extraction
 // Supports DEFLATE compression and AES encryption
 
 module VarcTest;
 
-bind Viper.Terminal as Terminal;
-bind Viper.String as String;
-bind Viper.Core.Convert as Convert;
-bind Viper.Collections as Collections;
-bind Viper.IO as IO;
-bind Viper.Crypto as Crypto;
-bind Viper.System.Environment as Environment;
+bind Zanna.Terminal as Terminal;
+bind Zanna.String as String;
+bind Zanna.Core.Convert as Convert;
+bind Zanna.Collections as Collections;
+bind Zanna.IO as IO;
+bind Zanna.Crypto as Crypto;
+bind Zanna.System.Environment as Environment;
 
 // Magic bytes for .varc format: "VARC" + version byte
 var MAGIC_0: Integer = 86;   // 'V'
@@ -48,13 +48,13 @@ func strToInt(s: String) -> Integer {
 }
 
 // Write a 16-bit little-endian integer to bytes at position
-func writeU16(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+func writeU16(data: Zanna.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
 }
 
 // Write a 32-bit little-endian integer to bytes at position
-func writeU32(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+func writeU32(data: Zanna.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
     Collections.Bytes.Set(data, pos + 2, (value / 65536) % 256);
@@ -62,14 +62,14 @@ func writeU32(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
 }
 
 // Read a 16-bit little-endian integer from bytes at position
-func readU16(data: Viper.Collections.Bytes, pos: Integer) -> Integer {
+func readU16(data: Zanna.Collections.Bytes, pos: Integer) -> Integer {
     var b0 = Collections.Bytes.Get(data, pos);
     var b1 = Collections.Bytes.Get(data, pos + 1);
     return b0 + b1 * 256;
 }
 
 // Read a 32-bit little-endian integer from bytes at position
-func readU32(data: Viper.Collections.Bytes, pos: Integer) -> Integer {
+func readU32(data: Zanna.Collections.Bytes, pos: Integer) -> Integer {
     var b0 = Collections.Bytes.Get(data, pos);
     var b1 = Collections.Bytes.Get(data, pos + 1);
     var b2 = Collections.Bytes.Get(data, pos + 2);
@@ -78,7 +78,7 @@ func readU32(data: Viper.Collections.Bytes, pos: Integer) -> Integer {
 }
 
 // Simple checksum (sum of all bytes mod 2^32)
-func checksum(data: Viper.Collections.Bytes) -> Integer {
+func checksum(data: Zanna.Collections.Bytes) -> Integer {
     var len = Collections.Bytes.get_Length(data);
     var sum = 0;
     var i = 0;
@@ -91,7 +91,7 @@ func checksum(data: Viper.Collections.Bytes) -> Integer {
 
 // Get directory part of path
 func dirname(path: String) -> String {
-    var len = Viper.String.get_Length(path);
+    var len = Zanna.String.get_Length(path);
     var i = len - 1;
     while (i >= 0) {
         var c = String.Asc(String.MidLen(path, i + 1, 1));
@@ -105,8 +105,8 @@ func dirname(path: String) -> String {
 
 // Process file data for storage: compress and/or encrypt
 // Uses Base64 encoding for binary-safe encryption of compressed data
-func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password: String) -> Viper.Collections.Bytes {
-    if (compress && Viper.String.get_Length(password) > 0) {
+func processFileData(data: Zanna.Collections.Bytes, compress: Boolean, password: String) -> Zanna.Collections.Bytes {
+    if (compress && Zanna.String.get_Length(password) > 0) {
         var compressed = IO.Compress.Deflate(data);
         // Encode compressed bytes as base64 for safe string encryption
         var base64 = Collections.Bytes.ToBase64(compressed);
@@ -115,7 +115,7 @@ func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password:
     if (compress) {
         return IO.Compress.Deflate(data);
     }
-    if (Viper.String.get_Length(password) > 0) {
+    if (Zanna.String.get_Length(password) > 0) {
         // Encode raw bytes as base64 for safe string encryption
         var base64 = Collections.Bytes.ToBase64(data);
         return Crypto.Aes.EncryptStr(base64, password);
@@ -125,7 +125,7 @@ func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password:
 
 // Process stored data for retrieval: decrypt and/or decompress
 // Decryption returns base64-encoded data that needs to be decoded
-func restoreFileData(data: Viper.Collections.Bytes, isCompressed: Boolean, isEncrypted: Boolean, password: String) -> Viper.Collections.Bytes {
+func restoreFileData(data: Zanna.Collections.Bytes, isCompressed: Boolean, isEncrypted: Boolean, password: String) -> Zanna.Collections.Bytes {
     if (isEncrypted && isCompressed) {
         // Decrypt to get base64 string, then decode to get compressed bytes
         var base64 = Crypto.Aes.DecryptStr(data, password);
@@ -161,7 +161,7 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
     if (compress) {
         Terminal.Say("Compression: DEFLATE");
     }
-    if (Viper.String.get_Length(password) > 0) {
+    if (Zanna.String.get_Length(password) > 0) {
         Terminal.Say("Encryption: AES");
     }
 
@@ -170,13 +170,13 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
     if (compress) {
         flags = flags + FLAG_COMPRESSED;
     }
-    if (Viper.String.get_Length(password) > 0) {
+    if (Zanna.String.get_Length(password) > 0) {
         flags = flags + FLAG_ENCRYPTED;
     }
 
     // First pass: process all file data and calculate total size
-    var allStored: List[Viper.Collections.Bytes] = [];
-    var allOriginal: List[Viper.Collections.Bytes] = [];
+    var allStored: List[Zanna.Collections.Bytes] = [];
+    var allOriginal: List[Zanna.Collections.Bytes] = [];
 
     var totalSize = HDR_SIZE;
     var i = 0;
@@ -192,7 +192,7 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
         allOriginal.add(fileData);
 
         var storedLen = Collections.Bytes.get_Length(storedData);
-        var pathLen = Viper.String.get_Length(filePath);
+        var pathLen = Zanna.String.get_Length(filePath);
         totalSize = totalSize + ENT_HEADER_SIZE + pathLen + storedLen;
         i = i + 1;
     }
@@ -495,7 +495,7 @@ func extractArchive(archivePath: String, outputDir: String) -> Boolean {
 // --- CLI Interface ---
 
 func printUsage() {
-    Terminal.Say("varc - Viper Archive utility");
+    Terminal.Say("varc - Zanna Archive utility");
     Terminal.Say("");
     Terminal.Say("Usage:");
     Terminal.Say("  varc                                                  Run self-test demo");
@@ -711,7 +711,7 @@ func cmdExtract(startIdx: Integer, argCount: Integer) -> Integer {
 // --- Self-Test Suite ---
 
 func cmdSelfTest() -> Integer {
-    Terminal.Say("=== Viper Archive (varc) Self-Test ===");
+    Terminal.Say("=== Zanna Archive (varc) Self-Test ===");
     Terminal.Say("");
 
     // Setup: Create test files
@@ -824,8 +824,8 @@ func cmdSelfTest() -> Integer {
 
     if (extracted1 != content1) {
         Terminal.Say("FAIL: file1.txt content mismatch");
-        Terminal.Say("Expected length: " + intToStr(Viper.String.get_Length(content1)));
-        Terminal.Say("Got length: " + intToStr(Viper.String.get_Length(extracted1)));
+        Terminal.Say("Expected length: " + intToStr(Zanna.String.get_Length(content1)));
+        Terminal.Say("Got length: " + intToStr(Zanna.String.get_Length(extracted1)));
         return 1;
     }
 

@@ -2,7 +2,7 @@
 # File: tests/cmake/TestHelpers.cmake
 # Purpose: Helper functions to keep the test CMake files concise.
 
-set(_VIPER_TEST_LABEL_WHITELIST
+set(_ZANNA_TEST_LABEL_WHITELIST
         arm64
         assemble_link
         basic
@@ -51,7 +51,7 @@ set(_VIPER_TEST_LABEL_WHITELIST
         windows_broken
         zia)
 
-function(_viper_normalize_label out_var label)
+function(_zanna_normalize_label out_var label)
     string(TOLOWER "${label}" _label)
 
     if (_label STREQUAL "display_required")
@@ -71,7 +71,7 @@ function(_viper_normalize_label out_var label)
     set(${out_var} "${_label}" PARENT_SCOPE)
 endfunction()
 
-function(_viper_validate_and_normalize_labels out_var)
+function(_zanna_validate_and_normalize_labels out_var)
     set(_normalized)
     foreach (_raw IN LISTS ARGN)
         if (_raw STREQUAL "")
@@ -84,11 +84,11 @@ function(_viper_validate_and_normalize_labels out_var)
                 continue()
             endif ()
 
-            _viper_normalize_label(_label "${_candidate}")
-            if (NOT _label IN_LIST _VIPER_TEST_LABEL_WHITELIST)
+            _zanna_normalize_label(_label "${_candidate}")
+            if (NOT _label IN_LIST _ZANNA_TEST_LABEL_WHITELIST)
                 message(FATAL_ERROR
                         "Unknown test label '${_candidate}' (normalized '${_label}'). "
-                        "Add it to _VIPER_TEST_LABEL_WHITELIST in TestHelpers.cmake first.")
+                        "Add it to _ZANNA_TEST_LABEL_WHITELIST in TestHelpers.cmake first.")
             endif ()
             list(APPEND _normalized "${_label}")
         endforeach ()
@@ -98,28 +98,28 @@ function(_viper_validate_and_normalize_labels out_var)
     set(${out_var} "${_normalized}" PARENT_SCOPE)
 endfunction()
 
-function(viper_set_test_labels name)
-    _viper_validate_and_normalize_labels(_labels ${ARGN})
+function(zanna_set_test_labels name)
+    _zanna_validate_and_normalize_labels(_labels ${ARGN})
     list(JOIN _labels ";" _joined)
     set_tests_properties(${name} PROPERTIES LABELS "${_joined}")
-    _viper_apply_label_environment(${name} ${_labels})
+    _zanna_apply_label_environment(${name} ${_labels})
 endfunction()
 
-function(viper_add_test_labels name)
-    _viper_validate_and_normalize_labels(_labels ${ARGN})
+function(zanna_add_test_labels name)
+    _zanna_validate_and_normalize_labels(_labels ${ARGN})
     get_test_property(${name} LABELS _existing)
     if (_existing STREQUAL "NOTFOUND")
         set(_merged ${_labels})
     else ()
         set(_merged ${_existing} ${_labels})
     endif ()
-    _viper_validate_and_normalize_labels(_merged_norm ${_merged})
+    _zanna_validate_and_normalize_labels(_merged_norm ${_merged})
     list(JOIN _merged_norm ";" _joined)
     set_tests_properties(${name} PROPERTIES LABELS "${_joined}")
-    _viper_apply_label_environment(${name} ${_merged_norm})
+    _zanna_apply_label_environment(${name} ${_merged_norm})
 endfunction()
 
-function(_viper_append_test_environment name entry)
+function(_zanna_append_test_environment name entry)
     get_property(_has_env TEST ${name} PROPERTY ENVIRONMENT SET)
     if (_has_env)
         get_property(_env TEST ${name} PROPERTY ENVIRONMENT)
@@ -132,91 +132,91 @@ function(_viper_append_test_environment name entry)
     endif ()
 endfunction()
 
-function(_viper_apply_label_environment name)
+function(_zanna_apply_label_environment name)
     set(_labels ${ARGN})
     if ("requires_display" IN_LIST _labels OR "graphics3d" IN_LIST _labels)
-        _viper_append_test_environment(${name} "VIPER_GFX_NO_ACTIVATE=1")
-        _viper_append_test_environment(${name} "VIPER_GFX_HIDE_WINDOWS=1")
+        _zanna_append_test_environment(${name} "ZANNA_GFX_NO_ACTIVATE=1")
+        _zanna_append_test_environment(${name} "ZANNA_GFX_HIDE_WINDOWS=1")
     endif ()
 endfunction()
 
-function(viper_apply_display_test_environment)
+function(zanna_apply_display_test_environment)
     get_property(_tests DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY TESTS)
     foreach (_test IN LISTS _tests)
         get_property(_labels TEST ${_test} PROPERTY LABELS)
         if ("requires_display" IN_LIST _labels OR "graphics3d" IN_LIST _labels)
-            _viper_append_test_environment(${_test} "VIPER_GFX_NO_ACTIVATE=1")
-            _viper_append_test_environment(${_test} "VIPER_GFX_HIDE_WINDOWS=1")
+            _zanna_append_test_environment(${_test} "ZANNA_GFX_NO_ACTIVATE=1")
+            _zanna_append_test_environment(${_test} "ZANNA_GFX_HIDE_WINDOWS=1")
         endif ()
     endforeach ()
 endfunction()
 
-function(viper_apply_audio_test_environment)
+function(zanna_apply_audio_test_environment)
     get_property(_tests DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY TESTS)
     foreach (_test IN LISTS _tests)
-        _viper_append_test_environment(${_test} "VIPER_AUDIO_SILENT=1")
+        _zanna_append_test_environment(${_test} "ZANNA_AUDIO_SILENT=1")
     endforeach ()
 endfunction()
 
 # Helper function to assign labels based on test name patterns.
-function(_viper_assign_test_label name)
+function(_zanna_assign_test_label name)
     if (name MATCHES "^test_basic_" OR name MATCHES "^test_frontends_basic_" OR name MATCHES "^test_lowerer_" OR name MATCHES "^test_type_" OR name MATCHES "^test_builtin_" OR name MATCHES "^test_lowering_")
-        viper_set_test_labels(${name} basic)
+        zanna_set_test_labels(${name} basic)
     elseif (name MATCHES "^test_il_" OR name MATCHES "^il_" OR name MATCHES "^test_analysis_" OR name MATCHES "^test_irbuilder_")
-        viper_set_test_labels(${name} il)
+        zanna_set_test_labels(${name} il)
     elseif (name MATCHES "^test_bytecode_" OR name MATCHES "^bytecode_" OR name MATCHES "^test_bytecode_vm$")
-        viper_set_test_labels(${name} vm bytecode)
+        zanna_set_test_labels(${name} vm bytecode)
     elseif (name MATCHES "^test_vm_" OR name MATCHES "^vm_")
-        viper_set_test_labels(${name} vm)
+        zanna_set_test_labels(${name} vm)
     elseif (name MATCHES "^test_shift_conformance$" OR name MATCHES "^test_subwidth_arith$" OR name MATCHES "^test_crosslayer_arith$" OR name MATCHES "^test_zia_arith_conformance$" OR name MATCHES "^basic_arith_")
-        viper_set_test_labels(${name} conformance)
+        zanna_set_test_labels(${name} conformance)
     elseif (name MATCHES "^test_rt_" OR name MATCHES "^test_runtime_" OR name MATCHES "^runtime_" OR name MATCHES "^test_stringbuilder_" OR name MATCHES "^test_console_" OR name MATCHES "^test_convert_" OR name MATCHES "^test_catalog_")
-        viper_set_test_labels(${name} runtime)
+        zanna_set_test_labels(${name} runtime)
     elseif (name MATCHES "^test_codegen_" OR name MATCHES "^test_emit_" OR name MATCHES "^test_target_" OR name MATCHES "^test_aarch64_" OR name MATCHES "^test_arm64_" OR name MATCHES "^codegen_" OR name MATCHES "^test_binenc_" OR name MATCHES "^test_linker_" OR name MATCHES "^test_objfile_" OR name MATCHES "^test_x86_")
-        viper_set_test_labels(${name} codegen)
+        zanna_set_test_labels(${name} codegen)
     elseif (name MATCHES "^test_oop_" OR name MATCHES "^oop_" OR name MATCHES "^unit_basic_oop" OR name MATCHES "^test_method_" OR name MATCHES "^test_property_")
-        viper_set_test_labels(${name} oop)
+        zanna_set_test_labels(${name} oop)
     elseif (name MATCHES "^test_namespace_" OR name MATCHES "^test_using_" OR name MATCHES "^test_ns_")
-        viper_set_test_labels(${name} namespace)
-    elseif (name MATCHES "^basic_error_" OR name MATCHES "^basic_ast_" OR name MATCHES "^basic_lex_" OR name MATCHES "^basic_to_il_" OR name MATCHES "^basic_semantics_" OR name MATCHES "^basic_proc_" OR name MATCHES "^basic_call_" OR name MATCHES "^basic_ns" OR name MATCHES "^basic_negatives_" OR name MATCHES "^basic_regress_" OR name MATCHES "^basic_select_" OR name MATCHES "^basic_boolean_" OR name MATCHES "^basic_gosub_" OR name MATCHES "^basic_globals_" OR name MATCHES "^basic_print_" OR name MATCHES "^basic_namespace_" OR name MATCHES "^basic_trycatch_" OR name MATCHES "^basic_fileio_" OR name MATCHES "^basic_viper_" OR name MATCHES "^basic_int_" OR name MATCHES "^basic_shared_" OR name MATCHES "^basic_not_" OR name MATCHES "^basic_runtime_ns_" OR name MATCHES "^basic_using_" OR name MATCHES "^basic_arrays_" OR name MATCHES "^example_basic_" OR name MATCHES "^errors_map_" OR name MATCHES "^eh_runtime_" OR name MATCHES "^runtime_classes_" OR name MATCHES "^oop_runtime_" OR name MATCHES "^numerics_il_" OR name MATCHES "^il_quickstart_" OR name MATCHES "^il_viper_ns_" OR name MATCHES "^il_legacy_" OR name MATCHES "^basic_select_case_")
-        viper_set_test_labels(${name} golden)
+        zanna_set_test_labels(${name} namespace)
+    elseif (name MATCHES "^basic_error_" OR name MATCHES "^basic_ast_" OR name MATCHES "^basic_lex_" OR name MATCHES "^basic_to_il_" OR name MATCHES "^basic_semantics_" OR name MATCHES "^basic_proc_" OR name MATCHES "^basic_call_" OR name MATCHES "^basic_ns" OR name MATCHES "^basic_negatives_" OR name MATCHES "^basic_regress_" OR name MATCHES "^basic_select_" OR name MATCHES "^basic_boolean_" OR name MATCHES "^basic_gosub_" OR name MATCHES "^basic_globals_" OR name MATCHES "^basic_print_" OR name MATCHES "^basic_namespace_" OR name MATCHES "^basic_trycatch_" OR name MATCHES "^basic_fileio_" OR name MATCHES "^basic_zanna_" OR name MATCHES "^basic_int_" OR name MATCHES "^basic_shared_" OR name MATCHES "^basic_not_" OR name MATCHES "^basic_runtime_ns_" OR name MATCHES "^basic_using_" OR name MATCHES "^basic_arrays_" OR name MATCHES "^example_basic_" OR name MATCHES "^errors_map_" OR name MATCHES "^eh_runtime_" OR name MATCHES "^runtime_classes_" OR name MATCHES "^oop_runtime_" OR name MATCHES "^numerics_il_" OR name MATCHES "^il_quickstart_" OR name MATCHES "^il_zanna_ns_" OR name MATCHES "^il_legacy_" OR name MATCHES "^basic_select_case_")
+        zanna_set_test_labels(${name} golden)
     elseif (name MATCHES "^basic_oop_" OR name MATCHES "^basic_numerics_" OR name MATCHES "^basic_args_" OR name MATCHES "^basic_bug" OR name MATCHES "^basic_array" OR name MATCHES "^basic_do_" OR name MATCHES "^basic_for_" OR name MATCHES "^basic_const_" OR name MATCHES "^basic_math_" OR name MATCHES "^basic_abs_" OR name MATCHES "^basic_factorial$" OR name MATCHES "^basic_fibonacci$" OR name MATCHES "^basic_random_" OR name MATCHES "^front_basic_" OR name MATCHES "^monte_carlo_" OR name MATCHES "^random_walk$" OR name MATCHES "^mem2reg_" OR name MATCHES "^ilc_mem2reg_")
-        viper_set_test_labels(${name} e2e)
+        zanna_set_test_labels(${name} e2e)
     elseif (name MATCHES "^il_opt_" OR name MATCHES "^constfold_" OR name MATCHES "^simplifycfg_")
-        viper_set_test_labels(${name} ilopt)
+        zanna_set_test_labels(${name} ilopt)
     elseif (name MATCHES "^smoke_" OR name MATCHES "^basic_sum_" OR name MATCHES "^basic_repros$")
-        viper_set_test_labels(${name} smoke)
+        zanna_set_test_labels(${name} smoke)
     elseif (name MATCHES "^tui_")
-        viper_set_test_labels(${name} tui)
+        zanna_set_test_labels(${name} tui)
     elseif (name MATCHES "^perf_")
-        viper_set_test_labels(${name} perf)
+        zanna_set_test_labels(${name} perf)
     elseif (name MATCHES "^example_smoke_" OR name MATCHES "^examples_")
-        viper_set_test_labels(${name} examples)
+        zanna_set_test_labels(${name} examples)
     elseif (name MATCHES "^fuzz_" OR name MATCHES "^test_fuzz_")
-        viper_set_test_labels(${name} fuzz)
+        zanna_set_test_labels(${name} fuzz)
     elseif (name MATCHES "^installer_")
-        viper_set_test_labels(${name} installer)
+        zanna_set_test_labels(${name} installer)
     elseif (name MATCHES "^test_cli_" OR name MATCHES "^NoAssertFalseGuard$" OR name MATCHES "^test_tools_" OR name MATCHES "^test_vbasic_" OR name MATCHES "^test_zia_server_")
-        viper_set_test_labels(${name} tools)
+        zanna_set_test_labels(${name} tools)
     elseif (name MATCHES "^test_support$" OR name MATCHES "^test_run_" OR name MATCHES "^test_expected_" OR name MATCHES "^test_ident_" OR name MATCHES "^test_path_" OR name MATCHES "^test_integer_" OR name MATCHES "^test_window$" OR name MATCHES "^test_pixels$" OR name MATCHES "^test_drawing$" OR name MATCHES "^test_input$")
-        viper_set_test_labels(${name} unit)
+        zanna_set_test_labels(${name} unit)
     endif ()
 endfunction()
 
-function(viper_add_test target)
+function(zanna_add_test target)
     set(options NO_CTEST)
     set(oneValueArgs TEST_NAME)
     set(multiValueArgs SRCS LIBS COMPILE_DEFS INCLUDES)
     cmake_parse_arguments(VT "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
     if (VT_SRCS)
-        set(_viper_sources ${VT_SRCS})
+        set(_zanna_sources ${VT_SRCS})
     else ()
-        set(_viper_sources ${VT_UNPARSED_ARGUMENTS})
+        set(_zanna_sources ${VT_UNPARSED_ARGUMENTS})
     endif ()
-    if (NOT _viper_sources)
-        message(FATAL_ERROR "viper_add_test requires at least one source")
+    if (NOT _zanna_sources)
+        message(FATAL_ERROR "zanna_add_test requires at least one source")
     endif ()
-    add_executable(${target} ${_viper_sources})
+    add_executable(${target} ${_zanna_sources})
     set_target_properties(${target} PROPERTIES
             C_STANDARD 11
             C_STANDARD_REQUIRED ON
@@ -230,7 +230,7 @@ function(viper_add_test target)
             target_compile_definitions(${target} PRIVATE _DEFAULT_SOURCE)
         endif ()
     endif ()
-    target_link_libraries(${target} PRIVATE viper_testing)
+    target_link_libraries(${target} PRIVATE zanna_testing)
     if (VT_LIBS)
         target_link_libraries(${target} PRIVATE ${VT_LIBS})
     endif ()
@@ -244,41 +244,41 @@ function(viper_add_test target)
         return()
     endif ()
     if (VT_TEST_NAME)
-        set(_viper_test_name ${VT_TEST_NAME})
+        set(_zanna_test_name ${VT_TEST_NAME})
     else ()
-        set(_viper_test_name ${target})
+        set(_zanna_test_name ${target})
     endif ()
-    add_test(NAME ${_viper_test_name} COMMAND ${target})
-    set_tests_properties(${_viper_test_name} PROPERTIES SKIP_RETURN_CODE 77)
-    _viper_assign_test_label(${_viper_test_name})
+    add_test(NAME ${_zanna_test_name} COMMAND ${target})
+    set_tests_properties(${_zanna_test_name} PROPERTIES SKIP_RETURN_CODE 77)
+    _zanna_assign_test_label(${_zanna_test_name})
 endfunction()
 
-function(viper_add_ctest name)
+function(zanna_add_ctest name)
     if (ARGC EQUAL 2 AND "${name}" STREQUAL "${ARGV1}")
         return()
     endif ()
     add_test(NAME ${name} COMMAND ${ARGN})
     set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
-    _viper_assign_test_label(${name})
+    _zanna_assign_test_label(${name})
 endfunction()
 
 # Ensure no new golden directories sneak into the tree. Golden tests must rely on
 # the shared suites under tests/golden/ rather than ad-hoc "goldens" folders.
-function(viper_assert_no_goldens_directories)
+function(zanna_assert_no_goldens_directories)
     file(
-            GLOB_RECURSE _viper_goldens
+            GLOB_RECURSE _zanna_goldens
             LIST_DIRECTORIES true
             RELATIVE "${CMAKE_SOURCE_DIR}/src/tests"
             "${CMAKE_SOURCE_DIR}/src/tests/*")
 
-    list(FILTER _viper_goldens INCLUDE REGEX "/goldens$")
+    list(FILTER _zanna_goldens INCLUDE REGEX "/goldens$")
 
-    if (_viper_goldens)
-        list(TRANSFORM _viper_goldens PREPEND "${CMAKE_SOURCE_DIR}/src/tests/")
-        list(JOIN _viper_goldens "\n  " _viper_goldens_pretty)
+    if (_zanna_goldens)
+        list(TRANSFORM _zanna_goldens PREPEND "${CMAKE_SOURCE_DIR}/src/tests/")
+        list(JOIN _zanna_goldens "\n  " _zanna_goldens_pretty)
         message(
                 FATAL_ERROR
-                "Golden directories named 'goldens' are prohibited. Remove or rename:\n  ${_viper_goldens_pretty}")
+                "Golden directories named 'goldens' are prohibited. Remove or rename:\n  ${_zanna_goldens_pretty}")
     endif ()
 endfunction()
 
@@ -302,13 +302,13 @@ function(_golden_error name dir bas_stem)
     if (GE_EXPECT_EXIT_ZERO)
         set(_extra_args -DEXPECT_EXIT_ZERO=TRUE)
     endif ()
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_bas}
             "-DEXPECT=${_expect}"
             ${_extra_args}
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/basic_errors/check_error.cmake)
 endfunction()
 
 # _golden_basic_run: BASIC run + stdout comparison (check_basic_run_output.cmake)
@@ -322,47 +322,47 @@ function(_golden_basic_run name dir bas_stem stdout_file)
     if (GR_CLEANUP_FILE)
         set(_extra_args "-DCLEANUP_FILE=${GR_CLEANUP_FILE}")
     endif ()
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${dir}/${bas_stem}.bas
             "-DEXPECT=${_expect}"
             ${_extra_args}
-            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 endfunction()
 
 # _golden_basic_run_error: BASIC run + stderr comparison (check_basic_run_error.cmake)
 function(_golden_basic_run_error name dir bas_stem stderr_file)
     file(READ ${dir}/${stderr_file} _expect)
     string(STRIP "${_expect}" _expect)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${dir}/${bas_stem}.bas
             "-DEXPECT=${_expect}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
 endfunction()
 
 # _golden_il_run: IL run + stdout comparison (check_run_output.cmake)
 function(_golden_il_run name il_file expect_str)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DIL_FILE=${il_file}
             "-DEXPECT=${expect_str}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/check_run_output.cmake)
 endfunction()
 
 # _golden_il_run_file: IL run + stdout from file (check_run_output.cmake)
 function(_golden_il_run_file name il_file expect_file)
     file(READ ${expect_file} _expect)
     string(STRIP "${_expect}" _expect)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DIL_FILE=${il_file}
             "-DEXPECT=${_expect}"
-            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/check_run_output.cmake)
 endfunction()
 
 # _golden_il_opt: IL optimizer golden test (check_opt.cmake)
@@ -373,43 +373,43 @@ function(_golden_il_opt name il_in_file golden_file)
     if (GO_PASSES)
         set(_extra_args -DPASSES=${GO_PASSES})
     endif ()
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DIL_FILE=${il_in_file}
             -DGOLDEN=${golden_file}
             ${_extra_args}
-            -P ${_VIPER_GOLDEN_DIR}/il_opt/check_opt.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/il_opt/check_opt.cmake)
 endfunction()
 
 # _golden_constfold: IL constant folding golden test (check_constfold.cmake)
 function(_golden_constfold name il_file golden_file)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DIL_FILE=${il_file}
             -DGOLDEN=${golden_file}
-            -P ${_VIPER_GOLDEN_DIR}/constfold/check_constfold.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/constfold/check_constfold.cmake)
 endfunction()
 
 # _golden_basic_to_il: BASIC→IL golden test (check_il.cmake)
 function(_golden_basic_to_il name bas_file golden_il_file)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${bas_file}
             -DGOLDEN=${golden_il_file}
-            -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/basic_to_il/check_il.cmake)
 endfunction()
 
 # _golden_vm_trap_loc: IL run expecting trap at specific location (check_vm_trap_loc.cmake)
 function(_golden_vm_trap_loc name il_file expect_str)
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DIL_FILE=${il_file}
             "-DEXPECT=${expect_str}"
-            -P ${_VIPER_GOLDEN_DIR}/check_vm_trap_loc.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/check_vm_trap_loc.cmake)
 endfunction()
 
 # _golden_exit_code: Run program and check exit code (check_run_exit_code.cmake)
@@ -429,11 +429,11 @@ function(_golden_exit_code name)
     if (GX_EXPECT)
         list(APPEND _args "-DEXPECT=${GX_EXPECT}")
     endif ()
-    viper_add_ctest(${name}
+    zanna_add_ctest(${name}
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             ${_args}
-            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
+            -P ${_ZANNA_GOLDEN_DIR}/check_run_exit_code.cmake)
 endfunction()
 
-viper_assert_no_goldens_directories()
+zanna_assert_no_goldens_directories()

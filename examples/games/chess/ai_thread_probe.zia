@@ -1,9 +1,9 @@
 module ai_thread_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Time;
-bind Thread = Viper.Threads.Thread;
-bind Monitor = Viper.Threads.Monitor;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Time;
+bind Thread = Zanna.Threads.Thread;
+bind Monitor = Zanna.Threads.Monitor;
 bind "./core/config";
 bind "./core/board";
 bind "./core/moves";
@@ -93,7 +93,7 @@ func main() {
         workerHasResult = false;
         workerThread = Thread.StartSafe(&aiWorker, 0);
         while workerThread!.SafeIsAlive() {
-            Viper.Time.Clock.Sleep(1);
+            Zanna.Time.Clock.Sleep(1);
         }
         workerThread!.SafeJoin();
         if workerThread!.HasError {

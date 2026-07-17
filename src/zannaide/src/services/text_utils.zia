@@ -1,0 +1,79 @@
+module text_utils;
+
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: text_utils
+// PURPOSE: Small, dependency-light helpers for common line and list operations.
+//
+// WHERE-THIS-FITS: Leaf utility module used by command and Zia source helpers.
+//          It deliberately has no GUI, editor, document, or project dependency,
+//          so it is safe to reuse from pure string transforms and probes.
+//
+// KEY-DESIGN-CHOICES:
+//   * PURE FUNCTIONS. Every helper returns derived text or a boolean and never
+//     mutates editor state.
+//   * 1-BASED STRING CONVENTION. Helpers that inspect characters follow the
+//     Zanna.String APIs, whose positions are 1-based.
+//   * EOL-PRESERVING CALLERS. This module trims CR characters and whitespace but
+//     leaves whole-document newline policy to the formatter/refactor modules.
+// ============================================================================
+
+/// @brief Remove a trailing carriage return from one line.
+/// @details `Str.Split(text, "\n")` leaves `\r` on CRLF input. Most source
+///          transforms work line-by-line and need the logical line content
+///          without that transport marker.
+/// @param line One split line, possibly ending in `\r`.
+/// @return `line` without a final carriage return.
+expose func StripTrailingCr(line: String) -> String {
+    return Str.RemoveSuffix(line, "\r");
+}
+
+/// @brief Count leading spaces and tabs in a line.
+/// @param text Source line to inspect.
+/// @return Number of leading whitespace characters before the first non-space.
+expose func LeadingWhitespaceLength(text: String) -> Integer {
+    return Str.get_Length(text) - Str.get_Length(Str.TrimStart(text));
+}
+
+/// @brief Remove spaces and tabs from the right side of one line.
+/// @param line Source line with no trailing newline.
+/// @return The same line with trailing spaces/tabs removed.
+expose func TrimLineRightWhitespace(line: String) -> String {
+    return Str.TrimEnd(line);
+}
+
+/// @brief Join a `List` of string-like values with a separator.
+/// @details Zia's runtime list can hold values as `Any`; this helper normalizes
+///          each element through `Obj.ToString` so formatter and refactor modules
+///          do not repeat the same loop.
+/// @param items Ordered values to join.
+/// @param separator Text inserted between adjacent values.
+/// @return Joined string.
+/// @details `Str.Join` targets a `seq<str>` of raw strings (as produced by
+///          `Str.Split`); a Zia `List` holds boxed values, so it cannot be
+///          passed to `Str.Join` directly. This explicit loop normalizes each
+///          boxed element through `Obj.ToString`, which is the correct way to
+///          join a `List`.
+expose func JoinStringList(items: List, separator: String) -> String {
+    var result = "";
+    var i = 0;
+    while i < items.count() {
+        if i > 0 {
+            result = result + separator;
+        }
+        result = result + Obj.ToString(items.get(i));
+        i = i + 1;
+    }
+    return result;
+}
+
+/// @brief Return true when a string list contains a value.
+/// @param items List whose entries are compared as strings.
+/// @param value String to find.
+/// @return True when any entry's string form equals `value`.
+expose func StringListContains(items: List,
+                               value: String) -> Boolean {
+    return items.contains(value);
+}

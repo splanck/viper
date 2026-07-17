@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_dateformat.h
-// Purpose: Public C API for Viper.Localization.DateFormat — locale-aware
+// Purpose: Public C API for Zanna.Localization.DateFormat — locale-aware
 //          date and time formatting via CLDR pattern letters. The bound
 //          Locale's rt_locale_data_t supplies month/day name tables,
 //          AM/PM tokens, and the short/medium/long/full pattern templates.
@@ -26,7 +26,7 @@
 // Links: src/runtime/localization/rt_dateformat.c (class methods),
 //        src/runtime/localization/rt_dateformat_patterns.c (emit engine),
 //        src/runtime/core/rt_datetime.h (component accessors),
-//        docs/viperlib/localization/formatting.md (user documentation).
+//        docs/zannalib/localization/formatting.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

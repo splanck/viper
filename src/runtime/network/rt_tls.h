@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 //   - Session record buffers, keys, and sequence state are mutable and unprotected;
 //     callers must serialize operations on one session.
 //   - The public low-level API remains client-oriented; server-side TLS is consumed
-//     internally by `Viper.Network.HttpsServer` / `Viper.Network.WssServer`.
+//     internally by `Zanna.Network.HttpsServer` / `Zanna.Network.WssServer`.
 //
 // Ownership/Lifetime:
 //   - TLS connection objects are heap-allocated; caller must close and free.
@@ -116,42 +116,42 @@ const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session);
 int rt_tls_has_buffered_data(rt_tls_session_t *session);
 
 //=========================================================================
-// Viper API wrappers (Viper.Crypto.Tls)
+// Zanna API wrappers (Zanna.Crypto.Tls)
 //=========================================================================
 
 /// @brief Connect to host:port with TLS, default timeout.
-void *rt_viper_tls_connect(rt_string host, int64_t port);
+void *rt_zanna_tls_connect(rt_string host, int64_t port);
 
-/// @brief Connect to host:port with TLS and return a Viper.Result.
+/// @brief Connect to host:port with TLS and return a Zanna.Result.
 /// @details Returns `Ok(Tls)` on success and `Err(message)` for invalid
 ///          arguments, TCP setup failure, timeout, certificate verification
 ///          failure, or TLS handshake failure.
 /// @param host Hostname to connect to.
 /// @param port TCP port number.
-/// @return Opaque Viper.Result object containing a TLS handle or error string.
-void *rt_viper_tls_connect_result(rt_string host, int64_t port);
+/// @return Opaque Zanna.Result object containing a TLS handle or error string.
+void *rt_zanna_tls_connect_result(rt_string host, int64_t port);
 
 /// @brief Connect to host:port with TLS, custom timeout.
-void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
+void *rt_zanna_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
 
-/// @brief Connect to host:port with TLS and a custom timeout as a Viper.Result.
+/// @brief Connect to host:port with TLS and a custom timeout as a Zanna.Result.
 /// @details Returns `Ok(Tls)` on success and `Err(message)` for routine
 ///          connection or handshake failures.
 /// @param host Hostname to connect to.
 /// @param port TCP port number.
 /// @param timeout_ms Per-address/per-I/O timeout; nonpositive uses the runtime default.
-/// @return Opaque Viper.Result object containing a TLS handle or error string.
-void *rt_viper_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms);
+/// @return Opaque Zanna.Result object containing a TLS handle or error string.
+void *rt_zanna_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms);
 
 /// @brief Connect with explicit CA bundle, ALPN list, verification policy, and timeout.
-void *rt_viper_tls_connect_options(rt_string host,
+void *rt_zanna_tls_connect_options(rt_string host,
                                    int64_t port,
                                    rt_string ca_file,
                                    rt_string alpn,
                                    int8_t verify_cert,
                                    int64_t timeout_ms);
 
-/// @brief Connect with explicit TLS options and return a Viper.Result.
+/// @brief Connect with explicit TLS options and return a Zanna.Result.
 /// @details Returns `Ok(Tls)` on success and `Err(message)` for invalid
 ///          options, TCP setup failure, timeout, certificate verification
 ///          failure, or TLS handshake failure.
@@ -161,8 +161,8 @@ void *rt_viper_tls_connect_options(rt_string host,
 /// @param alpn Optional comma-separated ALPN preference list.
 /// @param verify_cert 1 to verify trust/name policy, 0 to skip those checks.
 /// @param timeout_ms Per-address/per-I/O timeout; nonpositive uses the runtime default.
-/// @return Opaque Viper.Result object containing a TLS handle or error string.
-void *rt_viper_tls_connect_options_result(rt_string host,
+/// @return Opaque Zanna.Result object containing a TLS handle or error string.
+void *rt_zanna_tls_connect_options_result(rt_string host,
                                           int64_t port,
                                           rt_string ca_file,
                                           rt_string alpn,
@@ -170,37 +170,37 @@ void *rt_viper_tls_connect_options_result(rt_string host,
                                           int64_t timeout_ms);
 
 /// @brief Get connected hostname.
-rt_string rt_viper_tls_host(void *obj);
+rt_string rt_zanna_tls_host(void *obj);
 
 /// @brief Get connected port.
-int64_t rt_viper_tls_port(void *obj);
+int64_t rt_zanna_tls_port(void *obj);
 
 /// @brief Get negotiated ALPN protocol, or empty string when none was selected.
-rt_string rt_viper_tls_negotiated_alpn(void *obj);
+rt_string rt_zanna_tls_negotiated_alpn(void *obj);
 
 /// @brief Check if connection is open.
-int8_t rt_viper_tls_is_open(void *obj);
+int8_t rt_zanna_tls_is_open(void *obj);
 
 /// @brief Send Bytes data over TLS.
-int64_t rt_viper_tls_send(void *obj, void *data);
+int64_t rt_zanna_tls_send(void *obj, void *data);
 
 /// @brief Send String data over TLS.
-int64_t rt_viper_tls_send_str(void *obj, rt_string text);
+int64_t rt_zanna_tls_send_str(void *obj, rt_string text);
 
 /// @brief Receive up to max_bytes as Bytes.
-void *rt_viper_tls_recv(void *obj, int64_t max_bytes);
+void *rt_zanna_tls_recv(void *obj, int64_t max_bytes);
 
 /// @brief Receive up to max_bytes as String.
-rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes);
+rt_string rt_zanna_tls_recv_str(void *obj, int64_t max_bytes);
 
 /// @brief Read a line (up to \n) from the TLS connection.
-rt_string rt_viper_tls_recv_line(void *obj);
+rt_string rt_zanna_tls_recv_line(void *obj);
 
 /// @brief Close the TLS connection.
-void rt_viper_tls_close(void *obj);
+void rt_zanna_tls_close(void *obj);
 
 /// @brief Get last error message.
-rt_string rt_viper_tls_error(void *obj);
+rt_string rt_zanna_tls_error(void *obj);
 
 //=========================================================================
 // Internal functions exposed for unit testing (CS-1/CS-2/CS-3)

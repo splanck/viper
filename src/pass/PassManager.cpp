@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,11 +22,11 @@
 ///          instrumentation hooks, and execute ordered pipelines while
 ///          propagating success/failure information back to callers.
 
-#include "viper/pass/PassManager.hpp"
+#include "zanna/pass/PassManager.hpp"
 
 #include <utility>
 
-namespace viper::pass {
+namespace zanna::pass {
 
 /// @brief Register a pass implementation under a unique identifier.
 /// @details Pass callbacks are stored by value so they remain valid for the
@@ -93,4 +93,4 @@ bool PassManager::runPipeline(const Pipeline &pipeline) const {
     return true;
 }
 
-} // namespace viper::pass
+} // namespace zanna::pass

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 /// @brief Implements the ANSI renderer that translates screen buffers into
 ///        terminal output.
 /// @details The renderer batches diff spans produced by
-///          @ref viper::tui::render::ScreenBuffer, emits the minimal cursor and
+///          @ref zanna::tui::render::ScreenBuffer, emits the minimal cursor and
 ///          style changes, and streams UTF-8 glyphs directly to the terminal.
 ///          Helpers in this file encapsulate colour quantisation for palette
 ///          mode and state caching logic for escape sequences.
@@ -31,13 +31,13 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::render {
+namespace zanna::tui::render {
 
 /// @brief Construct a renderer that writes escape sequences to a terminal.
 /// @param tio Terminal I/O surface used for writing and flushing bytes.
 /// @param truecolor Whether to emit 24-bit colour (true) or fall back to the
 ///        256-colour cube approximation.
-Renderer::Renderer(::viper::tui::term::TermIO &tio, bool truecolor)
+Renderer::Renderer(::zanna::tui::term::TermIO &tio, bool truecolor)
     : tio_(tio), truecolor_(truecolor) {}
 
 namespace {
@@ -157,4 +157,4 @@ void Renderer::draw(const ScreenBuffer &sb) {
     tio_.flush();
 }
 
-} // namespace viper::tui::render
+} // namespace zanna::tui::render

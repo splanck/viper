@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64::lowering {
+namespace zanna::codegen::x64::lowering {
 namespace {
 
 /// @brief Predicate: does @p kind live in a GPR on x86-64?
@@ -536,4 +536,4 @@ void emitAddrOf(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, src}));
 }
 
-} // namespace viper::codegen::x64::lowering
+} // namespace zanna::codegen::x64::lowering

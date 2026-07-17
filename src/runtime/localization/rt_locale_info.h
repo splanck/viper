@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_locale_info.h
-// Purpose: Static utility surface for Viper.Localization.LocaleInfo — queries
+// Purpose: Static utility surface for Zanna.Localization.LocaleInfo — queries
 //          about a Locale's display name, text direction, first day of week,
 //          measurement system, and default currency. All queries read from
 //          the Locale's bound rt_locale_data_t; NULL locales and locales

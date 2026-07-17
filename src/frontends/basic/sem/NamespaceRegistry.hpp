@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -99,16 +99,16 @@ class NamespaceRegistry {
     [[nodiscard]] const NamespaceInfo *info(const std::string &full) const;
 
     /// @brief Seed known namespaces from runtime built-in descriptors.
-    /// @details For each runtime descriptor with a dotted name (e.g., "Viper.Terminal.PrintI64"),
-    ///          insert all namespace prefixes into the registry: "Viper", "Viper.Console".
+    /// @details For each runtime descriptor with a dotted name (e.g., "Zanna.Terminal.PrintI64"),
+    ///          insert all namespace prefixes into the registry: "Zanna", "Zanna.Console".
     ///          Names are handled case-insensitively; canonical casing from descriptors is
     ///          preserved.
     /// @param descs Runtime descriptor list (typically il::runtime::runtimeRegistry()).
     void seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs);
 
     /// @brief Seed namespaces and dotted prefixes from runtime class catalog.
-    /// @details For each class qualified name (e.g., "Viper.String"), registers
-    ///          all dotted prefixes as namespaces: "Viper", "Viper.String".
+    /// @details For each class qualified name (e.g., "Zanna.String"), registers
+    ///          all dotted prefixes as namespaces: "Zanna", "Zanna.String".
     ///          Idempotent; preserves first-seen casing.
     /// @param classes Runtime class catalog (runtimeClassCatalog()).
     void seedRuntimeClassNamespaces(const std::vector<il::runtime::RuntimeClass> &classes);

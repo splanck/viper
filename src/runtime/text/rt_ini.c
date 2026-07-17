@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_ini.c
 // Purpose: Implements INI/config file parsing and formatting for the
-//          Viper.Text.Ini class. Supports [sections], key=value pairs,
+//          Zanna.Text.Ini class. Supports [sections], key=value pairs,
 //          and line comments starting with ';' or '#'.
 //
 // Key invariants:

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 
 #include <stdexcept>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 void InstallerStubGenA64::emit32(uint32_t word) {
     code_.push_back(static_cast<uint8_t>(word & 0xFF));
@@ -300,4 +300,4 @@ std::vector<uint8_t> InstallerStubGenA64::finishText(uint32_t textRVA,
     return result;
 }
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

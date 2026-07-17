@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <ostream>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Insert branch trampolines for out-of-range AArch64 B/BL instructions.
 /// Runs between mergeSections() and applyRelocations() in the link pipeline.
@@ -49,4 +49,4 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                              LinkPlatform platform,
                              std::ostream &err);
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

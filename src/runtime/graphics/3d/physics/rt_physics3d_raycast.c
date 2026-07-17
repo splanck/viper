@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 static void ray_fill_hit(rt_body3d *body,
                          double distance,
@@ -1313,4 +1313,4 @@ int32_t rt_world3d_raycast_all_bodies_raw(void *obj,
 
 #else
 typedef int rt_physics3d_query_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

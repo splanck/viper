@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #define RT_NODE_ANIM_PATH_TRANSLATION 0
 #define RT_NODE_ANIM_PATH_ROTATION 1
@@ -489,4 +489,4 @@ void *scene3d_effective_animator(rt_scene_node3d *node);
 }
 #endif
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

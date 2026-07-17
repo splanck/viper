@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -49,11 +49,11 @@ static void buildAndRunMalformedBranch() {
 }
 
 int main(int argc, char *argv[]) {
-    viper::tests::registerChildFunction(buildAndRunMalformedBranch);
-    if (viper::tests::dispatchChild(argc, argv))
+    zanna::tests::registerChildFunction(buildAndRunMalformedBranch);
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
-    auto result = viper::tests::runIsolated(buildAndRunMalformedBranch);
+    auto result = zanna::tests::runIsolated(buildAndRunMalformedBranch);
     assert(result.trapped());
     const std::string &diag = result.stderrText;
 

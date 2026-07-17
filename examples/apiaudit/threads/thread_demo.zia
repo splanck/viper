@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Threads.Thread
+// API Audit: Zanna.Threads.Thread
 // =============================================================================
 // Tests: Sleep, Yield, Id, IsAlive
 // Note: Thread.Start requires function pointers (ptr,ptr), so we test
@@ -7,12 +7,12 @@
 // =============================================================================
 
 module ThreadDemo;
-bind Viper.Threads.Thread as Thread;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Threads.Thread as Thread;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("=== API Audit: Viper.Threads.Thread ===");
+    Say("=== API Audit: Zanna.Threads.Thread ===");
 
     // --- Sleep ---
     Say("--- Sleep ---");

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/frontends/basic/LowerEmit.cpp
@@ -14,7 +14,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <cassert>
 #include <cstdlib>

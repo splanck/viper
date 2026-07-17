@@ -4,16 +4,16 @@ audience: contributors
 last-verified: 2026-07-04
 ---
 
-# ADR 0016: PTY Runtime Surface (Viper.System.Pty) and Integrated Terminal
+# ADR 0016: PTY Runtime Surface (Zanna.System.Pty) and Integrated Terminal
 
 ## Status
 
-Accepted (runtime implemented; the ViperIDE terminal UI that consumes it follows
+Accepted (runtime implemented; the ZannaIDE terminal UI that consumes it follows
 in the same Phase 5D work).
 
 ## Context
 
-ViperIDE needs an integrated terminal. The existing `Viper.System.Process` is a
+ZannaIDE needs an integrated terminal. The existing `Zanna.System.Process` is a
 pipe-based, dual-stream (`ReadStdout`/`ReadStderr`) child-process API with no
 controlling terminal and no window-size concept — so programs run under it see a
 non-TTY, disable interactive behavior, and cannot be resized. Exposing a real
@@ -27,9 +27,9 @@ PTY must be built directly on OS primitives.
 
 Add a new runtime class pair, distinct from `Process`:
 
-- `Viper.System.Pty` (factory): `Open(program, args, cwd, env, cols, rows) ->
+- `Zanna.System.Pty` (factory): `Open(program, args, cwd, env, cols, rows) ->
   PtySession`, `IsSupported() -> i1`, `LastError() -> str`.
-- `Viper.System.Pty.PtySession` (handle): `IsValid`, `Poll`, `IsRunning`, `Read`
+- `Zanna.System.Pty.PtySession` (handle): `IsValid`, `Poll`, `IsRunning`, `Read`
   (one **merged** ANSI-bearing stream), `ReadResult` (`text`/`truncated`),
   `Write`, `Resize(cols, rows)`, `ExitCode`, `Kill`, `Wait`, `Destroy`.
 
@@ -61,7 +61,7 @@ failures without changing the `PtySession` handle shape.
   drains. The three ConPTY symbols are resolved **dynamically** so the binary
   still loads on pre-1809 Windows; `IsSupported()` reflects availability.
 
-**Rendering** reuses the existing `Viper.GUI.OutputPane`, which is already
+**Rendering** reuses the existing `Zanna.GUI.OutputPane`, which is already
 ANSI-SGR-aware and color-stateful across appends; only carriage-return column
 reset and `ESC[K`/`ESC[2K` erase-line handling are added to the widget. No new
 GUI widget or class.
@@ -88,7 +88,7 @@ keeps the headless terminal probe green on every platform meanwhile.
   `rt_pty.{c,h}` files).
 - `check_runtime_completeness.sh` passes (every RT_METHOD has an RT_FUNC).
 - `test_runtime_class_qualified_surface` passes (unique leaf names).
-- Full Viper file headers on `rt_pty.{c,h}`; raw platform macros confined to the
+- Full Zanna file headers on `rt_pty.{c,h}`; raw platform macros confined to the
   `rt_pty.c` adapter.
 
 ## Alternatives Considered

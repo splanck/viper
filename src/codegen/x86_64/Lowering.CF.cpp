@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 #include <limits>
 #include <string>
 
-namespace viper::codegen::x64::lowering {
+namespace zanna::codegen::x64::lowering {
 namespace {
 
 constexpr int64_t kErrBounds = 7;
@@ -376,7 +376,7 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
     constexpr std::size_t kMinJumpTableCases = 6;
     constexpr int64_t kMaxJumpTableSpan = 4096;
     constexpr double kMinJumpTableDensity = 0.5;
-    if (cases.size() >= kMinJumpTableCases && std::getenv("VIPER_NO_JUMP_TABLES") == nullptr) {
+    if (cases.size() >= kMinJumpTableCases && std::getenv("ZANNA_NO_JUMP_TABLES") == nullptr) {
         const int64_t lo = cases.front().value;
         const int64_t hi = cases.back().value;
         const int64_t span = hi - lo + 1;
@@ -425,4 +425,4 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
     emitSwitchTree(cases, 0, cases.size(), scrutinee, defLabel, builder);
 }
 
-} // namespace viper::codegen::x64::lowering
+} // namespace zanna::codegen::x64::lowering

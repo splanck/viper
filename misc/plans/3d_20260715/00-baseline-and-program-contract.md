@@ -20,7 +20,7 @@ The 2026-07-15 review covered:
   backends, scene, physics, render, terrain/water/vegetation, audio, asset,
   persistence, effect, controller, combat, and test ownership.
 - `docs/internals/graphics3d-architecture.md`,
-  `docs/viperlib/graphics/game3d.md`, and related Game, IO, Graphics3D, and UI
+  `docs/zannalib/graphics/game3d.md`, and related Game, IO, Graphics3D, and UI
   documentation.
 - Existing ADRs and historical 3D plans from repository history. Historical
   plans were used only to understand intent; current source is authoritative
@@ -43,7 +43,7 @@ thresholds.
 
 The following checks passed during the review:
 
-- `viper check` for all three game projects.
+- `zanna check` for all three game projects.
 - Ashfall's 14 game probes.
 - Ridgebound's four primary release gates (`topology_probe`, `traversal_probe`,
   `state_probe`, `smoke_probe`) on software and Metal.
@@ -56,7 +56,7 @@ source file, test target, script, and repro cited by this package still exists
 under its cited path, that the public inventory numbers above are unchanged,
 and that both confirmed defects below still reproduce with the documented
 output. The documentation tree was reorganized on 2026-07-16; the
-`docs/viperlib/` paths cited by these plans were not moved, while internals
+`docs/zannalib/` paths cited by these plans were not moved, while internals
 material now lives under `docs/internals/` (including `docs/internals/codemap/`).
 
 Do not assume this green state still exists on a future branch. Before starting
@@ -69,7 +69,7 @@ output; do not hide it by weakening a gate.
 
 ### Final-overlay alpha
 
-`examples/games/3dbowling/known_viper_issues/overlay_alpha_repro.zia`
+`examples/games/3dbowling/known_zanna_issues/overlay_alpha_repro.zia`
 draws a 50% black rectangle and a 50% black rounded rectangle over a known
 `192,128,64` background. Both Metal and software produced `0,0,0` for both
 shapes (`alpha50` and `rounded-alpha50` samples); the expected blended result
@@ -82,7 +82,7 @@ reproduced identically on 2026-07-16.
 
 ### Metal same-size AA-text alias
 
-`examples/games/3dbowling/known_viper_issues/overlay_aa_text_repro.zia`
+`examples/games/3dbowling/known_zanna_issues/overlay_aa_text_repro.zia`
 queues same-size `DrawText2DAA` textures with distinct colors. On Metal the
 first texture can display the later texture's content; software renders the
 two correctly (reconfirmed 2026-07-16: software shows the expected green top
@@ -166,9 +166,9 @@ surfaces:
 | Combat | `Hitbox3D`, `Health3D`, hit/damage events, hit stop, ragdoll |
 | Effects/audio | `EffectRegistry3D`, `Effects3D` presets, `Sound3D`, ambient/reverb/footstep surfaces |
 | Environment | `Environment3D`, `EnvHandle`, terrain/water/vegetation/sky/time-of-day low-level objects, streamed terrain |
-| Assets | `Viper.IO.Assets`, `Viper.Assets.Resolver`, `Assets3D`, `AssetHandle3D`, `SceneTemplate`, model cache |
-| Persistence | `Viper.IO.SaveData`, `Entity3D.SetPersistent`, `World3D.SaveState/LoadState`, streamed-world persistence |
-| UI | `Viper.Game.UI.Hud*` widgets, Canvas3D GameUI adapter, general `Viper.GUI` |
+| Assets | `Zanna.IO.Assets`, `Zanna.Assets.Resolver`, `Assets3D`, `AssetHandle3D`, `SceneTemplate`, model cache |
+| Persistence | `Zanna.IO.SaveData`, `Entity3D.SetPersistent`, `World3D.SaveState/LoadState`, streamed-world persistence |
+| UI | `Zanna.Game.UI.Hud*` widgets, Canvas3D GameUI adapter, general `Zanna.GUI` |
 | Common game utilities | StateMachine, Timer, Tween, SmoothValue, ObjectPool, ScreenFX |
 | Tests | synthetic Canvas3D input, `RunFramesOnly`, final-frame capture, Game3D fixtures, software/GPU probes |
 
@@ -180,13 +180,13 @@ not viable.
 
 ### Namespace ownership
 
-- `Viper.Graphics3D` remains the low-level rendering, scene, physics,
+- `Zanna.Graphics3D` remains the low-level rendering, scene, physics,
   navigation, animation, asset-decoding, and backend layer.
-- `Viper.Game3D` owns ergonomic world/entity/application composition.
-- Generic filesystem and packaged-asset policy belongs to `Viper.IO` or
-  `Viper.Assets`; Game3D may provide typed convenience without implementing a
+- `Zanna.Game3D` owns ergonomic world/entity/application composition.
+- Generic filesystem and packaged-asset policy belongs to `Zanna.IO` or
+  `Zanna.Assets`; Game3D may provide typed convenience without implementing a
   second resolver.
-- Generic UI widgets stay in `Viper.Game.UI` or `Viper.GUI`; Game3D supplies the
+- Generic UI widgets stay in `Zanna.Game.UI` or `Zanna.GUI`; Game3D supplies the
   canvas/scene integration only.
 - Example-library classes under `examples/games/lib` are valid incubation
   points. They are not stable runtime ABI until promoted through an ADR.
@@ -261,7 +261,7 @@ For a new public runtime class, the implementation checklist includes:
 2. Append a permanent class ID in the existing 3D ID registry
    (`src/runtime/graphics/3d/rt_graphics3d_ids.h`); never reuse or renumber.
 3. Add the C struct and lifecycle rules to the correct internal owner.
-4. Add public declarations with complete Viper source headers.
+4. Add public declarations with complete Zanna source headers.
 5. Add real runtime implementation.
 6. Add disabled-graphics behavior with matching symbols and documented
    fallback/trap semantics.
@@ -283,7 +283,7 @@ Before editing:
 - Read this plan, the selected plan, dependencies, and appendices.
 - Run `git status --short`; identify user-owned changes and overlapping files.
 - Re-run the selected plan's fail-before probe.
-- Inspect the live runtime API with `build/src/tools/viper/viper --dump-runtime-api`.
+- Inspect the live runtime API with `build/src/tools/zanna/zanna --dump-runtime-api`.
 - Search current definitions and ADRs for naming/behavior conflicts.
 - Record baseline test commands, backend, platform, dimensions, and hashes or
   sampled values where relevant.

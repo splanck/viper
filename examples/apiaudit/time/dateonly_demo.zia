@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Time.DateOnly
+// API Audit: Zanna.Time.DateOnly
 // =============================================================================
 // Tests: Create, Today, Parse, FromDays, Year, Month, Day, DayOfWeek,
 //        DayOfYear, ToDays, AddDays, AddMonths, AddYears, DiffDays,
@@ -8,11 +8,11 @@
 // =============================================================================
 
 module DateOnlyDemo;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.Time.DateOnly as DO;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.DateOnly as DO;
 func start() {
-    Say("=== API Audit: Viper.Time.DateOnly ===");
+    Say("=== API Audit: Zanna.Time.DateOnly ===");
 
     // --- Create ---
     Say("--- Create ---");

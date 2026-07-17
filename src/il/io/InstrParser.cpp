@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 #include "il/internal/io/OperandParser.hpp"
 #include "il/internal/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include <optional>
 #include <sstream>
@@ -309,9 +309,9 @@ Expected<void> parseWithMetadata(Opcode opcode,
                     oss << "missing " << (spec.role ? spec.role : "type") << " for " << info.name;
                     return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
-                viper::parse::Cursor typeCursor{token, viper::parse::SourcePos{st.lineNo, 0}};
-                viper::il::io::Context typeCtx{st, in, &in};
-                auto parsedType = viper::il::io::parseTypeOperand(typeCursor, typeCtx);
+                zanna::parse::Cursor typeCursor{token, zanna::parse::SourcePos{st.lineNo, 0}};
+                zanna::il::io::Context typeCtx{st, in, &in};
+                auto parsedType = zanna::il::io::parseTypeOperand(typeCursor, typeCtx);
                 if (!parsedType.ok())
                     return Expected<void>{parsedType.status.error()};
                 previousParsedKind = spec.kind;
@@ -439,9 +439,9 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
                 return Expected<void>{
                     il::io::makeLineErrorDiag(in.loc, st.lineNo, "malformed result name")};
             }
-            viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
-            viper::il::io::Context annotCtx{st, in, &in};
-            auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
+            zanna::parse::Cursor annotCursor{tyTok, zanna::parse::SourcePos{st.lineNo, 0}};
+            zanna::il::io::Context annotCtx{st, in, &in};
+            auto parsedType = zanna::il::io::parseTypeOperand(annotCursor, annotCtx);
             if (!parsedType.ok())
                 return Expected<void>{parsedType.status.error()};
             annotCursor.skipWs();

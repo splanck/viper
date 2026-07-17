@@ -1,12 +1,12 @@
 // ============================================================================
 // File: src/sim/rng.zia
-// Purpose: Thin wrapper around the runtime's static `Viper.Math.Random` API
+// Purpose: Thin wrapper around the runtime's static `Zanna.Math.Random` API
 //          to give the single-game engine one obvious choke-point for all
 //          random draws. Wrapping it (instead of inlining `Random.NextInt`
 //          everywhere) means three things:
 //
 //          1. The whole single-game engine seeds from one place (`rng.seed`),
-//             so a `viper run` of the demo is byte-for-byte deterministic
+//             so a `zanna run` of the demo is byte-for-byte deterministic
 //             across runs.
 //          2. Defensive guards on edge cases (NextInt(0), Range(min == max),
 //             out-of-band percent values) live in one place rather than
@@ -20,7 +20,7 @@
 // ============================================================================
 module rng;
 
-bind Viper.Math.Random as Random;
+bind Zanna.Math.Random as Random;
 
 // Seed the global RNG. Called exactly once per game by game_engine.simulate
 // from state.rngSeed.

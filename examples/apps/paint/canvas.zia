@@ -20,11 +20,11 @@
 //     corresponding Pixels operation.
 // ============================================================================
 
-// canvas.viper - Drawing canvas for Viper Paint
+// canvas.zanna - Drawing canvas for Zanna Paint
 module canvas;
 
-bind Viper.Graphics;
-bind Str = Viper.String;
+bind Zanna.Graphics;
+bind Str = Zanna.String;
 
 bind "./config";
 bind "./layers";
@@ -284,7 +284,7 @@ class DrawingCanvas {
         return getPixels().SavePng(filename);
     }
 
-    // Load any image format supported by Viper.Graphics.Pixels.Load.
+    // Load any image format supported by Zanna.Graphics.Pixels.Load.
     expose func load(filename: String) -> Integer {
         var loaded = Pixels.Load(filename);
         if loaded != null {

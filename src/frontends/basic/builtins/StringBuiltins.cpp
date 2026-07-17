@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include "frontends/basic/builtins/StringBuiltins.hpp"
 
 #include "frontends/basic/TypeRules.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>

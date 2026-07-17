@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes {
+namespace zanna::codegen::aarch64::passes {
 
 /// @brief Mutable state threaded through the AArch64 code-generation passes.
 ///
@@ -57,8 +57,8 @@ struct AArch64Module {
 };
 
 // Backward-compatible aliases — consumers use these names unchanged.
-using Diagnostics = viper::codegen::common::Diagnostics;
-using Pass = viper::codegen::common::Pass<AArch64Module>;
-using PassManager = viper::codegen::common::PassManager<AArch64Module>;
+using Diagnostics = zanna::codegen::common::Diagnostics;
+using Pass = zanna::codegen::common::Pass<AArch64Module>;
+using PassManager = zanna::codegen::common::PassManager<AArch64Module>;
 
-} // namespace viper::codegen::aarch64::passes
+} // namespace zanna::codegen::aarch64::passes

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -225,7 +225,7 @@ double rt_fix_trunc(double x) {
 
 /// @brief Convert a double to a 64-bit signed integer by truncating toward zero.
 /// @details Provides a direct conversion from floating-point to integer,
-///          suitable for ViperLang's Number to Integer conversion. NaN becomes
+///          suitable for ZannaLang's Number to Integer conversion. NaN becomes
 ///          0; infinities and finite out-of-range values clamp to the nearest
 ///          signed 64-bit endpoint.
 /// @param x Input double.
@@ -342,7 +342,7 @@ static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
 /// @brief Recognize canonical non-finite floating literals.
 /// @details Accepts `NaN`, `Inf`, `+Inf`, and `-Inf` case-insensitively so
 ///          Convert.ToString_Double output can be parsed back through
-///          Convert.ToDouble and Viper.Core.Parse.TryDouble.
+///          Convert.ToDouble and Zanna.Core.Parse.TryDouble.
 static int rt_scan_nonfinite_float(const unsigned char *cursor,
                                    double *out_value,
                                    const unsigned char **out_end) {

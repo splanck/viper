@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <optional>
 #include <string_view>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Test whether a 64-bit signed value fits in a sign-extended imm32 encoding.
 [[nodiscard]] inline bool fitsImm32(int64_t value) noexcept {
@@ -183,4 +183,4 @@ class EmitCommon {
     MIRBuilder *builder_{nullptr};
 };
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

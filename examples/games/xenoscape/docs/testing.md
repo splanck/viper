@@ -1,33 +1,33 @@
 # Xenoscape validation
 
-Xenoscape has project-local probes that can run through an already-built Viper
-binary. They do not require rebuilding Viper. From the repository root:
+Xenoscape has project-local probes that can run through an already-built Zanna
+binary. They do not require rebuilding Zanna. From the repository root:
 
 ```sh
-./build/src/tools/viper/viper check examples/games/xenoscape \
+./build/src/tools/zanna/zanna check examples/games/xenoscape \
   --diagnostic-format=json
-./build/src/tools/viper/viper run examples/games/xenoscape/playthrough_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/level_validation_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/ui_flow_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/progression_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/mechanics_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/world_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/meta_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/settings_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/cadence_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/campaign_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/performance_probe.zia
-./build/src/tools/viper/viper run examples/games/xenoscape/soak_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/playthrough_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/level_validation_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/ui_flow_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/progression_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/mechanics_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/world_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/meta_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/settings_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/cadence_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/campaign_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/performance_probe.zia
+./build/src/tools/zanna/zanna run examples/games/xenoscape/soak_probe.zia
 ```
 
 The display and package probes resolve assets relative to the game directory:
 
 ```sh
 cd examples/games/xenoscape
-../../../build/src/tools/viper/viper run smoke_probe.zia
-../../../build/src/tools/viper/viper run render_probe.zia
-../../../build/src/tools/viper/viper run package_probe.zia
-../../../build/src/tools/viper/viper package . --target tarball --dry-run --json
+../../../build/src/tools/zanna/zanna run smoke_probe.zia
+../../../build/src/tools/zanna/zanna run render_probe.zia
+../../../build/src/tools/zanna/zanna run package_probe.zia
+../../../build/src/tools/zanna/zanna package . --target tarball --dry-run --json
 ```
 
 Every gate prints `RESULT: ok` on success.
@@ -54,7 +54,7 @@ Every gate prints `RESULT: ok` on success.
 | `xenoscape_package_dry_run` | Portable archive inventory and metadata plan |
 
 The tests are registered in `src/tests/CMakeLists.txt`. The render lanes use the
-`viper_display` resource lock; pure probes are suitable for VM/native parity
+`zanna_display` resource lock; pure probes are suitable for VM/native parity
 lanes. The performance tests use generous wall-clock timeouts and assert fixed
 pool bounds and determinism instead of brittle platform-specific milliseconds.
 
@@ -64,9 +64,9 @@ Build a host archive, extract it outside the source tree, and run the embedded
 smoke mode:
 
 ```sh
-../../../build/src/tools/viper/viper package . --target tarball \
+../../../build/src/tools/zanna/zanna package . --target tarball \
   --output /tmp/xenoscape-0.3.0-preview.tar.gz
-./xenoscape --viper-package-smoke
+./xenoscape --zanna-package-smoke
 ```
 
 The smoke executable verifies packaged runtime tuning and audio resolution and
@@ -82,5 +82,5 @@ substitute for that matrix.
 
 On 2026-07-10, the 0.3.0 development preview passed the project type-check,
 every direct probe above, tarball creation on macOS arm64, archive inventory,
-and extracted package smoke. Per request, Viper itself was not rebuilt and the
+and extracted package smoke. Per request, Zanna itself was not rebuilt and the
 repository CTest suite was not run during this remediation.

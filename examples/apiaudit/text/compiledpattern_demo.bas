@@ -1,20 +1,20 @@
 ' =============================================================================
-' API Audit: Viper.Text.CompiledPattern (BASIC)
+' API Audit: Zanna.Text.CompiledPattern (BASIC)
 ' =============================================================================
 ' Tests: New, Pattern, IsMatch, Find, FindOption, FindFrom, FindFromOption, FindPos, FindPosOption, FindAll,
 '        Captures, CapturesFrom, Replace, ReplaceFirst, Split, SplitN
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Text.CompiledPattern ==="
+PRINT "=== API Audit: Zanna.Text.CompiledPattern ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM pat AS OBJECT = Viper.Text.CompiledPattern.New("[0-9]+")
+DIM pat AS OBJECT = Zanna.Text.CompiledPattern.New("[0-9]+")
 PRINT "Created CompiledPattern for '[0-9]+'"
 
 ' --- Pattern ---
 PRINT "--- Pattern ---"
-PRINT Viper.Text.CompiledPattern.get_Pattern(pat)
+PRINT Zanna.Text.CompiledPattern.get_Pattern(pat)
 
 ' --- IsMatch ---
 PRINT "--- IsMatch ---"
@@ -58,7 +58,7 @@ PRINT "Match 2: "; m2
 
 ' --- Captures ---
 PRINT "--- Captures ---"
-DIM capPat AS OBJECT = Viper.Text.CompiledPattern.New("(\w+)@(\w+)")
+DIM capPat AS OBJECT = Zanna.Text.CompiledPattern.New("(\w+)@(\w+)")
 DIM caps AS OBJECT = capPat.Captures("user@host")
 PRINT "Capture count: "; caps.Count
 DIM c0 AS OBJECT = caps.Get(0)
@@ -85,7 +85,7 @@ PRINT pat.ReplaceFirst("abc123def456", "NUM")
 
 ' --- Split ---
 PRINT "--- Split ---"
-DIM commaPat AS OBJECT = Viper.Text.CompiledPattern.New("[,;]+")
+DIM commaPat AS OBJECT = Zanna.Text.CompiledPattern.New("[,;]+")
 DIM parts AS OBJECT = commaPat.Split("one,two;;three,four")
 PRINT "Part count: "; parts.Count
 DIM p0 AS OBJECT = parts.Get(0)
@@ -108,8 +108,8 @@ PRINT "Part 1: "; sn1
 
 ' --- Second pattern ---
 PRINT "--- Second pattern ---"
-DIM wordPat AS OBJECT = Viper.Text.CompiledPattern.New("[A-Z][a-z]+")
-PRINT Viper.Text.CompiledPattern.get_Pattern(wordPat)
+DIM wordPat AS OBJECT = Zanna.Text.CompiledPattern.New("[A-Z][a-z]+")
+PRINT Zanna.Text.CompiledPattern.get_Pattern(wordPat)
 PRINT "Find: "; wordPat.Find("hello World foo Bar")
 PRINT "FindOption: "; wordPat.FindOption("hello World foo Bar").UnwrapStr()
 PRINT "IsMatch 'hello': "; wordPat.IsMatch("hello")

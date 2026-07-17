@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 
 /// A single address-to-line mapping entry.
 struct AddressLineEntry {
@@ -64,4 +64,4 @@ class DebugLineTable {
     std::vector<AddressLineEntry> entries_; ///< Address→line mappings.
 };
 
-} // namespace viper::codegen
+} // namespace zanna::codegen

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 
 namespace il::frontends::basic {
 
-/// @brief Allow USING Viper.* imports and references to runtime namespaces.
+/// @brief Allow USING Zanna.* imports and references to runtime namespaces.
 static std::atomic<bool> g_enableRuntimeNamespaces{true};
 /// @brief Allow lowering of selected runtime type constructors.
 static std::atomic<bool> g_enableRuntimeTypeBridging{true};

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 
 #include <variant>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Compute the (use, def) role pair for operand @p idx of @p instr.
 /// @details Each MIR opcode declares fixed roles for its operands. Two-operand
@@ -348,4 +348,4 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
     return true;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

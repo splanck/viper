@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@
 #include "MachineIR.hpp"
 #include "TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Results from register allocation.
 struct AllocationResult {
@@ -48,4 +48,4 @@ struct AllocationResult {
 /// @return Allocation statistics.
 [[nodiscard]] AllocationResult allocate(MFunction &fn, const TargetInfo &ti);
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

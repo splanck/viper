@@ -4,20 +4,20 @@ audience: contributors
 last-verified: 2026-06-30
 ---
 
-# ADR 0022: GUI Layout Conveniences (panel centering + Viper.GUI.Grid)
+# ADR 0022: GUI Layout Conveniences (panel centering + Zanna.GUI.Grid)
 
 ## Status
 
-Accepted (runtime implemented; ViperIDE's modal overlays and tool/data panels are
+Accepted (runtime implemented; ZannaIDE's modal overlays and tool/data panels are
 the intended first consumers). Driven by the GUI runtime-additions review,
-recommendation **R5** (`misc/plans/viperide/gui-runtime-additions.md`).
+recommendation **R5** (`misc/plans/zannaide/gui-runtime-additions.md`).
 
 ## Context
 
 Two common layout tasks have no runtime support, so apps hand-roll them:
 
-1. **Centering a floating panel/modal.** `Viper.GUI.FloatingPanel` exposes
-   `SetPosition`/`SetSize` but no "center me in the window". ViperIDE's
+1. **Centering a floating panel/modal.** `Zanna.GUI.FloatingPanel` exposes
+   `SetPosition`/`SetSize` but no "center me in the window". ZannaIDE's
    `ui/ide_overlays.zia:690-715` (`layoutAboutPanel`) re-derives the window size,
    computes `(rootW - panelW)/2`, and clamps to the screen by hand.
 2. **Tabular data with aligned columns.** There is no grid/table widget, so the
@@ -30,14 +30,14 @@ Adding runtime methods/classes is a runtime C-ABI surface change, requiring an A
 
 ## Decision
 
-### Part 1 — `Viper.GUI.FloatingPanel.CenterInParent()`
+### Part 1 — `Zanna.GUI.FloatingPanel.CenterInParent()`
 
 Add `CenterInParent()` to `FloatingPanel`: positions the panel centered within its
 connected root's arranged bounds (the same coordinate space `SetPosition` uses),
 clamped to the top-left when the panel is larger than the root. Replaces the
 hand-rolled center-and-clamp.
 
-### Part 2 — `Viper.GUI.Grid`
+### Part 2 — `Zanna.GUI.Grid`
 
 Add a tabular **data grid** widget whose columns **auto-size to their widest cell**:
 
@@ -60,8 +60,8 @@ auto-sized columns for property and data panels, replacing hardcoded widths.
 
 ### Naming / implementation
 
-- The user-facing class is `Viper.GUI.Grid` (the leaf `Grid` is globally unique;
-  `Table` already exists as `Viper.Game.UI.Table`).
+- The user-facing class is `Zanna.GUI.Grid` (the leaf `Grid` is globally unique;
+  `Table` already exists as `Zanna.Game.UI.Table`).
 - The C internals are named `vg_datagrid` / `rt_datagrid` to avoid colliding with
   the pre-existing `vg_grid` **layout container** in `vg_layout.h` (a CSS-grid-style
   layout, a different concept).
@@ -76,7 +76,7 @@ auto-sized columns for property and data panels, replacing hardcoded widths.
 - **Adoption:** `layoutAboutPanel`'s center-and-clamp collapses to
   `panel.CenterInParent()`; the tool panels' hardcoded column widths and string
   padding are replaced by a `Grid` that sizes columns to content. Both generalize to
-  any Viper GUI app's dialogs and data panels.
+  any Zanna GUI app's dialogs and data panels.
 - **Determinism / cross-platform:** pure layout bookkeeping over existing widgets
   and the existing font rasterizer; no new OS surface, no platform `#ifdef`.
 - **No behavior risk:** purely additive; existing FloatingPanel methods and widgets

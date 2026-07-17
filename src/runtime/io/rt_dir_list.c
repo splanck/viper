@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -138,9 +138,9 @@ void *rt_dir_list(rt_string path) {
     return result;
 }
 
-/// @brief List all entries in a directory as a Viper.Collections.Seq.
+/// @brief List all entries in a directory as a Zanna.Collections.Seq.
 ///
-/// Wrapper for rt_dir_list that returns entries as a Viper.Collections.Seq.
+/// Wrapper for rt_dir_list that returns entries as a Zanna.Collections.Seq.
 /// Preserves the same behavior: entry name formatting, enumeration order,
 /// and empty-on-error handling.
 ///
@@ -192,7 +192,7 @@ void *rt_dir_list_seq(rt_string path) {
 ///
 /// @param path Directory path to list.
 ///
-/// @return Viper.Collections.Seq containing entry names as strings.
+/// @return Zanna.Collections.Seq containing entry names as strings.
 ///
 /// @note O(n) time complexity where n is number of entries.
 /// @note Traps if directory doesn't exist or can't be opened.
@@ -204,17 +204,17 @@ void *rt_dir_list_seq(rt_string path) {
 void *rt_dir_entries_seq(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-        rt_dir_trap_domain("Viper.IO.Dir.Entries: invalid directory path");
+        rt_dir_trap_domain("Zanna.IO.Dir.Entries: invalid directory path");
 
 #ifdef _WIN32
     if (!rt_dir_win_exists_dir(cpath))
-        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Zanna.IO.Dir.Entries: directory not found");
 #else
     struct stat st;
     if (stat(cpath, &st) != 0)
-        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Zanna.IO.Dir.Entries: directory not found");
     if (!S_ISDIR(st.st_mode))
-        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Zanna.IO.Dir.Entries: directory not found");
 #endif
 
     void *result = rt_seq_new();
@@ -225,7 +225,7 @@ void *rt_dir_entries_seq(rt_string path) {
 #ifdef _WIN32
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
     if (!pattern) {
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
+        rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to open directory");
         return result;
     }
 
@@ -238,7 +238,7 @@ void *rt_dir_entries_seq(rt_string path) {
             return result;
         }
         free(pattern);
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
+        rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to open directory");
         return result;
     }
 
@@ -253,7 +253,7 @@ void *rt_dir_entries_seq(rt_string path) {
     if (GetLastError() != ERROR_NO_MORE_FILES) {
         FindClose(h);
         free(pattern);
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+        rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to read directory");
         return result;
     }
     FindClose(h);
@@ -262,7 +262,7 @@ void *rt_dir_entries_seq(rt_string path) {
     // Unix: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
+        rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to open directory");
 
     struct dirent *ent;
     for (;;) {
@@ -271,7 +271,7 @@ void *rt_dir_entries_seq(rt_string path) {
         if (!ent) {
             if (errno != 0) {
                 (void)closedir(dir);
-                rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+                rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to read directory");
             }
             break;
         }
@@ -283,7 +283,7 @@ void *rt_dir_entries_seq(rt_string path) {
     }
 
     if (closedir(dir) != 0)
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to close directory");
+        rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to close directory");
 #endif
 
     return result;
@@ -417,9 +417,9 @@ void *rt_dir_files(rt_string path) {
     return result;
 }
 
-/// @brief List only files in a directory as a Viper.Collections.Seq.
+/// @brief List only files in a directory as a Zanna.Collections.Seq.
 ///
-/// Wrapper for rt_dir_files that returns file names as a Viper.Collections.Seq.
+/// Wrapper for rt_dir_files that returns file names as a Zanna.Collections.Seq.
 /// Preserves the same filtering behavior (only regular files, no directories).
 ///
 /// **Usage example:**
@@ -569,10 +569,10 @@ void *rt_dir_dirs(rt_string path) {
     return result;
 }
 
-/// @brief List only subdirectories as a Viper.Collections.Seq.
+/// @brief List only subdirectories as a Zanna.Collections.Seq.
 ///
 /// Wrapper for rt_dir_dirs that returns subdirectory names as a
-/// Viper.Collections.Seq. Preserves the same filtering behavior.
+/// Zanna.Collections.Seq. Preserves the same filtering behavior.
 ///
 /// **Usage example:**
 /// ```

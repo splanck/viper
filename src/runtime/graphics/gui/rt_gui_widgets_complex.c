@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_widgets_complex.c
-// Purpose: Runtime bindings for composite ViperGUI widgets: TabBar (tab strip
+// Purpose: Runtime bindings for composite ZannaGUI widgets: TabBar (tab strip
 //   with optional close buttons), SplitPane (resizable two-panel divider),
 //   TreeView (hierarchical node list), ScrollView (scrollable container),
 //   FloatingPanel (overlay panel drawn above all content), and CodeEditor (full
@@ -36,7 +36,7 @@
 //     independently.
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/gui/include/vg.h (ZannaGUI C API),
 //        src/runtime/graphics/rt_gui_codeeditor.c (CodeEditor enhancements)
 //
 //===----------------------------------------------------------------------===//
@@ -47,7 +47,7 @@
 #include "rt_platform.h"
 #include <stdint.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Safe-cast a handle to a live TabBar widget, or NULL.
 static vg_tabbar_t *rt_tabbar_checked(void *handle) {
@@ -374,7 +374,7 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab) {
 }
 
 /// @brief Reclaim retired tab tombstones after invalidating their managed wrappers.
-/// @details Existing `Viper.GUI.Tab` values remain valid managed objects, but their targets are
+/// @details Existing `Zanna.GUI.Tab` values remain valid managed objects, but their targets are
 ///          cleared before the lower toolkit frees tombstone storage. Subsequent calls through a
 ///          pruned tab are inert, while wrappers for tabs still present in the bar remain usable.
 void rt_tabbar_prune_retired_tabs(void *tabbar) {
@@ -1648,7 +1648,7 @@ int64_t rt_spinner_get_revision(void *spinner) {
 }
 
 //=============================================================================
-// Grid (tabular data with auto-sized columns) — Viper.GUI.Grid
+// Grid (tabular data with auto-sized columns) — Zanna.GUI.Grid
 //=============================================================================
 
 static vg_datagrid_t *rt_datagrid_checked(void *handle) {
@@ -2143,7 +2143,7 @@ int64_t rt_datagrid_get_revision(void *grid) {
 }
 
 //=============================================================================
-// PopupList (caret-anchored filtered selection list) — Viper.GUI.PopupList
+// PopupList (caret-anchored filtered selection list) — Zanna.GUI.PopupList
 //=============================================================================
 
 static vg_popuplist_t *rt_popuplist_checked(void *handle) {
@@ -2308,7 +2308,7 @@ int8_t rt_popuplist_is_visible(void *list) {
 }
 
 //=============================================================================
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else /* !ZANNA_ENABLE_GRAPHICS */
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
@@ -3466,4 +3466,4 @@ int8_t rt_popuplist_is_visible(void *list) {
 }
 
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

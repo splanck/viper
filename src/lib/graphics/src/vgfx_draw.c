@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Drawing Primitives
+// ZannaGFX Drawing Primitives
 //
 // Implements classical raster graphics algorithms for drawing lines, circles,
 // and rectangles.  All primitives use integer-only arithmetic for deterministic,

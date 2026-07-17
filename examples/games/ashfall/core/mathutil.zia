@@ -3,8 +3,8 @@
 // =============================================================================
 module mathutil;
 
-bind Viper.Math;
-bind Viper.Core.Convert as Convert;
+bind Zanna.Math;
+bind Zanna.Core.Convert as Convert;
 
 func clampf(v: Float, lo: Float, hi: Float) -> Float {
     if v < lo { return lo; }

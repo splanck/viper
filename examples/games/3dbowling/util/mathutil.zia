@@ -10,7 +10,7 @@
 
 module mathutil;
 
-bind Viper.Math;
+bind Zanna.Math;
 
 /// @brief Clamp v to the [0, 1] range.
 func clamp01(v: Float) -> Float {

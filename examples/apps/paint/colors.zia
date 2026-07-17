@@ -21,11 +21,11 @@
 //     0..255 and packs them; Color.Lerp handles blending.
 // ============================================================================
 
-// colors.viper - Color management for Viper Paint
+// colors.zanna - Color management for Zanna Paint
 module colors;
 
-bind Viper.Graphics;
-bind Viper.Collections;
+bind Zanna.Graphics;
+bind Zanna.Collections;
 
 bind "./config";
 

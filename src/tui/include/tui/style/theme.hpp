@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Theme class and Role enum for Viper's TUI styling
+// This file declares the Theme class and Role enum for Zanna's TUI styling
 // system. The Theme maps semantic roles (Normal, Accent, Disabled, Selection)
 // to concrete render Styles, allowing widgets to query appropriate colors
 // without hard-coding color values.
@@ -26,7 +26,7 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::style {
+namespace zanna::tui::style {
 
 /// @brief Semantic roles used by widgets to look up theme-appropriate styles.
 /// @details Widgets query the theme using roles rather than hard-coded colors,
@@ -58,4 +58,4 @@ class Theme {
     render::Style selection_{};
 };
 
-} // namespace viper::tui::style
+} // namespace zanna::tui::style

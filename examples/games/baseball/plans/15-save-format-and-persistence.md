@@ -246,7 +246,7 @@ The deterministic guarantee is the hardest part of save/load. RNG state must be 
 - the current day / game counters needed to derive per-game seeds
 - the live state of any long-lived between-game RNG streams
 
-If the implementation uses `Viper.Math.Random.New(seed)` instances, each long-lived
+If the implementation uses `Zanna.Math.Random.New(seed)` instances, each long-lived
 stream should persist its own state explicitly. The key requirement is not "save one
 global RNG"; it is "restore every between-game stream to the exact same point."
 

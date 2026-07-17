@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/oop/rt_lazy.h
@@ -120,7 +120,7 @@ void *rt_lazy_map(void *obj, void *(*fn)(void *));
 void *rt_lazy_flat_map(void *obj, void *(*fn)(void *));
 
 /// @brief IL-compatible wrapper for @ref rt_lazy_new accepting an opaque supplier pointer.
-/// @details Backs `Viper.Functional.Lazy.New`, the public deferred-evaluation factory.
+/// @details Backs `Zanna.Functional.Lazy.New`, the public deferred-evaluation factory.
 void *rt_lazy_new_wrapper(void *supplier);
 
 /// @brief IL-compatible wrapper for @ref rt_lazy_map accepting an opaque callback pointer.

@@ -4,9 +4,9 @@ audience: public
 last-verified: 2026-04-09
 ---
 
-# Viper BASIC Namespaces — Reference
+# Zanna BASIC Namespaces — Reference
 
-This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For
+This document provides a complete reference for the namespace feature in Zanna BASIC (Track A implementation). For
 tutorial-style examples, see [the BASIC tutorial](../tutorials/basic-tutorial.md). For grammar details,
 see [basic-grammar.md](basic-grammar.md).
 
@@ -290,20 +290,20 @@ DIM h4 AS MyLib.HELPER
 
 ## Reserved Namespaces
 
-The `Viper` root namespace is **reserved** for future built-in libraries (Track B). User code cannot:
+The `Zanna` root namespace is **reserved** for future built-in libraries (Track B). User code cannot:
 
-- Declare namespaces under `Viper` (e.g., `NAMESPACE Viper.MyLib`)
-- Use `USING Viper` (the root itself)
+- Declare namespaces under `Zanna` (e.g., `NAMESPACE Zanna.MyLib`)
+- Use `USING Zanna` (the root itself)
 
-This ensures future compatibility with ViperLib.
+This ensures future compatibility with ZannaLib.
 
 ```basic
 REM ✗ WRONG: Reserved namespace
-NAMESPACE Viper.MyLib    REM Error: E_NS_009
+NAMESPACE Zanna.MyLib    REM Error: E_NS_009
 END NAMESPACE
 
 REM ✗ WRONG: Reserved root
-USING Viper              REM Error: E_NS_009
+USING Zanna              REM Error: E_NS_009
 ```
 
 ## Diagnostics Reference
@@ -320,7 +320,7 @@ The namespace system defines nine error codes covering all failure modes.
 | E_NS_006 | Structure | Nested USING not allowed          |
 | E_NS_007 | Reserved  | Global type shadowed by namespace |
 | E_NS_008 | Placement | USING inside namespace block      |
-| E_NS_009 | Reserved  | Viper namespace reserved          |
+| E_NS_009 | Reserved  | Zanna namespace reserved          |
 
 ### E_NS_001: Namespace Not Found
 
@@ -488,22 +488,22 @@ END
 
 ---
 
-### E_NS_009: Reserved Viper Namespace
+### E_NS_009: Reserved Zanna Namespace
 
-**Cause**: User code attempts to declare or use the reserved `Viper` root namespace.
+**Cause**: User code attempts to declare or use the reserved `Zanna` root namespace.
 
 ```basic
 REM Example 1: Declaration
-NAMESPACE Viper.MyLib    REM Error: E_NS_009
+NAMESPACE Zanna.MyLib    REM Error: E_NS_009
   CLASS Helper
   END CLASS
 END NAMESPACE
 
 REM Example 2: USING
-USING Viper              REM Error: E_NS_009
+USING Zanna              REM Error: E_NS_009
 ```
 
-**Message**: `namespace 'VIPER' is reserved for built-in libraries`
+**Message**: `namespace 'ZANNA' is reserved for built-in libraries`
 
 **Fix**: Use a different root namespace for user code.
 
@@ -592,12 +592,12 @@ END NAMESPACE
 
 ---
 
-### Pitfall 4: Reserved Viper Namespace
+### Pitfall 4: Reserved Zanna Namespace
 
-**Problem**: Trying to use `Viper` for user code.
+**Problem**: Trying to use `Zanna` for user code.
 
 ```basic
-NAMESPACE Viper.MyApp    REM Error: E_NS_009
+NAMESPACE Zanna.MyApp    REM Error: E_NS_009
 ```
 
 **Solution**: Choose a different root namespace:
@@ -692,83 +692,83 @@ Both `List` and `Dictionary` belong to `Collections` namespace after linking.
 
 ---
 
-## Viper.* Runtime Namespace (Implemented)
+## Zanna.* Runtime Namespace (Implemented)
 
-ViperLib exposes runtime functions and types under the reserved `Viper.*` root namespace. This
+ZannaLib exposes runtime functions and types under the reserved `Zanna.*` root namespace. This
 canonical namespace organization is now implemented and available in IL and BASIC code.
 
 ### Runtime Functions by Namespace
 
-#### Viper.Terminal
+#### Zanna.Terminal
 
 Console I/O operations:
 
-- `Viper.Terminal.PrintStr(str)->void` — Print string
-- `Viper.Terminal.PrintI64(i64)->void` — Print integer
-- `Viper.Terminal.PrintF64(f64)->void` — Print double
-- `Viper.Terminal.TryReadLine()->obj<Viper.Option>` — Read line from console (`None` on EOF)
-- `Viper.Terminal.ReadLineResult()->obj<Viper.Result>` — Read line from console (`Err` on EOF)
-- `Viper.Terminal.ReadLine()->str` — Compatibility read line API; prefer `TryReadLine()` or `ReadLineResult()` for EOF handling
+- `Zanna.Terminal.PrintStr(str)->void` — Print string
+- `Zanna.Terminal.PrintI64(i64)->void` — Print integer
+- `Zanna.Terminal.PrintF64(f64)->void` — Print double
+- `Zanna.Terminal.TryReadLine()->obj<Zanna.Option>` — Read line from console (`None` on EOF)
+- `Zanna.Terminal.ReadLineResult()->obj<Zanna.Result>` — Read line from console (`Err` on EOF)
+- `Zanna.Terminal.ReadLine()->str` — Compatibility read line API; prefer `TryReadLine()` or `ReadLineResult()` for EOF handling
 
-#### Viper.String
+#### Zanna.String
 
 String manipulation:
 
-- `Viper.String.Concat(str,str)->str` — Concatenate strings
-- `Viper.String.FromI16(i16)->str` — Convert int16 to string
-- `Viper.String.FromI32(i32)->str` — Convert int32 to string
-- `Viper.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
-- `Viper.String.get_Length(str)->i64` — String length
-- `Viper.String.Mid(str,i64)->str` — Substring from position to end
-- `Viper.String.MidLen(str,i64,i64)->str` — Substring with start and length
-- `Viper.String.SplitFields(str)->seq<str>` — Split into fields
-- `Viper.Text.StringBuilder.New()->obj` — Create StringBuilder
+- `Zanna.String.Concat(str,str)->str` — Concatenate strings
+- `Zanna.String.FromI16(i16)->str` — Convert int16 to string
+- `Zanna.String.FromI32(i32)->str` — Convert int32 to string
+- `Zanna.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
+- `Zanna.String.get_Length(str)->i64` — String length
+- `Zanna.String.Mid(str,i64)->str` — Substring from position to end
+- `Zanna.String.MidLen(str,i64,i64)->str` — Substring with start and length
+- `Zanna.String.SplitFields(str)->seq<str>` — Split into fields
+- `Zanna.Text.StringBuilder.New()->obj` — Create StringBuilder
 
-#### Viper.Core.Convert
+#### Zanna.Core.Convert
 
 Type conversion:
 
-- `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
-- `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
-- `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int (`NaN` becomes `0`)
-- `Viper.Core.Convert.ToStringDouble(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
-- `Viper.Core.Convert.ToStringInt(i64)->str` — Convert int64 to string
+- `Zanna.Core.Convert.ToDouble(str)->f64` — String to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
+- `Zanna.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
+- `Zanna.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int (`NaN` becomes `0`)
+- `Zanna.Core.Convert.ToStringDouble(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
+- `Zanna.Core.Convert.ToStringInt(i64)->str` — Convert int64 to string
 
 `ToString_Double` and `ToString_Int` remain available as compatibility aliases.
 
-#### Viper.Core.Parse
+#### Zanna.Core.Parse
 
 Type parsing with explicit error handling:
 
-- `Viper.Core.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
-- `Viper.Core.Parse.TryDouble(str)->obj<Viper.Option>` — Try to parse double
-- `Viper.Core.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
-- `Viper.Core.Parse.IntOr(str,i64)->i64` — Parse integer or default
-- `Viper.Core.Parse.DoubleOr(str,f64)->f64` — Parse double or default
-- `Viper.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
-- `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
-- `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
-- `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; `+` and `-` are accepted only for decimal, prefixes are rejected
+- `Zanna.Core.Parse.TryInt(str)->obj<Zanna.Option>` — Try to parse integer
+- `Zanna.Core.Parse.TryDouble(str)->obj<Zanna.Option>` — Try to parse double
+- `Zanna.Core.Parse.TryBool(str)->obj<Zanna.Option>` — Try to parse boolean
+- `Zanna.Core.Parse.IntOr(str,i64)->i64` — Parse integer or default
+- `Zanna.Core.Parse.DoubleOr(str,f64)->f64` — Parse double or default
+- `Zanna.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
+- `Zanna.Core.Parse.IsInt(str)->i1` — Validate integer text
+- `Zanna.Core.Parse.IsNum(str)->i1` — Validate numeric text
+- `Zanna.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; `+` and `-` are accepted only for decimal, prefixes are rejected
 
 Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
 Use `TryDouble` and `DoubleOr` for double parsing; the former `TryNum` / `NumOr`
 spellings were retired by the public-surface standardization and are no longer
 available.
 
-#### Viper.Core.Diagnostics
+#### Zanna.Core.Diagnostics
 
 Error and diagnostic utilities:
 
-- `Viper.Core.Diagnostics.Trap(str)->void` — Trigger runtime trap; control bytes in managed-string messages are escaped in diagnostics
+- `Zanna.Core.Diagnostics.Trap(str)->void` — Trigger runtime trap; control bytes in managed-string messages are escaped in diagnostics
 
-### Runtime Classes (Viper.*)
+### Runtime Classes (Zanna.*)
 
-Canonical runtime classes are exposed under the `Viper.*` root and are used directly by the BASIC frontend. These are
+Canonical runtime classes are exposed under the `Zanna.*` root and are used directly by the BASIC frontend. These are
 first‑class and tested:
 
-#### Viper.Core
+#### Zanna.Core
 
-- `Viper.Core.Object` — Base class for all objects
+- `Zanna.Core.Object` — Base class for all objects
     - Methods:
         - `Equals(OBJECT other) -> BOOL` — reference equality by default
         - `HashCode() -> I64` — process‑consistent hash derived from the object pointer
@@ -777,7 +777,7 @@ first‑class and tested:
         - `ToString() -> STRING` — default returns the class qualified name
         - `TypeId() -> I64` — returns the compile-time type identifier
         - `TypeName() -> STRING` — returns the fully-qualified class name
-- `Viper.String` — Managed string type (BASIC `STRING` is an alias)
+- `Zanna.String` — Managed string type (BASIC `STRING` is an alias)
     - Properties: `Length -> I64`, `IsEmpty -> BOOL`
     - Methods:
         - `Substring(I64 start, I64 length) -> STRING` — Extract substring
@@ -796,28 +796,28 @@ first‑class and tested:
         - `Chr(I64 code) -> STRING` — Character from ASCII code (static)
         - `Asc() -> I64` — ASCII code of first character
 
-#### Viper.Text
+#### Zanna.Text
 
-- `Viper.Text.StringBuilder` — Mutable string builder
+- `Zanna.Text.StringBuilder` — Mutable string builder
     - Ctor: `NEW()`
     - Properties: `Length -> I64`, `Capacity -> I64`
     - Methods: `Append(STRING) -> OBJECT` (returns the builder for chaining), `Clear() -> VOID`, `ToString() -> STRING`
 
-#### Viper.IO
+#### Zanna.IO
 
-- `Viper.IO.File` — File operations class (static utility)
+- `Zanna.IO.File` — File operations class (static utility)
     - Methods (static): `Exists(STRING) -> BOOL`, `ReadAllText(STRING) -> STRING`,
       `WriteAllText(STRING,STRING) -> VOID`, `Delete(STRING) -> VOID`
 
-#### Viper.Collections
+#### Zanna.Collections
 
-- `Viper.Collections.List` — Dynamic list of object references (non‑generic)
+- `Zanna.Collections.List` — Dynamic list of object references (non‑generic)
     - Ctor: `NEW()`; Properties: `Len -> I64`, `IsEmpty -> BOOL`
     - Methods: `Clear()`, `Find(OBJECT)->I64`, `First()->OBJECT`, `Flip()`, `Get(I64)->OBJECT`, `Has(OBJECT)->BOOL`, `Insert(I64,OBJECT)`, `Last()->OBJECT`, `Pop()->OBJECT`, `Push(OBJECT)`, `Remove(OBJECT)->BOOL`, `RemoveAt(I64)`, `Set(I64,OBJECT)`, `Slice(I64,I64)->List`, `Sort()`, `SortDesc()`
 
-#### Viper.Math
+#### Zanna.Math
 
-- `Viper.Math` — Mathematical functions (static utility)
+- `Zanna.Math` — Mathematical functions (static utility)
     - Methods (static):
         - `Abs(F64) -> F64` — Absolute value (float)
         - `AbsInt(I64) -> I64` — Absolute value (integer)
@@ -838,32 +838,32 @@ first‑class and tested:
         - `MinInt(I64, I64) -> I64` — Minimum of two integers
         - `MaxInt(I64, I64) -> I64` — Maximum of two integers
 
-#### Viper.Math.Random
+#### Zanna.Math.Random
 
-- `Viper.Math.Random` — Random number generation class (constructor seeds the RNG)
+- `Zanna.Math.Random` — Random number generation class (constructor seeds the RNG)
     - Methods:
         - `Next() -> F64` — Return next random number in [0, 1)
         - `NextInt(I64 n) -> I64` — Return next random integer in [0, n)
         - `Seed(I64) -> VOID` — Seed the random number generator
 
-#### Viper.System.Environment
+#### Zanna.System.Environment
 
-- `Viper.System.Environment` — Command-line and environment (static utility)
+- `Zanna.System.Environment` — Command-line and environment (static utility)
     - Methods (static):
         - `GetArgumentCount() -> I64` — Number of program arguments
         - `GetArgument(I64 index) -> STRING` — Get program argument by zero-based index
         - `GetCommandLine() -> STRING` — Program arguments joined as a single string
 
-#### Viper.Time
+#### Zanna.Time
 
-- `Viper.Time` — Time and timing utilities (static utility)
+- `Zanna.Time` — Time and timing utilities (static utility)
     - Methods (static):
         - `Clock.Ticks() -> I64` — Milliseconds since program start
         - `Clock.Sleep(I64 ms) -> VOID` — Pause execution for milliseconds
 
-#### Viper.Terminal
+#### Zanna.Terminal
 
-- `Viper.Terminal` — Terminal/console control (static utility)
+- `Zanna.Terminal` — Terminal/console control (static utility)
     - Methods (static):
         - `Bell() -> VOID` — Sound terminal bell
         - `Clear() -> VOID` — Clear the screen
@@ -875,16 +875,16 @@ first‑class and tested:
         - `SetCursorVisible(Boolean visible) -> VOID` — Show/hide cursor (FALSE=hide, TRUE=show)
         - `SetPosition(I64 row, I64 col) -> VOID` — Move cursor position
 
-**Note:** Legacy `Viper.System.*` aliases for core namespaces have been removed. Use the canonical `Viper.*` names, except for dedicated System services such as `Viper.System.Clipboard`.
+**Note:** Legacy `Zanna.System.*` aliases for core namespaces have been removed. Use the canonical `Zanna.*` names, except for dedicated System services such as `Zanna.System.Clipboard`.
 
 ### Canonical Runtime Names
 
-Runtime procedures are exposed only through canonical `Viper.*` names. Legacy `rt_*` public aliases are intentionally unsupported.
+Runtime procedures are exposed only through canonical `Zanna.*` names. Legacy `rt_*` public aliases are intentionally unsupported.
 
 ### OOP Runtime vs Procedural Helpers
 
-The OOP `Viper.*` classes are the preferred surface for new code. Some canonical function-style entry points (e.g.,
-`Viper.String.get_Length`, `Viper.IO.*`) remain available and are used internally by lowering bridges. Prefer equivalent
+The OOP `Zanna.*` classes are the preferred surface for new code. Some canonical function-style entry points (e.g.,
+`Zanna.String.get_Length`, `Zanna.IO.*`) remain available and are used internally by lowering bridges. Prefer equivalent
 class property/method calls where they exist.
 
 ### Examples
@@ -903,10 +903,10 @@ PRINT o.ToString()   ' prints "App.C"
 PRINT o.Equals(o)    ' 1
 ```
 
-Working with strings via Viper.String:
+Working with strings via Zanna.String:
 
 ```basic
-DIM s AS Viper.String
+DIM s AS Zanna.String
 s = "  Hello World  "
 PRINT s.Length            ' 15
 PRINT s.IsEmpty           ' 0
@@ -921,16 +921,16 @@ PRINT s.Substring(3, 5)   ' "Hello"
 StringBuilder for efficient text composition:
 
 ```basic
-DIM sb AS Viper.Text.StringBuilder
-sb = NEW Viper.Text.StringBuilder()
+DIM sb AS Zanna.Text.StringBuilder
+sb = NEW Zanna.Text.StringBuilder()
 sb.Append("hello").Append(", world")
 PRINT sb.ToString()
 ```
 
-File I/O using Viper.IO.File:
+File I/O using Zanna.IO.File:
 
 ```basic
-USING Viper.IO
+USING Zanna.IO
 File.WriteAllText("out.txt", "data")
 IF File.Exists("out.txt") THEN
   PRINT File.ReadAllText("out.txt")
@@ -941,8 +941,8 @@ END IF
 In‑memory collections with List:
 
 ```basic
-DIM list AS Viper.Collections.List
-list = NEW Viper.Collections.List()
+DIM list AS Zanna.Collections.List
+list = NEW Zanna.Collections.List()
 list.Push(NEW App.C())
 PRINT list.Length
 PRINT list.Get(0).ToString()
@@ -951,10 +951,10 @@ list.RemoveAt(0)
 list.Clear()
 ```
 
-Mathematical functions with Viper.Math:
+Mathematical functions with Zanna.Math:
 
 ```basic
-USING Viper
+USING Zanna
 PRINT Math.Sqrt(16)          ' 4
 PRINT Math.Abs(-3.14)        ' 3.14
 PRINT Math.Sin(0)            ' 0
@@ -963,10 +963,10 @@ PRINT Math.Min(5.0, 3.0)     ' 3
 PRINT Math.MaxInt(10, 20)    ' 20
 ```
 
-Random numbers with Viper.Math.Random:
+Random numbers with Zanna.Math.Random:
 
 ```basic
-USING Viper.Math
+USING Zanna.Math
 DIM rng AS Random
 rng = NEW Random()           ' Constructor seeds the RNG
 rng.Seed(12345)              ' Re-seed for reproducibility
@@ -975,10 +975,10 @@ r = rng.Next()               ' Returns value in [0, 1)
 PRINT r
 ```
 
-Command-line arguments with Viper.System.Environment:
+Command-line arguments with Zanna.System.Environment:
 
 ```basic
-USING Viper
+USING Zanna
 DIM argc AS INTEGER
 argc = Environment.GetArgumentCount()
 PRINT "Arguments: "; argc
@@ -987,13 +987,13 @@ FOR i = 0 TO argc - 1
 NEXT i
 ```
 
-The `viper` tool forwards only arguments after `--` to the program, so
-`GetArgument(0)` is the first user argument, not the `viper` executable name.
+The `zanna` tool forwards only arguments after `--` to the program, so
+`GetArgument(0)` is the first user argument, not the `zanna` executable name.
 
-Timing with Viper.Time:
+Timing with Zanna.Time:
 
 ```basic
-USING Viper
+USING Zanna
 DIM start AS LONG
 start = Time.Clock.Ticks()
 ' ... do work ...
@@ -1001,10 +1001,10 @@ Time.Clock.Sleep(100)            ' Pause 100ms
 PRINT "Elapsed: "; Time.Clock.Ticks() - start; "ms"
 ```
 
-Terminal control with Viper.Terminal:
+Terminal control with Zanna.Terminal:
 
 ```basic
-USING Viper
+USING Zanna
 Terminal.Clear()                    ' Clear screen
 Terminal.SetColor(14, 1)            ' Yellow on blue
 Terminal.SetPosition(10, 20)        ' Move cursor
@@ -1016,11 +1016,11 @@ IF key <> "" THEN PRINT "You pressed: "; key
 Terminal.SetCursorVisible(TRUE)        ' Show cursor
 ```
 
-#### Viper.Graphics
+#### Zanna.Graphics
 
 The Graphics namespace provides 2D rendering, image manipulation, and game development utilities.
 
-**Viper.Graphics.Canvas** — Window and drawing surface:
+**Zanna.Graphics.Canvas** — Window and drawing surface:
 - Ctor: `NEW(STRING title, I64 width, I64 height)`
 - Properties:
     - `Width -> I64` (read-only) — Canvas width in pixels
@@ -1047,7 +1047,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `KeyHeld(I64 keycode) -> I64` — Check if key is held down
     - `Flip() -> VOID` — Present frame and limit FPS
 
-**Viper.Graphics.Color** — Color utilities (static class):
+**Zanna.Graphics.Color** — Color utilities (static class):
 - Methods (static):
     - `RGB(I64 r, I64 g, I64 b) -> I64` — Create color from RGB (0-255)
     - `RGBA(I64 r, I64 g, I64 b, I64 a) -> I64` — Create color with alpha
@@ -1060,7 +1060,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Brighten(I64 color, I64 amount) -> I64` — Increase brightness
     - `Darken(I64 color, I64 amount) -> I64` — Decrease brightness
 
-**Viper.Graphics.Pixels** — Software image buffer:
+**Zanna.Graphics.Pixels** — Software image buffer:
 - Ctor: `NEW(I64 width, I64 height)`
 - Properties:
     - `Width -> I64` (read-only) — Image width in pixels
@@ -1096,7 +1096,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Load(STRING path) -> PIXELS` — Load PNG/JPEG/BMP/GIF by extension
     - `LoadBmp(STRING path) -> PIXELS`, `LoadPng(STRING path) -> PIXELS`, `LoadJpeg(STRING path) -> PIXELS`, `LoadGif(STRING path) -> PIXELS` — Format-specific loaders
 
-**Viper.Graphics.Sprite** — Animated sprite for 2D games:
+**Zanna.Graphics.Sprite** — Animated sprite for 2D games:
 - Ctor: `NEW(PIXELS pixels)` — Create sprite from image
 - Static methods:
     - `FromFile(STRING path) -> SPRITE` — Load a sprite from BMP, PNG, JPEG, or GIF
@@ -1123,7 +1123,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Contains(I64 px, I64 py) -> I64` — Point-in-sprite test
     - `Move(I64 dx, I64 dy) -> VOID` — Move by delta
 
-**Viper.Graphics2D.Tilemap** — Tile-based map rendering:
+**Zanna.Graphics2D.Tilemap** — Tile-based map rendering:
 - Ctor: `NEW(I64 width, I64 height, I64 tileWidth, I64 tileHeight)` — Create tilemap (size in tiles)
 - Properties:
     - `Width -> I64` (read-only) — Map width in tiles
@@ -1151,7 +1151,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `ToPixelX(I64 tileX) -> I64` — Convert tile X to pixel X
     - `ToPixelY(I64 tileY) -> I64` — Convert tile Y to pixel Y
 
-**Viper.Graphics.Camera** — 2D viewport camera:
+**Zanna.Graphics.Camera** — 2D viewport camera:
 - Ctor: `NEW(I64 viewWidth, I64 viewHeight)` — Create camera with viewport size
 - Properties:
     - `X -> I64` — Camera world X position
@@ -1174,21 +1174,21 @@ Graphics example - drawing and sprites:
 
 ```basic
 ' Create a window
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
+DIM canvas AS Zanna.Graphics.Canvas
+canvas = NEW Zanna.Graphics.Canvas("My Game", 800, 600)
 
 ' Create colors
 DIM red AS INTEGER, blue AS INTEGER
-red = Viper.Graphics.Color.RGB(255, 0, 0)
-blue = Viper.Graphics.Color.RGB(0, 0, 255)
+red = Zanna.Graphics.Color.RGB(255, 0, 0)
+blue = Zanna.Graphics.Color.RGB(0, 0, 255)
 
 ' Create and configure a sprite
-DIM spriteImg AS Viper.Graphics.Pixels
-spriteImg = NEW Viper.Graphics.Pixels(32, 32)
+DIM spriteImg AS Zanna.Graphics.Pixels
+spriteImg = NEW Zanna.Graphics.Pixels(32, 32)
 spriteImg.FillColor(red)
 
-DIM player AS Viper.Graphics.Sprite
-player = NEW Viper.Graphics.Sprite(spriteImg)
+DIM player AS Zanna.Graphics.Sprite
+player = NEW Zanna.Graphics.Sprite(spriteImg)
 player.X = 100
 player.Y = 100
 
@@ -1231,7 +1231,7 @@ These features are not yet implemented in Track A.
 
 ## Summary
 
-Viper BASIC namespaces provide:
+Zanna BASIC namespaces provide:
 
 - **Clarity**: Fully-qualified names show exactly where types come from
 - **Collision avoidance**: Multiple libraries can define the same type names

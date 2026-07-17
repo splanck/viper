@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics.Camera ==="
+PRINT "=== API Audit: Zanna.Graphics.Camera ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New(viewW, viewH)"
 PRINT "Properties: get_X, get_Y, get_Zoom, get_Width, get_Height"

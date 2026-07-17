@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/rt_game3d_input.c
-// Purpose: Input3D for the Viper.Game3D layer — per-frame keyboard/mouse query
+// Purpose: Input3D for the Zanna.Game3D layer — per-frame keyboard/mouse query
 //   with optional latched snapshot for deterministic replay. Split out of
 //   rt_game3d.c; shares private types/helpers via rt_game3d_internal.h.
 // Links: rt_game3d_internal.h, rt_input.h
@@ -104,12 +104,12 @@ void rt_game3d_input_update(void *obj) {
     rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.update: invalid input");
     if (!input)
         return;
-    for (int64_t key = 0; key < VIPER_KEY_MAX; key++) {
+    for (int64_t key = 0; key < ZANNA_KEY_MAX; key++) {
         input->key_down[key] = rt_keyboard_is_down(key) ? 1 : 0;
         input->key_pressed[key] = rt_keyboard_was_pressed(key) ? 1 : 0;
         input->key_released[key] = rt_keyboard_was_released(key) ? 1 : 0;
     }
-    for (int64_t button = 0; button < VIPER_MOUSE_BUTTON_MAX; button++) {
+    for (int64_t button = 0; button < ZANNA_MOUSE_BUTTON_MAX; button++) {
         input->mouse_down[button] = rt_mouse_is_down(button) ? 1 : 0;
         input->mouse_pressed[button] = rt_mouse_was_pressed(button) ? 1 : 0;
         input->mouse_released[button] = rt_mouse_was_released(button) ? 1 : 0;

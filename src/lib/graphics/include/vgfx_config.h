@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Configuration Macros
+// ZannaGFX Configuration Macros
 //
-// Defines compile-time configuration constants for the ViperGFX library,
+// Defines compile-time configuration constants for the ZannaGFX library,
 // including default window parameters, resource limits, and memory alignment
 // settings.  All macros are guarded with #ifndef so projects can override
 // them via compiler flags or by defining them before including vgfx.h.
@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Compile-time configuration macros for ViperGFX.
+/// @brief Compile-time configuration macros for ZannaGFX.
 /// @details Provides defaults for window dimensions, frame rates, resource
 ///          limits, and memory alignment.  All settings can be overridden
 ///          at compile time via preprocessor definitions.
@@ -54,7 +54,7 @@
 /// @details UTF-8 encoded string used as the window caption.  The platform
 ///          backend may truncate or modify the title based on OS conventions.
 #ifndef VGFX_DEFAULT_TITLE
-#define VGFX_DEFAULT_TITLE "ViperGFX"
+#define VGFX_DEFAULT_TITLE "ZannaGFX"
 #endif
 
 /// @def VGFX_DEFAULT_FPS
@@ -78,7 +78,7 @@
 
 /// @def VGFX_COLOR_DEPTH
 /// @brief Color depth of the internal framebuffer in bits per pixel.
-/// @details For ViperGFX v1, this MUST remain 32 (RGBA 8-8-8-8 format).
+/// @details For ZannaGFX v1, this MUST remain 32 (RGBA 8-8-8-8 format).
 ///          Each pixel is represented as a 32-bit vgfx_color_t value with
 ///          8 bits per channel (red, green, blue, alpha).
 ///
@@ -146,5 +146,5 @@
 #endif
 
 //===----------------------------------------------------------------------===//
-// End of ViperGFX Configuration
+// End of ZannaGFX Configuration
 //===----------------------------------------------------------------------===//

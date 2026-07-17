@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.SafeI64 (BASIC)
+' API Audit: Zanna.Threads.SafeI64 (BASIC)
 ' =============================================================================
 ' Tests: New, Get, Set, Add, CompareExchange
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.SafeI64 ==="
+PRINT "=== API Audit: Zanna.Threads.SafeI64 ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM cell AS OBJECT = Viper.Threads.SafeI64.New(0)
+DIM cell AS OBJECT = Zanna.Threads.SafeI64.New(0)
 PRINT "Created SafeI64 with initial value 0"
 
 ' --- Get (initial) ---
@@ -69,12 +69,12 @@ PRINT "Get after CAS: "; cell.Get()
 
 ' --- New with initial value ---
 PRINT "--- New with initial value ---"
-DIM cell2 AS OBJECT = Viper.Threads.SafeI64.New(999)
+DIM cell2 AS OBJECT = Zanna.Threads.SafeI64.New(999)
 PRINT "New(999) Get: "; cell2.Get()
 
 ' --- New with negative initial ---
 PRINT "--- New with negative initial ---"
-DIM cell3 AS OBJECT = Viper.Threads.SafeI64.New(-42)
+DIM cell3 AS OBJECT = Zanna.Threads.SafeI64.New(-42)
 PRINT "New(-42) Get: "; cell3.Get()
 
 PRINT "=== SafeI64 Audit Complete ==="

@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/rt_game3d_world_api.inc  (#included from rt_game3d.c; not a
 // standalone translation unit) Purpose: Game3D World3D construction plus the public
 // World3D/WorldStream3D accessor surface
@@ -1305,7 +1305,7 @@ void rt_game3d_world_clear_lights(void *obj) {
 /// @brief Defensively validate the canvas's skybox slot: drop it (and invalidate the
 ///   skybox cache) when it is missing, no longer a CubeMap3D, or an incomplete cubemap.
 static void game3d_world_repair_canvas_skybox(rt_game3d_world *world) {
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     rt_canvas3d *canvas;
     if (!world || !world->canvas || !rt_g3d_has_class(world->canvas, RT_G3D_CANVAS3D_CLASS_ID))
         return;
@@ -1330,7 +1330,7 @@ static void game3d_world_repair_canvas_skybox(rt_game3d_world *world) {
 void rt_game3d_world_set_skybox(void *obj, void *cubemap) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setSkybox: invalid world");
     game3d_world_repair_canvas_skybox(world);
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
     if (cubemap && (!rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) ||
                     !rt_cubemap3d_is_complete(cubemap))) {
 #else

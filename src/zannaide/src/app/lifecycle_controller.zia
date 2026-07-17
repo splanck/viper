@@ -1,0 +1,175 @@
+module lifecycle_controller;
+
+bind "../app/file_watch_controller";
+bind "../app/workspace_watcher";
+bind "../build/build_system";
+bind "../build/breakpoints";
+bind "../build/debug_session";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../commands/file_commands";
+bind "../editor/editor_engine";
+bind "../editor/project_index";
+bind "../terminal/terminal_controller";
+bind "../ui/app_shell";
+bind "../ui/debug_breakpoint_overlay";
+
+bind Zanna.GUI;
+
+// ============================================================================
+// MODULE: lifecycle_controller
+// PURPOSE: Own the shutdown and debugger-overlay lifecycle code that used to
+//          live at the bottom of main.zia.
+//
+// WHERE-THIS-FITS: main.zia still decides when the app is leaving the frame
+//          loop, but this module owns the shared teardown checklist. Debug
+//          command routing can also call the overlay helpers without adding more
+//          helper functions to the entry point.
+//
+// TEACHING-NOTE: Shutdown paths are a common source of partial cleanup bugs.
+//          Keep every process, watcher, indexer, session, and shell teardown
+//          step in one function so new features have an obvious place to add
+//          their own finalizer.
+// ============================================================================
+
+/// @brief Stop all long-lived IDE services and persist final state before exit.
+/// @details Used for normal loop termination, File > Exit, and window-manager
+///          close requests so no path can bypass build/debug cancellation,
+///          watcher shutdown, indexer cleanup, breakpoint persistence, session
+///          persistence, or shell destruction.
+/// @param shell Workbench shell to persist and destroy.
+/// @param docMgr Open document manager whose active editor state is saved.
+/// @param projMgr Project manager persisted with the session.
+/// @param engine Editor engine used to capture cursor, scroll, and buffer state.
+/// @param buildSys Active build/run process controller.
+/// @param dbgSession Active debug-adapter process controller.
+/// @param terminalCtrl Integrated-terminal controller whose PTY child is stopped.
+/// @param fileWatchCtrl Active-file and open-document external-change controller.
+/// @param workspaceWatcherState Project-root watcher state.
+/// @param indexer Semantic workspace indexer to destroy.
+/// @param breakpointStore Breakpoint persistence store.
+/// @param sessionMgr Session persistence store.
+expose func CleanupIde(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       projMgr: project_manager.ProjectManager,
+                       engine: editor_engine.EditorEngine,
+                       buildSys: build_system.BuildSystem,
+                       dbgSession: debug_session.DebugSession,
+                       terminalCtrl: terminal_controller.TerminalController,
+                       fileWatchCtrl: file_watch_controller.FileWatchController,
+                       workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
+                       indexer: project_index.ProjectIndexer,
+                       breakpointStore: breakpoints.BreakpointStore,
+                       sessionMgr: session.SessionManager) {
+    if shell != null {
+        file_commands.SaveEditorState(docMgr, engine);
+    }
+    if breakpointStore != null {
+        breakpointStore.Save();
+    }
+    if sessionMgr != null {
+        sessionMgr.Save(docMgr, projMgr);
+    }
+    if buildSys != null and buildSys.IsActive() {
+        buildSys.Stop();
+    }
+    if dbgSession != null and dbgSession.IsActive() {
+        dbgSession.Terminate();
+    }
+    if terminalCtrl != null {
+        terminalCtrl.Stop();
+    }
+    if fileWatchCtrl != null {
+        fileWatchCtrl.Destroy();
+    }
+    workspace_watcher.StopWorkspaceWatcher(workspaceWatcherState);
+    if indexer != null {
+        indexer.Destroy();
+    }
+    if shell != null {
+        shell.Destroy();
+    }
+}
+
+/// @brief Open the non-modal condition/logpoint editor for the cursor line.
+/// @details The helper validates that the active document has a saved path,
+///          snapshots editor content into the document manager, and preloads
+///          existing breakpoint metadata for the selected line.
+/// @param shell Workbench shell for status text.
+/// @param overlay Debug breakpoint overlay to show.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param store Persistent breakpoint store.
+/// @param action Debug overlay action to open.
+expose func OpenDebugBreakpointOverlay(shell: app_shell.AppShell,
+                                       overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                                       docMgr: document_manager.DocumentManager,
+                                       engine: editor_engine.EditorEngine,
+                                       store: breakpoints.BreakpointStore,
+                                       action: Integer) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        overlay.OpenCondition(shell, doc.filePath, line, store.ConditionAt(doc.filePath, line));
+    } else if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+        overlay.OpenLogpoint(shell, doc.filePath, line, store.LogMessageAt(doc.filePath, line));
+    }
+}
+
+/// @brief Persist and live-sync a completed breakpoint metadata overlay edit.
+/// @param shell Workbench shell for status text.
+/// @param overlay Completed debug breakpoint overlay.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param store Persistent breakpoint store.
+/// @param session Active debug session, if any.
+/// @param action Completed overlay action.
+expose func ApplyDebugBreakpointOverlay(shell: app_shell.AppShell,
+                                        overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                                        docMgr: document_manager.DocumentManager,
+                                        engine: editor_engine.EditorEngine,
+                                        store: breakpoints.BreakpointStore,
+                                        session: debug_session.DebugSession,
+                                        action: Integer) {
+    var path = overlay.TargetPath();
+    var line = overlay.TargetLine();
+    if path == "" or line <= 0 {
+        overlay.Finish();
+        return;
+    }
+    var value = overlay.ReadValue();
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        store.SetCondition(path, line, value);
+    } else if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+        store.SetLogMessage(path, line, value);
+    }
+    store.Save();
+    var doc = docMgr.GetActive();
+    if doc != null {
+        store.ApplyToEditor(engine, doc!);
+    }
+    if session != null and session.IsActive() {
+        session.SyncBreakpoints(path, store);
+    }
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        if value == "" {
+            shell.SetStatusLeft("Condition cleared at line " + line);
+        } else {
+            shell.SetStatusLeft("Breakpoint at line " + line + " stops when: " + value);
+        }
+    } else {
+        if value == "" {
+            shell.SetStatusLeft("Logpoint cleared at line " + line);
+        } else {
+            shell.SetStatusLeft("Logpoint set at line " + line);
+        }
+    }
+    overlay.Finish();
+}

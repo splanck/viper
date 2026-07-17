@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -107,36 +107,36 @@ const char *authoredRuntimeMemberDocumentation(const std::string &className,
     };
 
     static constexpr Doc docs[] = {
-        {"Viper.Terminal",
+        {"Zanna.Terminal",
          "Say",
          "Writes text followed by a newline to the terminal output stream."},
-        {"Viper.Terminal",
+        {"Zanna.Terminal",
          "Print",
          "Writes text to the terminal output stream without appending a newline."},
-        {"Viper.Terminal",
+        {"Zanna.Terminal",
          "Ask",
          "Prompts the user and returns the entered text when input is available."},
-        {"Viper.IO.File", "ReadAllText", "Reads an entire text file into a String."},
-        {"Viper.IO.File",
+        {"Zanna.IO.File", "ReadAllText", "Reads an entire text file into a String."},
+        {"Zanna.IO.File",
          "WriteAllText",
          "Writes a String to a file, replacing the previous contents."},
-        {"Viper.IO.File", "Exists", "Returns whether a file exists at the supplied path."},
-        {"Viper.IO.Path", "Join", "Combines path fragments using the platform path separator."},
-        {"Viper.GUI.App", "Poll", "Processes pending window and input events for the app."},
-        {"Viper.GUI.App",
+        {"Zanna.IO.File", "Exists", "Returns whether a file exists at the supplied path."},
+        {"Zanna.IO.Path", "Join", "Combines path fragments using the platform path separator."},
+        {"Zanna.GUI.App", "Poll", "Processes pending window and input events for the app."},
+        {"Zanna.GUI.App",
          "Render",
          "Lays out and paints the current GUI frame when the app needs repainting."},
-        {"Viper.GUI.CodeEditor",
+        {"Zanna.GUI.CodeEditor",
          "SetText",
          "Replaces the editor buffer text and refreshes editor state."},
-        {"Viper.GUI.CodeEditor", "GetText", "Returns the current editor buffer text."},
-        {"Viper.GUI.CodeEditor",
+        {"Zanna.GUI.CodeEditor", "GetText", "Returns the current editor buffer text."},
+        {"Zanna.GUI.CodeEditor",
          "Text",
          "Read-only property containing the current editor buffer text."},
-        {"Viper.GUI.CodeEditor",
+        {"Zanna.GUI.CodeEditor",
          "Revision",
          "Read-only counter that changes when the editor buffer changes."},
-        {"Viper.GUI.App",
+        {"Zanna.GUI.App",
          "Root",
          "Root widget for the app window; add top-level layout containers here."},
     };
@@ -373,7 +373,7 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
 // ---------------------------------------------------------------------------
 
 /// @brief Return the methods and properties of a runtime class, for completion.
-/// @param className Qualified runtime class name (e.g. `Viper.GUI.Canvas`).
+/// @param className Qualified runtime class name (e.g. `Zanna.GUI.Canvas`).
 /// @return Member symbols (methods as functions, properties as fields); empty if unknown.
 /// @details Looks the class up in the RuntimeRegistry catalog and converts each method's
 ///          parsed signature and each property's IL type token into Zia type references.
@@ -443,7 +443,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
 
     if (common::isGuiWidgetSubclass(className)) {
         for (const auto &cls : catalog) {
-            if (cls.qname && std::string_view(cls.qname) == "Viper.GUI.Widget") {
+            if (cls.qname && std::string_view(cls.qname) == "Zanna.GUI.Widget") {
                 appendRuntimeMethods(&cls);
                 break;
             }
@@ -545,7 +545,7 @@ std::vector<std::string> Sema::getBoundFileModuleNames() const {
 // ---------------------------------------------------------------------------
 
 /// @brief Resolve a bound alias to its full namespace path.
-/// @param alias The short alias (e.g. from `bind Viper.GUI as G;`).
+/// @param alias The short alias (e.g. from `bind Zanna.GUI as G;`).
 /// @return The full namespace path, or an empty string if the alias is unknown.
 std::string Sema::resolveModuleAlias(const std::string &alias) const {
     auto it = aliasToNamespace_.find(alias);
@@ -559,7 +559,7 @@ std::string Sema::resolveModuleAlias(const std::string &alias) const {
 // ---------------------------------------------------------------------------
 
 /// @brief Return the immediate child class/sub-namespace names under a namespace prefix.
-/// @param nsPrefix Namespace prefix (e.g. `Viper.GUI`).
+/// @param nsPrefix Namespace prefix (e.g. `Zanna.GUI`).
 /// @return Distinct immediate children (e.g. `Canvas`, `App`), for `Namespace.` completion.
 /// @details Scans the runtime catalog for qualified names beginning with `nsPrefix.` and
 ///          extracts the first identifier after the prefix, de-duplicating results.
@@ -579,8 +579,8 @@ std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) 
             continue;
 
         // Extract the immediate child identifier.
-        // e.g.  "Viper.GUI.Canvas"       → "Canvas"
-        //        "Viper.GUI.App.Toolbar"  → "App"
+        // e.g.  "Zanna.GUI.Canvas"       → "Canvas"
+        //        "Zanna.GUI.App.Toolbar"  → "App"
         std::string rest(qname.substr(nsWithDot.size()));
         auto dotPos = rest.find('.');
         std::string childName = (dotPos != std::string::npos) ? rest.substr(0, dotPos) : rest;

@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 ///
 /// @file TestConsoleBinding.cpp
-/// @brief Unit tests for Viper.Terminal runtime class bindings.
+/// @brief Unit tests for Zanna.Terminal runtime class bindings.
 ///
-/// @details This test file verifies that the Viper.Terminal runtime class
+/// @details This test file verifies that the Zanna.Terminal runtime class
 /// is correctly registered in the catalog and that its methods can be looked
 /// up through the RuntimeMethodIndex.
 ///
@@ -16,7 +16,7 @@
 ///
 /// ### Catalog Registration Tests
 ///
-/// Verifies that Viper.Terminal exists in the runtime class catalog with
+/// Verifies that Zanna.Terminal exists in the runtime class catalog with
 /// the expected methods:
 /// - Say(message) - Output text to the terminal
 /// - ReadLine() - Read a line of text from the terminal
@@ -27,12 +27,12 @@
 ///
 /// | Method        | Arity | Expected Target           |
 /// |---------------|-------|---------------------------|
-/// | Say(str)      | 1     | Viper.Terminal.Say        |
-/// | ReadLine()    | 0     | Viper.Terminal.ReadLine   |
+/// | Say(str)      | 1     | Zanna.Terminal.Say        |
+/// | ReadLine()    | 0     | Zanna.Terminal.ReadLine   |
 ///
 /// ## Terminal I/O Architecture
 ///
-/// The Viper.Terminal class provides consolidated I/O operations:
+/// The Zanna.Terminal class provides consolidated I/O operations:
 /// - Say() is the primary output function (replaces PRINT)
 /// - ReadLine() is the primary input function (replaces INPUT)
 ///
@@ -41,7 +41,7 @@
 ///
 /// @see RuntimeMethodIndex - Method lookup interface
 /// @see runtimeClassCatalog - Raw class metadata
-/// @see runtime.def - Source definition for Viper.Terminal
+/// @see runtime.def - Source definition for Zanna.Terminal
 ///
 //===----------------------------------------------------------------------===//
 
@@ -52,17 +52,17 @@
 #include <algorithm>
 #include <string>
 
-/// @brief Test that Viper.Terminal exists in the catalog with expected methods.
+/// @brief Test that Zanna.Terminal exists in the catalog with expected methods.
 ///
-/// @details Searches the runtime class catalog for Viper.Terminal and verifies
+/// @details Searches the runtime class catalog for Zanna.Terminal and verifies
 /// it contains the Say and ReadLine methods.
 ///
 TEST(RuntimeClassTerminalBinding, CatalogContainsTerminal) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
-    // Find Viper.Terminal in the catalog
+    // Find Zanna.Terminal in the catalog
     auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.Terminal";
+        return std::string(c.qname) == "Zanna.Terminal";
     });
     ASSERT_NE(it, cat.end());
 
@@ -88,18 +88,18 @@ TEST(RuntimeClassTerminalBinding, MethodIndexTargets) {
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
     // Test Terminal.Say(message: String) -> void
-    auto say = midx.find("Viper.Terminal", "Say", 1);
+    auto say = midx.find("Zanna.Terminal", "Say", 1);
     ASSERT_TRUE(say.has_value());
-    EXPECT_EQ(say->target, std::string("Viper.Terminal.Say"));
+    EXPECT_EQ(say->target, std::string("Zanna.Terminal.Say"));
 
     // Test Terminal.ReadLine() -> String
-    auto rl = midx.find("Viper.Terminal", "ReadLine", 0);
+    auto rl = midx.find("Zanna.Terminal", "ReadLine", 0);
     ASSERT_TRUE(rl.has_value());
-    EXPECT_EQ(rl->target, std::string("Viper.Terminal.ReadLine"));
+    EXPECT_EQ(rl->target, std::string("Zanna.Terminal.ReadLine"));
 }
 
 /// @brief Test entry point.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

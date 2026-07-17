@@ -1,4 +1,4 @@
-# Viper Chess
+# Zanna Chess
 
 A full chess engine with AI opponent, written entirely in Zia.
 
@@ -43,7 +43,7 @@ chess/
 
     assets/
         fonts/
-            viper_8x8.bdf   Bundled bitmap font used by the polished UI
+            zanna_8x8.bdf   Bundled bitmap font used by the polished UI
 
     core/
         config.zia          Constants, colors, piece values, layout
@@ -80,7 +80,7 @@ chess/
 
 ```bash
 cd examples/games/chess
-viper run .
+zanna run .
 ```
 
 ## AI Architecture

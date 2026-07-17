@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 //
 // TABLE OF CONTENTS
 //
-// This file defines all Viper runtime functions and classes.
+// This file defines all Zanna runtime functions and classes.
 // Sections are organized alphabetically by namespace.
 //
 //   BIGINT
@@ -174,7 +174,7 @@
 //   i64  - 64-bit signed integer
 //   f64  - 64-bit float (double)
 //   str  - string
-//   obj  - object reference (optionally qualified: obj<Viper.Class>)
+//   obj  - object reference (optionally qualified: obj<Zanna.Class>)
 //   seq  - runtime sequence (optionally typed: seq<str>)
 //   list - runtime list (optionally typed: list<i64>)
 //   ptr  - raw pointer (runtime-internal only; do not expose in RT_FUNC/RT_METHOD signatures)
@@ -183,7 +183,7 @@
 // Notes:
 //   - id must be unique C++ identifier
 //   - c_symbol is the C runtime function name (rt_*)
-//   - canonical is the Viper.* namespace name
+//   - canonical is the Zanna.* namespace name
 //   - RT_INTERNAL_FUNC emits a callable descriptor for class metadata/lowering
 //     targets but hides it from standalone frontend runtime function catalogs
 //   - RT_BRIDGE marks safe Zia callback bridge parameters as none, callback, or payload

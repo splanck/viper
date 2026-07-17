@@ -5,7 +5,7 @@
 
 module ghost_stall_probe;
 
-bind Viper.Terminal as Terminal;
+bind Zanna.Terminal as Terminal;
 bind "./config";
 bind "./ghost";
 bind "./maze";

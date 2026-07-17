@@ -1,12 +1,12 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
 #
 # File: scripts/validate-windows-toolchain-installer.ps1
-# Purpose: Validate a native Viper toolchain installer on a disposable Windows host.
+# Purpose: Validate a native Zanna toolchain installer on a disposable Windows host.
 #
 # Key invariants:
 #   - Package identity and paths come from the recursively verified /inspect record.
@@ -25,7 +25,7 @@ param(
     [string]$Installer,
 
     [string]$BaselineInstaller = "",
-    [string]$UpgradeStaleRelativePath = "share\viper\installer-upgrade-stale.txt",
+    [string]$UpgradeStaleRelativePath = "share\zanna\installer-upgrade-stale.txt",
     [string]$InstallRoot = "",
     [string]$Scope = "",
     [string]$SignToolPath = "signtool.exe",
@@ -112,7 +112,7 @@ function Get-InstallerMetadata {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     $jsonPath = Join-Path ([IO.Path]::GetTempPath()) `
-        ("viper-installer-inspect-{0}.json" -f [Guid]::NewGuid().ToString("N"))
+        ("zanna-installer-inspect-{0}.json" -f [Guid]::NewGuid().ToString("N"))
     try {
         $result = Invoke-CapturedProcess -FilePath $Path `
             -Arguments @("/inspect", "/output", $jsonPath)
@@ -258,7 +258,7 @@ $startMenuBase = if ($machineScope) {
     Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 }
 $startMenu = Join-Path $startMenuBase ([string]$metadata.default_install_dir)
-$work = Join-Path $env:TEMP ("viper-installer-vm-" + [Guid]::NewGuid().ToString("N"))
+$work = Join-Path $env:TEMP ("zanna-installer-vm-" + [Guid]::NewGuid().ToString("N"))
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $originalPath = $env:Path
 $unownedSentinel = Join-Path $InstallRoot "validator-unowned-sentinel.txt"
@@ -291,8 +291,8 @@ try {
     if ($existingProduct) {
         $existing = Get-ItemProperty -LiteralPath $uninstallRegistry
         $existingMaintenance = if ($existing.PSObject.Properties.Name -contains
-            "ViperMaintenanceCache") {
-            [string]$existing.ViperMaintenanceCache
+            "ZannaMaintenanceCache") {
+            [string]$existing.ZannaMaintenanceCache
         } else {
             ""
         }
@@ -342,7 +342,7 @@ try {
     foreach ($requiredProperty in @(
             "DisplayName", "DisplayVersion", "Publisher", "InstallLocation",
             "UninstallString", "QuietUninstallString", "ModifyPath", "RepairPath",
-            "EstimatedSize", "ViperMaintenanceCache")) {
+            "EstimatedSize", "ZannaMaintenanceCache")) {
         if ($arp.PSObject.Properties.Name -notcontains $requiredProperty -or
             [string]::IsNullOrWhiteSpace([string]$arp.$requiredProperty)) {
             throw "Apps & Features metadata is missing $requiredProperty."
@@ -354,17 +354,17 @@ try {
             [StringComparison]::OrdinalIgnoreCase)) {
         throw "Apps & Features InstallLocation does not match the selected root."
     }
-    $maintenanceCache = [string]$arp.ViperMaintenanceCache
+    $maintenanceCache = [string]$arp.ZannaMaintenanceCache
     if (-not (Test-Path -LiteralPath $maintenanceCache -PathType Leaf)) {
         throw "Verified maintenance cache is missing: $maintenanceCache"
     }
 
     $requiredTools = @(
-        "viper", "zia", "vbasic", "ilrun", "il-verify", "il-dis",
+        "zanna", "zia", "vbasic", "ilrun", "il-verify", "il-dis",
         "zia-server", "vbasic-server", "basic-ast-dump", "basic-lex-dump"
     )
-    if ($components -contains "viperide") {
-        $requiredTools += "viperide"
+    if ($components -contains "zannaide") {
+        $requiredTools += "zannaide"
     }
     foreach ($tool in $requiredTools) {
         $toolPath = Join-Path $InstallRoot "bin\$tool.exe"
@@ -373,16 +373,16 @@ try {
         }
     }
 
-    $developerPrompt = Join-Path $InstallRoot "bin\viper-dev.cmd"
+    $developerPrompt = Join-Path $InstallRoot "bin\zanna-dev.cmd"
     if (-not (Test-Path -LiteralPath $developerPrompt -PathType Leaf)) {
         throw "Expected installed developer prompt: $developerPrompt"
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $startMenu "Viper Developer Prompt.lnk"))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $startMenu "Zanna Developer Prompt.lnk"))) {
         throw "Expected developer prompt Start Menu shortcut under $startMenu"
     }
-    if ($components -contains "viperide" -and
-        -not (Test-Path -LiteralPath (Join-Path $startMenu "ViperIDE.lnk"))) {
-        throw "Expected ViperIDE Start Menu shortcut under $startMenu"
+    if ($components -contains "zannaide" -and
+        -not (Test-Path -LiteralPath (Join-Path $startMenu "ZannaIDE.lnk"))) {
+        throw "Expected ZannaIDE Start Menu shortcut under $startMenu"
     }
 
     if (-not (Test-PathEntry `
@@ -396,9 +396,9 @@ try {
         Invoke-CheckedProcess -FilePath $maintenanceCache -Arguments @(
             "/modify", "/quiet", "/norestart", "/type", "minimal",
             "/noPath", "/noAssociations", "/noShortcuts") -SuccessCodes @(0, 3010) | Out-Null
-        if ($components -contains "viperide" -and
-            (Test-Path -LiteralPath (Join-Path $InstallRoot "bin\viperide.exe"))) {
-            throw "Minimal modify left the ViperIDE component installed."
+        if ($components -contains "zannaide" -and
+            (Test-Path -LiteralPath (Join-Path $InstallRoot "bin\zannaide.exe"))) {
+            throw "Minimal modify left the ZannaIDE component installed."
         }
         if (Test-PathEntry `
                 -Value ([Environment]::GetEnvironmentVariable("Path", $pathScope)) `
@@ -413,16 +413,16 @@ try {
         Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $true
     }
 
-    $viper = Join-Path $InstallRoot "bin\viper.exe"
-    $expectedViperHash = (Get-FileHash -LiteralPath $viper -Algorithm SHA256).Hash
+    $zanna = Join-Path $InstallRoot "bin\zanna.exe"
+    $expectedZannaHash = (Get-FileHash -LiteralPath $zanna -Algorithm SHA256).Hash
     if (-not (Test-Path -LiteralPath $unownedSentinel)) {
         [IO.File]::WriteAllText($unownedSentinel, "preserve-unowned-repair-content")
     }
-    [IO.File]::WriteAllText($viper, "intentionally-corrupt-for-repair")
+    [IO.File]::WriteAllText($zanna, "intentionally-corrupt-for-repair")
     Invoke-CheckedProcess -FilePath $maintenanceCache `
         -Arguments @("/repair", "/quiet", "/norestart") -SuccessCodes @(0, 3010) | Out-Null
-    if ((Get-FileHash -LiteralPath $viper -Algorithm SHA256).Hash -ne $expectedViperHash) {
-        throw "Repair did not restore the exact owned viper.exe bytes."
+    if ((Get-FileHash -LiteralPath $zanna -Algorithm SHA256).Hash -ne $expectedZannaHash) {
+        throw "Repair did not restore the exact owned zanna.exe bytes."
     }
     if (-not (Test-Path -LiteralPath $unownedSentinel -PathType Leaf)) {
         throw "Repair removed unrelated developer content."
@@ -438,42 +438,42 @@ try {
         }
     }
 
-    Invoke-CheckedProcess -FilePath $viper -Arguments @("--version") | Out-Host
+    Invoke-CheckedProcess -FilePath $zanna -Arguments @("--version") | Out-Host
     $pathFromRegistry = ([Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
                          [Environment]::GetEnvironmentVariable("Path", "User"))
     $env:Path = $pathFromRegistry
     try {
         Invoke-CheckedProcess -FilePath $powershell -Arguments @(
             "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-Command", "viper --version") | Out-Host
+            "-Command", "zanna --version") | Out-Host
     } finally {
         $env:Path = $originalPath
     }
 
     $basic = Join-Path $work "installer-run-smoke.bas"
     [IO.File]::WriteAllText($basic, '10 PRINT "INSTALLER-RUN-SMOKE"')
-    $runOut = Invoke-CheckedProcess -FilePath $viper -Arguments @("run", $basic)
+    $runOut = Invoke-CheckedProcess -FilePath $zanna -Arguments @("run", $basic)
     if ($runOut -notmatch "INSTALLER-RUN-SMOKE") {
-        throw "viper run produced unexpected output: $runOut"
+        throw "zanna run produced unexpected output: $runOut"
     }
 
     $il = Join-Path $work "installer-native-smoke.il"
     $nativeExe = Join-Path $work "installer-native-smoke.exe"
-    Remove-Item Env:VIPER_LIB_PATH -ErrorAction SilentlyContinue
+    Remove-Item Env:ZANNA_LIB_PATH -ErrorAction SilentlyContinue
     [IO.File]::WriteAllText($il, @'
 il 0.3.0
 
-extern @Viper.Terminal.PrintStr(str) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
 global const str @.msg = "INSTALLER-NATIVE-SMOKE"
 
 func @main() -> i64 {
 entry:
   %msg = const_str @.msg
-  call @Viper.Terminal.PrintStr(%msg)
+  call @Zanna.Terminal.PrintStr(%msg)
   ret 0
 }
 '@)
-    Invoke-CheckedProcess -FilePath $viper -Arguments @(
+    Invoke-CheckedProcess -FilePath $zanna -Arguments @(
         "codegen", [string]$metadata.architecture, $il, "-o", $nativeExe) `
         -WorkingDirectory $work | Out-Null
     $nativeOut = Invoke-CheckedProcess -FilePath $nativeExe -WorkingDirectory $work
@@ -489,17 +489,17 @@ entry:
         New-Item -ItemType Directory -Path $consumerSource -Force | Out-Null
         [IO.File]::WriteAllText((Join-Path $consumerSource "CMakeLists.txt"), @'
 cmake_minimum_required(VERSION 3.20)
-project(viper_installer_consumer LANGUAGES CXX)
+project(zanna_installer_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package(Viper CONFIG REQUIRED)
-add_executable(viper_installer_consumer main.cpp)
-target_link_libraries(viper_installer_consumer PRIVATE viper::il_core viper::il_io)
+find_package(Zanna CONFIG REQUIRED)
+add_executable(zanna_installer_consumer main.cpp)
+target_link_libraries(zanna_installer_consumer PRIVATE zanna::il_core zanna::il_io)
 '@)
         [IO.File]::WriteAllText((Join-Path $consumerSource "main.cpp"), @'
 #include <sstream>
-#include <viper/il/core/Module.hpp>
-#include <viper/il/io/Serializer.hpp>
+#include <zanna/il/core/Module.hpp>
+#include <zanna/il/io/Serializer.hpp>
 
 int main() {
     il::core::Module module;
@@ -521,11 +521,11 @@ exit /b %errorlevel%
 "@)
         Invoke-CheckedProcess -FilePath $cmd -Arguments @("/d", "/c", $consumerDriver) | Out-Host
         $consumerExe = @(
-            (Join-Path $consumerBuild "Release\viper_installer_consumer.exe"),
-            (Join-Path $consumerBuild "viper_installer_consumer.exe")
+            (Join-Path $consumerBuild "Release\zanna_installer_consumer.exe"),
+            (Join-Path $consumerBuild "zanna_installer_consumer.exe")
         ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
         if (-not $consumerExe) {
-            throw "CMake consumer build did not produce viper_installer_consumer.exe."
+            throw "CMake consumer build did not produce zanna_installer_consumer.exe."
         }
         Invoke-CheckedProcess -FilePath $consumerExe | Out-Null
     }
@@ -554,9 +554,9 @@ exit /b %errorlevel%
             throw "Detached cleanup left the maintenance cache: $maintenanceCache"
         }
         foreach ($ownedPath in @(
-                (Join-Path $InstallRoot "bin\viper.exe"),
+                (Join-Path $InstallRoot "bin\zanna.exe"),
                 (Join-Path $InstallRoot "uninstall.exe"),
-                (Join-Path $InstallRoot ".viper-install-manifest.txt"))) {
+                (Join-Path $InstallRoot ".zanna-install-manifest.txt"))) {
             if (Test-Path -LiteralPath $ownedPath) {
                 throw "Uninstaller left an owned path: $ownedPath"
             }

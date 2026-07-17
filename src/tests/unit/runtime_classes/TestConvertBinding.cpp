@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -8,15 +8,15 @@
 /// @file TestConvertBinding.cpp
 /// @brief Unit tests for conversion and parse runtime class bindings.
 ///
-/// @details This test file verifies that the canonical Viper.Core.Convert and
-/// Viper.Core.Parse runtime classes are registered in the catalog and that the
+/// @details This test file verifies that the canonical Zanna.Core.Convert and
+/// Zanna.Core.Parse runtime classes are registered in the catalog and that the
 /// public runtime surface exposes only the canonical conversion and parse names.
 ///
 /// ## Test Coverage
 ///
 /// ### Catalog Registration Tests
 ///
-/// Verifies that Viper.Core.Convert exists in the runtime class catalog with
+/// Verifies that Zanna.Core.Convert exists in the runtime class catalog with
 /// the expected conversion methods:
 /// - ToInt64(str) - Parse string to 64-bit integer
 /// - ToDouble(str) - Parse string to 64-bit float
@@ -30,15 +30,15 @@
 ///
 /// | Method            | Arity | Expected Target              |
 /// |-------------------|-------|------------------------------|
-/// | ToInt64(str)      | 1     | Viper.Core.Convert.ToInt64     |
-/// | ToDouble(str)     | 1     | Viper.Core.Convert.ToDouble  |
-/// | NumToInt(f64)     | 1     | Viper.Core.Convert.NumToInt  |
-/// | ToStringInt(i64) | 1     | Viper.Core.Convert.ToStringInt |
-/// | ToStringDouble(f64)| 1   | Viper.Core.Convert.ToStringDouble |
+/// | ToInt64(str)      | 1     | Zanna.Core.Convert.ToInt64     |
+/// | ToDouble(str)     | 1     | Zanna.Core.Convert.ToDouble  |
+/// | NumToInt(f64)     | 1     | Zanna.Core.Convert.NumToInt  |
+/// | ToStringInt(i64) | 1     | Zanna.Core.Convert.ToStringInt |
+/// | ToStringDouble(f64)| 1   | Zanna.Core.Convert.ToStringDouble |
 ///
 /// ## Conversion Architecture
 ///
-/// The Viper.Core.Convert class provides bidirectional type conversion:
+/// The Zanna.Core.Convert class provides bidirectional type conversion:
 ///
 /// **String → Numeric:**
 /// - ToInt64: Parses decimal string to i64
@@ -49,12 +49,12 @@
 /// - ToStringInt: Formats i64 as decimal string
 /// - ToStringDouble: Formats f64 with appropriate precision
 ///
-/// Note: The ToString variants delegate to Viper.Strings functions for
+/// Note: The ToString variants delegate to Zanna.Strings functions for
 /// implementation efficiency.
 ///
 /// @see RuntimeMethodIndex - Method lookup interface
 /// @see runtimeClassCatalog - Raw class metadata
-/// @see runtime.def - Source definition for Viper.Core.Convert
+/// @see runtime.def - Source definition for Zanna.Core.Convert
 ///
 //===----------------------------------------------------------------------===//
 
@@ -66,9 +66,9 @@
 #include <algorithm>
 #include <string>
 
-/// @brief Test that Viper.Core.Convert exists in the catalog with expected methods.
+/// @brief Test that Zanna.Core.Convert exists in the catalog with expected methods.
 ///
-/// @details Searches the runtime class catalog for Viper.Core.Convert and verifies
+/// @details Searches the runtime class catalog for Zanna.Core.Convert and verifies
 /// it contains all the expected conversion methods.
 ///
 TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
@@ -111,14 +111,14 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
         EXPECT_TRUE(hasCanonicalToStringDouble);
     };
 
-    requireConvertClass("Viper.Core.Convert");
+    requireConvertClass("Zanna.Core.Convert");
 }
 
 /// @brief Test that Convert methods resolve to correct extern targets.
 ///
 /// @details Verifies the RuntimeMethodIndex correctly maps Convert method
 /// lookups to their canonical extern names for IL code generation.
-/// Note that ToString variants delegate to Viper.Strings functions.
+/// Note that ToString variants delegate to Zanna.Strings functions.
 ///
 TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     // Initialize the method index
@@ -126,42 +126,42 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
     // Test Convert.ToInt64(str: String) -> Int.
-    auto oldToInt = midx.find("Viper.Core.Convert", "ToInt", 1);
+    auto oldToInt = midx.find("Zanna.Core.Convert", "ToInt", 1);
     EXPECT_FALSE(oldToInt.has_value());
 
-    auto ti = midx.find("Viper.Core.Convert", "ToInt64", 1);
+    auto ti = midx.find("Zanna.Core.Convert", "ToInt64", 1);
     ASSERT_TRUE(ti.has_value());
-    EXPECT_EQ(ti->target, std::string("Viper.Core.Convert.ToInt64"));
+    EXPECT_EQ(ti->target, std::string("Zanna.Core.Convert.ToInt64"));
 
     // Test Convert.ToDouble(str: String) -> Float
-    auto td = midx.find("Viper.Core.Convert", "ToDouble", 1);
+    auto td = midx.find("Zanna.Core.Convert", "ToDouble", 1);
     ASSERT_TRUE(td.has_value());
-    EXPECT_EQ(td->target, std::string("Viper.Core.Convert.ToDouble"));
+    EXPECT_EQ(td->target, std::string("Zanna.Core.Convert.ToDouble"));
 
     // Test Convert.NumToInt(f: Float) -> Int
-    auto nti = midx.find("Viper.Core.Convert", "NumToInt", 1);
+    auto nti = midx.find("Zanna.Core.Convert", "NumToInt", 1);
     ASSERT_TRUE(nti.has_value());
-    EXPECT_EQ(nti->target, std::string("Viper.Core.Convert.NumToInt"));
+    EXPECT_EQ(nti->target, std::string("Zanna.Core.Convert.NumToInt"));
 
     // The underscore compatibility spelling is gone; only the canonical
     // ToStringInt remains.
-    auto tsi = midx.find("Viper.Core.Convert", "ToString_Int", 1);
+    auto tsi = midx.find("Zanna.Core.Convert", "ToString_Int", 1);
     EXPECT_FALSE(tsi.has_value());
-    auto tsiCanon = midx.find("Viper.Core.Convert", "ToStringInt", 1);
+    auto tsiCanon = midx.find("Zanna.Core.Convert", "ToStringInt", 1);
     ASSERT_TRUE(tsiCanon.has_value());
-    EXPECT_EQ(tsiCanon->target, std::string("Viper.Core.Convert.ToStringInt"));
+    EXPECT_EQ(tsiCanon->target, std::string("Zanna.Core.Convert.ToStringInt"));
 
     // Test Convert.ToStringDouble(f: Float) -> String
-    auto tsd = midx.find("Viper.Core.Convert", "ToString_Double", 1);
+    auto tsd = midx.find("Zanna.Core.Convert", "ToString_Double", 1);
     EXPECT_FALSE(tsd.has_value());
 
-    auto canonicalTsi = midx.find("Viper.Core.Convert", "ToStringInt", 1);
+    auto canonicalTsi = midx.find("Zanna.Core.Convert", "ToStringInt", 1);
     ASSERT_TRUE(canonicalTsi.has_value());
-    EXPECT_EQ(canonicalTsi->target, std::string("Viper.Core.Convert.ToStringInt"));
+    EXPECT_EQ(canonicalTsi->target, std::string("Zanna.Core.Convert.ToStringInt"));
 
-    auto canonicalTsd = midx.find("Viper.Core.Convert", "ToStringDouble", 1);
+    auto canonicalTsd = midx.find("Zanna.Core.Convert", "ToStringDouble", 1);
     ASSERT_TRUE(canonicalTsd.has_value());
-    EXPECT_EQ(canonicalTsd->target, std::string("Viper.Core.Convert.ToStringDouble"));
+    EXPECT_EQ(canonicalTsd->target, std::string("Zanna.Core.Convert.ToStringDouble"));
 }
 
 TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {
@@ -210,40 +210,40 @@ TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {
         EXPECT_FALSE(hasLegacyDouble);
     };
 
-    requireParseClass("Viper.Core.Parse");
+    requireParseClass("Zanna.Core.Parse");
 }
 
 TEST(RuntimeClassParseBinding, MethodIndexTargets) {
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
-    auto intOr = midx.find("Viper.Core.Parse", "IntOr", 2);
+    auto intOr = midx.find("Zanna.Core.Parse", "IntOr", 2);
     ASSERT_TRUE(intOr.has_value());
-    EXPECT_EQ(intOr->target, std::string("Viper.Core.Parse.IntOr"));
+    EXPECT_EQ(intOr->target, std::string("Zanna.Core.Parse.IntOr"));
 
-    auto radix = midx.find("Viper.Core.Parse", "IntRadix", 3);
+    auto radix = midx.find("Zanna.Core.Parse", "IntRadix", 3);
     ASSERT_TRUE(radix.has_value());
-    EXPECT_EQ(radix->target, std::string("Viper.Core.Parse.IntRadix"));
+    EXPECT_EQ(radix->target, std::string("Zanna.Core.Parse.IntRadix"));
 
     // The TryNum spelling was removed; TryDouble is canonical.
-    EXPECT_FALSE(midx.find("Viper.Core.Parse", "TryNum", 1).has_value());
-    auto tryDouble = midx.find("Viper.Core.Parse", "TryDouble", 1);
+    EXPECT_FALSE(midx.find("Zanna.Core.Parse", "TryNum", 1).has_value());
+    auto tryDouble = midx.find("Zanna.Core.Parse", "TryDouble", 1);
     ASSERT_TRUE(tryDouble.has_value());
-    EXPECT_EQ(tryDouble->target, std::string("Viper.Core.Parse.TryDouble"));
+    EXPECT_EQ(tryDouble->target, std::string("Zanna.Core.Parse.TryDouble"));
 }
 
 TEST(RuntimeUtilityBindings, DirectCanonicalFunctionsResolve) {
-    auto convert = il::runtime::mapCanonicalRuntimeName("Viper.Core.Convert.ToInt64");
+    auto convert = il::runtime::mapCanonicalRuntimeName("Zanna.Core.Convert.ToInt64");
     ASSERT_TRUE(convert.has_value());
     EXPECT_EQ(*convert, std::string_view("rt_to_int"));
 
-    auto parse = il::runtime::mapCanonicalRuntimeName("Viper.Core.Parse.IntRadix");
+    auto parse = il::runtime::mapCanonicalRuntimeName("Zanna.Core.Parse.IntRadix");
     ASSERT_TRUE(parse.has_value());
     EXPECT_EQ(*parse, std::string_view("rt_parse_int_radix"));
 }
 
 /// @brief Test entry point.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

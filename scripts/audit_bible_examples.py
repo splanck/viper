@@ -18,14 +18,14 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 BIBLE = ROOT / "docs" / "bible"
-VIPER_CANDIDATES = (
-    ROOT / "build" / "src" / "tools" / "viper" / "viper",
-    ROOT / "build" / "install" / "bin" / "viper",
-    ROOT / "build" / "install-validation" / "bin" / "viper",
+ZANNA_CANDIDATES = (
+    ROOT / "build" / "src" / "tools" / "zanna" / "zanna",
+    ROOT / "build" / "install" / "bin" / "zanna",
+    ROOT / "build" / "install-validation" / "bin" / "zanna",
 )
-VIPER = next((path for path in VIPER_CANDIDATES if path.is_file()), VIPER_CANDIDATES[0])
+ZANNA = next((path for path in ZANNA_CANDIDATES if path.is_file()), ZANNA_CANDIDATES[0])
 
-ZIA_LANGS = {"rust", "zia", "viper"}
+ZIA_LANGS = {"rust", "zia", "zanna"}
 BASIC_LANGS = {"basic", "bas"}
 IL_LANGS = {"il"}
 
@@ -43,19 +43,19 @@ PSEUDO_MARKERS = (
 DECL_RE = r"(?:(?:expose|hide|public|export|private)\s+)?(?:class|struct|interface|enum|func)\b"
 
 SIDE_EFFECT_MARKERS = (
-    "Viper.IO",
-    "Viper.Net",
-    "Viper.Network",
-    "Viper.Http",
-    "Viper.Crypto.Tls",
-    "Viper.Thread",
-    "Viper.Graphics",
-    "Viper.GUI",
-    "Viper.Audio",
-    "Viper.Audio",
-    "Viper.Input",
-    "Viper.System",
-    "Viper.Time",
+    "Zanna.IO",
+    "Zanna.Net",
+    "Zanna.Network",
+    "Zanna.Http",
+    "Zanna.Crypto.Tls",
+    "Zanna.Thread",
+    "Zanna.Graphics",
+    "Zanna.GUI",
+    "Zanna.Audio",
+    "Zanna.Audio",
+    "Zanna.Input",
+    "Zanna.System",
+    "Zanna.Time",
     "ReadLine",
     "InputLine",
     "Prompt(",
@@ -264,7 +264,7 @@ def zia_source(fence: Fence, negative: bool) -> tuple[str, str, bool]:
         if bind_lines:
             source += "\n" + "\n".join(bind_lines).strip("\n") + "\n"
         elif any(token in "\n".join(body_lines) for token in ("Say(", "Print(", "InputLine(")):
-            source += "\nbind Viper.Terminal;\n"
+            source += "\nbind Zanna.Terminal;\n"
         source += "\nfunc start() {\n"
         for line in body_lines:
             source += f"    {line}\n"
@@ -309,15 +309,15 @@ def zia_source(fence: Fence, negative: bool) -> tuple[str, str, bool]:
         has_entry = re.search(r"(?m)^\s*func\s+start\s*\(\s*\)", "\n".join(module_lines)) is not None
         if not has_entry:
             visible_prelude = "\n".join(prelude_lines)
-            if any(token in "\n".join(start_lines) for token in ("Say(", "Print(", "InputLine(")) and "bind Viper.Terminal" not in visible_prelude:
-                source += "\nbind Viper.Terminal;\n"
+            if any(token in "\n".join(start_lines) for token in ("Say(", "Print(", "InputLine(")) and "bind Zanna.Terminal" not in visible_prelude:
+                source += "\nbind Zanna.Terminal;\n"
             source += "\nfunc start() {\n"
             for line in start_lines:
                 source += f"    {line}\n"
             source += "}\n"
             has_entry = True
         return source, "module-wrap", has_entry
-    source = f"module {module_name(fence)};\n\nbind Viper.Terminal;\n\nfunc start() {{\n"
+    source = f"module {module_name(fence)};\n\nbind Zanna.Terminal;\n\nfunc start() {{\n"
     for line in code.splitlines():
         source += f"    {line}\n"
     source += "}\n"
@@ -336,7 +336,7 @@ def run_cmd(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
 
 def check_file(path: Path, timeout: float) -> subprocess.CompletedProcess[str]:
     return run_cmd(
-        [str(VIPER), "check", str(path), "--diagnostic-format=json"],
+        [str(ZANNA), "check", str(path), "--diagnostic-format=json"],
         timeout,
     )
 
@@ -379,7 +379,7 @@ def context_failure_reason(stderr: str) -> str:
 
 
 def run_file(path: Path, timeout: float) -> subprocess.CompletedProcess[str]:
-    return run_cmd([str(VIPER), "run", str(path), "--max-steps", "500000"], timeout)
+    return run_cmd([str(ZANNA), "run", str(path), "--max-steps", "500000"], timeout)
 
 
 def safe_group_path(base: Path, marker: str) -> Path:
@@ -735,7 +735,7 @@ def audit_il(fence: Fence, tmp: Path, timeout: float) -> Result:
         "il",
         "skip",
         "skipped",
-        reason="IL snippets are illustrative; current viper run accepts .zia/.bas/project targets",
+        reason="IL snippets are illustrative; current zanna run accepts .zia/.bas/project targets",
     )
 
 
@@ -786,10 +786,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=5.0, help="per-example timeout in seconds")
     args = parser.parse_args()
 
-    if not VIPER.exists():
-        raise SystemExit(f"missing built viper tool: {VIPER}")
+    if not ZANNA.exists():
+        raise SystemExit(f"missing built zanna tool: {ZANNA}")
 
-    tmp = Path(tempfile.mkdtemp(prefix="viper-bible-audit-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="zanna-bible-audit-", dir="/tmp"))
     results: list[Result] = []
     try:
         fences = list(iter_fences(iter_markdown_files(args.files)))

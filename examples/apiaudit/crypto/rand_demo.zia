@@ -1,16 +1,16 @@
 // =============================================================================
-// API Audit: Viper.Crypto.SecureRandom - Cryptographically Secure Random
+// API Audit: Zanna.Crypto.SecureRandom - Cryptographically Secure Random
 // =============================================================================
 // Tests: Int, Bytes
 // =============================================================================
 
 module CryptoRandDemo;
-bind Viper.Crypto;
-bind Viper.Collections;
-bind Viper.Terminal;
+bind Zanna.Crypto;
+bind Zanna.Collections;
+bind Zanna.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Crypto.SecureRandom ===");
+    Say("=== API Audit: Zanna.Crypto.SecureRandom ===");
 
     // --- Int ---
     Say("--- Int ---");

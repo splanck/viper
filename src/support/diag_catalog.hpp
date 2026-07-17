@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: support/diag_catalog.hpp
-// Purpose: Declares the diagnostic-code catalog backing `viper explain` and
-//          `viper --print-error-codes`.
+// Purpose: Declares the diagnostic-code catalog backing `zanna explain` and
+//          `zanna --print-error-codes`.
 // Key invariants:
 //   - Catalog entries are unique by code and stable across a release.
 //   - Lookup never fails hard: unknown codes fall back to a prefix-family

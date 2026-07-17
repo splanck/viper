@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_mesh3d.c
-// Purpose: Viper.Graphics3D.Mesh3D — dynamic vertex/index mesh storage
+// Purpose: Zanna.Graphics3D.Mesh3D — dynamic vertex/index mesh storage
 //   with programmatic construction and procedural generators.
 //
 // Key invariants:
@@ -22,7 +22,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_asset_error.h"
 #include "rt_canvas3d.h"
@@ -1772,4 +1772,4 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
 #include "rt_mesh3d_stl.inc"
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

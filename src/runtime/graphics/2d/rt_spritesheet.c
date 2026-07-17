@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_spritesheet.c
-// Purpose: Sprite atlas (sprite sheet) manager for Viper games. Wraps a single
+// Purpose: Sprite atlas (sprite sheet) manager for Zanna games. Wraps a single
 //   Pixels buffer representing a tiled atlas and maps integer frame indices to
 //   rectangular sub-regions. Supports uniform-tile sheets (all frames the same
 //   size, packed in row-major order) and named-region sheets (arbitrary rects
@@ -32,7 +32,7 @@
 //
 // Links: src/runtime/graphics/rt_spritesheet.h (public API),
 //        src/runtime/graphics/rt_sprite.h (consumer of atlas frames),
-//        docs/viperlib/game.md (SpriteSheet section)
+//        docs/zannalib/game.md (SpriteSheet section)
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -616,8 +616,8 @@ TEST(Mem2RegNonEntry, SingleBlockNonEntryAllocaIsPromoted) {
     unsigned allocasBefore = countOpcodeInFunction(module.functions[0], Opcode::Alloca);
     ASSERT_EQ(allocasBefore, 1u);
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     // After: alloca and load must be removed (promoted to SSA)
     unsigned allocasAfter = countOpcodeInFunction(module.functions[0], Opcode::Alloca);
@@ -635,8 +635,8 @@ TEST(Mem2RegNonEntry, DominatingNonEntryAllocaIsPromoted) {
     unsigned allocasBefore = countOpcodeInFunction(module.functions[0], Opcode::Alloca);
     ASSERT_EQ(allocasBefore, 1u);
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     // Alloca and its load must be gone after promotion
     unsigned allocasAfter = countOpcodeInFunction(module.functions[0], Opcode::Alloca);
@@ -649,8 +649,8 @@ TEST(Mem2RegNonEntry, EntryLoadBeforeStorePromotesToDefaultValueWithoutEntryPhi)
     Module module = buildEntryLoadBeforeStoreAlloca();
     ASSERT_FALSE(module.functions.empty());
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     const Function &fn = module.functions.front();
     ASSERT_EQ(countOpcodeInFunction(fn, Opcode::Alloca), 0u);
@@ -669,8 +669,8 @@ TEST(Mem2RegNonEntry, EntryLoadBeforeStorePromotesToDefaultValueWithoutEntryPhi)
 TEST(Mem2RegNonEntry, LoopHeaderParamsAreDeterministicAndEdgesAreRepaired) {
     Module module = buildLoopHeaderTwoPromotedValues();
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
 
@@ -702,8 +702,8 @@ TEST(Mem2RegNonEntry, LoopHeaderParamsAreDeterministicAndEdgesAreRepaired) {
 TEST(Mem2RegNonEntry, ReenteredNonEntryAllocaIsNotPromotedAcrossBlocks) {
     Module module = buildLoopHeaderDynamicAlloca();
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
     const Function &fn = module.functions.front();
@@ -717,8 +717,8 @@ TEST(Mem2RegNonEntry, ExceptionHandlingFunctionIsSkipped) {
     Module module = buildEhFunctionWithHandlerStore();
     ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
 
-    viper::passes::Mem2RegStats stats{};
-    viper::passes::mem2reg(module, &stats);
+    zanna::passes::Mem2RegStats stats{};
+    zanna::passes::mem2reg(module, &stats);
 
     ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
     const Function &fn = module.functions.front();
@@ -729,6 +729,6 @@ TEST(Mem2RegNonEntry, ExceptionHandlingFunctionIsSkipped) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

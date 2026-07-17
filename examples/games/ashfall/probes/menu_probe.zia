@@ -12,11 +12,11 @@
 // =============================================================================
 module menu_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.IO.File as File;
-bind Viper.IO.Dir as Dir;
-bind Viper.IO.Path as Path;
-bind Viper.IO.TempFile as TempFile;
+bind Zanna.Terminal as Terminal;
+bind Zanna.IO.File as File;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.Path as Path;
+bind Zanna.IO.TempFile as TempFile;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../game" as game;

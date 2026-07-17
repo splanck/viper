@@ -1,6 +1,6 @@
-# Viper Paint
+# Zanna Paint
 
-Viper Paint is a Zia drawing app built on the Viper graphics runtime. The drawing
+Zanna Paint is a Zia drawing app built on the Zanna graphics runtime. The drawing
 surface stays `Pixels`-backed for direct paint operations, while the app leans on
 higher-level runtime helpers for input actions, game UI widgets, file dialogs,
 viewport management, history, layers, and diagnostics. Tools are dispatched
@@ -66,12 +66,12 @@ through a `Tool` interface + registry, so the toolbox is data-driven.
 
 ## Runtime features used
 
-- `Viper.Graphics.Canvas` (`BeginFrame`, `SetFps`, `DeltaTime`, `GradientV`,
+- `Zanna.Graphics.Canvas` (`BeginFrame`, `SetFps`, `DeltaTime`, `GradientV`,
   `CopyRect`, `Text`/`TextWidth`) drives the loop and chrome.
-- `Viper.Graphics.Pixels` (`BlendPixel`, `Set`, `DrawThickLine`, `DrawBezier`,
+- `Zanna.Graphics.Pixels` (`BlendPixel`, `Set`, `DrawThickLine`, `DrawBezier`,
   `DrawTriangle`, `RotateCW/CCW`, `Resize`, `Tint`, `Copy`, `Scale`, image ops).
-- `Viper.Graphics.Color` HSL/hex helpers back the colour picker.
-- `Viper.Input.Action` for named keybindings; `Viper.Input.Keyboard.GetText` for
-  the text tool; `Viper.Math.Random` for spray.
-- `Viper.Game.ButtonGroup` / `Viper.Game.UI.HudButton` for the toolbox;
-  `Viper.GUI.FileDialog` / `MessageBox` / `Cursor` for dialogs + cursors.
+- `Zanna.Graphics.Color` HSL/hex helpers back the colour picker.
+- `Zanna.Input.Action` for named keybindings; `Zanna.Input.Keyboard.GetText` for
+  the text tool; `Zanna.Math.Random` for spray.
+- `Zanna.Game.ButtonGroup` / `Zanna.Game.UI.HudButton` for the toolbox;
+  `Zanna.GUI.FileDialog` / `MessageBox` / `Cursor` for dialogs + cursors.

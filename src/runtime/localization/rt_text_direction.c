@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_text_direction.c
-// Purpose: Implementation of Viper.Localization.TextDirection. Walks UTF-8
+// Purpose: Implementation of Zanna.Localization.TextDirection. Walks UTF-8
 //          strings, decodes each codepoint, and classifies it as strong-LTR,
 //          strong-RTL, or neutral based on a small range table. Callers
 //          typically use the results to mirror layouts or pick the right
@@ -208,8 +208,8 @@ static int text_direction_append_checked(rt_string_builder *sb, const char *byte
     rt_sb_status_t status = rt_sb_append_bytes(sb, bytes, len);
     if (status == RT_SB_OK)
         return 1;
-    rt_trap(status == RT_SB_ERROR_OVERFLOW ? "Viper.Localization.TextDirection: output overflow"
-                                           : "Viper.Localization.TextDirection: allocation failed");
+    rt_trap(status == RT_SB_ERROR_OVERFLOW ? "Zanna.Localization.TextDirection: output overflow"
+                                           : "Zanna.Localization.TextDirection: allocation failed");
     return 0;
 }
 

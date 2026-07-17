@@ -1,20 +1,20 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/util/unicode.cpp
 // Purpose: Provide Unicode utilities for width computation and UTF-8 decoding
-//          used by the Viper TUI text rendering subsystem.
+//          used by the Zanna TUI text rendering subsystem.
 // Key invariants: Routines never allocate more than the returned containers,
 //                 operate on well-formed UTF-8 without invoking undefined
 //                 behaviour, and gracefully substitute replacement characters
 //                 for malformed sequences.
 // Ownership/Lifetime: Functions borrow input views and return value-owned
 //                     containers so callers retain full control over storage.
-// Links: docs/internals/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#zannatui-architecture
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,7 +28,7 @@
 
 #include "tui/util/unicode.hpp"
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 namespace {
 struct Range {
     char32_t first;
@@ -135,4 +135,4 @@ std::u32string decode_utf8(std::string_view in) {
     return out;
 }
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

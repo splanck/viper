@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <cassert>
 #include <cstdio>
 
-namespace viper::tests {
+namespace zanna::tests {
 int64_t VmFixture::run(il::core::Module &module) const {
     il::vm::VM vm(module);
     return vm.run();
@@ -53,4 +53,4 @@ std::string VmFixture::captureTrap(il::core::Module &module) const {
     return trap.stderrText;
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

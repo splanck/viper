@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -70,18 +70,18 @@ void childTrap(bool includeMetadata, bool primeContext) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
+    if (zanna::tests::dispatchChild(argc, argv))
         return 0;
 
     {
-        auto result = viper::tests::runIsolated([]() { childTrap(true, false); });
+        auto result = zanna::tests::runIsolated([]() { childTrap(true, false); });
         assert(result.trapped());
         assert(result.stderrText.find("Trap @first_fn") != std::string::npos);
         assert(result.stderrText.find("first trap") != std::string::npos);
     }
 
     {
-        auto result = viper::tests::runIsolated([]() { childTrap(false, true); });
+        auto result = zanna::tests::runIsolated([]() { childTrap(false, true); });
         assert(result.trapped());
         assert(result.stderrText.find("Trap @first_fn") == std::string::npos);
         assert(result.stderrText.find("<unknown>") != std::string::npos);

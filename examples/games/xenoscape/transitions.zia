@@ -18,7 +18,7 @@
 // signals "you messed up, try again".
 //
 // This file is Xenoscape's transition choreographer.  It
-// wraps `Viper.Game.ScreenFX` — a runtime effects library
+// wraps `Zanna.Game.ScreenFX` — a runtime effects library
 // that provides:
 //
 //   * CircleOut / CircleIn — iris-close / iris-open wipe.
@@ -58,7 +58,7 @@
 
 module transitions;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 bind "./config";
 bind "./palette";
 

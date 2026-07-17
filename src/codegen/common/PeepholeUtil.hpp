@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 
 /// @brief Remove all instructions marked for deletion from an instruction list.
 ///
@@ -50,4 +50,4 @@ inline void removeMarkedInstructions(std::vector<MInstr> &instrs,
     instrs.resize(writeIdx);
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

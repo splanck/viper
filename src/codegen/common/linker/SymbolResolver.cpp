@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform);
 static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform platform);
@@ -82,12 +82,12 @@ static std::string basenameFromPath(const std::string &path) {
     return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
-/// @brief Check whether an archive basename is one of Viper's runtime archives.
+/// @brief Check whether an archive basename is one of Zanna's runtime archives.
 /// @details This intentionally does not search the whole object path. Only a
-///          basename such as libviper_rt_base.a, viper_rt_core.lib, or
-///          viper_runtime.lib is allowed to activate duplicate-runtime shim
+///          basename such as libzanna_rt_base.a, zanna_rt_core.lib, or
+///          zanna_runtime.lib is allowed to activate duplicate-runtime shim
 ///          preference.
-static bool isViperRuntimeArchiveBasename(const std::string &basename) {
+static bool isZannaRuntimeArchiveBasename(const std::string &basename) {
     std::string name = asciiLower(basename);
     if (name.size() > 4 && name.substr(name.size() - 4) == ".lib")
         name.resize(name.size() - 4);
@@ -96,8 +96,8 @@ static bool isViperRuntimeArchiveBasename(const std::string &basename) {
     if (name.rfind("lib", 0) == 0)
         name.erase(0, 3);
 
-    return name == "viper_runtime" || name.rfind("viper_rt_", 0) == 0 ||
-           name.rfind("viper-runtime", 0) == 0;
+    return name == "zanna_runtime" || name.rfind("zanna_rt_", 0) == 0 ||
+           name.rfind("zanna-runtime", 0) == 0;
 }
 
 static void setEntryFromSymbol(GlobalSymEntry &entry,
@@ -215,7 +215,7 @@ static uint64_t hashComdatSection(const ObjFile &obj, const ObjSection &sec) {
 static bool weakExternalSearchesFallbackLibrary(const ObjSymbol &sym) {
     // COFF values: 1=NOLIBRARY, 2=LIBRARY, 3=ALIAS. ALIAS must also seed
     // archive extraction; otherwise an archive-only fallback is never loaded.
-    // Viper-created tests and older readers used 0; keep that legacy value as
+    // Zanna-created tests and older readers used 0; keep that legacy value as
     // "search fallback".
     if (!sym.weakExternal || sym.weakDefaultName.empty())
         return false;
@@ -552,7 +552,7 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         return false;
 
     // The Zia completion bridge (rt_zia_*) ships a non-weak stub in
-    // viper_rt_base on MSVC (RT_WEAK expands to nothing). When
+    // zanna_rt_base on MSVC (RT_WEAK expands to nothing). When
     // zia_editor_services is force-loaded its strong definitions are added
     // first; treat a later duplicate strong stub definition as the same "runtime archive
     // provides an overridable shim" case the CRT names below already use, so it
@@ -586,10 +586,10 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
     if (platform != LinkPlatform::Windows)
         return false;
 
-    // Keep the Windows CRT/runtime shim exception scoped to Viper's own runtime
+    // Keep the Windows CRT/runtime shim exception scoped to Zanna's own runtime
     // archives. User archives that accidentally define the same names should
     // still participate in normal multiple-definition diagnostics.
-    return isViperRuntimeArchiveBasename(basenameFromPath(archivePathFromObjectName(obj.name)));
+    return isZannaRuntimeArchiveBasename(basenameFromPath(archivePathFromObjectName(obj.name)));
 }
 
 /// MSVC emits some CRT inline-function local statics in every object that uses
@@ -1021,4 +1021,4 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex.c
 // Purpose: Implements regular expression pattern matching for the static
-//          Viper.Text.Pattern class using a backtracking AST matcher.
+//          Zanna.Text.Pattern class using a backtracking AST matcher.
 //          Supports literals, '.', '^', '$', character classes '[...]',
 //          shorthand classes (\d \w \s and their complements), quantifiers
 //          (*, +, ?), non-greedy quantifiers (*?, +?, ??), capture groups
@@ -597,7 +597,7 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern) {
 ///          exists. Invalid pattern syntax still traps like @ref rt_pattern_find.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_pattern_find_option(rt_string text, rt_string pattern) {
     const char *pat_str = pattern_required(pattern);
     const char *txt_str = pattern_text_or_empty(text);
@@ -648,7 +648,7 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
 /// @param start Starting byte offset.
-/// @return Opaque Viper.Option containing the first match, or None.
+/// @return Opaque Zanna.Option containing the first match, or None.
 void *rt_pattern_find_from_option(rt_string text, rt_string pattern, int64_t start) {
     const char *pat_str = pattern_required(pattern);
     const char *txt_str = pattern_text_or_empty(text);
@@ -692,7 +692,7 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
 /// @brief Find the byte position of the first regex match as an Option index.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
-/// @return Opaque Viper.Option containing the byte index, or None.
+/// @return Opaque Zanna.Option containing the byte index, or None.
 void *rt_pattern_find_pos_option(rt_string text, rt_string pattern) {
     const char *pat_str = pattern_required(pattern);
     const char *txt_str = pattern_text_or_empty(text);

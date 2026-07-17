@@ -12,22 +12,22 @@ Status: Accepted
 
 ## Context
 
-ViperIDE uses `Viper.Workspace.FileIndex.Enumerate` for project trees, Quick
+ZannaIDE uses `Zanna.Workspace.FileIndex.Enumerate` for project trees, Quick
 Open, search discovery, and semantic workspace indexing. `Enumerate` returns a
 complete sequence of entry maps. That is convenient for small projects but forces
 IDE callers to allocate the full result before they can start processing it.
 
-ADR 0010 added `Viper.Workspace.FileIndex.Status` so callers could query large
+ADR 0010 added `Zanna.Workspace.FileIndex.Status` so callers could query large
 workspace metadata without allocating every entry. The next IDE polish pass needs
 the same bounded behavior for actual entry consumption, especially for background
 indexing where the frame loop should process a small slice at a time.
 
-Adding a runtime method under `Viper.Workspace.FileIndex` is a runtime C ABI
+Adding a runtime method under `Zanna.Workspace.FileIndex` is a runtime C ABI
 surface change, so it is recorded here.
 
 ## Decision
 
-Add `Viper.Workspace.FileIndex.Page(root, extensionsCsv, excludesCsv,
+Add `Zanna.Workspace.FileIndex.Page(root, extensionsCsv, excludesCsv,
 includeDirs, offset, limit)`.
 
 The method is stateless from the caller's perspective: callers pass `offset` and
@@ -56,7 +56,7 @@ The returned map contains:
 
 ## Consequences
 
-ViperIDE can page workspace indexing and other discovery jobs without allocating
+ZannaIDE can page workspace indexing and other discovery jobs without allocating
 the whole workspace result up front. Because the API is stateless from the
 caller side, callers do not need to manage native handles or lifetime, and no new
 close/destroy protocol is introduced. The private cursor optimizes the common

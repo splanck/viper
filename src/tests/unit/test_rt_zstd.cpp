@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -73,8 +73,8 @@ static bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 }
 
 static std::string fixture_path(const char *name) {
-#ifdef VIPER_SOURCE_DIR
-    return std::string(VIPER_SOURCE_DIR) + "/src/tests/unit/data/zstd/" + name;
+#ifdef ZANNA_SOURCE_DIR
+    return std::string(ZANNA_SOURCE_DIR) + "/src/tests/unit/data/zstd/" + name;
 #else
     return std::string("src/tests/unit/data/zstd/") + name;
 #endif

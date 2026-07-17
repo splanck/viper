@@ -2,13 +2,13 @@
 // Tests: Grid2D constructor and operations (other Game classes need BUG-009/012 fixes)
 module TestBugfixGameHeap;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     var passed = true;
 
     // Test Grid2D creation and basic operations
-    var grid = new Viper.Game.Grid2D(10, 10, 0);
+    var grid = new Zanna.Game.Grid2D(10, 10, 0);
     grid.Set(5, 5, 42);
     if (grid.Get(5, 5) != 42) {
         Say("FAIL: Grid2D.Set/Get failed");

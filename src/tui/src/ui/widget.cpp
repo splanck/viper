@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::ui {
+namespace zanna::tui::ui {
 /// @brief Record the layout rectangle supplied by a parent container.
 ///
 /// @details The default implementation simply stores the rectangle and does
@@ -81,4 +81,4 @@ Rect Widget::rect() const {
     return rect_;
 }
 
-} // namespace viper::tui::ui
+} // namespace zanna::tui::ui

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,7 +21,7 @@
 ///          OperandParser logic so diagnostics, whitespace handling, and literal
 ///          forms remain byte-for-byte compatible during the refactor.
 
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
@@ -32,13 +32,13 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 namespace {
 using ::il::core::Value;
 using ::il::io::detail::ParserState;
 using ::il::support::Expected;
 using ::il::support::makeError;
-using viper::parse::Cursor;
+using zanna::parse::Cursor;
 
 /// @brief Create an Expected error tagged with the parser's current location.
 /// @details Value operand parsing frequently needs to propagate syntax failures
@@ -121,4 +121,4 @@ ParseResult parseValueOperand(Cursor &cur, Context &ctx) {
     return result;
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

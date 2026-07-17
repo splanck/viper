@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_convert_coll.c
-// Purpose: Implements conversion functions between Viper collection types.
+// Purpose: Implements conversion functions between Zanna collection types.
 //   Provides rt_seq_to_list, rt_seq_to_set, rt_seq_to_stack, rt_seq_to_queue,
 //   rt_seq_to_ring, rt_seq_to_deque, and their reverse counterparts, allowing
 //   any collection to be converted to any other via a Seq intermediate form.

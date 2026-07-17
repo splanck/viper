@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg {
+namespace zanna::pkg {
 
 /// @brief Writes USTAR tar archives.
 class TarWriter {
@@ -88,4 +88,4 @@ class TarWriter {
     std::set<std::string> seenPaths_; ///< Paths added so far (duplicate guard).
 };
 
-} // namespace viper::pkg
+} // namespace zanna::pkg

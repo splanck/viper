@@ -1,15 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 ///
 /// @file TestRuntimeClassFileBinding.cpp
-/// @brief Unit tests for Viper.IO.File runtime class method bindings.
+/// @brief Unit tests for Zanna.IO.File runtime class method bindings.
 ///
 /// @details This test file verifies that the RuntimeMethodIndex correctly
-/// binds static method calls on the Viper.IO.File runtime class to their
+/// binds static method calls on the Zanna.IO.File runtime class to their
 /// canonical extern target names. These bindings are critical for the BASIC
 /// frontend to generate correct extern calls to the runtime library.
 ///
@@ -20,10 +20,10 @@
 ///
 /// | Method Call           | Arity | Expected Target              |
 /// |-----------------------|-------|------------------------------|
-/// | File.Exists(path)     | 1     | Viper.IO.File.Exists         |
-/// | File.ReadAllText(p)   | 1     | Viper.IO.File.ReadAllText    |
-/// | File.WriteAllText(p,c)| 2     | Viper.IO.File.WriteAllText   |
-/// | File.Delete(path)     | 1     | Viper.IO.File.Delete         |
+/// | File.Exists(path)     | 1     | Zanna.IO.File.Exists         |
+/// | File.ReadAllText(p)   | 1     | Zanna.IO.File.ReadAllText    |
+/// | File.WriteAllText(p,c)| 2     | Zanna.IO.File.WriteAllText   |
+/// | File.Delete(path)     | 1     | Zanna.IO.File.Delete         |
 ///
 /// ## RuntimeMethodIndex Integration
 ///
@@ -37,7 +37,7 @@
 ///
 /// @see RuntimeMethodIndex - BASIC frontend method lookup
 /// @see RuntimeRegistry - Unified signature registry
-/// @see runtime.def - Source definition for Viper.IO.File
+/// @see runtime.def - Source definition for Zanna.IO.File
 ///
 //===----------------------------------------------------------------------===//
 
@@ -57,32 +57,32 @@ TEST(RuntimeClassFileBinding, MethodIndexTargets) {
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
     // Test File.Exists(path: String) -> Boolean
-    auto a = midx.find("Viper.IO.File", "Exists", 1);
+    auto a = midx.find("Zanna.IO.File", "Exists", 1);
     ASSERT_TRUE(a.has_value());
-    EXPECT_EQ(a->target, std::string("Viper.IO.File.Exists"));
+    EXPECT_EQ(a->target, std::string("Zanna.IO.File.Exists"));
     EXPECT_FALSE(a->hasReceiver);
 
     // Test File.ReadAllText(path: String) -> String
-    auto b = midx.find("Viper.IO.File", "ReadAllText", 1);
+    auto b = midx.find("Zanna.IO.File", "ReadAllText", 1);
     ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->target, std::string("Viper.IO.File.ReadAllText"));
+    EXPECT_EQ(b->target, std::string("Zanna.IO.File.ReadAllText"));
     EXPECT_FALSE(b->hasReceiver);
 
     // Test File.WriteAllText(path: String, contents: String) -> void
-    auto c = midx.find("Viper.IO.File", "WriteAllText", 2);
+    auto c = midx.find("Zanna.IO.File", "WriteAllText", 2);
     ASSERT_TRUE(c.has_value());
-    EXPECT_EQ(c->target, std::string("Viper.IO.File.WriteAllText"));
+    EXPECT_EQ(c->target, std::string("Zanna.IO.File.WriteAllText"));
     EXPECT_FALSE(c->hasReceiver);
 
     // Test File.Delete(path: String) -> void
-    auto d = midx.find("Viper.IO.File", "Delete", 1);
+    auto d = midx.find("Zanna.IO.File", "Delete", 1);
     ASSERT_TRUE(d.has_value());
-    EXPECT_EQ(d->target, std::string("Viper.IO.File.Delete"));
+    EXPECT_EQ(d->target, std::string("Zanna.IO.File.Delete"));
     EXPECT_FALSE(d->hasReceiver);
 }
 
 /// @brief Test entry point.
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

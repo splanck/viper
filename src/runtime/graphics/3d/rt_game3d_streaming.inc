@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/rt_game3d_streaming.inc  (#included from rt_game3d.c; not a
 // standalone translation unit) Purpose: Game3D WorldStream3D manifest parsing, cell/terrain
 // load-unload, and recompute
@@ -897,7 +897,7 @@ static int game3d_heightmap_parse_text(const char *cursor,
     *out_width = 0;
     *out_depth = 0;
     if (!game3d_heightmap_read_word(&cursor, magic, sizeof(magic)) ||
-        strcmp(magic, "viper-heightmap-v1") != 0 || !game3d_heightmap_read_i64(&cursor, &width) ||
+        strcmp(magic, "zanna-heightmap-v1") != 0 || !game3d_heightmap_read_i64(&cursor, &width) ||
         !game3d_heightmap_read_i64(&cursor, &depth) || width < 1 || depth < 1 || width > 4096 ||
         depth > 4096)
         return 0;

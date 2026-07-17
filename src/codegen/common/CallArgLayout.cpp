@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace viper::codegen::common {
+namespace zanna::codegen::common {
 namespace {
 
 struct LayoutSlot {
@@ -228,4 +228,4 @@ CallArgLayout planParamClasses(std::span<const CallArgClass> classes,
                       config);
 }
 
-} // namespace viper::codegen::common
+} // namespace zanna::codegen::common

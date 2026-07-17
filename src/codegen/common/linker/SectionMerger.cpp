@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,7 +25,7 @@
 #include <limits>
 #include <map>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 namespace {
 
@@ -681,4 +681,4 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

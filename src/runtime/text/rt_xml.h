@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_xml.h
-// Purpose: XML parsing and tree-building API for Viper.Data.Xml. Supports
+// Purpose: XML parsing and tree-building API for Zanna.Data.Xml. Supports
 //          elements, attributes, text nodes, comments, and CDATA sections
 //          with a reference-counted node tree and compact/pretty serialisation.
 // Key invariants:
@@ -58,13 +58,13 @@ typedef enum {
 /// @note Call rt_xml_error() to get error message on parse failure.
 void *rt_xml_parse(rt_string text);
 
-/// @brief Parse XML string into a Viper.Result.
+/// @brief Parse XML string into a Zanna.Result.
 /// @details Returns `Ok(document)` for well-formed XML and `Err(message)` for
 ///          malformed or empty input. The returned Result retains the parsed
 ///          document, allowing callers to handle failures without reading the
 ///          thread-local rt_xml_error() side channel.
 /// @param text XML text to parse.
-/// @return Opaque Viper.Result object containing the parsed document or error.
+/// @return Opaque Zanna.Result object containing the parsed document or error.
 void *rt_xml_parse_result(rt_string text);
 
 /// @brief Get the last parse error message.
@@ -76,7 +76,7 @@ rt_string rt_xml_error(void);
 /// @return 1 if valid XML, 0 otherwise.
 int8_t rt_xml_is_valid(rt_string text);
 
-/// @brief Return 1 when @p node is a Viper.Data.Xml node handle.
+/// @brief Return 1 when @p node is a Zanna.Data.Xml node handle.
 int8_t rt_xml_is_node(void *node);
 
 //=========================================================================
@@ -252,7 +252,7 @@ void *rt_xml_find(void *node, rt_string tag);
 ///          avoiding the legacy NULL sentinel.
 /// @param node Starting node.
 /// @param tag Tag name to match recursively, or slash-separated element path.
-/// @return Opaque Viper.Option containing the first matching element, or None.
+/// @return Opaque Zanna.Option containing the first matching element, or None.
 void *rt_xml_find_option(void *node, rt_string tag);
 
 //=========================================================================

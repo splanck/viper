@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTGraphics2DTests.cpp
-// Purpose: Tests for Viper.Graphics 2D rendering, tilemap, UI, and game helpers.
+// Purpose: Tests for Zanna.Graphics 2D rendering, tilemap, UI, and game helpers.
 //
 //===----------------------------------------------------------------------===//
 

@@ -3,10 +3,10 @@ param(
     [string]$InputPath,
 
     [string]$OutputPath,
-    [string]$PfxPath = $env:VIPER_WINDOWS_SIGN_PFX,
-    [string]$PfxPassword = $env:VIPER_WINDOWS_SIGN_PASSWORD,
-    [string]$Thumbprint = $env:VIPER_WINDOWS_SIGN_THUMBPRINT,
-    [string]$TimestampUrl = $(if ($env:VIPER_WINDOWS_TIMESTAMP_URL) { $env:VIPER_WINDOWS_TIMESTAMP_URL } else { "https://timestamp.digicert.com" }),
+    [string]$PfxPath = $env:ZANNA_WINDOWS_SIGN_PFX,
+    [string]$PfxPassword = $env:ZANNA_WINDOWS_SIGN_PASSWORD,
+    [string]$Thumbprint = $env:ZANNA_WINDOWS_SIGN_THUMBPRINT,
+    [string]$TimestampUrl = $(if ($env:ZANNA_WINDOWS_TIMESTAMP_URL) { $env:ZANNA_WINDOWS_TIMESTAMP_URL } else { "https://timestamp.digicert.com" }),
     [string]$SignToolPath = "signtool.exe",
     [switch]$AllowPasswordArgv,
     [switch]$NoVerify
@@ -26,7 +26,7 @@ if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
     throw "Input installer not found: $InputPath"
 }
 if ([string]::IsNullOrWhiteSpace($PfxPath) -and [string]::IsNullOrWhiteSpace($Thumbprint)) {
-    throw "A PFX path or certificate thumbprint is required. Pass -PfxPath, -Thumbprint, or set VIPER_WINDOWS_SIGN_PFX/VIPER_WINDOWS_SIGN_THUMBPRINT."
+    throw "A PFX path or certificate thumbprint is required. Pass -PfxPath, -Thumbprint, or set ZANNA_WINDOWS_SIGN_PFX/ZANNA_WINDOWS_SIGN_THUMBPRINT."
 }
 $useThumbprint = -not [string]::IsNullOrWhiteSpace($Thumbprint)
 $normalizedThumbprint = $null
@@ -40,11 +40,11 @@ if ($useThumbprint) {
         throw "PFX file not found: $PfxPath"
     }
     if ($null -eq $PfxPassword) {
-        throw "PFX password is required. Pass -PfxPassword or set VIPER_WINDOWS_SIGN_PASSWORD."
+        throw "PFX password is required. Pass -PfxPassword or set ZANNA_WINDOWS_SIGN_PASSWORD."
     }
-    $passwordArgvAcknowledged = $AllowPasswordArgv -or $env:VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK -in @("1", "true", "TRUE")
+    $passwordArgvAcknowledged = $AllowPasswordArgv -or $env:ZANNA_WINDOWS_SIGN_PASSWORD_ARGV_OK -in @("1", "true", "TRUE")
     if (-not $passwordArgvAcknowledged) {
-        throw "PFX password signing exposes the password in signtool process arguments. Prefer -Thumbprint certificate-store signing, or pass -AllowPasswordArgv / set VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure."
+        throw "PFX password signing exposes the password in signtool process arguments. Prefer -Thumbprint certificate-store signing, or pass -AllowPasswordArgv / set ZANNA_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure."
     }
 }
 

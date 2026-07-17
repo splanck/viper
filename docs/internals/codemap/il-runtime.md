@@ -19,7 +19,7 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 |---------------------------------|----------------------------------------------------------------|
 | `runtime.def`                   | X-macro table defining all runtime functions, classes, methods, properties, and aliases |
 | `RuntimeSigs.def`               | Compact signature definitions for generated code               |
-| `RuntimeSurfacePolicy.inc`      | X-macro surface-policy table (frontend-visible `Viper.*` APIs + intentionally-internal headers); consumed by audit tests |
+| `RuntimeSurfacePolicy.inc`      | X-macro surface-policy table (frontend-visible `Zanna.*` APIs + intentionally-internal headers); consumed by audit tests |
 
 ## Signature Registry
 

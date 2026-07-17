@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/lower/common/CommonLowering.hpp"
 
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 
 #include <cstdint>
 #include <functional>

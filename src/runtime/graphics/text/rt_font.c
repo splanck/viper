@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_font.c
-// Purpose: Embedded 8×8 bitmap font for software text rendering in Viper.
+// Purpose: Embedded 8×8 bitmap font for software text rendering in Zanna.
 //   Provides a statically compiled monospace glyph table covering printable
 //   ASCII (code points 32–126). Glyphs are drawn by rt_pixels_draw_text() and
 //   the Canvas.Text() API by reading bit patterns from this table and setting

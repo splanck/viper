@@ -820,7 +820,7 @@ module Renderer;
 
 bind Config;
 bind Game;
-bind Viper.Graphics;
+bind Zanna.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
@@ -944,9 +944,9 @@ module Main;
 bind Config;
 bind Game;
 bind Renderer;
-bind Viper.Graphics;
-bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Zanna.Graphics;
+bind Keyboard = Zanna.Input.Keyboard;
+bind Zanna.Time;
 
 func start() {
     // Create the game window
@@ -1257,7 +1257,7 @@ A completed Frogger is a foundation, not an endpoint. Here are ways to make it y
 Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:
 
 ```rust
-bind Viper.Audio;
+bind Zanna.Audio;
 
 var hopSound = Sound.Load("hop.wav");
 var splatSound = Sound.Load("splat.wav");
@@ -1281,7 +1281,7 @@ if deathByVehicle {
 Replace colored rectangles with proper artwork. Load sprite images and draw them instead of `Box`:
 
 ```rust
-bind Sprite = Viper.Graphics.Sprite;
+bind Sprite = Zanna.Graphics.Sprite;
 
 var frogSprite = Sprite.Load("frog.png");
 var frogLeft = Sprite.Load("frog_left.png");
@@ -1305,8 +1305,8 @@ canvas.Blit(sprite, frog.x - 20, frog.y);
 Save the highest score to a file so players can compete with themselves:
 
 ```rust
-bind Convert = Viper.Core.Convert;
-bind Viper.Text.Fmt as Fmt;
+bind Convert = Zanna.Core.Convert;
+bind Zanna.Text.Fmt as Fmt;
 
 func loadHighScore() -> Integer {
     var file = File.open("highscore.txt", "r");
@@ -1436,7 +1436,7 @@ if powerUp.containsPoint(frog.x, frog.y) {
 
 These exercises progressively build on the Frogger project, from small modifications to significant new features.
 
-**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Viper.Audio module to load and play WAV files. Make the death sound different for cars versus drowning.
+**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Zanna.Audio module to load and play WAV files. Make the death sound different for cars versus drowning.
 
 **Exercise 21.2 - High Score**: Implement a high score system that persists between game sessions. Display the high score on the title screen and the game over screen. Show a special message when the player beats their previous best.
 

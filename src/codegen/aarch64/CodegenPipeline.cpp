@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -58,11 +58,11 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 namespace {
 
-using viper::codegen::common::LinkContext;
+using zanna::codegen::common::LinkContext;
 using TargetPlatform = CodegenPipeline::TargetPlatform;
 
 /// @brief Dump all MIR functions to the provided stream with a header tag.
@@ -109,7 +109,7 @@ static linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
 static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
-            if constexpr (viper::platform::kHostMacOS) {
+            if constexpr (zanna::platform::kHostMacOS) {
                 return {"cc", "-arch", "arm64"};
             }
             return {"clang", "--target=arm64-apple-macos11"};
@@ -164,7 +164,7 @@ static int linkToExe(const std::string &asmPath,
                      bool preserveDebugSections,
                      std::ostream &out,
                      std::ostream &err) {
-    using namespace viper::codegen::common;
+    using namespace zanna::codegen::common;
 
     LinkContext ctx;
     if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
@@ -200,7 +200,7 @@ static int linkToExe(const std::string &asmPath,
 ///          alongside the Base archive because the Windows CRT startup expects
 ///          them to be present. Graphics and Audio support libraries are
 ///          appended when the link context declares those components. The GUI
-///          support library also pulls in viper_text_core because CodeEditor
+///          support library also pulls in zanna_text_core because CodeEditor
 ///          uses the shared text-buffer C ABI.
 /// @param ctx Link context produced by prepareLinkContext/prepareLinkContextFromSymbols.
 /// @param targetPlatform Requested OS platform; Host is resolved through targetLinkPlatform().
@@ -237,13 +237,13 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
     }
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
-        appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergui"));
-        appendIfExists(common::supportLibraryPath(ctx.buildDir, "viper_text_core"));
-        appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergfx"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "zannagui"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "zanna_text_core"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "zannagfx"));
     }
 
     if (common::hasComponent(ctx, RtComponent::Audio))
-        appendIfExists(common::supportLibraryPath(ctx.buildDir, "viperaud"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "zannaaud"));
 
     // Embedding the Zia frontend pulls in il_runtime's RuntimeRegistry, which
     // references the entire rt_* catalog regardless of what the program itself
@@ -263,7 +263,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
     }
 }
 
-/// @brief Link a single .o file into a native executable using the Viper native linker.
+/// @brief Link a single .o file into a native executable using the Zanna native linker.
 /// @details Fills a NativeLinkerOptions struct from the link context (runtime archives,
 ///          extra objects, stack size) and dispatches to nativeLink(). AArch64 arch is always
 ///          used; platform is mapped from the TargetPlatform enum.
@@ -291,9 +291,9 @@ static int linkObjToExe(const std::string &objPath,
                         bool preserveDebugSections,
                         std::ostream &out,
                         std::ostream &err) {
-    using namespace viper::codegen::common;
-    using viper::codegen::archiveNameForComponent;
-    using viper::codegen::RtComponent;
+    using namespace zanna::codegen::common;
+    using zanna::codegen::archiveNameForComponent;
+    using zanna::codegen::RtComponent;
 
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath;
@@ -323,7 +323,7 @@ static int linkObjToExe(const std::string &objPath,
         }
     }
 
-    return viper::codegen::linker::nativeLink(linkOpts, out, err);
+    return zanna::codegen::linker::nativeLink(linkOpts, out, err);
 }
 
 /// @brief Run IL-level optimization passes on @p mod before machine-code lowering.
@@ -347,9 +347,9 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
 ///          not need to duplicate raw host preprocessor probes.
 /// @return Reference to the appropriate singleton target; lifetime is static.
 static const TargetInfo &hostAArch64Target() {
-    if constexpr (viper::platform::kHostWindows) {
+    if constexpr (zanna::platform::kHostWindows) {
         return windowsTarget();
-    } else if constexpr (viper::platform::kHostMacOS) {
+    } else if constexpr (zanna::platform::kHostMacOS) {
         return darwinTarget();
     }
     return linuxTarget();
@@ -509,8 +509,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         return finish();
     }
 
-    viper::codegen::common::lowerNativeEh(mod);
-    if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(mod)) {
+    zanna::codegen::common::lowerNativeEh(mod);
+    if (const auto residualEh = zanna::codegen::common::findResidualStructuredEh(mod)) {
         err << "error: " << *residualEh << "\n";
         result.exit_code = 1;
         return finish();
@@ -637,10 +637,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         auto &rodata = *pipelineModule.binaryRodata;
         rodata.alignTo(16);
         rodata.defineSymbol(
-            "viper_asset_blob", objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
+            "zanna_asset_blob", objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
         rodata.emitBytes(assetBlob.data(), assetBlob.size());
         rodata.alignTo(8);
-        rodata.defineSymbol("viper_asset_blob_size",
+        rodata.defineSymbol("zanna_asset_blob_size",
                             objfile::SymbolBinding::Global,
                             objfile::SymbolSection::Rodata);
         rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
@@ -663,7 +663,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
         }
 
-        using namespace viper::codegen::objfile;
+        using namespace zanna::codegen::objfile;
         auto writer =
             createObjectFileWriter(targetObjectFormat(opts_.target_platform), ObjArch::AArch64);
         if (!writer) {
@@ -710,12 +710,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         std::unordered_set<std::string> extSymbols;
         for (const auto &section : pipelineModule.binaryTextSections)
             for (const auto &sym : section.symbols()) {
-                if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                if (sym.binding == zanna::codegen::objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
             }
         if (pipelineModule.binaryRodata) {
             for (const auto &sym : pipelineModule.binaryRodata->symbols()) {
-                if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                if (sym.binding == zanna::codegen::objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
             }
         }
@@ -724,14 +724,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         // so drop them from the runtime-archive symbol closure.
         if (pipelineModule.binaryData) {
             for (const auto &sym : pipelineModule.binaryData->symbols()) {
-                if (sym.binding == viper::codegen::objfile::SymbolBinding::Global)
+                if (sym.binding == zanna::codegen::objfile::SymbolBinding::Global)
                     extSymbols.erase(sym.name);
             }
         }
 
         LinkContext ctx;
         if (const int rc =
-                viper::codegen::common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
+                zanna::codegen::common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
             rc != 0) {
             result.exit_code = 1;
             return finish();
@@ -764,7 +764,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         }
 
         if (opts_.run_native) {
-            const int rc = viper::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
+            const int rc = zanna::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
             result.exit_code = rc == -1 ? 1 : rc;
             if (opts_.output_obj_path.empty()) {
                 std::error_code ec;
@@ -783,7 +783,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     if (!opts_.output_obj_path.empty() && !opts_.run_native) {
         const std::string &outPath = opts_.output_obj_path;
         if (isObjectOutputPath(outPath)) {
-            const int arc = viper::codegen::common::invokeAssembler(
+            const int arc = zanna::codegen::common::invokeAssembler(
                 systemAssemblerArgs(opts_.target_platform), asmPath, outPath, out, err);
             result.exit_code = arc == 0 ? 0 : 1;
             return finish();
@@ -836,7 +836,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     }
 
     if (opts_.run_native) {
-        const int rc = viper::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
+        const int rc = zanna::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
         result.exit_code = rc == -1 ? 1 : rc;
         if (opts_.output_obj_path.empty()) {
             std::error_code ec;
@@ -847,4 +847,4 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     return finish();
 }
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

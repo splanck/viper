@@ -7,8 +7,8 @@
 
 module sprite_entities;
 
-bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
+bind Zanna.Graphics;
+bind Color = Zanna.Graphics.Color;
 
 bind "../config";
 bind "./theme";

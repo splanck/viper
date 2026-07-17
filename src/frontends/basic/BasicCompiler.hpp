@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -9,7 +9,7 @@
 // complete BASIC-to-IL compilation pipeline.
 //
 // The BasicCompiler provides the top-level entry point for compiling BASIC
-// source code into Viper Intermediate Language (IL) modules, coordinating all
+// source code into Zanna Intermediate Language (IL) modules, coordinating all
 // compilation stages:
 //   Lexer → Parser → AST → Semantic → Lowerer → IL
 //
@@ -84,7 +84,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
-#include "viper/il/Module.hpp"
+#include "zanna/il/Module.hpp"
 #include <memory>
 #include <optional>
 #include <string>

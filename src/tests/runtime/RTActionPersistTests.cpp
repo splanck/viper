@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -51,7 +51,7 @@ static void test_save_load_button_action() {
 
     /* Define a button action with key binding */
     rt_action_define(make_str("jump"));
-    rt_action_bind_key(make_str("jump"), VIPER_KEY_SPACE);
+    rt_action_bind_key(make_str("jump"), ZANNA_KEY_SPACE);
 
     /* Save */
     rt_string json = rt_action_save();
@@ -79,8 +79,8 @@ static void test_save_load_axis_action() {
 
     /* Define an axis action with two key bindings */
     rt_action_define_axis(make_str("move_x"));
-    rt_action_bind_key_axis(make_str("move_x"), VIPER_KEY_LEFT, -1.0);
-    rt_action_bind_key_axis(make_str("move_x"), VIPER_KEY_RIGHT, 1.0);
+    rt_action_bind_key_axis(make_str("move_x"), ZANNA_KEY_LEFT, -1.0);
+    rt_action_bind_key_axis(make_str("move_x"), ZANNA_KEY_RIGHT, 1.0);
 
     /* Save */
     rt_string json = rt_action_save();
@@ -102,11 +102,11 @@ static void test_save_load_multiple_actions() {
     rt_action_clear();
 
     rt_action_define(make_str("fire"));
-    rt_action_bind_key(make_str("fire"), VIPER_KEY_Z);
-    rt_action_bind_mouse(make_str("fire"), VIPER_MOUSE_BUTTON_LEFT);
+    rt_action_bind_key(make_str("fire"), ZANNA_KEY_Z);
+    rt_action_bind_mouse(make_str("fire"), ZANNA_MOUSE_BUTTON_LEFT);
 
     rt_action_define(make_str("dodge"));
-    rt_action_bind_key(make_str("dodge"), VIPER_KEY_X);
+    rt_action_bind_key(make_str("dodge"), ZANNA_KEY_X);
 
     rt_action_define_axis(make_str("look_x"));
     rt_action_bind_mouse_x(make_str("look_x"), 0.5);
@@ -134,10 +134,10 @@ static void test_save_load_pad_bindings() {
     rt_action_clear();
 
     rt_action_define(make_str("jump"));
-    rt_action_bind_pad_button(make_str("jump"), 0, VIPER_PAD_A);
+    rt_action_bind_pad_button(make_str("jump"), 0, ZANNA_PAD_A);
 
     rt_action_define_axis(make_str("move_x"));
-    rt_action_bind_pad_axis(make_str("move_x"), -1, VIPER_AXIS_LEFT_X, 1.0);
+    rt_action_bind_pad_axis(make_str("move_x"), -1, ZANNA_AXIS_LEFT_X, 1.0);
 
     rt_string json = rt_action_save();
 
@@ -192,7 +192,7 @@ static void test_save_json_is_valid() {
     rt_action_clear();
 
     rt_action_define(make_str("test_action"));
-    rt_action_bind_key(make_str("test_action"), VIPER_KEY_A);
+    rt_action_bind_key(make_str("test_action"), ZANNA_KEY_A);
 
     rt_string json = rt_action_save();
     const char *cstr = rt_string_cstr(json);

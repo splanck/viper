@@ -2,13 +2,13 @@
 // Shows procedural pixel-art sprites floating above a ground plane.
 module DemoSprite3D;
 
-bind Viper.Terminal;
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Input;
+bind Zanna.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Input;
 
 func make_tree_sprite() -> Pixels {
-    var tex = new Viper.Graphics.Pixels(16, 32);
+    var tex = new Zanna.Graphics.Pixels(16, 32);
     // Draw a simple tree: brown trunk + green canopy
     var y = 0;
     while (y < 32) {
@@ -18,7 +18,7 @@ func make_tree_sprite() -> Pixels {
             if (y >= 20) {
                 if (x >= 6) {
                     if (x <= 9) {
-                        Viper.Graphics.Pixels.Set(tex, x, y, 0x6B3A20FF);
+                        Zanna.Graphics.Pixels.Set(tex, x, y, 0x6B3A20FF);
                     }
                 }
             }
@@ -30,7 +30,7 @@ func make_tree_sprite() -> Pixels {
                 if (dist < 8.0) {
                     var green = 100 + (8.0 - dist) * 15;
                     if (green > 200) { green = 200; }
-                    Viper.Graphics.Pixels.Set(tex, x, y, 0x228B22FF);
+                    Zanna.Graphics.Pixels.Set(tex, x, y, 0x228B22FF);
                 }
             }
             x = x + 1;
@@ -41,7 +41,7 @@ func make_tree_sprite() -> Pixels {
 }
 
 func make_star_sprite() -> Pixels {
-    var tex = new Viper.Graphics.Pixels(16, 16);
+    var tex = new Zanna.Graphics.Pixels(16, 16);
     var y = 0;
     while (y < 16) {
         var x = 0;
@@ -50,10 +50,10 @@ func make_star_sprite() -> Pixels {
             var dy = y - 8;
             var dist = Sqrt(1.0 * dx * dx + 1.0 * dy * dy);
             if (dist < 3.0) {
-                Viper.Graphics.Pixels.Set(tex, x, y, 0xFFFF44FF);
+                Zanna.Graphics.Pixels.Set(tex, x, y, 0xFFFF44FF);
             } else {
                 if (dist < 6.0) {
-                    Viper.Graphics.Pixels.Set(tex, x, y, 0xFFAA2288);
+                    Zanna.Graphics.Pixels.Set(tex, x, y, 0xFFAA2288);
                 }
             }
             x = x + 1;

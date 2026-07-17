@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VM/Native Determinism — Viper</title>
-  <meta name="description" content="Every Viper program produces identical output whether run on the VM or compiled to native code. Enforced by differential testing and deterministic IL semantics.">
+  <title>VM/Native Determinism — Zanna</title>
+  <meta name="description" content="Every Zanna program produces identical output whether run on the VM or compiled to native code. Enforced by differential testing and deterministic IL semantics.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
 <body>
 
 <nav class="top-nav">
-  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Zanna logo">Zanna</a>
   <div class="nav-links">
     <a href="../docs/">Docs</a>
     <a href="../learn/">Learn</a>
     <a href="../showcase/">Showcase</a>
     <a href="../performance/">Performance</a>
     <a href="../blog/">Blog</a>
-    <a href="https://github.com/splanck/viper">GitHub</a>
+    <a href="https://github.com/zannagames/zanna">GitHub</a>
     <button id="theme-toggle" aria-label="Toggle theme"></button>
   </div>
   <button class="nav-mobile-toggle" aria-label="Menu"></button>
@@ -32,7 +32,7 @@
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
     <h1>VM/Native Determinism</h1>
 
-    <p>Every Viper program produces <strong>identical output</strong> whether run on the IL interpreter or compiled to a native ARM64/x86-64 binary. This is a core design invariant, not an aspiration.</p>
+    <p>Every Zanna program produces <strong>identical output</strong> whether run on the IL interpreter or compiled to a native ARM64/x86-64 binary. This is a core design invariant, not an aspiration.</p>
 
     <h2>Why It Matters</h2>
 
@@ -45,7 +45,7 @@
     <h2>How It's Enforced</h2>
 
     <h3>Deterministic IL Semantics</h3>
-    <p>The Viper IL specification (v0.3.0) defines precise semantics for every opcode. Both the VM and native backends implement the same specification:</p>
+    <p>The Zanna IL specification (v0.3.0) defines precise semantics for every opcode. Both the VM and native backends implement the same specification:</p>
     <ul>
       <li>Signed/unsigned integer operations with defined overflow behavior</li>
       <li>IEEE 754 double-precision floating-point</li>
@@ -57,7 +57,7 @@
     <p>The test suite includes <strong>property-based differential tests</strong> that generate random-but-valid IL programs and verify that the VM and native backend produce identical output:</p>
     <ul>
       <li>Random IL program generation with configurable parameters</li>
-      <li>Seeded RNG for reproducibility (configurable via <code>VIPER_DIFF_ITERATIONS</code>)</li>
+      <li>Seeded RNG for reproducibility (configurable via <code>ZANNA_DIFF_ITERATIONS</code>)</li>
       <li>Checked arithmetic operations (<code>iadd.ovf</code>, <code>isub.ovf</code>, <code>imul.ovf</code>, <code>sdiv.chk0</code>)</li>
       <li>Automatic comparison of VM output vs. native output</li>
     </ul>
@@ -89,7 +89,7 @@
       <li><strong>Value representation</strong> via tagged <code>Slot</code> (int64, f64, ptr, str)</li>
       <li><strong>Call stack</strong> with frame buffer pooling (8 register files, 16 stack buffers)</li>
       <li><strong>Structured exception handling</strong> with error types and recovery points</li>
-      <li><strong>Tail-call optimization</strong> (gated by <code>VIPER_VM_TAILCALL</code>)</li>
+      <li><strong>Tail-call optimization</strong> (gated by <code>ZANNA_VM_TAILCALL</code>)</li>
       <li><strong>Execution tracing</strong> for debugging (<code>--trace</code>, <code>--trace-calls</code>)</li>
     </ul>
 
@@ -124,13 +124,13 @@
     </div>
     <div class="footer-col">
       <h4>Community</h4>
-      <a href="https://github.com/splanck/viper">GitHub</a>
-      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="https://github.com/zannagames/zanna">GitHub</a>
+      <a href="https://github.com/zannagames/zanna/releases">Releases</a>
       <a href="../contributing/">Contributing</a>
       <a href="../blog/">Blog</a>
     </div>
   </div>
-  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+  <p>Zanna Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
 </footer>
 
 <script src="../main.js"></script>

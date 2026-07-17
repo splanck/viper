@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -30,7 +30,7 @@ extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
 #endif
 
 /// @brief Function pointer type for thread entry functions.
-/// @brief Internal representation of a Viper thread.
+/// @brief Internal representation of a Zanna thread.
 ///
 /// This structure holds all state for a single thread, including synchronization
 /// primitives for joining, the pthread handle, and thread metadata. The struct
@@ -730,7 +730,7 @@ void rt_thread_sleep(int64_t ms) {
 /// @brief Yields the current thread's time slice to other threads.
 ///
 /// Voluntarily gives up the current thread's CPU time, allowing other threads
-/// (including other Viper threads and system threads) to run. The thread
+/// (including other Zanna threads and system threads) to run. The thread
 /// becomes immediately eligible to run again.
 ///
 /// **Use cases:**

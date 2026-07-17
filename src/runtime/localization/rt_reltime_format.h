@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_reltime_format.h
-// Purpose: Public C API for Viper.Localization.RelativeTimeFormat — formats
+// Purpose: Public C API for Zanna.Localization.RelativeTimeFormat — formats
 //          durations as human-readable relative-time expressions ("3 days
 //          ago", "in 2 hours"). Unit selection is automatic based on the
 //          duration magnitude; plural form selection routes through
@@ -19,7 +19,7 @@
 //   - Duration inputs are int64 (milliseconds, per rt_duration's convention).
 //     Positive values render as past ("N units ago"); negative values render
 //     as future ("in N units"). This matches the common "elapsed since now"
-//     framing used throughout Viper game/UI code.
+//     framing used throughout Zanna game/UI code.
 //
 // Ownership/Lifetime:
 //   - Instances are rt_obj_new_i64-allocated; GC-managed.
@@ -27,7 +27,7 @@
 // Links: src/runtime/localization/rt_reltime_format.c (implementation),
 //        src/runtime/localization/rt_plural_rules.h (category selection),
 //        src/runtime/core/rt_duration.h (input handle semantics),
-//        docs/viperlib/localization/formatting.md (user documentation).
+//        docs/zannalib/localization/formatting.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 #pragma once

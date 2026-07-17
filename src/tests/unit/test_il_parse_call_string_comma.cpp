@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 #include <sstream>
 
 int main() {
-    const char *src = R"VIPER(il 0.3.0
+    const char *src = R"ZANNA(il 0.3.0
 extern @print(str) -> void
 func @main() -> void {
 entry:
@@ -32,7 +32,7 @@ entry:
 dest(%msg:str):
   ret
 }
-)VIPER";
+)ZANNA";
 
     std::istringstream in(src);
     il::core::Module module;

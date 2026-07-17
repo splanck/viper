@@ -4,14 +4,14 @@ audience: contributors
 last-verified: 2026-05-08
 ---
 
-# Viper Memory Management
+# Zanna Memory Management
 
 > **Status**: Active reference. Some aspects (particularly Zia frontend lifetime
 > management) are incomplete — see [Known Unsoundness](#known-unsoundness).
 >
 > **Audience**: Runtime developers, language users, future contributors.
 
-Viper uses a **hybrid memory model**: atomic reference counting as the primary
+Zanna uses a **hybrid memory model**: atomic reference counting as the primary
 lifetime mechanism, a slab pool allocator for small strings, and an opt-in
 cycle-detecting garbage collector for breaking reference cycles. There is no
 generational collector, no arena allocator, and no tracing GC. The design
@@ -23,7 +23,7 @@ prioritises determinism and low latency over throughput.
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│                     Viper Program                             │
+│                     Zanna Program                             │
 │  (Zia / BASIC source → IL → VM or Native)                    │
 └──────────────────────────┬────────────────────────────────────┘
                            │ calls
@@ -112,10 +112,10 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release and attempts to release immortal payloads trap without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
-| `rt_memory_retain(payload)` | Public `Viper.Runtime.Unsafe.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. Compatibility name: `Viper.Memory.Retain`. |
-| `rt_memory_release(payload)` | Public `Viper.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
-| `rt_memory_retain_str(str)` | Public `Viper.Runtime.Unsafe.RetainStr` wrapper; validates and retains a runtime string. Compatibility name: `Viper.Memory.RetainStr`. |
-| `rt_memory_release_str(str)` | Public `Viper.Runtime.Unsafe.ReleaseStr` wrapper; validates and releases a runtime string. |
+| `rt_memory_retain(payload)` | Public `Zanna.Runtime.Unsafe.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. Compatibility name: `Zanna.Memory.Retain`. |
+| `rt_memory_release(payload)` | Public `Zanna.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
+| `rt_memory_retain_str(str)` | Public `Zanna.Runtime.Unsafe.RetainStr` wrapper; validates and retains a runtime string. Compatibility name: `Zanna.Memory.RetainStr`. |
+| `rt_memory_release_str(str)` | Public `Zanna.Runtime.Unsafe.ReleaseStr` wrapper; validates and releases a runtime string. |
 
 Public heap helpers reject non-runtime and already-freed payloads before header
 access. That keeps stale pointers on the trap path instead of relying on
@@ -176,7 +176,7 @@ and return a new reference:
 
 ### Debug Tracing
 
-Define `VIPER_RC_DEBUG` to enable stderr logging of every retain/release with
+Define `ZANNA_RC_DEBUG` to enable stderr logging of every retain/release with
 the payload address and resulting refcount.
 
 ---
@@ -283,8 +283,8 @@ int64_t freed = rt_gc_collect();  // Run one collection pass
 rt_gc_set_threshold(1000);        // Auto-collect every 1000 allocations
 ```
 
-Exposed to Viper programs as `Viper.Runtime.GC.Collect()`,
-`SetThreshold(n)`, and `GetThreshold()`. The older `Viper.Memory.GC` namespace
+Exposed to Zanna programs as `Zanna.Runtime.GC.Collect()`,
+`SetThreshold(n)`, and `GetThreshold()`. The older `Zanna.Memory.GC` namespace
 remains available for source and IL compatibility.
 
 ### Thread Safety
@@ -342,13 +342,13 @@ Weak targets must be live runtime handles: `NULL`, heap objects, arrays, or
 runtime strings. Raw foreign pointers are rejected so the weak-reference
 registry never tracks memory it cannot zero safely.
 
-The public runtime surface is `Viper.Memory.WeakRef`. `New(target)` returns an
+The public runtime surface is `Zanna.Memory.WeakRef`. `New(target)` returns an
 owned weak-reference object. Static-style calls (`Get(ref)`, `Alive(ref)`,
 `Reset(ref, target)`, `Free(ref)`) and instance-style calls (`ref.Get()`,
 `ref.Alive()`, `ref.Reset(target)`, `ref.Free()`) are both supported. `Get`
 returns an owned strong reference to the current target or `NULL`; `Free`
 consumes only the weak-reference object and never retains or releases the target.
-Generic `Viper.Runtime.Unsafe.Release(ref)` is also safe: weak-reference objects detach
+Generic `Zanna.Runtime.Unsafe.Release(ref)` is also safe: weak-reference objects detach
 from the registry in their finalizer before their storage is freed.
 
 When a target object, array, or runtime string is freed,
@@ -391,7 +391,7 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
   they still release resources when they are actually freed later.
 - Finalizer traps during collection or shutdown finalizer sweeps re-raise the
   original trap after snapshot retains are balanced.
-- Finalizer traps during direct `Viper.Runtime.Unsafe.Release()` /
+- Finalizer traps during direct `Zanna.Runtime.Unsafe.Release()` /
   `rt_obj_free()` also re-raise the original trap. If the object did not
   resurrect, the zero-ref payload is still untracked, weak refs are cleared, and
   heap storage is freed.
@@ -412,10 +412,10 @@ Allows finalizers to prevent deallocation by resetting the refcount. After
 skips deallocation. The caller must re-install the finalizer before returning the
 object to users.
 
-`Viper.Runtime.Unsafe.Release()` reports this resurrected refcount to callers. A
+`Zanna.Runtime.Unsafe.Release()` reports this resurrected refcount to callers. A
 finalizer that calls `rt_obj_resurrect()` changes the return value from the
 transient zero to the restored live count. The compatibility
-`Viper.Runtime.Unsafe.Release()` entry point reports the same value.
+`Zanna.Runtime.Unsafe.Release()` entry point reports the same value.
 
 **Use case**: Vec2/Vec3 thread-local pool recycling. When the pool has space, the
 finalizer resurrects the object and pushes it back to the LIFO pool for reuse
@@ -433,7 +433,7 @@ without `malloc`/`free` overhead.
 | **Sequences** | malloc | Refcounted | Borrowed by default; optional retained mode | Caller-managed by default; collection snapshots/conversions retain elements |
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |
-| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Viper.Core.Box`; unbox does not consume the box; box helpers validate class id, heap kind, and payload size |
+| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Zanna.Core.Box`; unbox does not consume the box; box helpers validate class id, heap kind, and payload size |
 | **Objects** | malloc | Refcounted | Optional finalizer | Optional GC tracking for cycles |
 | **Vec2/Vec3** | Thread-local pool (cap 32) | Refcounted + resurrection | Immutable values | Pool recycling via finalizer |
 | **Files** | Stack (`RtFile`) | Caller-owned | POSIX fd | Manual close or finalizer-based cleanup |
@@ -478,7 +478,7 @@ without `malloc`/`free` overhead.
 
 - **Not refcounted** — caller owns the handle.
 - Must be destroyed with `rt_lazyseq_destroy()`.
-- Viper has no `using`/`Dispose` pattern, so this requires manual lifecycle
+- Zanna has no `using`/`Dispose` pattern, so this requires manual lifecycle
   management in user code.
 - Lazy sequences can be infinite; collector operations (`ToSeq`, `Count`) may
   not terminate.
@@ -499,7 +499,7 @@ without `malloc`/`free` overhead.
 
 This section documents what each compiler frontend does (and doesn't do) about
 object lifetimes. This is the most important section for understanding the
-soundness of Viper programs.
+soundness of Zanna programs.
 
 ### BASIC Frontend
 
@@ -562,7 +562,7 @@ result that is never released.
 ### 2. HIGH: No Automatic GC Triggering
 
 The cycle collector only runs when explicitly called via
-`Viper.Runtime.GC.Collect()`. Programs that create cyclic object graphs (e.g.,
+`Zanna.Runtime.GC.Collect()`. Programs that create cyclic object graphs (e.g.,
 doubly-linked lists, parent-child class references) without calling
 `GC.Collect()` will leak those cycles indefinitely.
 
@@ -582,7 +582,7 @@ keeps its values alive independently of the source collection.
 ### 4. MEDIUM: LazySeq Requires Manual Destroy
 
 LazySeq handles are not refcounted and require explicit `destroy()` calls.
-Viper has no `using`/`Dispose` language-level pattern, making it easy to
+Zanna has no `using`/`Dispose` language-level pattern, making it easy to
 forget cleanup.
 
 ### 5. MEDIUM: Pool Memory Never Returned to OS
@@ -610,7 +610,7 @@ registered on first heap allocation. It runs the following cleanup in order:
 
 This runs on normal non-Windows runtime `exit()` paths. Windows runtime builds
 skip CRT `atexit` registration because the same archive is used by native PE
-binaries that enter through Viper's CRT-less startup shim; those builds rely on
+binaries that enter through Zanna's CRT-less startup shim; those builds rely on
 process teardown, and `rt_env_exit()` uses `ExitProcess` there for the same
 reason. The stack-overflow handler uses `_exit(1)` and intentionally bypasses
 cleanup (stack is blown; running arbitrary code is unsafe).

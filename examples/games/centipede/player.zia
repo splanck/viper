@@ -11,9 +11,9 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Input;
+bind Zanna.Game;
+bind Zanna.Graphics;
+bind Zanna.Input;
 
 // =============================================================================
 // BULLET ENTITY - Player's projectile

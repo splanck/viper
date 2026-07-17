@@ -1,0 +1,121 @@
+module call_scan;
+
+bind "identifier_utils";
+bind "trivia_scan";
+
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: call_scan
+// PURPOSE: Lightweight call-token discovery for Zia editor assists.
+//
+// WHERE-THIS-FITS: Used by call hierarchy and source_scan. It scans source text
+//          directly, skipping strings and line comments, and returns structured
+//          token maps rather than display strings.
+//
+// TEACHING-NOTE: This deliberately records only simple `identifier(` tokens.
+//          If a language feature needs full overload or dispatch semantics, it
+//          should use compiler/runtime services instead of extending this helper.
+// ============================================================================
+
+/// @brief Collect simple call tokens in a line range.
+/// @details A call token is an identifier followed by `(` outside strings and
+///          comments, excluding function declaration names and keywords.
+/// @param source Whole Zia document.
+/// @param startLine 1-based inclusive start line.
+/// @param endLine 1-based inclusive end line.
+/// @return Sequence of maps with `name`, `line`, and 0-based `column` fields.
+expose func OutgoingZiaCallTokens(source: String,
+                                  startLine: Integer,
+                                  endLine: Integer) -> Any {
+    var tokens = Seq.New();
+    if source == "" { return tokens; }
+    var lines = Str.Split(source, "\n");
+    var fromLine = startLine;
+    var toLine = endLine;
+    if fromLine < 1 { fromLine = 1; }
+    if toLine < fromLine { toLine = fromLine; }
+    if toLine > Seq.get_Count(lines) { toLine = Seq.get_Count(lines); }
+
+    var i = fromLine;
+    while i <= toLine {
+        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)), i);
+        i = i + 1;
+    }
+    return tokens;
+}
+
+/// @brief Append call tokens found in one source line.
+/// @param tokens Sequence receiving maps with name, line, and zero-based column.
+/// @param line Source line to scan.
+/// @param lineNumber One-based line number stored in emitted call tokens.
+/// @details Strings and line comments are skipped, and function declaration
+///          names are ignored so call hierarchy only records outgoing calls.
+func AddOutgoingCallsFromLine(tokens: Any,
+                              line: String,
+                              lineNumber: Integer) {
+    var pos = 1;
+    var inString = false;
+    while pos <= Str.get_Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.get_Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "\"" {
+            inString = true;
+            pos = pos + 1;
+            continue;
+        }
+        if identifier_utils.IsIdentStart(ch) {
+            var start = pos;
+            var name = "";
+            while pos <= Str.get_Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+                name = name + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            var callParen = trivia_scan.SkipWhitespace(line, pos);
+            if callParen <= Str.get_Length(line)
+               and Str.MidLen(line, callParen, 1) == "("
+               and identifier_utils.IsKeyword(name) == false
+               and IsFunctionDeclarationName(line, start) == false {
+                var token = Map.New();
+                Map.SetStr(token, "name", name);
+                Map.SetInt(token, "line", lineNumber);
+                Map.SetInt(token, "column", start - 1);
+                Seq.Push(tokens, token);
+            }
+            continue;
+        }
+        pos = pos + 1;
+    }
+}
+
+/// @brief Return true when an identifier is the declared function name.
+/// @param line Source line containing the identifier.
+/// @param startCol One-based identifier start column.
+/// @return True when the text immediately before the identifier ends in `func`.
+func IsFunctionDeclarationName(line: String,
+                               startCol: Integer) -> Boolean {
+    if startCol <= 1 { return false; }
+    var before = Str.Trim(Str.Left(line, startCol - 1));
+    return Str.EndsWith(before, "func");
+}

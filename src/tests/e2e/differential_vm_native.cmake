@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # File: tests/e2e/differential_vm_native.cmake
 # Purpose: Real VM<->native determinism gate. Runs one IL program under the VM
-#          (`viper -run`) and the host-native backend (`viper codegen <arch>
+#          (`zanna -run`) and the host-native backend (`zanna codegen <arch>
 #          -run-native`) and asserts identical stdout AND exit code. Unlike the
 #          self-checking native probes, this byte-diffs the two outputs.
 # Links: docs/internals/architecture.md (determinism Core Principle)

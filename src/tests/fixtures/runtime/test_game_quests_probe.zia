@@ -1,7 +1,7 @@
 module test_game_quests_probe;
-bind Viper.Game as Game;
-bind Viper.IO as IO;
-bind Viper.Terminal as Terminal;
+bind Zanna.Game as Game;
+bind Zanna.IO as IO;
+bind Zanna.Terminal as Terminal;
 
 func registerHunt(tracker: Game.Quests) {
     tracker.AddQuest("hunt", "The Wolf Hunt");
@@ -93,7 +93,7 @@ func start() {
     }
 
     // SaveData round-trip: fresh tracker + re-register, then Load.
-    var save = IO.SaveData.New("viper-quests-probe");
+    var save = IO.SaveData.New("zanna-quests-probe");
     var second = Game.Quests.New();
     second.AddQuest("side", "Side Errand");
     second.AddStage("side", "one", "Do the thing");

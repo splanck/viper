@@ -1,5 +1,5 @@
 //===----------------------------------------------------------------------===//
-// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shaders.inc  (#included from
 // vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL GLSL shader source
 // strings and static skybox/fullscreen geometry
@@ -139,7 +139,7 @@ static const char *const glsl_vertex_src[] = {
     "    gl_Position = uViewProjection * wp;\n"
     /* GL_ZERO_TO_ONE clip control: engine clip z is [-1,1]-convention, so
      * remap to [0,1] exactly like the D3D11 clipZToBackend twin. */
-    "#ifdef VIPER_DEPTH_ZERO_TO_ONE\n"
+    "#ifdef ZANNA_DEPTH_ZERO_TO_ONE\n"
     "    gl_Position.z = gl_Position.z * 0.5 + gl_Position.w * 0.5;\n"
     "#endif\n"
     "    vWorldPos = wp.xyz;\n"
@@ -947,7 +947,7 @@ static const char *glsl_shadow_vertex_src =
     "        localPos = totalWeight > 0.0001 ? skinnedPos / totalWeight : localPos;\n"
     "    }\n"
     "    gl_Position = uViewProjection * (uModelMatrix * localPos);\n"
-    "#ifdef VIPER_DEPTH_ZERO_TO_ONE\n"
+    "#ifdef ZANNA_DEPTH_ZERO_TO_ONE\n"
     "    gl_Position.z = gl_Position.z * 0.5 + gl_Position.w * 0.5;\n"
     "#endif\n"
     "    vShadowUV = aUV;\n"
@@ -1131,7 +1131,7 @@ static const char *const glsl_postfx_fragment_src[] = {
     "float sampleDepth(vec2 uv) { return texture(uSceneDepthTex, uv).r; }\n"
     "vec3 sampleMotion(vec2 uv) { return texture(uSceneMotionTex, uv).rgb; }\n"
     "vec3 reconstructWorld(vec2 uv, float depth) {\n"
-    "    vec4 clip = vec4(uv * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
+    "    vec4 clip = vec4(uv * 2.0 - 1.0, ZANNA_DEPTH_TO_NDC(depth), 1.0);\n"
     "    vec4 world = uInvViewProjection * clip;\n"
     "    return world.xyz / max(world.w, 0.0001);\n"
     "}\n"
@@ -1389,7 +1389,7 @@ static const char *glsl_taa_fragment_src =
     "    vec2 velocity = motionSample.xy * 2.0 - 1.0;\n"
     "    if (motionSample.z < 0.5) {\n"
     "        float depth = texture(uDepthTex, vUV).r;\n"
-    "        vec4 clip = vec4(vUV * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
+    "        vec4 clip = vec4(vUV * 2.0 - 1.0, ZANNA_DEPTH_TO_NDC(depth), 1.0);\n"
     "        vec4 world = uInvViewProjection * clip;\n"
     "        world.xyz /= max(abs(world.w), 0.0001) * (world.w < 0.0 ? -1.0 : 1.0);\n"
     "        vec4 prevClip = uPrevViewProjection * vec4(world.xyz, 1.0);\n"
@@ -1440,7 +1440,7 @@ static const char *glsl_ssr_fragment_src =
     "    return (len2 > 1e-12 && len2 < 1e20) ? v * inversesqrt(len2) : fallback;\n"
     "}\n"
     "vec3 ssrWorldAt(vec2 uv, float depth) {\n"
-    "    vec4 clip = vec4(uv * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
+    "    vec4 clip = vec4(uv * 2.0 - 1.0, ZANNA_DEPTH_TO_NDC(depth), 1.0);\n"
     "    vec4 world = uInvViewProjection * clip;\n"
     "    float w = (world.w < 0.0 ? -1.0 : 1.0) * max(abs(world.w), 0.0001);\n"
     "    return world.xyz / w;\n"

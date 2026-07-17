@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -13,13 +13,13 @@
 // Ownership/Lifetime:
 //   - ChessGame owns and shuts down one ChessSound instance.
 //   - SoundBank owns generated Sound handles after setup.
-// Links: examples/games/chess/settings.zia, docs/viperlib/game/audio.md
+// Links: examples/games/chess/settings.zia, docs/zannalib/game/audio.md
 //
 //===----------------------------------------------------------------------===//
 
 module sound;
 
-bind Viper.Audio;
+bind Zanna.Audio;
 
 /// @brief Named procedural audio bank for chess UI/game events.
 class ChessSound {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <string>
 
-using namespace viper::server;
+using namespace zanna::server;
 
 // ===== check() =====
 
@@ -84,12 +84,12 @@ TEST(BasicBridge, CompletionsReturnsResults) {
 
 TEST(BasicBridge, RuntimeCompletionCarriesAuthoredClassDocumentation) {
     BasicCompilerBridge bridge;
-    auto items = bridge.completions("Viper.Terminal.Sa\n", 1, 18, "test.bas");
+    auto items = bridge.completions("Zanna.Terminal.Sa\n", 1, 18, "test.bas");
     const auto say = std::find_if(
         items.begin(), items.end(), [](const CompletionInfo &item) { return item.label == "Say"; });
     ASSERT_NE(say, items.end());
     EXPECT_TRUE(say->documentation.find("terminal input, output, styling") != std::string::npos);
-    EXPECT_TRUE(say->documentation.find("`Viper.Terminal`") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("`Zanna.Terminal`") != std::string::npos);
 }
 
 TEST(BasicBridge, CompletionsAtEmptyPosition) {
@@ -116,11 +116,11 @@ TEST(BasicBridge, HoverOnVariable) {
 
 TEST(BasicBridge, HoverOnRuntimeClassVariableIncludesAuthoredDocumentation) {
     BasicCompilerBridge bridge;
-    std::string source = "DIM file AS Viper.IO.File\nPRINT file\nEND\n";
+    std::string source = "DIM file AS Zanna.IO.File\nPRINT file\nEND\n";
     auto result = bridge.hover(source, 2, 7, "test.bas");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("whole-file I/O, metadata") != std::string::npos);
-    EXPECT_TRUE(result.find("`Viper.IO.File`") != std::string::npos);
+    EXPECT_TRUE(result.find("`Zanna.IO.File`") != std::string::npos);
 }
 
 TEST(BasicBridge, HoverOnConst) {
@@ -254,7 +254,7 @@ TEST(BasicBridge, RuntimeClassesHaveNames) {
 
 TEST(BasicBridge, RuntimeMembersForKnownClass) {
     BasicCompilerBridge bridge;
-    auto members = bridge.runtimeMembers("Viper.Terminal");
+    auto members = bridge.runtimeMembers("Zanna.Terminal");
     EXPECT_TRUE(members.size() > 0u);
     bool foundSay = false;
     for (const auto &m : members) {
@@ -285,6 +285,6 @@ TEST(BasicBridge, RuntimeSearchNoResults) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

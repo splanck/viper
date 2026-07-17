@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 /// @brief Sentinel value indicating an uninitialised virtual register slot.
 inline constexpr uint16_t kInvalidVReg = UINT16_MAX;
@@ -56,4 +56,4 @@ class LiveIntervals {
     std::unordered_map<uint16_t, LiveInterval> intervals_{};
 };
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

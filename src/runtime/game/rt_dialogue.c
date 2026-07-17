@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -420,7 +420,7 @@ void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
 
 /// @brief Set the typewriter text reveal speed in characters per second (<= 0 = instant reveal).
 void rt_dialogue_set_speed(void *dlg, int64_t cps) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSpeed: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSpeed: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     d->chars_per_second = cps <= 0 ? 0 : clamp_positive_i64_to_i32(cps, DLG_DEFAULT_SPEED);
@@ -428,7 +428,7 @@ void rt_dialogue_set_speed(void *dlg, int64_t cps) {
 
 /// @brief Assign a BitmapFont for dialogue text; retains the new font and releases the old one.
 void rt_dialogue_set_font(void *dlg, void *font) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetFont: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetFont: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     // Retain new font, release old to prevent dangling pointer
@@ -442,7 +442,7 @@ void rt_dialogue_set_font(void *dlg, void *font) {
 /// @brief Set the text color of the dialogue.
 void rt_dialogue_set_text_color(void *dlg, int64_t color) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetTextColor: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetTextColor: expected Zanna.Game.Dialogue");
     if (d)
         d->text_color = clamp_i64_to_i32(color);
 }
@@ -450,7 +450,7 @@ void rt_dialogue_set_text_color(void *dlg, int64_t color) {
 /// @brief Set the speaker color of the dialogue.
 void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetSpeakerColor: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetSpeakerColor: expected Zanna.Game.Dialogue");
     if (d)
         d->speaker_color = clamp_i64_to_i32(color);
 }
@@ -458,7 +458,7 @@ void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
 /// @brief Set the bg color of the dialogue.
 void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetBgColor: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetBgColor: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     d->bg_color = clamp_i64_to_i32(color);
@@ -468,7 +468,7 @@ void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
 /// @brief Set the border color of the dialogue.
 void rt_dialogue_set_border_color(void *dlg, int64_t color) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetBorderColor: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetBorderColor: expected Zanna.Game.Dialogue");
     if (d)
         d->border_color = clamp_i64_to_i32(color);
 }
@@ -476,7 +476,7 @@ void rt_dialogue_set_border_color(void *dlg, int64_t color) {
 /// @brief Set the inner padding (pixels) between the box edge and text.
 void rt_dialogue_set_padding(void *dlg, int64_t padding) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetPadding: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetPadding: expected Zanna.Game.Dialogue");
     if (d)
         d->padding = padding <= 0 ? 0 : clamp_i64_to_i32(padding);
 }
@@ -484,7 +484,7 @@ void rt_dialogue_set_padding(void *dlg, int64_t padding) {
 /// @brief Set the text scale of the dialogue.
 void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.SetTextScale: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.SetTextScale: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     if (scale < 1)
@@ -494,7 +494,7 @@ void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
 
 /// @brief Reposition the dialogue box to screen coordinates (x, y).
 void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetPos: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetPos: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     d->x = clamp_i64_to_i32(x);
@@ -503,7 +503,7 @@ void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
 
 /// @brief Set the dialogue box width and height in pixels.
 void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSize: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSize: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     d->width = clamp_positive_i64_to_i32(w, d->width > 0 ? d->width : 1);
@@ -516,7 +516,7 @@ void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
 
 /// @brief Say the dialogue.
 void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Say: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Say: expected Zanna.Game.Dialogue");
     if (!d)
         return;
 
@@ -565,7 +565,7 @@ void rt_dialogue_say_text(void *dlg, rt_string text) {
 
 /// @brief Remove all entries from the dialogue.
 void rt_dialogue_clear(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Clear: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Clear: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     d->line_count = 0;
@@ -584,7 +584,7 @@ void rt_dialogue_clear(void *dlg) {
 
 /// @brief Update the dialogue state (called per frame/tick).
 void rt_dialogue_update(void *dlg, int64_t dt_ms) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Update: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Update: expected Zanna.Game.Dialogue");
     if (!d || dt_ms <= 0)
         return;
     if (!d->active || d->waiting_for_input || d->line_complete)
@@ -626,7 +626,7 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms) {
 
 /// @brief Advance the dialogue.
 void rt_dialogue_advance(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Advance: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Advance: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     if (!d->active)
@@ -656,7 +656,7 @@ void rt_dialogue_advance(void *dlg) {
 
 /// @brief Skip the dialogue.
 void rt_dialogue_skip(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Skip: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Skip: expected Zanna.Game.Dialogue");
     if (!d)
         return;
     if (!d->active || d->current_line >= d->line_count)
@@ -672,47 +672,47 @@ void rt_dialogue_skip(void *dlg) {
 
 /// @brief Check whether the dialogue box is currently visible and displaying text.
 int8_t rt_dialogue_is_active(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsActive: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsActive: expected Zanna.Game.Dialogue");
     return d ? d->active : 0;
 }
 
 /// @brief Check whether the current line of dialogue has been fully displayed.
 int8_t rt_dialogue_is_line_complete(void *dlg) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.IsLineComplete: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.IsLineComplete: expected Zanna.Game.Dialogue");
     return d ? d->line_complete : 0;
 }
 
 /// @brief Check whether the typewriter effect has fully revealed all text.
 int8_t rt_dialogue_is_finished(void *dlg) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.IsFinished: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.IsFinished: expected Zanna.Game.Dialogue");
     return d ? d->finished : 0;
 }
 
 /// @brief Check whether the dialogue is waiting for the player to dismiss it.
 int8_t rt_dialogue_is_waiting(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsWaiting: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsWaiting: expected Zanna.Game.Dialogue");
     return d ? d->waiting_for_input : 0;
 }
 
 /// @brief Return the count of elements in the dialogue.
 int64_t rt_dialogue_get_line_count(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.LineCount: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.LineCount: expected Zanna.Game.Dialogue");
     return d ? d->line_count : 0;
 }
 
 /// @brief Get the current line of the dialogue.
 int64_t rt_dialogue_get_current_line(void *dlg) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.CurrentLine: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.CurrentLine: expected Zanna.Game.Dialogue");
     return d ? d->current_line : 0;
 }
 
 /// @brief Return the name of the current speaker, or empty string if none.
 rt_string rt_dialogue_get_speaker(void *dlg) {
     rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.GetSpeaker: expected Viper.Game.Dialogue");
+        checked_dialogue(dlg, "Dialogue.GetSpeaker: expected Zanna.Game.Dialogue");
     if (!d)
         return rt_const_cstr("");
     if (d->current_line >= d->line_count)
@@ -726,7 +726,7 @@ rt_string rt_dialogue_get_speaker(void *dlg) {
 
 /// @brief Draw the dialogue.
 void rt_dialogue_draw(void *dlg, void *canvas) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Draw: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Draw: expected Zanna.Game.Dialogue");
     if (!d || !canvas || !rt_canvas_is_handle(canvas))
         return;
     if (!d->active || d->current_line >= d->line_count)

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes {
+namespace zanna::codegen::x64::passes {
 
 /// \brief Encode MIR functions into machine code bytes for the x86-64 backend.
 class BinaryEmitPass final : public Pass {
@@ -52,4 +52,4 @@ class BinaryEmitPass final : public Pass {
     CodegenOptions options_{}; ///< Backend configuration captured at construction.
 };
 
-} // namespace viper::codegen::x64::passes
+} // namespace zanna::codegen::x64::passes

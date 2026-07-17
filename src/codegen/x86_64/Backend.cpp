@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -57,7 +57,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 /// @brief Lower signed division pseudos into guarded IDIV sequences.
 /// @details Declared here and implemented in @ref LowerDiv.cpp so the backend
@@ -87,11 +87,11 @@ namespace {
     return objfile::detectHostFormat();
 }
 
-/// @brief Return true when `VIPER_X64_BINARY_TRACE` is set in the environment.
+/// @brief Return true when `ZANNA_X64_BINARY_TRACE` is set in the environment.
 /// @details Cached once at first call; controls verbose stderr tracing during
 ///          binary emission for debug builds.
 [[nodiscard]] bool traceX64BinaryEmit() {
-    static const bool enabled = std::getenv("VIPER_X64_BINARY_TRACE") != nullptr;
+    static const bool enabled = std::getenv("ZANNA_X64_BINARY_TRACE") != nullptr;
     return enabled;
 }
 
@@ -817,7 +817,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         std::string label = roData.f64Label(i);
         result.rodata.defineSymbol(
             label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
-        result.rodata.emit64LE(viper::codegen::common::f64Bits(roData.f64Value(i)));
+        result.rodata.emit64LE(zanna::codegen::common::f64Bits(roData.f64Value(i)));
     }
 
     auto encodeOne = [&](std::size_t i,
@@ -939,4 +939,4 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     return emitMIRToBinary(mir, frames, roData, target, opt);
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

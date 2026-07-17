@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@
 ///          spill reloads to preserve the semantics of the original parallel
 ///          copy bundles.
 
-namespace viper::codegen::x64::ra {
+namespace zanna::codegen::x64::ra {
 
 namespace {
 
@@ -333,4 +333,4 @@ void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generate
     }
 }
 
-} // namespace viper::codegen::x64::ra
+} // namespace zanna::codegen::x64::ra

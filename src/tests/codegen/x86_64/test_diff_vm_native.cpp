@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,10 +27,10 @@
 #include <string>
 
 namespace {
-using viper::tests::CodegenComparisonOptions;
-using viper::tests::CodegenComparisonResult;
-using viper::tests::CodegenFixture;
-using viper::tests::CodegenRunConfig;
+using zanna::tests::CodegenComparisonOptions;
+using zanna::tests::CodegenComparisonResult;
+using zanna::tests::CodegenFixture;
+using zanna::tests::CodegenRunConfig;
 
 struct CliScenario {
     const char *name;
@@ -90,20 +90,20 @@ exit:
                                                  {false, std::nullopt}},
                                                 {"Material3DAnisotropyRoundTrip",
                                                  {R"(il 0.3.0
-extern @Viper.Graphics3D.Material3D.New() -> ptr
-extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
-extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
+extern @Zanna.Graphics3D.Material3D.New() -> ptr
+extern @Zanna.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
+extern @Zanna.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
 
 func @main() -> i64 {
 entry:
-  %mat = call @Viper.Graphics3D.Material3D.New()
-  %default = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
-  %low = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
-  %high = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
-  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
-  %round = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  %mat = call @Zanna.Graphics3D.Material3D.New()
+  %default = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
+  %low = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
+  %high = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Zanna.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
+  %round = call @Zanna.Graphics3D.Material3D.get_Anisotropy(%mat)
   %a = iadd.ovf %default, %low
   %b = iadd.ovf %a, %high
   %sum = iadd.ovf %b, %round

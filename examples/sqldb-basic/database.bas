@@ -1,5 +1,5 @@
 ' database.bas - Database and QueryResult Classes
-' Part of SQLite Clone - Viper Basic Implementation
+' Part of SQLite Clone - Zanna Basic Implementation
 
 AddFile "index.bas"
 AddFile "parser.bas"

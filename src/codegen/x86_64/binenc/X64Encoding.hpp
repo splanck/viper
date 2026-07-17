@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace viper::codegen::x64::binenc {
+namespace zanna::codegen::x64::binenc {
 
 /// Hardware register encoding: 3-bit number + REX extension bit.
 struct HwReg {
@@ -84,18 +84,18 @@ inline HwReg hwEncode(PhysReg reg) {
     return kTable[idx];
 }
 
-/// Map a Viper condition code (0-13) to the x86_64 CC nibble used in
+/// Map a Zanna condition code (0-13) to the x86_64 CC nibble used in
 /// JCC (0F 8x) and SETcc (0F 9x) second opcode bytes.
 ///
 /// The mapping follows the Intel SDM condition code encoding:
-///   Viper 0 (eq)  -> x86 4 (E)     Viper 7 (ae) -> x86 3 (AE/NB)
-///   Viper 1 (ne)  -> x86 5 (NE)    Viper 8 (b)  -> x86 2 (B/C)
-///   Viper 2 (lt)  -> x86 C (L)     Viper 9 (be) -> x86 6 (BE/NA)
-///   Viper 3 (le)  -> x86 E (LE)    Viper 10 (p) -> x86 A (P/PE)
-///   Viper 4 (gt)  -> x86 F (G)     Viper 11 (np)-> x86 B (NP/PO)
-///   Viper 5 (ge)  -> x86 D (GE)    Viper 12 (o) -> x86 0 (O)
-///   Viper 6 (a)   -> x86 7 (A/NBE) Viper 13 (no)-> x86 1 (NO)
-inline uint8_t x86CC(int viperCC) {
+///   Zanna 0 (eq)  -> x86 4 (E)     Zanna 7 (ae) -> x86 3 (AE/NB)
+///   Zanna 1 (ne)  -> x86 5 (NE)    Zanna 8 (b)  -> x86 2 (B/C)
+///   Zanna 2 (lt)  -> x86 C (L)     Zanna 9 (be) -> x86 6 (BE/NA)
+///   Zanna 3 (le)  -> x86 E (LE)    Zanna 10 (p) -> x86 A (P/PE)
+///   Zanna 4 (gt)  -> x86 F (G)     Zanna 11 (np)-> x86 B (NP/PO)
+///   Zanna 5 (ge)  -> x86 D (GE)    Zanna 12 (o) -> x86 0 (O)
+///   Zanna 6 (a)   -> x86 7 (A/NBE) Zanna 13 (no)-> x86 1 (NO)
+inline uint8_t x86CC(int zannaCC) {
     constexpr uint8_t kTable[] = {
         0x4, // 0: eq  -> E
         0x5, // 1: ne  -> NE
@@ -112,9 +112,9 @@ inline uint8_t x86CC(int viperCC) {
         0x0, // 12: o  -> O
         0x1, // 13: no -> NO
     };
-    if (viperCC < 0 || viperCC > 13)
+    if (zannaCC < 0 || zannaCC > 13)
         throw std::out_of_range("x86-64 binary encoder: invalid condition code");
-    return kTable[viperCC];
+    return kTable[zannaCC];
 }
 
 // === ModR/M + SIB construction helpers ===
@@ -223,7 +223,7 @@ inline RegRegOp regRegOpcode(MOpcode op) {
         case MOpcode::MOVSXrr16:
             return {0x0F, 0xBF, true}; // movswq: reg=dst, r/m=src (keeps REX.W, no 0x66)
         default:
-            VIPER_ICE("not a reg-reg GPR opcode");
+            ZANNA_ICE("not a reg-reg GPR opcode");
     }
 }
 
@@ -243,7 +243,7 @@ inline uint8_t regImmExt(MOpcode op) {
         case MOpcode::CMPri:
             return 7; // /7
         default:
-            VIPER_ICE("not a reg-imm ALU opcode");
+            ZANNA_ICE("not a reg-imm ALU opcode");
     }
 }
 
@@ -260,7 +260,7 @@ inline uint8_t shiftExt(MOpcode op) {
         case MOpcode::SARrc:
             return 7; // /7
         default:
-            VIPER_ICE("not a shift opcode");
+            ZANNA_ICE("not a shift opcode");
     }
 }
 
@@ -307,8 +307,8 @@ inline SseOp sseOpcode(MOpcode op) {
         case MOpcode::MOVUPSmr:
             return {0x00, 0x10, true, false}; // load: no prefix
         default:
-            VIPER_ICE("not an SSE opcode");
+            ZANNA_ICE("not an SSE opcode");
     }
 }
 
-} // namespace viper::codegen::x64::binenc
+} // namespace zanna::codegen::x64::binenc

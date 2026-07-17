@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_menus.c
-// Purpose: Runtime bindings for ViperGUI menu-system widgets: MenuBar (top-level
+// Purpose: Runtime bindings for ZannaGUI menu-system widgets: MenuBar (top-level
 //   menu strip), Menu (drop-down with items and separators), StatusBar (bottom
 //   status strip with labeled sections), Toolbar (icon/label button strip), and
 //   ContextMenu (right-click popup). Each widget wraps its vg_* counterpart and
@@ -31,7 +31,7 @@
 //     runtime frees temporary cstr allocations immediately after the call.
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/lib/gui/include/vg.h (ZannaGUI C API),
 //        src/runtime/graphics/rt_gui_app.c (default font used at construction)
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include "rt_pixels.h"
 #include "rt_platform.h"
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 void rt_gui_set_clicked_statusbar_item(void *item);
 
@@ -845,7 +845,7 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
     return NULL;
 }
 
-#else  /* !VIPER_ENABLE_GRAPHICS */
+#else  /* !ZANNA_ENABLE_GRAPHICS */
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
@@ -1125,4 +1125,4 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
     (void)menu;
     return NULL;
 }
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

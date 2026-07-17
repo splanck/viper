@@ -6,20 +6,20 @@
 //          team stats, roster availability, health/workload, transaction,
 //          and decision-log renderers all produce usable output blocks.
 //
-// Run via: viper run examples/games/baseball/reporting_probe.zia
+// Run via: zanna run examples/games/baseball/reporting_probe.zia
 // ============================================================================
 module reporting_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
-bind Viper.String as String;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.String as String;
 bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/output/season_writer";
 
 func stringContains(s: String, sub: String) -> Boolean {
-    var sLen = Viper.String.get_Length(s);
-    var subLen = Viper.String.get_Length(sub);
+    var sLen = Zanna.String.get_Length(s);
+    var subLen = Zanna.String.get_Length(sub);
     if subLen > sLen {
         return false;
     }

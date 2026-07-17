@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -74,7 +74,7 @@ int64_t rt_savedata_count(void *sd);
 /// @brief Get the computed save file path.
 rt_string rt_savedata_get_path(void *sd);
 
-/// @brief Viper.IO.Path.DataDir(app): resolve (and create on demand) the
+/// @brief Zanna.IO.Path.DataDir(app): resolve (and create on demand) the
 ///        per-user writable data directory for an application.
 rt_string rt_path_data_dir(rt_string app_name);
 

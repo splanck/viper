@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -41,7 +41,7 @@
 
 using namespace il::core;
 
-namespace viper::passes {
+namespace zanna::passes {
 namespace {
 constexpr unsigned kMaxSROAFields = 8;
 constexpr unsigned kMaxSROAAllocaSize = 128;
@@ -667,10 +667,10 @@ static bool promoteVariables(Function &F,
     if (vars.empty())
         return true;
 
-    unsigned nextId = viper::il::nextTempId(F);
+    unsigned nextId = zanna::il::nextTempId(F);
     const IncomingEdgeMap incoming = buildIncomingEdgeMap(F);
 
-    if (std::getenv("VIPER_MEM2REG_TRACE")) {
+    if (std::getenv("ZANNA_MEM2REG_TRACE")) {
         std::cerr << "[mem2reg] " << F.name << ": promoting " << vars.size()
                   << " vars, nextId=" << nextId << "\n";
         std::vector<unsigned> traceIds;
@@ -766,7 +766,7 @@ static bool promoteVariables(Function &F,
 ///          allocation site is re-executed by loop control flow. Promoting that
 ///          alloca as one long-lived SSA variable would incorrectly carry stores
 ///          from a previous dynamic allocation into the next execution.
-static bool hasDominatedPredecessor(const viper::analysis::DomTree &domTree,
+static bool hasDominatedPredecessor(const zanna::analysis::DomTree &domTree,
                                     const analysis::CFGContext &ctx,
                                     BasicBlock *block) {
     if (!block)
@@ -950,7 +950,7 @@ static bool runSROA(Function &F) {
     }
 
     bool changed = false;
-    unsigned nextId = viper::il::nextTempId(F);
+    unsigned nextId = zanna::il::nextTempId(F);
 
     for (auto &[id, cand] : candidates) {
         if (!cand.ok)
@@ -1086,9 +1086,9 @@ void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
                 break;
             }
         }
-        std::optional<viper::analysis::DomTree> domTree;
+        std::optional<zanna::analysis::DomTree> domTree;
         if (needDomTree)
-            domTree = viper::analysis::computeDominatorTree(cfg, F);
+            domTree = zanna::analysis::computeDominatorTree(cfg, F);
 
         AllocaMap promotable;
         for (auto &[id, info] : infos) {
@@ -1167,4 +1167,4 @@ void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
     M.internOwnedIdentifiers();
 }
 
-} // namespace viper::passes
+} // namespace zanna::passes

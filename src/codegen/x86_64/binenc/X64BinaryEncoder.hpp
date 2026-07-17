@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,13 +38,13 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen {
+namespace zanna::codegen {
 class DebugLineTable;
 }
 
-namespace viper::codegen::x64::binenc {
+namespace zanna::codegen::x64::binenc {
 
-using viper::codegen::DebugLineTable;
+using zanna::codegen::DebugLineTable;
 
 /// @brief Encodes x86_64 MIR functions into machine code bytes.
 /// @details The encoder processes one function at a time. Internal branches are
@@ -251,4 +251,4 @@ class X64BinaryEncoder {
     DebugLineTable *debugLines_{nullptr};
 };
 
-} // namespace viper::codegen::x64::binenc
+} // namespace zanna::codegen::x64::binenc

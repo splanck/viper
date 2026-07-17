@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Copy propagation rewrites an ABI-register use only when the copy origin
-//     is a non-ABI register (disable with VIPER_NO_ABI_COPYFWD=1); origins are
+//     is a non-ABI register (disable with ZANNA_NO_ABI_COPYFWD=1); origins are
 //     never chased through ABI registers.
 //   - DCE conservatively marks callee-saved and ABI registers as live at exit.
 //
@@ -36,7 +36,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 namespace {
 
@@ -174,7 +174,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
             // cannot have been clobbered by argument setup).
             if (isABIReg(op)) {
                 static const bool noAbiCopyFwd =
-                    std::getenv("VIPER_NO_ABI_COPYFWD") != nullptr;
+                    std::getenv("ZANNA_NO_ABI_COPYFWD") != nullptr;
                 if (noAbiCopyFwd || isABIReg(it->second))
                     continue;
             }
@@ -875,4 +875,4 @@ std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
     return removed;
 }
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -25,14 +25,14 @@
 
 #include "tools/lsp-common/ServerMain.hpp"
 #include "tools/zia-server/CompilerBridge.hpp"
-#include "viper/version.hpp"
+#include "zanna/version.hpp"
 
-using namespace viper::server;
+using namespace zanna::server;
 
 /// @brief Zia-specific labels and protocol metadata.
 static const ServerConfig kZiaConfig{
     "zia-server",      // serverName
-    VIPER_VERSION_STR, // version
+    ZANNA_VERSION_STR, // version
     "zia",             // sourceName
     "zia",             // toolPrefix
     ".zia",            // defaultExt

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_cubemap3d.c
-// Purpose: Viper.Graphics3D.CubeMap3D — 6-face cube map texture for
+// Purpose: Zanna.Graphics3D.CubeMap3D — 6-face cube map texture for
 //   skybox rendering and environment reflections.
 //
 // Key invariants:
@@ -25,7 +25,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -53,7 +53,7 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
-/// @brief Validate that @p pixels is a live `Viper.Graphics.Pixels` handle.
+/// @brief Validate that @p pixels is a live `Zanna.Graphics.Pixels` handle.
 static int cubemap_pixels_valid(void *pixels) {
     return rt_pixels_checked_impl_or_null(pixels) != NULL;
 }
@@ -1268,7 +1268,7 @@ static void cubemap_faces_bilinear(
         for (int i = 0; i < 4; i++)
             p[i] = cubemap_faces_nearest_rgba(faces, dir[i][0], dir[i][1], dir[i][2]);
 
-#define VIPER_CUBEMAP_BL(ch, shift)                                                                \
+#define ZANNA_CUBEMAP_BL(ch, shift)                                                                \
     do {                                                                                           \
         float c00 = (float)((p[0] >> (shift)) & 0xFF);                                             \
         float c10 = (float)((p[1] >> (shift)) & 0xFF);                                             \
@@ -1277,10 +1277,10 @@ static void cubemap_faces_bilinear(
         *(ch) =                                                                                    \
             ((c00 * (1 - sx) + c10 * sx) * (1 - sy) + (c01 * (1 - sx) + c11 * sx) * sy) / 255.0f;  \
     } while (0)
-        VIPER_CUBEMAP_BL(out_r, 24);
-        VIPER_CUBEMAP_BL(out_g, 16);
-        VIPER_CUBEMAP_BL(out_b, 8);
-#undef VIPER_CUBEMAP_BL
+        ZANNA_CUBEMAP_BL(out_r, 24);
+        ZANNA_CUBEMAP_BL(out_g, 16);
+        ZANNA_CUBEMAP_BL(out_b, 8);
+#undef ZANNA_CUBEMAP_BL
     }
 }
 
@@ -1720,4 +1720,4 @@ double rt_material3d_get_reflectivity(void *obj) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

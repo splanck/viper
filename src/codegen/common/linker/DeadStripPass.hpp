@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 struct ObjFile;
 struct GlobalSymEntry;
@@ -72,4 +72,4 @@ inline void deadStrip(std::vector<ObjFile> &allObjects,
     deadStrip(allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), false, err);
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

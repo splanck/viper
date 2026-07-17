@@ -1,13 +1,13 @@
-// frozenmap_demo.zia - Comprehensive API audit for Viper.Collections.FrozenMap
+// frozenmap_demo.zia - Comprehensive API audit for Zanna.Collections.FrozenMap
 // Tests: Empty, FromSeqs, Len, IsEmpty, Get, Has, Keys, Values,
 //        GetOr, Merge, Equals
 
 module FrozenMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== FrozenMap API Audit ===");

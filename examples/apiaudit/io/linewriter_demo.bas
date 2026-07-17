@@ -1,38 +1,38 @@
 ' =============================================================================
-' API Audit: Viper.IO.LineWriter - Line-by-Line File Writing
+' API Audit: Zanna.IO.LineWriter - Line-by-Line File Writing
 ' =============================================================================
 ' Tests: Open, Append, Write, WriteLn, WriteChar, NewLine, SetNewLine,
 '        Flush, Close
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.IO.LineWriter ==="
+PRINT "=== API Audit: Zanna.IO.LineWriter ==="
 
 DIM tmpDir AS STRING
-tmpDir = Viper.IO.TempFile.Dir()
+tmpDir = Zanna.IO.TempFile.Dir()
 DIM testPath AS STRING
-testPath = Viper.IO.Path.Join(tmpDir, "viper_linewriter_audit_bas.txt")
+testPath = Zanna.IO.Path.Join(tmpDir, "zanna_linewriter_audit_bas.txt")
 
 ' --- Open ---
 PRINT "--- Open ---"
 DIM writer AS OBJECT
-writer = Viper.IO.LineWriter.Open(testPath)
+writer = Zanna.IO.LineWriter.Open(testPath)
 PRINT "Open done"
 
 ' --- Write ---
 PRINT "--- Write ---"
-Viper.IO.LineWriter.Write(writer, "Hello ")
+Zanna.IO.LineWriter.Write(writer, "Hello ")
 PRINT "Write('Hello ') done"
 
 ' --- WriteLn ---
 PRINT "--- WriteLn ---"
-Viper.IO.LineWriter.WriteLine(writer, "World")
+Zanna.IO.LineWriter.WriteLine(writer, "World")
 PRINT "WriteLn('World') done"
 
 ' --- WriteChar ---
 PRINT "--- WriteChar ---"
-Viper.IO.LineWriter.WriteChar(writer, 65)
-Viper.IO.LineWriter.WriteChar(writer, 66)
-Viper.IO.LineWriter.WriteChar(writer, 67)
+Zanna.IO.LineWriter.WriteChar(writer, 65)
+Zanna.IO.LineWriter.WriteChar(writer, 66)
+Zanna.IO.LineWriter.WriteChar(writer, 67)
 PRINT "WriteChar(A, B, C) done"
 
 ' --- get_NewLine ---
@@ -41,38 +41,38 @@ PRINT "NewLine returned"
 
 ' --- set_NewLine ---
 PRINT "--- set_NewLine ---"
-Viper.IO.LineWriter.set_NewLine(writer, CHR$(13) + CHR$(10))
+Zanna.IO.LineWriter.set_NewLine(writer, CHR$(13) + CHR$(10))
 PRINT "set_NewLine to CRLF"
-Viper.IO.LineWriter.set_NewLine(writer, CHR$(10))
+Zanna.IO.LineWriter.set_NewLine(writer, CHR$(10))
 PRINT "Restored to LF"
 
 ' --- More writes + Flush ---
-Viper.IO.LineWriter.WriteLine(writer, "")
-Viper.IO.LineWriter.WriteLine(writer, "Final line")
+Zanna.IO.LineWriter.WriteLine(writer, "")
+Zanna.IO.LineWriter.WriteLine(writer, "Final line")
 
 PRINT "--- Flush ---"
-Viper.IO.LineWriter.Flush(writer)
+Zanna.IO.LineWriter.Flush(writer)
 PRINT "Flush done"
 
 ' --- Close ---
 PRINT "--- Close ---"
-Viper.IO.LineWriter.Close(writer)
+Zanna.IO.LineWriter.Close(writer)
 PRINT "Close done"
 
 ' Verify
 PRINT "--- Verify ---"
-PRINT "File content: "; Viper.IO.File.ReadAllText(testPath)
+PRINT "File content: "; Zanna.IO.File.ReadAllText(testPath)
 
 ' --- Append ---
 PRINT "--- Append ---"
 DIM appWriter AS OBJECT
-appWriter = Viper.IO.LineWriter.Append(testPath)
-Viper.IO.LineWriter.WriteLine(appWriter, "Appended line")
-Viper.IO.LineWriter.Close(appWriter)
+appWriter = Zanna.IO.LineWriter.Append(testPath)
+Zanna.IO.LineWriter.WriteLine(appWriter, "Appended line")
+Zanna.IO.LineWriter.Close(appWriter)
 PRINT "Append done"
 
 ' Cleanup
-Viper.IO.File.Delete(testPath)
+Zanna.IO.File.Delete(testPath)
 PRINT "Cleanup done"
 
 PRINT "=== LineWriter Demo Complete ==="

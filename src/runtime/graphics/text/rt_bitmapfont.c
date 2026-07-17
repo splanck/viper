@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -327,7 +327,7 @@ static int bf_copy_glyph_to_codepoint(rt_bitmapfont_impl *font, int source_index
 /// @brief Apply the optional PSF v2 Unicode table to alias codepoints onto loaded glyphs.
 /// @details The PSF v2 Unicode section is a sequence of UTF-8 encoded
 ///          codepoints separated by 0xFF (end of glyph) and 0xFE (start of
-///          combining-character sequence, which we skip — Viper's bitmap font
+///          combining-character sequence, which we skip — Zanna's bitmap font
 ///          renderer does not compose). Each codepoint between separators is
 ///          aliased to the current glyph index via bf_copy_glyph_to_codepoint.
 static void bf_apply_psf2_unicode_table(rt_bitmapfont_impl *font,
@@ -939,7 +939,7 @@ int64_t rt_bitmapfont_text_height(void *font_ptr) {
 // Canvas Drawing — Glyph Renderer
 //=============================================================================
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_graphics_internal.h"
 
@@ -974,7 +974,7 @@ static int bf_glyph_bit_is_set(const rt_glyph *g, int row_bytes, int row, int co
 /// For unscaled glyphs, the helper intentionally preserves the historical
 /// `pset`-per-lit-pixel behavior because Canvas tests and lightweight backends
 /// observe plot coordinates directly.
-/// @param win Target ViperGFX window.
+/// @param win Target ZannaGFX window.
 /// @param g Glyph bitmap to render.
 /// @param draw_x Baseline-adjusted destination X coordinate.
 /// @param draw_y Baseline-adjusted destination Y coordinate.
@@ -1277,7 +1277,7 @@ void rt_canvas_text_font_right(
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);
 }
 
-#else // !VIPER_ENABLE_GRAPHICS — stubs
+#else // !ZANNA_ENABLE_GRAPHICS — stubs
 
 /// @brief Stub used when graphics are not compiled in; raises an InvalidOperation trap with the
 /// given message.
@@ -1285,7 +1285,7 @@ static void rt_bitmapfont_canvas_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
-/// @brief Stub for Canvas.TextFont when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// @brief Stub for Canvas.TextFont when ZANNA_ENABLE_GRAPHICS is undefined; raises an
 /// InvalidOperation trap.
 void rt_canvas_text_font(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color) {
@@ -1298,7 +1298,7 @@ void rt_canvas_text_font(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFont: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontBg when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// @brief Stub for Canvas.TextFontBg when ZANNA_ENABLE_GRAPHICS is undefined; raises an
 /// InvalidOperation trap.
 void rt_canvas_text_font_bg(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t fg, int64_t bg) {
@@ -1312,7 +1312,7 @@ void rt_canvas_text_font_bg(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontBg: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontScaled when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// @brief Stub for Canvas.TextFontScaled when ZANNA_ENABLE_GRAPHICS is undefined; raises an
 /// InvalidOperation trap.
 void rt_canvas_text_font_scaled(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t scale, int64_t color) {
@@ -1326,7 +1326,7 @@ void rt_canvas_text_font_scaled(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontScaled: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontCentered when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// @brief Stub for Canvas.TextFontCentered when ZANNA_ENABLE_GRAPHICS is undefined; raises an
 /// InvalidOperation trap.
 void rt_canvas_text_font_centered(
     void *canvas, int64_t y, rt_string text, void *font, int64_t color) {
@@ -1338,7 +1338,7 @@ void rt_canvas_text_font_centered(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontCentered: graphics support not compiled in");
 }
 
-/// @brief Stub for Canvas.TextFontRight when VIPER_ENABLE_GRAPHICS is undefined; raises an
+/// @brief Stub for Canvas.TextFontRight when ZANNA_ENABLE_GRAPHICS is undefined; raises an
 /// InvalidOperation trap.
 void rt_canvas_text_font_right(
     void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color) {
@@ -1351,4 +1351,4 @@ void rt_canvas_text_font_right(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontRight: graphics support not compiled in");
 }
 
-#endif // VIPER_ENABLE_GRAPHICS
+#endif // ZANNA_ENABLE_GRAPHICS

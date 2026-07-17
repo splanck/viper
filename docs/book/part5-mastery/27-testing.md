@@ -14,7 +14,7 @@ Now imagine a different scenario. You write the same feature, but this time you 
 
 This second approach takes more time upfront, but it saves far more time in the long run. Testing isn't just about finding bugs --- it's about building confidence, enabling safe changes, and documenting how code should behave. This chapter teaches you to test systematically, transforming testing from an afterthought into a fundamental part of how you write software.
 
-> **Current Viper note:** Zia does not currently have a built-in `test "name" { ... }` syntax, an `assert` statement, or a `Viper.Test` module. The test blocks in this chapter are pseudocode that show test intent and structure. In the Viper repository today, automated tests are written as C++ unit/e2e tests, BASIC/Zia sample programs, or shell-driven checks run through CTest and the scripts in `docs/internals/testing.md`.
+> **Current Zanna note:** Zia does not currently have a built-in `test "name" { ... }` syntax, an `assert` statement, or a `Zanna.Test` module. The test blocks in this chapter are pseudocode that show test intent and structure. In the Zanna repository today, automated tests are written as C++ unit/e2e tests, BASIC/Zia sample programs, or shell-driven checks run through CTest and the scripts in `docs/internals/testing.md`.
 
 ---
 
@@ -292,7 +292,7 @@ test "add returns sum of two numbers" {
 In the current toolchain, put runnable checks in a small `.zia` program and run it with:
 
 ```bash
-viper run myprogram.zia
+zanna run myprogram.zia
 ```
 
 Repository tests are run with CTest after a build:
@@ -360,7 +360,7 @@ Without a message, a failing assertion just tells you the condition was false. W
 
 ### Common Assert Functions
 
-Many test frameworks provide specialized assertion functions with better error messages. Viper does not currently ship this source-level assertion module, but these examples show the behavior such helpers would provide:
+Many test frameworks provide specialized assertion functions with better error messages. Zanna does not currently ship this source-level assertion module, but these examples show the behavior such helpers would provide:
 
 ```text
 test "assert variants" {
@@ -707,7 +707,7 @@ This list becomes living documentation of how your system behaves. Anyone can re
 Many tests need common setup --- creating test data, initializing objects, connecting to test databases. Rather than repeating this in every test, you can use setup and teardown blocks.
 
 ```text
-bind Viper.Test;
+bind Zanna.Test;
 
 var testDatabase: Database;
 var testUser: User;
@@ -1055,8 +1055,8 @@ All tests pass.
 The algorithm works but is slow. Let's optimize:
 
 ```text
-bind Viper.Math as Math;
-bind Convert = Viper.Core.Convert;
+bind Zanna.Math as Math;
+bind Convert = Zanna.Core.Convert;
 
 func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
@@ -1291,7 +1291,7 @@ utils.zia           20/40         5/12        52%
 Total                 95/122        25/37       78%
 ```
 
-For the Viper repository itself, `./scripts/coverage.sh` configures a coverage build, runs CTest, and writes reports under `coverage/`.
+For the Zanna repository itself, `./scripts/coverage.sh` configures a coverage build, runs CTest, and writes reports under `coverage/`.
 
 ### What Coverage Tells You
 
@@ -1413,7 +1413,7 @@ Each test eliminates possibilities until you find the culprit.
 Instead of testing specific examples, property-based testing checks that properties hold for many randomly generated inputs.
 
 ```text
-bind Viper.Test;
+bind Zanna.Test;
 
 test "reversing twice returns original" {
     for i in 0..100 {
@@ -1803,7 +1803,7 @@ test "sumOfList returns total of all elements" {
 **Zia**
 
 ```text
-bind Viper.Test;
+bind Zanna.Test;
 
 test "example test" {
     assert 1 + 1 == 2;

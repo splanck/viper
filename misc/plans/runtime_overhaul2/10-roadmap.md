@@ -32,7 +32,7 @@ Work:
 
 - extend `runtime.def` or add sidecar metadata;
 - update `rtgen`;
-- update `viper --dump-runtime-api`;
+- update `zanna --dump-runtime-api`;
 - add schema tests.
 
 ## Phase 2: Audit Gates
@@ -59,7 +59,7 @@ Work:
 Exit criteria:
 
 - no unsafe/internal duplicate stable public rows;
-- no public trap mutation under ordinary `Viper.Error`;
+- no public trap mutation under ordinary `Zanna.Error`;
 - `CodeEditor` boolean getter mismatch fixed;
 - disabled stub fake-success behavior removed or explicitly marked preview.
 

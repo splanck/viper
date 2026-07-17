@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <optional>
 #include <unordered_set>
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Return the immediate dominator for a block.
 /// @details Performs a map lookup against the cached immediate dominator table.
@@ -354,4 +354,4 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     return PDT;
 }
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

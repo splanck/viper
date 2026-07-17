@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,7 @@ struct InlineCostConfig {
 
     /// Maximum number of blocks in callee.
     /// Limited to single-block callees until multi-block inlining value-flow
-    /// issues are resolved (viperide, chess-zia crash at O1 with blockBudget>1).
+    /// issues are resolved (zannaide, chess-zia crash at O1 with blockBudget>1).
     unsigned blockBudget = 1;
 
     /// Maximum inline depth for nested inlining.

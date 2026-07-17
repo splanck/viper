@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -47,12 +47,12 @@ TEST(RuntimeClassBinding, EmitsHttpServerBindHandlerForLiteralRouteTag) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM server AS Viper.Network.HttpServer
-20 server = NEW Viper.Network.HttpServer(8080)
+10 DIM server AS Zanna.Network.HttpServer
+20 server = NEW Zanna.Network.HttpServer(8080)
 30 server.Get("/ping", "HandlePing")
 40 END
 
-SUB HandlePing(req AS Viper.Network.ServerReq, res AS Viper.Network.ServerRes)
+SUB HandlePing(req AS Zanna.Network.ServerReq, res AS Zanna.Network.ServerRes)
     res.Send("pong")
 END SUB
 )BASIC";
@@ -61,22 +61,22 @@ END SUB
     il::frontends::basic::BasicCompilerInput input{source, "http_server_binding.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpServer.Get"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpServer.BindHandler"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.ServerRes.Send"));
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpServer.BindHandler"), 1);
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpServer.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpServer.BindHandler"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.ServerRes.Send"));
+    EXPECT_EQ(countCallsTo(result.module, "Zanna.Network.HttpServer.BindHandler"), 1);
 }
 
 TEST(RuntimeClassBinding, EmitsHttpsServerBindHandlerForLiteralRouteTag) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM server AS Viper.Network.HttpsServer
-20 server = NEW Viper.Network.HttpsServer(8443, "cert.pem", "key.pem")
+10 DIM server AS Zanna.Network.HttpsServer
+20 server = NEW Zanna.Network.HttpsServer(8443, "cert.pem", "key.pem")
 30 server.Get("/ping", "HandlePing")
 40 END
 
-SUB HandlePing(req AS Viper.Network.ServerReq, res AS Viper.Network.ServerRes)
+SUB HandlePing(req AS Zanna.Network.ServerReq, res AS Zanna.Network.ServerRes)
     res.Send("pong")
 END SUB
 )BASIC";
@@ -85,18 +85,18 @@ END SUB
     il::frontends::basic::BasicCompilerInput input{source, "https_server_binding.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.Get"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.BindHandler"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.ServerRes.Send"));
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpsServer.BindHandler"), 1);
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpsServer.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.HttpsServer.BindHandler"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.ServerRes.Send"));
+    EXPECT_EQ(countCallsTo(result.module, "Zanna.Network.HttpsServer.BindHandler"), 1);
 }
 
 TEST(RuntimeClassBinding, EmitsWssServerBroadcastExterns) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM server AS Viper.Network.WssServer
-20 server = NEW Viper.Network.WssServer(8443, "cert.pem", "key.pem")
+10 DIM server AS Zanna.Network.WssServer
+20 server = NEW Zanna.Network.WssServer(8443, "cert.pem", "key.pem")
 30 server.Broadcast("hello")
 40 server.Stop()
 )BASIC";
@@ -105,12 +105,12 @@ TEST(RuntimeClassBinding, EmitsWssServerBroadcastExterns) {
     il::frontends::basic::BasicCompilerInput input{source, "wss_server_binding.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.WssServer.Broadcast"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.WssServer.Stop"));
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.WssServer.Broadcast"), 1);
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.WssServer.Broadcast"));
+    EXPECT_TRUE(hasExtern(result.module, "Zanna.Network.WssServer.Stop"));
+    EXPECT_EQ(countCallsTo(result.module, "Zanna.Network.WssServer.Broadcast"), 1);
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

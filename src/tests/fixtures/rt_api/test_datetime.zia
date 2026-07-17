@@ -1,7 +1,7 @@
 module TestDateTime;
-bind Viper.Time.DateTime;
-bind Viper.Time.Duration;
-bind Viper.Terminal;
+bind Zanna.Time.DateTime;
+bind Zanna.Time.Duration;
+bind Zanna.Terminal;
 
 func start() {
     var t = FromParts(2024, 6, 15, 10, 30, 0);
@@ -14,13 +14,13 @@ func start() {
     SayInt(DayOfWeek(t));
 
     var iso = ToIso8601(t);
-    SayBool(Viper.String.Contains(iso, "2024"));
+    SayBool(Zanna.String.Contains(iso, "2024"));
 
     var t2 = AddDays(t, 10);
-    SayInt(Viper.Time.DateTime.Day(t2));
+    SayInt(Zanna.Time.DateTime.Day(t2));
 
     var t3 = AddSeconds(t, 3600);
-    SayInt(Viper.Time.DateTime.Hour(t3));
+    SayInt(Zanna.Time.DateTime.Hour(t3));
 
     var now = Now();
     SayBool(now > 0);
@@ -32,18 +32,18 @@ func start() {
     var d = FromSeconds(90);
     SayInt(TotalSeconds(d));
     SayInt(TotalMillis(d));
-    SayInt(Viper.Time.Duration.get_Minutes(d));
-    SayInt(Viper.Time.Duration.get_Seconds(d));
+    SayInt(Zanna.Time.Duration.get_Minutes(d));
+    SayInt(Zanna.Time.Duration.get_Seconds(d));
 
-    var d2 = Viper.Time.Duration.FromParts(1, 2, 30, 0, 0);
+    var d2 = Zanna.Time.Duration.FromParts(1, 2, 30, 0, 0);
     SayInt(TotalHours(d2));
-    Say(Viper.Time.Duration.ToString(d2));
+    Say(Zanna.Time.Duration.ToString(d2));
 
-    var d3 = Viper.Time.Duration.Add(d, d2);
-    SayInt(Viper.Time.Duration.TotalSeconds(d3));
+    var d3 = Zanna.Time.Duration.Add(d, d2);
+    SayInt(Zanna.Time.Duration.TotalSeconds(d3));
 
     var dz = Zero();
-    SayInt(Viper.Time.Duration.TotalSeconds(dz));
+    SayInt(Zanna.Time.Duration.TotalSeconds(dz));
 
     Say("done");
 }

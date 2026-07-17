@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 int main() {
     using namespace il::core;
-    using namespace viper::analysis;
+    using namespace zanna::analysis;
 
     Module m;
     il::build::IRBuilder b(m);

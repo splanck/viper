@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 /// A serializable string table for object file formats.
 ///
@@ -62,4 +62,4 @@ class StringTable {
     std::unordered_map<std::string, uint32_t> offsets_;
 };
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

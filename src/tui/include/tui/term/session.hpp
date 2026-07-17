@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the TerminalSession class, which manages the
-// acquisition and restoration of raw terminal mode for Viper's TUI.
+// acquisition and restoration of raw terminal mode for Zanna's TUI.
 // On POSIX systems, it saves the original termios settings and configures
 // the terminal for raw input (no echo, no canonical processing). On
 // Windows, it enables Virtual Terminal Processing for ANSI escape codes.
@@ -31,18 +31,18 @@
 #include <cstdlib>
 
 #if defined(__unix__) || defined(__APPLE__)
-#define VIPERTUI_POSIX 1
+#define ZANNATUI_POSIX 1
 #include <termios.h>
 #include <unistd.h>
 #else
-#define VIPERTUI_POSIX 0
+#define ZANNATUI_POSIX 0
 #endif
 
 #if defined(_WIN32)
 #include <windows.h>
 #endif
 
-namespace viper::tui {
+namespace zanna::tui {
 
 /// @brief RAII guard that enters raw terminal mode on construction and restores
 ///        the original terminal settings on destruction.
@@ -66,7 +66,7 @@ class TerminalSession {
 
   private:
     bool active_{false};
-#if VIPERTUI_POSIX
+#if ZANNATUI_POSIX
     termios orig_{};
 #endif
 #if defined(_WIN32)
@@ -75,4 +75,4 @@ class TerminalSession {
 #endif
 };
 
-} // namespace viper::tui
+} // namespace zanna::tui

@@ -1,12 +1,12 @@
-// defaultmap_demo.zia - Comprehensive API audit for Viper.Collections.DefaultMap
+// defaultmap_demo.zia - Comprehensive API audit for Zanna.Collections.DefaultMap
 // Tests: New(default_value), Get, Set, Has, Remove, Keys, GetDefault, Clear, Len
 
 module DefaultMapDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
 
 func start() {
     Say("=== DefaultMap API Audit ===");

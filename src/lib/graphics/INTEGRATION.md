@@ -1,4 +1,4 @@
-# ViperGFX Integration into Viper Project
+# ZannaGFX Integration into Zanna Project
 
 **Status:** ✅ **COMPLETE**
 **Date:** 2025-11-21
@@ -6,8 +6,8 @@
 
 ## Overview
 
-ViperGFX has been successfully integrated into the Viper project as a library component under `/src/lib/graphics`. The
-library builds as part of the main Viper build system and its tests are included in the Viper test suite.
+ZannaGFX has been successfully integrated into the Zanna project as a library component under `/src/lib/graphics`. The
+library builds as part of the main Zanna build system and its tests are included in the Zanna test suite.
 
 ## Integration Changes
 
@@ -17,10 +17,10 @@ library builds as part of the main Viper build system and its tests are included
 **New Location:** `/src/lib/graphics`
 
 ```
-/Users/stephen/git/viper/
+/Users/stephen/git/zanna/
 ├── src/
 │   ├── lib/
-│   │   └── graphics/          # ViperGFX library
+│   │   └── graphics/          # ZannaGFX library
 │   │       ├── include/       # Public headers (vgfx.h, vgfx_config.h)
 │   │       ├── src/           # Implementation files
 │   │       ├── tests/         # Unit tests (T1-T21)
@@ -31,7 +31,7 @@ library builds as part of the main Viper build system and its tests are included
 │   └── ...
 ├── build/
 │   ├── lib/
-│   │   └── libvipergfx.a     # Built library (139 KB)
+│   │   └── libzannagfx.a     # Built library (139 KB)
 │   └── src/lib/graphics/
 │       ├── tests/            # Test executables
 │       └── examples/         # Example executables
@@ -46,7 +46,7 @@ library builds as part of the main Viper build system and its tests are included
 
 ```cmake
 enable_language(C)
-# Enable Objective-C for macOS (needed by ViperGFX)
+# Enable Objective-C for macOS (needed by ZannaGFX)
 if(APPLE)
     enable_language(OBJC)
 endif()
@@ -55,19 +55,19 @@ endif()
 **Added Graphics Subdirectory:**
 
 ```cmake
-# ---- ViperGFX library ----
+# ---- ZannaGFX library ----
 add_subdirectory(src/lib/graphics)
-viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
+zanna_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 ```
 
 **Added to Public Library Targets:**
 
 ```cmake
-set(VIPER_PUBLIC_LIB_TARGETS
-  viper_support
-  viper_runtime
+set(ZANNA_PUBLIC_LIB_TARGETS
+  zanna_support
+  zanna_runtime
   # ... other targets ...
-  vipergfx  # Added
+  zannagfx  # Added
 )
 ```
 
@@ -80,14 +80,14 @@ set(VIPER_PUBLIC_LIB_TARGETS
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # Standalone build
     cmake_minimum_required(VERSION 3.10)
-    project(ViperGFX VERSION 1.0.0 LANGUAGES C)
+    project(ZannaGFX VERSION 1.0.0 LANGUAGES C)
     set(VGFX_STANDALONE TRUE)
     # ... standalone settings ...
 else()
-    # Integrated into Viper build
+    # Integrated into Zanna build
     set(VGFX_STANDALONE FALSE)
-    # Use Viper's test option
-    set(VGFX_BUILD_TESTS ${VIPER_BUILD_TESTING})
+    # Use Zanna's test option
+    set(VGFX_BUILD_TESTS ${ZANNA_BUILD_TESTING})
     set(VGFX_BUILD_EXAMPLES ${BUILD_EXAMPLES})
 endif()
 ```
@@ -95,26 +95,26 @@ endif()
 This allows the graphics library to be built either:
 
 1. **Standalone** - As a separate project with its own CMake configuration
-2. **Integrated** - As part of the Viper build, using Viper's settings
+2. **Integrated** - As part of the Zanna build, using Zanna's settings
 
 ## Build Verification
 
 ### Library Build
 
 ```bash
-$ cmake --build build --target vipergfx
-Building C object src/lib/graphics/CMakeFiles/vipergfx.dir/src/vgfx.c.o
-Building C object src/lib/graphics/CMakeFiles/vipergfx.dir/src/vgfx_draw.c.o
-Building OBJC object src/lib/graphics/CMakeFiles/vipergfx.dir/src/vgfx_platform_macos.m.o
-Linking C static library ../../../lib/libvipergfx.a
-Built target vipergfx
+$ cmake --build build --target zannagfx
+Building C object src/lib/graphics/CMakeFiles/zannagfx.dir/src/vgfx.c.o
+Building C object src/lib/graphics/CMakeFiles/zannagfx.dir/src/vgfx_draw.c.o
+Building OBJC object src/lib/graphics/CMakeFiles/zannagfx.dir/src/vgfx_platform_macos.m.o
+Linking C static library ../../../lib/libzannagfx.a
+Built target zannagfx
 ```
 
 ### Test Build
 
 ```bash
 $ cmake --build build --target test_window test_pixels test_drawing test_input
-[100%] Built target vipergfx_mock
+[100%] Built target zannagfx_mock
 [100%] Built target test_window
 [100%] Built target test_pixels
 [100%] Built target test_drawing
@@ -125,7 +125,7 @@ $ cmake --build build --target test_window test_pixels test_drawing test_input
 
 ```bash
 $ ctest --test-dir build -R "test_window|test_pixels|test_drawing|test_input"
-Test project /Users/stephen/git/viper/build
+Test project /Users/stephen/git/zanna/build
     Start  2: test_window
 1/4 Test  #2: test_window ......................   Passed    0.34 sec
     Start  3: test_pixels
@@ -141,9 +141,9 @@ Test project /Users/stephen/git/viper/build
 ## Configuration Output
 
 ```
--- ViperGFX: Building for macOS (Cocoa backend)
--- ViperGFX: Configuring examples subdirectory
--- ViperGFX Configuration:
+-- ZannaGFX: Building for macOS (Cocoa backend)
+-- ZannaGFX: Configuring examples subdirectory
+-- ZannaGFX Configuration:
 --   Version: 0.1.1
 --   C Standard: C11
 --   Build Tests: ON
@@ -155,35 +155,35 @@ Test project /Users/stephen/git/viper/build
 
 ### 1. Unified Build System
 
-- Single `cmake` invocation builds entire Viper project including graphics
+- Single `cmake` invocation builds entire Zanna project including graphics
 - Consistent compiler flags and optimization settings
 - Shared build options (testing, warnings, sanitizers)
 
 ### 2. Integrated Test Suite
 
-- Graphics tests run alongside Viper tests via `ctest`
+- Graphics tests run alongside Zanna tests via `ctest`
 - Automated CI/CD integration
 - Consistent test reporting format
 
 ### 3. Library Installation
 
-- `vipergfx` included in `VIPER_PUBLIC_LIB_TARGETS`
-- Installed with Viper package
-- Available via `ViperTargets.cmake` export
+- `zannagfx` included in `ZANNA_PUBLIC_LIB_TARGETS`
+- Installed with Zanna package
+- Available via `ZannaTargets.cmake` export
 
 ### 4. Dependency Management
 
-- Graphics library can be used by other Viper components
+- Graphics library can be used by other Zanna components
 - Proper CMake target linkage
 - Header visibility controlled via target properties
 
-## Usage from Other Viper Components
+## Usage from Other Zanna Components
 
-To use ViperGFX from another Viper component:
+To use ZannaGFX from another Zanna component:
 
 ```cmake
 # In your CMakeLists.txt
-target_link_libraries(your_target PRIVATE vipergfx)
+target_link_libraries(your_target PRIVATE zannagfx)
 target_include_directories(your_target PRIVATE
     ${CMAKE_SOURCE_DIR}/src/lib/graphics/include
 )
@@ -210,14 +210,14 @@ vgfx_destroy_window(win);
 ## Build Commands
 
 ```bash
-# Configure Viper build (includes graphics)
+# Configure Zanna build (includes graphics)
 cmake -S . -B build
 
 # Build everything
 cmake --build build
 
 # Build only graphics library
-cmake --build build --target vipergfx
+cmake --build build --target zannagfx
 
 # Build graphics tests
 cmake --build build --target test_window test_pixels test_drawing test_input
@@ -231,7 +231,7 @@ ctest --test-dir build --output-on-failure
 # Run only graphics tests
 ctest --test-dir build -R "test_window|test_pixels|test_drawing|test_input"
 
-# Install Viper (includes graphics library)
+# Install Zanna (includes graphics library)
 cmake --install build --prefix /usr/local
 ```
 
@@ -250,18 +250,18 @@ This is useful for:
 
 - Developing the graphics library independently
 - Testing on different platforms
-- Using ViperGFX in non-Viper projects
+- Using ZannaGFX in non-Zanna projects
 
 ## Files Modified
 
 1. **CMakeLists.txt** (root)
     - Added Objective-C language enablement
     - Added `src/lib/graphics` subdirectory
-    - Added `vipergfx` to public library targets
+    - Added `zannagfx` to public library targets
 
 2. **src/lib/graphics/CMakeLists.txt**
     - Modified to support both standalone and integrated builds
-    - Uses Viper's build options when integrated
+    - Uses Zanna's build options when integrated
     - Maintains backward compatibility with standalone builds
 
 3. **Directory structure**
@@ -289,13 +289,13 @@ Future platforms (stubs exist):
 
 ## Summary
 
-ViperGFX is now a first-class component of the Viper project:
+ZannaGFX is now a first-class component of the Zanna project:
 
-✅ **Build Integration** - Builds as part of Viper
-✅ **Test Integration** - Tests run via Viper's CTest
-✅ **Installation** - Included in Viper package
+✅ **Build Integration** - Builds as part of Zanna
+✅ **Test Integration** - Tests run via Zanna's CTest
+✅ **Installation** - Included in Zanna package
 ✅ **Backward Compatibility** - Can still build standalone
 ✅ **All Tests Passing** - 20/20 tests pass (100%)
 ✅ **Clean Build** - No warnings, proper target linkage
 
-The integration maintains flexibility while providing tight coupling with the Viper build system.
+The integration maintains flexibility while providing tight coupling with the Zanna build system.

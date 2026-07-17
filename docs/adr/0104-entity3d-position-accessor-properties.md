@@ -13,7 +13,7 @@ and the full test suite on 2026-07-01
 
 ## Context
 
-`Viper.Game3D.Entity3D` exposed `Position` and `WorldPosition` as **methods**
+`Zanna.Game3D.Entity3D` exposed `Position` and `WorldPosition` as **methods**
 (`RT_METHOD`, called `entity.Position()`), while every other 3D class that
 reports a position — `Camera3D`, `Light3D`, `SceneNode`, `SoundListener3D`,
 `SoundSource3D`, `Physics3DBody`, `Character3D`, `Transform3D`, `NavAgent3D` —
@@ -32,12 +32,12 @@ Reclassify `Entity3D.Position` and `Entity3D.WorldPosition` from methods to
 read-only properties:
 
 - In `src/il/runtime/runtime.def`, rename the `RT_FUNC` public names
-  `Viper.Game3D.Entity3D.Position` → `.get_Position` and `.WorldPosition` →
+  `Zanna.Game3D.Entity3D.Position` → `.get_Position` and `.WorldPosition` →
   `.get_WorldPosition`, and replace the two `RT_METHOD("Position", "obj()", …)`
-  entries with `RT_PROP("Position", "obj<Viper.Math.Vec3>", …, none)` (read-only,
+  entries with `RT_PROP("Position", "obj<Zanna.Math.Vec3>", …, none)` (read-only,
   no setter), matching the `SceneNode` / `Character3D` model.
 - The C handlers `rt_game3d_entity_position` / `rt_game3d_entity_world_position`
-  are **unchanged**: their signature `obj<Viper.Math.Vec3>(obj)` already matches
+  are **unchanged**: their signature `obj<Zanna.Math.Vec3>(obj)` already matches
   a property getter, so this is a registry-classification change only.
 
 This is a **breaking runtime-C-ABI surface change**: callers written as
@@ -50,13 +50,13 @@ Verified on 2026-07-01:
 
 - `src/il/runtime/runtime.def`: the two accessors are now `get_Position` /
   `get_WorldPosition` `RT_FUNC` names classified by `RT_PROP` in the
-  `Viper.Game3D.Entity3D` class block; `viper --dump-runtime-api` reports them as
+  `Zanna.Game3D.Entity3D` class block; `zanna --dump-runtime-api` reports them as
   properties.
 - Caller sweep: 17 `.Position()` sites across 10 files (`.zia` tests + examples,
   including `examples/games/game3d-showcase/worldsim.zia` and
   `examples/3d/openworld_slice/main.zia`) switched to the property form; a
   repo-wide re-grep for `\.(Position|WorldPosition)\(\)` returns none.
-- Docs: `docs/viperlib/graphics/game3d.md` updated to the property form.
+- Docs: `docs/zannalib/graphics/game3d.md` updated to the property form.
 - Runtime-surface goldens regenerated; `test_runtime_class_qualified_surface`,
   the Graphics3D/Game3D ABI-surface tests, `test_rt_game3d`,
   `check_runtime_completeness.sh` (handler ids unchanged), and the full `ctest`
@@ -77,7 +77,7 @@ change focused on the position accessors.
 
 No IL opcode, IL type, verifier rule, linker, VM execution, numeric-semantics, or
 native-codegen changes. This is a runtime-registry classification change
-(method → property) on the public `Viper.Game3D` surface. Per ADR 0004 such
+(method → property) on the public `Zanna.Game3D` surface. Per ADR 0004 such
 surface work is registry-only, but because this **reclassifies an existing public
 member** (a breaking change) rather than adding a new one, it carries its own ADR
 and caller sweep.

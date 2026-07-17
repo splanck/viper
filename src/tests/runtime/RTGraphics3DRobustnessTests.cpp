@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,8 +18,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VIPER_ENABLE_GRAPHICS
-#define VIPER_ENABLE_GRAPHICS 1
+#ifndef ZANNA_ENABLE_GRAPHICS
+#define ZANNA_ENABLE_GRAPHICS 1
 #endif
 
 extern "C" {
@@ -480,7 +480,7 @@ static void test_generated_plane_faces_positive_y() {
 }
 
 static void test_obj_loader_handles_long_lines() {
-    const std::string path = "/tmp/viper_rt_graphics3d_long_line.obj";
+    const std::string path = "/tmp/zanna_rt_graphics3d_long_line.obj";
     {
         std::ofstream out(path);
         out << '#';
@@ -505,7 +505,7 @@ static void test_obj_loader_uses_dot_decimal_independent_of_locale() {
     if (!changed_locale)
         changed_locale = std::setlocale(LC_NUMERIC, "de_DE.UTF-8");
 
-    const std::string path = "/tmp/viper_rt_graphics3d_locale_decimal.obj";
+    const std::string path = "/tmp/zanna_rt_graphics3d_locale_decimal.obj";
     {
         std::ofstream out(path);
         out << "v 1.25 0.5 1e-1\n";
@@ -1132,7 +1132,7 @@ static void test_zero_size_colliders_fallback_to_positive_extents() {
 }
 
 static void test_obj_loader_recalculates_mixed_missing_normals() {
-    const std::string path = "/tmp/viper_rt_graphics3d_mixed_normals.obj";
+    const std::string path = "/tmp/zanna_rt_graphics3d_mixed_normals.obj";
     {
         std::ofstream out(path);
         out << "v 0 0 0\n";

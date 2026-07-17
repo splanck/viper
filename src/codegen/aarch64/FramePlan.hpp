@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,7 +23,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64 {
+namespace zanna::codegen::aarch64 {
 
 /// @brief Describes the stack frame layout and callee-saved register plan for a function.
 ///
@@ -101,4 +101,4 @@ struct FramePlan {
     int localFrameSize{0};
 };
 
-} // namespace viper::codegen::aarch64
+} // namespace zanna::codegen::aarch64

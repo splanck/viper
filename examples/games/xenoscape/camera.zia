@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 //   1. **Smooth-follows with easing.**  Each frame the
 //      camera moves a fraction (e.g. 12%) of the remaining
 //      distance to the target.  Snappy without being jittery.
-//      `Viper.Game.Camera.SmoothFollow` handles this.
+//      `Zanna.Game.Camera.SmoothFollow` handles this.
 //
 //   2. **Has a deadzone.**  The player can wiggle inside a
 //      small rectangle in the centre of the screen without
@@ -81,10 +81,10 @@
 
 module camera;
 
-bind Viper.Graphics;
+bind Zanna.Graphics;
 // SmoothValue no longer needed — Camera.SmoothFollow provides built-in interpolation
-bind Viper.Math.PerlinNoise as PerlinNoise;
-bind Viper.Core;
+bind Zanna.Math.PerlinNoise as PerlinNoise;
+bind Zanna.Core;
 bind "./camera_logic";
 bind "./config";
 bind "./palette";

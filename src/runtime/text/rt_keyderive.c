@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_keyderive.c
 // Purpose: Implements PBKDF2-SHA256 (RFC 8018) and scrypt-SHA256 (RFC 7914)
-//          for the Viper.Crypto.KeyDerive class.
+//          for the Zanna.Crypto.KeyDerive class.
 //
 // Key invariants:
 //   - Minimum PBKDF2 iteration count is RT_PBKDF2_MIN_ITERATIONS (100000);
@@ -478,7 +478,7 @@ int rt_keyderive_scrypt_params_supported(uint64_t n, uint32_t r, uint32_t p, siz
     return scrypt_params_valid(n, r, p, out_len);
 }
 
-/// @brief Raw scrypt-SHA256 KDF (RFC 7914) — internal helper, no Viper-string wrapping.
+/// @brief Raw scrypt-SHA256 KDF (RFC 7914) — internal helper, no Zanna-string wrapping.
 /// @details Implements the full scrypt construction:
 ///          1. PBKDF2-HMAC-SHA256(password, salt, 1, p * 128 * r) → B
 ///          2. For each of p blocks of B: ROMix_r(N) in place
@@ -527,7 +527,7 @@ void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
 
 /// @brief Derive a key from a password using PBKDF2-SHA256, returning a Bytes object.
 /// @details High-level wrapper around rt_keyderive_pbkdf2_sha256_raw that
-///          handles Viper string/bytes conversion. Validates iterations (min 100000)
+///          handles Zanna string/bytes conversion. Validates iterations (min 100000)
 ///          and key length (1–1024 bytes). The derived key is zeroed from the
 ///          temporary buffer after copying to the Bytes object.
 /// @param password   Password string.
@@ -682,7 +682,7 @@ static int validate_public_scrypt_params(
     return 1;
 }
 
-/// @brief Public Viper.Crypto.KeyDerive.ScryptSHA256 — derive a key, return as bytes.
+/// @brief Public Zanna.Crypto.KeyDerive.ScryptSHA256 — derive a key, return as bytes.
 /// @details Validates parameters, extracts password and salt, runs the raw
 ///          scrypt-SHA256 derivation, and wraps the result as an rt_bytes
 ///          object. Sensitive intermediate buffers are zeroed before return.
@@ -732,7 +732,7 @@ void *rt_keyderive_scrypt_sha256(
     return result;
 }
 
-/// @brief Public Viper.Crypto.KeyDerive.ScryptSHA256Str — derive a key, return as hex string.
+/// @brief Public Zanna.Crypto.KeyDerive.ScryptSHA256Str — derive a key, return as hex string.
 /// @details Same as rt_keyderive_scrypt_sha256 but returns the derived
 ///          bytes hex-encoded as an rt_string for portability (e.g.
 ///          embedding in JSON config or comparing as a string). All

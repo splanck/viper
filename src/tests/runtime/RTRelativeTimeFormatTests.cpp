@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTRelativeTimeFormatTests.cpp
-// Purpose: Validate Viper.Localization.RelativeTimeFormat against the baked
+// Purpose: Validate Zanna.Localization.RelativeTimeFormat against the baked
 //          en-US templates. Covers unit selection across the seven thresholds,
 //          past vs. future signage, plural form selection via PluralRules,
 //          and the explicit Numeric(value, unit) entry point.
@@ -84,7 +84,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_reltime_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_reltime_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }

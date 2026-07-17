@@ -1,9 +1,9 @@
 module TestCanvas3DPointShadows;
 
-bind Viper.Graphics3D;
-bind Viper.Graphics;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Graphics;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 // Doc-03 E9 coverage: omnidirectional point-light shadows.
 //   - A shadow-casting point light claims six consecutive slots (cube faces).

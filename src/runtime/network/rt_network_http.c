@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 /// @file rt_network_http.c
-/// @brief HTTP/URL helpers for Viper.Network HTTP APIs.
+/// @brief HTTP/URL helpers for Zanna.Network HTTP APIs.
 //
 //===----------------------------------------------------------------------===//
 
@@ -848,7 +848,7 @@ void free_parsed_url(parsed_url_t *url) {
 
 /// @brief Parse URL into components.
 /// @details Accepts explicit `http://` and `https://` URLs. For compatibility
-///          with earlier Viper programs, a URL without any `://` scheme is
+///          with earlier Zanna programs, a URL without any `://` scheme is
 ///          treated as an HTTP URL on port 80; unknown explicit schemes are
 ///          rejected.
 /// @return 0 on success, -1 on error.

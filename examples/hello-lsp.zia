@@ -1,6 +1,6 @@
 module HelloLSP;
 
-// Try hovering over "start", or typing "Viper." to get completions.
+// Try hovering over "start", or typing "Zanna." to get completions.
 // Errors should appear as red squiggly underlines.
 
 struct Point {
@@ -10,11 +10,11 @@ struct Point {
 
 func start() {
     var greeting = "Hello from the Zia Language Server!";
-    Viper.Terminal.Say(greeting);
+    Zanna.Terminal.Say(greeting);
 
     var p: Point = new Point();
     p.x = 10;
     p.y = 20;
-    Viper.Terminal.SayInt(p.x);
-    Viper.Terminal.SayInt(p.y);
+    Zanna.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.y);
 }

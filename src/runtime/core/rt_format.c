@@ -4,7 +4,7 @@
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,7 @@
 //     and do not retain any pointers.
 //
 // Links: src/runtime/core/rt_format.h (public API),
-//        src/runtime/core/rt_fmt.c (higher-level Viper.Text.Fmt namespace),
+//        src/runtime/core/rt_fmt.c (higher-level Zanna.Text.Fmt namespace),
 //        src/runtime/core/rt_string_format.c (numeric parsing and conversion)
 //
 //===----------------------------------------------------------------------===//

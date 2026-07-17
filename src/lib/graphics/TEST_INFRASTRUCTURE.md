@@ -1,4 +1,4 @@
-# ViperGFX Test Infrastructure
+# ZannaGFX Test Infrastructure
 
 **Status:** ✅ **COMPLETE AND PASSING**
 **Date:** 2025-11-21
@@ -6,7 +6,7 @@
 
 ## Overview
 
-The ViperGFX test infrastructure provides deterministic unit testing without requiring real OS windowing systems. This
+The ZannaGFX test infrastructure provides deterministic unit testing without requiring real OS windowing systems. This
 enables automated testing in CI environments and ensures consistent behavior across platforms.
 
 ## Architecture
@@ -14,7 +14,7 @@ enables automated testing in CI environments and ensures consistent behavior acr
 ```
 Test Files (tests/*.c)
     ↓ link against
-Mock Library (libvipergfx_mock.a)
+Mock Library (libzannagfx_mock.a)
     ├── vgfx.c (core)
     ├── vgfx_draw.c (drawing)
     └── vgfx_platform_mock.c (mock backend)
@@ -146,7 +146,7 @@ TEST_RETURN_CODE()                // Return 0 if all passed, 1 otherwise
 
 ```cmake
 # Create mock library (uses mock backend instead of real platform)
-add_library(vipergfx_mock STATIC
+add_library(zannagfx_mock STATIC
     ../src/vgfx.c
     ../src/vgfx_draw.c
     ../src/vgfx_platform_mock.c
@@ -155,7 +155,7 @@ add_library(vipergfx_mock STATIC
 # Test helper function
 function(add_vgfx_test test_name source_file)
     add_executable(${test_name} ${source_file})
-    target_link_libraries(${test_name} PRIVATE vipergfx_mock)
+    target_link_libraries(${test_name} PRIVATE zannagfx_mock)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
@@ -286,7 +286,7 @@ if (next_head == win->event_tail) {
 
 ## Summary
 
-The ViperGFX test infrastructure provides **production-quality automated testing** without requiring real OS windows.
+The ZannaGFX test infrastructure provides **production-quality automated testing** without requiring real OS windows.
 All 20 tests pass, validating correctness of:
 
 ✅ **Core API** - Window management, framebuffer access

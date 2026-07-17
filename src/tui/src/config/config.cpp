@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tui/src/config/config.cpp
-// Purpose: Implement the INI-style configuration loader shared by ViperTUI
+// Purpose: Implement the INI-style configuration loader shared by ZannaTUI
 //          applications.
 // Key invariants: Only the [theme], [keymap.global], and [editor] sections are
 //                 recognized today, and unknown keys are ignored so that
@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Parses INI-like configuration files into @ref viper::tui::config::Config.
+/// @brief Parses INI-like configuration files into @ref zanna::tui::config::Config.
 /// @details The implementation favours robustness: leading/trailing whitespace
 ///          is trimmed, unrecognized sections are skipped, and malformed entries
 ///          leave the destination structure untouched.  Helpers live in an
@@ -37,7 +37,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace viper::tui::config {
+namespace zanna::tui::config {
 
 namespace {
 /// @brief Remove leading and trailing ASCII whitespace from a string view.
@@ -256,4 +256,4 @@ bool loadFromFile(const std::string &path, Config &out) {
     return true;
 }
 
-} // namespace viper::tui::config
+} // namespace zanna::tui::config

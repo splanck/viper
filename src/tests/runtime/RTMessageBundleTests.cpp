@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTMessageBundleTests.cpp
-// Purpose: Validate Viper.Localization.MessageBundle — FromMap construction,
+// Purpose: Validate Zanna.Localization.MessageBundle — FromMap construction,
 //          Get/TryGet/Has lookup, Format ({name}) and FormatWith ({0})
 //          placeholder interpolation, Plural key resolution, fallback
 //          chain walking, and trap/cycle detection paths.
@@ -94,7 +94,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_msg_%ld_%s", base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/zanna_msg_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -193,8 +193,8 @@ static void test_format_named() {
     const char *pairs[] = {"greet", "Hello, {name}!", nullptr};
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
 
-    const char *vpairs[] = {"name", "Alice", nullptr};
-    void *vars = build_map(vpairs);
+    const char *zpakirs[] = {"name", "Alice", nullptr};
+    void *vars = build_map(zpakirs);
 
     rt_string key = S("greet");
     test_result("Format(greet, {name=Alice}) = \"Hello, Alice!\"",
@@ -220,8 +220,8 @@ static void test_format_escaped_braces() {
     const char *pairs[] = {"tmpl", "{{Hello}} {name}", "pos", "{{{0}}}", nullptr};
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
 
-    const char *vpairs[] = {"name", "Alice", nullptr};
-    void *vars = build_map(vpairs);
+    const char *zpakirs[] = {"name", "Alice", nullptr};
+    void *vars = build_map(zpakirs);
     rt_string key = S("tmpl");
     test_result("Format handles {{ and }}",
                 eq(rt_message_bundle_format(b, key, vars), "{Hello} Alice"));
@@ -313,8 +313,8 @@ static void test_plural_does_not_mutate_vars() {
     printf("Testing Plural does not mutate vars:\n");
     const char *pairs[] = {"items.other", "{n} items for {name}", nullptr};
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
-    const char *vpairs[] = {"name", "Alice", nullptr};
-    void *vars = build_map(vpairs);
+    const char *zpakirs[] = {"name", "Alice", nullptr};
+    void *vars = build_map(zpakirs);
 
     rt_string key = S("items");
     test_result("Plural formats using cloned vars",

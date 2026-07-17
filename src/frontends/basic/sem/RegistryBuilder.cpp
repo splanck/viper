@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,8 +17,8 @@
 ///
 /// The registry builder performs several critical initialization tasks:
 ///
-/// 1. **Runtime Namespace Seeding**: Seeds well-known namespaces (Viper.*)
-///    from the runtime library so that `USING Viper.String` is valid.
+/// 1. **Runtime Namespace Seeding**: Seeds well-known namespaces (Zanna.*)
+///    from the runtime library so that `USING Zanna.String` is valid.
 ///
 /// 2. **Runtime Type Catalog Seeding**: Registers runtime classes, interfaces,
 ///    properties, and methods so they can be resolved during semantic analysis.
@@ -45,8 +45,8 @@
 /// ## Qualified Name Construction
 ///
 /// The `joinNs` helper constructs qualified names by joining namespace stack
-/// segments with dots. For example, with stack ["Viper", "Graphics"], it
-/// produces "Viper.Graphics".
+/// segments with dots. For example, with stack ["Zanna", "Graphics"], it
+/// produces "Zanna.Graphics".
 ///
 /// ## Runtime Library Integration
 ///
@@ -63,7 +63,7 @@
 /// For a BASIC program like:
 /// ```basic
 /// NAMESPACE MyApp
-///     USING Viper.String
+///     USING Zanna.String
 ///     CLASS Widget
 ///         ...
 ///     END CLASS
@@ -132,10 +132,10 @@ namespace il::frontends::basic {
 ///
 /// Example:
 /// ```basic
-/// NAMESPACE Viper.Graphics
-///     ' nsStack = ["Viper", "Graphics"]
+/// NAMESPACE Zanna.Graphics
+///     ' nsStack = ["Zanna", "Graphics"]
 ///     CLASS Canvas
-///         ' Registered as "Viper.Graphics.Canvas"
+///         ' Registered as "Zanna.Graphics.Canvas"
 ///     END CLASS
 /// END NAMESPACE
 /// ' nsStack = []
@@ -165,7 +165,7 @@ void buildNamespaceRegistry(const Program &program,
     //==========================================================================
 
     // Seed runtime namespaces from built-in descriptors.
-    // This enables validation of USING directives like "USING Viper.String"
+    // This enables validation of USING directives like "USING Zanna.String"
     registry.seedFromRuntimeBuiltins(il::runtime::runtimeRegistry());
 
     // Seed well-known runtime types (classes/interfaces) into the catalog.
@@ -190,7 +190,7 @@ void buildNamespaceRegistry(const Program &program,
     std::vector<std::string> nsStack;
 
     // Helper lambda to join namespace segments with dots.
-    // Example: ["Viper", "Graphics"] -> "Viper.Graphics"
+    // Example: ["Zanna", "Graphics"] -> "Zanna.Graphics"
     auto joinNs = [&]() -> std::string {
         if (nsStack.empty())
             return {};
@@ -349,7 +349,7 @@ void seedRuntimeClassCatalogs(NamespaceRegistry &registry) {
     runtimeMethodIndex().seed();
 
     // Seed namespace prefixes extracted from runtime class qualified names
-    // (e.g., "Viper.String" -> register "Viper" namespace)
+    // (e.g., "Zanna.String" -> register "Zanna" namespace)
     registry.seedRuntimeClassNamespaces(classes);
 }
 

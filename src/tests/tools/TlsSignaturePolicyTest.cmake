@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED VIPER_SOURCE_DIR)
-    message(FATAL_ERROR "VIPER_SOURCE_DIR must be provided to TlsSignaturePolicyTest.cmake")
+if (NOT DEFINED ZANNA_SOURCE_DIR)
+    message(FATAL_ERROR "ZANNA_SOURCE_DIR must be provided to TlsSignaturePolicyTest.cmake")
 endif ()
 
-set(_tls_client "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls.c")
+set(_tls_client "${ZANNA_SOURCE_DIR}/src/runtime/network/rt_tls.c")
 # Certificate verification was split by platform; scan all of its translation units.
-set(_tls_verify_common "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_common.c")
-set(_tls_verify_win "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_win.c")
-set(_tls_verify_posix "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_posix.c")
+set(_tls_verify_common "${ZANNA_SOURCE_DIR}/src/runtime/network/rt_tls_verify_common.c")
+set(_tls_verify_win "${ZANNA_SOURCE_DIR}/src/runtime/network/rt_tls_verify_win.c")
+set(_tls_verify_posix "${ZANNA_SOURCE_DIR}/src/runtime/network/rt_tls_verify_posix.c")
 
 file(READ "${_tls_client}" _tls_client_text)
 file(READ "${_tls_verify_common}" _tls_verify_common_text)

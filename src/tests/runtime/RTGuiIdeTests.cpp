@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTGuiIdeTests.cpp
@@ -252,8 +252,8 @@ int main() {
     assert(rt_map_get_int(rt_accessibility_high_contrast_tokens(), rt_const_cstr("foreground")) ==
            0xffffff);
 
-    // --- Viper.GUI.Command: logical state, snapshot, and the disabled-never-invoked rule.
-    //     (The widget-driven half needs a live windowed app and is covered by ViperIDE probes.)
+    // --- Zanna.GUI.Command: logical state, snapshot, and the disabled-never-invoked rule.
+    //     (The widget-driven half needs a live windowed app and is covered by ZannaIDE probes.)
     void *build = rt_command_new(rt_const_cstr("build"), rt_const_cstr("Build"));
     assert(take(rt_command_get_id(build)) == "build");
     assert(take(rt_command_get_title(build)) == "Build");
@@ -279,7 +279,7 @@ int main() {
     assert(rt_map_get_bool(buildSnap, rt_const_cstr("checked")) == 1);
     assert(rt_map_get_bool(buildSnap, rt_const_cstr("invoked")) == 0);
 
-    // --- Viper.GUI.CommandRegistry: ownership, dedup, find, and an idle poll.
+    // --- Zanna.GUI.CommandRegistry: ownership, dedup, find, and an idle poll.
     void *registry = rt_command_registry_new();
     assert(rt_command_registry_count(registry) == 0);
     rt_command_registry_add(registry, build);

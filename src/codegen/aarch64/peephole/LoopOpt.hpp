@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -26,7 +26,7 @@
 
 #include <cstddef>
 
-namespace viper::codegen::aarch64::peephole {
+namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Hoist loop-invariant MovRI instructions from loop bodies to preheaders.
 std::size_t hoistLoopConstants(MFunction &fn);
@@ -42,4 +42,4 @@ std::size_t hoistLoopConstants(MFunction &fn);
 /// @return Number of spill/reload pairs eliminated.
 std::size_t eliminateLoopPhiSpills(MFunction &fn);
 
-} // namespace viper::codegen::aarch64::peephole
+} // namespace zanna::codegen::aarch64::peephole

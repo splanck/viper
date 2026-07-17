@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -38,29 +38,29 @@ extern "C" {
 ///          independent from the animation state/timeline that produced it.
 /// @param ids Pointer to event IDs to copy, or NULL for an empty batch.
 /// @param count Number of IDs available in @p ids.
-/// @return A new Viper.Game.AnimationEventBatch object, or NULL on allocation failure.
+/// @return A new Zanna.Game.AnimationEventBatch object, or NULL on allocation failure.
 void *rt_animation_event_batch_from_ids(const int64_t *ids, int64_t count);
 
 /// @brief Return the number of event IDs stored in a batch.
-/// @param batch Viper.Game.AnimationEventBatch object.
+/// @param batch Zanna.Game.AnimationEventBatch object.
 /// @return Event count, or 0 for NULL. A non-NULL wrong-type value traps.
 int64_t rt_animation_event_batch_count(void *batch);
 
 /// @brief Read one event ID from a batch by index.
-/// @param batch Viper.Game.AnimationEventBatch object.
+/// @param batch Zanna.Game.AnimationEventBatch object.
 /// @param index Zero-based event index.
 /// @return Event ID, or 0 if @p index is outside the batch.
 int64_t rt_animation_event_batch_get_id(void *batch, int64_t index);
 
 /// @brief Test whether a batch contains an event ID.
-/// @param batch Viper.Game.AnimationEventBatch object.
+/// @param batch Zanna.Game.AnimationEventBatch object.
 /// @param event_id Event ID to search for.
 /// @return 1 when the ID exists in the batch, otherwise 0.
 int8_t rt_animation_event_batch_contains(void *batch, int64_t event_id);
 
-/// @brief Copy batch event IDs into a new Viper.Collections.Seq.
+/// @brief Copy batch event IDs into a new Zanna.Collections.Seq.
 /// @details Each ID is boxed as an integer. The caller owns the returned Seq.
-/// @param batch Viper.Game.AnimationEventBatch object.
+/// @param batch Zanna.Game.AnimationEventBatch object.
 /// @return New Seq of boxed integer event IDs, or an empty Seq for NULL input.
 ///   A non-NULL wrong-type value traps.
 void *rt_animation_event_batch_ids(void *batch);

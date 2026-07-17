@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Time.Duration - Duration Handling
+// API Audit: Zanna.Time.Duration - Duration Handling
 // =============================================================================
 // Tests: FromMillis, FromSeconds, FromMinutes, FromHours, FromDays, Create, Zero,
 //        TotalMillis, TotalSeconds, TotalMinutes, TotalHours, TotalDays,
@@ -8,10 +8,10 @@
 // =============================================================================
 
 module DurationDemo;
-bind Viper.Terminal;
-bind Viper.Time.Duration as Dur;
+bind Zanna.Terminal;
+bind Zanna.Time.Duration as Dur;
 func start() {
-    Say("=== API Audit: Viper.Time.Duration ===");
+    Say("=== API Audit: Zanna.Time.Duration ===");
 
     // --- FromMillis ---
     Say("--- FromMillis ---");

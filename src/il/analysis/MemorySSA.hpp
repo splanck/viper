@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -44,11 +44,11 @@ using Block = BasicBlock;
 struct Instr;
 } // namespace il::core
 
-namespace viper::analysis {
+namespace zanna::analysis {
 class BasicAA;
-} // namespace viper::analysis
+} // namespace zanna::analysis
 
-namespace viper::analysis {
+namespace zanna::analysis {
 
 /// @brief Identifies the role of a memory access in the MemorySSA graph.
 enum class MemAccessKind {
@@ -109,7 +109,7 @@ class MemorySSA {
     }
 
   private:
-    friend MemorySSA computeMemorySSA(il::core::Function &F, viper::analysis::BasicAA &AA);
+    friend MemorySSA computeMemorySSA(il::core::Function &F, zanna::analysis::BasicAA &AA);
 
     /// All MemoryAccess nodes; index 0 = LiveOnEntry placeholder.
     std::vector<MemoryAccess> accesses_;
@@ -138,6 +138,6 @@ class MemorySSA {
 /// @param F Function to analyse.
 /// @param AA Alias analysis for memory disambiguation.
 /// @return MemorySSA result with dead-store predicates populated.
-MemorySSA computeMemorySSA(il::core::Function &F, viper::analysis::BasicAA &AA);
+MemorySSA computeMemorySSA(il::core::Function &F, zanna::analysis::BasicAA &AA);
 
-} // namespace viper::analysis
+} // namespace zanna::analysis

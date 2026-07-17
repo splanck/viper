@@ -1,46 +1,46 @@
 il 0.3.0
-extern @Viper.String.Asc(str) -> i64
-extern @Viper.String.Chr(i64) -> str
-extern @Viper.String.IndexOf(str, str) -> i64
-extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
-extern @Viper.String.ToLower(str) -> str
-extern @Viper.String.TrimStart(str) -> str
-extern @Viper.String.Left(str, i64) -> str
-extern @Viper.String.get_Length(str) -> i64
-extern @Viper.String.Mid(str, i64) -> str
-extern @Viper.String.MidLen(str, i64, i64) -> str
-extern @Viper.String.TrimEnd(str) -> str
-extern @Viper.String.Right(str, i64) -> str
-extern @Viper.String.Compare(str, str) -> i64
-extern @Viper.String.CompareIgnoreCase(str, str) -> i64
-extern @Viper.String.Count(str, str) -> i64
-extern @Viper.String.EndsWith(str, str) -> i1
-extern @Viper.String.Reverse(str) -> str
-extern @Viper.String.Contains(str, str) -> i1
-extern @Viper.String.PadLeft(str, i64, str) -> str
-extern @Viper.String.PadRight(str, i64, str) -> str
-extern @Viper.String.Repeat(str, i64) -> str
-extern @Viper.String.Replace(str, str, str) -> str
-extern @Viper.String.Split(str, str) -> ptr
-extern @Viper.String.Lines(str) -> ptr
-extern @Viper.Text.Char.IsIdentifierStart(str) -> i1
-extern @Viper.Text.Char.IsIdentifierPart(str) -> i1
-extern @Viper.Text.Char.IsAlphanumeric(str) -> i1
-extern @Viper.String.StartsWith(str, str) -> i1
-extern @Viper.String.Substring(str, i64, i64) -> str
-extern @Viper.String.Trim(str) -> str
-extern @Viper.String.ToUpper(str) -> str
-extern @Viper.String.Join(str, ptr) -> str
-extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.Terminal.PrintStr(str) -> void
+extern @Zanna.String.Asc(str) -> i64
+extern @Zanna.String.Chr(i64) -> str
+extern @Zanna.String.IndexOf(str, str) -> i64
+extern @Zanna.String.IndexOfFrom(str, i64, str) -> i64
+extern @Zanna.String.ToLower(str) -> str
+extern @Zanna.String.TrimStart(str) -> str
+extern @Zanna.String.Left(str, i64) -> str
+extern @Zanna.String.get_Length(str) -> i64
+extern @Zanna.String.Mid(str, i64) -> str
+extern @Zanna.String.MidLen(str, i64, i64) -> str
+extern @Zanna.String.TrimEnd(str) -> str
+extern @Zanna.String.Right(str, i64) -> str
+extern @Zanna.String.Compare(str, str) -> i64
+extern @Zanna.String.CompareIgnoreCase(str, str) -> i64
+extern @Zanna.String.Count(str, str) -> i64
+extern @Zanna.String.EndsWith(str, str) -> i1
+extern @Zanna.String.Reverse(str) -> str
+extern @Zanna.String.Contains(str, str) -> i1
+extern @Zanna.String.PadLeft(str, i64, str) -> str
+extern @Zanna.String.PadRight(str, i64, str) -> str
+extern @Zanna.String.Repeat(str, i64) -> str
+extern @Zanna.String.Replace(str, str, str) -> str
+extern @Zanna.String.Split(str, str) -> ptr
+extern @Zanna.String.Lines(str) -> ptr
+extern @Zanna.Text.Char.IsIdentifierStart(str) -> i1
+extern @Zanna.Text.Char.IsIdentifierPart(str) -> i1
+extern @Zanna.Text.Char.IsAlphanumeric(str) -> i1
+extern @Zanna.String.StartsWith(str, str) -> i1
+extern @Zanna.String.Substring(str, i64, i64) -> str
+extern @Zanna.String.Trim(str) -> str
+extern @Zanna.String.ToUpper(str) -> str
+extern @Zanna.String.Join(str, ptr) -> str
+extern @Zanna.Terminal.PrintF64(f64) -> void
+extern @Zanna.Terminal.PrintI64(i64) -> void
+extern @Zanna.Terminal.PrintStr(str) -> void
 extern @rt_int_floor(f64) -> f64
 extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
 extern @rt_string_cstr(str) -> ptr
 extern @rt_str_empty() -> str
-extern @Viper.Core.Convert.ToStringDouble(f64) -> str
-extern @Viper.String.FromI32(i32) -> str
+extern @Zanna.Core.Convert.ToStringDouble(f64) -> str
+extern @Zanna.String.FromI32(i32) -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "              "
@@ -77,23 +77,23 @@ L30:
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
-  %t8:str = call @Viper.String.FromI32(%t7)
+  %t8:str = call @Zanna.String.FromI32(%t7)
   .loc 1 3 10
-  call @Viper.Terminal.PrintStr(%t8)
+  call @Zanna.Terminal.PrintStr(%t8)
   .loc 1 3 10
   %t9 = const_str @.L0
   .loc 1 3 10
-  call @Viper.Terminal.PrintStr(%t9)
+  call @Zanna.Terminal.PrintStr(%t9)
   .loc 1 3 24
   %t10 = load f64, %b#
   .loc 1 3 19
-  %t11:str = call @Viper.Core.Convert.ToStringDouble(%t10)
+  %t11:str = call @Zanna.Core.Convert.ToStringDouble(%t10)
   .loc 1 3 19
-  call @Viper.Terminal.PrintStr(%t11)
+  call @Zanna.Terminal.PrintStr(%t11)
   .loc 1 3 19
   %t12 = const_str @.L1
   .loc 1 3 19
-  call @Viper.Terminal.PrintStr(%t12)
+  call @Zanna.Terminal.PrintStr(%t12)
   .loc 1 3 4
   br L40
 L40:
@@ -138,21 +138,21 @@ L80:
   .loc 1 8 10
   %t25:f64 = call @rt_int_floor(%t24)
   .loc 1 8 10
-  call @Viper.Terminal.PrintF64(%t25)
+  call @Zanna.Terminal.PrintF64(%t25)
   .loc 1 8 10
   %t26 = const_str @.L0
   .loc 1 8 10
-  call @Viper.Terminal.PrintStr(%t26)
+  call @Zanna.Terminal.PrintStr(%t26)
   .loc 1 8 23
   %t27 = load f64, %y#
   .loc 1 8 19
   %t28:f64 = call @rt_int_floor(%t27)
   .loc 1 8 19
-  call @Viper.Terminal.PrintF64(%t28)
+  call @Zanna.Terminal.PrintF64(%t28)
   .loc 1 8 19
   %t29 = const_str @.L1
   .loc 1 8 19
-  call @Viper.Terminal.PrintStr(%t29)
+  call @Zanna.Terminal.PrintStr(%t29)
   .loc 1 8 4
   br L90
 L90:
@@ -162,11 +162,11 @@ exit:
   ret 0
 val_ok:
   .loc 1 5 14
-  call @Viper.Terminal.PrintF64(%t18)
+  call @Zanna.Terminal.PrintF64(%t18)
   .loc 1 5 14
   %t23 = const_str @.L1
   .loc 1 5 14
-  call @Viper.Terminal.PrintStr(%t23)
+  call @Zanna.Terminal.PrintStr(%t23)
   .loc 1 5 4
   br L60
 val_fail:

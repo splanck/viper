@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/math/rt_spline.c
-// Purpose: Spline curve interpolation for the Viper.Spline class. Supports three
+// Purpose: Spline curve interpolation for the Zanna.Spline class. Supports three
 //   curve types over Vec2 control points: linear (piecewise straight segments),
 //   Catmull-Rom (smooth curve through all control points), and cubic Bezier
 //   (curve guided by explicit tangent handles). All splines are parameterized on
@@ -25,7 +25,7 @@
 //     well-defined for all kinds and all inputs (VDOC-201).
 //
 // Ownership/Lifetime:
-//   - ViperSpline structs are allocated via rt_obj_new_i64 (GC heap); the xs
+//   - ZannaSpline structs are allocated via rt_obj_new_i64 (GC heap); the xs
 //     and ys double arrays are malloc'd separately and freed in spline_finalizer,
 //     registered as the GC finalizer at construction.
 //
@@ -53,15 +53,15 @@ typedef struct {
     int64_t count;
     double *xs;
     double *ys;
-} ViperSpline;
+} ZannaSpline;
 
-/// @brief GC finalizer for a ViperSpline — frees the coordinate arrays.
+/// @brief GC finalizer for a ZannaSpline — frees the coordinate arrays.
 /// @details `xs` and `ys` are heap-allocated by `spline_alloc` and must be freed
 ///   independently because the spline object itself is managed by the GC pool.
 ///   NULLing the pointers after free is defensive but harmless since the finalizer
 ///   is called exactly once before the object memory is reclaimed.
 static void spline_finalizer(void *payload) {
-    ViperSpline *s = (ViperSpline *)payload;
+    ZannaSpline *s = (ZannaSpline *)payload;
     if (s) {
         free(s->xs);
         free(s->ys);
@@ -82,7 +82,7 @@ static int spline_is_compatible_object(void *spline) {
         return 0;
     if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
         return 0;
-    return hdr->class_id == RT_SPLINE_CLASS_ID && hdr->cap >= (uint64_t)sizeof(ViperSpline);
+    return hdr->class_id == RT_SPLINE_CLASS_ID && hdr->cap >= (uint64_t)sizeof(ZannaSpline);
 }
 
 /// @brief Validate and cast an opaque handle to a spline payload.
@@ -91,21 +91,21 @@ static int spline_is_compatible_object(void *spline) {
 /// @param spline Candidate Spline runtime handle.
 /// @param op Diagnostic prefix used if validation fails.
 /// @return Typed spline payload, or NULL after trapping.
-static ViperSpline *spline_checked(void *spline, const char *op) {
+static ZannaSpline *spline_checked(void *spline, const char *op) {
     if (!spline_is_compatible_object(spline)) {
         rt_trap(op ? op : "Spline: invalid spline");
         return NULL;
     }
-    return (ViperSpline *)spline;
+    return (ZannaSpline *)spline;
 }
 
 /// @brief Allocate a GC-managed spline object with `count` control point slots.
 /// @details Allocates xs/ys double arrays via calloc and sets the spline kind.
 ///          On allocation failure, releases the partially-constructed object and traps.
-/// @return New ViperSpline or NULL on OOM.
-static ViperSpline *spline_alloc(SplineKind kind, int64_t count) {
-    ViperSpline *s =
-        (ViperSpline *)rt_obj_new_i64(RT_SPLINE_CLASS_ID, (int64_t)sizeof(ViperSpline));
+/// @return New ZannaSpline or NULL on OOM.
+static ZannaSpline *spline_alloc(SplineKind kind, int64_t count) {
+    ZannaSpline *s =
+        (ZannaSpline *)rt_obj_new_i64(RT_SPLINE_CLASS_ID, (int64_t)sizeof(ZannaSpline));
     if (!s) {
         rt_trap("Spline: memory allocation failed");
         return NULL;
@@ -131,7 +131,7 @@ static ViperSpline *spline_alloc(SplineKind kind, int64_t count) {
 ///   incorrect default — callers should ensure the Seq contains only valid Vec2 values.
 /// @param points Runtime Seq object containing Vec2 elements.
 /// @param s      Pre-allocated spline with xs/ys buffers of capacity s->count.
-static void extract_points(void *points, ViperSpline *s) {
+static void extract_points(void *points, ZannaSpline *s) {
     int64_t n = rt_seq_len(points);
     int64_t count = n < s->count ? n : s->count;
     for (int64_t i = 0; i < count; ++i) {
@@ -159,7 +159,7 @@ void *rt_spline_catmull_rom(void *points) {
         rt_trap("Spline.CatmullRom: need at least 2 points");
         return NULL;
     }
-    ViperSpline *s = spline_alloc(SPLINE_CATMULL_ROM, n);
+    ZannaSpline *s = spline_alloc(SPLINE_CATMULL_ROM, n);
     if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
         return NULL;
     extract_points(points, s);
@@ -173,7 +173,7 @@ void *rt_spline_bezier(void *p0, void *p1, void *p2, void *p3) {
         rt_trap("Spline.Bezier: null control point");
         return NULL;
     }
-    ViperSpline *s = spline_alloc(SPLINE_BEZIER, 4);
+    ZannaSpline *s = spline_alloc(SPLINE_BEZIER, 4);
     if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
         return NULL;
     s->xs[0] = rt_vec2_x(p0);
@@ -199,7 +199,7 @@ void *rt_spline_linear(void *points) {
         rt_trap("Spline.Linear: need at least 2 points");
         return NULL;
     }
-    ViperSpline *s = spline_alloc(SPLINE_LINEAR, n);
+    ZannaSpline *s = spline_alloc(SPLINE_LINEAR, n);
     if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
         return NULL;
     extract_points(points, s);
@@ -218,7 +218,7 @@ void *rt_spline_linear(void *points) {
 /// @param t  Normalized curve parameter; 0 = first point, 1 = last point.
 /// @param ox Output X coordinate.
 /// @param oy Output Y coordinate.
-static void eval_linear(ViperSpline *s, double t, double *ox, double *oy) {
+static void eval_linear(ZannaSpline *s, double t, double *ox, double *oy) {
     if (t <= 0.0) {
         *ox = s->xs[0];
         *oy = s->ys[0];
@@ -246,7 +246,7 @@ static void eval_linear(ViperSpline *s, double t, double *ox, double *oy) {
 /// @param t  Normalized parameter in [0, 1].
 /// @param ox Output X coordinate.
 /// @param oy Output Y coordinate.
-static void eval_bezier(ViperSpline *s, double t, double *ox, double *oy) {
+static void eval_bezier(ZannaSpline *s, double t, double *ox, double *oy) {
     double u = 1.0 - t;
     double u2 = u * u;
     double t2 = t * t;
@@ -298,7 +298,7 @@ static void catmull_rom_segment(double p0x,
 /// @param t  Normalized parameter in [0, 1].
 /// @param ox Output X coordinate.
 /// @param oy Output Y coordinate.
-static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
+static void eval_catmull_rom(ZannaSpline *s, double t, double *ox, double *oy) {
     int64_t n = s->count;
     if (n < 2) {
         *ox = s->xs[0];
@@ -352,7 +352,7 @@ static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
 /// @param t  Normalized parameter in [0, 1].
 /// @param ox Output tangent X component.
 /// @param oy Output tangent Y component.
-static void tangent_linear(ViperSpline *s, double t, double *ox, double *oy) {
+static void tangent_linear(ZannaSpline *s, double t, double *ox, double *oy) {
     int64_t n = s->count;
     double seg = t * (double)(n - 1);
     int64_t i = (int64_t)seg;
@@ -373,7 +373,7 @@ static void tangent_linear(ViperSpline *s, double t, double *ox, double *oy) {
 /// @param t  Normalized parameter in [0, 1].
 /// @param ox Output tangent X component.
 /// @param oy Output tangent Y component.
-static void tangent_bezier(ViperSpline *s, double t, double *ox, double *oy) {
+static void tangent_bezier(ZannaSpline *s, double t, double *ox, double *oy) {
     double u = 1.0 - t;
     double a = -3.0 * u * u;
     double b = 3.0 * u * u - 6.0 * u * t;
@@ -394,7 +394,7 @@ static void tangent_bezier(ViperSpline *s, double t, double *ox, double *oy) {
 /// @param t  Normalized parameter in [0, 1].
 /// @param ox Output tangent X component (not normalized).
 /// @param oy Output tangent Y component (not normalized).
-static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
+static void tangent_catmull_rom(ZannaSpline *s, double t, double *ox, double *oy) {
     /* Numerical derivative via central difference. */
     double h = 0.0001;
     double t0 = t - h;
@@ -442,7 +442,7 @@ static double spline_sanitize_param(double t) {
 /// @details Every spline kind clamps `t` to [0,1]; a non-finite `t` maps to the
 ///          curve start (0). See `spline_sanitize_param` (VDOC-201).
 void *rt_spline_eval(void *spline, double t) {
-    ViperSpline *s = spline_checked(spline, "Spline.Eval: invalid spline");
+    ZannaSpline *s = spline_checked(spline, "Spline.Eval: invalid spline");
     if (!s)
         return NULL;
     t = spline_sanitize_param(t);
@@ -465,7 +465,7 @@ void *rt_spline_eval(void *spline, double t) {
 /// @details Linear uses the active segment delta, Bezier uses its analytic derivative,
 ///          and Catmull-Rom uses a finite-difference derivative.
 void *rt_spline_tangent(void *spline, double t) {
-    ViperSpline *s = spline_checked(spline, "Spline.Tangent: invalid spline");
+    ZannaSpline *s = spline_checked(spline, "Spline.Tangent: invalid spline");
     if (!s)
         return NULL;
     t = spline_sanitize_param(t);
@@ -486,14 +486,14 @@ void *rt_spline_tangent(void *spline, double t) {
 
 /// @brief Return the count of elements in the spline.
 int64_t rt_spline_point_count(void *spline) {
-    ViperSpline *s = spline_checked(spline, "Spline.PointCount: invalid spline");
+    ZannaSpline *s = spline_checked(spline, "Spline.PointCount: invalid spline");
     return s ? s->count : 0;
 }
 
 /// @brief Read the i-th control/anchor point from the spline as a fresh Vec2. Useful for
 /// debug visualization or editing tools. An out-of-range index traps.
 void *rt_spline_point_at(void *spline, int64_t index) {
-    ViperSpline *s = spline_checked(spline, "Spline.PointAt: invalid spline");
+    ZannaSpline *s = spline_checked(spline, "Spline.PointAt: invalid spline");
     if (!s)
         return NULL;
     if (index < 0 || index >= s->count) {
@@ -505,7 +505,7 @@ void *rt_spline_point_at(void *spline, int64_t index) {
 
 /// @brief Arc the length of the spline.
 double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
-    ViperSpline *s = spline_checked(spline, "Spline.ArcLength: invalid spline");
+    ZannaSpline *s = spline_checked(spline, "Spline.ArcLength: invalid spline");
     if (!s)
         return 0.0;
     if (steps < 1)

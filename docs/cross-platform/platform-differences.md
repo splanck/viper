@@ -6,7 +6,7 @@ last-verified: 2026-07-14
 
 # Platform Behavioral Differences
 
-This document describes the intentional and incidental behavioral differences in the Viper compiler and runtime across **Windows (x86-64)**, **macOS (x86-64 and ARM64)**, and **Linux (x86-64)**. It is intended for developers and advanced users who need to understand what Viper does differently per platform at runtime.
+This document describes the intentional and incidental behavioral differences in the Zanna compiler and runtime across **Windows (x86-64)**, **macOS (x86-64 and ARM64)**, and **Linux (x86-64)**. It is intended for developers and advanced users who need to understand what Zanna does differently per platform at runtime.
 
 For a contributor-oriented checklist of which source files to modify when adding platform-sensitive code, see [platform-checklist.md](platform-checklist.md).
 
@@ -42,13 +42,13 @@ For a contributor-oriented checklist of which source files to modify when adding
 
 ---
 
-## 1. Runtime Library (Viper.\* Namespace)
+## 1. Runtime Library (Zanna.\* Namespace)
 
-The Viper runtime presents a uniform API across platforms. Underneath, each module dispatches to platform-native implementations. The subsections below document where behavior diverges.
+The Zanna runtime presents a uniform API across platforms. Underneath, each module dispatches to platform-native implementations. The subsections below document where behavior diverges.
 
 ### 1.1 Terminal I/O
 
-The `Viper.Terminal` module (`Say`, `Print`, `ReadKey`, etc.) is functionally equivalent across platforms, but the underlying implementation differs.
+The `Zanna.Terminal` module (`Say`, `Print`, `ReadKey`, etc.) is functionally equivalent across platforms, but the underlying implementation differs.
 
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
@@ -56,13 +56,13 @@ The `Viper.Terminal` module (`Say`, `Print`, `ReadKey`, etc.) is functionally eq
 | ANSI escape support | Enabled at startup via `SetConsoleMode(ENABLE_VIRTUAL_TERMINAL_PROCESSING)` | Native — no setup required |
 | Terminal width query | `GetConsoleScreenBufferInfo()` | `ioctl(TIOCGWINSZ)` |
 | Blocking key wait | `WaitForSingleObject()` with timeout on stdin | `select()` with timeout on fd 0 |
-| Beep | Optional `Beep()` WinAPI (controlled by `VIPER_BEEP_WINAPI` env var) | Terminal bell character (`\a`) |
+| Beep | Optional `Beep()` WinAPI (controlled by `ZANNA_BEEP_WINAPI` env var) | Terminal bell character (`\a`) |
 
 **User-visible difference:** On older Windows terminals (pre-Windows 10 1607), ANSI escape sequences may not render correctly. The runtime enables VT processing automatically, but third-party terminal emulators may behave differently.
 
-### 1.2 System Information (Viper.System.Machine)
+### 1.2 System Information (Zanna.System.Machine)
 
-The `Viper.System.Machine` module returns platform-specific values for several queries.
+The `Zanna.System.Machine` module returns platform-specific values for several queries.
 
 | Property | Windows | macOS | Linux |
 |----------|---------|-------|-------|
@@ -84,7 +84,7 @@ The `Viper.System.Machine` module returns platform-specific values for several q
 
 ### 1.3 File Watching
 
-The `Viper.IO.Watcher` class uses three completely separate backends, but presents a unified API.
+The `Zanna.IO.Watcher` class uses three completely separate backends, but presents a unified API.
 
 | Aspect | Windows | macOS | Linux |
 |--------|---------|-------|-------|
@@ -115,7 +115,7 @@ Both paths produce cryptographically unpredictable temp filenames. The fallback 
 | Environment set | `SetEnvironmentVariableA()` | Not exposed (process-local `setenv()` only) |
 | `fork()` | Not available — test infra uses `CreateProcess` self-relaunch instead | Available |
 
-**User-visible difference:** Shell commands passed to `Viper.System.Exec.Shell()` are interpreted by `cmd.exe` on Windows and `/bin/sh` on Unix. Shell syntax (pipes, redirects, quoting rules) differs between these interpreters.
+**User-visible difference:** Shell commands passed to `Zanna.System.Exec.Shell()` are interpreted by `cmd.exe` on Windows and `/bin/sh` on Unix. Shell syntax (pipes, redirects, quoting rules) differs between these interpreters.
 
 ### 1.6 Networking and TLS
 
@@ -163,7 +163,7 @@ All three backends validate server certificates against a trusted root source. W
 | Timer source | `QueryPerformanceCounter` | `mach_absolute_time` | `clock_gettime(CLOCK_MONOTONIC)` |
 | Build dependency | Built-in (`user32`, `gdi32`) | Built-in (`-framework Cocoa`) | Requires `libx11-dev` at build time |
 
-**User-visible difference:** On Linux, if X11 development headers are not installed at build time, the graphics library is silently omitted. Programs that call `Viper.Canvas.*` functions will fail at link time (native codegen) or trap at runtime (VM) on such builds.
+**User-visible difference:** On Linux, if X11 development headers are not installed at build time, the graphics library is silently omitted. Programs that call `Zanna.Canvas.*` functions will fail at link time (native codegen) or trap at runtime (VM) on such builds.
 
 ### 1.9 Audio
 
@@ -186,13 +186,13 @@ Float-to-string and string-to-float conversions use locale-independent formattin
 | macOS | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 | Linux | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 
-**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Text.Fmt.Num()` and the `Viper.Core.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
+**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Zanna.Text.Fmt.Num()` and the `Zanna.Core.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
 
 ---
 
 ## 2. Native Codegen
 
-Viper compiles Zia programs to native machine code via its built-in code generator. The generated code differs by target architecture and operating system.
+Zanna compiles Zia programs to native machine code via its built-in code generator. The generated code differs by target architecture and operating system.
 
 ### 2.1 x86-64: SysV vs Win64 ABI
 
@@ -241,9 +241,9 @@ The native codegen pipeline uses the built-in native linker to produce the final
 
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
-| Library naming | `viper_rt_core.lib` | `libviper_rt_core.a` |
-| Graphics library | `vipergfx.lib` + `user32` + `gdi32` | `libvipergfx.a` + `-framework Cocoa` (macOS) or `-lX11` (Linux); GUI image loading also imports `ImageIO.framework` on macOS |
-| Audio library | `viperaud.lib` + `ole32` | `libviperaud.a` + `-framework AudioToolbox` (macOS) or `-lasound` (Linux) |
+| Library naming | `zanna_rt_core.lib` | `libzanna_rt_core.a` |
+| Graphics library | `zannagfx.lib` + `user32` + `gdi32` | `libzannagfx.a` + `-framework Cocoa` (macOS) or `-lX11` (Linux); GUI image loading also imports `ImageIO.framework` on macOS |
+| Audio library | `zannaaud.lib` + `ole32` | `libzannaaud.a` + `-framework AudioToolbox` (macOS) or `-lasound` (Linux) |
 | Network library | `ws2_32.lib` | (system sockets, no extra lib) |
 | Final link driver | Native PE writer + import metadata | Native Mach-O / ELF writers + import metadata |
 | Executable naming | `.exe` extension | `.out`-style host convention |
@@ -260,7 +260,7 @@ The native codegen pipeline uses the built-in native linker to produce the final
 | macOS | `/` (forward slash) | `RT_PATH_SEPARATOR = '/'` |
 | Linux | `/` (forward slash) | `RT_PATH_SEPARATOR = '/'` |
 
-The runtime's path functions (`Viper.Path.*`) normalize paths using the platform's native separator. Windows additionally recognizes forward slashes in most contexts, but returned paths always use backslashes.
+The runtime's path functions (`Zanna.Path.*`) normalize paths using the platform's native separator. Windows additionally recognizes forward slashes in most contexts, but returned paths always use backslashes.
 
 ### Case Sensitivity
 
@@ -302,7 +302,7 @@ The runtime's path functions (`Viper.Path.*`) normalize paths using the platform
 
 ## 4. Threading and Synchronization
 
-The `Viper.Threads` module provides a uniform threading API. The underlying primitives differ by platform.
+The `Zanna.Threads` module provides a uniform threading API. The underlying primitives differ by platform.
 
 ### Thread Creation and Synchronization
 
@@ -341,7 +341,7 @@ The runtime abstracts this via the `RT_THREAD_LOCAL` macro.
 | macOS | `sysctlbyname("hw.logicalcpu")` |
 | Linux | `sysconf(_SC_NPROCESSORS_ONLN)` |
 
-The parallel task pool (`Viper.Parallel`) uses this to size its worker thread pool.
+The parallel task pool (`Zanna.Parallel`) uses this to size its worker thread pool.
 
 ---
 
@@ -355,7 +355,7 @@ The parallel task pool (`Viper.Parallel`) uses this to size its worker thread po
 | macOS | `nanosleep()` with EINTR retry | ~1 ms |
 | Linux | `nanosleep()` with EINTR retry | ~1 ms (kernel `CONFIG_HZ` dependent) |
 
-**User-visible difference:** `Viper.Time.Sleep(1)` on Windows may sleep for up to 15 ms due to the default timer resolution. On macOS and Linux, the actual sleep duration is much closer to the requested value.
+**User-visible difference:** `Zanna.Time.Sleep(1)` on Windows may sleep for up to 15 ms due to the default timer resolution. On macOS and Linux, the actual sleep duration is much closer to the requested value.
 
 ### Monotonic Clock
 
@@ -365,7 +365,7 @@ The parallel task pool (`Viper.Parallel`) uses this to size its worker thread po
 | macOS | `clock_gettime(CLOCK_MONOTONIC)` | `CLOCK_REALTIME` | Nanosecond |
 | Linux | `clock_gettime(CLOCK_MONOTONIC)` | `CLOCK_REALTIME` | Nanosecond |
 
-Used by `Viper.Time.Timer()`, `Viper.Time.ClockUs()`, and `Viper.Stopwatch`.
+Used by `Zanna.Time.Timer()`, `Zanna.Time.ClockUs()`, and `Zanna.Stopwatch`.
 
 ### Wall-Clock Time
 
@@ -375,7 +375,7 @@ Used by `Viper.Time.Timer()`, `Viper.Time.ClockUs()`, and `Viper.Stopwatch`.
 | macOS | `gettimeofday()` |
 | Linux | `clock_gettime(CLOCK_REALTIME)` |
 
-Used by `Viper.DateTime.Now()`. All platforms return milliseconds since the Unix epoch. Results are consistent across platforms for the same wall-clock instant.
+Used by `Zanna.DateTime.Now()`. All platforms return milliseconds since the Unix epoch. Results are consistent across platforms for the same wall-clock instant.
 
 ### Thread-Safe Time Formatting
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 
 #include <string_view>
 
-namespace viper::basic::diag {
+namespace zanna::basic::diag {
 
 /// Parser error codes (B0001-B0999)
 constexpr std::string_view LabelAlreadyDefined = "B0001";
@@ -57,4 +57,4 @@ constexpr std::string_view ShadowedVariable = "B9001";
 constexpr std::string_view UnreachableCode = "B9002";
 constexpr std::string_view ImplicitConversion = "B9003";
 
-} // namespace viper::basic::diag
+} // namespace zanna::basic::diag

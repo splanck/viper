@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -34,11 +34,11 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace viper::codegen::aarch64;
-using namespace viper::codegen::aarch64::binenc;
-using namespace viper::codegen::objfile;
+using namespace zanna::codegen::aarch64;
+using namespace zanna::codegen::aarch64::binenc;
+using namespace zanna::codegen::objfile;
 
-namespace viper::codegen::aarch64::binenc {
+namespace zanna::codegen::aarch64::binenc {
 
 struct A64BinaryEncoderTestAccess {
     static size_t measureWithKnownTarget(const MInstr &mi,
@@ -77,7 +77,7 @@ struct A64BinaryEncoderTestAccess {
     }
 };
 
-} // namespace viper::codegen::aarch64::binenc
+} // namespace zanna::codegen::aarch64::binenc
 
 static int gFail = 0;
 

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 /// @brief Determine the use/def roles of operand @p idx in instruction @p ins.
 /// @details Routes through the opcode-class predicates in `OpcodeClassify.hpp`
@@ -40,4 +40,4 @@ namespace viper::codegen::aarch64::ra {
 /// @return `{isUse, isDef}` pair indicating whether the operand is read, written, or both.
 std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx);
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

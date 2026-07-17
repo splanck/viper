@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -23,11 +23,11 @@
 // Ownership/Lifetime:
 //   - GC-managed via rt_obj_new_i64; retains the world and chassis body,
 //     released by the finalizer.
-// Links: rt_physics3d.h, rt_physics3d_internal.h, docs/viperlib/graphics3d
+// Links: rt_physics3d.h, rt_physics3d_internal.h, docs/zannalib/graphics3d
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_physics3d.h"
 
@@ -501,4 +501,4 @@ double rt_vehicle3d_wheel_load(void *obj, int64_t index) {
 
 #else
 typedef int rt_vehicle3d_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

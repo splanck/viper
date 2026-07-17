@@ -1,12 +1,12 @@
-// deque_demo.zia - Comprehensive API audit for Viper.Collections.Deque
+// deque_demo.zia - Comprehensive API audit for Zanna.Collections.Deque
 // Tests: New, PushFront, PushBack, PopFront, PopBack, PeekFront, PeekBack,
 //        Get, Set, Len, Capacity, IsEmpty, Clear, Has, Reverse, Clone
 
 module DequeDemo;
 
-bind Viper.Collections;
-bind Viper.Core;
-bind Viper.Terminal;
+bind Zanna.Collections;
+bind Zanna.Core;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Deque API Audit ===");

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -111,7 +111,7 @@ static int avi_classify_media_fourcc(const avi_context_t *ctx, uint32_t fourcc, 
 /// @brief Return a finite AVI frame rate only when it is within the supported playback range.
 /// @details AVI headers are trusted only enough to preserve common files. Malformed files can
 ///          advertise extreme rate/scale pairs that overflow timing math or make duration useless,
-///          so callers ignore values outside the conservative Viper video-player envelope.
+///          so callers ignore values outside the conservative Zanna video-player envelope.
 /// @param fps Candidate frames-per-second value computed from AVI metadata.
 /// @return @p fps when it is sane for playback; otherwise 0.0 to mean "ignore this value".
 static double avi_sane_fps(double fps) {

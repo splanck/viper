@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include "vm/OpHandlers_Control.hpp"
 
-#include "viper/vm/internal/OpHelpers.hpp"
+#include "zanna/vm/internal/OpHelpers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/control_flow.hpp"
 #include "vm/ops/common/Branching.hpp"
@@ -45,19 +45,19 @@ using il::vm::detail::control::inline_impl::getOrBuildSwitchCache;
 using il::vm::detail::control::inline_impl::lookupDense;
 using il::vm::detail::control::inline_impl::lookupHashed;
 using il::vm::detail::control::inline_impl::lookupSorted;
-using viper::vm::DenseJumpTable;
-using viper::vm::HashedCases;
-using viper::vm::SortedCases;
-using viper::vm::SwitchCache;
-using viper::vm::SwitchCacheEntry;
-using viper::vm::SwitchMode;
+using zanna::vm::DenseJumpTable;
+using zanna::vm::HashedCases;
+using zanna::vm::SortedCases;
+using zanna::vm::SwitchCache;
+using zanna::vm::SwitchCacheEntry;
+using zanna::vm::SwitchMode;
 
 thread_local SwitchMode g_switchMode =
     SwitchMode::Auto; ///< Global override for switch backend selection.
 
 } // namespace
 
-namespace viper::vm {
+namespace zanna::vm {
 /// @brief Retrieve the current switch backend selection policy.
 ///
 /// @details The policy defaults to automatic selection but can be overridden by
@@ -75,7 +75,7 @@ SwitchMode getSwitchMode() {
 void setSwitchMode(SwitchMode mode) {
     g_switchMode = mode;
 }
-} // namespace viper::vm
+} // namespace zanna::vm
 
 namespace il::vm::detail::control {
 
@@ -172,7 +172,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
 
     const bool forceLinear = (entry.kind == SwitchCacheEntry::Linear);
 
-#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
+#if defined(ZANNA_VM_DEBUG_SWITCH_LINEAR)
     (void)forceLinear;
     const size_t caseCount = switchCaseCount(in);
     for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {

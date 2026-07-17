@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl {
+namespace zanna::repl {
 
 /// @brief Tracked persistent BASIC variable for cross-input replay.
 struct BasicPersistentVar {
@@ -109,4 +109,4 @@ class BasicReplAdapter : public ReplAdapter {
     std::vector<std::string> replayStatements_;       ///< Chronological state replay statements
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

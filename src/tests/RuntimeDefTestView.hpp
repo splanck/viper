@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,11 +28,11 @@
 #include <string>
 #include <string_view>
 
-#ifndef VIPER_SOURCE_DIR
-#define VIPER_SOURCE_DIR "."
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
 #endif
 
-namespace viper::tests {
+namespace zanna::tests {
 namespace detail {
 
 /// @brief Return a quoted include target or an empty string for a non-include line.
@@ -104,7 +104,7 @@ inline void appendRuntimeDefinition(const std::filesystem::path &path,
 ///          a compile-time expansion of thousands of X-macro invocations.
 inline std::string runtimeDefinitionText() {
     const std::filesystem::path root = std::filesystem::weakly_canonical(
-        std::filesystem::path(VIPER_SOURCE_DIR) / "src/il/runtime");
+        std::filesystem::path(ZANNA_SOURCE_DIR) / "src/il/runtime");
     std::set<std::filesystem::path> active;
     std::set<std::filesystem::path> loaded;
     std::string output;
@@ -113,4 +113,4 @@ inline std::string runtimeDefinitionText() {
     return output;
 }
 
-} // namespace viper::tests
+} // namespace zanna::tests

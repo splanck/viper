@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -40,7 +40,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64::binenc {
+namespace zanna::codegen::aarch64::binenc {
 
 // === Helpers ===
 
@@ -53,7 +53,7 @@ static std::string mapRuntimeSymbol(const std::string &name) {
 
 /// Sanitize a label for internal use (replace hyphens, etc.).
 static std::string sanitizeLabel(const std::string &name) {
-    return viper::codegen::common::sanitizeLabel(name);
+    return zanna::codegen::common::sanitizeLabel(name);
 }
 
 /// @brief Normalize a MIR function name for object-file symbol tables.
@@ -2582,4 +2582,4 @@ void A64BinaryEncoder::encodeBranchInstr(const MInstr &mi, objfile::CodeSection 
     }
 }
 
-} // namespace viper::codegen::aarch64::binenc
+} // namespace zanna::codegen::aarch64::binenc

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -358,7 +358,7 @@ std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
     }
 
     // Try trigger expression as a runtime namespace/class directly
-    // e.g., "Viper.Terminal" or just "Terminal"
+    // e.g., "Zanna.Terminal" or just "Terminal"
     std::string runtimeName = ctx.triggerExpr;
 
     // Check if it resolves via USING imports
@@ -375,8 +375,8 @@ std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
     if (!items.empty())
         return items;
 
-    // Try "Viper." prefix
-    items = provideRuntimeMembers("Viper." + runtimeName, ctx.prefix);
+    // Try "Zanna." prefix
+    items = provideRuntimeMembers("Zanna." + runtimeName, ctx.prefix);
 
     return items;
 }

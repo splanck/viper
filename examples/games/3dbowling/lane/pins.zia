@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -57,8 +57,8 @@
 // pins.zia — Pin manager: capsule collisions, impact knockdown model, sweep/reset visuals
 module pins;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
 bind "../config";
 
 /// @brief Owns the 10 pin bodies and their knock-down state machine.

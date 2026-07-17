@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace viper::codegen::aarch64::ra {
+namespace zanna::codegen::aarch64::ra {
 
 void RegPools::build(const TargetInfo &ti, const std::array<bool, 64> &excluded) {
     gprFree.clear();
@@ -164,4 +164,4 @@ void RegPools::releaseFPR(PhysReg r, const TargetInfo &ti) {
     fprFree.push_back(r);
 }
 
-} // namespace viper::codegen::aarch64::ra
+} // namespace zanna::codegen::aarch64::ra

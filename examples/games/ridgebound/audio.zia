@@ -1,9 +1,9 @@
 // audio.zia - Spatial audio setup and authored one-shot sounds.
 module audio;
 
-bind Viper.Game3D;
-bind Viper.Graphics3D;
-bind Viper.Audio;
+bind Zanna.Game3D;
+bind Zanna.Graphics3D;
+bind Zanna.Audio;
 bind "./config";
 bind "./terrain";
 

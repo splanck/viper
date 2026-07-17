@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -116,7 +116,7 @@ func start() {
     var p = new Point();
     p.x = 10;
     p.y = 20;
-    Viper.Terminal.SayInt(p.x);
+    Zanna.Terminal.SayInt(p.x);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -156,7 +156,7 @@ func start() {
     var c = new Counter();
     c.increment();
     var n: Integer = c.getCount();
-    Viper.Terminal.SayInt(n);
+    Zanna.Terminal.SayInt(n);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -188,7 +188,7 @@ func start() {
     items.Push(20);
     items.Push(30);
     var len = items.Length();
-    Viper.Terminal.SayInt(len);
+    Zanna.Terminal.SayInt(len);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -216,7 +216,7 @@ func start() {
     var items: List[String] = [];
     items.Push("Alice");
     items.Push("Bob");
-    Viper.Terminal.SayInt(items.Length());
+    Zanna.Terminal.SayInt(items.Length());
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -239,7 +239,7 @@ class Entity {
 }
 
 func start() {
-    var raw = Viper.Collections.List.New();
+    var raw = Zanna.Collections.List.New();
     raw.Push(raw);
 
     var typed: List[Entity] = [];
@@ -255,9 +255,9 @@ func start() {
 
     const auto *main = findFunction(result.module, "main");
     ASSERT_TRUE(main != nullptr);
-    EXPECT_TRUE(hasCallTo(*main, "Viper.Collections.List.Push"));
+    EXPECT_TRUE(hasCallTo(*main, "Zanna.Collections.List.Push"));
 
-    const auto *pushExtern = findExtern(result.module, "Viper.Collections.List.Push");
+    const auto *pushExtern = findExtern(result.module, "Zanna.Collections.List.Push");
     ASSERT_TRUE(pushExtern != nullptr);
     EXPECT_EQ(pushExtern->retType.kind, Type::Kind::Void);
     ASSERT_EQ(pushExtern->params.size(), 2u);
@@ -281,10 +281,10 @@ func start() {
     var diff: Integer = a - b;
     var prod: Integer = a * b;
     var quot: Integer = a / b;
-    Viper.Terminal.SayInt(sum);
-    Viper.Terminal.SayInt(diff);
-    Viper.Terminal.SayInt(prod);
-    Viper.Terminal.SayInt(quot);
+    Zanna.Terminal.SayInt(sum);
+    Zanna.Terminal.SayInt(diff);
+    Zanna.Terminal.SayInt(prod);
+    Zanna.Terminal.SayInt(quot);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -320,10 +320,10 @@ func start() {
     var a: Boolean = true;
     var b: Boolean = false;
     if (a and b) {
-        Viper.Terminal.Say("both");
+        Zanna.Terminal.Say("both");
     }
     if (a or b) {
-        Viper.Terminal.Say("either");
+        Zanna.Terminal.Say("either");
     }
 }
 )";
@@ -352,9 +352,9 @@ module Test;
 func start() {
     var x: Integer = 5;
     if (x > 3) {
-        Viper.Terminal.Say("big");
+        Zanna.Terminal.Say("big");
     } else {
-        Viper.Terminal.Say("small");
+        Zanna.Terminal.Say("small");
     }
 }
 )";
@@ -392,7 +392,7 @@ func start() {
     while (i < 10) {
         i = i + 1;
     }
-    Viper.Terminal.SayInt(i);
+    Zanna.Terminal.SayInt(i);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -428,7 +428,7 @@ func start() {
     for i in 1..5 {
         total = total + i;
     }
-    Viper.Terminal.SayInt(total);
+    Zanna.Terminal.SayInt(total);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -464,7 +464,7 @@ func addNumbers(a: Integer, b: Integer) -> Integer {
 
 func start() {
     var result: Integer = addNumbers(3, 7);
-    Viper.Terminal.SayInt(result);
+    Zanna.Terminal.SayInt(result);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -499,7 +499,7 @@ func double(x: Integer) -> Integer {
 
 func start() {
     var r: Integer = double(21);
-    Viper.Terminal.SayInt(r);
+    Zanna.Terminal.SayInt(r);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -549,14 +549,14 @@ func start() {
     a.name = "Dog";
     a.age = 5;
     var desc: String = a.describe();
-    Viper.Terminal.Say(desc);
+    Zanna.Terminal.Say(desc);
 
     var f: Integer = factorial(6);
-    Viper.Terminal.SayInt(f);
+    Zanna.Terminal.SayInt(f);
 
     var i: Integer = 0;
     while (i < 3) {
-        Viper.Terminal.SayInt(i);
+        Zanna.Terminal.SayInt(i);
         i = i + 1;
     }
 }
@@ -584,7 +584,7 @@ module Test;
 
 func start() {
     var greeting: String = "Hello, World!";
-    Viper.Terminal.Say(greeting);
+    Zanna.Terminal.Say(greeting);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -613,16 +613,16 @@ func start() {
     var x: Integer = 5;
     var y: Integer = 10;
     if (x == y) {
-        Viper.Terminal.Say("equal");
+        Zanna.Terminal.Say("equal");
     }
     if (x != y) {
-        Viper.Terminal.Say("not equal");
+        Zanna.Terminal.Say("not equal");
     }
     if (x < y) {
-        Viper.Terminal.Say("less");
+        Zanna.Terminal.Say("less");
     }
     if (x >= y) {
-        Viper.Terminal.Say("geq");
+        Zanna.Terminal.Say("geq");
     }
 }
 )";
@@ -658,12 +658,12 @@ func start() {
     var x: Integer = 5;
     if (x > 0) {
         if (x < 10) {
-            Viper.Terminal.Say("single digit positive");
+            Zanna.Terminal.Say("single digit positive");
         } else {
-            Viper.Terminal.Say("large");
+            Zanna.Terminal.Say("large");
         }
     } else {
-        Viper.Terminal.Say("non-positive");
+        Zanna.Terminal.Say("non-positive");
     }
 }
 )";
@@ -698,7 +698,7 @@ func compute(a: Integer, b: Integer, c: Integer) -> Integer {
 
 func start() {
     var r: Integer = compute(2, 3, 4);
-    Viper.Terminal.SayInt(r);
+    Zanna.Terminal.SayInt(r);
 }
 )";
     auto result = compileAndAssert(source, sm);
@@ -724,6 +724,6 @@ func start() {
 } // namespace
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

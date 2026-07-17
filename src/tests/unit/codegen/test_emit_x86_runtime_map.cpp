@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_emit_x86_runtime_map.cpp
-// Purpose: Ensure x86-64 call emission rewrites canonical Viper.* runtime
+// Purpose: Ensure x86-64 call emission rewrites canonical Zanna.* runtime
 //          names using the shared runtime alias map.
 //
 //===----------------------------------------------------------------------===//
@@ -17,17 +17,17 @@
 #include "tests/TestHarness.hpp"
 #include <sstream>
 
-using namespace viper::codegen::x64;
+using namespace zanna::codegen::x64;
 
 TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols) {
     AsmEmitter::RoDataPool pool;
-    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::ELF);
+    AsmEmitter emitter(pool, zanna::codegen::objfile::ObjFormat::ELF);
 
     MFunction fn{};
     fn.name = "main";
     MBasicBlock entry{};
     entry.label = fn.name;
-    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Terminal.PrintI64")}));
+    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Zanna.Terminal.PrintI64")}));
     entry.append(MInstr::make(MOpcode::RET));
     fn.blocks.push_back(entry);
 
@@ -36,18 +36,18 @@ TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols) {
     const std::string asmText = os.str();
 
     EXPECT_NE(asmText.find("rt_print_i64"), std::string::npos);
-    EXPECT_EQ(asmText.find("Viper.Terminal.PrintI64"), std::string::npos);
+    EXPECT_EQ(asmText.find("Zanna.Terminal.PrintI64"), std::string::npos);
 }
 
 TEST(Codegen_X64_RuntimeNameMap, MachODirectSymbolsUseDarwinPrefix) {
     AsmEmitter::RoDataPool pool;
-    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::MachO);
+    AsmEmitter emitter(pool, zanna::codegen::objfile::ObjFormat::MachO);
 
     MFunction fn{};
     fn.name = "main";
     MBasicBlock entry{};
     entry.label = fn.name;
-    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Terminal.PrintI64")}));
+    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Zanna.Terminal.PrintI64")}));
     entry.append(
         MInstr::make(MOpcode::LEA,
                      {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX)),
@@ -70,6 +70,6 @@ TEST(Codegen_X64_RuntimeNameMap, MachODirectSymbolsUseDarwinPrefix) {
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, &argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, &argv);
+    return zanna_test::run_all_tests();
 }

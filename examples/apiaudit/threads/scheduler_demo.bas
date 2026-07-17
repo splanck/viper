@@ -1,14 +1,14 @@
 ' =============================================================================
-' API Audit: Viper.Threads.Scheduler (BASIC)
+' API Audit: Zanna.Threads.Scheduler (BASIC)
 ' =============================================================================
 ' Tests: New, Schedule, Cancel, IsDue, Poll, Pending, Clear
 ' =============================================================================
 
-PRINT "=== API Audit: Viper.Threads.Scheduler ==="
+PRINT "=== API Audit: Zanna.Threads.Scheduler ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM s AS OBJECT = Viper.Threads.Scheduler.New()
+DIM s AS OBJECT = Zanna.Threads.Scheduler.New()
 PRINT "Created scheduler"
 
 ' --- Pending (initial) ---
@@ -39,7 +39,7 @@ PRINT "Cancel(nonexistent): "; cancelMissing
 
 ' --- Poll ---
 PRINT "--- Poll ---"
-DIM due AS Viper.Collections.Seq = s.Poll()
+DIM due AS Zanna.Collections.Seq = s.Poll()
 PRINT "Poll returned tasks: "; due.Count
 PRINT "Pending after poll: "; s.Pending
 
@@ -62,7 +62,7 @@ PRINT "Pending after re-schedule: "; s.Pending
 ' --- Poll on empty ---
 PRINT "--- Poll on empty ---"
 s.Clear()
-DIM emptyPoll AS Viper.Collections.Seq = s.Poll()
+DIM emptyPoll AS Zanna.Collections.Seq = s.Poll()
 PRINT "Poll on empty: "; emptyPoll.Count
 
 PRINT "=== Scheduler Audit Complete ==="

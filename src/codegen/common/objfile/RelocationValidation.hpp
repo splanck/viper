@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstddef>
 #include <ostream>
 
-namespace viper::codegen::objfile {
+namespace zanna::codegen::objfile {
 
 inline uint32_t readRelocLE32(const CodeSection &section, size_t logicalOffset) {
     const size_t physicalOffset = logicalOffset - section.logicalOffsetBias();
@@ -40,15 +40,15 @@ inline uint32_t readRelocLE32(const CodeSection &section, size_t logicalOffset) 
 }
 
 inline bool isA64AddImmediate(uint32_t insn) {
-    return viper::codegen::isA64AddImmediate(insn);
+    return zanna::codegen::isA64AddImmediate(insn);
 }
 
 inline bool a64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
-    return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
+    return zanna::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
 inline bool isA64UnsignedLdStOffsetWithShift(uint32_t insn, uint32_t expectedShift) {
-    return viper::codegen::isA64UnsignedLdStOffsetWithShift(insn, expectedShift);
+    return zanna::codegen::isA64UnsignedLdStOffsetWithShift(insn, expectedShift);
 }
 
 /// @brief Return the canonical short name for a RelocKind enum value.
@@ -207,4 +207,4 @@ inline bool validateRelocationShape(const char *writerName,
     return true;
 }
 
-} // namespace viper::codegen::objfile
+} // namespace zanna::codegen::objfile

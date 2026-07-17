@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -31,7 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 
 /// Resolve symbols across object files and archives.
 /// @param objects       Initial object files (user's compiled code).
@@ -69,4 +69,4 @@ bool resolveSymbols(const std::vector<ObjFile> &objects,
                     std::ostream &err,
                     LinkPlatform platform = detectLinkPlatform());
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

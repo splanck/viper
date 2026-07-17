@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -19,16 +19,16 @@
 ///          "label" keywords and caret prefixes while emitting the same
 ///          diagnostics for malformed input.
 
-#include "viper/il/io/OperandParse.hpp"
+#include "zanna/il/io/OperandParse.hpp"
 
 #include "il/internal/io/ParserUtil.hpp"
 
 #include <string>
 #include <utility>
 
-namespace viper::il::io {
+namespace zanna::il::io {
 namespace {
-using viper::parse::Cursor;
+using zanna::parse::Cursor;
 
 } // namespace
 
@@ -62,4 +62,4 @@ ParseResult parseLabelOperand(Cursor &cur, Context &ctx) {
     return result;
 }
 
-} // namespace viper::il::io
+} // namespace zanna::il::io

@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_reltime.c
 // Purpose: Implements relative-time (human-readable elapsed/remaining time)
-//          formatting for the Viper runtime. Converts a pair of Unix timestamps
+//          formatting for the Zanna runtime. Converts a pair of Unix timestamps
 //          into natural-language descriptions such as "3 minutes ago",
 //          "in 2 hours", or "just now".
 //

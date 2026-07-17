@@ -1,4 +1,4 @@
-# Viper Runtime Systematic Test Report
+# Zanna Runtime Systematic Test Report
 
 **Date**: 2025-12-22
 **Scope**: Full runtime library coverage for Zia/BASIC frontend
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-Comprehensive testing of the Viper runtime library was performed across all major class categories. The runtime contains approximately **500+ functions** across **50+ classes** in 16 namespaces. Existing test coverage in `tests/runtime_sweep/basic/` was validated and expanded. Demo programs were created demonstrating key functionality.
+Comprehensive testing of the Zanna runtime library was performed across all major class categories. The runtime contains approximately **500+ functions** across **50+ classes** in 16 namespaces. Existing test coverage in `tests/runtime_sweep/basic/` was validated and expanded. Demo programs were created demonstrating key functionality.
 
 ### Key Results
 - **Tests Passed**: 30+ test files, all core functionality verified
@@ -113,7 +113,7 @@ All demos located in `/demos/basic/classes/`:
 
 | Demo File | Classes Covered | Status |
 |-----------|-----------------|--------|
-| `fmt.bas` | Viper.Text.Fmt | WORKING |
+| `fmt.bas` | Zanna.Text.Fmt | WORKING |
 | `collections.bas` | Bag, Bytes, Heap, Map, Queue, Ring, Seq, Stack | WORKING |
 | `math.bas` | Bits, Math, Random, Vec2, Vec3 | WORKING |
 | `text.bas` | Codec, Guid, Pattern, StringBuilder, Template | WORKING |
@@ -166,7 +166,7 @@ DIM s AS STRING
 s = seq.Get(0)  ' seq.Get returns object, not string
 
 ' Workaround: Use assertion APIs that handle type conversion internally
-Viper.Diagnostics.AssertEqStr(seq.Get(0), "expected", "msg")
+Zanna.Diagnostics.AssertEqStr(seq.Get(0), "expected", "msg")
 ```
 
 This is a frontend limitation, not a runtime bug.
@@ -195,6 +195,6 @@ During demo testing, `Template.Render(template, map)` produced empty substitutio
 
 ## Conclusion
 
-The Viper runtime library is stable and well-tested. All critical bugs found during testing have been fixed. The runtime provides comprehensive functionality across collections, I/O, networking, cryptography, threading, and more. Demo programs demonstrate practical usage of key APIs.
+The Zanna runtime library is stable and well-tested. All critical bugs found during testing have been fixed. The runtime provides comprehensive functionality across collections, I/O, networking, cryptography, threading, and more. Demo programs demonstrate practical usage of key APIs.
 
 **Overall Status**: PASS - Runtime ready for production use

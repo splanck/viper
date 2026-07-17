@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -29,11 +29,11 @@
 
 namespace {
 
-viper::bytecode::BCOpcode opcodeOf(uint32_t word) {
-    return viper::bytecode::decodeOpcode(word);
+zanna::bytecode::BCOpcode opcodeOf(uint32_t word) {
+    return zanna::bytecode::decodeOpcode(word);
 }
 
-bool containsOpcode(const viper::bytecode::BytecodeFunction &fn, viper::bytecode::BCOpcode op) {
+bool containsOpcode(const zanna::bytecode::BytecodeFunction &fn, zanna::bytecode::BCOpcode op) {
     for (uint32_t word : fn.code) {
         if (opcodeOf(word) == op)
             return true;
@@ -76,7 +76,7 @@ TEST(BytecodeCompilerDiagnostics, UnknownGAddrGlobalIsCompileDiagnostic) {
     instr.operands.push_back(Value::global("data"));
     instr.loc = {7, 3, 5};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
@@ -96,7 +96,7 @@ TEST(BytecodeCompilerDiagnostics, UnknownStringGlobalIsCompileDiagnostic) {
     instr.operands.push_back(Value::global("missing_string"));
     instr.loc = {7, 8, 9};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
@@ -114,7 +114,7 @@ TEST(BytecodeCompilerDiagnostics, MissingOperandsAreCompileDiagnostics) {
     instr.type = Type(Type::Kind::Ptr);
     instr.loc = {7, 11, 3};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
@@ -134,7 +134,7 @@ TEST(BytecodeCompilerDiagnostics, EmitsPerPcSourceDebugMetadata) {
     instr.type = Type(Type::Kind::Void);
     instr.loc = {fileId, 12, 5};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), &sm, true);
 
     ASSERT_TRUE(result.hasValue());
@@ -154,7 +154,7 @@ TEST(BytecodeCompilerDiagnostics, EmitsPerPcSourceDebugMetadata) {
 
 TEST(BytecodeCompilerDiagnostics, PlainTrapLowersToDomainError) {
     using namespace il::core;
-    using namespace viper::bytecode;
+    using namespace zanna::bytecode;
 
     Instr instr;
     instr.op = Opcode::Trap;
@@ -173,7 +173,7 @@ TEST(BytecodeCompilerDiagnostics, PlainTrapLowersToDomainError) {
 
 TEST(BytecodeCompilerDiagnostics, TrapErrLowersToErrorValueNotTrap) {
     using namespace il::core;
-    using namespace viper::bytecode;
+    using namespace zanna::bytecode;
 
     Instr instr;
     instr.result = 0;
@@ -202,7 +202,7 @@ TEST(BytecodeCompilerDiagnostics, TrapErrWithoutResultIsCompileDiagnostic) {
     instr.operands.push_back(Value::constInt(7));
     instr.loc = {7, 21, 2};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
@@ -212,7 +212,7 @@ TEST(BytecodeCompilerDiagnostics, TrapErrWithoutResultIsCompileDiagnostic) {
 
 TEST(BytecodeCompilerDiagnostics, ImportDeclarationsAreSkippedInBytecodeFunctionTable) {
     using namespace il::core;
-    using namespace viper::bytecode;
+    using namespace zanna::bytecode;
 
     Module module;
 
@@ -269,7 +269,7 @@ TEST(BytecodeCompilerDiagnostics, PreflightRejectsInvalidILBeforeLowering) {
     instr.operands.push_back(Value::constInt(1));
     instr.loc = {7, 14, 2};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)));
 
     ASSERT_FALSE(result.hasValue());
@@ -287,7 +287,7 @@ TEST(BytecodeCompilerDiagnostics, UnknownSsaIsCompileDiagnosticWhenVerifierWasBy
     instr.operands.push_back(Value::constInt(1));
     instr.loc = {7, 15, 4};
 
-    viper::bytecode::BytecodeCompiler compiler;
+    zanna::bytecode::BytecodeCompiler compiler;
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
@@ -298,5 +298,5 @@ TEST(BytecodeCompilerDiagnostics, UnknownSsaIsCompileDiagnosticWhenVerifierWasBy
 } // namespace
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

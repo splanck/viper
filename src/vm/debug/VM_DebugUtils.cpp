@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -214,7 +214,7 @@ void VM::printBacktrace(const std::vector<FrameInfo> &frames) {
     if (frames.empty())
         return;
 
-    std::cerr << "Viper backtrace (most recent call first):\n";
+    std::cerr << "Zanna backtrace (most recent call first):\n";
     for (size_t i = 0; i < frames.size(); ++i) {
         const auto &f = frames[i];
         std::cerr << "  #" << i << "  @" << (f.function.empty() ? "<unknown>" : f.function);

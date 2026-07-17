@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 
 #include <string>
 
-namespace viper::server {
+namespace zanna::server {
 
 /// @brief Standard JSON-RPC 2.0 error codes.
 constexpr int kParseError = -32700;
@@ -75,4 +75,4 @@ std::string buildError(const JsonValue &id,
 /// @return Compact JSON string for the notification.
 std::string buildNotification(const std::string &method, const JsonValue &params);
 
-} // namespace viper::server
+} // namespace zanna::server

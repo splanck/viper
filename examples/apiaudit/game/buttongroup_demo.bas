@@ -1,6 +1,6 @@
-' API Audit: Viper.Game.ButtonGroup (BASIC)
-PRINT "=== API Audit: Viper.Game.ButtonGroup ==="
-DIM bg AS OBJECT = Viper.Game.ButtonGroup.New()
+' API Audit: Zanna.Game.ButtonGroup (BASIC)
+PRINT "=== API Audit: Zanna.Game.ButtonGroup ==="
+DIM bg AS OBJECT = Zanna.Game.ButtonGroup.New()
 bg.Add(0)
 bg.Add(1)
 bg.Add(2)

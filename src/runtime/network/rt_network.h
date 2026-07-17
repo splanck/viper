@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/network/rt_network.h
-// Purpose: TCP and UDP networking for Viper.Network, providing blocking connection management, data
+// Purpose: TCP and UDP networking for Zanna.Network, providing blocking connection management, data
 // transfer, server listening, and DNS resolution.
 //
 // Key invariants:
@@ -579,7 +579,7 @@ void *rt_http_req_send(void *obj);
 ///          including non-2xx status codes, return `Result.Ok(HttpRes)` so the
 ///          caller can inspect status, headers, and body explicitly.
 /// @param obj HttpReq object.
-/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
 void *rt_http_req_send_result(void *obj);
 
 //=========================================================================

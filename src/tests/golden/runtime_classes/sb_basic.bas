@@ -1,9 +1,9 @@
-10 DIM sb AS Viper.Text.StringBuilder
-20 sb = NEW Viper.Text.StringBuilder()
-30 sb = Viper.Text.StringBuilder.AppendLine(sb, "a")
-40 sb = Viper.Text.StringBuilder.AppendLine(sb, "b")
+10 DIM sb AS Zanna.Text.StringBuilder
+20 sb = NEW Zanna.Text.StringBuilder()
+30 sb = Zanna.Text.StringBuilder.AppendLine(sb, "a")
+40 sb = Zanna.Text.StringBuilder.AppendLine(sb, "b")
 50 PRINT sb.Length
-60 DIM bytes AS Viper.Collections.Bytes
-70 bytes = Viper.Collections.Bytes.FromStr(sb.ToString())
+60 DIM bytes AS Zanna.Collections.Bytes
+70 bytes = Zanna.Collections.Bytes.FromStr(sb.ToString())
 80 PRINT bytes.ToHex()
 90 END

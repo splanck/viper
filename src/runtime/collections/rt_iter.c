@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/collections/rt_iter.c
-// Purpose: Implements a unified stateful iterator that works across all Viper
+// Purpose: Implements a unified stateful iterator that works across all Zanna
 //   collection types (Seq, List, Ring, Deque, Map, Set, Stack). Iterators wrap
 //   a collection pointer and a current position index; Next() advances the
 //   position and returns the element, HasNext() checks bounds.

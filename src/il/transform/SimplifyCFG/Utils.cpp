@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -266,9 +266,9 @@ void enqueueSuccessor(BitVector &reachable, std::deque<size_t> &worklist, size_t
 }
 
 /// @brief Check whether SimplifyCFG debug logging is enabled.
-/// @return True when the `VIPER_DEBUG_PASSES` environment variable is set to a non-empty string.
+/// @return True when the `ZANNA_DEBUG_PASSES` environment variable is set to a non-empty string.
 bool readDebugFlagFromEnv() {
-    if (const char *flag = std::getenv("VIPER_DEBUG_PASSES"))
+    if (const char *flag = std::getenv("ZANNA_DEBUG_PASSES"))
         return flag[0] != '\0';
     return false;
 }

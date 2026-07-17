@@ -1,6 +1,6 @@
 ' test_threads.bas — ConcurrentQueue, ConcurrentMap, Gate, Barrier, RwLock, CancelToken, Debouncer, Throttler, Scheduler
-DIM cq AS Viper.Threads.ConcurrentQueue
-cq = Viper.Threads.ConcurrentQueue.New()
+DIM cq AS Zanna.Threads.ConcurrentQueue
+cq = Zanna.Threads.ConcurrentQueue.New()
 PRINT "cq empty: "; cq.IsEmpty
 cq.Push("a")
 cq.Push("b")
@@ -11,8 +11,8 @@ PRINT "cq len after dequeue: "; cq.Count
 cq.Clear()
 PRINT "cq empty after clear: "; cq.IsEmpty
 
-DIM cm AS Viper.Threads.ConcurrentMap
-cm = Viper.Threads.ConcurrentMap.New()
+DIM cm AS Zanna.Threads.ConcurrentMap
+cm = Zanna.Threads.ConcurrentMap.New()
 PRINT "cmap empty: "; cm.IsEmpty
 cm.Set("x", "1")
 cm.Set("y", "2")
@@ -25,24 +25,24 @@ cm.Clear()
 PRINT "cmap empty after clear: "; cm.IsEmpty
 
 ' NOTE: SafeI64.New() fails with "unsupported on this platform" (BUG-017)
-' DIM si AS Viper.Threads.SafeI64
-' si = Viper.Threads.SafeI64.New(0)
+' DIM si AS Zanna.Threads.SafeI64
+' si = Zanna.Threads.SafeI64.New(0)
 
-DIM g AS Viper.Threads.Gate
-g = Viper.Threads.Gate.New(3)
+DIM g AS Zanna.Threads.Gate
+g = Zanna.Threads.Gate.New(3)
 PRINT "gate permits: "; g.Permits
 PRINT "gate tryenter: "; g.TryEnter()
 PRINT "gate permits after enter: "; g.Permits
 g.Leave()
 PRINT "gate permits after leave: "; g.Permits
 
-DIM b AS Viper.Threads.Barrier
-b = Viper.Threads.Barrier.New(2)
+DIM b AS Zanna.Threads.Barrier
+b = Zanna.Threads.Barrier.New(2)
 PRINT "barrier parties: "; b.Parties
 PRINT "barrier waiting: "; b.Waiting
 
-DIM rw AS Viper.Threads.RwLock
-rw = Viper.Threads.RwLock.New()
+DIM rw AS Zanna.Threads.RwLock
+rw = Zanna.Threads.RwLock.New()
 PRINT "rwlock readers: "; rw.Readers
 PRINT "rwlock iswritelocked: "; rw.IsWriteLocked
 PRINT "rwlock tryreadenter: "; rw.TryReadEnter()
@@ -52,31 +52,31 @@ PRINT "rwlock readers after exit: "; rw.Readers
 PRINT "rwlock trywriteenter: "; rw.TryWriteEnter()
 rw.WriteExit()
 
-DIM ct AS Viper.Threads.CancelToken
-ct = Viper.Threads.CancelToken.New()
+DIM ct AS Zanna.Threads.CancelToken
+ct = Zanna.Threads.CancelToken.New()
 PRINT "cancel iscancelled: "; ct.IsCancelled
 ct.Cancel()
 PRINT "cancel iscancelled after cancel: "; ct.IsCancelled
 ct.Reset()
 PRINT "cancel iscancelled after reset: "; ct.IsCancelled
 
-DIM db AS Viper.Threads.Debouncer
-db = Viper.Threads.Debouncer.New(100)
+DIM db AS Zanna.Threads.Debouncer
+db = Zanna.Threads.Debouncer.New(100)
 PRINT "debounce delay: "; db.Delay
 PRINT "debounce isready: "; db.IsReady
 PRINT "debounce signalcount: "; db.SignalCount
 db.Signal()
 PRINT "debounce signalcount after signal: "; db.SignalCount
 
-DIM th AS Viper.Threads.Throttler
-th = Viper.Threads.Throttler.New(100)
+DIM th AS Zanna.Threads.Throttler
+th = Zanna.Threads.Throttler.New(100)
 PRINT "throttle interval: "; th.Interval
 PRINT "throttle count: "; th.Count
 PRINT "throttle try: "; th.TryAcquire()
 PRINT "throttle count after try: "; th.Count
 
-DIM sched AS Viper.Threads.Scheduler
-sched = Viper.Threads.Scheduler.New()
+DIM sched AS Zanna.Threads.Scheduler
+sched = Zanna.Threads.Scheduler.New()
 PRINT "sched pending: "; sched.Pending
 sched.Schedule("task1", 1000)
 PRINT "sched pending after schedule: "; sched.Pending

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_skinning_scratch.h"
@@ -49,4 +49,4 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           int32_t bone_count,
                           vgfx3d_skinning_scratch_t *scratch);
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

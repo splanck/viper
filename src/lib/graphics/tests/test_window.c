@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 /*
- * ViperGFX - Window Tests (T1-T3)
+ * ZannaGFX - Window Tests (T1-T3)
  * Tests window creation with various parameters
  */
 
@@ -166,12 +166,12 @@ void test_headless_clipboard_round_trip(void) {
 
     vgfx_clipboard_clear();
     ASSERT_EQ(vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT), 0);
-    vgfx_clipboard_set_text("Viper headless clipboard");
+    vgfx_clipboard_set_text("Zanna headless clipboard");
     ASSERT_EQ(vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT), 1);
 
     char *text = vgfx_clipboard_get_text();
     ASSERT_NOT_NULL(text);
-    ASSERT_TRUE(strcmp(text, "Viper headless clipboard") == 0);
+    ASSERT_TRUE(strcmp(text, "Zanna headless clipboard") == 0);
     free(text);
 
     vgfx_clipboard_clear();
@@ -185,7 +185,7 @@ void test_headless_clipboard_round_trip(void) {
 /// How:  Creates a window, triggers resizes/events, then cleans up deterministically.
 int main(void) {
     printf("========================================\n");
-    printf("ViperGFX Window Tests (T1-T3)\n");
+    printf("ZannaGFX Window Tests (T1-T3)\n");
     printf("========================================\n");
 
     test_window_valid_params();
@@ -202,7 +202,7 @@ int main(void) {
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//

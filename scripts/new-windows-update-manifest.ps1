@@ -1,6 +1,6 @@
 #===----------------------------------------------------------------------===#
 #
-# Part of the Viper project, under the GNU GPL v3.
+# Part of the Zanna project, under the GNU GPL v3.
 # See LICENSE for license information.
 #
 #===----------------------------------------------------------------------===#
@@ -45,7 +45,7 @@ param(
     [string]$PfxPath,
 
     [Parameter(ParameterSetName = "Pfx")]
-    [string]$PfxPassword = $env:VIPER_WINDOWS_UPDATE_SIGN_PASSWORD,
+    [string]$PfxPassword = $env:ZANNA_WINDOWS_UPDATE_SIGN_PASSWORD,
 
     [Parameter(Mandatory = $true, ParameterSetName = "CertificateStore")]
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
@@ -194,7 +194,7 @@ try {
             throw "Update-signing PFX not found: $pfxFull"
         }
         if ($null -eq $PfxPassword) {
-            throw "Set VIPER_WINDOWS_UPDATE_SIGN_PASSWORD or pass -PfxPassword."
+            throw "Set ZANNA_WINDOWS_UPDATE_SIGN_PASSWORD or pass -PfxPassword."
         }
         $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
         $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
@@ -257,7 +257,7 @@ try {
     }
 
     $lines = @(
-        "VIPER-WINDOWS-UPDATE`t1",
+        "ZANNA-WINDOWS-UPDATE`t1",
         "channel`t$Channel",
         "architecture`t$Architecture",
         "version`t$Version",

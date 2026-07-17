@@ -15,14 +15,14 @@ set(_objfile_tests
 
 foreach (_case IN LISTS _objfile_tests)
     set(_target test_objfile_${_case})
-    set(_source ${VIPER_TESTS_DIR}/codegen/objfile/test_${_case}.cpp)
+    set(_source ${ZANNA_TESTS_DIR}/codegen/objfile/test_${_case}.cpp)
 
     add_executable(${_target} ${_source})
     if (WIN32)
         target_sources(${_target} PRIVATE
-                ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
+                ${ZANNA_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_target} PRIVATE viper_testing viper_codegen_common)
+    target_link_libraries(${_target} PRIVATE zanna_testing zanna_codegen_common)
     target_include_directories(${_target} PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    viper_add_ctest(${_target} $<TARGET_FILE:${_target}>)
+    zanna_add_ctest(${_target} $<TARGET_FILE:${_target}>)
 endforeach ()

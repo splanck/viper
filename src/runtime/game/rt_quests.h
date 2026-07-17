@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_quests.h
-// Purpose: Viper.Game.Quests — quest/stage/objective tracker with polled
+// Purpose: Zanna.Game.Quests — quest/stage/objective tracker with polled
 //   progress events and SaveData persistence (plan 29). 2D/3D-agnostic:
 //   a pure state machine with no clock, canvas, or scene dependencies.
 // Key invariants:

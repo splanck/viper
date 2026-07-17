@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -68,7 +68,7 @@ static int g_shutdown_registered = 0;
 
 /* Audio shutdown is defined in rt_audio.c (real impl or stub no-op).
    Weak default here so programs that don't use audio link without pulling
-   in the audio component and its viperaud dependency.  When the audio
+   in the audio component and its zannaaud dependency.  When the audio
    component IS linked, its strong definition overrides this no-op. */
 #if defined(_MSC_VER)
 extern void rt_audio_shutdown(void);
@@ -122,7 +122,7 @@ static int rt_register_shutdown_handler_(void) {
 #elif RT_PLATFORM_WINDOWS
 static int rt_register_shutdown_handler_(void) {
     // The Windows runtime archive is shared with native PE binaries that enter
-    // through Viper's CRT-less startup shim. Calling CRT atexit from that path
+    // through Zanna's CRT-less startup shim. Calling CRT atexit from that path
     // can block during the first heap-backed allocation, so Windows builds rely
     // on process teardown for this global cleanup.
     return 0;
@@ -675,7 +675,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
 /// @brief Increment the reference count for a payload.
 /// @details Converts the payload to its header, validates the metadata, and
 ///          then increments the reference count.  Debug builds log the new count
-///          when @c VIPER_RC_DEBUG is enabled, aiding leak investigations.
+///          when @c ZANNA_RC_DEBUG is enabled, aiding leak investigations.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_retain(void *payload) {
     if (!payload)
@@ -718,7 +718,7 @@ void rt_heap_retain(void *payload) {
     }
     rt_heap_registry_unlock_();
     (void)next;
-#ifdef VIPER_RC_DEBUG
+#ifdef ZANNA_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
 #endif
 }
@@ -801,7 +801,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
         }
     }
     assert(old > 0);
-#ifdef VIPER_RC_DEBUG
+#ifdef ZANNA_RC_DEBUG
     fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
 #endif
     if (next == 0 && free_when_zero) {

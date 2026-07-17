@@ -1,4 +1,4 @@
-' multimap_demo.bas - Comprehensive API audit for Viper.Collections.MultiMap
+' multimap_demo.bas - Comprehensive API audit for Zanna.Collections.MultiMap
 ' Tests: New, Add, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
 '        KeyCount, CountFor, Clear
 
@@ -7,7 +7,7 @@ PRINT "=== MultiMap API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM mm AS OBJECT
-mm = Viper.Collections.MultiMap.New()
+mm = Zanna.Collections.MultiMap.New()
 PRINT mm.Count        ' 0
 PRINT mm.IsEmpty    ' 1
 
@@ -39,20 +39,20 @@ PRINT mm.Has("shape")   ' 0
 
 ' --- Get (returns Seq of all values) ---
 PRINT "--- Get ---"
-DIM colors AS Viper.Collections.Seq
+DIM colors AS Zanna.Collections.Seq
 colors = mm.Get("color")
 PRINT colors.Count         ' 3
 PRINT colors.Get(0)      ' red
 PRINT colors.Get(1)      ' green
 PRINT colors.Get(2)      ' blue
 
-DIM sizes AS Viper.Collections.Seq
+DIM sizes AS Zanna.Collections.Seq
 sizes = mm.Get("size")
 PRINT sizes.Count          ' 2
 PRINT sizes.Get(0)       ' small
 PRINT sizes.Get(1)       ' large
 
-DIM empty AS Viper.Collections.Seq
+DIM empty AS Zanna.Collections.Seq
 empty = mm.Get("shape")
 PRINT empty.Count          ' 0
 

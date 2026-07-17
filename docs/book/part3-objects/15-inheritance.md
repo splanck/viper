@@ -19,7 +19,7 @@ This chapter will teach you not just *how* to use inheritance, but *when* to use
 Imagine building a game with different enemies. You start with a goblin:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Goblin {
     expose Number x;
@@ -55,7 +55,7 @@ class Goblin {
 Great! Now you need an orc:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Orc {
     expose Number x;
@@ -115,7 +115,7 @@ This isn't just a programming trick - it reflects how we naturally categorize th
 With inheritance, we extract the common parts into a *base class*:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     expose Number x;
@@ -151,7 +151,7 @@ class Enemy {
 Now we can create specialized enemies that *extend* this base:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
@@ -219,7 +219,7 @@ When a class extends another, it automatically receives:
 Let's see this in action:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 var goblin = new Goblin(10.0, 20.0);
 
@@ -295,7 +295,7 @@ Think of it like filling out a form. The parent class says "I need these four pi
 Sometimes you want to *extend* the parent's behavior rather than completely replace it. The `super.methodName()` syntax lets you call the parent's version of a method:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Enemy {
     expose Number x;
@@ -361,7 +361,7 @@ You override methods when the child needs different behavior than the parent pro
 
 ### The `override` Keyword
 
-In Viper, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the `override` keyword to make your intentions explicit:
+In Zanna, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the `override` keyword to make your intentions explicit:
 
 ```rust
 class Enemy {
@@ -413,7 +413,7 @@ Using `override` explicitly helps catch these mistakes. If you add `override` bu
 Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of related classes:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     expose String name;
@@ -506,8 +506,8 @@ Let's build a classic example that demonstrates inheritance well - geometric sha
 ```rust
 module Shapes;
 
-bind Viper.Terminal;
-bind Viper.Math;
+bind Zanna.Terminal;
+bind Zanna.Math;
 
 class Shape {
     expose Number x;
@@ -651,7 +651,7 @@ Certain patterns appear repeatedly when using inheritance. Learning to recognize
 In this pattern, the parent defines the *structure* of an algorithm, but lets children fill in specific steps:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Report {
     expose String title;
@@ -722,7 +722,7 @@ The parent (`Report`) defines the template: header, then content, then footer. C
 This pattern creates progressively more specific versions of a concept:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Account {
     expose Number balance;
@@ -865,7 +865,7 @@ With inheritance, a `SwordCharacter` is always a sword character. With compositi
 
 **3. You need functionality from multiple sources**
 
-Viper (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:
+Zanna (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:
 
 ```rust
 // Can't do this:
@@ -983,7 +983,7 @@ processEnemy(new Dragon(0.0, 0.0));   // Works!
 This seems obvious, but it's easy to violate. Consider:
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Bird {
     expose func fly() {
@@ -1018,7 +1018,7 @@ Better designs:
 The *fragile base class problem* occurs when changes to a parent class break child classes in unexpected ways.
 
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class MediaPlayer {
     expose func play() {
@@ -1076,11 +1076,11 @@ Suddenly VideoPlayer might break. Its author assumed a certain order of operatio
 
 ## The Two Languages
 
-Different Viper language styles express inheritance differently:
+Different Zanna language styles express inheritance differently:
 
 **Zia**
 ```rust
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 class Animal {
     expose String name;

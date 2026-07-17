@@ -1,0 +1,141 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/zanna/il/io/OperandParse.hpp
+// Purpose: Declare operand-level parsing helpers shared by IL readers.
+// Key invariants: Helpers preserve existing OperandParser diagnostics and
+//                 operand population behaviour.
+// Ownership/Lifetime: Operate on parser-managed instruction/state without
+//                     taking ownership.
+// Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Declares reusable operand parsers keyed by operand parse kinds.
+/// @details The helpers translate textual operand fragments referenced by
+///          @ref il::core::Opcode metadata into Value or label payloads while
+///          preserving legacy diagnostic messaging. They form the basis of a
+///          gradual extraction away from the monolithic OperandParser
+///          implementation.
+
+#pragma once
+
+#include "il/core/Value.hpp"
+#include "il/internal/io/ParserState.hpp"
+#include "il/internal/io/ParserUtil.hpp"
+#include "support/diag_expected.hpp"
+#include "zanna/parse/Cursor.h"
+
+#include <optional>
+#include <string>
+#include <utility>
+
+namespace il::core
+{
+struct Instr;
+} // namespace il::core
+
+namespace zanna::il::io
+{
+
+/// @brief Shared parser context for operand helpers.
+struct Context
+{
+    /// @brief Construct an operand parser context.
+    /// @details Read-only operand parsers only need @p instruction. Parsers
+    ///          that intentionally mutate instruction metadata, such as type
+    ///          immediates, must also pass @p mutableInstruction.
+    /// @param parserState Legacy parser state providing diagnostics and SSA maps.
+    /// @param instruction Instruction state visible to operand parsers.
+    /// @param mutableInstruction Optional mutable sink for type parsers.
+    Context(::il::io::detail::ParserState &parserState,
+            const ::il::core::Instr &instruction,
+            ::il::core::Instr *mutableInstruction = nullptr)
+        : state(parserState), instr(instruction), mutableInstr(mutableInstruction)
+    {
+    }
+
+    ::il::io::detail::ParserState
+        &state;               ///< Legacy parser state providing SSA maps and diagnostics.
+    const ::il::core::Instr &instr; ///< Instruction state visible to read-only operand parsers.
+    ::il::core::Instr
+        *mutableInstr{nullptr}; ///< Instruction sink used only by mutating type parsers.
+};
+
+/// @brief Result bundle returned by operand-specific parsers.
+struct ParseResult
+{
+    ::il::support::Expected<void> status{};   ///< Success/failure diagnostic container.
+    std::optional<::il::core::Value> value{}; ///< Parsed Value operand when applicable.
+    std::optional<std::string> label{};       ///< Parsed label text when applicable.
+
+    /// @brief Query whether parsing succeeded.
+    [[nodiscard]] bool ok() const
+    {
+        return static_cast<bool>(status);
+    }
+
+    /// @brief Query whether a Value operand was produced.
+    [[nodiscard]] bool hasValue() const
+    {
+        return value.has_value();
+    }
+
+    /// @brief Query whether a label operand was produced.
+    [[nodiscard]] bool hasLabel() const
+    {
+        return label.has_value();
+    }
+
+    /// @brief Report whether any operand payload was consumed.
+    [[nodiscard]] bool consumed() const
+    {
+        return hasValue() || hasLabel();
+    }
+};
+
+/// @brief Build a ParseResult describing a syntax error.
+/// @details Populates the result with a diagnostic carrying the provided
+///          message and source location taken from the parser context.
+/// @param ctx Parsing context containing source location and diagnostics sink.
+/// @param message Human-readable description of the syntax problem.
+/// @return ParseResult initialised with an error status and message.
+inline ParseResult syntaxError(Context &ctx, std::string message)
+{
+    ParseResult result;
+    result.status = ::il::support::Expected<void>{
+        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
+    return result;
+}
+
+/// @brief Parse a general Value operand from the supplied cursor segment.
+/// @param cur Cursor positioned at the start of the operand token.
+/// @param ctx Shared parser context providing diagnostics and SSA mappings.
+/// @return Result describing success and, on success, the parsed Value payload.
+ParseResult parseValueOperand(zanna::parse::Cursor &cur, Context &ctx);
+
+/// @brief Parse a branch label operand from the supplied cursor segment.
+/// @param cur Cursor positioned at the beginning of the label text.
+/// @param ctx Shared parser context providing diagnostics and SSA mappings.
+/// @return Result describing success and, on success, the parsed label string.
+ParseResult parseLabelOperand(zanna::parse::Cursor &cur, Context &ctx);
+
+/// @brief Parse a type literal operand and attach it to the instruction context.
+/// @param cur Cursor positioned at the beginning of the type token.
+/// @param ctx Shared parser context providing diagnostics and instruction sink.
+/// @return Result describing success or failure of the parse. No additional payloads
+///         are populated beyond the status indicator.
+ParseResult parseTypeOperand(zanna::parse::Cursor &cur, Context &ctx);
+
+/// @brief Parse a constant literal operand, producing a Value payload.
+/// @param cur Cursor positioned at the start of the literal token.
+/// @param ctx Shared parser context providing diagnostics and SSA mappings.
+/// @return Result describing success and, on success, the parsed Value payload.
+ParseResult parseConstOperand(zanna::parse::Cursor &cur, Context &ctx);
+
+} // namespace zanna::il::io

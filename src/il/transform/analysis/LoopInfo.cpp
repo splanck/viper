@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -94,9 +94,9 @@ namespace {
 /// @param ctx CFG context holding predecessor maps.
 /// @param block Block whose predecessors should be returned.
 /// @return Reference to predecessor pointers (may be empty).
-const std::vector<BasicBlock *> &getPredecessors(const viper::analysis::CFGContext &ctx,
+const std::vector<BasicBlock *> &getPredecessors(const zanna::analysis::CFGContext &ctx,
                                                  const BasicBlock &block) {
-    return viper::analysis::predecessors(ctx, block);
+    return zanna::analysis::predecessors(ctx, block);
 }
 
 } // namespace
@@ -113,8 +113,8 @@ const std::vector<BasicBlock *> &getPredecessors(const viper::analysis::CFGConte
 LoopInfo computeLoopInfo(Module &module, Function &function) {
     LoopInfo info;
 
-    viper::analysis::CFGContext cfgCtx(module, function);
-    viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfgCtx, function);
+    zanna::analysis::CFGContext cfgCtx(module, function);
+    zanna::analysis::DomTree domTree = zanna::analysis::computeDominatorTree(cfgCtx, function);
 
     // Discover loops (header, body, latches).
     for (auto &block : function.blocks) {

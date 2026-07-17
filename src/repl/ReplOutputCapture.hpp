@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -21,9 +21,9 @@
 
 #include <string>
 
-namespace viper::repl {
+namespace zanna::repl {
 
-/// @brief RAII guard that captures Viper runtime stdout into memory.
+/// @brief RAII guard that captures Zanna runtime stdout into memory.
 /// @details The VM's terminal output routines flow through the runtime
 ///          @c rt_output layer. This guard installs a temporary capture hook so
 ///          REPL evaluation can collect program output without redirecting the
@@ -74,4 +74,4 @@ class ScopedReplOutputCapture {
     HookState *state_{nullptr};
 };
 
-} // namespace viper::repl
+} // namespace zanna::repl

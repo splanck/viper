@@ -15,5 +15,5 @@ FOR i = 0 TO 49999999
     t9 = t8 - 11
     sum = sum + t9
 NEXT i
-Viper.System.Environment.Exit(sum)
+Zanna.System.Environment.Exit(sum)
 END

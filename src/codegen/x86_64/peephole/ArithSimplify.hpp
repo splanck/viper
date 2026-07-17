@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -28,7 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole {
+namespace zanna::codegen::x64::peephole {
 
 /// @brief Rewrite a MOV immediate-to-register into XOR to synthesize zero.
 void rewriteToXor(MInstr &instr, Operand regOperand);
@@ -49,4 +49,4 @@ void rewriteToTest(MInstr &instr, Operand regOperand);
                                         const RegConstMap &knownConsts,
                                         PeepholeStats &stats);
 
-} // namespace viper::codegen::x64::peephole
+} // namespace zanna::codegen::x64::peephole

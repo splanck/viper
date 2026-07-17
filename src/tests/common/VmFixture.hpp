@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::tests {
+namespace zanna::tests {
 struct VmTrapResult {
     bool exited = false;   ///< True if child exited via exit()/_exit()/_Exit().
     bool signaled = false; ///< True if child was killed by a signal.
@@ -49,4 +49,4 @@ class VmFixture {
     [[nodiscard]] std::string captureTrap(il::core::Module &module) const;
 };
 
-} // namespace viper::tests
+} // namespace zanna::tests

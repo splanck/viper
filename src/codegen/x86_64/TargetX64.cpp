@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/TargetX64.cpp
-// Purpose: Materialise the SysV AMD64 target description used by the Viper
+// Purpose: Materialise the SysV AMD64 target description used by the Zanna
 //          Machine IR pipeline and surface helper queries about register
 //          classes and names.
 // Key invariants:
@@ -21,7 +21,7 @@
 
 #include "TargetX64.hpp"
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace {
 
@@ -369,4 +369,4 @@ const char *regName(PhysReg reg) noexcept {
     }
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

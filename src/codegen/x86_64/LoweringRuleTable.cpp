@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -27,7 +27,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64 {
+namespace zanna::codegen::x64 {
 
 namespace lowering {
 
@@ -813,4 +813,4 @@ const lowering::RuleSpec *lookupRuleSpec(const ILInstr &instr) {
     return nullptr;
 }
 
-} // namespace viper::codegen::x64
+} // namespace zanna::codegen::x64

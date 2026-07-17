@@ -1,9 +1,9 @@
 module TestSound3DObjects;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Audio;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Audio;
+bind Zanna.Terminal;
 
 func start() {
     var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);

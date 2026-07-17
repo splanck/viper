@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -119,7 +119,7 @@ static void test_different_content_different_pointer(void) {
 static void test_intern_idempotent(void) {
     rt_string_intern_drain();
 
-    rt_string s = make_str("viper");
+    rt_string s = make_str("zanna");
 
     rt_string i1 = rt_string_intern(s);
     rt_string i2 = rt_string_intern(s);

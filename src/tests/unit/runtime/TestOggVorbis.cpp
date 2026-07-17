@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -345,7 +345,7 @@ static std::vector<uint8_t> make_synthetic_ogv() {
 }
 
 static std::string write_temp_file(const char *prefix, const std::vector<uint8_t> &bytes) {
-    char path[] = "/tmp/viper_ogv_test_XXXXXX";
+    char path[] = "/tmp/zanna_ogv_test_XXXXXX";
     int fd = mkstemp(path);
     if (fd < 0)
         return {};
@@ -375,7 +375,7 @@ TEST(OggReaderTest, RejectNonExistent) {
 
 TEST(OggReaderTest, RejectInvalidData) {
     // Create a file with garbage data
-    const char *path = "/tmp/viper_test_invalid.ogg";
+    const char *path = "/tmp/zanna_test_invalid.ogg";
     FILE *f = fopen(path, "wb");
     ASSERT_TRUE(f != nullptr);
     const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
@@ -660,5 +660,5 @@ TEST(TheoraDecoderTest, AppliesLoopFilterAcrossCodedToUncodedEdge) {
 }
 
 int main() {
-    return viper_test::run_all_tests();
+    return zanna_test::run_all_tests();
 }

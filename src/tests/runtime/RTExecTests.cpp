@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTExecTests.cpp
-// Purpose: Tests for Viper.System.Exec external command execution.
+// Purpose: Tests for Zanna.System.Exec external command execution.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,7 @@
 #include <string>
 #include <thread>
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
@@ -364,10 +364,10 @@ static void test_process_streams_stdout_stderr() {
 
 static void test_process_cwd_and_env() {
     void *env = rt_seq_new();
-    rt_seq_push(env, make_string("VIPER_PROCESS_TEST=env-ok"));
+    rt_seq_push(env, make_string("ZANNA_PROCESS_TEST=env-ok"));
 
     void *handle =
-        start_shell_process_with_env("pwd; printf '%s\\n' \"$VIPER_PROCESS_TEST\"", "/tmp", env);
+        start_shell_process_with_env("pwd; printf '%s\\n' \"$ZANNA_PROCESS_TEST\"", "/tmp", env);
     assert(handle != nullptr);
 
     int64_t code = rt_process_wait(handle);
@@ -479,18 +479,18 @@ static void test_process_write_stdin() {
     rt_process_destroy(handle);
 }
 
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
 static int verify_windows_unicode_environment_child() {
     wchar_t value[64];
     DWORD value_len =
-        GetEnvironmentVariableW(L"VIPER_PROCESS_TEST", value, (DWORD)std::size(value));
+        GetEnvironmentVariableW(L"ZANNA_PROCESS_TEST", value, (DWORD)std::size(value));
     if (value_len == 0 || value_len >= std::size(value) ||
         wcscmp(value, L"Gr\u00fc\u00dfe-\u6771\u4eac") != 0)
         return 11;
-    if (GetEnvironmentVariableW(L"VIPER_A_FIRST", value, (DWORD)std::size(value)) == 0 ||
+    if (GetEnvironmentVariableW(L"ZANNA_A_FIRST", value, (DWORD)std::size(value)) == 0 ||
         wcscmp(value, L"ok") != 0)
         return 12;
-    if (GetEnvironmentVariableW(L"VIPER_Z_LAST", value, (DWORD)std::size(value)) == 0 ||
+    if (GetEnvironmentVariableW(L"ZANNA_Z_LAST", value, (DWORD)std::size(value)) == 0 ||
         wcscmp(value, L"ok") != 0)
         return 13;
 
@@ -541,11 +541,11 @@ static void test_windows_unicode_environment_round_trip() {
     rt_seq_push(args, make_string("--verify-unicode-environment"));
 
     void *env = rt_seq_new();
-    rt_seq_push(env, make_string("VIPER_Z_LAST=ok"));
+    rt_seq_push(env, make_string("ZANNA_Z_LAST=ok"));
     rt_seq_push(env,
-                make_string("VIPER_PROCESS_TEST=Gr\xc3\xbc\xc3\x9f"
+                make_string("ZANNA_PROCESS_TEST=Gr\xc3\xbc\xc3\x9f"
                             "e-\xe6\x9d\xb1\xe4\xba\xac"));
-    rt_seq_push(env, make_string("VIPER_A_FIRST=ok"));
+    rt_seq_push(env, make_string("ZANNA_A_FIRST=ok"));
 
     void *handle =
         rt_process_start_with_env(make_string(executable.c_str()), args, make_string(""), env);
@@ -557,7 +557,7 @@ static void test_windows_unicode_environment_round_trip() {
 #endif
 
 int main(int argc, char **argv) {
-#if VIPER_HOST_WINDOWS
+#if ZANNA_HOST_WINDOWS
     if (argc == 2 && strcmp(argv[1], "--verify-unicode-environment") == 0)
         return verify_windows_unicode_environment_child();
     test_windows_unicode_environment_round_trip();

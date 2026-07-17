@@ -1,13 +1,13 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // This file declares the InputDecoder class, which transforms raw terminal
 // byte sequences into structured input events (KeyEvent, MouseEvent,
-// PasteEvent) for Viper's TUI framework.
+// PasteEvent) for Zanna's TUI framework.
 //
 // The decoder maintains an internal state machine that handles:
 //   - UTF-8 multi-byte character sequences (via Utf8Decoder)
@@ -40,7 +40,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::term {
+namespace zanna::tui::term {
 /// @brief Stateful terminal input decoder that converts raw byte streams into
 ///        structured keyboard, mouse, and paste events.
 /// @details Implements a state machine handling UTF-8 character decoding, ANSI
@@ -88,4 +88,4 @@ class InputDecoder {
     CsiParser csi_parser_;
 };
 
-} // namespace viper::tui::term
+} // namespace zanna::tui::term

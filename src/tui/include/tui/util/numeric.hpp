@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -18,7 +18,7 @@
 #include <cstddef>
 #include <limits>
 
-namespace viper::tui::util {
+namespace zanna::tui::util {
 
 /// @brief Saturating addition for size_t values.
 /// @details Returns the sum of @p base and @p delta when representable,
@@ -34,4 +34,4 @@ namespace viper::tui::util {
     return base + delta;
 }
 
-} // namespace viper::tui::util
+} // namespace zanna::tui::util

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -531,7 +531,7 @@ static int gif_actual_image_row(int decoded_row, int image_height, int interlace
 
 /// @brief Decode a GIF file from disk into an array of RGBA frames.
 /// @details Reads the entire file into memory, then dispatches to the
-///          in-memory decoder path (the same one used by VPA-embedded GIFs).
+///          in-memory decoder path (the same one used by ZPAK-embedded GIFs).
 ///          On success, @p out_frames is malloc'd and the caller must free it
 ///          (each contained Pixels object is GC-managed and released via
 ///          rt_obj_release_check0). Failure modes (NULL paths, read failure,

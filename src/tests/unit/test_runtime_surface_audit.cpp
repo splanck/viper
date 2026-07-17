@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_runtime_surface_audit.cpp
-// Purpose: Audit the deliberate frontend-visible Viper.* runtime surface.
+// Purpose: Audit the deliberate frontend-visible Zanna.* runtime surface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -135,7 +135,7 @@ std::vector<PropertyExpectation> expectedProperties() {
 }
 
 fs::path repoRoot() {
-    return fs::path(VIPER_SOURCE_DIR);
+    return fs::path(ZANNA_SOURCE_DIR);
 }
 
 std::string readText(const fs::path &path) {
@@ -231,7 +231,7 @@ std::string stripPreprocessor(std::string input) {
 }
 
 std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
-    const std::string text = viper::tests::runtimeDefinitionText();
+    const std::string text = zanna::tests::runtimeDefinitionText();
     const std::regex funcRe(
         R"RTFUNC(RT_FUNC\(\s*([A-Za-z0-9_]+)\s*,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
     std::unordered_map<std::string, std::string> out;
@@ -252,7 +252,7 @@ std::unordered_set<std::string> runtimeDefSymbols() {
 }
 
 std::vector<SignatureRecord> runtimeDefSignatures() {
-    const std::string text = viper::tests::runtimeDefinitionText();
+    const std::string text = zanna::tests::runtimeDefinitionText();
     std::vector<SignatureRecord> signatures;
 
     const std::regex funcRe(
@@ -434,7 +434,7 @@ TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerSurfaceTypes) {
 }
 
 TEST(RuntimeSurfaceAudit, ZiaCallbackBridgeRolesAreDeclaredInRuntimeDef) {
-    const std::string text = viper::tests::runtimeDefinitionText();
+    const std::string text = zanna::tests::runtimeDefinitionText();
     const std::vector<std::string> required = {
         "RT_BRIDGE(ThreadStart, \"callback,payload\")",
         "RT_BRIDGE(ThreadStartSafe, \"callback,payload\")",
@@ -532,7 +532,7 @@ TEST(RuntimeSurfaceAudit, RuntimeCatalogHasNoPropertyMethodNameCollisions) {
 }
 
 TEST(RuntimeSurfaceAudit, GuiVideoWidgetReadWritePropertiesHaveGetterAndSetterTargets) {
-    const auto *cls = findClass("Viper.GUI.VideoWidget");
+    const auto *cls = findClass("Zanna.GUI.VideoWidget");
     ASSERT_TRUE(cls != nullptr);
 
     for (std::string_view name : {"ShowControls", "Loop"}) {
@@ -551,6 +551,6 @@ TEST(RuntimeSurfaceAudit, GuiVideoWidgetReadWritePropertiesHaveGetterAndSetterTa
 }
 
 int main(int argc, char **argv) {
-    viper_test::init(&argc, argv);
-    return viper_test::run_all_tests();
+    zanna_test::init(&argc, argv);
+    return zanna_test::run_all_tests();
 }

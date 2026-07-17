@@ -1,15 +1,15 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/localization/rt_numformat.c
-// Purpose: Implementation of Viper.Localization.NumberFormat. Formats and
+// Purpose: Implementation of Zanna.Localization.NumberFormat. Formats and
 //          parses locale-aware numeric strings using the bound Locale's
 //          rt_locale_data_t. Shares digit-grouping machinery with
-//          Viper.Text.InvariantNumberFormat via rt_numfmt_internal.h to avoid
+//          Zanna.Text.InvariantNumberFormat via rt_numfmt_internal.h to avoid
 //          duplicating the group-every-N-digits logic.
 //
 // Key invariants:
@@ -28,7 +28,7 @@
 // Links: src/runtime/localization/rt_numformat.h (interface),
 //        src/runtime/text/rt_numfmt_internal.h (shared grouping helper),
 //        src/runtime/localization/rt_locale_manager.h (current-locale lookup),
-//        docs/viperlib/localization/formatting.md (user documentation).
+//        docs/zannalib/localization/formatting.md (user documentation).
 //
 //===----------------------------------------------------------------------===//
 
@@ -302,7 +302,7 @@ static void fmt_finalizer(void *obj) {
 static rt_numformat_t *fmt_alloc(void *locale) {
     rt_numformat_t *fmt = (rt_numformat_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_numformat_t));
     if (!fmt) {
-        rt_trap("Viper.Localization.NumberFormat: allocation failed");
+        rt_trap("Zanna.Localization.NumberFormat: allocation failed");
         return NULL;
     }
     memset(fmt, 0, sizeof(*fmt));
@@ -909,7 +909,7 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     if (!code_cs || code_len != 3 || code_cs[0] < 'A' || code_cs[0] > 'Z' || code_cs[1] < 'A' ||
         code_cs[1] > 'Z' || code_cs[2] < 'A' || code_cs[2] > 'Z') {
         rt_trap(
-            "Viper.Localization.NumberFormat: CurrencyOf requires a 3-letter uppercase ISO code");
+            "Zanna.Localization.NumberFormat: CurrencyOf requires a 3-letter uppercase ISO code");
         return rt_string_from_bytes("", 0);
     }
     if (fmt->data->currency.default_code &&
@@ -1037,7 +1037,7 @@ scientific_error:
 
 rt_string rt_numformat_ordinal(void *self, int64_t value) {
     (void)self;
-    // v1: delegate to the existing Viper.Text.InvariantNumberFormat.Ordinal which
+    // v1: delegate to the existing Zanna.Text.InvariantNumberFormat.Ordinal which
     // implements English suffixes (st/nd/rd/th). Locale-specific ordinal
     // rendering uses plural category lookup and is deferred to a later
     // phase alongside JSON-loaded ordinal suffix tables.
@@ -1401,7 +1401,7 @@ static parse_result_t parse_integer_exact(const char *input,
 
 double rt_numformat_parse_decimal(void *self, rt_string input) {
     if (!self || !input) {
-        rt_trap("Viper.Localization.NumberFormat: ParseDecimal received null input");
+        rt_trap("Zanna.Localization.NumberFormat: ParseDecimal received null input");
         return 0;
     }
     const char *cs = rt_string_cstr(input);
@@ -1411,7 +1411,7 @@ double rt_numformat_parse_decimal(void *self, rt_string input) {
                                       as_fmt(self),
                                       /*allow_fraction=*/1);
     if (!pr.success) {
-        rt_trap("Viper.Localization.NumberFormat: cannot parse input as a decimal");
+        rt_trap("Zanna.Localization.NumberFormat: cannot parse input as a decimal");
         return 0;
     }
     return pr.value;
@@ -1433,14 +1433,14 @@ void *rt_numformat_try_parse_decimal(void *self, rt_string input) {
 
 int64_t rt_numformat_parse_integer(void *self, rt_string input) {
     if (!self || !input) {
-        rt_trap("Viper.Localization.NumberFormat: ParseInteger received null input");
+        rt_trap("Zanna.Localization.NumberFormat: ParseInteger received null input");
         return 0;
     }
     const char *cs = rt_string_cstr(input);
     int64_t len = rt_str_len(input);
     parse_result_t pr = parse_integer_exact(cs, (size_t)len, as_fmt(self));
     if (!pr.success) {
-        rt_trap("Viper.Localization.NumberFormat: cannot parse input as an integer");
+        rt_trap("Zanna.Localization.NumberFormat: cannot parse input as an integer");
         return 0;
     }
     return pr.int_value;
@@ -1711,7 +1711,7 @@ static int extract_currency_number(const rt_numformat_t *fmt,
 
 double rt_numformat_parse_currency(void *self, rt_string input) {
     if (!self || !input) {
-        rt_trap("Viper.Localization.NumberFormat: ParseCurrency received null input");
+        rt_trap("Zanna.Localization.NumberFormat: ParseCurrency received null input");
         return 0;
     }
     rt_numformat_t *fmt = as_fmt(self);
@@ -1726,7 +1726,7 @@ double rt_numformat_parse_currency(void *self, rt_string input) {
                                       fmt,
                                       /*allow_fraction=*/1);
     if (!pr.success) {
-        rt_trap("Viper.Localization.NumberFormat: cannot parse input as currency");
+        rt_trap("Zanna.Localization.NumberFormat: cannot parse input as currency");
         return 0;
     }
     return negative_pattern && pr.value > 0 ? -pr.value : pr.value;

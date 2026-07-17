@@ -1,10 +1,10 @@
 module Main;
 
 // Namespace bindings for cleaner code
-bind Viper.String;
-bind Viper.Terminal;
-bind Viper.Text.Fmt;
-bind Viper.Time;
+bind Zanna.String;
+bind Zanna.Terminal;
+bind Zanna.Text.Fmt;
+bind Zanna.Time;
 
 // Frogger - Classic Arcade Game
 
@@ -518,7 +518,7 @@ func update() {
                 frog.die();
                 if frog.alive {
                     drawAt(12, 28, 1, "SPLASH!");
-                    Viper.Time.Clock.Sleep(800);
+                    Zanna.Time.Clock.Sleep(800);
                 }
             } else {
                 frog.onPlatform = true;
@@ -535,7 +535,7 @@ func update() {
                 frog.die();
                 if frog.alive {
                     drawAt(12, 28, 1, "SPLAT!");
-                    Viper.Time.Clock.Sleep(800);
+                    Zanna.Time.Clock.Sleep(800);
                 }
             }
         }
@@ -733,7 +733,7 @@ func start() {
         if game.paused == false {
             update();
         }
-        Viper.Time.Clock.Sleep(TICK_MS);
+        Zanna.Time.Clock.Sleep(TICK_MS);
     }
 
     showCursor();

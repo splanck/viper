@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_diff.c
-// Purpose: Implements line-level text diff for the Viper.Text.Diff class.
+// Purpose: Implements line-level text diff for the Zanna.Text.Diff class.
 //          Computes a dynamic-programming LCS edit script between two
 //          multiline strings, producing added/removed/unchanged line records.
 //

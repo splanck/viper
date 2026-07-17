@@ -13,8 +13,8 @@ module iscene;
 //   onExit()   — called once when transitioning away from this scene
 // ============================================================================
 
-bind Viper.Graphics;
-bind Viper.Graphics.Canvas;
+bind Zanna.Graphics;
+bind Zanna.Graphics.Canvas;
 
 interface IScene {
     func update(dt: Integer);

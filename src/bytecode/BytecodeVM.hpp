@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/bytecode/BytecodeVM.hpp
-// Purpose: Stack-based bytecode interpreter for compiled Viper programs.
+// Purpose: Stack-based bytecode interpreter for compiled Zanna programs.
 // Key invariants:
 //   - Loaded BytecodeModule storage must outlive the VM.
 //   - Call depth and operand stack depth remain within fixed VM limits.
@@ -48,7 +48,7 @@ union Slot;
 struct RuntimeCallContext;
 } // namespace il::vm
 
-namespace viper {
+namespace zanna {
 namespace bytecode {
 
 /// @brief Type alias for native function handlers invokable directly from bytecode.
@@ -136,7 +136,7 @@ struct BCExceptionHandler {
 using DebugCallback =
     std::function<bool(class BytecodeVM &, const BytecodeFunction *, uint32_t, bool)>;
 
-/// @brief Bytecode virtual machine for executing compiled Viper programs.
+/// @brief Bytecode virtual machine for executing compiled Zanna programs.
 /// @details The BytecodeVM loads a BytecodeModule and executes its functions
 ///          using a stack-based evaluation model. Features include:
 ///          - Operand stack and local variable slots per frame
@@ -240,7 +240,7 @@ class BytecodeVM {
     }
 
     /// @brief Enable or disable the RuntimeBridge for native function calls.
-    /// @details When enabled, CALL_NATIVE instructions route through the Viper
+    /// @details When enabled, CALL_NATIVE instructions route through the Zanna
     ///          RuntimeBridge. When disabled, only directly registered handlers
     ///          are used.
     /// @param enabled True to enable the RuntimeBridge; false to disable.
@@ -671,7 +671,7 @@ class BytecodeVM {
 
     /// @brief Clone runtime-call arguments for helpers that consume strings.
     /// @details The bytecode VM stores raw slot aliases in locals and on the
-    ///          operand stack. Helpers such as `Viper.String.Concat` release
+    ///          operand stack. Helpers such as `Zanna.String.Concat` release
     ///          their input strings, so the bridge must receive retained copies
     ///          rather than the VM's original aliases.
     /// @param ref Runtime helper reference.
@@ -707,7 +707,7 @@ class BytecodeVM {
     void run();
 
     /// @brief Threaded interpreter loop using computed-goto dispatch (faster).
-    /// @details Only available when compiled with GCC or Clang (VIPER_BC_THREADED).
+    /// @details Only available when compiled with GCC or Clang (ZANNA_BC_THREADED).
 #if defined(__GNUC__) || defined(__clang__)
     void runThreaded();
 #endif
@@ -934,4 +934,4 @@ struct ActiveBytecodeVMGuard {
 };
 
 } // namespace bytecode
-} // namespace viper
+} // namespace zanna

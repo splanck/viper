@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -271,7 +271,7 @@ enum class TokenKind {
 
     /// @brief Bind statement keyword.
     /// @details Binds a namespace to an alias for use in the current module.
-    /// Syntax: `bind Viper.Terminal as Term;`
+    /// Syntax: `bind Zanna.Terminal as Term;`
     KwBind,
 
     /// @brief Function declaration keyword.

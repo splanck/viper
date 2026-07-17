@@ -1,10 +1,10 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/gui/rt_gui_accessibility_linux.c
-// Purpose: X11/XSettings accessibility-preference adapter for the Viper GUI runtime.
+// Purpose: X11/XSettings accessibility-preference adapter for the Zanna GUI runtime.
 //
 // Key invariants:
 //   - XSettings payloads are parsed with explicit byte order and strict bounds checks.
@@ -12,7 +12,7 @@
 //   - Malformed settings, absent XSettings owners, and unavailable displays fall back to zero.
 //
 // Ownership/Lifetime:
-//   - X11 Display and Window handles are borrowed from ViperGFX.
+//   - X11 Display and Window handles are borrowed from ZannaGFX.
 //   - XGetWindowProperty buffers are always released with XFree before return.
 //
 // Links: src/runtime/graphics/gui/rt_gui_accessibility_platform.h,
@@ -157,7 +157,7 @@ static rt_gui_xsetting_value_t rt_gui_xsettings_parse(const unsigned char *bytes
 }
 
 /// @brief Fetch and parse one setting from the XSettings manager on the window's screen.
-/// @param window Borrowed ViperGFX window supplying the shared X11 Display connection.
+/// @param window Borrowed ZannaGFX window supplying the shared X11 Display connection.
 /// @param name Exact XSettings key.
 /// @return Decoded setting record with `found=0` when XSettings is unavailable.
 static rt_gui_xsetting_value_t rt_gui_xsettings_query(vgfx_window_t window, const char *name) {
@@ -249,7 +249,7 @@ static int rt_gui_theme_requests_dark(const char *text) {
 }
 
 /// @brief Query high contrast from toolkit environment hints and XSettings theme state.
-/// @param window Borrowed ViperGFX window supplying an X11 display when available.
+/// @param window Borrowed ZannaGFX window supplying an X11 display when available.
 /// @return One when a high-contrast desktop theme is selected, otherwise zero.
 int32_t rt_gui_accessibility_platform_high_contrast(vgfx_window_t window) {
     const char *gtk_theme = getenv("GTK_THEME");
@@ -263,7 +263,7 @@ int32_t rt_gui_accessibility_platform_high_contrast(vgfx_window_t window) {
 }
 
 /// @brief Query reduced motion from GTK's animation hint and XSettings animation state.
-/// @param window Borrowed ViperGFX window supplying an X11 display when available.
+/// @param window Borrowed ZannaGFX window supplying an X11 display when available.
 /// @return One when desktop interface animations are explicitly disabled, otherwise zero.
 int32_t rt_gui_accessibility_platform_reduced_motion(vgfx_window_t window) {
     const char *gtk_animations = getenv("GTK_ENABLE_ANIMATIONS");
@@ -282,7 +282,7 @@ int32_t rt_gui_accessibility_platform_reduced_motion(vgfx_window_t window) {
 /// @details GTK and Qt environment overrides win, followed by XSettings' `Net/ThemeName`. As a
 ///          terminal-compatible fallback, `COLORFGBG` values ending in ANSI colors 0-6 or 8 are
 ///          treated as dark. Missing/malformed hints return the stable light fallback.
-/// @param window Borrowed ViperGFX window supplying an X11 display when available.
+/// @param window Borrowed ZannaGFX window supplying an X11 display when available.
 /// @return One when an available desktop hint requests dark mode, otherwise zero.
 int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
     const char *gtk_theme = getenv("GTK_THEME");

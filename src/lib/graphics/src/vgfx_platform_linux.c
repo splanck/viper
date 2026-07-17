@@ -1,11 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// ViperGFX Linux X11 Backend
+// ZannaGFX Linux X11 Backend
 //
 // Platform-specific implementation using X11 (Xlib) on Linux/Unix systems.
 // Provides window creation, event handling, framebuffer blitting, and timing
@@ -29,7 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Linux X11 backend implementation for ViperGFX.
+/// @brief Linux X11 backend implementation for ZannaGFX.
 /// @details Uses Xlib to provide window management and framebuffer
 ///          presentation on Linux and Unix systems.
 
@@ -70,15 +70,15 @@ static int vgfx_x11_env_flag_enabled(const char *name) {
 }
 
 static int vgfx_x11_hide_windows(void) {
-    return vgfx_x11_env_flag_enabled("VIPER_GFX_HIDE_WINDOWS");
+    return vgfx_x11_env_flag_enabled("ZANNA_GFX_HIDE_WINDOWS");
 }
 
 static int vgfx_x11_no_activate_on_create(void) {
-    return vgfx_x11_env_flag_enabled("VIPER_GFX_NO_ACTIVATE") || vgfx_x11_hide_windows();
+    return vgfx_x11_env_flag_enabled("ZANNA_GFX_NO_ACTIVATE") || vgfx_x11_hide_windows();
 }
 
 /// @brief Acquire the mutex protecting process-global X11 backend state.
-/// @details This lock covers Viper-owned globals such as the live-window list,
+/// @details This lock covers Zanna-owned globals such as the live-window list,
 ///          cached GLX library handle, and temporary X error handler changes.
 ///          It does not replace per-display Xlib locking.
 static void x11_global_lock(void) {
@@ -214,7 +214,7 @@ static void x11_load_glx_library(void) {
 
 /// @brief Try to select a double-buffered GLX visual for windows that may host GPU rendering.
 ///
-/// ViperGFX windows are created before Canvas3D selects its backend, so the Linux window adapter
+/// ZannaGFX windows are created before Canvas3D selects its backend, so the Linux window adapter
 /// must pick a visual that is compatible with both XImage software blits and GLX.  The OpenGL
 /// backend renders to GL_BACK and swaps; using a generic TrueColor visual can leave GLX without a
 /// matching double-buffered FBConfig, which produces a mapped title bar with a never-updated client
@@ -422,7 +422,7 @@ static void parse_xdnd_uri_list(struct vgfx_window *win,
 //===----------------------------------------------------------------------===//
 
 /// @brief Translate X11 KeySym to vgfx_key_t.
-/// @details Maps X11 keysyms (obtained via XLookupKeysym) to ViperGFX key
+/// @details Maps X11 keysyms (obtained via XLookupKeysym) to ZannaGFX key
 ///          codes.  Handles A-Z, 0-9, Space, arrows, Enter, Escape.
 ///          Unrecognized keys return VGFX_KEY_UNKNOWN.
 ///
@@ -614,7 +614,7 @@ static size_t x11_utf8_encode_codepoint(uint32_t codepoint, char *output) {
 
 /// @brief Convert an XIM changed-text segment into owned Unicode codepoints.
 /// @details Wide-character XIM values are copied as scalars. Multibyte values from the UTF-8 input
-///          context are decoded with ViperGFX's bounded decoder; malformed bytes advance and map
+///          context are decoded with ZannaGFX's bounded decoder; malformed bytes advance and map
 ///          to U+FFFD so callback processing cannot stall. The caller frees the returned array.
 /// @param text Borrowed XIM text segment; may be NULL for deletion-only draws.
 /// @param out_count Receives the allocated codepoint count.
@@ -683,7 +683,7 @@ static void x11_ime_emit_boundary(vgfx_x11_data *x11, vgfx_event_type_t type) {
 }
 
 /// @brief Encode and enqueue the complete current XIM preedit snapshot.
-/// @details XIM draw callbacks are deltas, but ViperGFX events intentionally carry full snapshots
+/// @details XIM draw callbacks are deltas, but ZannaGFX events intentionally carry full snapshots
 ///          so coalescing remains safe. The temporary UTF-8 buffer is released immediately after
 ///          the value event copies its bounded prefix.
 /// @param x11 Platform state containing the current codepoint buffer and caret.
@@ -731,7 +731,7 @@ static void x11_ime_emit_update(vgfx_x11_data *x11) {
 /// @param x11 Platform input-method state.
 /// @param text Borrowed committed UTF-8 bytes.
 /// @param text_length Number of readable committed bytes.
-/// @param modifiers Active X11 modifier mask translated to ViperGFX flags.
+/// @param modifiers Active X11 modifier mask translated to ZannaGFX flags.
 /// @param timestamp Monotonic event timestamp in milliseconds.
 static void x11_ime_emit_commit(
     vgfx_x11_data *x11, const char *text, size_t text_length, int modifiers, int64_t timestamp) {
@@ -761,7 +761,7 @@ static void x11_ime_emit_commit(
 
 /// @brief Begin one XIM preedit session and reset prior callback state.
 /// @details Xlib uses the integer return as the client preedit length limit; -1 requests no
-///          implementation-defined restriction while the ViperGFX event layer enforces its safe
+///          implementation-defined restriction while the ZannaGFX event layer enforces its safe
 ///          inline payload bound.
 /// @param input_context XIM input context invoking the callback.
 /// @param client_data Borrowed vgfx_x11_data pointer registered at XIC creation.
@@ -880,7 +880,7 @@ static void x11_ime_preedit_done(XIC input_context, XPointer client_data, XPoint
 }
 
 /// @brief Create the richest XIM input context supported by the current input method.
-/// @details Prefers callback preedit so ViperGUI can render marked text. If the input method does
+/// @details Prefers callback preedit so ZannaGUI can render marked text. If the input method does
 ///          not advertise that style or creation fails, falls back to the existing preedit-nothing
 ///          context, preserving committed UTF-8 input on minimal X servers.
 /// @param x11 Initialized X11 platform state with open display, window, and input method.
@@ -1400,7 +1400,7 @@ int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
 ///          attributes, sets up WM_DELETE_WINDOW protocol for close button,
 ///          creates XImage wrapper for framebuffer, and makes window visible.
 ///
-/// @param win    Pointer to the ViperGFX window structure (framebuffer already allocated)
+/// @param win    Pointer to the ZannaGFX window structure (framebuffer already allocated)
 /// @param params Window creation parameters (title, dimensions, resizable flag)
 /// @return 1 on success, 0 on failure
 ///
@@ -1415,8 +1415,8 @@ int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
 ///            - Can be closed (intercepts WM_DELETE_WINDOW)
 ///            - Receives keyboard and mouse input
 ///            - 32-bit depth for direct RGBA rendering
-///            - Made visible unless VIPER_GFX_HIDE_WINDOWS is set
-///            - Hints that the window should not take focus when VIPER_GFX_NO_ACTIVATE is set
+///            - Made visible unless ZANNA_GFX_HIDE_WINDOWS is set
+///            - Hints that the window should not take focus when ZANNA_GFX_NO_ACTIVATE is set
 int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
@@ -1563,7 +1563,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->utf8_string_atom = XInternAtom(x11->display, "UTF8_STRING", False);
     x11->targets_atom = XInternAtom(x11->display, "TARGETS", False);
     x11->incr_atom = XInternAtom(x11->display, "INCR", False);
-    x11->clipboard_property_atom = XInternAtom(x11->display, "VIPERGFX_CLIPBOARD", False);
+    x11->clipboard_property_atom = XInternAtom(x11->display, "ZANNAGFX_CLIPBOARD", False);
     if (x11->wm_delete_window == None || x11->xdnd_aware == None || x11->xdnd_enter == None ||
         x11->xdnd_position == None || x11->xdnd_status == None || x11->xdnd_drop == None ||
         x11->xdnd_finished == None || x11->xdnd_selection == None || x11->xdnd_type_list == None ||
@@ -1621,7 +1621,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 ///          context, closes display connection, and frees platform data.
 ///          Safe to call even if init failed.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 ///
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
@@ -1901,7 +1901,7 @@ static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requ
     return result;
 }
 
-/// @brief Process pending X11 events and translate to ViperGFX events.
+/// @brief Process pending X11 events and translate to ZannaGFX events.
 /// @details Polls the X11 event queue in non-blocking mode (XPending).
 ///          For each XEvent, translates it to a vgfx_event_t and enqueues it.
 ///          Updates win->key_state, win->mouse_x, win->mouse_y, and
@@ -1916,7 +1916,7 @@ static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requ
 ///            - Resize: ConfigureNotify → RESIZE (not fully supported in v1)
 ///            - Expose: Request redraw (handled by marking view dirty)
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL
@@ -2378,11 +2378,11 @@ static int x11_convert_rgba_to_native32(struct vgfx_window *win, vgfx_x11_data *
 }
 
 /// @brief Present (blit) the framebuffer to the X11 window.
-/// @details Copies the ViperGFX framebuffer (win->pixels) to the X11 window
+/// @details Copies the ZannaGFX framebuffer (win->pixels) to the X11 window
 ///          using XPutImage.  The XImage wrapper points directly to our
 ///          framebuffer, so this is an efficient blit operation.
 ///
-/// @param win Pointer to the ViperGFX window structure
+/// @param win Pointer to the ZannaGFX window structure
 /// @return 1 on success, 0 on failure
 ///
 /// @pre  win != NULL
@@ -2793,7 +2793,7 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
     vgfx_internal_set_prevent_close(win, prevent);
 }
 
-/// @brief Normalize a public ViperGFX cursor type to a cache index.
+/// @brief Normalize a public ZannaGFX cursor type to a cache index.
 /// @param cursor_type Public cursor type value.
 /// @return Cache index in the range [0, 5].
 static int x11_cursor_index_for_type(int32_t cursor_type) {
@@ -2822,7 +2822,7 @@ static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
 ///          happen repeatedly during hover and drag tracking, so each window
 ///          caches the small fixed set of cursor handles and frees them during
 ///          backend cleanup.
-/// @param x11 X11 platform data for one ViperGFX window.
+/// @param x11 X11 platform data for one ZannaGFX window.
 /// @param cursor_type Public cursor type value.
 /// @return X11 cursor handle, or None on allocation failure.
 static Cursor x11_cached_cursor_for_type(vgfx_x11_data *x11, int32_t cursor_type) {

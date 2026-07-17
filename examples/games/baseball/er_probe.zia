@@ -6,12 +6,12 @@
 //          shows R != ER — proving the unearned-runs path actually fires
 //          when an error occurs in the same half-inning before scoring.
 //          Background: Plan 04 ER fix in the implementation pass.
-// Run via: viper run examples/games/baseball/er_probe.zia
+// Run via: zanna run examples/games/baseball/er_probe.zia
 // ============================================================================
 module er_probe;
 
-bind Viper.Terminal as Terminal;
-bind Viper.Text.Fmt as Fmt;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
 bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";

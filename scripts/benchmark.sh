@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Script: benchmark.sh
-# Purpose: Run the Viper benchmark suite across VM, bytecode, native, and
+# Purpose: Run the Zanna benchmark suite across VM, bytecode, native, and
 #          external reference modes.
 
 set -euo pipefail
 
 # ============================================================================
-# Viper Unified Benchmark Suite
+# Zanna Unified Benchmark Suite
 # ============================================================================
 # Benchmarks all execution modes across IL stress programs and compares
 # against C (-O0/-O2/-O3), Rust, Lua, Python, Java, and C# reference implementations.
@@ -34,7 +34,7 @@ SET_BASELINE=0
 NO_NATIVE=0
 NO_VM=0
 NO_REFERENCE=0
-VIPER_ONLY=0
+ZANNA_ONLY=0
 PROGRAMS_GLOB=""
 QUIET=0
 
@@ -64,7 +64,7 @@ Options:
   --no-native            Skip native codegen benchmarks
   --no-vm                Skip VM benchmarks
   --no-reference         Skip C/Rust/Lua/Python/Java/C# reference benchmarks
-  --viper-only           Run the curated Viper regression lane (VM + host native only)
+  --zanna-only           Run the curated Zanna regression lane (VM + host native only)
   --native-only          Run only native codegen modes (skip VM and references)
   --programs GLOB        Only run programs matching this glob (e.g. "fib*")
   -q, --quiet            Suppress progress output
@@ -81,7 +81,7 @@ while [[ $# -gt 0 ]]; do
         --no-native) NO_NATIVE=1; shift ;;
         --no-vm) NO_VM=1; shift ;;
         --no-reference) NO_REFERENCE=1; shift ;;
-        --viper-only) VIPER_ONLY=1; NO_REFERENCE=1; shift ;;
+        --zanna-only) ZANNA_ONLY=1; NO_REFERENCE=1; shift ;;
         --native-only) NO_VM=1; NO_REFERENCE=1; shift ;;
         --programs) PROGRAMS_GLOB="$2"; shift 2 ;;
         -q|--quiet) QUIET=1; shift ;;
@@ -172,12 +172,12 @@ if [[ "$HAS_PYTHON3" != "1" ]]; then
 fi
 
 # ============================================================================
-# Find viper binary
+# Find zanna binary
 # ============================================================================
-find_viper() {
+find_zanna() {
     local candidates=(
-        "$ROOT_DIR/build/src/tools/viper/viper"
-        "$ROOT_DIR/build/tools/viper/viper"
+        "$ROOT_DIR/build/src/tools/zanna/zanna"
+        "$ROOT_DIR/build/tools/zanna/zanna"
         "$ROOT_DIR/build/bin/ilc"
     )
     for c in "${candidates[@]}"; do
@@ -189,9 +189,9 @@ find_viper() {
     return 1
 }
 
-VIPER=""
-if ! VIPER="$(find_viper)"; then
-    echo "error: could not locate viper binary. Build first: cmake -S . -B build && cmake --build build -j" >&2
+ZANNA=""
+if ! ZANNA="$(find_zanna)"; then
+    echo "error: could not locate zanna binary. Build first: cmake -S . -B build && cmake --build build -j" >&2
     exit 1
 fi
 
@@ -325,16 +325,16 @@ fi
 # ============================================================================
 log ""
 log "${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
-log "${BOLD}                      VIPER UNIFIED BENCHMARK SUITE${NC}"
+log "${BOLD}                      ZANNA UNIFIED BENCHMARK SUITE${NC}"
 log "${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
 log ""
 log "  Platform:    $PLATFORM"
 log "  CPU:         $CPU_MODEL"
 log "  Commit:      $COMMIT ($BRANCH)"
-log "  Viper:       $VIPER"
+log "  Zanna:       $ZANNA"
 log "  Iterations:  $ITERATIONS (+ $WARMUP warmup)"
 log "  Programs:    ${#PROGRAMS[*]}"
-[[ "$VIPER_ONLY" == "1" ]] && log "  Lane:        Viper-only regression"
+[[ "$ZANNA_ONLY" == "1" ]] && log "  Lane:        Zanna-only regression"
 log ""
 log "  Available modes:"
 [[ "$NO_VM" != "1" ]] && log "    Bytecode:  bc-switch, bc-threaded"
@@ -394,7 +394,7 @@ for prog in "${PROGRAMS[@]}"; do
     if [[ "$NO_VM" != "1" ]]; then
         log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: bytecode VM...                  "
 
-        vm_json=$("$VIPER" bench "$il_file" --bytecode --json -n "$ITERATIONS" 2>/dev/null || echo "[]")
+        vm_json=$("$ZANNA" bench "$il_file" --bytecode --json -n "$ITERATIONS" 2>/dev/null || echo "[]")
 
         # Parse VM JSON — only bc-switch and bc-threaded
         vm_modes=$(python3 -c "
@@ -429,7 +429,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: native-arm64...                "
             native_exe="$TMPDIR_BENCH/native_arm64_$prog"
-            if "$VIPER" codegen arm64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
+            if "$ZANNA" codegen arm64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
                 result=$(time_executable "$native_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"native-arm64\":$result"
@@ -444,7 +444,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_X86_64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: native-x86_64...               "
             native_exe="$TMPDIR_BENCH/native_x64_$prog"
-            if "$VIPER" codegen x64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
+            if "$ZANNA" codegen x64 "$il_file" -O2 -o "$native_exe" >/dev/null 2>&1; then
                 result=$(time_executable "$native_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"native-x86_64\":$result"
@@ -461,7 +461,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: zia-arm64...                   "
             zia_exe="$TMPDIR_BENCH/zia_arm64_$prog"
-            if "$VIPER" build "$ZIA_DIR/$prog.zia" -o "$zia_exe" -O2 --arch arm64 >/dev/null 2>&1; then
+            if "$ZANNA" build "$ZIA_DIR/$prog.zia" -o "$zia_exe" -O2 --arch arm64 >/dev/null 2>&1; then
                 result=$(time_executable "$zia_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"zia-arm64\":$result"
@@ -478,7 +478,7 @@ print(','.join(parts))
         if [[ "$HAS_NATIVE_ARM64" == "1" ]]; then
             log_progress "\r  [$completed_benchmarks/$total_benchmarks] $prog: basic-arm64...                 "
             bas_exe="$TMPDIR_BENCH/basic_arm64_$prog"
-            if "$VIPER" build "$BAS_DIR/$prog.bas" -o "$bas_exe" -O2 --arch arm64 >/dev/null 2>&1; then
+            if "$ZANNA" build "$BAS_DIR/$prog.bas" -o "$bas_exe" -O2 --arch arm64 >/dev/null 2>&1; then
                 result=$(time_executable "$bas_exe" "$ITERATIONS" "$WARMUP")
                 [[ -n "$modes_json" ]] && modes_json="$modes_json,"
                 modes_json="$modes_json\"basic-arm64\":$result"

@@ -1,11 +1,11 @@
 // test_url_ratelimit.zia — Network.Url, Network.RateLimiter
 module TestUrlRateLimit;
 
-bind Viper.Terminal;
+bind Zanna.Terminal;
 
 func start() {
     // --- Url: parse ---
-    var u = Viper.Network.Url.Parse("https://user:pass@example.com:8080/path/to?key=val&a=b#frag");
+    var u = Zanna.Network.Url.Parse("https://user:pass@example.com:8080/path/to?key=val&a=b#frag");
     Say(u.Scheme);
     Say(u.Host);
     SayInt(u.Port);
@@ -24,19 +24,19 @@ func start() {
     SayBool(u.HasQueryParam("miss"));
 
     // --- Url: static methods ---
-    Say(Viper.Text.Codec.UrlEncode("hello world&foo=bar"));
-    Say(Viper.Text.Codec.UrlDecode("hello%20world%26foo%3Dbar"));
-    SayBool(Viper.Network.Url.IsValid("https://example.com"));
-    SayBool(Viper.Network.Url.IsValid("not a url"));
+    Say(Zanna.Text.Codec.UrlEncode("hello world&foo=bar"));
+    Say(Zanna.Text.Codec.UrlDecode("hello%20world%26foo%3Dbar"));
+    SayBool(Zanna.Network.Url.IsValid("https://example.com"));
+    SayBool(Zanna.Network.Url.IsValid("not a url"));
 
     // --- Url: simple parse ---
-    var u2 = Viper.Network.Url.Parse("http://localhost/api/v1");
+    var u2 = Zanna.Network.Url.Parse("http://localhost/api/v1");
     Say(u2.Scheme);
     Say(u2.Host);
     Say(u2.Path);
 
     // --- RateLimiter ---
-    var rl = new Viper.Network.RateLimiter(5, 10.0);
+    var rl = new Zanna.Network.RateLimiter(5, 10.0);
     SayInt(rl.Available);
     SayInt(rl.Max);
     SayBool(rl.TryAcquire());

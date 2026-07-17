@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::linker {
+namespace zanna::codegen::linker {
 namespace {
 
 /// @brief Strip the COFF __imp_ prefix used for Windows IAT-thunk references.
@@ -986,4 +986,4 @@ bool generateWindowsImports(LinkArch arch,
     return true;
 }
 
-} // namespace viper::codegen::linker
+} // namespace zanna::codegen::linker

@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw.c
-// Purpose: Software rasterizer backend for Viper.Graphics3D. Implements the
+// Purpose: Software rasterizer backend for Zanna.Graphics3D. Implements the
 //   vgfx3d_backend_t vtable using CPU-based edge-function rasterization.
 //
 // Key invariants:
@@ -28,7 +28,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -612,9 +612,9 @@ static int64_t sw_default_worker_count(void) {
     return sw_clamp_worker_count(rt_parallel_default_workers());
 }
 
-/// @brief Resolve VIPER_3D_SW_THREADS into a deterministic worker budget.
+/// @brief Resolve ZANNA_3D_SW_THREADS into a deterministic worker budget.
 static int64_t sw_resolve_worker_count_from_env(void) {
-    const char *env = getenv("VIPER_3D_SW_THREADS");
+    const char *env = getenv("ZANNA_3D_SW_THREADS");
     char *end = NULL;
     long long parsed;
     if (!env || !*env)
@@ -762,7 +762,7 @@ static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {
 #elif RT_PLATFORM_WINDOWS
     if (strcmp(name, "d3d11") == 0)
         return &vgfx3d_d3d11_backend;
-#elif RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
+#elif RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     if (strcmp(name, "opengl") == 0)
         return &vgfx3d_opengl_backend;
 #endif
@@ -780,7 +780,7 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
     const vgfx3d_backend_t *backend;
 
     /* Only honor overrides for backends compiled on this platform. */
-    const char *env = getenv("VIPER_3D_BACKEND");
+    const char *env = getenv("ZANNA_3D_BACKEND");
     if (env) {
         backend = vgfx3d_backend_from_name(env);
         if (backend)
@@ -796,12 +796,12 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
     /* Several Windows-on-ARM GPU stacks expose D3D11 but crash inside the
      * display driver during Present. Keep x64 on D3D11, but default ARM64 to
      * the portable backend so Canvas3D demos launch reliably. Users can still
-     * opt into D3D11 with VIPER_3D_BACKEND=d3d11. */
+     * opt into D3D11 with ZANNA_3D_BACKEND=d3d11. */
     platform = VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64;
 #else
     platform = VGFX3D_BACKEND_PLATFORM_WINDOWS;
 #endif
-#elif RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
+#elif RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     platform = VGFX3D_BACKEND_PLATFORM_LINUX;
 #endif
 
@@ -811,4 +811,4 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 
 #else
 typedef int rt_graphics_disabled_tu_guard;
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

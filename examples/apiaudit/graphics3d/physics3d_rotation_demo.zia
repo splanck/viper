@@ -4,9 +4,9 @@
 
 module Physics3DRotationDemo;
 
-bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Zanna.Graphics3D;
+bind Zanna.Math;
+bind Zanna.Terminal;
 
 func start() {
     Say("=== Physics3D Rotation Demo ===");

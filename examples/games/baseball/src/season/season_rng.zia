@@ -6,7 +6,7 @@
 //          season layer needs MULTIPLE independent streams whose state must
 //          survive save/load (plan 15 § RNG handling).
 //
-//          The single-game engine uses the runtime's static `Viper.Math.
+//          The single-game engine uses the runtime's static `Zanna.Math.
 //          Random` (one global stream); the season layer uses one
 //          `SeasonRng` instance per long-lived stream and persists their
 //          `state` field via `persistence.zia`.

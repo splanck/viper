@@ -2,10 +2,10 @@
 
 ## Code
 
-All game code is original Zia, part of the Viper project, under the GNU GPL v3.
+All game code is original Zia, part of the Zanna project, under the GNU GPL v3.
 See the repository `LICENSE`. No external code dependencies — every system
 (movement, ballistics, AI, level tech, economy, UI, FX, audio mix) is written
-from scratch on the Viper runtime.
+from scratch on the Zanna runtime.
 
 ## Art & audio
 
@@ -33,6 +33,6 @@ fallback so a checkout without `assets_src/` runs and tests identically.
 
 ## Engine
 
-Built on the Viper toolchain (IL-based compiler → VM / native codegen) and its
+Built on the Zanna toolchain (IL-based compiler → VM / native codegen) and its
 3D runtime (Graphics3D / Game3D / Physics3D / Sound). See the top-level project
 documentation.

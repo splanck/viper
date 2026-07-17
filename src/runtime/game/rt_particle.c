@@ -1,12 +1,12 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/game/rt_particle.c
-// Purpose: CPU particle emitter for Viper games. Spawns, simulates, and renders
+// Purpose: CPU particle emitter for Zanna games. Spawns, simulates, and renders
 //   disc-shaped particles with configurable lifetime, speed, angle range,
 //   gravity, size, per-particle color, optional fade-out, and optional shrink.
 //   Designed for effects like dust, sparks, smoke, blood splatter, and
@@ -39,7 +39,7 @@
 //
 // Links: src/runtime/game/rt_particle.h (public API),
 //        src/runtime/graphics/rt_pixels.h (rt_pixels_draw_disc for batch draw),
-//        docs/viperlib/game.md (Particle section)
+//        docs/zannalib/game.md (Particle section)
 //
 //===----------------------------------------------------------------------===//
 
@@ -150,25 +150,25 @@ rt_particle_snapshot rt_particle_snapshot_new(double x, double y, double size, i
 
 double rt_particle_snapshot_x(rt_particle_snapshot snapshot) {
     snapshot =
-        checked_snapshot(snapshot, "ParticleSnapshot.X: expected Viper.Game.ParticleSnapshot");
+        checked_snapshot(snapshot, "ParticleSnapshot.X: expected Zanna.Game.ParticleSnapshot");
     return snapshot ? snapshot->x : 0.0;
 }
 
 double rt_particle_snapshot_y(rt_particle_snapshot snapshot) {
     snapshot =
-        checked_snapshot(snapshot, "ParticleSnapshot.Y: expected Viper.Game.ParticleSnapshot");
+        checked_snapshot(snapshot, "ParticleSnapshot.Y: expected Zanna.Game.ParticleSnapshot");
     return snapshot ? snapshot->y : 0.0;
 }
 
 double rt_particle_snapshot_size(rt_particle_snapshot snapshot) {
     snapshot =
-        checked_snapshot(snapshot, "ParticleSnapshot.Size: expected Viper.Game.ParticleSnapshot");
+        checked_snapshot(snapshot, "ParticleSnapshot.Size: expected Zanna.Game.ParticleSnapshot");
     return snapshot ? snapshot->size : 0.0;
 }
 
 int64_t rt_particle_snapshot_color(rt_particle_snapshot snapshot) {
     snapshot =
-        checked_snapshot(snapshot, "ParticleSnapshot.Color: expected Viper.Game.ParticleSnapshot");
+        checked_snapshot(snapshot, "ParticleSnapshot.Color: expected Zanna.Game.ParticleSnapshot");
     return snapshot ? snapshot->color : 0;
 }
 
@@ -426,7 +426,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
 /// @brief Destroy a particle emitter and free its particle pool.
 void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Destroy: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Destroy: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (rt_obj_release_check0(emitter))
@@ -436,7 +436,7 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
 /// @brief Set the emission origin point (new particles spawn here).
 void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y) {
     emitter = checked_emitter(emitter,
-                              "ParticleEmitter.SetPosition: expected Viper.Game.ParticleEmitter");
+                              "ParticleEmitter.SetPosition: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->x = particle_finite_or(x, emitter->x);
@@ -445,20 +445,20 @@ void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, dou
 
 /// @brief Get the emitter's X emission origin.
 double rt_particle_emitter_x(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.X: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.X: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->x : 0.0;
 }
 
 /// @brief Get the emitter's Y emission origin.
 double rt_particle_emitter_y(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Y: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.Y: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->y : 0.0;
 }
 
 /// @brief Set the emission rate in particles per update tick.
 void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetRate: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetRate: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(rate) || rate < 0.0)
@@ -470,7 +470,7 @@ void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
 
 /// @brief Get the current emission rate (particles per tick).
 double rt_particle_emitter_rate(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Rate: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.Rate: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->rate : 0.0;
 }
 
@@ -479,7 +479,7 @@ void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
                                       int64_t min_frames,
                                       int64_t max_frames) {
     emitter = checked_emitter(emitter,
-                              "ParticleEmitter.SetLifetime: expected Viper.Game.ParticleEmitter");
+                              "ParticleEmitter.SetLifetime: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (min_frames < 1)
@@ -497,7 +497,7 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
                                       double min_angle,
                                       double max_angle) {
     emitter = checked_emitter(emitter,
-                              "ParticleEmitter.SetVelocity: expected Viper.Game.ParticleEmitter");
+                              "ParticleEmitter.SetVelocity: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(min_speed) || min_speed < 0.0)
@@ -517,7 +517,7 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
 /// @brief Set constant gravity acceleration applied to all particles each tick.
 void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, double gy) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetGravity: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetGravity: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->gx = particle_finite_or(gx, 0.0);
@@ -527,7 +527,7 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
 /// @brief Set the color for newly spawned particles (0xAARRGGBB, alpha in high byte).
 void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetColor: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetColor: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->color = color;
@@ -536,7 +536,7 @@ void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
 /// @brief Set the initial size range for new particles (each gets a random value).
 void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetSize: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetSize: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(min_size) || min_size < 0.1)
@@ -554,7 +554,7 @@ void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, 
 /// @brief Enable or disable alpha fade-out as particles age toward their lifetime end.
 void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_out) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetFadeOut: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetFadeOut: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->fade_out = fade_out ? 1 : 0;
@@ -563,7 +563,7 @@ void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_o
 /// @brief Enable or disable size shrinking as particles age toward their lifetime end.
 void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetShrink: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.SetShrink: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->shrink = shrink ? 1 : 0;
@@ -572,7 +572,7 @@ void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink) 
 /// @brief Begin continuous particle emission at the configured rate.
 void rt_particle_emitter_start(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Start: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Start: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->emitting = 1;
@@ -580,7 +580,7 @@ void rt_particle_emitter_start(rt_particle_emitter emitter) {
 
 /// @brief Stop continuous emission (existing particles continue to live).
 void rt_particle_emitter_stop(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Stop: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.Stop: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->emitting = 0;
@@ -589,28 +589,28 @@ void rt_particle_emitter_stop(rt_particle_emitter emitter) {
 /// @brief Check whether the emitter is currently in continuous emission mode.
 int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.IsEmitting: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.IsEmitting: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->emitting : 0;
 }
 
 /// @brief Check whether alpha fade-out is enabled.
 int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.FadeOut: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.FadeOut: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->fade_out : 0;
 }
 
 /// @brief Check whether size shrinking is enabled.
 int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Shrink: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Shrink: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->shrink : 0;
 }
 
 /// @brief Get the current emission color (0xAARRGGBB, alpha in high byte).
 int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Color: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Color: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->color : 0;
 }
 
@@ -651,7 +651,7 @@ static void emit_one(struct rt_particle_emitter_impl *e) {
 /// @brief Emit a one-shot burst of particles (up to the remaining capacity).
 void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Burst: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Burst: expected Zanna.Game.ParticleEmitter");
     if (!emitter || count < 1)
         return;
     for (int64_t i = 0; i < count && emitter->active_count < emitter->max_particles; i++) {
@@ -662,7 +662,7 @@ void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
 /// @brief Advance all particles by one tick — apply gravity, age, fade/shrink, and spawn new ones.
 void rt_particle_emitter_update(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Update: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Update: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
 
@@ -725,14 +725,14 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
 /// @brief Get the number of currently active (alive) particles.
 int64_t rt_particle_emitter_count(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Count: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Count: expected Zanna.Game.ParticleEmitter");
     return emitter ? emitter->active_count : 0;
 }
 
 /// @brief Kill all active particles immediately, resetting the pool to empty.
 void rt_particle_emitter_clear(rt_particle_emitter emitter) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.Clear: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.Clear: expected Zanna.Game.ParticleEmitter");
     if (!emitter)
         return;
     for (int64_t i = 0; i < emitter->max_particles; i++) {
@@ -749,7 +749,7 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                                double *out_y,
                                double *out_size,
                                int64_t *out_color) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.ParticleAt: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.ParticleAt: expected Zanna.Game.ParticleEmitter");
     if (!emitter || index < 0)
         return 0;
 
@@ -801,7 +801,7 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
                                            int64_t offset_x,
                                            int64_t offset_y) {
     emitter = checked_emitter(emitter,
-                              "ParticleEmitter.DrawToPixels: expected Viper.Game.ParticleEmitter");
+                              "ParticleEmitter.DrawToPixels: expected Zanna.Game.ParticleEmitter");
     if (!emitter || !pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
         return 0;
 
@@ -838,7 +838,7 @@ int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
                                     int64_t offset_x,
                                     int64_t offset_y) {
     emitter =
-        checked_emitter(emitter, "ParticleEmitter.DrawAt: expected Viper.Game.ParticleEmitter");
+        checked_emitter(emitter, "ParticleEmitter.DrawAt: expected Zanna.Game.ParticleEmitter");
     if (!emitter || !canvas || !rt_canvas_is_handle(canvas))
         return 0;
 

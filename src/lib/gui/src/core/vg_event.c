@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -575,13 +575,13 @@ static uint32_t translate_vgfx_modifiers(int vgfx_modifiers) {
     return modifiers;
 }
 
-/// @brief Copy one bounded ViperGFX composition payload into a toolkit event.
+/// @brief Copy one bounded ZannaGFX composition payload into a toolkit event.
 /// @details Both event layers use inline value storage. The defensive second clamp protects
 ///          against malformed embedding callers even though platform adapters already enforce the
-///          ViperGFX capacity. Selection/replacement offsets remain in codepoint units until the
+///          ZannaGFX capacity. Selection/replacement offsets remain in codepoint units until the
 ///          focused text editor can convert them against its actual strings.
 /// @param event Destination toolkit event whose type has already been selected.
-/// @param platform_event Source ViperGFX event carrying composition data.
+/// @param platform_event Source ZannaGFX event carrying composition data.
 static void translate_vgfx_composition(vg_event_t *event, const vgfx_event_t *platform_event) {
     if (!event || !platform_event)
         return;

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#ifdef ZANNA_ENABLE_GRAPHICS
 
 /// @brief Six frustum planes in Ax+By+Cz+D=0 form (normalized).
 /// Order: 0=left, 1=right, 2=bottom, 3=top, 4=near, 5=far.
@@ -75,4 +75,4 @@ void vgfx3d_compute_mesh_aabb(const void *vertices,
                               float out_min[3],
                               float out_max[3]);
 
-#endif /* VIPER_ENABLE_GRAPHICS */
+#endif /* ZANNA_ENABLE_GRAPHICS */

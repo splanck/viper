@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the GNU GPL v3.
+// Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -72,7 +72,7 @@ TypePtr Parser::parseBaseType() {
         SourceLoc loc = nameTok.loc;
         std::string name = nameTok.text;
 
-        // Handle qualified type names: Module.Type, Viper.Collections.List, etc.
+        // Handle qualified type names: Module.Type, Zanna.Collections.List, etc.
         while (match(TokenKind::Dot)) {
             if (!check(TokenKind::Identifier)) {
                 error("expected identifier after '.' in qualified type name");
