@@ -83,6 +83,12 @@
 //
 // =============================================================================
 
+/// @brief Whether the terminal is currently on the alternate screen buffer.
+/// @details Tracks one alt-screen state so SetAltScreen is an idempotent toggle
+///          (enter/exit and batch only on state changes). On POSIX, the exit
+///          handler also uses this state to balance the screen and batch.
+static int g_alt_screen_active = 0;
+
 #if !defined(_WIN32)
 /// @brief Cached original terminal settings (before raw mode).
 static struct termios g_orig_termios;
@@ -101,12 +107,6 @@ static int g_stdin_fd = -1;
 
 /// @brief Whether atexit handler has been registered.
 static int g_atexit_registered = 0;
-
-/// @brief Whether the terminal is currently on the alternate screen buffer.
-/// @details Tracks one alt-screen state so SetAltScreen is an idempotent toggle
-///          (enter/exit and batch only on state changes) and the exit handler can
-///          balance the screen/batch on normal process exit (VDOC-220).
-static int g_alt_screen_active = 0;
 
 // Forward declaration: defined below, but the exit handler needs it (VDOC-220).
 static void out_str(const char *s);

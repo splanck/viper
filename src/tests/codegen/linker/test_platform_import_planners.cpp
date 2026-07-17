@@ -262,6 +262,9 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "CreateFile2",
                                         "GetFileInformationByHandleEx",
                                         "CreateSymbolicLinkW",
+                                        "SetConsoleCtrlHandler",
+                                        "LockFileEx",
+                                        "UnlockFileEx",
                                         "SleepConditionVariableSRW",
                                         "TryAcquireSRWLockExclusive",
                                         "SetFocus",
@@ -292,6 +295,9 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "_execute_onexit_table",
                                         "_crt_at_quick_exit",
                                         "__stdio_common_vsprintf_s",
+                                        "__stdio_common_vswprintf",
+                                        "_get_osfhandle",
+                                        "_wgetenv",
                                         "_rotl",
                                         "_beginthreadex",
                                         "__intrinsic_setjmp",
@@ -318,7 +324,13 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadIconW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadImageW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "GetModuleFileNameW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "LockFileEx"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "SetConsoleCtrlHandler"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "UnlockFileEx"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "__stdio_common_vswprintf"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_get_osfhandle"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_wgetenv"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
     EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
@@ -329,9 +341,12 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
 TEST(PlatformImportPlanners, WindowsPlannerMapsDebugOnlyUcrtImports) {
     WindowsImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, {"_free_dbg"}, true, plan, err));
+    ASSERT_TRUE(
+        generateWindowsImports(LinkArch::X86_64, {"_CrtDbgReport", "_free_dbg"}, true, plan, err));
 
     EXPECT_TRUE(importPlanHasDll(plan, "ucrtbased.dll"));
+    EXPECT_TRUE(objHasSymbol(plan.obj, "__imp__CrtDbgReport"));
+    EXPECT_TRUE(objHasSymbol(plan.obj, "_CrtDbgReport"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp__free_dbg"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "_free_dbg"));
 }

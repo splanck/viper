@@ -611,7 +611,7 @@ static void test_like_strict_utf8() {
 ///        malformed UTF-8 under the byte-width contract (VDOC-167).
 static void test_pad_rejects_multibyte_padding() {
     rt_string base = make_str("x");
-    const char kai[] = {(char)0xE7, (char)0x95, (char)0x8C, 0}; // 界
+    const char kai[] = "\xE7\x95\x8C"; // 界
     rt_string wide_pad = rt_string_from_bytes(kai, 3);
 
     jmp_buf env;

@@ -33,12 +33,12 @@
 #include "rt_bytes.h"
 #include "rt_file.h"
 
+#include "network/rt_entropy_platform.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "network/rt_entropy_platform.h"
 
 #include "rt_platform.h"
 
@@ -50,8 +50,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <setjmp.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,8 +102,7 @@ static void rt_fileext_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
-static void rt_fileext_save_trap_error(
-    char *buffer, size_t buffer_size, const char *fallback) {
+static void rt_fileext_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
@@ -207,6 +206,28 @@ static int rt_fileext_open(const char *path, int flags, int pmode) {
     int fd = _wopen(wide, flags | _O_NOINHERIT, pmode);
     free(wide);
     return fd;
+}
+
+/// @brief Acquire an exclusive whole-file lock for a Windows append descriptor.
+/// @details Serializes appends opened through separate CRT descriptors because
+///          `_O_APPEND` does not make the seek-and-write sequence atomic on Windows.
+static int rt_fileext_lock_append(int fd, OVERLAPPED *lock_state) {
+    intptr_t raw_handle = _get_osfhandle(fd);
+    if (raw_handle == -1)
+        return 0;
+    memset(lock_state, 0, sizeof(*lock_state));
+    return LockFileEx(
+               (HANDLE)raw_handle, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD, lock_state)
+               ? 1
+               : 0;
+}
+
+/// @brief Release a whole-file append lock previously acquired on @p fd.
+static int rt_fileext_unlock_append(int fd, OVERLAPPED *lock_state) {
+    intptr_t raw_handle = _get_osfhandle(fd);
+    if (raw_handle == -1)
+        return 0;
+    return UnlockFileEx((HANDLE)raw_handle, 0, MAXDWORD, MAXDWORD, lock_state) ? 1 : 0;
 }
 
 /// @brief Stat a file at a UTF-8 path via `_wstat` (Windows), converting through wide-char.
@@ -744,10 +765,13 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents) {
 
 /// What: Append @p text and a newline to @p path (creating it when missing).
 /// Why:  Provide a convenient "append line" helper for Viper.IO.File.
-/// How:  Opens with O_APPEND and writes the UTF-8 bytes plus '\n' as one buffer.
+/// How:  Opens with O_APPEND and writes the UTF-8 bytes plus '\n' as one buffer,
+///       using a whole-file byte-range lock on Windows.
 /// @brief Append `text` and then an LF to the end of a file, creating it if absent.
 /// @details The text and its trailing LF are combined into ONE buffer and
-///          emitted with a single `write()` on the `O_APPEND` fd. On POSIX each
+///          emitted with a single `write()` on the `O_APPEND` fd. On Windows,
+///          a whole-file `LockFileEx` range serializes the full write loop
+///          because CRT `_O_APPEND` descriptors can otherwise race. On POSIX each
 ///          `write()` to an `O_APPEND` file appends atomically at end-of-file,
 ///          so the whole line lands without interleaving another appender's
 ///          bytes — as long as the line fits in one write (VDOC-182: this
@@ -786,27 +810,44 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
         memcpy(line, data, len);
     line[len] = '\n';
 
+#if RT_PLATFORM_WINDOWS
+    OVERLAPPED lock_state;
+    if (!rt_fileext_lock_append(fd, &lock_state)) {
+        free(line);
+        (void)close(fd);
+        rt_trap("Viper.IO.File.AppendLine: failed to lock file");
+        return;
+    }
+#endif
+
     size_t total = len + 1;
     size_t written = 0;
+    int write_failed = 0;
     while (written < total) {
         ssize_t n = rt_posix_write(fd, line + written, total - written);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            free(line);
-            (void)close(fd);
-            rt_trap("Viper.IO.File.AppendLine: failed to write file");
-            return;
+            write_failed = 1;
+            break;
         }
         if (n == 0) {
-            free(line);
-            (void)close(fd);
-            rt_trap("Viper.IO.File.AppendLine: failed to write file");
-            return;
+            write_failed = 1;
+            break;
         }
         written += (size_t)n;
     }
+#if RT_PLATFORM_WINDOWS
+    if (!rt_fileext_unlock_append(fd, &lock_state))
+        write_failed = 1;
+#endif
     free(line);
+
+    if (write_failed) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.AppendLine: failed to write file");
+        return;
+    }
 
     rt_fileext_close_or_trap(fd, "Viper.IO.File.AppendLine: failed to close file");
 }
@@ -1045,8 +1086,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
             ++i;
         size_t end = i;
 
-        line =
-            (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
+        line = (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
         rt_seq_push(seq, (void *)line);
         rt_string_unref((rt_string)line);
         line = NULL;

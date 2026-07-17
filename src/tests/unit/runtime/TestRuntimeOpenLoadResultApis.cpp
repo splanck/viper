@@ -19,10 +19,11 @@
 
 extern "C" {
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_pty.h"
 #include "rt_result.h"
-#include "rt_seq.h"
 #include "rt_scene_editor.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_tls.h"
 }
@@ -72,11 +73,17 @@ TEST(RuntimeOpenLoadResultApis, PtyOpenSurfacesExecFailure) {
     expect_err_with_message(result);
     release_obj(result);
 
-    // A bare program name with an explicit environment resolves via PATH and
-    // opens successfully (VDOC-213 PATH consistency).
+    // A bare program name resolves through the platform's native command
+    // search and opens successfully (VDOC-213 PATH consistency). POSIX pins a
+    // minimal environment to exercise explicit PATH handling; Windows inherits
+    // the environment so CreateProcess can resolve cmd.exe.
+#if RT_PLATFORM_WINDOWS
+    void *ok = rt_pty_open_result(rt_const_cstr("cmd.exe"), nullptr, nullptr, nullptr, 80, 24);
+#else
     void *env = rt_seq_new();
     rt_seq_push(env, rt_const_cstr("PATH=/usr/bin:/bin"));
     void *ok = rt_pty_open_result(rt_const_cstr("sh"), nullptr, nullptr, env, 80, 24);
+#endif
     EXPECT_EQ(rt_result_is_ok(ok), 1);
 
     // VDOC-214: Resize returns TRUE only when the backend actually applied the
@@ -85,6 +92,9 @@ TEST(RuntimeOpenLoadResultApis, PtyOpenSurfacesExecFailure) {
     ASSERT_TRUE(session != nullptr);
     EXPECT_EQ(rt_pty_resize(session, 120, 40), 1);
     release_obj(ok);
+#if !RT_PLATFORM_WINDOWS
+    release_obj(env);
+#endif
 }
 
 // VDOC-215: the PTY LastError buffer is thread-local, so many threads triggering
@@ -99,7 +109,8 @@ TEST(RuntimeOpenLoadResultApis, PtyLastErrorIsThreadLocal) {
             for (int i = 0; i < 500; ++i) {
                 // An empty program is always a validation error, independent of
                 // PTY backend availability.
-                void *res = rt_pty_open_result(rt_const_cstr(""), nullptr, nullptr, nullptr, 80, 24);
+                void *res =
+                    rt_pty_open_result(rt_const_cstr(""), nullptr, nullptr, nullptr, 80, 24);
                 release_obj(res);
                 rt_string err = rt_pty_last_error();
                 // This thread just failed, so its own LastError is non-empty and

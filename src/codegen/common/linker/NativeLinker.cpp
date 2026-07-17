@@ -499,9 +499,12 @@ static ObjSection makeWindowsHelpersDataSec() {
 /// @param dynamicSyms     Currently undefined symbols — guides which helpers to emit.
 /// @param haveVmTrapDefault When true, Viper's runtime already provides vm_trap.
 /// @param needTlsIndex    When true, emit `_tls_index` and `_tls_used` placeholders.
+/// @param debugWindowsRuntime When false, suppress Debug-CRT-only report and validation hooks
+///        retained by Debug-built archives so release-runtime package links stay redistributable.
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                   bool haveVmTrapDefault,
-                                  bool needTlsIndex) {
+                                  bool needTlsIndex,
+                                  bool debugWindowsRuntime) {
     ObjFile obj = makeWindowsHelpersObj("<win64-helpers>", 0x8664);
     ObjSection textSec = makeWindowsHelpersTextSec();
     ObjSection dataSec = makeWindowsHelpersDataSec();
@@ -647,6 +650,22 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
     if (needsHelper("__CxxFrameHandler4")) {
         const uint32_t idx = addRetFn("__CxxFrameHandler4", {0xC3});
         addImportAlias("__CxxFrameHandler4", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_CrtDbgReport")) {
+        const uint32_t idx = addRetFn("_CrtDbgReport", {0x31, 0xC0, 0xC3});
+        addImportAlias("_CrtDbgReport", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_CrtDbgReportW")) {
+        const uint32_t idx = addRetFn("_CrtDbgReportW", {0x31, 0xC0, 0xC3});
+        addImportAlias("_CrtDbgReportW", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_invalid_parameter")) {
+        const uint32_t idx = addRetFn("_invalid_parameter", {0xC3});
+        addImportAlias("_invalid_parameter", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("invalid_parameter")) {
+        const uint32_t idx = addRetFn("invalid_parameter", {0xC3});
+        addImportAlias("invalid_parameter", idx);
     }
     if (needsHelper("??_7type_info@@6B@")) {
         const uint32_t idx = addData("??_7type_info@@6B@", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
@@ -828,7 +847,8 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 
 ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                     bool haveVmTrapDefault,
-                                    bool needTlsIndex) {
+                                    bool needTlsIndex,
+                                    bool debugWindowsRuntime) {
     ObjFile obj = makeWindowsHelpersObj("<winarm64-helpers>", 0xAA64);
     ObjSection textSec = makeWindowsHelpersTextSec();
     ObjSection dataSec = makeWindowsHelpersDataSec();
@@ -951,6 +971,22 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     if (needsHelper("__GSHandlerCheck_EH4")) {
         const uint32_t idx = addRetFn("__GSHandlerCheck_EH4");
         addImportAlias("__GSHandlerCheck_EH4", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_CrtDbgReport")) {
+        const uint32_t idx = addRetImmFn("_CrtDbgReport", 0);
+        addImportAlias("_CrtDbgReport", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_CrtDbgReportW")) {
+        const uint32_t idx = addRetImmFn("_CrtDbgReportW", 0);
+        addImportAlias("_CrtDbgReportW", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("_invalid_parameter")) {
+        const uint32_t idx = addRetFn("_invalid_parameter");
+        addImportAlias("_invalid_parameter", idx);
+    }
+    if (!debugWindowsRuntime && needsHelper("invalid_parameter")) {
+        const uint32_t idx = addRetFn("invalid_parameter");
+        addImportAlias("invalid_parameter", idx);
     }
     if (needsHelper("_RTC_CheckStackVars")) {
         const uint32_t idx = addRetFn("_RTC_CheckStackVars");
@@ -1390,8 +1426,10 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             try {
                 helperObj =
                     (opts.arch == LinkArch::AArch64)
-                        ? generateWindowsArm64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex)
-                        : generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
+                        ? generateWindowsArm64Helpers(
+                              dynamicSyms, haveVmTrapDefault, needTlsIndex, debugWindowsRuntime)
+                        : generateWindowsX64Helpers(
+                              dynamicSyms, haveVmTrapDefault, needTlsIndex, debugWindowsRuntime);
             } catch (const std::exception &ex) {
                 err << "error: failed to generate Windows helper object: " << ex.what() << "\n";
                 return 1;

@@ -1609,6 +1609,10 @@ void *rt_game_scene_load_json(rt_string text) {
     SCENE_CATCH(nullptr)
 }
 
+} // extern "C"
+
+namespace {
+
 /// @brief Return the first error-severity diagnostic message, or empty.
 /// @details The `Err` message must describe the actual fatal problem. `lastError`
 ///          holds the newest diagnostic of *any* severity, so a non-fatal warning
@@ -1655,6 +1659,10 @@ static void *scene_load_to_result(void *scene, const char *fallback) {
     releaseObject(scene);
     return result;
 }
+
+} // namespace
+
+extern "C" {
 
 /// @brief `SceneDocument.LoadJsonResult(text)` — load scene JSON as a Result.
 /// @param text Scene JSON text.

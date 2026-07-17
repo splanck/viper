@@ -710,7 +710,54 @@ int main() {
         CodeSection text;
         CodeSection rodata;
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t reportImport = text.findOrDeclareSymbol("__imp__CrtDbgReport");
+        text.emit8(0xFF); // call qword ptr [rip+disp32]
+        text.emit8(0x15);
+        text.addRelocation(RelocKind::PCRel32, reportImport, -4);
+        text.emit32LE(0);
+        const uint32_t invalidParameterImport =
+            text.findOrDeclareSymbol("__imp__invalid_parameter");
+        text.emit8(0xFF); // call qword ptr [rip+disp32]
+        text.emit8(0x15);
+        text.addRelocation(RelocKind::PCRel32, invalidParameterImport, -4);
+        text.emit32LE(0);
+        text.emit8(0x31); // xor eax, eax
+        text.emit8(0xC0);
+        text.emit8(0xC3); // ret
+
+        const std::string objPath = tmpPath("win_x64_release_crt_report.obj");
+        const std::string exePath = tmpPath("win_x64_release_crt_report.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::X86_64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+        opts.windowsDebugRuntime = false;
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(!containsAscii(exe, "ucrtbased.dll"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("printf");
+        text.findOrDeclareSymbol("__imp__CrtDbgReport");
         text.emit32LE(0xD2800000U); // mov x0, #0
         text.emit32LE(0xD65F03C0U); // ret
 
@@ -746,6 +793,7 @@ int main() {
         CodeSection rodata;
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("printf");
+        text.findOrDeclareSymbol("__imp__CrtDbgReport");
         text.emit32LE(0xD2800000U); // mov x0, #0
         text.emit32LE(0xD65F03C0U); // ret
 

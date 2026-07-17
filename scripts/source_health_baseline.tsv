@@ -18,9 +18,9 @@ graphics_disabled_test_markers 141
 fuzz_targets_missing_corpus 0
 fuzz_corpus_seed_files 26
 fuzz_harness_registrations 18
-platform_skip_markers 121
+platform_skip_markers 143
 platform_policy_allowlist_entries 33
-raw_platform_macro_occurrences 740
+raw_platform_macro_occurrences 747
 mega_files_over_4000_lines 13
 manual_alloc_hotspots_over_70 24
 sanitizer_coverage_options 11
@@ -37,4 +37,4 @@ debug_adapter_protocol_markers 97
 packaging_verifier_entrypoints 40
 packaging_negative_test_markers 18
 todo_fixme_markers 3
-raw_not_implemented_markers 544
+raw_not_implemented_markers 546

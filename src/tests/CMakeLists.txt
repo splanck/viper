@@ -146,10 +146,23 @@ if (VIPER_BASH_EXECUTABLE)
                 LABELS "tools;requires_posix_shell")
     endif ()
 
-    add_test(NAME coverage_script_self_test
-            COMMAND ${VIPER_BASH_COMMAND}
-            scripts/coverage.sh
-            --self-test)
+    if (WIN32 AND CLANG_EXECUTABLE)
+        get_filename_component(_viper_coverage_llvm_bin "${CLANG_EXECUTABLE}" DIRECTORY)
+        string(REPLACE ";" "\\;" _viper_coverage_host_path "$ENV{PATH}")
+        add_test(NAME coverage_script_self_test
+                COMMAND "${CMAKE_COMMAND}" -E env
+                "PATH=${_viper_coverage_llvm_bin}\;${_viper_coverage_host_path}"
+                ${VIPER_BASH_COMMAND}
+                scripts/coverage.sh
+                --self-test)
+        unset(_viper_coverage_host_path)
+        unset(_viper_coverage_llvm_bin)
+    else ()
+        add_test(NAME coverage_script_self_test
+                COMMAND ${VIPER_BASH_COMMAND}
+                scripts/coverage.sh
+                --self-test)
+    endif ()
     set_tests_properties(coverage_script_self_test PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "tools;requires_posix_shell")

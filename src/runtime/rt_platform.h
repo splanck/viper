@@ -290,6 +290,25 @@ static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int
 #endif
 }
 
+/// @brief Atomically compare-and-swap a 64-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update when it equals @p expected.
+/// @param expected In/out expected value; receives the observed value on failure.
+/// @param desired Value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
+static inline int rt_atomic_compare_exchange_i64(
+    volatile int64_t *ptr, int64_t *expected, int64_t desired, int success_order, int fail_order) {
+    (void)success_order;
+    (void)fail_order;
+    int64_t old = _InterlockedCompareExchange64((volatile long long *)ptr, desired, *expected);
+    if (old == *expected) {
+        return 1;
+    }
+    *expected = old;
+    return 0;
+}
+
 /// @brief Atomically add to a 64-bit signed integer on MSVC platforms.
 /// @param ptr Storage to update.
 /// @param value Increment to apply.
@@ -552,6 +571,8 @@ static inline void rt_atomic_store_f64(volatile double *ptr, const double *value
     _Generic((ptr),                                                                                \
         volatile int *: rt_atomic_compare_exchange_i32,                                            \
         int *: rt_atomic_compare_exchange_i32,                                                     \
+        volatile int64_t *: rt_atomic_compare_exchange_i64,                                        \
+        int64_t *: rt_atomic_compare_exchange_i64,                                                 \
         volatile size_t *: rt_atomic_compare_exchange_size,                                        \
         size_t *: rt_atomic_compare_exchange_size,                                                 \
         void *volatile *: rt_atomic_compare_exchange_ptr,                                          \

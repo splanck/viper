@@ -665,6 +665,7 @@ static void sse_plain_server_thread(int port) {
 /// @brief Responds with a caller-chosen header block and closes (for
 ///        validation-strictness probes).
 static std::string sse_bad_header_response;
+
 static void sse_bad_header_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
     if (!server) {
@@ -987,8 +988,7 @@ static void test_smtp_starttls_handshake_failure_is_clean() {
                                     rt_const_cstr("b"));
     test_result("Handshake failure surfaces as Err", rt_result_is_err(res) == 1);
     rt_string err = rt_result_unwrap_err_str(res);
-    test_result("Error names the TLS handshake",
-                strstr(rt_string_cstr(err), "TLS") != nullptr);
+    test_result("Error names the TLS handshake", strstr(rt_string_cstr(err), "TLS") != nullptr);
     rt_string_unref(err);
     server.join();
 
@@ -1518,8 +1518,7 @@ static void test_smtp_validation_and_result_model() {
                                      rt_const_cstr("body"));
     test_result("NUL-truncating field surfaces as Err", rt_result_is_err(res2) == 1);
     rt_string err2 = rt_result_unwrap_err_str(res2);
-    test_result("NUL rejection names the cause",
-                strstr(rt_string_cstr(err2), "NUL") != nullptr);
+    test_result("NUL rejection names the cause", strstr(rt_string_cstr(err2), "NUL") != nullptr);
     rt_string_unref(err2);
     rt_string_unref(nul_subject);
 }
@@ -1958,8 +1957,7 @@ static void test_router_concurrent_add_and_match() {
     std::atomic<long> matches{0};
     auto matcher = [&]() {
         while (!stop.load()) {
-            void *m =
-                rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/warm/7"));
+            void *m = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/warm/7"));
             assert(m != nullptr);
             if (rt_obj_release_check0(m))
                 rt_obj_free(m);
@@ -1982,8 +1980,7 @@ static void test_router_concurrent_add_and_match() {
     t1.join();
     t2.join();
 
-    test_result("Concurrent adds all registered",
-                rt_http_router_count(router) == kRoutes + 1);
+    test_result("Concurrent adds all registered", rt_http_router_count(router) == kRoutes + 1);
     test_result("Matcher threads made progress during registration", matches.load() > 0);
     if (rt_obj_release_check0(router))
         rt_obj_free(router);
@@ -2649,7 +2646,8 @@ static void test_ws_server_services_client_frames() {
     // Broadcasts still reach the serviced client.
     rt_ws_server_broadcast(server, rt_const_cstr("news"));
     payload.clear();
-    test_result("WsServer broadcast text frame received", tcp_recv_ws_frame(tcp, &opcode, &payload));
+    test_result("WsServer broadcast text frame received",
+                tcp_recv_ws_frame(tcp, &opcode, &payload));
     test_result("WsServer broadcast opcode", opcode == 0x01);
     test_result("WsServer broadcast payload matches",
                 std::string(payload.begin(), payload.end()) == "news");
@@ -2729,18 +2727,21 @@ static void test_ws_server_bounded_handshake() {
 
     char request[256];
     snprintf(request, sizeof(request), "GET /chat HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n", port);
-    rt_tcp_send_all_raw(tcp, request, (int64_t)strlen(request));
+    std::string flooded_request(request);
     for (int i = 0; i < 150; i++) {
         char junk[64];
         int n = snprintf(junk, sizeof(junk), "X-Filler-%d: value\r\n", i);
-        rt_tcp_send_all_raw(tcp, junk, n);
+        flooded_request.append(junk, (size_t)n);
     }
+    // Submit the flood in one write. The server is expected to close as soon
+    // as it reaches its header limit; issuing one write per line races that
+    // correct close and can turn the later client writes into a send trap.
+    rt_tcp_send_all_raw(tcp, flooded_request.data(), (int64_t)flooded_request.size());
 
     // The flooded connection must never become a registered client, and the
     // server must stay healthy enough to upgrade a well-formed client next.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    test_result("Header flood never registers a client",
-                rt_ws_server_client_count(server) == 0);
+    test_result("Header flood never registers a client", rt_ws_server_client_count(server) == 0);
     rt_tcp_close(tcp);
     if (rt_obj_release_check0(tcp))
         rt_obj_free(tcp);

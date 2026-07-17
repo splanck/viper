@@ -135,6 +135,52 @@ static int dt_time_t_to_i64(time_t value, int64_t *out) {
     return 1;
 }
 
+static int dt_is_valid_datetime(int64_t year, int month, int day, int hour, int minute, int second);
+
+/// @brief Convert validated local civil fields to epoch seconds without a `-1` collision.
+/// @details Most C libraries allow the valid instant one second before the epoch
+///          to round-trip through `mktime` and `localtime`. The Windows CRT instead
+///          reports that instant as an error because its local-time conversion does
+///          not accept negative timestamps. In that case, advancing the same valid
+///          civil input by one second must map exactly to epoch zero; this uniquely
+///          distinguishes the valid `-1` instant from an unrepresentable input.
+static int dt_mktime_local_checked(struct tm *value,
+                                   int64_t year,
+                                   int month,
+                                   int day,
+                                   int hour,
+                                   int minute,
+                                   int second,
+                                   int64_t *out) {
+    if (!dt_is_valid_datetime(year, month, day, hour, minute, second))
+        return 0;
+
+    struct tm original = *value;
+    errno = 0;
+    time_t t = mktime(value);
+    if (t == (time_t)-1 && errno != 0) {
+        struct tm successor = original;
+        successor.tm_sec += 1;
+        successor.tm_isdst = -1;
+        errno = 0;
+        if (mktime(&successor) != (time_t)0)
+            return 0;
+        *out = -1;
+        return 1;
+    }
+
+    struct tm check_buf;
+    struct tm *check = rt_localtime_r(&t, &check_buf);
+    if (!check)
+        return 0;
+    if (check->tm_year != original.tm_year || check->tm_mon != original.tm_mon ||
+        check->tm_mday != original.tm_mday || check->tm_hour != original.tm_hour ||
+        check->tm_min != original.tm_min || check->tm_sec != original.tm_sec)
+        return 0;
+
+    return dt_time_t_to_i64(t, out);
+}
+
 /// @brief Combine `(seconds, millis_part)` into a single epoch-millis `int64_t`.
 /// @details Multiplies seconds by 1000 (checked) and adds the millis remainder
 ///          (checked). Either overflow path traps with `rt_trap_ovf()` rather than
@@ -761,8 +807,13 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
 ///          neither has to encode success in the returned instant (VDOC-225).
 /// @param out Receives the Unix timestamp on success; untouched on failure.
 /// @return 1 when the civil input is valid and representable, 0 otherwise.
-static int dt_create_impl(int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute,
-                          int64_t second, int64_t *out) {
+static int dt_create_impl(int64_t year,
+                          int64_t month,
+                          int64_t day,
+                          int64_t hour,
+                          int64_t minute,
+                          int64_t second,
+                          int64_t *out) {
     int64_t year_offset;
     int64_t month_offset;
     if (dt_checked_sub_i64(year, 1900, &year_offset))
@@ -790,27 +841,7 @@ static int dt_create_impl(int64_t year, int64_t month, int64_t day, int64_t hour
     tm.tm_sec = tm_sec;
     tm.tm_isdst = -1; // Let the system determine DST
 
-    const int orig_tm_year = tm.tm_year;
-    const int orig_tm_mon = tm.tm_mon;
-    const int orig_tm_mday = tm.tm_mday;
-    const int orig_tm_hour = tm.tm_hour;
-    const int orig_tm_min = tm.tm_min;
-    const int orig_tm_sec = tm.tm_sec;
-
-    errno = 0;
-    time_t t = mktime(&tm);
-    if (t == (time_t)-1 && errno != 0)
-        return 0;
-    struct tm check_buf;
-    struct tm *check = rt_localtime_r(&t, &check_buf);
-    if (!check)
-        return 0;
-    if (check->tm_year != orig_tm_year || check->tm_mon != orig_tm_mon ||
-        check->tm_mday != orig_tm_mday || check->tm_hour != orig_tm_hour ||
-        check->tm_min != orig_tm_min || check->tm_sec != orig_tm_sec)
-        return 0;
-
-    return dt_time_t_to_i64(t, out) ? 1 : 0;
+    return dt_mktime_local_checked(&tm, year, tm_mon + 1, tm_mday, tm_hour, tm_min, tm_sec, out);
 }
 
 /// @see rt_datetime_year For extracting components from a timestamp
@@ -1055,7 +1086,8 @@ static int dt_days_in_month(int64_t year, int month) {
 /// @details Checks month-aware day-of-month upper bounds and the standard 0-23 / 0-59
 ///          / 0-59 ranges for hour/minute/second. Returns 1 only when every component
 ///          is in range. Note: leap seconds (`second == 60`) are not accepted.
-static int dt_is_valid_datetime(int year, int month, int day, int hour, int minute, int second) {
+static int dt_is_valid_datetime(
+    int64_t year, int month, int day, int hour, int minute, int second) {
     int max_day = dt_days_in_month(year, month);
     return max_day > 0 && day >= 1 && day <= max_day && hour >= 0 && hour <= 23 && minute >= 0 &&
            minute <= 59 && second >= 0 && second <= 59;
@@ -1120,19 +1152,7 @@ static int dt_make_local_timestamp(
     tm.tm_sec = second;
     tm.tm_isdst = -1;
 
-    errno = 0;
-    time_t t = mktime(&tm);
-    if (t == (time_t)-1 && errno != 0)
-        return 0;
-    struct tm check_buf;
-    struct tm *check = rt_localtime_r(&t, &check_buf);
-    if (!check)
-        return 0;
-    if (check->tm_year != year - 1900 || check->tm_mon != month - 1 || check->tm_mday != day ||
-        check->tm_hour != hour || check->tm_min != minute || check->tm_sec != second)
-        return 0;
-
-    return dt_time_t_to_i64(t, out);
+    return dt_mktime_local_checked(&tm, year, month, day, hour, minute, second, out);
 }
 
 /// @brief Parse an ISO-8601-like datetime string into an epoch-seconds `int64_t`.
