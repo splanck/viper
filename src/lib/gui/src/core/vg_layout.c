@@ -157,30 +157,58 @@ vg_widget_t *vg_vbox_create(float spacing) {
 
 /// @brief Sets the gap between VBox children in pixels and marks the layout dirty.
 void vg_vbox_set_spacing(vg_widget_t *vbox, float spacing) {
-    if (!vbox || !vbox->impl_data)
+    if (!vbox || vbox->vtable != &g_vbox_vtable || !vbox->impl_data)
         return;
     vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
-    layout->spacing = layout_nonnegative(spacing);
-    vbox->needs_layout = true;
+    spacing = layout_nonnegative(spacing);
+    if (layout->spacing == spacing)
+        return;
+    layout->spacing = spacing;
+    vg_widget_invalidate_layout(vbox);
+    vg_widget_note_revision(vbox);
 }
 
 /// @brief Sets the cross-axis alignment for VBox children (START, CENTER, END, or STRETCH).
 void vg_vbox_set_align(vg_widget_t *vbox, vg_align_t align) {
-    if (!vbox || !vbox->impl_data)
+    if (!vbox || vbox->vtable != &g_vbox_vtable || !vbox->impl_data)
         return;
+    if (align < VG_ALIGN_START || align > VG_ALIGN_BASELINE)
+        align = VG_ALIGN_START;
     vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
+    if (layout->align == align)
+        return;
     layout->align = align;
-    vbox->needs_layout = true;
+    vg_widget_invalidate_layout(vbox);
+    vg_widget_note_revision(vbox);
 }
 
 /// @brief Sets the main-axis content justification for VBox children (START, CENTER, END,
 /// SPACE_BETWEEN, etc.).
 void vg_vbox_set_justify(vg_widget_t *vbox, vg_justify_t justify) {
-    if (!vbox || !vbox->impl_data)
+    if (!vbox || vbox->vtable != &g_vbox_vtable || !vbox->impl_data)
         return;
+    if (justify < VG_JUSTIFY_START || justify > VG_JUSTIFY_SPACE_EVENLY)
+        justify = VG_JUSTIFY_START;
     vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
+    if (layout->justify == justify)
+        return;
     layout->justify = justify;
-    vbox->needs_layout = true;
+    vg_widget_invalidate_layout(vbox);
+    vg_widget_note_revision(vbox);
+}
+
+/// @brief Returns the VBox cross-axis alignment without exposing implementation data.
+vg_align_t vg_vbox_get_align(const vg_widget_t *vbox) {
+    if (!vbox || vbox->vtable != &g_vbox_vtable || !vbox->impl_data)
+        return VG_ALIGN_START;
+    return ((const vg_vbox_layout_t *)vbox->impl_data)->align;
+}
+
+/// @brief Returns the VBox main-axis justification without consuming state.
+vg_justify_t vg_vbox_get_justify(const vg_widget_t *vbox) {
+    if (!vbox || vbox->vtable != &g_vbox_vtable || !vbox->impl_data)
+        return VG_JUSTIFY_START;
+    return ((const vg_vbox_layout_t *)vbox->impl_data)->justify;
 }
 
 /// @brief Measures the VBox by summing children heights plus spacing and taking the max child
@@ -357,30 +385,58 @@ vg_widget_t *vg_hbox_create(float spacing) {
 
 /// @brief Sets the gap between HBox children in pixels and marks the layout dirty.
 void vg_hbox_set_spacing(vg_widget_t *hbox, float spacing) {
-    if (!hbox || !hbox->impl_data)
+    if (!hbox || hbox->vtable != &g_hbox_vtable || !hbox->impl_data)
         return;
     vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
-    layout->spacing = layout_nonnegative(spacing);
-    hbox->needs_layout = true;
+    spacing = layout_nonnegative(spacing);
+    if (layout->spacing == spacing)
+        return;
+    layout->spacing = spacing;
+    vg_widget_invalidate_layout(hbox);
+    vg_widget_note_revision(hbox);
 }
 
 /// @brief Sets the cross-axis alignment for HBox children (START, CENTER, END, or STRETCH).
 void vg_hbox_set_align(vg_widget_t *hbox, vg_align_t align) {
-    if (!hbox || !hbox->impl_data)
+    if (!hbox || hbox->vtable != &g_hbox_vtable || !hbox->impl_data)
         return;
+    if (align < VG_ALIGN_START || align > VG_ALIGN_BASELINE)
+        align = VG_ALIGN_START;
     vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
+    if (layout->align == align)
+        return;
     layout->align = align;
-    hbox->needs_layout = true;
+    vg_widget_invalidate_layout(hbox);
+    vg_widget_note_revision(hbox);
 }
 
 /// @brief Sets the main-axis content justification for HBox children (START, CENTER, END,
 /// SPACE_BETWEEN, etc.).
 void vg_hbox_set_justify(vg_widget_t *hbox, vg_justify_t justify) {
-    if (!hbox || !hbox->impl_data)
+    if (!hbox || hbox->vtable != &g_hbox_vtable || !hbox->impl_data)
         return;
+    if (justify < VG_JUSTIFY_START || justify > VG_JUSTIFY_SPACE_EVENLY)
+        justify = VG_JUSTIFY_START;
     vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
+    if (layout->justify == justify)
+        return;
     layout->justify = justify;
-    hbox->needs_layout = true;
+    vg_widget_invalidate_layout(hbox);
+    vg_widget_note_revision(hbox);
+}
+
+/// @brief Returns the HBox cross-axis alignment without exposing implementation data.
+vg_align_t vg_hbox_get_align(const vg_widget_t *hbox) {
+    if (!hbox || hbox->vtable != &g_hbox_vtable || !hbox->impl_data)
+        return VG_ALIGN_START;
+    return ((const vg_hbox_layout_t *)hbox->impl_data)->align;
+}
+
+/// @brief Returns the HBox main-axis justification without consuming state.
+vg_justify_t vg_hbox_get_justify(const vg_widget_t *hbox) {
+    if (!hbox || hbox->vtable != &g_hbox_vtable || !hbox->impl_data)
+        return VG_JUSTIFY_START;
+    return ((const vg_hbox_layout_t *)hbox->impl_data)->justify;
 }
 
 /// @brief Measures the HBox by summing children widths plus spacing and taking the max child
@@ -546,7 +602,7 @@ vg_widget_t *vg_flex_create(void) {
     layout->justify_content = VG_JUSTIFY_START;
     layout->align_content = VG_ALIGN_START;
     layout->gap = 0;
-    layout->wrap = false;
+    layout->wrap = VG_FLEX_NO_WRAP;
     widget->impl_data = layout;
 
     return widget;
@@ -554,38 +610,57 @@ vg_widget_t *vg_flex_create(void) {
 
 /// @brief Sets the flex main-axis direction (ROW, COLUMN, ROW_REVERSE, or COLUMN_REVERSE).
 void vg_flex_set_direction(vg_widget_t *flex, vg_direction_t direction) {
-    if (!flex || !flex->impl_data)
+    if (!flex || flex->vtable != &g_flex_vtable || !flex->impl_data)
         return;
+    if (direction < VG_DIRECTION_ROW || direction > VG_DIRECTION_COLUMN_REVERSE)
+        direction = VG_DIRECTION_ROW;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
+    if (layout->direction == direction)
+        return;
     layout->direction = direction;
-    flex->needs_layout = true;
+    vg_widget_invalidate_layout(flex);
+    vg_widget_note_revision(flex);
 }
 
 /// @brief Sets the cross-axis alignment applied to all children in a flex line.
 void vg_flex_set_align_items(vg_widget_t *flex, vg_align_t align) {
-    if (!flex || !flex->impl_data)
+    if (!flex || flex->vtable != &g_flex_vtable || !flex->impl_data)
         return;
+    if (align < VG_ALIGN_START || align > VG_ALIGN_BASELINE)
+        align = VG_ALIGN_START;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
+    if (layout->align_items == align)
+        return;
     layout->align_items = align;
-    flex->needs_layout = true;
+    vg_widget_invalidate_layout(flex);
+    vg_widget_note_revision(flex);
 }
 
 /// @brief Sets how children are distributed along the main axis within each flex line.
 void vg_flex_set_justify_content(vg_widget_t *flex, vg_justify_t justify) {
-    if (!flex || !flex->impl_data)
+    if (!flex || flex->vtable != &g_flex_vtable || !flex->impl_data)
         return;
+    if (justify < VG_JUSTIFY_START || justify > VG_JUSTIFY_SPACE_EVENLY)
+        justify = VG_JUSTIFY_START;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
+    if (layout->justify_content == justify)
+        return;
     layout->justify_content = justify;
-    flex->needs_layout = true;
+    vg_widget_invalidate_layout(flex);
+    vg_widget_note_revision(flex);
 }
 
 /// @brief Sets the gap between children on the main axis (and between flex lines when wrapping).
 void vg_flex_set_gap(vg_widget_t *flex, float gap) {
-    if (!flex || !flex->impl_data)
+    if (!flex || flex->vtable != &g_flex_vtable || !flex->impl_data)
         return;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
-    layout->gap = layout_nonnegative(gap);
-    flex->needs_layout = true;
+    gap = layout_nonnegative(gap);
+    if (layout->gap == gap)
+        return;
+    layout->gap = gap;
+    vg_widget_invalidate_layout(flex);
+    vg_widget_note_revision(flex);
 }
 
 /// @brief Polymorphic spacing setter — dispatches to vg_vbox_set_spacing, vg_hbox_set_spacing, or
@@ -609,11 +684,21 @@ void vg_container_set_spacing(vg_widget_t *container, float spacing) {
 
 /// @brief Enables or disables line wrapping; when enabled, overflow children start a new flex line.
 void vg_flex_set_wrap(vg_widget_t *flex, bool wrap) {
-    if (!flex || !flex->impl_data)
+    vg_flex_set_wrap_mode(flex, wrap ? VG_FLEX_WRAP : VG_FLEX_NO_WRAP);
+}
+
+/// @brief Sets no-wrap, normal-wrap, or reverse-wrap line placement on a Flex container.
+void vg_flex_set_wrap_mode(vg_widget_t *flex, vg_flex_wrap_t wrap) {
+    if (!flex || flex->vtable != &g_flex_vtable || !flex->impl_data)
         return;
+    if (wrap < VG_FLEX_NO_WRAP || wrap > VG_FLEX_WRAP_REVERSE)
+        wrap = VG_FLEX_NO_WRAP;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
+    if (layout->wrap == wrap)
+        return;
     layout->wrap = wrap;
-    flex->needs_layout = true;
+    vg_widget_invalidate_layout(flex);
+    vg_widget_note_revision(flex);
 }
 
 typedef struct flex_line {
@@ -944,10 +1029,13 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
                     break;
             }
 
-            float cross_pos = line_cross_offset;
+            const bool reverse_lines = layout->wrap == VG_FLEX_WRAP_REVERSE;
+            float cross_pos = reverse_lines ? cross_size - line_cross_offset : line_cross_offset;
             for (int line_index = 0; line_index < line_count; line_index++) {
                 flex_line_t *line = &lines[line_index];
                 float line_cross_size = line->cross_outer + line_cross_extra;
+                if (reverse_lines)
+                    cross_pos -= line_cross_size;
                 float available_main = layout_nonnegative(main_size - line->main_outer);
                 float flex_unit = (line->total_flex > 0.0f && available_main > 0.0f)
                                       ? available_main / line->total_flex
@@ -1057,7 +1145,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
                                       layout_nonnegative(child_h));
                 }
 
-                cross_pos += line_cross_size + layout->gap;
+                if (reverse_lines)
+                    cross_pos -= layout->gap;
+                else
+                    cross_pos += line_cross_size + layout->gap;
             }
         }
 
@@ -1321,23 +1412,181 @@ static int grid_effective_rows(grid_impl_t *g, vg_widget_t *self, int cols) {
 
 /// @brief Allocates or reallocates @p tracks to @p new_count entries, zero-filling any newly added
 /// slots.
-static bool grid_resize_track_array(float **tracks, int old_count, int new_count) {
+static bool grid_resize_track_array(float **tracks,
+                                    int old_count,
+                                    int new_count,
+                                    float default_definition) {
     if (!tracks || new_count <= 0)
         return false;
     if ((size_t)new_count > SIZE_MAX / sizeof(float))
         return false;
     if (!*tracks) {
-        *tracks = calloc((size_t)new_count, sizeof(float));
-        return *tracks != NULL;
+        float *created = malloc((size_t)new_count * sizeof(float));
+        if (!created)
+            return false;
+        for (int i = 0; i < new_count; i++)
+            created[i] = default_definition;
+        *tracks = created;
+        return true;
     }
     float *resized = realloc(*tracks, (size_t)new_count * sizeof(float));
     if (!resized)
         return false;
     if (new_count > old_count) {
-        memset(resized + old_count, 0, (size_t)(new_count - old_count) * sizeof(float));
+        for (int i = old_count; i < new_count; i++)
+            resized[i] = default_definition;
     }
     *tracks = resized;
     return true;
+}
+
+/// @brief Return one declared track definition or the default one-fraction track.
+static float grid_track_definition(const float *definitions, int index, int declared_count) {
+    if (!definitions || index < 0 || index >= declared_count || !isfinite(definitions[index]))
+        return -1.0f;
+    return definitions[index];
+}
+
+/// @brief Seed resolved track sizes with positive fixed definitions.
+static void grid_seed_track_sizes(float *sizes,
+                                  int count,
+                                  const float *definitions,
+                                  int declared_count) {
+    for (int i = 0; i < count; i++) {
+        float definition = grid_track_definition(definitions, i, declared_count);
+        sizes[i] = definition > 0.0f ? definition : 0.0f;
+    }
+}
+
+/// @brief Grow auto/content tracks in a span until an intrinsic child extent fits.
+static void grid_grow_tracks_for_intrinsic(float *sizes,
+                                           int count,
+                                           const float *definitions,
+                                           int declared_count,
+                                           int start,
+                                           int span,
+                                           float gap,
+                                           float required) {
+    if (!sizes || count <= 0 || start < 0 || start >= count || span <= 0)
+        return;
+    if (span > count - start)
+        span = count - start;
+
+    float current = gap * (float)(span - 1);
+    float total_weight = 0.0f;
+    for (int i = start; i < start + span; i++) {
+        current += sizes[i];
+        float definition = grid_track_definition(definitions, i, declared_count);
+        if (definition == 0.0f)
+            total_weight += 1.0f;
+    }
+    if (required <= current || total_weight <= 0.0f)
+        return;
+
+    float deficit = required - current;
+    for (int i = start; i < start + span; i++) {
+        float definition = grid_track_definition(definitions, i, declared_count);
+        if (definition != 0.0f)
+            continue;
+        sizes[i] += deficit / total_weight;
+    }
+}
+
+/// @brief Distribute remaining available space among negative fractional tracks.
+static void grid_distribute_fractional_space(float *sizes,
+                                             int count,
+                                             const float *definitions,
+                                             int declared_count,
+                                             float gap,
+                                             float available) {
+    if (!sizes || count <= 0)
+        return;
+    float used = gap * (float)(count - 1);
+    float total_weight = 0.0f;
+    for (int i = 0; i < count; i++) {
+        used += sizes[i];
+        float definition = grid_track_definition(definitions, i, declared_count);
+        if (definition < 0.0f)
+            total_weight += -definition;
+    }
+    float remaining = available - used;
+    if (remaining <= 0.0f || total_weight <= 0.0f)
+        return;
+    for (int i = 0; i < count; i++) {
+        float definition = grid_track_definition(definitions, i, declared_count);
+        if (definition < 0.0f)
+            sizes[i] += remaining * (-definition) / total_weight;
+    }
+}
+
+/// @brief Resolve fixed, auto/content, and fractional row and column sizes from measured children.
+static void grid_resolve_tracks(grid_impl_t *g,
+                                vg_widget_t *self,
+                                int cols,
+                                int rows,
+                                float content_width,
+                                float content_height,
+                                float *column_sizes,
+                                float *row_sizes) {
+    grid_seed_track_sizes(column_sizes, cols, g->layout.column_widths, g->layout.columns);
+    grid_seed_track_sizes(row_sizes, rows, g->layout.row_heights, g->layout.rows);
+
+    int auto_index = 0;
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
+        grid_placement_t *placement = grid_find_placement(g, child);
+        int column = 0;
+        int row = 0;
+        int column_span = 1;
+        int row_span = 1;
+        if (placement) {
+            column = placement->item.column;
+            row = placement->item.row;
+            column_span = placement->item.col_span;
+            row_span = placement->item.row_span;
+        } else {
+            column = auto_index % cols;
+            row = auto_index / cols;
+            auto_index++;
+        }
+        if (column < 0 || column >= cols)
+            column = 0;
+        if (row < 0 || row >= rows)
+            row = 0;
+        column_span = grid_clamp_span(column_span);
+        row_span = grid_clamp_span(row_span);
+        if (column_span > cols - column)
+            column_span = cols - column;
+        if (row_span > rows - row)
+            row_span = rows - row;
+
+        grid_grow_tracks_for_intrinsic(column_sizes,
+                                       cols,
+                                       g->layout.column_widths,
+                                       g->layout.columns,
+                                       column,
+                                       column_span,
+                                       g->layout.column_gap,
+                                       layout_nonnegative(child->measured_width));
+        grid_grow_tracks_for_intrinsic(row_sizes,
+                                       rows,
+                                       g->layout.row_heights,
+                                       g->layout.rows,
+                                       row,
+                                       row_span,
+                                       g->layout.row_gap,
+                                       layout_nonnegative(child->measured_height));
+    }
+
+    grid_distribute_fractional_space(column_sizes,
+                                     cols,
+                                     g->layout.column_widths,
+                                     g->layout.columns,
+                                     g->layout.column_gap,
+                                     content_width);
+    grid_distribute_fractional_space(
+        row_sizes, rows, g->layout.row_heights, g->layout.rows, g->layout.row_gap, content_height);
 }
 
 /// @brief Measures the grid by distributing available space across columns/rows and measuring each
@@ -1391,27 +1640,27 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
         layout_measure_child(child, cell_w, cell_h);
     }
 
-    /* Measured size: full grid including gaps */
-    float grid_w = 0;
-    float grid_h = 0;
+    size_t scratch_count = (size_t)cols + (size_t)rows;
+    if (scratch_count > SIZE_MAX / sizeof(float))
+        return;
+    float scratch_stack[128];
+    float *scratch = scratch_count <= (sizeof(scratch_stack) / sizeof(scratch_stack[0]))
+                         ? scratch_stack
+                         : malloc(scratch_count * sizeof(float));
+    if (!scratch)
+        return;
+    float *column_sizes = scratch;
+    float *row_sizes = column_sizes + cols;
+    grid_resolve_tracks(g, self, cols, rows, content_w, content_h, column_sizes, row_sizes);
 
-    for (int c = 0; c < cols; c++) {
-        float w = (g->layout.column_widths && g->layout.column_widths[c] > 0)
-                      ? g->layout.column_widths[c]
-                      : auto_col_w;
-        grid_w += w;
-        if (c < cols - 1)
-            grid_w += g->layout.column_gap;
-    }
-
-    for (int r = 0; r < rows; r++) {
-        float h = (g->layout.row_heights && r < g->layout.rows && g->layout.row_heights[r] > 0)
-                      ? g->layout.row_heights[r]
-                      : auto_row_h;
-        grid_h += h;
-        if (r < rows - 1)
-            grid_h += g->layout.row_gap;
-    }
+    float grid_w = g->layout.column_gap * (float)(cols - 1);
+    float grid_h = g->layout.row_gap * (float)(rows - 1);
+    for (int c = 0; c < cols; c++)
+        grid_w += column_sizes[c];
+    for (int r = 0; r < rows; r++)
+        grid_h += row_sizes[r];
+    if (scratch != scratch_stack)
+        free(scratch);
 
     self->measured_width = grid_w + padding_h;
     self->measured_height = grid_h + padding_v;
@@ -1440,12 +1689,6 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     float content_h =
         layout_nonnegative(height - self->layout.padding_top - self->layout.padding_bottom);
 
-    /* Compute column X positions */
-    float total_col_gap = g->layout.column_gap * (cols - 1);
-    float auto_col_w = (content_w - total_col_gap) / (float)cols;
-    if (auto_col_w < 0)
-        auto_col_w = 0;
-
     size_t scratch_count = ((size_t)cols + (size_t)rows) * 2u;
     if (scratch_count > SIZE_MAX / sizeof(float))
         return;
@@ -1460,27 +1703,18 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     float *row_y = col_w + cols;
     float *row_h = row_y + rows;
 
+    grid_resolve_tracks(g, self, cols, rows, content_w, content_h, col_w, row_h);
+
     float cursor = content_x;
     for (int c = 0; c < cols; c++) {
         col_x[c] = cursor;
-        col_w[c] = (g->layout.column_widths && g->layout.column_widths[c] > 0)
-                       ? g->layout.column_widths[c]
-                       : auto_col_w;
         cursor += col_w[c] + g->layout.column_gap;
     }
 
     /* Compute row Y positions */
-    float total_row_gap = g->layout.row_gap * (rows - 1);
-    float auto_row_h = (content_h - total_row_gap) / (float)rows;
-    if (auto_row_h < 0)
-        auto_row_h = 0;
-
     cursor = content_y;
     for (int r = 0; r < rows; r++) {
         row_y[r] = cursor;
-        row_h[r] = (g->layout.row_heights && r < g->layout.rows && g->layout.row_heights[r] > 0)
-                       ? g->layout.row_heights[r]
-                       : auto_row_h;
         cursor += row_h[r] + g->layout.row_gap;
     }
 
@@ -1592,112 +1826,165 @@ vg_widget_t *vg_grid_create(int columns, int rows) {
 
 /// @brief Sets the grid's column count, resizing the column_widths array if it exists.
 void vg_grid_set_columns(vg_widget_t *grid, int columns) {
-    if (!grid || !grid->impl_data)
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data)
         return;
     columns = grid_clamp_track_count(columns);
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_columns = g->layout.columns;
+    if (old_columns == columns)
+        return;
     if (g->layout.column_widths &&
-        !grid_resize_track_array(&g->layout.column_widths, old_columns, columns))
+        !grid_resize_track_array(&g->layout.column_widths, old_columns, columns, -1.0f))
         return;
     g->layout.columns = columns;
-    grid->needs_layout = true;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
 }
 
 /// @brief Sets the grid's row count, resizing the row_heights array if it exists.
 void vg_grid_set_rows(vg_widget_t *grid, int rows) {
-    if (!grid || !grid->impl_data)
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data)
         return;
     rows = grid_clamp_track_count(rows);
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_rows = g->layout.rows;
-    if (g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, old_rows, rows))
+    if (old_rows == rows)
+        return;
+    if (g->layout.row_heights &&
+        !grid_resize_track_array(&g->layout.row_heights, old_rows, rows, -1.0f))
         return;
     g->layout.rows = rows;
-    grid->needs_layout = true;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
 }
 
 /// @brief Sets the column and row gap sizes for the grid layout.
 void vg_grid_set_gap(vg_widget_t *grid, float column_gap, float row_gap) {
-    if (!grid || !grid->impl_data)
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data)
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
-    g->layout.column_gap = layout_nonnegative(column_gap);
-    g->layout.row_gap = layout_nonnegative(row_gap);
-    grid->needs_layout = true;
+    column_gap = layout_nonnegative(column_gap);
+    row_gap = layout_nonnegative(row_gap);
+    if (g->layout.column_gap == column_gap && g->layout.row_gap == row_gap)
+        return;
+    g->layout.column_gap = column_gap;
+    g->layout.row_gap = row_gap;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
 }
 
 /// @brief Sets an explicit pixel width for the given column index, allocating the widths array if
 /// necessary.
 void vg_grid_set_column_width(vg_widget_t *grid, int column, float width) {
-    if (!grid || !grid->impl_data || column < 0)
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data || column < 0)
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int cols = g->layout.columns;
     if (column >= cols)
         return;
-    if (!g->layout.column_widths && !grid_resize_track_array(&g->layout.column_widths, 0, cols))
+    if (!isfinite(width))
+        width = 0.0f;
+    if (!g->layout.column_widths &&
+        !grid_resize_track_array(&g->layout.column_widths, 0, cols, -1.0f))
         return;
-    g->layout.column_widths[column] = layout_nonnegative(width);
-    grid->needs_layout = true;
+    if (g->layout.column_widths[column] == width)
+        return;
+    g->layout.column_widths[column] = width;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
 }
 
 /// @brief Sets an explicit pixel height for the given row index, allocating the heights array if
 /// necessary.
 void vg_grid_set_row_height(vg_widget_t *grid, int row, float height) {
-    if (!grid || !grid->impl_data || row < 0)
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data || row < 0)
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int rows = g->layout.rows;
     if (row >= rows)
         return;
-    if (!g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, 0, rows))
+    if (!isfinite(height))
+        height = 0.0f;
+    if (!g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, 0, rows, -1.0f))
         return;
-    g->layout.row_heights[row] = layout_nonnegative(height);
-    grid->needs_layout = true;
+    if (g->layout.row_heights[row] == height)
+        return;
+    g->layout.row_heights[row] = height;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
 }
 
-/// @brief Explicitly places @p child in the grid at (@p column, @p row) with the given column and
-/// row spans; updates existing placement if any.
-void vg_grid_place(
+/// @brief Commit already-validated grid placement metadata, growing storage atomically.
+static bool grid_commit_placement(
     vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span) {
-    if (!grid || !grid->impl_data || !child)
-        return;
-
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
 
-    /* Update existing placement if present */
     grid_placement_t *existing = grid_find_placement(g, child);
     if (existing) {
-        existing->item.column = grid_clamp_track_index(column);
-        existing->item.row = grid_clamp_track_index(row);
-        existing->item.col_span = grid_clamp_span(col_span);
-        existing->item.row_span = grid_clamp_span(row_span);
-        grid->needs_layout = true;
-        return;
+        if (existing->item.column == column && existing->item.row == row &&
+            existing->item.col_span == col_span && existing->item.row_span == row_span) {
+            return true;
+        }
+        existing->item.column = column;
+        existing->item.row = row;
+        existing->item.col_span = col_span;
+        existing->item.row_span = row_span;
+        vg_widget_invalidate_layout(grid);
+        vg_widget_note_revision(grid);
+        return true;
     }
 
-    /* Grow placement array if needed */
     if (g->placement_count >= g->placement_capacity) {
         if (g->placement_capacity > INT32_MAX / 2)
-            return;
+            return false;
         int new_cap = g->placement_capacity * 2;
         if ((size_t)new_cap > SIZE_MAX / sizeof(grid_placement_t))
-            return;
-        grid_placement_t *new_p = realloc(g->placements, new_cap * sizeof(grid_placement_t));
+            return false;
+        grid_placement_t *new_p =
+            realloc(g->placements, (size_t)new_cap * sizeof(grid_placement_t));
         if (!new_p)
-            return;
+            return false;
         g->placements = new_p;
         g->placement_capacity = new_cap;
     }
 
     grid_placement_t *p = &g->placements[g->placement_count++];
     p->child = child;
-    p->item.column = grid_clamp_track_index(column);
-    p->item.row = grid_clamp_track_index(row);
-    p->item.col_span = grid_clamp_span(col_span);
-    p->item.row_span = grid_clamp_span(row_span);
-    grid->needs_layout = true;
+    p->item.column = column;
+    p->item.row = row;
+    p->item.col_span = col_span;
+    p->item.row_span = row_span;
+    vg_widget_invalidate_layout(grid);
+    vg_widget_note_revision(grid);
+    return true;
+}
+
+/// @brief Validate and atomically place an existing direct child in declared grid tracks.
+bool vg_grid_place_checked(
+    vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span) {
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data || !child ||
+        child->parent != grid || column < 0 || row < 0 || col_span < 1 || row_span < 1) {
+        return false;
+    }
+    grid_impl_t *g = (grid_impl_t *)grid->impl_data;
+    if (column >= g->layout.columns || row >= g->layout.rows ||
+        col_span > g->layout.columns - column || row_span > g->layout.rows - row) {
+        return false;
+    }
+    return grid_commit_placement(grid, child, column, row, col_span, row_span);
+}
+
+/// @brief Compatibility placement API that preserves legacy index clamping and implicit rows.
+void vg_grid_place(
+    vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span) {
+    if (!grid || grid->vtable != &g_grid_vtable || !grid->impl_data || !child)
+        return;
+    (void)grid_commit_placement(grid,
+                                child,
+                                grid_clamp_track_index(column),
+                                grid_clamp_track_index(row),
+                                grid_clamp_span(col_span),
+                                grid_clamp_span(row_span));
 }
 
 //=============================================================================
@@ -1715,6 +2002,7 @@ typedef struct dock_impl {
     dock_entry_t *entries;
     int entry_count;
     int entry_capacity;
+    float gap; ///< Physical space reserved between each claimed edge and the remainder.
 } dock_impl_t;
 
 /// @brief Frees the dock's entry array and impl struct.
@@ -1784,8 +2072,11 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
                 if (cw > rem_w)
                     cw = rem_w;
                 vg_widget_arrange(child, rem_x, rem_y, cw, layout_nonnegative(rem_h));
-                rem_x += cw;
-                rem_w -= cw;
+                float consumed_gap = d->gap < rem_w - cw ? d->gap : rem_w - cw;
+                if (consumed_gap < 0.0f)
+                    consumed_gap = 0.0f;
+                rem_x += cw + consumed_gap;
+                rem_w -= cw + consumed_gap;
                 if (rem_w < 0)
                     rem_w = 0;
                 break;
@@ -1795,7 +2086,10 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
                 if (cw > rem_w)
                     cw = rem_w;
                 vg_widget_arrange(child, rem_x + rem_w - cw, rem_y, cw, layout_nonnegative(rem_h));
-                rem_w -= cw;
+                float consumed_gap = d->gap < rem_w - cw ? d->gap : rem_w - cw;
+                if (consumed_gap < 0.0f)
+                    consumed_gap = 0.0f;
+                rem_w -= cw + consumed_gap;
                 if (rem_w < 0)
                     rem_w = 0;
                 break;
@@ -1805,8 +2099,11 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
                 if (ch > rem_h)
                     ch = rem_h;
                 vg_widget_arrange(child, rem_x, rem_y, layout_nonnegative(rem_w), ch);
-                rem_y += ch;
-                rem_h -= ch;
+                float consumed_gap = d->gap < rem_h - ch ? d->gap : rem_h - ch;
+                if (consumed_gap < 0.0f)
+                    consumed_gap = 0.0f;
+                rem_y += ch + consumed_gap;
+                rem_h -= ch + consumed_gap;
                 if (rem_h < 0)
                     rem_h = 0;
                 break;
@@ -1816,7 +2113,10 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
                 if (ch > rem_h)
                     ch = rem_h;
                 vg_widget_arrange(child, rem_x, rem_y + rem_h - ch, layout_nonnegative(rem_w), ch);
-                rem_h -= ch;
+                float consumed_gap = d->gap < rem_h - ch ? d->gap : rem_h - ch;
+                if (consumed_gap < 0.0f)
+                    consumed_gap = 0.0f;
+                rem_h -= ch + consumed_gap;
                 if (rem_h < 0)
                     rem_h = 0;
                 break;
@@ -1863,44 +2163,77 @@ vg_widget_t *vg_dock_create(void) {
     return widget;
 }
 
-/// @brief Adds @p child to @p dock with the given edge position, registering it as a widget child
-/// and growing the entry array as needed.
-void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
-    if (!dock || !dock->impl_data || !child)
-        return;
-
+/// @brief Commit a dock assignment, optionally preserving legacy cross-parent reparenting.
+static bool dock_add_internal(vg_widget_t *dock,
+                              vg_widget_t *child,
+                              vg_dock_t position,
+                              bool allow_reparent) {
+    if (!dock || dock->vtable != &g_dock_vtable || !dock->impl_data || !child ||
+        position < VG_DOCK_LEFT || position > VG_DOCK_FILL || child == dock ||
+        (!allow_reparent && child->parent && child->parent != dock)) {
+        return false;
+    }
     dock_impl_t *d = (dock_impl_t *)dock->impl_data;
 
-    /* Update existing entry if child already registered */
     for (int i = 0; i < d->entry_count; i++) {
         if (d->entries[i].child == child) {
+            if (d->entries[i].position == position)
+                return true;
             d->entries[i].position = position;
-            dock->needs_layout = true;
-            return;
+            vg_widget_invalidate_layout(dock);
+            vg_widget_note_revision(dock);
+            return true;
         }
     }
 
-    /* Grow array if needed */
     if (d->entry_count >= d->entry_capacity) {
         if (d->entry_capacity > INT32_MAX / 2)
-            return;
+            return false;
         int new_cap = d->entry_capacity * 2;
         if ((size_t)new_cap > SIZE_MAX / sizeof(dock_entry_t))
-            return;
+            return false;
         dock_entry_t *new_e = realloc(d->entries, (size_t)new_cap * sizeof(dock_entry_t));
         if (!new_e)
-            return;
+            return false;
         d->entries = new_e;
         d->entry_capacity = new_cap;
+    }
+
+    if (child->parent != dock) {
+        vg_widget_add_child(dock, child);
+        if (child->parent != dock)
+            return false;
     }
 
     d->entries[d->entry_count].child = child;
     d->entries[d->entry_count].position = position;
     d->entry_count++;
+    vg_widget_invalidate_layout(dock);
+    vg_widget_note_revision(dock);
+    return true;
+}
 
-    /* Also add as a widget child so the vtable can iterate it */
-    vg_widget_add_child(dock, child);
-    dock->needs_layout = true;
+/// @brief Add or update a child while rejecting cross-parent ownership changes.
+bool vg_dock_add_checked(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
+    return dock_add_internal(dock, child, position, false);
+}
+
+/// @brief Compatibility docking API that retains legacy automatic reparenting.
+void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
+    (void)dock_add_internal(dock, child, position, true);
+}
+
+/// @brief Set the gap between claimed dock regions and the remaining rectangle.
+void vg_dock_set_gap(vg_widget_t *dock, float gap) {
+    if (!dock || dock->vtable != &g_dock_vtable || !dock->impl_data)
+        return;
+    gap = layout_nonnegative(gap);
+    dock_impl_t *d = (dock_impl_t *)dock->impl_data;
+    if (d->gap == gap)
+        return;
+    d->gap = gap;
+    vg_widget_invalidate_layout(dock);
+    vg_widget_note_revision(dock);
 }
 
 /// @brief Removes the dock entry for @p child, shifting remaining entries to fill the gap.
@@ -1933,6 +2266,23 @@ void vg_layout_on_child_detached(vg_widget_t *parent, vg_widget_t *child) {
         dock_remove_entry((dock_impl_t *)parent->impl_data, child);
         parent->needs_layout = true;
     }
+}
+
+/// @brief Return the concrete layout kind represented by a widget's private vtable.
+vg_layout_type_t vg_layout_get_type(const vg_widget_t *widget) {
+    if (!widget || !widget->vtable)
+        return VG_LAYOUT_NONE;
+    if (widget->vtable == &g_vbox_vtable)
+        return VG_LAYOUT_VBOX;
+    if (widget->vtable == &g_hbox_vtable)
+        return VG_LAYOUT_HBOX;
+    if (widget->vtable == &g_flex_vtable)
+        return VG_LAYOUT_FLEX;
+    if (widget->vtable == &g_grid_vtable)
+        return VG_LAYOUT_GRID;
+    if (widget->vtable == &g_dock_vtable)
+        return VG_LAYOUT_DOCK;
+    return VG_LAYOUT_NONE;
 }
 
 //=============================================================================

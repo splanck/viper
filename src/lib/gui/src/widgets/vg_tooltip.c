@@ -575,6 +575,55 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
     }
 }
 
+/// @brief Convert an absolute tooltip timestamp into a bounded relative deadline.
+/// @param now_ms Current scheduler time.
+/// @param target_ms Absolute transition time on the same clock.
+/// @return Zero when due, otherwise a positive delay saturated to INT64_MAX.
+static int64_t tooltip_relative_deadline_ms(uint64_t now_ms, uint64_t target_ms) {
+    if (target_ms <= now_ms)
+        return 0;
+    uint64_t remaining = target_ms - now_ms;
+    return remaining > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)remaining;
+}
+
+/// @brief Add a bounded duration to a tooltip timestamp without unsigned wraparound.
+/// @param start_ms Absolute start time.
+/// @param duration_ms Relative duration.
+/// @return Saturating absolute timestamp.
+static uint64_t tooltip_saturating_timestamp(uint64_t start_ms, uint32_t duration_ms) {
+    return start_ms > UINT64_MAX - (uint64_t)duration_ms ? UINT64_MAX
+                                                         : start_ms + (uint64_t)duration_ms;
+}
+
+/// @brief Return the nearest pending tooltip timer without mutating the manager.
+/// @param mgr Tooltip manager to inspect; NULL has no deadline.
+/// @param now_ms Current scheduler time in milliseconds.
+/// @return Milliseconds until work, zero when due, or -1 when no timer is active.
+int64_t vg_tooltip_manager_next_deadline_ms(const vg_tooltip_manager_t *mgr, uint64_t now_ms) {
+    if (!mgr || !mgr->active_tooltip)
+        return -1;
+
+    const vg_tooltip_t *tooltip = mgr->active_tooltip;
+    int64_t deadline = -1;
+    if (mgr->pending_show && mgr->hovered_widget) {
+        uint64_t target =
+            tooltip_saturating_timestamp(mgr->hover_start_time, tooltip->show_delay_ms);
+        deadline = tooltip_relative_deadline_ms(now_ms, target);
+    }
+    if (tooltip->is_visible && tooltip->hide_timer > 0) {
+        int64_t candidate = tooltip_relative_deadline_ms(now_ms, tooltip->hide_timer);
+        if (deadline < 0 || candidate < deadline)
+            deadline = candidate;
+    }
+    if (tooltip->is_visible && tooltip->duration_ms > 0 && tooltip->show_timer > 0) {
+        uint64_t target = tooltip_saturating_timestamp(tooltip->show_timer, tooltip->duration_ms);
+        int64_t candidate = tooltip_relative_deadline_ms(now_ms, target);
+        if (deadline < 0 || candidate < deadline)
+            deadline = candidate;
+    }
+    return deadline;
+}
+
 /// @brief Notify the manager that the cursor is hovering over widget at screen position (x, y).
 ///
 /// @details On widget change, hides any active tooltip and starts the show delay countdown.

@@ -235,6 +235,7 @@ struct vg_font {
     uint64_t magic;            ///< Live-font sentinel used by runtime handle validation.
     struct vg_font *live_prev; ///< Private: previous entry in the live-font registry.
     struct vg_font *live_next; ///< Private: next entry in the live-font registry.
+    float logical_size;        ///< Optional caller-facing size in logical points; zero if unset.
 
     //-- Raw TTF data ----------------------------------------------------------
 

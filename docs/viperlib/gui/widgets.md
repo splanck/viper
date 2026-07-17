@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-16
 ---
 
 # Basic Widgets
@@ -15,17 +15,30 @@ last-verified: 2026-07-14
 
 ### Label
 
-Text display widget.
-Labels now initialize from the current GUI theme or app font, so text participates in measurement and painting as soon as a default font has been installed. `SetFont()` still overrides that font for one label.
+Text display widget. Labels initialize from the current GUI theme or app font, so text participates
+in measurement and painting as soon as a default font has been installed. `SetFont()` still
+overrides that font for one label.
+
+Single-line labels can fit overflow with a UTF-8-safe ellipsis. Wrapped labels apply `MaxLines` to
+both measurement and rendering; when ellipsis is enabled, U+2026 appears only if the limit actually
+omits source text. Selectable labels support pointer drag, Shift-click, Ctrl/Cmd+A, Ctrl/Cmd+C, and
+Escape. `GetSelectedText()` returns the original source bytes, including content hidden by an
+ellipsis after Select All.
 
 **Constructor:** `NEW Viper.GUI.Label(parent, text)`
 
-| Method                    | Signature                  | Description              |
-|---------------------------|----------------------------|--------------------------|
-| `SetText(text)`           | `Void(String)`             | Set label text           |
-| `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and size        |
-| `SetColor(color)`         | `Void(Integer)`            | Set text color (ARGB)    |
-| `SetWordWrap(enabled)`    | `Void(Boolean)`            | Enable or disable word wrapping |
+| Method                    | Signature                  | Description                                      |
+|---------------------------|----------------------------|--------------------------------------------------|
+| `SetText(text)`           | `Void(String)`             | Set label text                                   |
+| `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and logical size                        |
+| `SetColor(color)`         | `Void(Integer)`            | Set text color (ARGB)                            |
+| `SetWordWrap(enabled)`    | `Void(Boolean)`            | Enable or disable word wrapping                  |
+| `SetAlignment(value)`     | `Void(Integer)`            | Set horizontal alignment: left `0`, center `1`, right `2` |
+| `GetAlignment()`          | `Integer()`                | Get horizontal alignment                         |
+| `SetEllipsis(enabled)`    | `Void(Boolean)`            | Fit genuinely truncated text with U+2026         |
+| `SetMaxLines(count)`      | `Void(Integer)`            | Limit wrapped lines; zero/negative is unlimited  |
+| `SetSelectable(enabled)`  | `Void(Boolean)`            | Enable read-only text selection and copy         |
+| `GetSelectedText()`       | `String()`                 | Copy the currently selected source text          |
 
 ```basic
 DIM label AS Viper.GUI.Label
@@ -163,12 +176,36 @@ Mutually exclusive radio button (use with RadioGroup).
 Radio buttons unregister from their group when destroyed, and destroying a group clears the group reference on surviving radio buttons. This prevents stale selection handles after dynamic UI teardown.
 Runtime-created radio groups are opaque handles. After `Destroy()`, that handle is invalid and cannot be reused to create more radio buttons; existing buttons become ungrouped and remain valid widgets.
 
+The group owns an explicit selected-index model. `WasChanged()` consumes only selected-index
+transitions, while `GetRevision()` is non-consuming and also advances as buttons register or leave.
+Multiple unreported transitions coalesce into one edge. Button `Data` values are byte-exact runtime
+strings, so embedded NUL bytes round-trip independently of the visible UTF-8 label.
+
 **Constructor:** `NEW Viper.GUI.RadioButton(parent, text, group)`
 
-| Method                     | Signature          | Description              |
-|----------------------------|--------------------|--------------------------|
-| `IsSelected()`             | `Boolean()`        | True if selected         |
-| `SetSelected(selected)`    | `Void(Boolean)`    | Set selection state      |
+#### RadioGroup methods
+
+| Method                       | Signature          | Description                                      |
+|------------------------------|--------------------|--------------------------------------------------|
+| `GetSelectedIndex()`         | `Integer()`        | Selected zero-based index, or `-1`               |
+| `SetSelectedIndex(index)`    | `Boolean(Integer)` | Select an index, or `-1` to clear; false if invalid |
+| `GetCount()`                 | `Integer()`        | Number of registered live buttons                |
+| `WasChanged()`               | `Boolean()`        | Consume the independent selected-index edge      |
+| `GetRevision()`              | `Integer()`        | Read the non-consuming group revision            |
+| `Destroy()`                  | `Void()`           | Detach surviving buttons and invalidate the group handle |
+
+#### RadioButton methods
+
+| Method                     | Signature          | Description                                      |
+|----------------------------|--------------------|--------------------------------------------------|
+| `IsSelected()`             | `Boolean()`        | True if selected                                 |
+| `SetSelected(selected)`    | `Void(Boolean)`    | Set selection state and update its group         |
+| `SetText(text)`            | `Void(String)`     | Atomically replace visible label text            |
+| `GetText()`                | `String()`         | Copy visible label text                          |
+| `SetData(data)`            | `Void(String)`     | Store byte-exact application data                |
+| `GetData()`                | `String()`         | Copy byte-exact application data                 |
+| `WasChanged()`             | `Boolean()`        | Consume this button's selected-state edge        |
+| `GetRevision()`            | `Integer()`        | Read this button's non-consuming revision        |
 
 ```basic
 ' Create a group
@@ -372,18 +409,18 @@ Scrollable list of selectable items with enhanced item management.
 
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection. Toggling the current row off now clears or moves the current selection instead of leaving `Selected` / `SelectedIndex` pointed at an unselected row.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
-For native integrations that enable the underlying list box's virtual mode, cache invalidation
-refreshes visible rows on the next paint even when the visible range has not changed.
+Binding a `Viper.GUI.VirtualList` enables the same lower virtual mode through the public runtime.
+Cache invalidation refreshes visible rows on the next paint even when the visible range has not
+changed.
 `SelectIndex(index)` leaves the current selection unchanged when `index` is negative or outside the current item range (including a native virtual-list total), and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 Item handles are runtime-managed and become inert after `RemoveItem()`, `Clear()`, or list-box destruction; later item method calls return empty/0 values or no-op safely.
 Native virtual-list selection and cache growth fail closed if allocation or size
 checks fail; the widget does not publish a larger virtual item count until its
 selection bitmap can represent that range.
-In that native virtual mode, `Count` reports the logical virtual item total rather than the number
-of materialized cache rows. The public runtime does not currently expose the callback-based switch
-that enables this mode. `WasSelectionChanged()` reports real selection transitions, including
-selected-item removal and `Clear()` calls that remove a selection.
+In virtual mode, `Count` reports the logical model total rather than the number of materialized
+cache rows. `WasSelectionChanged()` reports real selection transitions, including selected-item
+removal and `Clear()` calls that remove a selection.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 
@@ -414,6 +451,10 @@ selected-item removal and `Clear()` calls that remove a selection.
 | `SelectIndex(index)`      | `Void(Integer)`        | Select item by index              |
 | `SetFont(font, size)`     | `Void(Font, Double)`   | Set font for list items           |
 | `SetMultiSelect(enabled)` | `Void(Boolean)`        | Enable or disable multiple selection |
+| `SetVirtualModel(model)`  | `Boolean(VirtualList)` | Bind a viewport-backed model without copying all rows |
+| `ClearVirtualModel()`     | `Void()`               | Detach the model and restore retained-item mode |
+| `GetVisibleFirst()`       | `Integer()`            | First model row intersecting the viewport |
+| `GetVisibleCount()`       | `Integer()`            | Number of rows requested for this viewport |
 | `WasSelectionChanged()`   | `Boolean()`            | True if selection changed this frame |
 
 ### Example
@@ -501,6 +542,74 @@ if fileList.WasSelectionChanged() && fileList.get_SelectedIndex() >= 0 {
 }
 ```
 
+### Virtual list and tree models
+
+`VirtualList` and `VirtualTree` keep application data separate from visual controls. A binding is
+non-owning in both directions: destroying the model disables virtual mode on its control, while
+destroying or clearing the control immediately invalidates the model's raw control pointer. Call
+`Unbind()` when changing screens early; it is safe to omit it during normal endpoint destruction.
+
+Stable IDs must be non-empty and unique. Duplicate insertion traps with
+`GUI model ID must be unique: <id>` and leaves the existing model unchanged. A list row without an
+explicit ID uses its canonical decimal index (`"0"`, `"1"`, …); explicit IDs may not collide with
+those implicit IDs. `SetCount` also rejects a growth that would introduce such a collision.
+
+#### VirtualList
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `New(count, rowHeight, viewportHeight)` | `VirtualList(Integer, Integer, Integer)` | Create a sparse logical model; sizes are compatibility pixel values |
+| `SetCount(count)` | `Void(Integer)` | Resize and prune sparse IDs/text outside the new range |
+| `SetRowId(row, id)` | `Void(Integer, String)` | Assign a unique stable ID |
+| `SetRowText(row, text)` | `Void(Integer, String)` | Store display text only for this row |
+| `InvalidateRow(row)` | `Void(Integer)` | Refresh one visible provider cache entry |
+| `Bind(listBox)` / `Unbind()` | `Boolean(Object)` / `Void()` | Attach or detach the visual ListBox |
+| `VisibleRange(scrollY)` | `Map(Integer)` | Compute a standalone overscanned range |
+| `SelectId(id)` | `Void(String)` | Select by stable ID in expected O(1) time |
+| `GetSelectedId()` / `GetSelectedIndex()` | `String()` / `Integer()` | Read synchronized model/control selection |
+
+The lower ListBox owns a packed selection bitmap and a viewport-sized text cache, not retained item
+objects. It invokes the model provider only during viewport painting. `GetVisibleFirst` and
+`GetVisibleCount` are O(1), do not invoke the provider, and include up to two safety rows used by
+the renderer. `SetRowText` replaces embedded NUL bytes with visible U+FFFD so the C renderer cannot
+silently truncate the rest of a runtime string.
+
+```rust
+// Zia — a 100k-row model with only the visible text populated.
+var rows = VirtualList.New(100000, 24, 480);
+rows.SetRowId(42000, "search-result:42000");
+rows.SetRowText(42000, "Matched symbol");
+
+var results = ListBox.New(panel);
+results.SetVirtualModel(rows);
+rows.SelectId("search-result:42000");
+
+// Refill only the application's currently relevant window.
+var first = results.GetVisibleFirst();
+var count = results.GetVisibleCount();
+```
+
+#### VirtualTree
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `New()` | `VirtualTree()` | Create an empty hash-indexed tree model |
+| `AddNode(parentId, id, text)` | `Void(String, String, String)` | Add one uniquely identified node |
+| `MoveNode(id, parentId)` | `Boolean(String, String)` | Reparent without changing identity; cycles reject atomically |
+| `SetNodeText(id, text)` | `Boolean(String, String)` | Replace a node label without re-adding it |
+| `Expand(id)` / `Collapse(id)` | `Map(String)` / `Void(String)` | Change expansion; Expand reports lazy-population need |
+| `VisibleRowsRange(first, count)` | `Seq(Integer, Integer)` | Materialize only the requested flattened slice |
+| `VisibleRows()` | `Seq()` | Compatibility operation that explicitly requests every visible row |
+| `RefreshSubtree(id)` | `Void(String)` | Remove descendants and mark the node for lazy repopulation |
+| `Bind(treeView)` / `Unbind()` | `Boolean(Object)` / `Void()` | Attach or detach the visual TreeView |
+
+`TreeView.SetVirtualModel(model)` renders directly from the model's flattened stable-ID index; it
+does not manufacture `TreeView.Node` handles. Pointer selection, arrow navigation, expansion, and
+activation route back to the model. The first flattened-index build is linear after structural
+changes; warm viewport slices are O(requested rows), and painting is bounded by the viewport.
+Ordinary retained nodes already present in the TreeView are preserved and become visible again
+after `ClearVirtualModel()`.
+
 ---
 
 ### OutputPane
@@ -553,6 +662,13 @@ Image display widget.
 
 `SetScaleMode()` and `SetOpacity()` affect the rendered output directly. If you do not call `SetSize()`, the widget measures to the image's natural pixel dimensions once pixels have been assigned.
 `SetPixels()` accepts a `Viper.Graphics.Pixels` object whose elements are packed as `0xRRGGBBAA`; the GUI layer converts them to byte RGBA. Width or height values less than or equal to zero use the source dimensions, requested sizes larger than the source are clamped, and `NULL` pixels clear the image.
+`TrySetPixels()` provides the same conversion and size behavior but reports failure and never
+clears the previous image when its source is invalid or storage cannot be allocated.
+`UpdateRegion()` converts only a validated source rectangle and copies it atomically into an
+existing image. This is the preferred path for streaming previews, canvases, and video frames.
+Nearest-neighbor filtering remains the compatibility default; select `ImageFilter.Bilinear` for
+smoother deliberate resizing. Repeated paints reuse a scaled cache, and unchanged dimensions
+reuse both source and cache storage.
 The native C widget `LoadFile()` now decodes BMP directly and uses platform image decoders for PNG/JPEG where available; the Viper runtime binding continues to route through `Viper.Graphics.Pixels` for PNG, BMP, JPEG, and GIF.
 
 **Constructor:** `NEW Viper.GUI.Image(parent)`
@@ -560,9 +676,12 @@ The native C widget `LoadFile()` now decodes BMP directly and uses platform imag
 | Method                         | Signature                              | Description                    |
 |--------------------------------|----------------------------------------|--------------------------------|
 | `SetPixels(pixels, w, h)`      | `Void(Pixels, Integer, Integer)`       | Set image from a `Viper.Graphics.Pixels` buffer |
+| `TrySetPixels(pixels, w, h)`   | `Boolean(Pixels, Integer, Integer)`    | Atomically upload pixels and report success |
+| `UpdateRegion(pixels, sx, sy, w, h, dx, dy)` | `Boolean(Pixels, Integer × 6)` | Atomically copy one source rectangle |
 | `LoadFile(path)`               | `Integer(String)`                      | Load PNG, BMP, JPEG, or GIF file directly (1=ok, 0=fail) |
 | `Clear()`                      | `Void()`                               | Clear image                    |
 | `SetScaleMode(mode)`           | `Void(Integer)`                        | 0=none, 1=fit, 2=fill, 3=stretch |
+| `SetFilter(filter)` / `GetFilter()` | `Void(Integer)` / `Integer()`     | Select/read nearest (0) or bilinear (1) filtering |
 | `SetOpacity(opacity)`          | `Void(Double)`                         | Set opacity, clamped to 0.0–1.0; non-finite values become 1.0 |
 
 ```basic
@@ -580,6 +699,7 @@ preview.LoadFile("photo.png")
 var preview = Image.New(root);
 preview.SetSize(200, 200);
 preview.SetScaleMode(1);  // Fit
+preview.SetFilter(ImageFilter.Bilinear);
 
 // Load directly from file (PNG, BMP, JPEG, or GIF)
 preview.LoadFile("photo.png");
@@ -589,46 +709,192 @@ preview.LoadFile("photo.png");
 
 ### Color Widgets
 
-The native GUI layer includes `ColorSwatch`, `ColorPalette`, and `ColorPicker` widgets for C applications and demos.
-`ColorPalette` renders its swatch grid directly and selection callbacks fire once per completed click. `ColorPicker.SetColor()`, `SetRgb()`, and `SetAlpha()` synchronize their child sliders and preview swatch before emitting one external change callback, so observers no longer see transient intermediate colors.
+`ColorSwatch`, `ColorPalette`, and `ColorPicker` are public managed controls. Their color contract
+is deliberately uniform: every public color is an opaque `0x00RRGGBB` integer. `ColorPicker`
+represents alpha separately in `[0,255]`, and `SetColor()` preserves the current alpha component.
+Upper bits supplied to a color constructor or setter are ignored.
+
+All three controls are focusable and expose `WasChanged()` plus a non-consuming `GetRevision()`.
+`WasChanged()` consumes only its own coalesced edge; reading it never resets the revision. Swatches
+activate with Space or Enter. Palettes navigate with arrows, Home, and End, and activate with Space
+or Enter. Pickers use Up/Down to choose a channel, Left/Right to adjust it, Shift+Left/Right for
+steps of ten, and Home/End for 0/255. Focus rings, selection borders, and channel labels use live
+theme colors, including high-contrast themes.
+
+#### ColorSwatch
+
+**Constructor:** `ColorSwatch.New(parent, color)`
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetColor(color)` | `Void(Integer)` | Replace the low-24-bit RGB color |
+| `GetColor()` | `Integer()` | Return `0x00RRGGBB` |
+| `SetSelected(selected)` | `Void(Boolean)` | Set visual and semantic selection |
+| `IsSelected()` | `Boolean()` | Query selection |
+| `WasChanged()` | `Boolean()` | Consume a color-or-selection change edge |
+| `GetRevision()` | `Integer()` | Read the non-consuming state revision |
+
+#### ColorPalette
+
+**Constructor:** `ColorPalette.New(parent)`
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddColor(color)` | `Void(Integer)` | Append a copied `0x00RRGGBB` entry |
+| `RemoveColor(index)` | `Boolean(Integer)` | Remove and compact one entry; false if invalid |
+| `Clear()` | `Void()` | Remove every entry and clear selection |
+| `GetColorCount()` | `Integer()` | Return the entry count |
+| `GetColorAt(index)` | `Integer(Integer)` | Return RGB, or 0 if invalid (black is also 0) |
+| `SetSelectedIndex(index)` | `Void(Integer)` | Select an entry; -1 clears selection |
+| `GetSelectedIndex()` | `Integer()` | Return the selected index or -1 |
+| `WasChanged()` | `Boolean()` | Consume a structural-or-selection edge |
+| `GetRevision()` | `Integer()` | Read the non-consuming state revision |
+
+Removing an entry before the selection shifts the selected index so it continues to identify the
+same surviving color. Removing the selected entry clears selection. Use `GetColorCount()` to
+validate an index before `GetColorAt()` when black (`0`) must be distinguished from absence.
+
+#### ColorPicker
+
+**Constructor:** `ColorPicker.New(parent)`
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetColor(color)` | `Void(Integer)` | Set RGB while preserving alpha |
+| `GetColor()` | `Integer()` | Return `0x00RRGGBB` |
+| `SetAlphaEnabled(enabled)` | `Void(Boolean)` | Show or hide alpha editing |
+| `IsAlphaEnabled()` | `Boolean()` | Query whether alpha editing is enabled |
+| `GetRed/Green/Blue()` | `Integer()` | Return an RGB component in `[0,255]` |
+| `GetAlpha()` | `Integer()` | Return alpha in `[0,255]` (default 255) |
+| `WasChanged()` | `Boolean()` | Consume an RGB-or-alpha component edge |
+| `GetRevision()` | `Integer()` | Read the non-consuming state revision |
+
+```rust
+// Zia — a compact palette feeding a full keyboard-accessible picker.
+var palette = ColorPalette.New(root);
+palette.AddColor(0x2D7FF9);
+palette.AddColor(0x22A06B);
+palette.AddColor(0xE5484D);
+
+var picker = ColorPicker.New(root);
+picker.SetAlphaEnabled(true);
+if palette.WasChanged() && palette.GetSelectedIndex() >= 0 {
+    picker.SetColor(palette.GetColorAt(palette.GetSelectedIndex()));
+}
+```
 
 ---
 
 ### Grid
 
-Tabular data grid whose columns **auto-size to their widest cell**, with optional column
-headers. A non-interactive display widget (no selection or scrolling) for property and data
-panels — use it instead of padding monospace strings to fake columns.
+Viewport-aware tabular data control with cached automatic column sizing, sparse virtual rows,
+selection, keyboard navigation, sorting requests, pointer resizing, controller-driven editing,
+scrolling, accessibility semantics, and independent event edges. Existing display-table code stays
+compatible: the Grid remains non-interactive and cannot take focus until selection, sorting,
+resizing, or editing is explicitly enabled.
 
 **Constructor:** `NEW Viper.GUI.Grid(parent)`
 
-| Method                   | Signature                       | Description                                                  |
-|--------------------------|---------------------------------|--------------------------------------------------------------|
-| `SetColumns(count)`      | `Void(Integer)`                 | Set the column count (clears existing headers and cells)     |
-| `SetHeader(col, text)`   | `Void(Integer, String)`         | Set a column header (drawn as a header row)                  |
-| `SetCell(row, col, text)`| `Void(Integer, Integer, String)`| Set a cell's text, growing the row count as needed           |
-| `GetCell(row, col)`      | `String(Integer, Integer)`      | A cell's text (empty when out of range)                      |
-| `Clear()`                | `Void()`                        | Remove all rows (columns and headers are kept)               |
-| `SetFont(font, size)`    | `Void(Object, Number)`          | Set the header/cell font                                     |
-| `GetColumnWidth(col)`    | `Integer(Integer)`              | Auto-sized pixel width of a column (its widest content + padding); `0` if no font |
-| `RowCount`               | `Integer` (property)            | Number of populated rows                                     |
-| `ColumnCount`            | `Integer` (property)            | Number of columns                                            |
+#### Content and virtualization
 
-A column's width tracks its widest header or cell, so the table stays aligned no matter the
-content or font size. `GetColumnWidth()` exposes the computed width if you need it for surrounding
-layout. The grid also supports the common `Widget` methods (`SetSize`, `SetVisible`, `Destroy`, …).
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `SetColumns(count)` | `Void(Integer)` | Atomically set columns and clear all header/row/interactive state |
+| `SetHeader(col, text)` | `Void(Integer, String)` | Copy a header; empty clears it |
+| `SetCell(row, col, text)` | `Void(Integer, Integer, String)` | Set a dense compatibility cell and grow dense rows |
+| `SetVirtualRowCount(count)` | `Void(Integer)` | Switch to sparse mode without allocating per-row storage |
+| `SetVirtualCell(row, col, text)` | `Void(Integer, Integer, String)` | Materialize/replace one sparse cell; empty removes it |
+| `GetCell(row, col)` | `String(Integer, Integer)` | Copy dense or sparse cell text; empty if absent/invalid |
+| `SetViewportRows(first, count)` | `Void(Integer, Integer)` | Set first/max painted rows; count `0` derives it from height |
+| `Clear()` | `Void()` | Clear dense or sparse rows while retaining columns/headers |
+| `RowCount` | `Integer` (property) | Full logical dense-or-virtual row count |
+| `ColumnCount` | `Integer` (property) | Column count |
+
+Virtual mode stores only non-empty values supplied through `SetVirtualCell`; a logical 10,000-row
+table with 40 supplied cells owns 40 cell strings, not a 10,000 × column matrix. Painting starts at
+the viewport's sparse lower bound and visits only visible rows × columns. Automatic widths are
+cached when content/font changes, so paint does not rescan the model. Calling dense `SetCell` exits
+virtual mode deliberately.
+
+#### Selection and activation
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `SetSelectable(enabled)` | `Void(Boolean)` | Enable pointer/keyboard selection; disabling clears it |
+| `SelectCell(row, col)` | `Boolean(Integer, Integer)` | Select a valid cell |
+| `GetSelectedRow()` / `GetSelectedColumn()` | `Integer()` | Selected coordinates, or `-1` |
+| `ClearSelection()` | `Void()` | Clear selection |
+| `WasSelectionChanged()` | `Boolean()` | Consume only the selection edge |
+| `WasActivated()` | `Boolean()` | Consume double-click/Enter activation |
+
+Arrow keys move by cell, Home/End move to the first/last column, and navigation keeps the selected
+row visible. Enter records activation. Pointer and keyboard operations share the same state and edge
+paths. The Grid's accessibility value reports one-based row/column coordinates while the public API
+uses zero-based indices.
+
+#### Sorting, widths, and editing
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `SetSortable(col, enabled)` | `Void(Integer, Boolean)` | Enable sort requests for one header |
+| `SetSort(col, direction)` | `Void(Integer, Integer)` | Record `-1` descending, `0` none, or `1` ascending |
+| `GetSortColumn()` / `GetSortDirection()` | `Integer()` | Current normalized sort request |
+| `WasSortChanged()` | `Boolean()` | Consume only the sort edge |
+| `SetColumnWidth(col, width)` | `Void(Integer, Number)` | Set logical explicit width; `0` restores automatic sizing |
+| `SetColumnResizable(col, enabled)` | `Void(Integer, Boolean)` | Enable pointer dragging at its right boundary |
+| `GetColumnWidth(col)` | `Integer(Integer)` | Legacy physical-pixel effective width |
+| `WasColumnResized()` | `Boolean()` | Consume an effective-width edge |
+| `GetResizedColumn()` | `Integer()` | Most recently resized column, or `-1` |
+| `SetEditable(enabled)` | `Void(Boolean)` | Enable controller-driven editing |
+| `BeginEdit(row, col)` | `Boolean(Integer, Integer)` | Mark a valid cell as the active edit target |
+| `CommitEdit(text)` | `Boolean(String)` | Copy replacement text and close the edit |
+| `CancelEdit()` / `IsEditing()` | `Void()` / `Boolean()` | Cancel or query edit mode |
+| `WasCellEdited()` | `Boolean()` | Consume only an effective committed-text edge |
+
+Header activation cycles ascending → descending → none. Sorting records a request but never
+reorders caller-owned data; apply the request to your model, then refresh dense or virtual cells.
+Editing is likewise controller-driven: F2 or double-click enters edit mode, an application may show
+its preferred editor, and `CommitEdit` or Escape closes it. This keeps virtual model ownership and
+validation in the application rather than embedding a second text model inside the Grid.
+
+#### Scrolling, fonts, and observation
+
+| Member | Signature | Description |
+|--------|-----------|-------------|
+| `ScrollToRow(row)` / `GetScrollRow()` | `Void(Integer)` / `Integer()` | Set/query first viewport row with end clamping |
+| `SetFont(font, size)` | `Void(Object, Number)` | Set font with logical size and refresh width caches |
+| `WasChanged()` | `Boolean()` | Consume the common content/selection change edge |
+| `GetRevision()` | `Integer()` | Read non-consuming monotonic state revision |
+
+Wheel input scrolls only when movement is possible; at either boundary it bubbles to an ancestor
+scroll view. `GetRevision` is suitable for multiple observers. Each specialized `Was…` query is an
+independent consume-on-read edge and does not hide another event kind or reduce the revision.
 
 ### Example
 
 ```rust
-// Zia — a property table that sizes its columns to the data.
+// Zia — large sparse table with external sort/edit handling.
 var grid = Grid.New(panel);
 grid.SetColumns(2);
-grid.SetHeader(0, "Property");
+grid.SetHeader(0, "ID");
 grid.SetHeader(1, "Value");
-grid.SetCell(0, 0, "Width");      grid.SetCell(0, 1, "1280");
-grid.SetCell(1, 0, "Color Space"); grid.SetCell(1, 1, "sRGB");
-// Columns 0 and 1 auto-size to "Color Space" and "Property"/"sRGB" respectively.
+grid.SetVirtualRowCount(10000);
+grid.SetViewportRows(5000, 40);
+grid.SetVirtualCell(5000, 0, "5000");
+grid.SetVirtualCell(5000, 1, "ready");
+grid.SetSelectable(true);
+grid.SetSortable(1, true);
+grid.SetEditable(true);
+
+if grid.WasSortChanged() {
+    // Reorder the application model using GetSortColumn/GetSortDirection,
+    // then repopulate only the requested viewport slice.
+}
+
+if grid.WasCellEdited() {
+    var row = grid.GetSelectedRow();
+    var value = grid.GetCell(row, grid.GetSelectedColumn());
+}
 ```
 
 ---

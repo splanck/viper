@@ -13,8 +13,8 @@
 //   - selected_index is -1 when no swatch is selected.
 //   - Measured size is computed from columns × swatch_size + gaps; a single
 //     swatch_size fallback is used when color_count == 0.
-//   - colorpalette_hit_test_swatch uses absolute widget coordinates from the
-//     event; gaps between swatches intentionally return -1 (no hit).
+//   - colorpalette_hit_test_swatch uses widget-local event coordinates; gaps
+//     between swatches intentionally return -1 (no hit).
 // Ownership/Lifetime:
 //   - palette->colors is owned by the widget; freed on colorpalette_destroy,
 //     vg_colorpalette_clear, and each call to vg_colorpalette_set_colors.
@@ -28,7 +28,9 @@
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,6 +45,7 @@ static void colorpalette_measure(vg_widget_t *widget,
 static void colorpalette_paint(vg_widget_t *widget, void *canvas);
 static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool colorpalette_can_focus(vg_widget_t *widget);
+static void colorpalette_update_accessible_value(vg_colorpalette_t *palette);
 
 //=============================================================================
 // ColorPalette VTable
@@ -121,6 +124,7 @@ vg_colorpalette_t *vg_colorpalette_create(vg_widget_t *parent) {
     // Set minimum size
     palette->base.constraints.min_width = palette->swatch_size;
     palette->base.constraints.min_height = palette->swatch_size;
+    colorpalette_update_accessible_value(palette);
 
     // Add to parent
     if (parent) {
@@ -187,17 +191,23 @@ static void colorpalette_measure(vg_widget_t *widget,
 static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
+    vg_theme_t *theme = vg_theme_get_current();
+    uint32_t background = theme ? theme->colors.bg_secondary : palette->bg_color;
+    uint32_t border = theme ? theme->colors.border_primary : palette->border_color;
+    uint32_t selected = theme ? theme->colors.border_focus : palette->selected_border;
 
     int32_t bx = (int32_t)widget->x;
     int32_t by = (int32_t)widget->y;
     int32_t bw = (int32_t)widget->width;
     int32_t bh = (int32_t)widget->height;
     if (bw > 0 && bh > 0)
-        vgfx_fill_rect(win, bx, by, bw, bh, palette->bg_color);
+        vgfx_fill_rect(win, bx, by, bw, bh, background);
 
     if (palette->color_count == 0 || !palette->colors) {
         if (bw > 0 && bh > 0)
-            vgfx_rect(win, bx, by, bw, bh, palette->border_color);
+            vgfx_rect(win, bx, by, bw, bh, border);
+        if ((widget->state & VG_STATE_FOCUSED) && bw > 0 && bh > 0)
+            vgfx_rect(win, bx - 2, by - 2, bw + 4, bh + 4, selected);
         return;
     }
 
@@ -218,26 +228,27 @@ static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
         vgfx_fill_rect(win, sx, sy, ss, ss, palette->colors[i]);
 
         if (i == palette->selected_index) {
-            vgfx_rect(win, sx - 1, sy - 1, ss + 2, ss + 2, palette->selected_border);
-            vgfx_rect(win, sx, sy, ss, ss, palette->selected_border);
+            vgfx_rect(win, sx - 1, sy - 1, ss + 2, ss + 2, selected);
+            vgfx_rect(win, sx, sy, ss, ss, selected);
         } else {
-            vgfx_rect(win, sx, sy, ss, ss, palette->border_color);
+            vgfx_rect(win, sx, sy, ss, ss, border);
         }
     }
 
     if (bw > 0 && bh > 0)
-        vgfx_rect(win, bx, by, bw, bh, palette->border_color);
+        vgfx_rect(win, bx, by, bw, bh, border);
+    if ((widget->state & VG_STATE_FOCUSED) && bw > 0 && bh > 0)
+        vgfx_rect(win, bx - 2, by - 2, bw + 4, bh + 4, selected);
 }
 
-/// @brief Return the index of the swatch under absolute coordinates (x, y), or -1 if none.
+/// @brief Return the index of the swatch under widget-local coordinates, or -1 if none.
 static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, float y) {
     if (palette->color_count == 0 || !palette->colors) {
         return -1;
     }
 
-    // Convert to local coordinates
-    float local_x = x - palette->base.x;
-    float local_y = y - palette->base.y;
+    float local_x = x;
+    float local_y = y;
 
     if (local_x < 0 || local_y < 0) {
         return -1;
@@ -256,7 +267,7 @@ static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, flo
     // Check if within the actual swatch (not in the gap)
     float cell_x = local_x - col * cell_size;
     float cell_y = local_y - row * cell_size;
-    if (cell_x > palette->swatch_size || cell_y > palette->swatch_size) {
+    if (cell_x >= palette->swatch_size || cell_y >= palette->swatch_size) {
         return -1; // In the gap
     }
 
@@ -266,6 +277,20 @@ static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, flo
     }
 
     return index;
+}
+
+/// @brief Notify application callbacks of one user-activated palette color.
+/// @details Selection is already committed before this helper runs. Keyboard and pointer paths use
+///          the same callback order and generic click hook.
+/// @param palette Palette containing the selected entry.
+static void colorpalette_activate_selected(vg_colorpalette_t *palette) {
+    if (!palette || palette->selected_index < 0 || palette->selected_index >= palette->color_count)
+        return;
+    int index = palette->selected_index;
+    if (palette->on_select)
+        palette->on_select(&palette->base, palette->colors[index], index, palette->on_select_data);
+    if (palette->base.on_click)
+        palette->base.on_click(&palette->base, palette->base.callback_data);
 }
 
 /// @brief VTable handle_event: hit-tests mouse-down and click events against the swatch grid,
@@ -289,19 +314,55 @@ static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
         // Hit test to find which swatch was clicked
         int index = colorpalette_hit_test_swatch(palette, event->mouse.x, event->mouse.y);
         if (index >= 0) {
-            palette->selected_index = index;
-            widget->needs_paint = true;
-
-            // Call selection callback
-            if (palette->on_select) {
-                palette->on_select(widget, palette->colors[index], index, palette->on_select_data);
-            }
-            // Also call widget's generic on_click if set
-            if (widget->on_click) {
-                widget->on_click(widget, widget->callback_data);
-            }
+            vg_colorpalette_set_selected(palette, index);
+            colorpalette_activate_selected(palette);
+            event->handled = true;
             return true;
         }
+    }
+
+    if (event->type == VG_EVENT_KEY_DOWN && palette->color_count > 0) {
+        int current = palette->selected_index >= 0 ? palette->selected_index : 0;
+        int next = current;
+        switch (event->key.key) {
+            case VG_KEY_LEFT:
+                next = current - 1;
+                break;
+            case VG_KEY_RIGHT:
+                next = current + 1;
+                break;
+            case VG_KEY_UP:
+                next = current - palette->columns;
+                break;
+            case VG_KEY_DOWN:
+                next = current + palette->columns;
+                break;
+            case VG_KEY_HOME:
+                next = 0;
+                break;
+            case VG_KEY_END:
+                next = palette->color_count - 1;
+                break;
+            case VG_KEY_SPACE:
+            case VG_KEY_ENTER:
+                if (palette->selected_index < 0)
+                    vg_colorpalette_set_selected(palette, 0);
+                colorpalette_activate_selected(palette);
+                event->handled = true;
+                return true;
+            default:
+                return false;
+        }
+        if (next < 0)
+            next = 0;
+        if (next >= palette->color_count)
+            next = palette->color_count - 1;
+        int old = palette->selected_index;
+        vg_colorpalette_set_selected(palette, next);
+        if (old != palette->selected_index)
+            colorpalette_activate_selected(palette);
+        event->handled = true;
+        return true;
     }
 
     return false;
@@ -310,6 +371,27 @@ static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
 /// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool colorpalette_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
+}
+
+/// @brief Refresh the palette's semantic selection value.
+/// @details Empty/unselected palettes expose an empty value. Selected palettes expose a
+///          one-based position, total count, and RGB hex value for headless/native bridges.
+/// @param palette Palette whose semantic value should be refreshed.
+static void colorpalette_update_accessible_value(vg_colorpalette_t *palette) {
+    if (!palette)
+        return;
+    if (palette->selected_index < 0 || palette->selected_index >= palette->color_count) {
+        vg_widget_set_accessible_value(&palette->base, "");
+        return;
+    }
+    char value[64];
+    (void)snprintf(value,
+                   sizeof(value),
+                   "%d of %d, #%06X",
+                   palette->selected_index + 1,
+                   palette->color_count,
+                   palette->colors[palette->selected_index] & 0x00FFFFFFu);
+    vg_widget_set_accessible_value(&palette->base, value);
 }
 
 //=============================================================================
@@ -328,19 +410,29 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
     if (!palette)
         return;
 
+    int normalized_count = colors && count > 0 ? count : 0;
+    bool colors_equal = normalized_count == palette->color_count;
+    if (colors_equal && normalized_count > 0) {
+        colors_equal =
+            palette->colors &&
+            memcmp(palette->colors, colors, (size_t)normalized_count * sizeof(uint32_t)) == 0;
+    }
+    if (colors_equal && palette->selected_index == -1)
+        return;
+
     uint32_t *new_colors = NULL;
-    if (colors && count > 0) {
-        if ((size_t)count > SIZE_MAX / sizeof(uint32_t))
+    if (normalized_count > 0) {
+        if ((size_t)normalized_count > SIZE_MAX / sizeof(uint32_t))
             return;
-        new_colors = malloc((size_t)count * sizeof(uint32_t));
+        new_colors = malloc((size_t)normalized_count * sizeof(uint32_t));
         if (!new_colors)
             return;
-        memcpy(new_colors, colors, (size_t)count * sizeof(uint32_t));
+        memcpy(new_colors, colors, (size_t)normalized_count * sizeof(uint32_t));
     }
 
     free(palette->colors);
     palette->colors = new_colors;
-    palette->color_count = new_colors ? count : 0;
+    palette->color_count = new_colors ? normalized_count : 0;
     palette->selected_index = -1;
 
     if (!colors || count <= 0) {
@@ -349,6 +441,8 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
 
     palette->base.needs_layout = true;
     palette->base.needs_paint = true;
+    colorpalette_update_accessible_value(palette);
+    vg_widget_note_change(&palette->base);
 }
 
 /// @brief Append a single colour to the end of the palette.
@@ -374,6 +468,44 @@ void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color) {
 
     palette->base.needs_layout = true;
     palette->base.needs_paint = true;
+    colorpalette_update_accessible_value(palette);
+    vg_widget_note_change(&palette->base);
+}
+
+/// @brief Remove one palette color by zero-based index.
+/// @details Storage is compacted in place. Selection follows a surviving logical entry and clears
+///          if the selected entry itself is removed.
+/// @param palette Palette to update.
+/// @param index Zero-based entry index.
+/// @return true when an entry was removed, otherwise false.
+bool vg_colorpalette_remove_color(vg_colorpalette_t *palette, int index) {
+    if (!palette || index < 0 || index >= palette->color_count)
+        return false;
+    int old_selected = palette->selected_index;
+    if (index + 1 < palette->color_count) {
+        memmove(palette->colors + index,
+                palette->colors + index + 1,
+                (size_t)(palette->color_count - index - 1) * sizeof(uint32_t));
+    }
+    palette->color_count--;
+    if (palette->color_count == 0) {
+        free(palette->colors);
+        palette->colors = NULL;
+    } else {
+        uint32_t *shrunk =
+            realloc(palette->colors, (size_t)palette->color_count * sizeof(uint32_t));
+        if (shrunk)
+            palette->colors = shrunk;
+    }
+    if (old_selected == index)
+        palette->selected_index = -1;
+    else if (old_selected > index)
+        palette->selected_index = old_selected - 1;
+    palette->base.needs_layout = true;
+    palette->base.needs_paint = true;
+    colorpalette_update_accessible_value(palette);
+    vg_widget_note_change(&palette->base);
+    return true;
 }
 
 /// @brief Remove all colours from the palette and reset the selection.
@@ -381,6 +513,8 @@ void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color) {
 /// @param palette The color palette to clear.
 void vg_colorpalette_clear(vg_colorpalette_t *palette) {
     if (!palette)
+        return;
+    if (palette->color_count == 0 && palette->selected_index == -1)
         return;
 
     if (palette->colors) {
@@ -392,6 +526,29 @@ void vg_colorpalette_clear(vg_colorpalette_t *palette) {
 
     palette->base.needs_layout = true;
     palette->base.needs_paint = true;
+    colorpalette_update_accessible_value(palette);
+    vg_widget_note_change(&palette->base);
+}
+
+/// @brief Return the number of stored palette colors.
+/// @param palette Palette to inspect.
+/// @return Non-negative count, or zero for NULL.
+int vg_colorpalette_get_color_count(const vg_colorpalette_t *palette) {
+    return palette ? palette->color_count : 0;
+}
+
+/// @brief Read one palette color into an output parameter.
+/// @param palette Palette to inspect.
+/// @param index Zero-based color index.
+/// @param out_color Receives AARRGGBB on success.
+/// @return true for a valid index/output pointer, otherwise false.
+bool vg_colorpalette_get_color_at(const vg_colorpalette_t *palette,
+                                  int index,
+                                  uint32_t *out_color) {
+    if (!palette || !out_color || index < 0 || index >= palette->color_count)
+        return false;
+    *out_color = palette->colors[index];
+    return true;
 }
 
 /// @brief Set the number of columns in the swatch grid.
@@ -401,10 +558,13 @@ void vg_colorpalette_clear(vg_colorpalette_t *palette) {
 void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns) {
     if (!palette || columns <= 0)
         return;
+    if (palette->columns == columns)
+        return;
 
     palette->columns = columns;
     palette->base.needs_layout = true;
     palette->base.needs_paint = true;
+    vg_widget_note_revision(&palette->base);
 }
 
 /// @brief Programmatically select a swatch by zero-based index.
@@ -419,9 +579,13 @@ void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index) {
     if (index < -1 || index >= palette->color_count) {
         index = -1;
     }
+    if (palette->selected_index == index)
+        return;
 
     palette->selected_index = index;
     palette->base.needs_paint = true;
+    colorpalette_update_accessible_value(palette);
+    vg_widget_note_change(&palette->base);
 }
 
 /// @brief Return the index of the currently selected swatch.
@@ -467,12 +631,13 @@ void vg_colorpalette_set_on_select(vg_colorpalette_t *palette,
 /// @param palette The color palette to configure.
 /// @param size    Desired swatch size in logical pixels; values ≤ 0 are ignored.
 void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size) {
-    if (!palette || size <= 0)
+    if (!palette || !isfinite(size) || size <= 0 || palette->swatch_size == size)
         return;
 
     palette->swatch_size = size;
     palette->base.needs_layout = true;
     palette->base.needs_paint = true;
+    vg_widget_note_revision(&palette->base);
 }
 
 /// @brief Populate the palette with the classic 16 Windows/DOS colours in 2 rows of 8.

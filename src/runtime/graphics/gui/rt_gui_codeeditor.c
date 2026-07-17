@@ -36,6 +36,66 @@
 #include "rt_platform.h"
 #include <ctype.h>
 
+/// @brief Saturate a low-level unsigned editor counter to the public signed integer domain.
+/// @details Performance counters intentionally never wrap in the runtime API; values beyond the
+///          language's `i64` maximum remain pinned at `INT64_MAX` in both individual getters and
+///          the consolidated stats Map.
+/// @param value Low-level monotonic counter value.
+/// @return Exact signed value when representable, otherwise `INT64_MAX`.
+static int64_t rt_codeeditor_perf_i64(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Allocate the versioned public CodeEditor performance-statistics Map.
+/// @details All nine raw lower-layer counters are emitted under stable camelCase keys even in a
+///          graphics-disabled build or for an invalid editor. Keeping schema construction in one
+///          helper prevents enabled/headless drift and lets diagnostics consume maps uniformly.
+/// @param total_height_scans Lines visited while accumulating total document height.
+/// @param total_visual_row_scans Lines visited while accumulating total wrapped visual rows.
+/// @param visual_row_scans Lines visited by visual-row queries.
+/// @param locate_visual_row_scans Lines visited while locating a visual row.
+/// @param line_highlight_calls Syntax-highlighter line invocations.
+/// @param syntax_state_line_scans Lines scanned to reconstruct cached syntax state.
+/// @param highlight_span_checks Highlight spans inspected during paint.
+/// @param full_text_copies Full-document text materializations.
+/// @param full_text_copy_bytes Bytes copied by full-document materializations.
+/// @return New managed Map with `schemaVersion=1`, or NULL on root allocation failure.
+static void *rt_codeeditor_perf_stats_map(uint64_t total_height_scans,
+                                          uint64_t total_visual_row_scans,
+                                          uint64_t visual_row_scans,
+                                          uint64_t locate_visual_row_scans,
+                                          uint64_t line_highlight_calls,
+                                          uint64_t syntax_state_line_scans,
+                                          uint64_t highlight_span_checks,
+                                          uint64_t full_text_copies,
+                                          uint64_t full_text_copy_bytes) {
+    void *map = rt_map_new();
+    if (!map)
+        return NULL;
+    rt_map_set_int(map, rt_const_cstr("schemaVersion"), 1);
+    rt_map_set_int(
+        map, rt_const_cstr("totalHeightLinearScans"), rt_codeeditor_perf_i64(total_height_scans));
+    rt_map_set_int(map,
+                   rt_const_cstr("totalVisualRowLinearScans"),
+                   rt_codeeditor_perf_i64(total_visual_row_scans));
+    rt_map_set_int(
+        map, rt_const_cstr("visualRowLinearScans"), rt_codeeditor_perf_i64(visual_row_scans));
+    rt_map_set_int(map,
+                   rt_const_cstr("locateVisualRowLinearScans"),
+                   rt_codeeditor_perf_i64(locate_visual_row_scans));
+    rt_map_set_int(
+        map, rt_const_cstr("lineHighlightCalls"), rt_codeeditor_perf_i64(line_highlight_calls));
+    rt_map_set_int(map,
+                   rt_const_cstr("syntaxStateLineScans"),
+                   rt_codeeditor_perf_i64(syntax_state_line_scans));
+    rt_map_set_int(
+        map, rt_const_cstr("highlightSpanChecks"), rt_codeeditor_perf_i64(highlight_span_checks));
+    rt_map_set_int(map, rt_const_cstr("fullTextCopies"), rt_codeeditor_perf_i64(full_text_copies));
+    rt_map_set_int(
+        map, rt_const_cstr("fullTextCopyBytes"), rt_codeeditor_perf_i64(full_text_copy_bytes));
+    return map;
+}
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
 // CodeEditor Enhancements - Gutter & Line Numbers (Phase 4)
@@ -1676,16 +1736,35 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
     return rt_string_from_bytes(line->text, line->length);
 }
 
-static int64_t rt_codeeditor_perf_i64(uint64_t value) {
-    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
-}
-
 /// @brief Clear low-level editor performance counters.
 void rt_codeeditor_reset_perf_stats(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (ce)
         vg_codeeditor_reset_perf_stats(ce);
+}
+
+/// @brief Snapshot all low-level CodeEditor performance counters into one versioned Map.
+/// @details The lower widget returns a value copy, providing a mutually consistent snapshot on the
+///          GUI thread. Invalid editors still return the complete schema with zero counters so
+///          telemetry collection does not need a separate capability branch.
+/// @param editor Live CodeEditor handle; invalid handles yield zero-valued statistics.
+/// @return New managed Map with schemaVersion=1 and nine stable raw-counter keys, or NULL on OOM.
+void *rt_codeeditor_get_perf_stats(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return rt_codeeditor_perf_stats_map(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(ce);
+    return rt_codeeditor_perf_stats_map(stats.total_height_linear_scans,
+                                        stats.total_visual_row_linear_scans,
+                                        stats.visual_row_linear_scans,
+                                        stats.locate_visual_row_linear_scans,
+                                        stats.line_highlight_calls,
+                                        stats.syntax_state_line_scans,
+                                        stats.highlight_span_checks,
+                                        stats.full_text_copies,
+                                        stats.full_text_copy_bytes);
 }
 
 /// @brief Return full-buffer materialization count.
@@ -2342,6 +2421,17 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
 /// @brief Stub: `CodeEditor.ResetPerfStats` is a no-op without graphics.
 void rt_codeeditor_reset_perf_stats(void *editor) {
     (void)editor;
+}
+
+/// @brief Return the complete zero-valued performance schema without graphics support.
+/// @details The headless runtime preserves the enabled build's Map shape and schema version so
+///          diagnostics and tests can consume telemetry portably even though no editor widget can
+///          accumulate work.
+/// @param editor Ignored graphics-disabled CodeEditor handle.
+/// @return New managed Map with schemaVersion=1 and all nine counters set to zero, or NULL on OOM.
+void *rt_codeeditor_get_perf_stats(void *editor) {
+    (void)editor;
+    return rt_codeeditor_perf_stats_map(0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 /// @brief Stub: returns 0 without graphics.

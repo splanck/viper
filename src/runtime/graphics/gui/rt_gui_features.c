@@ -61,13 +61,18 @@ static char *rt_gui_features_strdup(const char *text) {
     return copy;
 }
 
-/// @brief Return the GUI subsystem's monotonic clock in milliseconds.
-///
-/// Wrapper around `rt_gui_now_ms`. The unused `app` parameter
-/// reserves the option to read a per-app clock in the future
-/// (e.g. for paused-game time).
+/// @brief Return the app scheduler's monotonic timer clock in milliseconds.
+/// @details Once an app has rendered, this uses the same real-or-deterministic clock that drives
+///          tooltip, notification, and dialog scheduling. Before the first frame, invalid clocks
+///          fall back to the process monotonic clock. The conversion saturates and never exposes a
+///          negative or non-finite timestamp.
+/// @param app App whose scheduler clock is requested; NULL uses process time.
+/// @return Monotonic millisecond timestamp suitable for lower GUI timer records.
 static uint64_t rt_gui_feature_now_ms(rt_gui_app_t *app) {
-    (void)app;
+    if (app && isfinite(app->scheduler_clock_ms) && app->scheduler_clock_ms > 0.0) {
+        return app->scheduler_clock_ms >= (double)UINT64_MAX ? UINT64_MAX
+                                                             : (uint64_t)app->scheduler_clock_ms;
+    }
     return rt_gui_now_ms();
 }
 
@@ -257,7 +262,7 @@ void *rt_commandpalette_new(void *parent) {
 
     vg_commandpalette_set_callbacks(palette, rt_commandpalette_on_execute, NULL, data);
     if (app && app->default_font)
-        vg_commandpalette_set_font(palette, app->default_font, app->default_font_size);
+        vg_commandpalette_set_font(palette, app->default_font, rt_gui_app_effective_font_size(app));
     rt_gui_register_command_palette(app, palette);
 
     return data;
@@ -558,7 +563,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
     if (app->manual_tooltip && ctext) {
         if (app->default_font) {
             app->manual_tooltip->font = app->default_font;
-            app->manual_tooltip->font_size = app->default_font_size;
+            app->manual_tooltip->font_size = rt_gui_app_effective_font_size(app);
         }
         vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
         vg_tooltip_set_text(app->manual_tooltip, ctext);
@@ -593,7 +598,7 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
             goto tooltip_rich_done;
         if (app->default_font) {
             app->manual_tooltip->font = app->default_font;
-            app->manual_tooltip->font_size = app->default_font_size;
+            app->manual_tooltip->font_size = rt_gui_app_effective_font_size(app);
         }
         vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
         vg_tooltip_set_text(app->manual_tooltip, combined);
@@ -755,7 +760,7 @@ static vg_notification_manager_t *rt_get_notification_manager(rt_gui_app_t *app)
         app->notification_manager = vg_notification_manager_create();
         if (app->notification_manager && app->default_font) {
             vg_notification_manager_set_font(
-                app->notification_manager, app->default_font, app->default_font_size);
+                app->notification_manager, app->default_font, rt_gui_app_effective_font_size(app));
         }
     }
     return app->notification_manager;
@@ -1409,14 +1414,17 @@ rt_string rt_commandpalette_get_query(void *palette) {
     (void)palette;
     return rt_str_empty();
 }
+
 int64_t rt_commandpalette_get_query_generation(void *palette) {
     (void)palette;
     return 0;
 }
+
 void rt_commandpalette_set_query(void *palette, rt_string text) {
     (void)palette;
     (void)text;
 }
+
 void rt_commandpalette_set_client_filtered(void *palette, int64_t enabled) {
     (void)palette;
     (void)enabled;

@@ -2,6 +2,8 @@
 
 Date prepared: 2026-07-15  
 Evidence baseline: current working tree and build outputs inspected on 2026-07-15  
+Baseline reverified: 2026-07-16 against the committed tree (runtime API dump,
+cited files/tests, and both wave-A defect repros re-run; see plan 00)  
 Status: implementation plans; no implementation is authorized by this package alone
 
 ## Purpose
@@ -71,7 +73,7 @@ common responsibilities first-class and composable.
 | ID | Plan | Primary outcome | Depends on |
 |---:|---|---|---|
 | 00 | [Baseline and program contract](00-baseline-and-program-contract.md) | Shared evidence, invariants, and execution rules | None |
-| 01 | [Final-overlay alpha correctness](01-final-overlay-alpha-correctness.md) | Correct `DrawRect2DAlpha` on every backend | 00 |
+| 01 | [Final-overlay alpha correctness](01-final-overlay-alpha-correctness.md) | Correct scalar overlay opacity (`DrawRect2DAlpha` family) on every backend | 00 |
 | 02 | [Metal AA-text resource identity](02-metal-aa-text-resource-identity.md) | Eliminate same-size AA-text texture aliasing | 00 |
 | 03 | [Fixed-step frame driver and render phases](03-fixed-step-frame-driver-and-render-phases.md) | Poll-based fixed-step scheduling with custom render insertion points | 01, 02 |
 | 04 | [Scene and resource scopes](04-scene-and-resource-scopes.md) | Idempotent ownership and teardown for mixed 3D resources | 03 |
@@ -91,6 +93,16 @@ common responsibilities first-class and composable.
 | 18 | [Ridgebound migration](18-ridgebound-migration.md) | Prove environment, traversal, quality, and scoped ownership | 03–12, 14, 15 |
 | 19 | [Ashfall migration](19-ashfall-migration.md) | Prove FPS/custom-render/ranged-combat application composition | 03–15 |
 | 20 | [Roadmap, release gates, and rollout](20-roadmap-release-gates-and-rollout.md) | Integration sequence, compatibility policy, and completion gates | All |
+
+## Where to start
+
+As of the 2026-07-16 reverification, no plan has begun implementation and both
+wave-A defects still reproduce exactly as documented (the overlay-alpha repro
+fails on software and Metal; the AA-text alias fails on Metal with software
+correct). The next actionable work is therefore plan 00's baseline capture
+followed by plans 01 and 02. Plans 08 and the design portion of plan 10 are the
+only other workstreams that may start in parallel without touching wave-A
+files.
 
 ## Program waves
 
@@ -132,9 +144,10 @@ coordinated integration branch.
   D3D11, and OpenGL validation for backend-specific resource and blend defects.
 - Do not add dependencies. Do not introduce raw platform preprocessor checks
   outside approved adapters.
-- Preserve user changes in a dirty worktree. Each owner must inspect
-  `git status --short` before editing and must not restore the deleted historical
-  plan directories visible in the 2026-07-15 baseline.
+- Preserve unrelated uncommitted changes. Each owner must inspect
+  `git status --short` before editing. The historical plan directories removed
+  in the 2026-07 documentation reorganization stay deleted; do not restore them
+  as a side effect of any plan.
 
 ## Shared appendices
 

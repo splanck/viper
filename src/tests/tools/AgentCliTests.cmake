@@ -267,6 +267,82 @@ if (NOT _api_out MATCHES
     message(FATAL_ERROR "--dump-runtime-api missing the allocation-reusing Canvas3D status contract")
 endif ()
 if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.App.New\"[^\n]*\"c_symbol\":\"rt_gui_app_new\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI App.New contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.App.TryNew\"[^\n]*\"class\":\"Viper.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI App.TryNew Result contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.App.get_Root\"[^\n]*\"class\":\"Viper.GUI.Widget\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"borrowed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI App.Root borrowed contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.App.RunFrameWithDelta\"[^\n]*\"c_symbol\":\"rt_gui_app_run_frame_with_delta\"[^\n]*\"return_type\":\{\"raw\":\"i1\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI deterministic frame contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"GetNextDeadlineMs\"[^\n]*\"target\":\"Viper.GUI.App.GetNextDeadlineMs\"[^\n]*\"c_symbol\":\"rt_gui_app_get_next_deadline_ms\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI deadline method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.CodeEditor.TakeGutterClick\"[^\n]*\"class\":\"Viper.Collections.Map\"[^\n]*\"nullable\":false[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI TakeGutterClick typed-map contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.Theme.GetPalette\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI Theme.GetPalette ownership contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.ThemePalette.FromDark\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI ThemePalette factory ownership contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.ThemePalette.Validate\"[^\n]*\"class\":\"Viper.Result\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"result\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api GUI ThemePalette.Validate Result contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.TreeView.GetLoadRequestedNodeOption\"[^\n]*\"class\":\"Viper.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api TreeView lazy-load Option contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.GUI.TreeView.GetActivatedNodeOption\"[^\n]*\"class\":\"Viper.Option\"[^\n]*\"nullable\":false[^\n]*\"fallibility\":\"option\"[^\n]*\"ownership\":\"owned\"[^\n]*\"contract_source\":\"gui-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api TreeView activation Option contract regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"MoveTab\"[^\n]*\"target\":\"Viper.GUI.TabBar.MoveTab\"[^\n]*\"c_symbol\":\"rt_tabbar_move_tab\"")
+    message(FATAL_ERROR "--dump-runtime-api TabBar reorder method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"GetCollapsedSide\"[^\n]*\"target\":\"Viper.GUI.SplitPane.GetCollapsedSide\"[^\n]*\"c_symbol\":\"rt_splitpane_get_collapsed_side\"")
+    message(FATAL_ERROR "--dump-runtime-api SplitPane collapse method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"SetSelectedIndex\"[^\n]*\"target\":\"Viper.GUI.RadioGroup.SetSelectedIndex\"[^\n]*\"c_symbol\":\"rt_radiogroup_set_selected_index\"")
+    message(FATAL_ERROR "--dump-runtime-api RadioGroup selected-index method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"GetSelectedText\"[^\n]*\"target\":\"Viper.GUI.Label.GetSelectedText\"[^\n]*\"c_symbol\":\"rt_label_get_selected_text\"")
+    message(FATAL_ERROR "--dump-runtime-api selectable Label method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"GetColorAt\"[^\n]*\"target\":\"Viper.GUI.ColorPalette.GetColorAt\"[^\n]*\"c_symbol\":\"rt_colorpalette_get_color_at\"")
+    message(FATAL_ERROR "--dump-runtime-api ColorPalette indexed-color method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"SetAlphaEnabled\"[^\n]*\"target\":\"Viper.GUI.ColorPicker.SetAlphaEnabled\"[^\n]*\"c_symbol\":\"rt_colorpicker_set_alpha_enabled\"")
+    message(FATAL_ERROR "--dump-runtime-api ColorPicker alpha method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"SetVirtualCell\"[^\n]*\"target\":\"Viper.GUI.Grid.SetVirtualCell\"[^\n]*\"c_symbol\":\"rt_datagrid_set_virtual_cell\"")
+    message(FATAL_ERROR "--dump-runtime-api Grid sparse-cell method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"CommitEdit\"[^\n]*\"target\":\"Viper.GUI.Grid.CommitEdit\"[^\n]*\"c_symbol\":\"rt_datagrid_commit_edit\"")
+    message(FATAL_ERROR "--dump-runtime-api Grid edit method binding regressed")
+endif ()
+if (NOT _api_out MATCHES
         "\"name\":\"Viper.Graphics3D.Canvas3D.Screenshot\"[^\n]*\"c_symbol\":\"rt_canvas3d_screenshot\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"")
     message(FATAL_ERROR "--dump-runtime-api missing the Canvas3D screenshot ownership contract")
 endif ()

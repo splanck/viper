@@ -110,7 +110,10 @@ sink.
 1. Test `IO.Assets.Exists/Load` and `Assets3D.Load*Asset` for embedded, mounted,
    and CWD loose paths.
 2. Test `Viper.Assets.Resolver.Resolve` result fields for scene, project,
-   asset-root, mounted, and missing sources.
+   asset-root, mounted, and missing sources. Its current public signature
+   returns `obj<Viper.Collections.Map>` (registered in
+   `src/il/runtime/defs/api/audio_io.def`), which is why phase 1 requires a
+   structured internal seam instead of re-parsing that Map.
 3. Reproduce documented edge cases: relative scene path interpretation and
    empty asset path. Decide whether this plan must repair them or avoid them
    with explicit absolute context.

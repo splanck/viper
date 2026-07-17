@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Core & Application
@@ -86,6 +86,33 @@ LOOP
 
 ---
 
+## Typed Constant Namespaces
+
+Public GUI APIs continue to accept `Integer` values for compatibility, but new code should use the
+read-only static properties below. The values are stable across graphics backends and are also
+available in graphics-disabled builds.
+
+| Class | Stable properties |
+|-------|-------------------|
+| `Align` | `Start=0`, `Center=1`, `End=2`, `Stretch=3` |
+| `Justify` | `Start=0`, `Center=1`, `End=2`, `SpaceBetween=3`, `SpaceAround=4`, `SpaceEvenly=5` |
+| `FlexDirection` | `Row=0`, `Column=1`, `RowReverse=2`, `ColumnReverse=3` |
+| `FlexWrap` | `NoWrap=0`, `Wrap=1`, `WrapReverse=2` |
+| `Dock` | `Left=0`, `Top=1`, `Right=2`, `Bottom=3`, `Fill=4` |
+| `ThemeMode` | `Dark=0`, `Light=1`, `System=2`, `Custom=3` |
+| `AccessibleRole` | `None=0` through `Link=30`; see the generated reference for the complete semantic role list |
+| `LiveRegionMode` | `Off=0`, `Polite=1`, `Assertive=2` |
+| `DialogButtonRole` | `Normal=0`, `Default=1`, `Cancel=2`, `Destructive=3`, `Accept=4`, `Reject=5`, `Help=6` |
+| `DialogStatus` | `Idle=0`, `Open=1`, `Accepted=2`, `Cancelled=3`, `Failed=4` |
+| `ImageFilter` | `Nearest=0`, `Bilinear=1` |
+| `SortDirection` | `None=0`, `Ascending=1`, `Descending=-1` |
+
+These are typed runtime classes rather than copied language enums, so Zia and BASIC resolve the
+same canonical registry getter. For example, use `Viper.GUI.Dock.Fill`,
+`Viper.GUI.AccessibleRole.Button`, or `Viper.GUI.ImageFilter.Bilinear` directly at the call site.
+
+---
+
 ## Viper.GUI.App
 
 Main application class that manages the window and widget tree.
@@ -113,12 +140,13 @@ Main application class that manages the window and widget tree.
 | `SetFont(font, size)`   | `Void(Font, Double)` | Set default font for all widgets         |
 | `WasFileDropped()`      | `Boolean()`          | True if files were dropped on the window this frame |
 
-`SetFont()` updates existing text-bearing widgets and becomes the default for newly created ones,
-including `Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
-defers release while any active app or registered GUI app still references the
-font. `SetFont()` and widget-level `SetFont(font, size)` calls accept only live
-handles returned by `Viper.GUI.Font.Load`; stale, destroyed, or arbitrary object
-handles are ignored.
+`SetFont()` updates existing text-bearing widgets and becomes the regular role for newly created
+ones, including `Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text.
+Code/output controls retain the theme's monospace role and titled group boxes use its bold role.
+`Font.Destroy()` defers release while any app surface still references the backing font, then
+reclaims it automatically after a later safe presentation generation. `SetFont()` and widget-level
+`SetFont(font, size)` calls accept live managed or legacy Font handles; stale, destroyed, and
+arbitrary object handles are ignored.
 
 ### Window Management
 
@@ -226,21 +254,33 @@ while !app.get_ShouldClose() {
 
 ## Viper.GUI.Font
 
-Font loading for GUI widgets. Supports TrueType (.ttf) fonts.
+Managed font loading for GUI widgets. Supports TrueType (`.ttf`/supported first-face collection)
+files plus zero-dependency regular and bold system UI roles.
 TrueType outline rasterization preserves separate contour boundaries, so glyphs with holes or multiple independent contours render with the intended even-odd fill instead of connecting unrelated contour endpoints.
 `Font.Load(path)` rejects paths containing embedded NUL bytes instead of passing a truncated path to the platform loader.
+`LoadSystemUi` and `LoadSystemUiBold` try deterministic host paths and fall back to Viper's embedded
+font, so a graphics-enabled build has a portable face without adding a font library. Sizes are
+logical points from 1 through 512; the preserved value is available through `GetLogicalSize` and
+is scaled exactly once by the owning app.
 
 **Type:** Static/Instance
 **Constructor:** `Viper.GUI.Font.Load(path)`
 
 ### Methods
 
-| Method       | Signature        | Description                                 |
-|--------------|------------------|---------------------------------------------|
-| `Load(path)` | `Font(String)`   | Load font from TTF file. Returns NULL on failure |
-| `Destroy()`  | `Void()`         | Destroy the font, or defer it while live GUI objects still reference it |
+| Method                   | Signature          | Description |
+|--------------------------|--------------------|-------------|
+| `Load(path)`             | `Font(String)`     | Load a managed font from a TTF file; returns null on failure |
+| `LoadSystemUi(size)`     | `Result(Double)`   | Load the regular system UI role with embedded fallback |
+| `LoadSystemUiBold(size)` | `Result(Double)`   | Load the bold system UI role with embedded fallback |
+| `GetLogicalSize(font)`   | `Double(Font)`     | Return preserved unscaled size, or zero when unset/invalid |
+| `Destroy()`              | `Void()`           | Invalidate this Font and retire its backing face while still referenced |
 
-`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font in every app that still uses it and frees it during app teardown, preventing dangling GUI font pointers. Repeated destroys or stale handles are ignored.
+Font values are ordinary reference-counted runtime objects and can safely be stored in `Result` and
+`ThemePalette`. Palettes retain managed wrappers per typography role. `Font.Destroy()` is safe to
+call while a live app or widget still references the font: the wrapper becomes inert immediately,
+while the backing face is retired in every app that uses it and reclaimed after its last render
+reference and a later frame boundary. Repeated destroys and stale handles are ignored.
 
 ### Example
 
@@ -257,6 +297,11 @@ app.SetFont(font, 14)  ' A failed/stale font handle is ignored safely
 // Zia
 var font = Font.Load("fonts/roboto.ttf");
 app.SetFont(font, 14);
+
+var regularResult = Font.LoadSystemUi(14.0);
+if regularResult.IsOk() {
+    app.SetFont(regularResult.Unwrap(), 14.0);
+}
 ```
 
 ---

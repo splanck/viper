@@ -57,9 +57,13 @@ typedef enum vg_event_type {
     VG_EVENT_TRIPLE_CLICK, ///< Triple click detected within the system's threshold.
 
     // Keyboard events
-    VG_EVENT_KEY_DOWN, ///< A key was pressed (physical key event).
-    VG_EVENT_KEY_UP,   ///< A key was released (physical key event).
-    VG_EVENT_KEY_CHAR, ///< Character input after platform key translation (e.g. IME).
+    VG_EVENT_KEY_DOWN,           ///< A key was pressed (physical key event).
+    VG_EVENT_KEY_UP,             ///< A key was released (physical key event).
+    VG_EVENT_KEY_CHAR,           ///< Character input after platform key translation (e.g. IME).
+    VG_EVENT_COMPOSITION_START,  ///< Native IME began preedit over a replacement range.
+    VG_EVENT_COMPOSITION_UPDATE, ///< Native IME changed visible preedit text or selection.
+    VG_EVENT_COMPOSITION_COMMIT, ///< Native IME committed preedit as one logical edit.
+    VG_EVENT_COMPOSITION_CANCEL, ///< Native IME discarded preedit and restored editor state.
 
     // Focus events
     VG_EVENT_FOCUS_IN,  ///< Widget gained keyboard focus.
@@ -206,6 +210,11 @@ typedef enum vg_key {
     VG_KEY_RIGHT_SUPER = 347,   ///< Right Super / Cmd / Win key.
 } vg_key_t;
 
+/// @brief Inline UTF-8 capacity of a toolkit composition event, including its terminator.
+/// @details This matches the ViperGFX platform event bound. Keeping composition text inline makes
+///          `vg_event_t` a self-contained value with no allocation or borrowed lifetime.
+enum { VG_COMPOSITION_TEXT_CAPACITY = 4096 };
+
 //=============================================================================
 // Event Structure
 //=============================================================================
@@ -246,6 +255,22 @@ typedef struct vg_event {
             uint32_t codepoint; ///< Unicode codepoint (valid for VG_EVENT_KEY_CHAR).
             bool repeat;        ///< true if this is a key-repeat event (key held down).
         } key;
+
+        /// @brief Payload for native IME composition lifecycle events.
+        /// @details Text is byte-counted UTF-8 copied from ViperGFX. Selection offsets are Unicode
+        ///          codepoint indices within preedit text; replacement offsets are codepoint
+        ///          indices within committed text. A replacement start of -1 instructs the
+        ///          focused editor to use its current selection. TextInput converts all offsets to
+        ///          extended-grapheme boundaries before applying them.
+        struct {
+            char text[VG_COMPOSITION_TEXT_CAPACITY]; ///< NUL-terminated preedit/commit UTF-8.
+            uint32_t text_length;                    ///< UTF-8 byte count excluding the terminator.
+            int32_t selection_start;    ///< Preedit selection/caret start in codepoints.
+            int32_t selection_length;   ///< Preedit selected codepoint count.
+            int32_t replacement_start;  ///< Committed codepoint start, or -1 for selection.
+            int32_t replacement_length; ///< Committed codepoint count, or -1 with sentinel.
+            bool truncated;             ///< true when the native payload exceeded inline capacity.
+        } composition;
 
         /// @brief Payload for value-changed events from sliders, checkboxes, etc.
         struct {

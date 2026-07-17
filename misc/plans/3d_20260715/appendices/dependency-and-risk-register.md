@@ -70,7 +70,7 @@ coordination.
 | R16 | Scenario harness is product-only or display-dependent | Medium | tests cannot run software/headless lane | use current software/synthetic input; keep harness in examples until proven in plan 15 |
 | R17 | Demo migration changes game feel | High | state/trajectory/probe deltas | strangler slices, before/after traces, tolerance budgets in plans 17–19 |
 | R18 | Public surface grows faster than docs/audits | High | runtime dump drift, unqualified `obj` APIs | API register, per-plan surface diff, plan 16 navigation, plan 20 audit |
-| R19 | Existing dirty worktree changes are overwritten | Critical | deleted historical plans or unrelated text changes restored | inspect status before every patch; only add `misc/plans/3d_20260715` in this planning task |
+| R19 | Unrelated uncommitted changes are overwritten or historical deletions resurrected | Critical | unrelated worktree edits clobbered; plan directories removed by the 2026-07 docs reorganization restored | inspect `git status --short` before every patch; never restore deleted historical plan directories as a side effect |
 | R20 | Source file size/health baselines regress | Medium | monolithic additions to `rt_game3d.c` | focused files, source headers, health audit update only with justification |
 
 ## Plan-specific go/no-go decisions

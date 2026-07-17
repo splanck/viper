@@ -2,10 +2,14 @@
 
 ## Outcome
 
-Make `Canvas3D.DrawRect2DAlpha` implement straight-alpha source-over blending
-in every overlay path and backend. The existing public signature remains
-unchanged. Add automated tests that fail on the confirmed fully opaque result
-and protect all overlay primitives from scalar/vertex alpha regressions.
+Make scalar overlay opacity implement straight-alpha source-over blending in
+every overlay path and backend. `Canvas3D.DrawRect2DAlpha` is the primary
+repro, but `DrawLine2D`, `DrawFrame2D`, `DrawRoundRect2D`, and
+`DrawRoundFrame2D` accept the same explicit opacity parameter through the same
+final-overlay path and must be fixed and tested together. All existing public
+signatures remain unchanged. Add automated tests that fail on the confirmed
+fully opaque result and protect all overlay primitives from scalar/vertex
+alpha regressions.
 
 ## Why this is first
 
@@ -22,7 +26,10 @@ build/src/tools/viper/viper run examples/games/3dbowling/known_viper_issues/over
 ```
 
 Baseline input/background: `192,128,64`; overlay: black at `0.5`; observed
-final sample: `0,0,0`; expected: approximately `96,64,32`.
+final samples: `alpha50=0,0,0` and `rounded-alpha50=0,0,0` (the repro draws
+both a `DrawRect2DAlpha` rectangle and a `DrawRoundRect2D` rounded rectangle
+and captures through `Canvas3D.ScreenshotFinal`); expected: approximately
+`96,64,32`. Reconfirmed failing on software and Metal on 2026-07-16.
 
 ## Scope
 
@@ -31,6 +38,8 @@ In scope:
 - final-overlay screen-geometry command construction;
 - vertex color alpha, command alpha, material diffuse alpha, and backend blend
   state interaction;
+- every scalar-opacity overlay primitive: `DrawRect2DAlpha`, `DrawLine2D`,
+  `DrawFrame2D`, `DrawRoundRect2D`, `DrawRoundFrame2D`;
 - temporary overlay frames and explicit `BeginOverlay`/`EndOverlay` frames;
 - software, Metal, D3D11, and OpenGL source-over semantics;
 - post-FX/no-post-FX and render-target/final-window paths;
@@ -95,8 +104,9 @@ Required edge cases:
    viewport, quality, post-FX, and backend.
 2. Add a small fixture under `src/tests/fixtures/runtime/` that:
    draws a known opaque background, draws four adjacent black rectangles at
-   alpha `0`, `0.25`, `0.5`, and `1`, captures the final frame, samples the
-   rectangle centers, prints deterministic values, and exits.
+   alpha `0`, `0.25`, `0.5`, and `1` plus one rounded rectangle and one frame
+   at alpha `0.5`, captures the final frame, samples the shape centers/edges,
+   prints deterministic values, and exits.
 3. Add a second case using a colored source such as red over blue. Black over a
    background cannot detect accidental RGB premultiplication.
 4. Run both cases in an explicit overlay pass and through the helper's
@@ -145,8 +155,11 @@ Choose the fix based on evidence:
 Do not solve this by pre-blending colors on the CPU. That would be wrong over
 unknown destinations and would break overlapping translucent commands.
 
-Keep `DrawRect2D` opaque. Confirm `DrawLine2DAlpha`, AA-text/image alpha, and
-widget overlays still share correct blend semantics after the fix.
+Keep `DrawRect2D` opaque (its signature carries no opacity). Confirm
+`DrawLine2D`, `DrawFrame2D`, `DrawRoundRect2D`, `DrawRoundFrame2D`,
+AA-text/image alpha, and widget overlays all share the corrected blend
+semantics after the fix; they queue through the same screen-geometry path, so
+a shared fix should cover them, but each must be sampled.
 
 ### Phase 4 — Expand regression coverage
 
@@ -154,6 +167,8 @@ Add tests for:
 
 - alphas `0`, `0.25`, `0.5`, `0.75`, `1`;
 - colored source over colored destination;
+- one representative sample per scalar-opacity primitive (line, frame, rounded
+  rectangle, rounded frame) at `0.5`;
 - two overlapping 50% rectangles in submission order;
 - explicit overlay and auto temporary overlay;
 - post-FX enabled and disabled;

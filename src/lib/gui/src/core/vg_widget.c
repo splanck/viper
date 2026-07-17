@@ -61,6 +61,7 @@ static vg_widget_t *g_live_widgets = NULL;
 static vg_widget_t **g_live_widget_table = NULL;
 static size_t g_live_widget_table_cap = 0;
 static size_t g_live_widget_table_count = 0;
+static size_t g_live_widget_table_occupied = 0;
 
 #define VG_WIDGET_LIVE_TABLE_MIN_CAP 256u
 #define VG_WIDGET_LIVE_TABLE_TOMBSTONE ((vg_widget_t *)(uintptr_t)UINTPTR_MAX)
@@ -76,16 +77,46 @@ static size_t widget_live_hash(const vg_widget_t *widget) {
     return (size_t)x;
 }
 
-/// @brief Insert @p widget into an already-allocated live-widget table.
-/// @param table Destination table.
-/// @param cap Power-of-two table capacity.
-/// @param widget Live widget pointer to insert.
-static void widget_live_table_insert_raw(vg_widget_t **table, size_t cap, vg_widget_t *widget) {
+/// @brief Insert @p widget into an already-allocated live-widget table with bounded probing.
+/// @details The first tombstone is remembered while probing so the insertion can still complete
+///          when no never-used slot precedes it. Every probe is bounded by @p cap; a completely
+///          saturated table therefore reports failure instead of looping indefinitely.
+/// @param table Destination open-addressed table.
+/// @param cap Power-of-two table capacity; must be non-zero.
+/// @param widget Live widget pointer to insert; must be non-NULL.
+/// @param[out] used_empty Receives true when a never-used slot was occupied, or false when a
+///                        tombstone was reused. May be NULL when the caller does not track
+///                        occupancy.
+/// @return True when the widget was inserted; false when every slot was occupied by live entries.
+static bool widget_live_table_insert_raw(vg_widget_t **table,
+                                         size_t cap,
+                                         vg_widget_t *widget,
+                                         bool *used_empty) {
+    if (!table || cap == 0 || !widget)
+        return false;
     size_t mask = cap - 1u;
     size_t index = widget_live_hash(widget) & mask;
-    while (table[index] && table[index] != VG_WIDGET_LIVE_TABLE_TOMBSTONE)
+    size_t first_tombstone = SIZE_MAX;
+    for (size_t probe = 0; probe < cap; ++probe) {
+        vg_widget_t *slot = table[index];
+        if (!slot) {
+            size_t target = first_tombstone != SIZE_MAX ? first_tombstone : index;
+            table[target] = widget;
+            if (used_empty)
+                *used_empty = first_tombstone == SIZE_MAX;
+            return true;
+        }
+        if (slot == VG_WIDGET_LIVE_TABLE_TOMBSTONE && first_tombstone == SIZE_MAX)
+            first_tombstone = index;
         index = (index + 1u) & mask;
-    table[index] = widget;
+    }
+    if (first_tombstone != SIZE_MAX) {
+        table[first_tombstone] = widget;
+        if (used_empty)
+            *used_empty = false;
+        return true;
+    }
+    return false;
 }
 
 /// @brief Rebuild the live-widget hash table with at least @p new_cap slots.
@@ -109,13 +140,17 @@ static bool widget_live_table_rehash(size_t new_cap) {
         return false;
     size_t count = 0;
     for (vg_widget_t *live = g_live_widgets; live; live = live->_live_next) {
-        widget_live_table_insert_raw(table, cap, live);
+        if (!widget_live_table_insert_raw(table, cap, live, NULL)) {
+            free(table);
+            return false;
+        }
         count++;
     }
     free(g_live_widget_table);
     g_live_widget_table = table;
     g_live_widget_table_cap = cap;
     g_live_widget_table_count = count;
+    g_live_widget_table_occupied = count;
     return true;
 }
 
@@ -125,19 +160,42 @@ static void widget_live_table_insert(vg_widget_t *widget) {
     if (!widget)
         return;
     if (!g_live_widget_table ||
-        (g_live_widget_table_count + 1u) * 4u >= g_live_widget_table_cap * 3u) {
-        size_t requested =
-            g_live_widget_table_cap ? g_live_widget_table_cap * 2u : VG_WIDGET_LIVE_TABLE_MIN_CAP;
+        (g_live_widget_table_occupied + 1u) * 4u >= g_live_widget_table_cap * 3u) {
+        size_t requested = VG_WIDGET_LIVE_TABLE_MIN_CAP;
+        if (g_live_widget_table_cap) {
+            bool live_load_requires_growth =
+                (g_live_widget_table_count + 1u) * 4u >= g_live_widget_table_cap * 3u;
+            requested =
+                live_load_requires_growth ? g_live_widget_table_cap * 2u : g_live_widget_table_cap;
+        }
         if (!widget_live_table_rehash(requested)) {
             free(g_live_widget_table);
             g_live_widget_table = NULL;
             g_live_widget_table_cap = 0;
             g_live_widget_table_count = 0;
+            g_live_widget_table_occupied = 0;
             return;
         }
     }
-    widget_live_table_insert_raw(g_live_widget_table, g_live_widget_table_cap, widget);
+    bool used_empty = false;
+    if (!widget_live_table_insert_raw(
+            g_live_widget_table, g_live_widget_table_cap, widget, &used_empty)) {
+        size_t requested = g_live_widget_table_cap <= SIZE_MAX / 2u ? g_live_widget_table_cap * 2u
+                                                                    : g_live_widget_table_cap;
+        if (requested == g_live_widget_table_cap || !widget_live_table_rehash(requested) ||
+            !widget_live_table_insert_raw(
+                g_live_widget_table, g_live_widget_table_cap, widget, &used_empty)) {
+            free(g_live_widget_table);
+            g_live_widget_table = NULL;
+            g_live_widget_table_cap = 0;
+            g_live_widget_table_count = 0;
+            g_live_widget_table_occupied = 0;
+            return;
+        }
+    }
     g_live_widget_table_count++;
+    if (used_empty)
+        g_live_widget_table_occupied++;
 }
 
 /// @brief Remove @p widget from the hash registry if the table is active.
@@ -147,7 +205,9 @@ static void widget_live_table_remove(vg_widget_t *widget) {
         return;
     size_t mask = g_live_widget_table_cap - 1u;
     size_t index = widget_live_hash(widget) & mask;
-    while (g_live_widget_table[index]) {
+    for (size_t probe = 0; probe < g_live_widget_table_cap; ++probe) {
+        if (!g_live_widget_table[index])
+            return;
         if (g_live_widget_table[index] == widget) {
             g_live_widget_table[index] = VG_WIDGET_LIVE_TABLE_TOMBSTONE;
             if (g_live_widget_table_count > 0)
@@ -212,6 +272,176 @@ static float widget_nonnegative_finite(float value) {
     return (isfinite(value) && value > 0.0f) ? value : 0.0f;
 }
 
+/// @brief Return the built-in accessibility role for a concrete widget type.
+/// @param type Widget discriminator assigned at construction.
+/// @return Stable semantic role; structural/custom widgets use group/none.
+static vg_accessible_role_t widget_default_accessible_role(vg_widget_type_t type) {
+    switch (type) {
+        case VG_WIDGET_CONTAINER:
+        case VG_WIDGET_SCROLLVIEW:
+        case VG_WIDGET_SPLITPANE:
+        case VG_WIDGET_GROUPBOX:
+            return VG_ACCESSIBLE_ROLE_GROUP;
+        case VG_WIDGET_LABEL:
+            return VG_ACCESSIBLE_ROLE_LABEL;
+        case VG_WIDGET_BUTTON:
+            return VG_ACCESSIBLE_ROLE_BUTTON;
+        case VG_WIDGET_TEXTINPUT:
+        case VG_WIDGET_CODEEDITOR:
+        case VG_WIDGET_OUTPUTPANE:
+            return VG_ACCESSIBLE_ROLE_TEXTBOX;
+        case VG_WIDGET_CHECKBOX:
+            return VG_ACCESSIBLE_ROLE_CHECKBOX;
+        case VG_WIDGET_RADIO:
+            return VG_ACCESSIBLE_ROLE_RADIOBUTTON;
+        case VG_WIDGET_SLIDER:
+        case VG_WIDGET_SPINNER:
+            return VG_ACCESSIBLE_ROLE_SLIDER;
+        case VG_WIDGET_PROGRESS:
+            return VG_ACCESSIBLE_ROLE_PROGRESSBAR;
+        case VG_WIDGET_LISTVIEW:
+        case VG_WIDGET_LISTBOX:
+        case VG_WIDGET_POPUPLIST:
+            return VG_ACCESSIBLE_ROLE_LIST;
+        case VG_WIDGET_DROPDOWN:
+            return VG_ACCESSIBLE_ROLE_COMBOBOX;
+        case VG_WIDGET_TREEVIEW:
+            return VG_ACCESSIBLE_ROLE_TREE;
+        case VG_WIDGET_TABBAR:
+            return VG_ACCESSIBLE_ROLE_TABLIST;
+        case VG_WIDGET_MENUBAR:
+        case VG_WIDGET_MENU:
+            return VG_ACCESSIBLE_ROLE_MENU;
+        case VG_WIDGET_MENUITEM:
+            return VG_ACCESSIBLE_ROLE_MENUITEM;
+        case VG_WIDGET_TOOLBAR:
+            return VG_ACCESSIBLE_ROLE_TOOLBAR;
+        case VG_WIDGET_STATUSBAR:
+            return VG_ACCESSIBLE_ROLE_STATUSBAR;
+        case VG_WIDGET_DIALOG:
+            return VG_ACCESSIBLE_ROLE_DIALOG;
+        case VG_WIDGET_IMAGE:
+            return VG_ACCESSIBLE_ROLE_IMAGE;
+        case VG_WIDGET_DATAGRID:
+            return VG_ACCESSIBLE_ROLE_TABLE;
+        case VG_WIDGET_COLORSWATCH:
+            return VG_ACCESSIBLE_ROLE_BUTTON;
+        case VG_WIDGET_COLORPALETTE:
+            return VG_ACCESSIBLE_ROLE_LIST;
+        case VG_WIDGET_COLORPICKER:
+            return VG_ACCESSIBLE_ROLE_GROUP;
+        case VG_WIDGET_CUSTOM:
+        default:
+            return VG_ACCESSIBLE_ROLE_NONE;
+    }
+}
+
+/// @brief Advance a revision counter without allowing wraparound.
+/// @param revision Counter to advance; may be NULL.
+static void widget_revision_increment(uint64_t *revision) {
+    if (revision && *revision < UINT64_MAX)
+        ++*revision;
+}
+
+/// @brief Mark a semantic mutation on both accessibility and widget revisions.
+/// @param widget Live widget whose semantic record changed.
+static void widget_note_semantic_revision(vg_widget_t *widget) {
+    if (!widget)
+        return;
+    widget_revision_increment(&widget->accessibility.revision);
+    widget_revision_increment(&widget->revision);
+}
+
+/// @brief Atomically replace an owned optional semantic string.
+/// @details Empty input is normalized to NULL. OOM leaves the prior value intact.
+/// @param widget Owner whose revisions advance when replacement succeeds.
+/// @param slot Address of the owned string field.
+/// @param value New UTF-8 value, or NULL/empty to clear.
+/// @return True when the stored value changed, false for equality/OOM/invalid input.
+static bool widget_replace_semantic_string(vg_widget_t *widget, char **slot, const char *value) {
+    if (!widget || !slot)
+        return false;
+    if (value && value[0] == '\0')
+        value = NULL;
+    if ((!*slot && !value) || (*slot && value && strcmp(*slot, value) == 0))
+        return false;
+    char *replacement = value ? vg_strdup(value) : NULL;
+    if (value && !replacement)
+        return false;
+    free(*slot);
+    *slot = replacement;
+    widget_note_semantic_revision(widget);
+    return true;
+}
+
+/// @brief Expand four directional extents to contain one themed soft shadow.
+/// @details Mirrors the conservative allocation padding used by
+///          vg_draw_round_rect_shadow so damage tracking cannot clip the blur's
+///          outer pixels. Disabled and invalid shadows leave the extents unchanged.
+/// @param elevation Shadow token to include; may be NULL.
+/// @param left In/out maximum distance painted left of geometry.
+/// @param top In/out maximum distance painted above geometry.
+/// @param right In/out maximum distance painted right of geometry.
+/// @param bottom In/out maximum distance painted below geometry.
+static void widget_include_shadow_overflow(
+    const vg_elevation_t *elevation, float *left, float *top, float *right, float *bottom) {
+    if (!elevation || !left || !top || !right || !bottom || elevation->alpha == 0 ||
+        !isfinite(elevation->blur) || elevation->blur <= 0.0f) {
+        return;
+    }
+
+    int blur_radius = (int)(elevation->blur * 0.5f + 0.5f);
+    if (blur_radius < 1)
+        blur_radius = 1;
+    float padding = (float)(blur_radius * 3 + 1);
+    float shadow_left = padding - (float)elevation->dx;
+    float shadow_top = padding - (float)elevation->dy;
+    float shadow_right = padding + (float)elevation->dx;
+    float shadow_bottom = padding + (float)elevation->dy;
+    if (shadow_left > *left)
+        *left = shadow_left;
+    if (shadow_top > *top)
+        *top = shadow_top;
+    if (shadow_right > *right)
+        *right = shadow_right;
+    if (shadow_bottom > *bottom)
+        *bottom = shadow_bottom;
+}
+
+/// @brief Compute conservative theme-driven drawing overflow for any widget.
+/// @details The widget base deliberately has no knowledge of which concrete paint
+///          path selects a particular elevation token. Including every enabled
+///          token is a small amount of safe over-coverage and guarantees that
+///          custom state transitions or future widgets cannot under-report damage.
+/// @param left Receives maximum theme overflow on the left.
+/// @param top Receives maximum theme overflow above the widget.
+/// @param right Receives maximum theme overflow on the right.
+/// @param bottom Receives maximum theme overflow below the widget.
+static void widget_theme_visual_overflow(float *left, float *top, float *right, float *bottom) {
+    if (!left || !top || !right || !bottom)
+        return;
+    *left = 0.0f;
+    *top = 0.0f;
+    *right = 0.0f;
+    *bottom = 0.0f;
+
+    const vg_theme_t *theme = vg_theme_get_current();
+    if (!theme)
+        return;
+    widget_include_shadow_overflow(&theme->elevation.level0, left, top, right, bottom);
+    widget_include_shadow_overflow(&theme->elevation.level1, left, top, right, bottom);
+    widget_include_shadow_overflow(&theme->elevation.level2, left, top, right, bottom);
+    widget_include_shadow_overflow(&theme->elevation.level3, left, top, right, bottom);
+
+    vg_elevation_t focus = {
+        .blur = theme->focus.glow_width * 2.5f,
+        .dx = 0,
+        .dy = 0,
+        .alpha = theme->focus.glow_alpha,
+    };
+    widget_include_shadow_overflow(&focus, left, top, right, bottom);
+}
+
 /// @brief Clamps constraint fields to be non-negative, finite, and self-consistent (max >= min,
 /// preferred within [min, max]).
 static void widget_normalize_constraints(vg_constraints_t *constraints) {
@@ -250,9 +480,16 @@ static void clear_paint_flag_recursive(vg_widget_t *root) {
     }
 }
 
-/// @brief Move @p cur toward @p target by one frame's worth of easing.
+/// @brief Move @p cur toward @p target by one scheduler tick's worth of easing.
+/// @details Invalid duration values snap to the target. The caller sanitizes elapsed time, while
+///          this helper clamps each component so numerical drift cannot overshoot [target].
+/// @param cur Current normalized animation amount.
+/// @param target Desired normalized animation amount.
+/// @param dt_ms Sanitized elapsed time in milliseconds.
+/// @param dur_ms Theme duration in milliseconds.
+/// @return Updated normalized animation amount.
 static float vg__advance(float cur, float target, float dt_ms, float dur_ms) {
-    if (dur_ms <= 0.0f)
+    if (!isfinite(dur_ms) || dur_ms <= 0.0f)
         return target;
     float step = dt_ms / dur_ms;
     if (cur < target) {
@@ -267,29 +504,53 @@ static float vg__advance(float cur, float target, float dt_ms, float dur_ms) {
     return cur;
 }
 
-void vg_widget_anim_tick(vg_widget_t *widget, void *canvas) {
+/// @brief Advance hover, press, and focus animation independently of paint traversal.
+/// @details See the public declaration for scheduling and reduced-motion semantics.
+bool vg_widget_anim_advance(vg_widget_t *widget, float delta_ms) {
     if (!widget)
-        return;
+        return false;
+    if (!isfinite(delta_ms) || delta_ms < 0.0f)
+        delta_ms = 0.0f;
+    if (delta_ms > 250.0f)
+        delta_ms = 250.0f;
     float hover_t = (widget->state & VG_STATE_HOVERED) ? 1.0f : 0.0f;
     float press_t = (widget->state & VG_STATE_PRESSED) ? 1.0f : 0.0f;
     float focus_t = (widget->state & VG_STATE_FOCUSED) ? 1.0f : 0.0f;
 
     vg_theme_t *theme = vg_theme_get_current();
     if (!theme || !theme->motion.enabled) {
+        bool changed = widget->anim_hover != hover_t || widget->anim_press != press_t ||
+                       widget->anim_focus != focus_t;
         widget->anim_hover = hover_t;
         widget->anim_press = press_t;
         widget->anim_focus = focus_t;
-        return;
+        if (changed) {
+            vg_widget_invalidate(widget);
+        }
+        return false;
     }
 
-    // Advance by a nominal per-frame step (~60fps). We deliberately do NOT poll
-    // vgfx_frame_time_ms here: paint may run against a non-window canvas (e.g.
-    // headless widget tests), and dereferencing it as a window would crash.
+    float old_hover = widget->anim_hover;
+    float old_press = widget->anim_press;
+    float old_focus = widget->anim_focus;
+    widget->anim_hover = vg__advance(widget->anim_hover, hover_t, delta_ms, theme->motion.hover_ms);
+    widget->anim_press = vg__advance(widget->anim_press, press_t, delta_ms, theme->motion.press_ms);
+    widget->anim_focus = vg__advance(widget->anim_focus, focus_t, delta_ms, theme->motion.focus_ms);
+
+    bool active = widget->anim_hover != hover_t || widget->anim_press != press_t ||
+                  widget->anim_focus != focus_t;
+    if (active || widget->anim_hover != old_hover || widget->anim_press != old_press ||
+        widget->anim_focus != old_focus) {
+        vg_widget_invalidate(widget);
+    }
+    return active;
+}
+
+/// @brief Advance animation by a nominal 16 ms compatibility tick.
+/// @details Retains the legacy canvas-taking ABI without coupling state advancement to rendering.
+void vg_widget_anim_tick(vg_widget_t *widget, void *canvas) {
     (void)canvas;
-    float dt = 16.0f;
-    widget->anim_hover = vg__advance(widget->anim_hover, hover_t, dt, theme->motion.hover_ms);
-    widget->anim_press = vg__advance(widget->anim_press, press_t, dt, theme->motion.press_ms);
-    widget->anim_focus = vg__advance(widget->anim_focus, focus_t, dt, theme->motion.focus_ms);
+    (void)vg_widget_anim_advance(widget, 16.0f);
 }
 
 /// @brief Recursively paints the widget tree in pre-order, converting each widget's position to
@@ -299,7 +560,6 @@ static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
         return;
 
     if (root->vtable && root->vtable->paint) {
-        vg_widget_anim_tick(root, canvas);
         float rel_x = root->x;
         float rel_y = root->y;
         float screen_x = rel_x;
@@ -719,6 +979,11 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
     widget->needs_layout = true;
     widget->needs_paint = true;
     widget->tab_index = -1; // -1 = natural traversal order
+    widget->revision = 1;
+    widget->accessibility.role = widget_default_accessible_role(type);
+    widget->accessibility.live_mode = VG_LIVE_REGION_OFF;
+    widget->accessibility.announcement_mode = VG_LIVE_REGION_OFF;
+    widget->accessibility.revision = 1;
     widget_register_live(widget);
 }
 
@@ -730,7 +995,9 @@ bool vg_widget_is_live(const vg_widget_t *widget) {
     if (g_live_widget_table && g_live_widget_table_cap > 0) {
         size_t mask = g_live_widget_table_cap - 1u;
         size_t index = widget_live_hash(widget) & mask;
-        while (g_live_widget_table[index]) {
+        for (size_t probe = 0; probe < g_live_widget_table_cap; ++probe) {
+            if (!g_live_widget_table[index])
+                return false;
             if (g_live_widget_table[index] == widget)
                 return widget->magic == VG_WIDGET_MAGIC;
             index = (index + 1u) & mask;
@@ -792,6 +1059,10 @@ void vg_widget_destroy(vg_widget_t *widget) {
     free(widget->accepted_drop_types);
     free(widget->_drop_received_type);
     free(widget->_drop_received_data);
+    free(widget->accessibility.name);
+    free(widget->accessibility.description);
+    free(widget->accessibility.value);
+    free(widget->accessibility.announcement);
 
     if (widget->tooltip_text) {
         free(widget->tooltip_text);
@@ -887,6 +1158,8 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child) {
     parent->child_count++;
 
     widget_mark_layout_dirty(parent);
+    vg_widget_note_revision(parent);
+    vg_widget_note_revision(child);
 }
 
 /// @brief Inserts @p child into @p parent at the given @p index (0 = before first); appends at end
@@ -948,6 +1221,8 @@ void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index) 
 
     parent->child_count++;
     widget_mark_layout_dirty(parent);
+    vg_widget_note_revision(parent);
+    vg_widget_note_revision(child);
 }
 
 /// @brief Detaches @p child from @p parent's list, clears runtime references for the subtree, and
@@ -977,6 +1252,8 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child) {
 
     parent->child_count--;
     widget_mark_layout_dirty(parent);
+    vg_widget_note_revision(parent);
+    vg_widget_note_revision(child);
 }
 
 /// @brief Detaches all children from @p parent without destroying them; runtime references for each
@@ -993,6 +1270,7 @@ void vg_widget_clear_children(vg_widget_t *parent) {
         child->parent = NULL;
         child->prev_sibling = NULL;
         child->next_sibling = NULL;
+        vg_widget_note_revision(child);
         child = next;
     }
 
@@ -1000,6 +1278,7 @@ void vg_widget_clear_children(vg_widget_t *parent) {
     parent->last_child = NULL;
     parent->child_count = 0;
     widget_mark_layout_dirty(parent);
+    vg_widget_note_revision(parent);
 }
 
 /// @brief Returns the child widget at the given @p index (0-based), or NULL if out of range.
@@ -1066,6 +1345,7 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
         return;
     widget->constraints = constraints;
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets the minimum allowed size for @p widget, re-normalizing other constraints to stay
@@ -1081,6 +1361,7 @@ void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.min_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets the maximum allowed size for @p widget, re-normalizing other constraints to stay
@@ -1096,6 +1377,7 @@ void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.max_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets the preferred (natural) size for @p widget; overrides content-derived sizes during
@@ -1112,6 +1394,7 @@ void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height
     widget->constraints.preferred_height = height;
     widget_normalize_constraints(&widget->constraints);
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Locks @p widget to an exact pixel size by setting min, max, and preferred to the same
@@ -1134,6 +1417,7 @@ void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.max_height = height;
     widget->constraints.preferred_height = height;
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Clamps the widget's measured_width/height to its min/max/preferred constraints after
@@ -1230,6 +1514,7 @@ void vg_widget_set_flex(vg_widget_t *widget, float flex) {
         return;
     widget->layout.flex = flex;
     widget_mark_layout_dirty(widget->parent);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets all four margins of @p widget to the same value and marks the parent's layout dirty.
@@ -1246,6 +1531,7 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin) {
     widget->layout.margin_right = margin;
     widget->layout.margin_bottom = margin;
     widget_mark_layout_dirty(widget->parent);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets per-side margins on @p widget and marks the parent's layout dirty.
@@ -1265,6 +1551,7 @@ void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float rig
     widget->layout.margin_right = right;
     widget->layout.margin_bottom = bottom;
     widget_mark_layout_dirty(widget->parent);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets all four padding sides of @p widget to the same value and marks the layout dirty.
@@ -1281,6 +1568,7 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding) {
     widget->layout.padding_right = padding;
     widget->layout.padding_bottom = padding;
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 /// @brief Sets per-side padding on @p widget and marks the layout dirty.
@@ -1300,6 +1588,7 @@ void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float ri
     widget->layout.padding_right = right;
     widget->layout.padding_bottom = bottom;
     widget_mark_layout_dirty(widget);
+    vg_widget_note_revision(widget);
 }
 
 //=============================================================================
@@ -1347,6 +1636,7 @@ void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
         clear_interactive_state_recursive(widget);
     }
     widget->needs_paint = true;
+    widget_note_semantic_revision(widget);
 }
 
 /// @brief Returns the widget's enabled flag, or false for NULL.
@@ -1394,6 +1684,7 @@ void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
     }
     widget_mark_layout_dirty(widget->parent);
     widget->needs_paint = true;
+    widget_note_semantic_revision(widget);
 }
 
 /// @brief Returns the widget's visible flag, or false for NULL.
@@ -1411,6 +1702,13 @@ void vg_widget_set_name(vg_widget_t *widget, const char *name) {
     if (!widget)
         return;
 
+    if ((!widget->name && (!name || !name[0])) ||
+        (widget->name && name && strcmp(widget->name, name) == 0)) {
+        return;
+    }
+    if (name && !name[0])
+        name = NULL;
+
     char *copy = NULL;
     if (name) {
         copy = vg_strdup(name);
@@ -1420,6 +1718,7 @@ void vg_widget_set_name(vg_widget_t *widget, const char *name) {
 
     free(widget->name);
     widget->name = copy;
+    widget_note_semantic_revision(widget);
 }
 
 /// @brief Returns the widget's debug name, or NULL if none was set.
@@ -1479,6 +1778,11 @@ void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float h
     if (!root || !root->visible)
         return;
 
+    float old_x = root->x;
+    float old_y = root->y;
+    float old_width = root->width;
+    float old_height = root->height;
+
     if (root->vtable && root->vtable->arrange) {
         // Custom arrange functions (VBox, HBox, SplitPane, default containers)
         // handle positioning self AND children.
@@ -1497,6 +1801,10 @@ void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float h
     }
 
     root->needs_layout = false;
+    if (root->x != old_x || root->y != old_y || root->width != old_width ||
+        root->height != old_height) {
+        widget_note_semantic_revision(root);
+    }
 }
 
 /// @brief Runs the full two-pass layout (measure then arrange) for @p root at the origin with the
@@ -1538,6 +1846,340 @@ void vg_widget_invalidate_layout(vg_widget_t *widget) {
     if (!widget)
         return;
     widget_mark_layout_dirty(widget);
+}
+
+/// @brief Set the explicit visual overflow used by retained damage tracking.
+/// @details Invalid distances are normalized to zero. Invalidating on change is
+///          essential because the preceding visual rectangle must be cleared as
+///          well as the newly enlarged or reduced rectangle.
+void vg_widget_set_visual_overflow(
+    vg_widget_t *widget, float left, float top, float right, float bottom) {
+    if (!vg_widget_is_live(widget))
+        return;
+    left = widget_nonnegative_finite(left);
+    top = widget_nonnegative_finite(top);
+    right = widget_nonnegative_finite(right);
+    bottom = widget_nonnegative_finite(bottom);
+    if (widget->visual_overflow_left == left && widget->visual_overflow_top == top &&
+        widget->visual_overflow_right == right && widget->visual_overflow_bottom == bottom) {
+        return;
+    }
+    widget->visual_overflow_left = left;
+    widget->visual_overflow_top = top;
+    widget->visual_overflow_right = right;
+    widget->visual_overflow_bottom = bottom;
+    vg_widget_invalidate(widget);
+    vg_widget_note_revision(widget);
+}
+
+/// @brief Return the complete screen-space rectangle potentially painted by a widget.
+/// @details The query combines arranged geometry, explicit overflow, optional
+///          widget-specific popup geometry, and conservative theme effects. All
+///          callback results are validated before they enter the union so a buggy
+///          custom widget cannot poison the application's damage accumulator.
+void vg_widget_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    float out_x = 0.0f;
+    float out_y = 0.0f;
+    float out_w = 0.0f;
+    float out_h = 0.0f;
+    if (!vg_widget_is_live(widget))
+        goto done;
+
+    float sx = 0.0f, sy = 0.0f, sw = 0.0f, sh = 0.0f;
+    vg_widget_get_screen_bounds(widget, &sx, &sy, &sw, &sh);
+    bool any =
+        isfinite(sx) && isfinite(sy) && isfinite(sw) && isfinite(sh) && sw > 0.0f && sh > 0.0f;
+    float x0 = sx - widget->visual_overflow_left;
+    float y0 = sy - widget->visual_overflow_top;
+    float x1 = sx + sw + widget->visual_overflow_right;
+    float y1 = sy + sh + widget->visual_overflow_bottom;
+
+    if (widget->vtable && widget->vtable->get_visual_bounds) {
+        float extra_x = 0.0f, extra_y = 0.0f, extra_w = 0.0f, extra_h = 0.0f;
+        widget->vtable->get_visual_bounds(widget, &extra_x, &extra_y, &extra_w, &extra_h);
+        bool extra_valid = isfinite(extra_x) && isfinite(extra_y) && isfinite(extra_w) &&
+                           isfinite(extra_h) && extra_w > 0.0f && extra_h > 0.0f;
+        if (extra_valid) {
+            float extra_x1 = extra_x + extra_w;
+            float extra_y1 = extra_y + extra_h;
+            if (isfinite(extra_x1) && isfinite(extra_y1)) {
+                if (!any) {
+                    x0 = extra_x;
+                    y0 = extra_y;
+                    x1 = extra_x1;
+                    y1 = extra_y1;
+                    any = true;
+                } else {
+                    if (extra_x < x0)
+                        x0 = extra_x;
+                    if (extra_y < y0)
+                        y0 = extra_y;
+                    if (extra_x1 > x1)
+                        x1 = extra_x1;
+                    if (extra_y1 > y1)
+                        y1 = extra_y1;
+                }
+            }
+        }
+    }
+
+    if (any) {
+        float theme_left = 0.0f, theme_top = 0.0f, theme_right = 0.0f, theme_bottom = 0.0f;
+        widget_theme_visual_overflow(&theme_left, &theme_top, &theme_right, &theme_bottom);
+        x0 -= theme_left;
+        y0 -= theme_top;
+        x1 += theme_right;
+        y1 += theme_bottom;
+        if (isfinite(x0) && isfinite(y0) && isfinite(x1) && isfinite(y1) && x1 > x0 && y1 > y0) {
+            out_x = x0;
+            out_y = y0;
+            out_w = x1 - x0;
+            out_h = y1 - y0;
+        }
+    }
+
+done:
+    if (x)
+        *x = out_x;
+    if (y)
+        *y = out_y;
+    if (width)
+        *width = out_w;
+    if (height)
+        *height = out_h;
+}
+
+//=============================================================================
+// Accessibility and Revision API
+//=============================================================================
+
+/// @brief Increment a live widget's non-consuming public revision with saturation.
+void vg_widget_note_revision(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget))
+        return;
+    widget_revision_increment(&widget->revision);
+}
+
+/// @brief Return a live widget's non-consuming public revision.
+uint64_t vg_widget_get_revision(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) ? widget->revision : 0;
+}
+
+/// @brief Record an independent semantic-value change and advance general revision.
+/// @details Saturating counters prevent wraparound from making a new event appear already
+///          consumed. Recording occurs only for live widgets and precedes optional callbacks in
+///          control implementations.
+/// @param widget Stateful control whose value or selection changed.
+void vg_widget_note_change(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget))
+        return;
+    widget_revision_increment(&widget->change_revision);
+    widget_revision_increment(&widget->revision);
+}
+
+/// @brief Consume the common semantic-value change edge without affecting other counters.
+/// @param widget Widget whose compatibility change edge should be consumed.
+/// @return true when an unreported change exists, otherwise false.
+bool vg_widget_was_changed(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget) || widget->reported_change_revision == widget->change_revision) {
+        return false;
+    }
+    widget->reported_change_revision = widget->change_revision;
+    return true;
+}
+
+/// @brief Record an independent explicit activation and advance general revision.
+/// @param widget Control activated by pointer, keyboard, or automation.
+void vg_widget_note_activation(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget))
+        return;
+    widget_revision_increment(&widget->activation_revision);
+    widget_revision_increment(&widget->revision);
+}
+
+/// @brief Consume the common activation edge without clearing change or submission state.
+/// @param widget Widget whose compatibility activation edge should be consumed.
+/// @return true when an unreported activation exists, otherwise false.
+bool vg_widget_was_activated(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget) ||
+        widget->reported_activation_revision == widget->activation_revision) {
+        return false;
+    }
+    widget->reported_activation_revision = widget->activation_revision;
+    return true;
+}
+
+/// @brief Record an independent value-submission event and advance general revision.
+/// @param widget Text-entry-style control whose current value was submitted.
+void vg_widget_note_submission(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget))
+        return;
+    widget_revision_increment(&widget->submission_revision);
+    widget_revision_increment(&widget->revision);
+}
+
+/// @brief Consume the common submission edge without clearing other event kinds.
+/// @param widget Widget whose compatibility submission edge should be consumed.
+/// @return true when an unreported submission exists, otherwise false.
+bool vg_widget_was_submitted(vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget) ||
+        widget->reported_submission_revision == widget->submission_revision) {
+        return false;
+    }
+    widget->reported_submission_revision = widget->submission_revision;
+    return true;
+}
+
+/// @brief Set a widget's semantic role and advance semantic state on change.
+void vg_widget_set_accessible_role(vg_widget_t *widget, vg_accessible_role_t role) {
+    if (!vg_widget_is_live(widget))
+        return;
+    if ((int)role < 0 || role >= VG_ACCESSIBLE_ROLE_COUNT)
+        role = VG_ACCESSIBLE_ROLE_NONE;
+    if (widget->accessibility.role == role)
+        return;
+    widget->accessibility.role = role;
+    widget_note_semantic_revision(widget);
+}
+
+/// @brief Return a widget's semantic role or none for an invalid handle.
+vg_accessible_role_t vg_widget_get_accessible_role(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) ? widget->accessibility.role : VG_ACCESSIBLE_ROLE_NONE;
+}
+
+/// @brief Atomically set or clear a widget's explicit accessible name.
+void vg_widget_set_accessible_name(vg_widget_t *widget, const char *name) {
+    if (!vg_widget_is_live(widget))
+        return;
+    (void)widget_replace_semantic_string(widget, &widget->accessibility.name, name);
+}
+
+/// @brief Return the borrowed explicit accessible-name override.
+const char *vg_widget_get_accessible_name(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) && widget->accessibility.name ? widget->accessibility.name
+                                                                   : "";
+}
+
+/// @brief Atomically set or clear a widget's accessible description.
+void vg_widget_set_accessible_description(vg_widget_t *widget, const char *description) {
+    if (!vg_widget_is_live(widget))
+        return;
+    (void)widget_replace_semantic_string(widget, &widget->accessibility.description, description);
+}
+
+/// @brief Return the borrowed accessible-description override.
+const char *vg_widget_get_accessible_description(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) && widget->accessibility.description
+               ? widget->accessibility.description
+               : "";
+}
+
+/// @brief Atomically set or clear a widget's explicit accessible value.
+void vg_widget_set_accessible_value(vg_widget_t *widget, const char *value) {
+    if (!vg_widget_is_live(widget))
+        return;
+    (void)widget_replace_semantic_string(widget, &widget->accessibility.value, value);
+}
+
+/// @brief Return the borrowed explicit accessible-value override.
+const char *vg_widget_get_accessible_value(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) && widget->accessibility.value ? widget->accessibility.value
+                                                                    : "";
+}
+
+/// @brief Return the root ancestor of a widget without mutating hierarchy state.
+/// @param widget Widget whose root is requested.
+/// @return Borrowed root pointer, or NULL.
+static const vg_widget_t *widget_accessibility_root(const vg_widget_t *widget) {
+    const vg_widget_t *root = widget;
+    while (root && root->parent)
+        root = root->parent;
+    return root;
+}
+
+/// @brief Install or clear a same-tree label relationship.
+bool vg_widget_set_accessible_label_for(vg_widget_t *widget, vg_widget_t *target) {
+    if (!vg_widget_is_live(widget))
+        return false;
+    if (!target) {
+        if (!widget->accessibility.label_for && widget->accessibility.label_for_id == 0)
+            return true;
+        widget->accessibility.label_for = NULL;
+        widget->accessibility.label_for_id = 0;
+        widget_note_semantic_revision(widget);
+        return true;
+    }
+    if (!vg_widget_is_live(target) || target == widget ||
+        widget_accessibility_root(widget) != widget_accessibility_root(target)) {
+        return false;
+    }
+    if (widget->accessibility.label_for == target &&
+        widget->accessibility.label_for_id == target->id) {
+        return true;
+    }
+    widget->accessibility.label_for = target;
+    widget->accessibility.label_for_id = target->id;
+    widget_note_semantic_revision(widget);
+    return true;
+}
+
+/// @brief Return a same-tree, address-and-ID-validated label target.
+vg_widget_t *vg_widget_get_accessible_label_for(const vg_widget_t *widget) {
+    if (!vg_widget_is_live(widget))
+        return NULL;
+    vg_widget_t *target = widget->accessibility.label_for;
+    if (!target || !vg_widget_is_live(target) || target->id != widget->accessibility.label_for_id ||
+        widget_accessibility_root(widget) != widget_accessibility_root(target)) {
+        return NULL;
+    }
+    return target;
+}
+
+/// @brief Set a widget's default live-region urgency.
+void vg_widget_set_live_region(vg_widget_t *widget, vg_live_region_mode_t mode) {
+    if (!vg_widget_is_live(widget))
+        return;
+    if ((int)mode < VG_LIVE_REGION_OFF || mode > VG_LIVE_REGION_ASSERTIVE)
+        mode = VG_LIVE_REGION_OFF;
+    if (widget->accessibility.live_mode == mode)
+        return;
+    widget->accessibility.live_mode = mode;
+    widget_note_semantic_revision(widget);
+}
+
+/// @brief Return a widget's live-region urgency or off for invalid handles.
+vg_live_region_mode_t vg_widget_get_live_region(const vg_widget_t *widget) {
+    return vg_widget_is_live(widget) ? widget->accessibility.live_mode : VG_LIVE_REGION_OFF;
+}
+
+/// @brief Record a semantic live-region announcement with an independent edge revision.
+void vg_widget_accessibility_announce(vg_widget_t *widget,
+                                      const char *text,
+                                      vg_live_region_mode_t mode) {
+    if (!vg_widget_is_live(widget))
+        return;
+    if (text && text[0] == '\0')
+        text = NULL;
+    if ((int)mode < VG_LIVE_REGION_POLITE || mode > VG_LIVE_REGION_ASSERTIVE) {
+        mode = widget->accessibility.live_mode;
+        if (mode == VG_LIVE_REGION_OFF)
+            mode = VG_LIVE_REGION_POLITE;
+    }
+
+    bool same_text = (!text && !widget->accessibility.announcement) ||
+                     (text && widget->accessibility.announcement &&
+                      strcmp(text, widget->accessibility.announcement) == 0);
+    if (!same_text) {
+        char *replacement = text ? vg_strdup(text) : NULL;
+        if (text && !replacement)
+            return;
+        free(widget->accessibility.announcement);
+        widget->accessibility.announcement = replacement;
+    }
+    widget->accessibility.announcement_mode = mode;
+    widget_revision_increment(&widget->accessibility.announcement_revision);
+    widget_note_semantic_revision(widget);
 }
 
 //=============================================================================
@@ -1752,12 +2394,14 @@ void vg_widget_clear_reported_click(void) {
 void vg_widget_set_focus(vg_widget_t *widget) {
     if (!widget) {
         if (g_focused_widget) {
+            vg_widget_t *previous = g_focused_widget;
             if (g_focused_widget->vtable && g_focused_widget->vtable->on_focus) {
                 g_focused_widget->vtable->on_focus(g_focused_widget, false);
             }
             g_focused_widget->state &= ~VG_STATE_FOCUSED;
             g_focused_widget->needs_paint = true;
             g_focused_widget = NULL;
+            widget_note_semantic_revision(previous);
         }
         return;
     }
@@ -1771,11 +2415,13 @@ void vg_widget_set_focus(vg_widget_t *widget) {
 
     // Unfocus previous widget
     if (g_focused_widget && g_focused_widget != widget) {
+        vg_widget_t *previous = g_focused_widget;
         if (g_focused_widget->vtable && g_focused_widget->vtable->on_focus) {
             g_focused_widget->vtable->on_focus(g_focused_widget, false);
         }
         g_focused_widget->state &= ~VG_STATE_FOCUSED;
         g_focused_widget->needs_paint = true;
+        widget_note_semantic_revision(previous);
     }
 
     // Focus new widget
@@ -1786,6 +2432,7 @@ void vg_widget_set_focus(vg_widget_t *widget) {
     if (widget->vtable && widget->vtable->on_focus) {
         widget->vtable->on_focus(widget, true);
     }
+    widget_note_semantic_revision(widget);
 }
 
 /// @brief Returns the focused widget if it is live and within @p root's subtree; NULL if none or
@@ -1974,7 +2621,10 @@ void vg_widget_focus_prev(vg_widget_t *root) {
 void vg_widget_set_tab_index(vg_widget_t *widget, int tab_index) {
     if (!widget)
         return;
+    if (widget->tab_index == tab_index)
+        return;
     widget->tab_index = tab_index;
+    vg_widget_note_revision(widget);
 }
 
 //=============================================================================

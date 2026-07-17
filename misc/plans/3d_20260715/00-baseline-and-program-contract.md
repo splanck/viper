@@ -22,17 +22,22 @@ The 2026-07-15 review covered:
 - `docs/internals/graphics3d-architecture.md`,
   `docs/viperlib/graphics/game3d.md`, and related Game, IO, Graphics3D, and UI
   documentation.
-- Existing ADRs through ADR 0102 and historical 3D plans from repository
-  history. Historical plans were used only to understand intent; current source
-  is authoritative because many previously proposed features have landed.
+- Existing ADRs and historical 3D plans from repository history. Historical
+  plans were used only to understand intent; current source is authoritative
+  because many previously proposed features have landed. The ADR sequence
+  reached 0109 at the 2026-07-16 reverification; the 2026-07 documentation
+  reorganization also renumbered two duplicate records (0026 -> 0104,
+  0064 -> 0105), so always resolve ADR references against `docs/adr/README.md`
+  rather than numbers remembered from before that change.
 
 At review time the live public inventory contained 61 Game3D classes and 64
 Graphics3D classes. The Game3D definitions exposed 254 properties and 461
 methods; Graphics3D exposed 391 properties and 638 methods. The 3D runtime tree
-contained approximately 208,005 lines of C/header/include implementation and
-the modular 3D definition files contained approximately 5,210 lines. Recompute
-these numbers before using them as release metrics; they are descriptive, not
-acceptance thresholds.
+contained approximately 208,400 lines of C/header/include implementation and
+the modular 3D definition files contained approximately 5,210 lines (all
+reconfirmed 2026-07-16 via `--dump-runtime-api`). Recompute these numbers
+before using them as release metrics; they are descriptive, not acceptance
+thresholds.
 
 ## Verified baseline behavior
 
@@ -40,10 +45,19 @@ The following checks passed during the review:
 
 - `viper check` for all three game projects.
 - Ashfall's 14 game probes.
-- Ridgebound's four primary release gates on software and Metal.
+- Ridgebound's four primary release gates (`topology_probe`, `traversal_probe`,
+  `state_probe`, `smoke_probe`) on software and Metal.
 - All 27 3dbowling release gates; 25 ran on software and two high-resolution
   visual gates used Metal because the software renderer was prohibitively slow.
 - A focused set of 22 Graphics3D/Game3D runtime unit and contract tests.
+
+A 2026-07-16 reverification against the committed tree confirmed that every
+source file, test target, script, and repro cited by this package still exists
+under its cited path, that the public inventory numbers above are unchanged,
+and that both confirmed defects below still reproduce with the documented
+output. The documentation tree was reorganized on 2026-07-16; the
+`docs/viperlib/` paths cited by these plans were not moved, while internals
+material now lives under `docs/internals/` (including `docs/internals/codemap/`).
 
 Do not assume this green state still exists on a future branch. Before starting
 any implementation plan, capture a fresh baseline using the commands in the
@@ -56,18 +70,25 @@ output; do not hide it by weakening a gate.
 ### Final-overlay alpha
 
 `examples/games/3dbowling/known_viper_issues/overlay_alpha_repro.zia`
-draws a 50% black rectangle over a known `192,128,64` background. Both Metal
-and software produced `0,0,0`; the expected blended result is approximately
-`96,64,32` subject to normal rounding. This is a confirmed correctness defect,
-not a proposed enhancement.
+draws a 50% black rectangle and a 50% black rounded rectangle over a known
+`192,128,64` background. Both Metal and software produced `0,0,0` for both
+shapes (`alpha50` and `rounded-alpha50` samples); the expected blended result
+is approximately `96,64,32` subject to normal rounding. The defect therefore
+covers the scalar-opacity overlay family, not just `DrawRect2DAlpha`:
+`DrawLine2D`, `DrawFrame2D`, `DrawRoundRect2D`, and `DrawRoundFrame2D` all
+accept an explicit opacity parameter through the same final-overlay path. This
+is a confirmed correctness defect, not a proposed enhancement, and it still
+reproduced identically on 2026-07-16.
 
 ### Metal same-size AA-text alias
 
 `examples/games/3dbowling/known_viper_issues/overlay_aa_text_repro.zia`
 queues same-size `DrawText2DAA` textures with distinct colors. On Metal the
 first texture can display the later texture's content; software renders the
-two correctly. This is consistent with resource identity or upload lifetime
-aliasing but the root cause must be demonstrated, not guessed.
+two correctly (reconfirmed 2026-07-16: software shows the expected green top
+region, Metal shows zero green and the later blue content in its place). This
+is consistent with resource identity or upload lifetime aliasing but the root
+cause must be demonstrated, not guessed.
 
 ### Historical material/overlay interference
 
@@ -215,8 +236,9 @@ requirements casually.
 - Optional asset absence, unsupported capability fallback, corrupt save files,
   and pool exhaustion are recoverable and observable; they must not silently
   become traps.
-- Hot-loop fallbacks expose bounded counters through existing diagnostics or a
-  plan-approved telemetry surface.
+- Hot-loop fallbacks expose bounded counters through existing diagnostics
+  (`Diagnostics3D`, world/canvas pass counters) or a plan-approved telemetry
+  surface.
 - Error strings name the public operation and the violated condition.
 
 ### Determinism and performance
@@ -236,8 +258,8 @@ requirements casually.
 For a new public runtime class, the implementation checklist includes:
 
 1. ADR approval.
-2. Append a permanent class ID in the existing 3D ID registry; never reuse or
-   renumber.
+2. Append a permanent class ID in the existing 3D ID registry
+   (`src/runtime/graphics/3d/rt_graphics3d_ids.h`); never reuse or renumber.
 3. Add the C struct and lifecycle rules to the correct internal owner.
 4. Add public declarations with complete Viper source headers.
 5. Add real runtime implementation.

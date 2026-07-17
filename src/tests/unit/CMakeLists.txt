@@ -875,6 +875,12 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_graphics3d_runtime_manifest test_graphics3d_runtime_manifest)
     viper_add_test_labels(test_graphics3d_runtime_manifest graphics3d unit contract)
 
+    viper_add_test(test_gui_runtime_manifest
+            ${VIPER_TESTS_DIR}/unit/test_gui_runtime_manifest.cpp)
+    target_link_libraries(test_gui_runtime_manifest PRIVATE fe_basic)
+    viper_add_ctest(test_gui_runtime_manifest test_gui_runtime_manifest)
+    viper_add_test_labels(test_gui_runtime_manifest gui unit contract)
+
     viper_add_test(test_runtime_class_qualified_surface
             ${VIPER_TESTS_DIR}/unit/test_runtime_class_qualified_surface.cpp)
     target_include_directories(test_runtime_class_qualified_surface PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -1673,6 +1679,12 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_gui_runtime test_rt_gui_runtime)
     viper_add_test_labels(test_rt_gui_runtime requires_display)
     set_tests_properties(test_rt_gui_runtime PROPERTIES RESOURCE_LOCK viper_display)
+
+    viper_add_test(test_rt_gui_availability
+            ${VIPER_TESTS_DIR}/runtime/RTGuiAvailabilityTests.cpp)
+    target_link_libraries(test_rt_gui_availability PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gui_availability test_rt_gui_availability)
+    viper_add_test_labels(test_rt_gui_availability runtime gui contract)
 
     viper_add_test(test_rt_gui_ide ${VIPER_TESTS_DIR}/runtime/RTGuiIdeTests.cpp)
     target_link_libraries(test_rt_gui_ide PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

@@ -92,12 +92,20 @@ Core rules:
 
 ### Phase 0 — Reconfirm current loop internals
 
-1. Read current `World3D.Update`, fixed-loop implementation, delta/elapsed
-   updates, input snapshot, dropped-step counters, and render interpolation.
+1. Read current `World3D.Update`, the fixed-loop implementation
+   (`game3d_world_run_fixed_impl` in `rt_game3d.c`), delta/elapsed updates,
+   input snapshot, dropped-step counters, and render interpolation. The
+   existing loop already implements the driver's core semantics: accumulator,
+   `RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME` (currently 8) spiral guard with
+   `dropped_fixed_steps` accounting, and interpolation alpha
+   `accumulator/fixed` clamped below `1.0`. The driver must match these
+   results, and its `MaxFixedSteps` default deliberately mirrors that constant.
 2. Document which private helpers can be reused without changing Run behavior.
 3. Add current loop-order tests if any timing edge is unprotected.
 4. Capture traces for a normal frame, zero-delta frame, long frame, paused
-   frame, and close request.
+   frame, and close request. `Canvas3D.SetSyntheticDeltaTimeSec` provides
+   deterministic frame-delta injection for the zero-delta and long-frame
+   cases.
 
 ### Phase 1 — Three API feasibility spikes
 
@@ -185,7 +193,8 @@ Unit tests must cover:
 - normal 60 Hz schedule;
 - render at 144 Hz with some zero-step frames;
 - 30 Hz with two fixed steps;
-- long-frame clamp and max-step drop;
+- long-frame clamp and max-step drop (drive the schedule with synthetic
+  delta-time injection rather than wall-clock sleeps);
 - remainder/interpolation alpha;
 - pause/time scale/hit-stop interaction;
 - close request before simulation;

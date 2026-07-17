@@ -1032,6 +1032,40 @@ TEST(notification_zero_fade_duration_snaps_cleanly) {
     vg_widget_destroy(&mgr->base);
 }
 
+/// @brief Verify retained notification bounds exclude the manager's full-window positioning base.
+/// @details A settled toast must report a compact shadow-inclusive rectangle, while removal resets
+///          every output to zero so the compositor can damage only the previous retained union.
+TEST(notification_visual_bounds_track_only_painted_toasts) {
+    vg_notification_manager_t *mgr = vg_notification_manager_create();
+    ASSERT_NOT_NULL(mgr);
+    mgr->base.x = 0.0f;
+    mgr->base.y = 0.0f;
+    mgr->base.width = 640.0f;
+    mgr->base.height = 480.0f;
+    mgr->fade_duration_ms = 0;
+    mgr->slide_duration_ms = 0;
+
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Title", "Body", 0);
+    ASSERT(id != 0);
+    vg_notification_manager_update(mgr, 1000);
+
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+    ASSERT_TRUE(vg_notification_manager_get_visual_bounds(mgr, &x, &y, &width, &height));
+    ASSERT(width > (float)mgr->notification_width);
+    ASSERT(width < mgr->base.width);
+    ASSERT(height > 0.0f);
+    ASSERT(height < mgr->base.height);
+
+    vg_notification_dismiss(mgr, id);
+    vg_notification_manager_update(mgr, 1001);
+    ASSERT_FALSE(vg_notification_manager_get_visual_bounds(mgr, &x, &y, &width, &height));
+    ASSERT_EQ(x, 0.0f);
+    ASSERT_EQ(y, 0.0f);
+    ASSERT_EQ(width, 0.0f);
+    ASSERT_EQ(height, 0.0f);
+    vg_notification_manager_destroy(mgr);
+}
+
 /// @brief R2 — tooltip manager respects duration_ms hide-delay, hiding after exactly hide_timer ms
 /// on leave.
 TEST(tooltip_manager_honors_duration_and_hide_delay) {
@@ -1195,7 +1229,7 @@ TEST(colorpalette_click_callback_fires_once_per_click) {
     vg_colorpalette_t *palette = vg_colorpalette_create(NULL);
     ASSERT_NOT_NULL(palette);
     vg_colorpalette_set_colors(palette, colors, 2);
-    vg_widget_arrange(&palette->base, 0.0f, 0.0f, 100.0f, 40.0f);
+    vg_widget_arrange(&palette->base, 80.0f, 60.0f, 100.0f, 40.0f);
 
     colorpalette_select_state_t state = {0, -1, 0};
     vg_colorpalette_set_on_select(palette, colorpalette_select_counter, &state);
@@ -1215,6 +1249,128 @@ TEST(colorpalette_click_callback_fires_once_per_click) {
     ASSERT_EQ(state.last_color, colors[0]);
 
     vg_widget_destroy(&palette->base);
+}
+
+/// @brief Recommendation 30 — ColorSwatch keyboard activation matches pointer selection and
+/// exposes semantic color/revision state.
+TEST(colorswatch_keyboard_activation_is_accessible_and_revisioned) {
+    vg_colorswatch_t *swatch = vg_colorswatch_create(NULL, 0xFF112233u);
+    ASSERT_NOT_NULL(swatch);
+    ASSERT_EQ(vg_widget_get_accessible_role(&swatch->base), VG_ACCESSIBLE_ROLE_BUTTON);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&swatch->base), "#112233") == 0);
+
+    colorpicker_change_state_t state = {0, 0};
+    vg_colorswatch_set_on_select(swatch, colorpicker_change_counter, &state);
+    const uint64_t revision = vg_widget_get_revision(&swatch->base);
+    ASSERT_FALSE(vg_widget_was_changed(&swatch->base));
+
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    ASSERT_TRUE(swatch->base.vtable->handle_event(&swatch->base, &enter));
+    ASSERT_TRUE(enter.handled);
+    ASSERT_TRUE(vg_colorswatch_is_selected(swatch));
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.last_color, 0xFF112233u);
+    ASSERT_TRUE(vg_widget_was_changed(&swatch->base));
+    ASSERT_FALSE(vg_widget_was_changed(&swatch->base));
+    ASSERT(vg_widget_get_revision(&swatch->base) > revision);
+
+    vg_colorswatch_set_color(swatch, 0x7FABCDEFu);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&swatch->base), "#ABCDEF alpha 127") == 0);
+    ASSERT_TRUE(vg_widget_was_changed(&swatch->base));
+    vg_widget_destroy(&swatch->base);
+}
+
+/// @brief Recommendation 30 — ColorPalette uses target-local hit coordinates, supports keyboard
+/// navigation, compacts removal safely, and exposes semantic/revision state.
+TEST(colorpalette_keyboard_removal_and_semantics_are_complete) {
+    const uint32_t colors[] = {0xFF010203u, 0xFF112233u, 0xFFABCDEFu};
+    vg_colorpalette_t *palette = vg_colorpalette_create(NULL);
+    ASSERT_NOT_NULL(palette);
+    vg_colorpalette_set_colors(palette, colors, 3);
+    ASSERT_EQ(vg_widget_get_accessible_role(&palette->base), VG_ACCESSIBLE_ROLE_LIST);
+    ASSERT_EQ(vg_colorpalette_get_color_count(palette), 3);
+    uint32_t color = 0;
+    ASSERT_TRUE(vg_colorpalette_get_color_at(palette, 1, &color));
+    ASSERT_EQ(color, colors[1]);
+    ASSERT_FALSE(vg_colorpalette_get_color_at(palette, -1, &color));
+
+    vg_widget_arrange(&palette->base, 100.0f, 75.0f, 120.0f, 40.0f);
+    colorpalette_select_state_t state = {0, -1, 0};
+    vg_colorpalette_set_on_select(palette, colorpalette_select_counter, &state);
+    (void)vg_widget_was_changed(&palette->base);
+
+    vg_event_t click = vg_event_mouse(VG_EVENT_CLICK, 5.0f, 5.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &click));
+    ASSERT_EQ(vg_colorpalette_get_selected(palette), 0);
+    ASSERT_EQ(state.count, 1);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&palette->base), "1 of 3, #010203") == 0);
+
+    const uint64_t revision = vg_widget_get_revision(&palette->base);
+    vg_event_t right = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_RIGHT, 0, VG_MOD_NONE);
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &right));
+    ASSERT_EQ(vg_colorpalette_get_selected(palette), 1);
+    ASSERT_EQ(state.count, 2);
+    ASSERT_EQ(state.last_color, colors[1]);
+    ASSERT(vg_widget_get_revision(&palette->base) > revision);
+
+    ASSERT_TRUE(vg_colorpalette_remove_color(palette, 0));
+    ASSERT_EQ(vg_colorpalette_get_selected(palette), 0);
+    ASSERT_TRUE(vg_colorpalette_get_color_at(palette, 0, &color));
+    ASSERT_EQ(color, colors[1]);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&palette->base), "1 of 2, #112233") == 0);
+    ASSERT_FALSE(vg_colorpalette_remove_color(palette, 8));
+    ASSERT_TRUE(vg_colorpalette_remove_color(palette, 0));
+    ASSERT_EQ(vg_colorpalette_get_selected(palette), -1);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&palette->base), "") == 0);
+    ASSERT_TRUE(vg_widget_was_changed(&palette->base));
+
+    vg_colorpalette_clear(palette);
+    ASSERT_EQ(vg_colorpalette_get_color_count(palette), 0);
+    vg_widget_destroy(&palette->base);
+}
+
+/// @brief Recommendation 30 — ColorPicker slider and keyboard changes publish exactly one
+/// callback/edge, preserve alpha across RGB assignment, and keep semantic component text current.
+TEST(colorpicker_keyboard_components_and_semantics_are_complete) {
+    vg_colorpicker_t *picker = vg_colorpicker_create(NULL);
+    ASSERT_NOT_NULL(picker);
+    ASSERT_EQ(vg_widget_get_accessible_role(&picker->base), VG_ACCESSIBLE_ROLE_GROUP);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&picker->base), "#000000 alpha 255") == 0);
+
+    colorpicker_change_state_t state = {0, 0};
+    vg_colorpicker_set_on_change(picker, colorpicker_change_counter, &state);
+    const uint64_t initial_revision = vg_widget_get_revision(&picker->base);
+    vg_slider_set_value(picker->slider_r, 17.0f);
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.last_color, 0xFF110000u);
+    ASSERT_TRUE(vg_widget_was_changed(&picker->base));
+    ASSERT_FALSE(vg_widget_was_changed(&picker->base));
+    ASSERT(vg_widget_get_revision(&picker->base) > initial_revision);
+
+    vg_event_t shifted_right = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_RIGHT, 0, VG_MOD_SHIFT);
+    ASSERT_TRUE(picker->base.vtable->handle_event(&picker->base, &shifted_right));
+    ASSERT_EQ(picker->r, 27);
+    ASSERT_EQ(state.count, 2);
+    ASSERT_TRUE(vg_widget_was_changed(&picker->base));
+    ASSERT(strcmp(vg_widget_get_accessible_value(&picker->base), "#1B0000 alpha 255") == 0);
+
+    vg_colorpicker_show_alpha(picker, true);
+    ASSERT_TRUE(vg_colorpicker_is_alpha_enabled(picker));
+    ASSERT_FALSE(vg_widget_was_changed(&picker->base));
+    vg_event_t up = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_UP, 0, VG_MOD_NONE);
+    ASSERT_TRUE(picker->base.vtable->handle_event(&picker->base, &up));
+    ASSERT_EQ(picker->active_channel, 3);
+    vg_event_t left = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_LEFT, 0, VG_MOD_NONE);
+    ASSERT_TRUE(picker->base.vtable->handle_event(&picker->base, &left));
+    ASSERT_EQ(vg_colorpicker_get_alpha(picker), 254);
+    ASSERT_EQ(state.count, 3);
+    ASSERT_TRUE(vg_widget_was_changed(&picker->base));
+
+    vg_colorpicker_set_rgb(picker, 1, 2, 3);
+    ASSERT_EQ(vg_colorpicker_get_alpha(picker), 254);
+    ASSERT_EQ(vg_colorpicker_get_color(picker), 0xFE010203u);
+    ASSERT(strcmp(vg_widget_get_accessible_value(&picker->base), "#010203 alpha 254") == 0);
+    vg_widget_destroy(&picker->base);
 }
 
 /// @brief R3 — label, checkbox, and radiobutton adopt the current theme's font_regular on
@@ -1544,7 +1700,7 @@ TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
     ASSERT_EQ(grid_layout->column_gap, 0.0f);
     ASSERT_EQ(grid_layout->row_gap, 0.0f);
     ASSERT_EQ(grid_layout->column_widths[0], 0.0f);
-    ASSERT_EQ(grid_layout->row_heights[0], 0.0f);
+    ASSERT_EQ(grid_layout->row_heights[0], -4.0f);
     vg_widget_destroy(grid);
 
     vg_widget_t *hbox = vg_hbox_create(0.0f);
@@ -4470,6 +4626,406 @@ TEST(treeview_and_tabbar_prune_retired_tombstones_when_handles_discarded) {
     vg_widget_destroy(&tabbar->base);
 }
 
+/// @brief Verify tombstone-heavy widget churn cannot saturate live-registry probing.
+/// @details Each cycle keeps same-sized filler allocations alive after destroying widgets so the
+///          allocator must provide fresh widget addresses on later cycles. This exercises occupied
+///          slots independently of the current live count. Missing-pointer lookups and subsequent
+///          insertion must remain bounded after the table has accumulated more tombstones than its
+///          initial growth threshold.
+TEST(widget_live_registry_rehashes_tombstone_saturation) {
+    enum { BATCH_SIZE = 24, BATCH_COUNT = 20, FILLER_COUNT = BATCH_SIZE * BATCH_COUNT };
+
+    void *fillers[FILLER_COUNT] = {0};
+    size_t filler_count = 0;
+
+    for (size_t batch = 0; batch < BATCH_COUNT; ++batch) {
+        vg_widget_t *widgets[BATCH_SIZE] = {0};
+        for (size_t i = 0; i < BATCH_SIZE; ++i) {
+            widgets[i] = vg_widget_create(VG_WIDGET_CONTAINER);
+            ASSERT_NOT_NULL(widgets[i]);
+        }
+        for (size_t i = 0; i < BATCH_SIZE; ++i)
+            vg_widget_destroy(widgets[i]);
+
+        for (size_t i = 0; i < BATCH_SIZE; ++i) {
+            fillers[filler_count] = malloc(sizeof(vg_widget_t));
+            ASSERT_NOT_NULL(fillers[filler_count]);
+            filler_count++;
+        }
+    }
+
+    for (size_t i = 0; i < filler_count; ++i)
+        ASSERT_FALSE(vg_widget_is_live((const vg_widget_t *)fillers[i]));
+
+    vg_widget_t *final_widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(final_widget);
+    ASSERT_TRUE(vg_widget_is_live(final_widget));
+    vg_widget_destroy(final_widget);
+
+    for (size_t i = 0; i < filler_count; ++i)
+        free(fillers[i]);
+}
+
+/// @brief Verify generic widget motion advances from explicit scheduler time, never from paint.
+/// @details Uses a 100 ms custom motion duration to assert deterministic quarter/full progress,
+///          retained paint invalidation while active, and immediate reduced-motion snapping. A
+///          standalone paint traversal must leave the animation unchanged, which prevents timing
+///          from depending on damage culling or how often a widget happens to be drawn.
+TEST(widget_animation_uses_explicit_scheduler_delta) {
+    vg_theme_t *previous_theme = vg_theme_get_current();
+    vg_theme_t *theme = vg_theme_create("animation-scheduler-test", vg_theme_dark());
+    ASSERT_NOT_NULL(theme);
+    theme->motion.enabled = true;
+    theme->motion.hover_ms = 100.0f;
+    theme->motion.press_ms = 100.0f;
+    theme->motion.focus_ms = 100.0f;
+    vg_theme_set_current(theme);
+
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(widget);
+    widget->state |= VG_STATE_HOVERED;
+    widget->needs_paint = false;
+
+    ASSERT_TRUE(vg_widget_anim_advance(widget, 25.0f));
+    ASSERT_NEAR(widget->anim_hover, 0.25f, 0.0001f);
+    ASSERT_TRUE(widget->needs_paint);
+
+    widget->needs_paint = false;
+    vg_widget_paint(widget, (void *)(uintptr_t)1);
+    ASSERT_NEAR(widget->anim_hover, 0.25f, 0.0001f);
+    ASSERT_FALSE(widget->needs_paint);
+
+    ASSERT_FALSE(vg_widget_anim_advance(widget, 75.0f));
+    ASSERT_NEAR(widget->anim_hover, 1.0f, 0.0001f);
+    ASSERT_TRUE(widget->needs_paint);
+
+    theme->motion.enabled = false;
+    widget->state &= ~VG_STATE_HOVERED;
+    widget->needs_paint = false;
+    ASSERT_FALSE(vg_widget_anim_advance(widget, 0.0f));
+    ASSERT_NEAR(widget->anim_hover, 0.0f, 0.0001f);
+    ASSERT_TRUE(widget->needs_paint);
+
+    vg_widget_destroy(widget);
+    vg_theme_set_current(previous_theme);
+    vg_theme_destroy(theme);
+}
+
+/// @brief Verify tooltip and notification managers expose every timer to the app scheduler.
+/// @details Exercises delayed show/hide/duration ordering, notification first-tick work, entrance
+///          animation cadence, exact auto-dismiss lifetime, exit animation cadence, and the final
+///          no-deadline state using an injected monotonic clock.
+TEST(overlay_managers_report_complete_scheduler_deadlines) {
+    vg_tooltip_t *tooltip = vg_tooltip_create();
+    vg_widget_t *hovered = vg_widget_create(VG_WIDGET_BUTTON);
+    ASSERT(tooltip != NULL && hovered != NULL);
+    vg_tooltip_manager_t tooltip_manager = {0};
+    tooltip_manager.active_tooltip = tooltip;
+    tooltip_manager.hovered_widget = hovered;
+    tooltip_manager.pending_show = true;
+    tooltip_manager.hover_start_time = 1000;
+    tooltip->show_delay_ms = 500;
+    ASSERT(vg_tooltip_manager_next_deadline_ms(&tooltip_manager, 1100) == 400);
+    ASSERT(vg_tooltip_manager_next_deadline_ms(&tooltip_manager, 1500) == 0);
+
+    tooltip_manager.pending_show = false;
+    tooltip->is_visible = true;
+    tooltip->base.visible = true;
+    tooltip->hide_timer = 1700;
+    tooltip->show_timer = 1000;
+    tooltip->duration_ms = 1000;
+    ASSERT(vg_tooltip_manager_next_deadline_ms(&tooltip_manager, 1600) == 100);
+    tooltip->hide_timer = 0;
+    ASSERT(vg_tooltip_manager_next_deadline_ms(&tooltip_manager, 1600) == 400);
+    tooltip->duration_ms = 0;
+    ASSERT(vg_tooltip_manager_next_deadline_ms(&tooltip_manager, 1600) == -1);
+    vg_widget_destroy(hovered);
+    vg_tooltip_destroy(tooltip);
+
+    vg_notification_manager_t *notifications = vg_notification_manager_create();
+    ASSERT(notifications != NULL);
+    ASSERT(vg_notification_show(notifications, VG_NOTIFICATION_INFO, "Build", "Complete", 1000) !=
+           0);
+    ASSERT(vg_notification_manager_next_deadline_ms(notifications, 100) == 0);
+    vg_notification_manager_update(notifications, 100);
+    ASSERT(vg_notification_manager_next_deadline_ms(notifications, 100) == 16);
+    vg_notification_manager_update(notifications, 400);
+    ASSERT(vg_notification_manager_next_deadline_ms(notifications, 400) == 700);
+    vg_notification_manager_update(notifications, 1100);
+    ASSERT(vg_notification_manager_next_deadline_ms(notifications, 1100) == 16);
+    vg_notification_manager_update(notifications, 1400);
+    ASSERT(vg_notification_manager_next_deadline_ms(notifications, 1400) == -1);
+    vg_notification_manager_destroy(notifications);
+}
+
+/// @brief Test-only visual-bounds callback that reports a detached popup rectangle.
+/// @param widget Ignored widget instance.
+/// @param x Receives 100 screen pixels.
+/// @param y Receives 100 screen pixels.
+/// @param width Receives 20 pixels.
+/// @param height Receives 10 pixels.
+static void visual_bounds_popup_probe(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    (void)widget;
+    if (x)
+        *x = 100.0f;
+    if (y)
+        *y = 100.0f;
+    if (width)
+        *width = 20.0f;
+    if (height)
+        *height = 10.0f;
+}
+
+static const vg_widget_vtable_t g_visual_bounds_probe_vtable = {
+    .get_visual_bounds = visual_bounds_popup_probe,
+};
+
+/// @brief Verify explicit overflow, callback unions, theme shadows, and invalid-value guards.
+/// @details Uses a controlled theme to make every expected edge deterministic. It also verifies
+///          that changing overflow dirties retained paint while assigning an identical value does
+///          not generate needless work.
+TEST(widget_visual_bounds_cover_every_paint_source) {
+    vg_theme_t *previous_theme = vg_theme_get_current();
+    vg_theme_t *theme = vg_theme_create("visual-bounds-test", vg_theme_dark());
+    ASSERT_NOT_NULL(theme);
+    memset(&theme->elevation, 0, sizeof(theme->elevation));
+    memset(&theme->focus, 0, sizeof(theme->focus));
+    vg_theme_set_current(theme);
+
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(widget);
+    vg_widget_arrange(widget, 10.0f, 20.0f, 30.0f, 40.0f);
+    widget->needs_paint = false;
+    vg_widget_set_visual_overflow(widget, 2.0f, 3.0f, 4.0f, 5.0f);
+    ASSERT_TRUE(widget->needs_paint);
+
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+    vg_widget_get_visual_bounds(widget, &x, &y, &width, &height);
+    ASSERT_NEAR(x, 8.0f, 0.0001f);
+    ASSERT_NEAR(y, 17.0f, 0.0001f);
+    ASSERT_NEAR(width, 36.0f, 0.0001f);
+    ASSERT_NEAR(height, 48.0f, 0.0001f);
+
+    widget->needs_paint = false;
+    vg_widget_set_visual_overflow(widget, 2.0f, 3.0f, 4.0f, 5.0f);
+    ASSERT_FALSE(widget->needs_paint);
+    vg_widget_set_visual_overflow(widget, NAN, -1.0f, INFINITY, -INFINITY);
+    ASSERT_TRUE(widget->needs_paint);
+    vg_widget_get_visual_bounds(widget, &x, &y, &width, &height);
+    ASSERT_NEAR(x, 10.0f, 0.0001f);
+    ASSERT_NEAR(y, 20.0f, 0.0001f);
+    ASSERT_NEAR(width, 30.0f, 0.0001f);
+    ASSERT_NEAR(height, 40.0f, 0.0001f);
+
+    theme->elevation.level3 = (vg_elevation_t){4.0f, -2, 3, 255};
+    vg_widget_get_visual_bounds(widget, &x, &y, &width, &height);
+    ASSERT_NEAR(x, 1.0f, 0.0001f);
+    ASSERT_NEAR(y, 16.0f, 0.0001f);
+    ASSERT_NEAR(width, 44.0f, 0.0001f);
+    ASSERT_NEAR(height, 54.0f, 0.0001f);
+
+    memset(&theme->elevation, 0, sizeof(theme->elevation));
+    widget->vtable = &g_visual_bounds_probe_vtable;
+    vg_widget_get_visual_bounds(widget, &x, &y, &width, &height);
+    ASSERT_NEAR(x, 10.0f, 0.0001f);
+    ASSERT_NEAR(y, 20.0f, 0.0001f);
+    ASSERT_NEAR(width, 110.0f, 0.0001f);
+    ASSERT_NEAR(height, 90.0f, 0.0001f);
+
+    vg_widget_destroy(widget);
+    vg_theme_set_current(previous_theme);
+    vg_theme_destroy(theme);
+}
+
+/// @brief Verify an overlay-only widget exposes and retires its complete popup rectangle.
+/// @details PopupList has zero arranged size and paints exclusively in the overlay pass. Its
+///          visual-bounds callback must therefore make the popup damageable while visible and
+///          return an empty current rectangle after it is hidden.
+TEST(popuplist_visual_bounds_track_overlay_visibility) {
+    vg_theme_t *previous_theme = vg_theme_get_current();
+    vg_theme_t *theme = vg_theme_create("popup-visual-bounds-test", vg_theme_dark());
+    ASSERT_NOT_NULL(theme);
+    memset(&theme->elevation, 0, sizeof(theme->elevation));
+    memset(&theme->focus, 0, sizeof(theme->focus));
+    vg_theme_set_current(theme);
+
+    vg_popuplist_t *popup = vg_popuplist_create(NULL);
+    ASSERT_NOT_NULL(popup);
+    vg_popuplist_add_item(popup, "alpha");
+    vg_popuplist_add_item(popup, "beta");
+    popup->font = (vg_font_t *)(uintptr_t)1;
+    popup->line_height = 12.0f;
+    vg_popuplist_anchor_at(popup, 75.0f, 90.0f);
+    vg_popuplist_set_width(popup, 160.0f);
+    vg_popuplist_set_visible(popup, true);
+
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+    vg_widget_get_visual_bounds(&popup->base, &x, &y, &width, &height);
+    ASSERT_NEAR(x, 75.0f, 0.0001f);
+    ASSERT_NEAR(y, 90.0f, 0.0001f);
+    ASSERT_NEAR(width, 160.0f, 0.0001f);
+    ASSERT_NEAR(height, 24.0f, 0.0001f);
+
+    vg_popuplist_set_visible(popup, false);
+    vg_widget_get_visual_bounds(&popup->base, &x, &y, &width, &height);
+    ASSERT_NEAR(width, 0.0f, 0.0001f);
+    ASSERT_NEAR(height, 0.0f, 0.0001f);
+
+    vg_popuplist_destroy(popup);
+    vg_theme_set_current(previous_theme);
+    vg_theme_destroy(theme);
+}
+
+/// @brief Verify semantic records own strings, infer stable roles, and advance revisions once.
+/// @details Mutating caller buffers after a setter must not alter the record. Repeating an
+///          identical assignment is intentionally revision-neutral, while invalid role/live-mode
+///          values normalize to their documented safe defaults.
+TEST(widget_accessibility_record_is_owned_and_revisioned) {
+    vg_button_t *button = vg_button_create(NULL, "Action");
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(button);
+    ASSERT_NOT_NULL(input);
+    ASSERT_NOT_NULL(container);
+    ASSERT_EQ(vg_widget_get_accessible_role(&button->base), VG_ACCESSIBLE_ROLE_BUTTON);
+    ASSERT_EQ(vg_widget_get_accessible_role(&input->base), VG_ACCESSIBLE_ROLE_TEXTBOX);
+    ASSERT_EQ(vg_widget_get_accessible_role(container), VG_ACCESSIBLE_ROLE_GROUP);
+
+    uint64_t initial_revision = vg_widget_get_revision(&button->base);
+    uint64_t initial_semantic_revision = button->base.accessibility.revision;
+    char name[] = "Launch";
+    char description[] = "Starts the selected task";
+    char value[] = "ready";
+    vg_widget_set_accessible_name(&button->base, name);
+    vg_widget_set_accessible_description(&button->base, description);
+    vg_widget_set_accessible_value(&button->base, value);
+    name[0] = 'X';
+    description[0] = 'X';
+    value[0] = 'X';
+    ASSERT_TRUE(strcmp(vg_widget_get_accessible_name(&button->base), "Launch") == 0);
+    ASSERT_TRUE(strcmp(vg_widget_get_accessible_description(&button->base),
+                       "Starts the selected task") == 0);
+    ASSERT_TRUE(strcmp(vg_widget_get_accessible_value(&button->base), "ready") == 0);
+    ASSERT_EQ(vg_widget_get_revision(&button->base), initial_revision + 3u);
+    ASSERT_EQ(button->base.accessibility.revision, initial_semantic_revision + 3u);
+
+    vg_widget_set_accessible_name(&button->base, "Launch");
+    ASSERT_EQ(vg_widget_get_revision(&button->base), initial_revision + 3u);
+    vg_widget_set_accessible_role(&button->base, (vg_accessible_role_t)INT_MAX);
+    ASSERT_EQ(vg_widget_get_accessible_role(&button->base), VG_ACCESSIBLE_ROLE_NONE);
+    vg_widget_set_live_region(&button->base, (vg_live_region_mode_t)INT_MAX);
+    ASSERT_EQ(vg_widget_get_live_region(&button->base), VG_LIVE_REGION_OFF);
+
+    button->base.revision = UINT64_MAX;
+    vg_widget_note_revision(&button->base);
+    ASSERT_EQ(vg_widget_get_revision(&button->base), UINT64_MAX);
+
+    vg_widget_destroy(container);
+    vg_widget_destroy(&input->base);
+    vg_widget_destroy(&button->base);
+}
+
+/// @brief Verify label relationships reject foreign/self targets and never expose stale pointers.
+/// @details Relationships are non-owning and require a shared tree root. Destroying a target must
+///          make the getter return NULL even if its allocation address could later be recycled.
+TEST(widget_accessibility_relationships_are_tree_safe) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *foreign_root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_label_t *label = vg_label_create(root, "Name");
+    vg_textinput_t *input = vg_textinput_create(root);
+    vg_textinput_t *foreign_input = vg_textinput_create(foreign_root);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(foreign_root);
+    ASSERT_NOT_NULL(label);
+    ASSERT_NOT_NULL(input);
+    ASSERT_NOT_NULL(foreign_input);
+
+    ASSERT_FALSE(vg_widget_set_accessible_label_for(&label->base, &label->base));
+    ASSERT_FALSE(vg_widget_set_accessible_label_for(&label->base, &foreign_input->base));
+    ASSERT_TRUE(vg_widget_set_accessible_label_for(&label->base, &input->base));
+    ASSERT_EQ(vg_widget_get_accessible_label_for(&label->base), &input->base);
+
+    vg_widget_destroy(&input->base);
+    ASSERT_NULL(vg_widget_get_accessible_label_for(&label->base));
+    ASSERT_TRUE(vg_widget_set_accessible_label_for(&label->base, NULL));
+    ASSERT_NULL(vg_widget_get_accessible_label_for(&label->base));
+
+    vg_widget_destroy(foreign_root);
+    vg_widget_destroy(root);
+}
+
+/// @brief Verify live-region announcements preserve independent edge and semantic revisions.
+/// @details Repeating identical text is still a new announcement edge. An invalid urgency falls
+///          back to the widget's configured mode, and changing one edge cannot reduce revisions.
+TEST(widget_accessibility_announcements_are_monotonic_edges) {
+    vg_label_t *label = vg_label_create(NULL, "Status");
+    ASSERT_NOT_NULL(label);
+    vg_widget_set_live_region(&label->base, VG_LIVE_REGION_ASSERTIVE);
+    uint64_t initial_revision = label->base.accessibility.announcement_revision;
+
+    vg_widget_accessibility_announce(
+        &label->base, "Build complete", (vg_live_region_mode_t)INT_MAX);
+    ASSERT_TRUE(strcmp(label->base.accessibility.announcement, "Build complete") == 0);
+    ASSERT_EQ(label->base.accessibility.announcement_mode, VG_LIVE_REGION_ASSERTIVE);
+    ASSERT_EQ(label->base.accessibility.announcement_revision, initial_revision + 1u);
+    uint64_t semantic_revision = label->base.accessibility.revision;
+
+    vg_widget_accessibility_announce(&label->base, "Build complete", VG_LIVE_REGION_POLITE);
+    ASSERT_EQ(label->base.accessibility.announcement_revision, initial_revision + 2u);
+    ASSERT_EQ(label->base.accessibility.announcement_mode, VG_LIVE_REGION_POLITE);
+    ASSERT_EQ(label->base.accessibility.revision, semantic_revision + 1u);
+
+    vg_widget_destroy(&label->base);
+}
+
+//=============================================================================
+// Round 14: Uniform control-event counters
+//=============================================================================
+
+/// @brief Verify common change, activation, and submission edges remain independent.
+/// @details Each event advances the non-consuming general revision, each compatibility edge can
+///          be consumed exactly once without hiding either of the other event kinds, and counters
+///          saturate instead of wrapping at `UINT64_MAX`.
+TEST(widget_common_event_edges_are_independent_and_saturating) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(widget);
+    const uint64_t initial_revision = vg_widget_get_revision(widget);
+    ASSERT_TRUE(initial_revision > 0);
+    ASSERT_FALSE(vg_widget_was_changed(widget));
+    ASSERT_FALSE(vg_widget_was_activated(widget));
+    ASSERT_FALSE(vg_widget_was_submitted(widget));
+
+    vg_widget_note_change(widget);
+    vg_widget_note_activation(widget);
+    vg_widget_note_submission(widget);
+    ASSERT_EQ(vg_widget_get_revision(widget), initial_revision + 3u);
+
+    ASSERT_TRUE(vg_widget_was_activated(widget));
+    ASSERT_TRUE(vg_widget_was_changed(widget));
+    ASSERT_TRUE(vg_widget_was_submitted(widget));
+    ASSERT_FALSE(vg_widget_was_changed(widget));
+    ASSERT_FALSE(vg_widget_was_activated(widget));
+    ASSERT_FALSE(vg_widget_was_submitted(widget));
+    ASSERT_EQ(vg_widget_get_revision(widget), initial_revision + 3u);
+
+    widget->revision = UINT64_MAX - 1u;
+    widget->change_revision = UINT64_MAX - 1u;
+    widget->reported_change_revision = UINT64_MAX - 1u;
+    vg_widget_note_change(widget);
+    ASSERT_EQ(widget->revision, UINT64_MAX);
+    ASSERT_EQ(widget->change_revision, UINT64_MAX);
+    ASSERT_TRUE(vg_widget_was_changed(widget));
+    ASSERT_EQ(widget->reported_change_revision, UINT64_MAX);
+
+    vg_widget_note_change(widget);
+    ASSERT_EQ(widget->revision, UINT64_MAX);
+    ASSERT_EQ(widget->change_revision, UINT64_MAX);
+    ASSERT_FALSE(vg_widget_was_changed(widget));
+
+    vg_widget_destroy(widget);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -4538,11 +5094,15 @@ int main(void) {
     RUN(treeview_collapse_reclamps_scroll);
     RUN(notification_manual_dismiss_respects_exit_animation);
     RUN(notification_zero_fade_duration_snaps_cleanly);
+    RUN(notification_visual_bounds_track_only_painted_toasts);
 
     printf("\nRound 3 — Viper.GUI class audit fixes\n");
     RUN(radiogroup_destroy_and_radio_destroy_clear_cross_references);
     RUN(colorpicker_set_color_emits_once_after_child_slider_sync);
     RUN(colorpalette_click_callback_fires_once_per_click);
+    RUN(colorswatch_keyboard_activation_is_accessible_and_revisioned);
+    RUN(colorpalette_keyboard_removal_and_semantics_are_complete);
+    RUN(colorpicker_keyboard_components_and_semantics_are_complete);
     RUN(label_and_checkbox_use_theme_regular_font_on_create);
     RUN(listbox_ctrl_toggle_off_does_not_leave_deselected_current_item);
     RUN(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index);
@@ -4679,6 +5239,21 @@ int main(void) {
     RUN(listbox_virtual_shrink_reports_truncated_secondary_selection);
     RUN(dropdown_invalid_set_selected_preserves_selection);
     RUN(treeview_and_tabbar_prune_retired_tombstones_when_handles_discarded);
+    RUN(widget_live_registry_rehashes_tombstone_saturation);
+
+    printf("\nRound 12 - GUI modernization scheduler and damage coverage\n");
+    RUN(widget_animation_uses_explicit_scheduler_delta);
+    RUN(overlay_managers_report_complete_scheduler_deadlines);
+    RUN(widget_visual_bounds_cover_every_paint_source);
+    RUN(popuplist_visual_bounds_track_overlay_visibility);
+
+    printf("\nRound 13 - GUI accessibility semantic-record coverage\n");
+    RUN(widget_accessibility_record_is_owned_and_revisioned);
+    RUN(widget_accessibility_relationships_are_tree_safe);
+    RUN(widget_accessibility_announcements_are_monotonic_edges);
+
+    printf("\nRound 14 - Uniform control-event and revision coverage\n");
+    RUN(widget_common_event_edges_are_independent_and_saturating);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

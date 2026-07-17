@@ -33,6 +33,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_gui_accessibility_platform.h"
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
 
@@ -740,6 +741,10 @@ void rt_app_set_title(void *app, rt_string title) {
     // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
     free(gui_app->title);
     gui_app->title = stored;
+    if (gui_app->root) {
+        vg_widget_set_accessible_name(gui_app->root, stored);
+        rt_gui_accessibility_platform_notify(gui_app->window, gui_app->root);
+    }
     rt_gui_macos_menu_sync_app(gui_app);
     free(cstr);
 }
@@ -844,8 +849,9 @@ int64_t rt_app_to_physical(void *app, int64_t logical) {
 
 /// @brief Set the user UI zoom multiplier applied on top of the HiDPI scale.
 /// @details Scales typography, spacing, and control metrics together so the whole
-///          UI grows or shrinks as one. Clamped to a legible range; the next
-///          per-frame theme refresh applies it.
+///          UI grows or shrinks as one. Clamped to a legible range. A changed
+///          value immediately rebuilds the per-app theme, reapplies logical font
+///          sizes, and invalidates layout/paint so an idle frame cannot hide it.
 void rt_app_set_ui_scale(void *app, double scale) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -857,7 +863,10 @@ void rt_app_set_ui_scale(void *app, double scale) {
         scale = 0.5;
     if (scale > 3.0)
         scale = 3.0;
+    if (gui_app->user_scale == (float)scale)
+        return;
     gui_app->user_scale = (float)scale;
+    rt_gui_refresh_theme(gui_app);
 }
 
 /// @brief `App.SetWheelSpeed` — set the global mouse-wheel scroll sensitivity
@@ -886,6 +895,17 @@ double rt_app_get_ui_scale(void *app) {
     if (!(gui_app->user_scale > 0.0f))
         return 1.0;
     return (double)gui_app->user_scale;
+}
+
+/// @brief Return the app's effective window-scale times user-zoom factor.
+/// @details The value converts logical GUI metrics and font points to retained framebuffer units.
+///          Invalid app handles return the identity scale and are never dereferenced.
+/// @param app GUI application handle.
+/// @return Positive finite effective scale, or 1.0 for an invalid app.
+double rt_app_get_effective_scale(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    return (double)rt_gui_app_effective_scale(gui_app);
 }
 
 /// @brief Move the app window to a specific screen position.
@@ -1119,6 +1139,15 @@ double rt_app_get_font_size(void *app) {
     return (double)gui_app->default_font_size;
 }
 
+/// @brief Return the app's stored default font size in logical points.
+/// @details Unlike the internal effective pixel size, this value is stable across monitor-DPI and
+///          user-zoom changes. It aliases the compatibility `GetFontSize` behavior explicitly.
+/// @param app GUI application handle.
+/// @return Logical font size, or 14.0 for an invalid app.
+double rt_app_get_logical_font_size(void *app) {
+    return rt_app_get_font_size(app);
+}
+
 /// @brief Set the default font size for the app window in logical points.
 /// @details Clamps `size` to [6, 72] pt before storing. The window/canvas
 ///          backend owns HiDPI coordinate scaling.
@@ -1336,6 +1365,16 @@ double rt_app_get_ui_scale(void *app) {
     return 1.0;
 }
 
+/// @brief Stub: graphics-disabled builds use the identity effective scale.
+/// @details The app handle is intentionally ignored because no platform window or user-scaled
+///          retained theme exists in this build configuration.
+/// @param app Ignored GUI application handle.
+/// @return Always 1.0.
+double rt_app_get_effective_scale(void *app) {
+    (void)app;
+    return 1.0;
+}
+
 /// @brief Stub: `App.SetWheelSpeed` is a no-op without graphics.
 void rt_app_set_wheel_speed(void *app, double speed) {
     (void)app;
@@ -1473,6 +1512,16 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
 
 /// @brief Stub: graphics disabled — returns default 14.0 pt; no real app window exists.
 double rt_app_get_font_size(void *app) {
+    (void)app;
+    return 14.0;
+}
+
+/// @brief Stub: return the graphics-disabled logical default font size.
+/// @details This mirrors `GetFontSize` and provides a stable logical-unit contract even when GUI
+///          construction is unavailable.
+/// @param app Ignored GUI application handle.
+/// @return Always 14.0 logical points.
+double rt_app_get_logical_font_size(void *app) {
     (void)app;
     return 14.0;
 }

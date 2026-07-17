@@ -60,12 +60,66 @@ static void toolbar_measure(vg_widget_t *widget, float available_width, float av
 static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, float height);
 static void toolbar_paint(vg_widget_t *widget, void *canvas);
 static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas);
+static void toolbar_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height);
 static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool toolbar_can_focus(vg_widget_t *widget);
 static void toolbar_on_focus(vg_widget_t *widget, bool gained);
 static void toolbar_sync_hover_tooltip(vg_toolbar_t *tb);
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item);
+
+/// @brief Resolve a toolbar's absolute screen-space origin.
+/// @details Toolbars may be nested inside arbitrary layout containers, so their
+///          retained x/y values cannot be used directly to anchor detached popups.
+/// @param toolbar Toolbar whose origin is requested; may be NULL.
+/// @param x Receives screen X, or zero for NULL.
+/// @param y Receives screen Y, or zero for NULL.
+static void toolbar_get_screen_origin(const vg_toolbar_t *toolbar, float *x, float *y) {
+    if (x)
+        *x = 0.0f;
+    if (y)
+        *y = 0.0f;
+    if (!toolbar)
+        return;
+    vg_widget_get_screen_bounds(&toolbar->base, x, y, NULL, NULL);
+}
+
+/// @brief Clamp a detached toolbar popup to the root widget's screen rectangle.
+/// @details Context-menu painting also clamps to the native window, but doing the
+///          deterministic root clamp before damage collection keeps the reported
+///          visual rectangle identical to the rectangle that will be painted.
+/// @param toolbar Popup owner used to locate the root viewport.
+/// @param popup Measured popup whose absolute position is updated; may be NULL.
+static void toolbar_clamp_popup_to_root(vg_toolbar_t *toolbar, vg_contextmenu_t *popup) {
+    if (!toolbar || !popup || !vg_widget_is_live(&popup->base))
+        return;
+    vg_widget_t *root = &toolbar->base;
+    while (root->parent)
+        root = root->parent;
+    float root_x = 0.0f, root_y = 0.0f, root_w = 0.0f, root_h = 0.0f;
+    vg_widget_get_screen_bounds(root, &root_x, &root_y, &root_w, &root_h);
+    if (!isfinite(root_x) || !isfinite(root_y) || !isfinite(root_w) || !isfinite(root_h) ||
+        root_w <= 0.0f || root_h <= 0.0f) {
+        return;
+    }
+    float max_x = root_x + root_w - popup->base.width;
+    float max_y = root_y + root_h - popup->base.height;
+    if (max_x < root_x)
+        max_x = root_x;
+    if (max_y < root_y)
+        max_y = root_y;
+    if (popup->base.x < root_x)
+        popup->base.x = root_x;
+    if (popup->base.y < root_y)
+        popup->base.y = root_y;
+    if (popup->base.x > max_x)
+        popup->base.x = max_x;
+    if (popup->base.y > max_y)
+        popup->base.y = max_y;
+    popup->anchor_x = (int)popup->base.x;
+    popup->anchor_y = (int)popup->base.y;
+}
 
 //=============================================================================
 // Toolbar VTable
@@ -78,7 +132,8 @@ static vg_widget_vtable_t g_toolbar_vtable = {.destroy = toolbar_destroy,
                                               .paint_overlay = toolbar_paint_overlay,
                                               .handle_event = toolbar_handle_event,
                                               .can_focus = toolbar_can_focus,
-                                              .on_focus = toolbar_on_focus};
+                                              .on_focus = toolbar_on_focus,
+                                              .get_visual_bounds = toolbar_get_visual_bounds};
 
 //=============================================================================
 // Helper Functions
@@ -858,14 +913,18 @@ static void toolbar_show_dropdown_popup(vg_toolbar_t *tb, vg_toolbar_item_t *ite
         toolbar_get_overflow_button_rect(tb, &item_x, &item_y, &item_w, &item_h);
     }
 
-    int popup_x = (int)(tb->base.x + item_x);
-    int popup_y = (int)(tb->base.y + item_y + item_h);
+    float toolbar_x = 0.0f;
+    float toolbar_y = 0.0f;
+    toolbar_get_screen_origin(tb, &toolbar_x, &toolbar_y);
+    int popup_x = (int)(toolbar_x + item_x);
+    int popup_y = (int)(toolbar_y + item_y + item_h);
     if (tb->orientation == VG_TOOLBAR_VERTICAL) {
-        popup_x = (int)(tb->base.x + item_x + item_w);
-        popup_y = (int)(tb->base.y + item_y);
+        popup_x = (int)(toolbar_x + item_x + item_w);
+        popup_y = (int)(toolbar_y + item_y);
     }
 
     vg_contextmenu_show_at(tb->dropdown_popup, popup_x, popup_y);
+    toolbar_clamp_popup_to_root(tb, tb->dropdown_popup);
     vg_widget_set_input_capture(&tb->base);
     tb->base.needs_paint = true;
 }
@@ -1001,14 +1060,18 @@ static void toolbar_show_overflow_popup(vg_toolbar_t *tb) {
     float button_h = 0.0f;
     toolbar_get_overflow_button_rect(tb, &button_x, &button_y, &button_w, &button_h);
 
-    int popup_x = (int)(tb->base.x + button_x);
-    int popup_y = (int)(tb->base.y + button_y + button_h);
+    float toolbar_x = 0.0f;
+    float toolbar_y = 0.0f;
+    toolbar_get_screen_origin(tb, &toolbar_x, &toolbar_y);
+    int popup_x = (int)(toolbar_x + button_x);
+    int popup_y = (int)(toolbar_y + button_y + button_h);
     if (tb->orientation == VG_TOOLBAR_VERTICAL) {
-        popup_x = (int)(tb->base.x + button_x + button_w);
-        popup_y = (int)(tb->base.y + button_y);
+        popup_x = (int)(toolbar_x + button_x + button_w);
+        popup_y = (int)(toolbar_y + button_y);
     }
 
     vg_contextmenu_show_at(tb->overflow_popup, popup_x, popup_y);
+    toolbar_clamp_popup_to_root(tb, tb->overflow_popup);
     vg_widget_set_input_capture(&tb->base);
     tb->base.needs_paint = true;
 }
@@ -1814,6 +1877,84 @@ static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Union one visible toolbar context-menu popup into an absolute rectangle.
+/// @param popup Popup to include; NULL, hidden, or retired popups are ignored.
+/// @param any In/out flag indicating whether the rectangle has an initial value.
+/// @param x0 In/out left edge.
+/// @param y0 In/out top edge.
+/// @param x1 In/out exclusive right edge.
+/// @param y1 In/out exclusive bottom edge.
+static void toolbar_include_popup_bounds(
+    const vg_contextmenu_t *popup, bool *any, float *x0, float *y0, float *x1, float *y1) {
+    if (!popup || !popup->is_visible || !vg_widget_is_live(&popup->base) || !any || !x0 || !y0 ||
+        !x1 || !y1) {
+        return;
+    }
+    float popup_x = 0.0f, popup_y = 0.0f, popup_w = 0.0f, popup_h = 0.0f;
+    vg_widget_get_screen_bounds(&popup->base, &popup_x, &popup_y, &popup_w, &popup_h);
+    if (!isfinite(popup_x) || !isfinite(popup_y) || !isfinite(popup_w) || !isfinite(popup_h) ||
+        popup_w <= 0.0f || popup_h <= 0.0f) {
+        return;
+    }
+    float popup_x1 = popup_x + popup_w;
+    float popup_y1 = popup_y + popup_h;
+    if (!*any) {
+        *x0 = popup_x;
+        *y0 = popup_y;
+        *x1 = popup_x1;
+        *y1 = popup_y1;
+        *any = true;
+        return;
+    }
+    if (popup_x < *x0)
+        *x0 = popup_x;
+    if (popup_y < *y0)
+        *y0 = popup_y;
+    if (popup_x1 > *x1)
+        *x1 = popup_x1;
+    if (popup_y1 > *y1)
+        *y1 = popup_y1;
+}
+
+/// @brief Report the union of visible overflow and item-dropdown popup rectangles.
+/// @details Toolbar popups are owned transient widgets rather than children, so
+///          ordinary tree traversal cannot discover their pixels. Their absolute
+///          rectangles are returned here and unioned with the toolbar by the widget
+///          core; theme shadow overflow is then applied once around the result.
+/// @param widget Toolbar widget being queried.
+/// @param x Receives popup-union X, or zero when no popup is visible.
+/// @param y Receives popup-union Y, or zero when no popup is visible.
+/// @param width Receives popup-union width, or zero when no popup is visible.
+/// @param height Receives popup-union height, or zero when no popup is visible.
+static void toolbar_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    if (x)
+        *x = 0.0f;
+    if (y)
+        *y = 0.0f;
+    if (width)
+        *width = 0.0f;
+    if (height)
+        *height = 0.0f;
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)widget;
+    if (!toolbar)
+        return;
+    bool any = false;
+    float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+    toolbar_include_popup_bounds(toolbar->overflow_popup, &any, &x0, &y0, &x1, &y1);
+    toolbar_include_popup_bounds(toolbar->dropdown_popup, &any, &x0, &y0, &x1, &y1);
+    if (!any)
+        return;
+    if (x)
+        *x = x0;
+    if (y)
+        *y = y0;
+    if (width)
+        *width = x1 - x0;
+    if (height)
+        *height = y1 - y0;
+}
+
 /// @brief Return the interactable item at toolbar-local point (px, py), or NULL if none
 /// (separators/spacers excluded).
 static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py) {
@@ -2328,6 +2469,26 @@ void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
             return;
         }
     }
+}
+
+/// @brief Unlink and free one exact retained Toolbar item record.
+/// @details The managed runtime invokes this only after the last stable wrapper is absent. Foreign
+///          pointers are compared but never dereferenced.
+bool vg_toolbar_reclaim_retired_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    if (!tb || !item)
+        return false;
+    vg_toolbar_item_t **link = &tb->retired_items;
+    while (*link) {
+        vg_toolbar_item_t *candidate = *link;
+        if (candidate == item) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_item(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
 }
 
 /// @brief Look up a toolbar item by its string id.

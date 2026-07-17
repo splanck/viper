@@ -116,6 +116,31 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
     EXPECT_EQ(1u, plan.symOrdinals["fsync"]);
 }
 
+/// @brief Verify AppKit accessibility constants and posting functions resolve to AppKit.
+/// @details The GUI semantic bridge references exported NSAccessibility string constants in
+///          addition to the posting functions. The native linker must assign all of them the
+///          AppKit dylib ordinal instead of rejecting the final ViperIDE link as unmapped.
+TEST(PlatformImportPlanners, MacPlannerMapsAccessibilitySymbolsToAppKit) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(planMacImports({"NSAccessibilityAnnouncementKey",
+                                "NSAccessibilityPriorityKey",
+                                "NSAccessibilityAnnouncementRequestedNotification",
+                                "NSAccessibilityPostNotificationWithUserInfo",
+                                "NSAccessibilityGroupRole"},
+                               plan,
+                               err));
+
+    const uint32_t appKit =
+        dylibOrdinalForPath(plan, "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit");
+    ASSERT_TRUE(appKit != 0);
+    EXPECT_EQ(appKit, plan.symOrdinals["NSAccessibilityAnnouncementKey"]);
+    EXPECT_EQ(appKit, plan.symOrdinals["NSAccessibilityPriorityKey"]);
+    EXPECT_EQ(appKit, plan.symOrdinals["NSAccessibilityAnnouncementRequestedNotification"]);
+    EXPECT_EQ(appKit, plan.symOrdinals["NSAccessibilityPostNotificationWithUserInfo"]);
+    EXPECT_EQ(appKit, plan.symOrdinals["NSAccessibilityGroupRole"]);
+}
+
 TEST(PlatformImportPlanners, MacPlannerMapsMachineAndHostSyscallsToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;
@@ -130,6 +155,24 @@ TEST(PlatformImportPlanners, MacPlannerMapsMachineAndHostSyscallsToLibSystem) {
     EXPECT_EQ(1u, plan.symOrdinals["sysctlbyname"]);
     ASSERT_TRUE(plan.symOrdinals.count("uname") != 0);
     EXPECT_EQ(1u, plan.symOrdinals["uname"]);
+}
+
+/// @brief Verify Darwin pattern-fill helpers synthesized by Clang resolve to libSystem.
+/// @details Optimized C loops may acquire these imports even when source code only contains
+///          ordinary scalar stores. Cover all three public pattern widths so compiler version and
+///          optimization-level changes cannot silently make a runtime archive unlinkable.
+TEST(PlatformImportPlanners, MacPlannerMapsCompilerPatternFillsToLibSystem) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(
+        planMacImports({"memset_pattern4", "memset_pattern8", "__memset_pattern16"}, plan, err));
+
+    ASSERT_TRUE(plan.symOrdinals.count("memset_pattern4") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["memset_pattern4"]);
+    ASSERT_TRUE(plan.symOrdinals.count("memset_pattern8") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["memset_pattern8"]);
+    ASSERT_TRUE(plan.symOrdinals.count("__memset_pattern16") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["__memset_pattern16"]);
 }
 
 TEST(PlatformImportPlanners, MacPlannerMapsDarwinArgvAccessorsToLibSystem) {
@@ -368,6 +411,9 @@ TEST(DynamicSymbolPolicy, ForeignPlatformSymbolsRejectedNativeAccepted) {
     EXPECT_TRUE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::macOS));
     EXPECT_FALSE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::Linux));
     EXPECT_FALSE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::Windows));
+    EXPECT_TRUE(isKnownDynamicSymbol("memset_pattern16", LinkPlatform::macOS));
+    EXPECT_FALSE(isKnownDynamicSymbol("memset_pattern16", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("memset_pattern16", LinkPlatform::Windows));
 
     // glibc-internal: accepted on Linux, rejected on macOS/Windows.
     EXPECT_TRUE(isKnownDynamicSymbol("__errno_location", LinkPlatform::Linux));

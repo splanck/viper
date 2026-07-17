@@ -17,7 +17,7 @@
 // Description: Contains OpFmt entries with mnemonic strings and operand
 //              format information for assembly output.
 //
-// Links: docs/il/il-guide.md#reference, codegen/x86_64/Emit.cpp
+// Links: docs/il-guide.md#reference, codegen/x86_64/Emit.cpp
 //
 //===----------------------------------------------------------------------===//
 

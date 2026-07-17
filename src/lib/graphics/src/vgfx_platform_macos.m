@@ -116,9 +116,17 @@ static void vgfx_macos_init_timebase(void) {
 /// @details Overrides drawRect: to convert the raw RGBA framebuffer into a
 ///          CGImage and blit it to the screen.  Handles coordinate system
 ///          conversion (Cocoa uses bottom-left origin, we use top-left).
-@interface VGFXView : NSView
+@interface VGFXView : NSView <NSTextInputClient>
 /// @brief Pointer to the ViperGFX window structure (backlink for rendering).
 @property(nonatomic, assign) struct vgfx_window *vgfxWindow;
+/// @brief Timestamp assigned by the platform pump before native key interpretation.
+@property(nonatomic, assign) int64_t textInputTimestamp;
+/// @brief ViperGFX modifier mask assigned before native key interpretation.
+@property(nonatomic, assign) int textInputModifiers;
+/// @brief Current native marked string retained only while Cocoa owns preedit.
+@property(nonatomic, copy) NSString *markedText;
+/// @brief Whether a composition-start event has been emitted without a terminal boundary.
+@property(nonatomic, assign) BOOL compositionActive;
 @end
 
 /// @brief Window delegate for handling lifecycle events.
@@ -161,6 +169,11 @@ typedef struct {
 
 static BOOL g_finish_launching_called = NO;
 static NSMenu *g_default_main_menu = nil;
+
+static void macos_enqueue_text_input_events(struct vgfx_window *win,
+                                            int64_t timestamp,
+                                            NSString *characters,
+                                            int modifiers);
 
 /// @brief Convert a UTF-8 C string to an NSString with a safe fallback.
 /// @details Cocoa returns nil from `stringWithUTF8String:` when the byte stream
@@ -678,6 +691,105 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     }
 }
 
+/// @brief Normalize Cocoa text-input callback values to a plain NSString.
+/// @details NSTextInputClient permits NSString or NSAttributedString values. Unknown values use
+///          their textual description, and nil becomes an empty string, so platform callbacks
+///          never pass borrowed Objective-C object layouts into the C event queue.
+/// @param value Cocoa text input value supplied by AppKit.
+/// @return Autoreleased plain string suitable for UTF-8 conversion.
+static NSString *macos_plain_input_string(id value) {
+    if ([value isKindOfClass:[NSAttributedString class]])
+        return [(NSAttributedString *)value string];
+    if ([value isKindOfClass:[NSString class]])
+        return (NSString *)value;
+    return value ? [value description] : @ "";
+}
+
+/// @brief Replace embedded U+0000 values before crossing the C-string editor boundary.
+/// @details Composition events are byte-counted, but lower retained text remains NUL-terminated.
+///          Converting U+0000 to U+FFFD preserves all following native text instead of silently
+///          truncating it at the first embedded zero.
+/// @param value Plain native input string.
+/// @return String containing no embedded U+0000 values.
+static NSString *macos_sanitize_input_string(NSString *value) {
+    if (!value || value.length == 0)
+        return @ "";
+    unichar nul = 0;
+    NSString *nul_string = [NSString stringWithCharacters:&nul length:1];
+    return [value stringByReplacingOccurrencesOfString:nul_string withString:@ "\uFFFD"];
+}
+
+/// @brief Count Unicode codepoints in an NSString UTF-16 prefix.
+/// @details Valid surrogate pairs count once; lone surrogates count once and are later encoded by
+///          NSString's lossy UTF-8 bridge. The UTF-16 limit is clamped to the string length.
+/// @param value Native string whose prefix is measured.
+/// @param utf16_limit Number of UTF-16 code units requested.
+/// @return Unicode-codepoint count saturated to INT32_MAX.
+static int32_t macos_codepoint_count_prefix(NSString *value, NSUInteger utf16_limit) {
+    if (!value)
+        return 0;
+    NSUInteger length = [value length];
+    if (utf16_limit > length)
+        utf16_limit = length;
+    NSUInteger index = 0;
+    int64_t count = 0;
+    while (index < utf16_limit) {
+        unichar high = [value characterAtIndex:index++];
+        if (high >= 0xD800 && high <= 0xDBFF && index < utf16_limit) {
+            unichar low = [value characterAtIndex:index];
+            if (low >= 0xDC00 && low <= 0xDFFF)
+                index++;
+        }
+        if (count < INT32_MAX)
+            count++;
+    }
+    return (int32_t)count;
+}
+
+/// @brief Enqueue one Cocoa NSTextInputClient composition lifecycle event.
+/// @details Converts AppKit UTF-16 selection offsets to codepoint units, stores valid UTF-8 inline,
+///          and uses the current-client-selection sentinel for replacement because ViperGFX does
+///          not retain application text. The focused GUI editor owns the authoritative selection.
+/// @param view Native framebuffer view receiving AppKit text callbacks.
+/// @param type Composition lifecycle discriminator.
+/// @param value NSString or NSAttributedString callback value; nil becomes empty.
+/// @param selection Native preedit selection in UTF-16 units.
+static void macos_enqueue_composition_event(VGFXView *view,
+                                            vgfx_event_type_t type,
+                                            id value,
+                                            NSRange selection) {
+    if (!view || !view.vgfxWindow)
+        return;
+    NSString *text = macos_sanitize_input_string(macos_plain_input_string(value));
+    NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:YES];
+    const char *bytes = utf8.length > 0 ? (const char *)utf8.bytes : "";
+    int32_t selection_start = selection.location == NSNotFound
+                                  ? 0
+                                  : macos_codepoint_count_prefix(text, selection.location);
+    NSUInteger selection_end_utf16 = selection.location == NSNotFound ? 0 : selection.location;
+    if (selection.location != NSNotFound) {
+        if (selection.length <= NSUIntegerMax - selection_end_utf16)
+            selection_end_utf16 += selection.length;
+        else
+            selection_end_utf16 = NSUIntegerMax;
+    }
+    int32_t selection_end = macos_codepoint_count_prefix(text, selection_end_utf16);
+    vgfx_event_t event;
+    if (vgfx_internal_init_composition_event(
+            &event,
+            type,
+            view.textInputTimestamp,
+            bytes,
+            (size_t)utf8.length,
+            selection_start,
+            selection_end >= selection_start ? selection_end - selection_start : 0,
+            -1,
+            -1,
+            view.textInputModifiers)) {
+        vgfx_internal_enqueue_event(view.vgfxWindow, &event);
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Custom NSView for Framebuffer Display
 //===----------------------------------------------------------------------===//
@@ -695,6 +807,10 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     self = [super initWithFrame:frameRect];
     if (self) {
         _vgfxWindow = NULL;
+        _textInputTimestamp = 0;
+        _textInputModifiers = 0;
+        _markedText = @ "";
+        _compositionActive = NO;
         [self setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
         // Register as a file drop target
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
@@ -718,6 +834,166 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
 /// @return YES (view accepts first responder status)
 - (BOOL)acceptsFirstResponder {
     return YES;
+}
+
+/// @brief Route a native key press through AppKit's text input manager.
+/// @details Physical key state is queued by the outer platform pump first. `interpretKeyEvents:`
+///          then invokes this view's NSTextInputClient methods for layout-aware text, dead keys,
+///          dictation, and IME preedit without synthesizing characters from key codes.
+/// @param event Native key-down event being interpreted.
+- (void)keyDown:(NSEvent *)event {
+    if (!event)
+        return;
+    [self interpretKeyEvents:@[ event ]];
+}
+
+/// @brief Accept committed native text from AppKit.
+/// @details Active marked text becomes one composition commit. Ordinary single-character input is
+///          emitted through the legacy codepoint event path so all existing text-capable widgets
+///          remain compatible. Multi-character replacement/dictation is wrapped in start/commit
+///          boundaries to retain one logical undo record.
+/// @param value NSString or NSAttributedString committed by AppKit.
+/// @param replacementRange Native replacement range; current GUI selection remains authoritative.
+- (void)insertText:(id)value replacementRange:(NSRange)replacementRange {
+    NSString *text = macos_sanitize_input_string(macos_plain_input_string(value));
+    if (_compositionActive) {
+        macos_enqueue_composition_event(
+            self, VGFX_EVENT_COMPOSITION_COMMIT, text, NSMakeRange(0, 0));
+        _compositionActive = NO;
+        _markedText = @ "";
+        return;
+    }
+
+    const BOOL is_replacement = replacementRange.location != NSNotFound;
+    const BOOL is_multi_codepoint = macos_codepoint_count_prefix(text, text.length) > 1;
+    if (is_replacement || is_multi_codepoint) {
+        macos_enqueue_composition_event(self, VGFX_EVENT_COMPOSITION_START, @ "", NSMakeRange(0, 0));
+        macos_enqueue_composition_event(
+            self, VGFX_EVENT_COMPOSITION_COMMIT, text, NSMakeRange(0, 0));
+        return;
+    }
+
+    /* Option-modified characters are already interpreted by AppKit. Clear
+       only the shortcut modifier on the resulting text event so legitimate
+       macOS Option glyph entry is not rejected as an Alt shortcut. */
+    macos_enqueue_text_input_events(
+        _vgfxWindow, _textInputTimestamp, text, _textInputModifiers & ~VGFX_MOD_ALT);
+}
+
+/// @brief Update the visible native IME preedit string and internal selection.
+/// @details The first update emits an explicit start boundary. Later updates replace only the
+///          separate marked buffer; committed application text is untouched until insertText or
+///          unmarkText commits it.
+/// @param value NSString or NSAttributedString marked value supplied by AppKit.
+/// @param selectedRange Selection/caret within marked text in UTF-16 units.
+/// @param replacementRange Native committed-text replacement; GUI current selection is used.
+- (void)setMarkedText:(id)value
+        selectedRange:(NSRange)selectedRange
+     replacementRange:(NSRange)replacementRange {
+    (void)replacementRange;
+    NSString *text = macos_sanitize_input_string(macos_plain_input_string(value));
+    if (!_compositionActive) {
+        macos_enqueue_composition_event(self, VGFX_EVENT_COMPOSITION_START, @ "", NSMakeRange(0, 0));
+        _compositionActive = YES;
+    }
+    _markedText = text;
+    macos_enqueue_composition_event(self, VGFX_EVENT_COMPOSITION_UPDATE, text, selectedRange);
+}
+
+/// @brief End native marking while preserving AppKit's intended text result.
+/// @details In the NSTextInputClient model marked text already lives in the document. Viper keeps
+///          it separate, so a non-empty marked value is committed here; an empty marked value is
+///          an explicit cancellation. Exactly one terminal event is emitted.
+- (void)unmarkText {
+    if (!_compositionActive)
+        return;
+    if (_markedText.length > 0) {
+        macos_enqueue_composition_event(
+            self, VGFX_EVENT_COMPOSITION_COMMIT, _markedText, NSMakeRange(0, 0));
+    } else {
+        macos_enqueue_composition_event(
+            self, VGFX_EVENT_COMPOSITION_CANCEL, @ "", NSMakeRange(0, 0));
+    }
+    _compositionActive = NO;
+    _markedText = @ "";
+}
+
+/// @brief Report whether AppKit currently owns non-terminal marked text.
+/// @return YES between composition start and commit/cancel.
+- (BOOL)hasMarkedText {
+    return _compositionActive && _markedText.length > 0;
+}
+
+/// @brief Return the UTF-16 range occupied by the native marked value.
+/// @return Zero-based range within the view's lightweight marked-text client, or NSNotFound.
+- (NSRange)markedRange {
+    return _compositionActive ? NSMakeRange(0, _markedText.length) : NSMakeRange(NSNotFound, 0);
+}
+
+/// @brief Return the native committed-text selection placeholder.
+/// @details The retained GUI editor owns authoritative grapheme selection. AppKit callbacks use
+///          the current-selection replacement sentinel, so this lightweight client reports an
+///          empty range rather than duplicating application text state.
+/// @return Empty UTF-16 range.
+- (NSRange)selectedRange {
+    return NSMakeRange(0, 0);
+}
+
+/// @brief Decline attributed committed-text substring queries.
+/// @details ViperGFX intentionally does not retain widget text. Returning nil instructs input
+///          methods to use the current-selection replacement path without stale native copies.
+/// @param range Proposed native UTF-16 range.
+/// @param actualRange Receives NSNotFound when non-NULL.
+/// @return nil because committed text belongs to the GUI layer.
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range
+                                                actualRange:(NSRangePointer)actualRange {
+    (void)range;
+    if (actualRange)
+        *actualRange = NSMakeRange(NSNotFound, 0);
+    return nil;
+}
+
+/// @brief Return supported marked-text attributes.
+/// @return Empty array because ViperGUI derives preedit visuals from its theme.
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
+    return @[];
+}
+
+/// @brief Provide a stable candidate-window anchor in global screen coordinates.
+/// @details Until the focused widget publishes a finer caret rectangle, the top-left of the
+///          framebuffer view is used. This keeps candidate UI attached to the correct window and
+///          screen rather than falling back to an unrelated desktop origin.
+/// @param range Requested native character range.
+/// @param actualRange Receives an empty range when non-NULL.
+/// @return One-point-wide screen rectangle anchored at the view's top-left.
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    (void)range;
+    if (actualRange)
+        *actualRange = NSMakeRange(0, 0);
+    NSRect local = NSMakeRect(0.0, NSMaxY([self bounds]), 1.0, 1.0);
+    NSRect window_rect = [self convertRect:local toView:nil];
+    return self.window ? [self.window convertRectToScreen:window_rect] : NSZeroRect;
+}
+
+/// @brief Map a native screen point to the lightweight client's character index.
+/// @param point Screen point supplied by AppKit.
+/// @return Zero because committed document geometry belongs to the GUI widget.
+- (NSUInteger)characterIndexForPoint:(NSPoint)point {
+    (void)point;
+    return 0;
+}
+
+/// @brief Handle command selectors produced during native key interpretation.
+/// @details Physical navigation/edit keys are already queued separately. Escape-style cancellation
+///          terminates active preedit here; all other selectors remain available to the GUI event.
+/// @param selector AppKit command selector.
+- (void)doCommandBySelector:(SEL)selector {
+    if (selector == @selector(cancelOperation:) && _compositionActive) {
+        macos_enqueue_composition_event(
+            self, VGFX_EVENT_COMPOSITION_CANCEL, @ "", NSMakeRange(0, 0));
+        _compositionActive = NO;
+        _markedText = @ "";
+    }
 }
 
 /// @brief Accept mouse clicks even when the window is not focused.
@@ -1028,6 +1304,11 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!_vgfxWindow)
         return;
 
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+    if (platform && platform->view.compositionActive) {
+        platform->view.textInputTimestamp = vgfx_platform_now_ms();
+        [platform->view doCommandBySelector:@selector(cancelOperation:)];
+    }
     vgfx_internal_set_focus_state(_vgfxWindow, 0);
     vgfx_internal_clear_input_state(_vgfxWindow);
 
@@ -1397,9 +1678,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                                          .modifiers = mods}};
                         vgfx_internal_enqueue_event(win, &vgfx_event);
                     }
-
-                    NSString *characters = [event characters];
-                    macos_enqueue_text_input_events(win, timestamp, characters, mods);
+                    platform->view.textInputTimestamp = timestamp;
+                    platform->view.textInputModifiers = mods;
                     break;
                 }
 

@@ -145,6 +145,9 @@ Implement one adapter at a time with a unit test:
 3. Water3D using the active camera and transparent ordering.
 4. Sky3D if an explicit draw/register operation is needed; otherwise store it
    as world environment state and document why it is not a draw entry.
+   `World3D.SetSkybox`, `SetAmbient`, and `SetFog` already exist as world
+   environment state setters, which favors the state option unless the render
+   trace proves a per-frame draw entry is required.
 5. TimeOfDay3D advance using fixed or selected time domain; bind its sun/sky/
    reflection probe through existing methods.
 

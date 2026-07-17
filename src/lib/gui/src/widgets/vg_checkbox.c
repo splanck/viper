@@ -288,6 +288,7 @@ void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked) {
 
     if (old_checked != checked || old_indeterminate) {
         checkbox->base.needs_paint = true;
+        vg_widget_note_change(&checkbox->base);
 
         if (old_checked != checked && checkbox->on_change) {
             checkbox->on_change(&checkbox->base, checked, checkbox->on_change_data);
@@ -323,12 +324,17 @@ void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate) 
         return;
 
     bool old_checked = checkbox->checked;
+    bool old_indeterminate = checkbox->indeterminate;
     checkbox->indeterminate = indeterminate;
     if (indeterminate) {
         checkbox->checked = false;
         checkbox->base.state &= ~VG_STATE_CHECKED;
     }
+    if (old_checked == checkbox->checked && old_indeterminate == checkbox->indeterminate)
+        return;
+
     checkbox->base.needs_paint = true;
+    vg_widget_note_change(&checkbox->base);
 
     if (old_checked != checkbox->checked && checkbox->on_change)
         checkbox->on_change(&checkbox->base, checkbox->checked, checkbox->on_change_data);
@@ -362,6 +368,7 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     checkbox->text = copy;
     checkbox->base.needs_layout = true;
     checkbox->base.needs_paint = true;
+    vg_widget_note_revision(&checkbox->base);
 }
 
 /// @brief Set the change callback invoked when the checked state changes.

@@ -89,6 +89,9 @@ static void free_tab(vg_tab_t *tab) {
         return;
     free(tab->title);
     free(tab->tooltip);
+    free(tab->stable_id);
+    if (tab->owns_user_data)
+        free(tab->user_data);
     free(tab);
 }
 
@@ -102,8 +105,14 @@ static void retire_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     tab->title = NULL;
     free(tab->tooltip);
     tab->tooltip = NULL;
+    free(tab->stable_id);
+    tab->stable_id = NULL;
+    tab->stable_id_len = 0;
+    if (tab->owns_user_data)
+        free(tab->user_data);
     tab->owner = NULL;
     tab->user_data = NULL;
+    tab->owns_user_data = false;
     tab->next = NULL;
     tab->prev = NULL;
     tab->magic = VG_TAB_RETIRED_MAGIC;
@@ -336,6 +345,11 @@ static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new
 
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
+    tabbar->reordered_from = current_index;
+    tabbar->reordered_to = new_index;
+    if (tabbar->reorder_version < UINT64_MAX)
+        tabbar->reorder_version++;
+    vg_widget_note_revision(&tabbar->base);
     return true;
 }
 
@@ -504,6 +518,10 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->auto_close = true;
     tabbar->active_change_version = 0;
     tabbar->reported_active_change_version = 0;
+    tabbar->reorder_version = 0;
+    tabbar->reported_reorder_version = 0;
+    tabbar->reordered_from = -1;
+    tabbar->reordered_to = -1;
     tabbar->saved_tooltip_text = NULL;
     tabbar->hover_tooltip_active = false;
 
@@ -981,7 +999,10 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     tab->owner = tabbar;
     tab->title = title_copy;
     tab->tooltip = tooltip_copy;
+    tab->stable_id = NULL;
+    tab->stable_id_len = 0;
     tab->user_data = NULL;
+    tab->owns_user_data = false;
     tab->closable = closable;
     tab->modified = false;
 
@@ -1004,6 +1025,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
 
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
+    vg_widget_note_revision(&tabbar->base);
 
     return tab;
 }
@@ -1065,8 +1087,12 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     retire_tab(tabbar, tab);
 
     if (active_changed) {
-        tabbar->active_change_version++;
+        if (tabbar->active_change_version < UINT64_MAX)
+            tabbar->active_change_version++;
         tabbar->prev_active_tab = tabbar->active_tab;
+        vg_widget_note_change(&tabbar->base);
+    } else {
+        vg_widget_note_revision(&tabbar->base);
     }
 
     tabbar->base.needs_layout = true;
@@ -1083,6 +1109,26 @@ void vg_tabbar_prune_retired_tabs(vg_tabbar_t *tabbar) {
     free_retired_tabs(tabbar);
 }
 
+/// @brief Unlink and free one exact retained tab record.
+/// @details The function compares addresses while walking the owner's valid retirement chain and
+///          therefore never dereferences a foreign caller-supplied pointer.
+bool vg_tabbar_reclaim_retired_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
+    if (!tabbar || !tab)
+        return false;
+    vg_tab_t **link = &tabbar->retired_tabs;
+    while (*link) {
+        vg_tab_t *candidate = *link;
+        if (candidate == tab) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_tab(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
+}
+
 /// @brief Set the active tab and fire the on_select callback.
 ///
 /// @details No-op if tab is already the active tab.  Scrolls the tab into view.
@@ -1096,10 +1142,12 @@ void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         return;
 
     tabbar->active_tab = tab;
-    tabbar->active_change_version++;
+    if (tabbar->active_change_version < UINT64_MAX)
+        tabbar->active_change_version++;
     tabbar->prev_active_tab = tab;
     tabbar_ensure_tab_visible(tabbar, tab);
     tabbar->base.needs_paint = true;
+    vg_widget_note_change(&tabbar->base);
 
     if (tabbar->on_select && tab) {
         tabbar->on_select(&tabbar->base, tab, tabbar->on_select_data);
@@ -1160,6 +1208,10 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
     if (!vg_tab_is_live(tab))
         return;
 
+    const char *value = title ? title : "Untitled";
+    if (tab->title && strcmp(tab->title, value) == 0)
+        return;
+
     bool tooltip_tracks_title = false;
     if (!tab->tooltip) {
         tooltip_tracks_title = true;
@@ -1169,7 +1221,7 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
         tooltip_tracks_title = true;
     }
 
-    char *new_title = title ? vg_strdup(title) : vg_strdup("Untitled");
+    char *new_title = vg_strdup(value);
     if (!new_title)
         return;
 
@@ -1196,7 +1248,13 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
             tabbar_sync_hover_tooltip(tab->owner);
         tab->owner->base.needs_layout = true;
         tab->owner->base.needs_paint = true;
+        vg_widget_note_revision(&tab->owner->base);
     }
+}
+
+/// @brief Return a live tab's borrowed title or an empty sentinel.
+const char *vg_tab_get_title(const vg_tab_t *tab) {
+    return vg_tab_is_live(tab) && tab->title ? tab->title : "";
 }
 
 /// @brief Set the modified indicator on the tab (dot shown next to the title).
@@ -1205,10 +1263,13 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
 /// @param modified true to show the modified dot; false to hide it.
 void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     if (vg_tab_is_live(tab)) {
+        if (tab->modified == modified)
+            return;
         tab->modified = modified;
         if (tab->owner) {
             tab->owner->base.needs_layout = true;
             tab->owner->base.needs_paint = true;
+            vg_widget_note_revision(&tab->owner->base);
         }
     }
 }
@@ -1221,6 +1282,9 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (!vg_tab_is_live(tab))
         return;
 
+    if ((!tab->tooltip && !tooltip) ||
+        (tab->tooltip && tooltip && strcmp(tab->tooltip, tooltip) == 0))
+        return;
     char *copy = tooltip ? vg_strdup(tooltip) : NULL;
     if (tooltip && !copy)
         return;
@@ -1231,6 +1295,7 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
         if (tab->owner->hovered_tab == tab)
             tabbar_sync_hover_tooltip(tab->owner);
         tab->owner->base.needs_paint = true;
+        vg_widget_note_revision(&tab->owner->base);
     }
 }
 
@@ -1240,8 +1305,58 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
 /// @param data Arbitrary pointer stored on the tab; not owned or freed by the tabbar.
 void vg_tab_set_data(vg_tab_t *tab, void *data) {
     if (vg_tab_is_live(tab)) {
+        if (tab->user_data == data)
+            return;
+        if (tab->owns_user_data)
+            free(tab->user_data);
         tab->user_data = data;
+        tab->owns_user_data = false;
+        if (tab->owner)
+            vg_widget_note_revision(&tab->owner->base);
     }
+}
+
+/// @brief Return a live tab's borrowed opaque data pointer.
+void *vg_tab_get_data(const vg_tab_t *tab) {
+    return vg_tab_is_live(tab) ? tab->user_data : NULL;
+}
+
+/// @brief Set whether a live tab displays and accepts its close affordance.
+void vg_tab_set_closable(vg_tab_t *tab, bool closable) {
+    if (!vg_tab_is_live(tab) || tab->closable == closable)
+        return;
+    tab->closable = closable;
+    tab->owner->base.needs_layout = true;
+    tab->owner->base.needs_paint = true;
+    vg_widget_note_revision(&tab->owner->base);
+}
+
+/// @brief Return whether a live tab is closable.
+bool vg_tab_is_closable(const vg_tab_t *tab) {
+    return vg_tab_is_live(tab) && tab->closable;
+}
+
+/// @brief Replace a live tab's stable identifier atomically.
+bool vg_tab_set_stable_id(vg_tab_t *tab, const char *stable_id) {
+    if (!vg_tab_is_live(tab))
+        return false;
+    const char *value = stable_id ? stable_id : "";
+    if ((tab->stable_id && strcmp(tab->stable_id, value) == 0) ||
+        (!tab->stable_id && value[0] == '\0'))
+        return true;
+    char *copy = value[0] != '\0' ? vg_strdup(value) : NULL;
+    if (value[0] != '\0' && !copy)
+        return false;
+    free(tab->stable_id);
+    tab->stable_id = copy;
+    tab->stable_id_len = copy ? strlen(copy) : 0;
+    vg_widget_note_revision(&tab->owner->base);
+    return true;
+}
+
+/// @brief Return a live tab's borrowed stable identifier or an empty sentinel.
+const char *vg_tab_get_stable_id(const vg_tab_t *tab) {
+    return vg_tab_is_live(tab) && tab->stable_id ? tab->stable_id : "";
 }
 
 /// @brief Set the font and size used to render all tab titles.
@@ -1254,10 +1369,46 @@ void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size) {
     if (!tabbar)
         return;
 
+    float effective_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    if (tabbar->font == font && tabbar->font_size == effective_size)
+        return;
     tabbar->font = font;
-    tabbar->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    tabbar->font_size = effective_size;
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
+    vg_widget_note_revision(&tabbar->base);
+}
+
+/// @brief Move one indexed tab and notify the callback after committing the new order.
+bool vg_tabbar_move_tab(vg_tabbar_t *tabbar, int from_index, int to_index) {
+    if (!tabbar || from_index < 0 || to_index < 0 || from_index >= tabbar->tab_count ||
+        to_index >= tabbar->tab_count)
+        return false;
+    vg_tab_t *tab = vg_tabbar_get_tab_at(tabbar, from_index);
+    if (!tabbar_move_tab_to_index(tabbar, tab, to_index))
+        return false;
+    if (tabbar->on_reorder)
+        tabbar->on_reorder(&tabbar->base, tab, tabbar->reordered_to, tabbar->on_reorder_data);
+    tabbar_ensure_tab_visible(tabbar, tab);
+    return true;
+}
+
+/// @brief Consume the independent reorder edge without clearing its index payload.
+bool vg_tabbar_was_reordered(vg_tabbar_t *tabbar) {
+    if (!tabbar || tabbar->reported_reorder_version == tabbar->reorder_version)
+        return false;
+    tabbar->reported_reorder_version = tabbar->reorder_version;
+    return true;
+}
+
+/// @brief Return the source index from the latest successful reorder.
+int vg_tabbar_get_reordered_from(const vg_tabbar_t *tabbar) {
+    return tabbar ? tabbar->reordered_from : -1;
+}
+
+/// @brief Return the destination index from the latest successful reorder.
+int vg_tabbar_get_reordered_to(const vg_tabbar_t *tabbar) {
+    return tabbar ? tabbar->reordered_to : -1;
 }
 
 /// @brief Register a callback invoked when the active tab changes.

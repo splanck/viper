@@ -224,6 +224,26 @@ bool isThreeDRuntimeName(std::string_view name) {
     return startsWith(name, "Viper.Graphics3D.") || startsWith(name, "Viper.Game3D.");
 }
 
+/// @brief Return whether a name belongs to the reviewed GUI runtime boundary.
+/// @param name Public runtime function, class, property-target, or method-target name.
+/// @return True for names rooted at `Viper.GUI.`.
+bool isGuiRuntimeName(std::string_view name) {
+    return startsWith(name, "Viper.GUI.");
+}
+
+/// @brief Return the authored contract-policy identifier for a runtime API row.
+/// @details Reviewed GUI and 3D boundaries use explicit policies; all remaining rows retain the
+///          general inference marker until their domain receives an equivalent contract review.
+/// @param name Public runtime function or binding-target name.
+/// @return Stable machine-readable contract source.
+std::string_view runtimeContractSource(std::string_view name) {
+    if (isGuiRuntimeName(name))
+        return "gui-boundary-policy";
+    if (isThreeDRuntimeName(name))
+        return "three-d-boundary-policy";
+    return "inferred";
+}
+
 /// @brief Return the last dot-separated segment of a runtime name.
 /// @details `Viper.Network.Http.Get` becomes `Get`; names without dots are
 ///          returned unchanged.
@@ -418,13 +438,13 @@ std::optional<bool> runtimeReturnNullable(std::string_view name, std::string_vie
     static constexpr std::string_view kNullableReturns[] = {
         "Viper.System.Process.Start",
         "Viper.System.Process.StartWithEnv",
-        "Viper.Time.DateOnly.FromParts", // NULL for an invalid or out-of-domain date
-        "Viper.Time.DateOnly.Today",     // NULL when the wall clock is unavailable
-        "Viper.Time.DateOnly.Parse",     // NULL for a malformed date string
-        "Viper.Time.DateOnly.FromDays",  // NULL when the day count leaves the year domain
-        "Viper.Time.DateOnly.AddDays",   // NULL when the result leaves the year domain
-        "Viper.Time.DateOnly.AddMonths", // NULL when the result leaves the year domain
-        "Viper.Time.DateOnly.AddYears",  // NULL when the result leaves the year domain
+        "Viper.Time.DateOnly.FromParts",     // NULL for an invalid or out-of-domain date
+        "Viper.Time.DateOnly.Today",         // NULL when the wall clock is unavailable
+        "Viper.Time.DateOnly.Parse",         // NULL for a malformed date string
+        "Viper.Time.DateOnly.FromDays",      // NULL when the day count leaves the year domain
+        "Viper.Time.DateOnly.AddDays",       // NULL when the result leaves the year domain
+        "Viper.Time.DateOnly.AddMonths",     // NULL when the result leaves the year domain
+        "Viper.Time.DateOnly.AddYears",      // NULL when the result leaves the year domain
         "Viper.Time.DateRange.Intersection", // NULL when the ranges are disjoint
         "Viper.Time.DateRange.Union",        // NULL when the ranges have a gap
         // SpriteSheet constructors return NULL for a wrong-class/null atlas or an
@@ -437,6 +457,18 @@ std::optional<bool> runtimeReturnNullable(std::string_view name, std::string_vie
     for (auto n : kNullableReturns)
         if (name == n)
             return true;
+    if (isGuiRuntimeName(name)) {
+        const bool isObject = sig.returnType == "obj" || sig.returnType == "ptr" ||
+                              startsWith(sig.returnType, "obj<");
+        if (!isObject)
+            return false;
+        if (startsWith(sig.returnType, "obj<Viper.Result") ||
+            startsWith(sig.returnType, "obj<Viper.Option") ||
+            startsWith(sig.returnType, "obj<Viper.Collections.Map") ||
+            startsWith(sig.returnType, "obj<Viper.Collections.Seq"))
+            return false;
+        return true;
+    }
     if (!isThreeDRuntimeName(name))
         return std::nullopt;
     return sig.returnType == "obj" || sig.returnType == "ptr" || startsWith(sig.returnType, "obj<");
@@ -475,7 +507,10 @@ void emitDocsAnchorJson(std::ostream &os, std::string_view name) {
 /// @return Ordered capability tags.
 std::vector<std::string> inferRuntimeCapabilities(std::string_view name) {
     std::vector<std::string> caps;
-    if (startsWith(name, "Viper.Graphics3D.") || startsWith(name, "Viper.Game3D.")) {
+    if (startsWith(name, "Viper.GUI.")) {
+        caps.push_back("graphics");
+        caps.push_back("gui");
+    } else if (startsWith(name, "Viper.Graphics3D.") || startsWith(name, "Viper.Game3D.")) {
         caps.push_back("graphics");
         caps.push_back("graphics3d");
     } else if (startsWith(name, "Viper.Graphics2D.") || startsWith(name, "Viper.Game2D.")) {
@@ -484,8 +519,6 @@ std::vector<std::string> inferRuntimeCapabilities(std::string_view name) {
     } else if (startsWith(name, "Viper.Graphics.")) {
         caps.push_back("graphics");
     }
-    if (startsWith(name, "Viper.GUI."))
-        caps.push_back("gui");
     if (startsWith(name, "Viper.Game."))
         caps.push_back("game");
     if (startsWith(name, "Viper.Input."))
@@ -517,8 +550,7 @@ std::vector<std::string> inferRuntimeCapabilities(std::string_view name) {
 ///          direct one-for-one replacement exists.
 /// @param name Public runtime name or class name.
 /// @return Preferred replacement runtime name, or empty string.
-std::string inferRuntimeMigrationTarget(std::string_view name)
-{
+std::string inferRuntimeMigrationTarget(std::string_view name) {
     // The pre-alpha compatibility sweep removed every alias and legacy
     // spelling from the public catalog, so no row currently carries a
     // migration target. Future deprecations should add entries here so
@@ -534,9 +566,8 @@ std::string inferRuntimeMigrationTarget(std::string_view name)
 /// @return Stability tier string.
 std::string inferRuntimeStability(std::string_view name) {
     const std::string_view leaf = lastRuntimeNameSegment(name);
-    if (leaf == "AllowInsecureCertificatesForTesting" ||
-        leaf == "EnableApprovedModeForProcess" || leaf == "DisableApprovedModeForProcess" ||
-        name == "Viper.Network.HttpReq.SetTlsVerify" ||
+    if (leaf == "AllowInsecureCertificatesForTesting" || leaf == "EnableApprovedModeForProcess" ||
+        leaf == "DisableApprovedModeForProcess" || name == "Viper.Network.HttpReq.SetTlsVerify" ||
         startsWith(name, "Viper.Runtime.Unsafe."))
         return "unsafe";
     if (!inferRuntimeMigrationTarget(name).empty())
@@ -604,8 +635,8 @@ std::optional<std::string_view> explicitRuntimeFallibility(std::string_view name
         {"Viper.Math.Vec3.Div", "traps"},            // traps on a zero/non-finite divisor
         {"Viper.Math.Vec2.Div", "traps"},            // traps on a zero/non-finite divisor
         // System entries the heuristic missed (VDOC-222):
-        {"Viper.Runtime.Unsafe.Release", "traps"},    // traps on an invalid/freed heap object
-        {"Viper.Runtime.Unsafe.ReleaseStr", "traps"}, // traps on an invalid string handle
+        {"Viper.Runtime.Unsafe.Release", "traps"},        // traps on an invalid/freed heap object
+        {"Viper.Runtime.Unsafe.ReleaseStr", "traps"},     // traps on an invalid string handle
         {"Viper.System.Pty.PtySession.Resize", "status"}, // returns a boolean success indicator
         // Time parsers the "Parse* traps" heuristic mislabeled (VDOC-232): these
         // signal failure with a sentinel (0 / -1 / NULL), not a trap.
@@ -627,12 +658,6 @@ std::string inferRuntimeFallibility(std::string_view name, std::string_view sign
         return "side-channel";
     if (auto explicitContract = explicitRuntimeFallibility(name))
         return std::string(*explicitContract);
-    if (isThreeDRuntimeName(name)) {
-        if (startsWith(leaf, "Try") && sig.valid && sig.returnType == "i1")
-            return "status";
-        if (runtimeReturnNullable(name, signature).value_or(false))
-            return "nullable";
-    }
     if (sig.valid) {
         if (endsWith(sig.returnType, "?"))
             return "option";
@@ -644,6 +669,12 @@ std::string inferRuntimeFallibility(std::string_view name, std::string_view sign
             startsWith(sig.returnType, "obj<Viper.Game.QueryResult") ||
             startsWith(sig.returnType, "obj<Viper.Game.QuadtreePairResult"))
             return "result";
+    }
+    if (isThreeDRuntimeName(name) || isGuiRuntimeName(name)) {
+        if (startsWith(leaf, "Try") && sig.valid && sig.returnType == "i1")
+            return "status";
+        if (runtimeReturnNullable(name, signature).value_or(false))
+            return "nullable";
     }
     if (startsWith(leaf, "Try") || startsWith(leaf, "Find")) {
         if (leaf == "FindAll")
@@ -682,6 +713,24 @@ std::string inferRuntimeOwnership(std::string_view name, std::string_view signat
         sig.returnType == "i32" || sig.returnType == "i64" || sig.returnType == "f32" ||
         sig.returnType == "f64" || sig.returnType == "bool")
         return "value";
+    if (isGuiRuntimeName(name)) {
+        if (startsWith(sig.returnType, "obj<Viper.Option") ||
+            startsWith(sig.returnType, "obj<Viper.Result") ||
+            startsWith(sig.returnType, "obj<Viper.Threads.Future") ||
+            startsWith(sig.returnType, "obj<Viper.Collections.Map") ||
+            startsWith(sig.returnType, "obj<Viper.Collections.Seq") ||
+            startsWith(sig.returnType, "seq<"))
+            return "owned";
+        if (sig.returnType == "str" || sig.returnType == "string")
+            return "managed";
+        const std::string_view leaf = lastRuntimeNameSegment(name);
+        if (startsWith(leaf, "New") || startsWith(leaf, "From") || startsWith(leaf, "Load") ||
+            leaf == "Clone" || leaf == "AttachBuffer" || name == "Viper.GUI.Theme.GetPalette")
+            return "managed";
+        if (sig.returnType == "obj" || sig.returnType == "ptr" ||
+            startsWith(sig.returnType, "obj<"))
+            return "borrowed";
+    }
     if (isThreeDRuntimeName(name)) {
         if (sig.returnType == "ptr")
             return "borrowed";
@@ -845,8 +894,7 @@ void emitRuntimeContractMetadataJson(std::ostream &os,
     os << ",\"ownership\":";
     il::support::printJsonStringEscaped(os, inferRuntimeOwnership(name, signature));
     os << ",\"contract_source\":";
-    il::support::printJsonStringEscaped(
-        os, isThreeDRuntimeName(name) ? "three-d-boundary-policy" : "inferred");
+    il::support::printJsonStringEscaped(os, runtimeContractSource(name));
     if (const std::string migrationTarget = inferRuntimeMigrationTarget(name);
         !migrationTarget.empty()) {
         os << ",\"migration_target\":";
@@ -1085,6 +1133,8 @@ int dumpRuntimeApi() {
             }
             os << ",\"capabilities\":";
             emitStringArrayJson(os, inferRuntimeCapabilities(c.qname ? c.qname : ""));
+            os << ",\"contract_source\":";
+            printJsonStringEscaped(os, runtimeContractSource(c.qname ? c.qname : ""));
             os << ",\"docs_anchor\":";
             emitDocsAnchorJson(os, c.qname ? c.qname : "");
             os << ",\"documentation\":{\"summary\":";
@@ -1153,9 +1203,7 @@ int dumpRuntimeApi() {
                 printJsonStringEscaped(os,
                                        inferRuntimeOwnership(propertyTarget, propertySignature));
                 os << ",\"contract_source\":";
-                printJsonStringEscaped(
-                    os,
-                    isThreeDRuntimeName(propertyTarget) ? "three-d-boundary-policy" : "inferred");
+                printJsonStringEscaped(os, runtimeContractSource(propertyTarget));
                 os << ",\"docs_anchor\":";
                 emitDocsAnchorJson(os, propertyName);
                 os << "}";

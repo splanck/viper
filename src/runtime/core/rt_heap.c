@@ -323,7 +323,8 @@ static int rt_heap_registry_insert_locked_(void *payload) {
 ///          tombstones (which mean "moved on"), stopping at the
 ///          first EMPTY slot. Returns 0 for unknown payloads.
 static int rt_heap_registry_contains_locked_(void *payload) {
-    if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
+    if (!payload || payload == RT_HEAP_REG_TOMBSTONE || !g_heap_registry_.slots ||
+        g_heap_registry_.capacity == 0)
         return 0;
     const size_t mask = g_heap_registry_.capacity - 1;
     size_t idx = (size_t)(rt_heap_ptr_hash_(payload) & mask);
@@ -463,7 +464,7 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
 /// @brief Returns 1 if `payload` is a tracked rt_heap allocation. Looks up the registry under
 /// the heap lock. Used by polymorphic dispatch to distinguish heap-managed pointers from raw.
 int8_t rt_heap_is_payload(void *payload) {
-    if (!payload)
+    if (!payload || payload == RT_HEAP_REG_TOMBSTONE)
         return 0;
     rt_heap_registry_lock_();
     int found = rt_heap_registry_contains_locked_(payload);
@@ -477,7 +478,7 @@ int8_t rt_heap_is_payload(void *payload) {
 int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
     if (out_hdr)
         *out_hdr = NULL;
-    if (!payload)
+    if (!payload || payload == RT_HEAP_REG_TOMBSTONE)
         return 0;
     rt_heap_registry_lock_();
     rt_heap_hdr_t *hdr = NULL;

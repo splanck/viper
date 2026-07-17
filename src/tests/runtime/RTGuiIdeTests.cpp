@@ -5,6 +5,17 @@
 //
 // File: src/tests/runtime/RTGuiIdeTests.cpp
 // Purpose: Tests for GUI IDE automation, virtualization, and accessibility helpers.
+// Key invariants:
+//   - Virtual model IDs remain unique and hash-addressable at large row counts.
+//   - Bound ListBox/TreeView controls materialize viewport slices and sever raw
+//     pointers safely regardless of endpoint destruction order.
+//   - Duplicate-ID traps leave the prior model structure unchanged.
+// Ownership/Lifetime:
+//   - Runtime objects created in this test are released when lifetime ordering
+//     is itself under test; process teardown reclaims the remaining fixtures.
+// Links: src/runtime/graphics/gui/rt_gui_ide.cpp,
+//        src/lib/gui/src/widgets/vg_listbox.c,
+//        src/lib/gui/src/widgets/vg_treeview.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,10 +31,27 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <string>
 
+static bool g_expect_trap = false;
+static std::string g_trap_message;
+
 extern "C" void vm_trap(const char *msg) {
+    if (g_expect_trap) {
+        g_trap_message = msg ? msg : "";
+        return;
+    }
     rt_abort(msg);
+}
+
+template <typename Callback> static void expect_trap(Callback callback, const char *message) {
+    g_expect_trap = true;
+    g_trap_message.clear();
+    callback();
+    g_expect_trap = false;
+    assert(g_trap_message == message);
 }
 
 static std::string take(rt_string value) {
@@ -33,7 +61,11 @@ static std::string take(rt_string value) {
 }
 
 static int64_t visible_count(void *tree) {
-    return rt_seq_len(rt_virtual_tree_visible_rows(tree));
+    void *rows = rt_virtual_tree_visible_rows(tree);
+    int64_t count = rt_seq_len(rows);
+    if (rows && rt_obj_release_check0(rows))
+        rt_obj_free(rows);
+    return count;
 }
 
 int main() {
@@ -86,6 +118,36 @@ int main() {
     assert(rt_map_get_int(range, rt_const_cstr("count")) <= 9);
     rt_virtual_list_select_id(list, rt_const_cstr("file://target.zia"));
     assert(rt_virtual_list_get_selected_index(list) == 4242);
+    rt_virtual_list_set_row_text(list, 4242, rt_const_cstr("Target source"));
+
+    void *uniqueList = rt_virtual_list_new(3, 20, 100);
+    rt_virtual_list_set_row_id(uniqueList, 0, rt_const_cstr("alpha"));
+    expect_trap([&] { rt_virtual_list_set_row_id(uniqueList, 1, rt_const_cstr("alpha")); },
+                "GUI model ID must be unique: alpha");
+    assert(rt_virtual_list_get_selected_index(uniqueList) == -1);
+    expect_trap([&] { rt_virtual_list_set_row_id(uniqueList, 0, rt_const_cstr("2")); },
+                "GUI model ID must be unique: 2");
+
+    // Growing a list cannot introduce a new implicit decimal ID that aliases an existing
+    // explicit ID; rejection leaves the old logical count intact.
+    void *growList = rt_virtual_list_new(2, 20, 100);
+    rt_virtual_list_set_row_id(growList, 0, rt_const_cstr("2"));
+    expect_trap([&] { rt_virtual_list_set_count(growList, 3); }, "GUI model ID must be unique: 2");
+    void *growRange = rt_virtual_list_visible_range(growList, INT64_MAX);
+    assert(rt_map_get_int(growRange, rt_const_cstr("end")) <= 2);
+
+    // Real ListBox binding: selection synchronizes in both directions and visible range queries
+    // do not invoke or materialize the full 10k-row model.
+    void *boundList = rt_listbox_new(nullptr);
+    assert(rt_virtual_list_bind(list, boundList) == 1);
+    assert(rt_listbox_get_visible_first(boundList) == 0);
+    assert(rt_listbox_get_visible_count(boundList) <= 2);
+    rt_listbox_select_index(boundList, 9000);
+    assert(rt_virtual_list_get_selected_index(list) == 9000);
+    rt_virtual_list_unbind(list);
+    assert(rt_listbox_get_visible_count(boundList) == 0);
+    assert(rt_listbox_set_virtual_model(boundList, list) == 1);
+    rt_listbox_clear_virtual_model(boundList);
 
     void *tree = rt_virtual_tree_new();
     rt_virtual_tree_add_node(tree, rt_const_cstr(""), rt_const_cstr("src"), rt_const_cstr("src"));
@@ -110,14 +172,20 @@ int main() {
     expand = rt_virtual_tree_expand(tree2, rt_const_cstr("root"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
     assert(visible_count(tree2) == 3);
-    rt_virtual_tree_add_node(
-        tree2, rt_const_cstr("b"), rt_const_cstr("a"), rt_const_cstr("A moved"));
+    assert(rt_virtual_tree_move_node(tree2, rt_const_cstr("a"), rt_const_cstr("b")) == 1);
+    assert(rt_virtual_tree_set_node_text(tree2, rt_const_cstr("a"), rt_const_cstr("A moved")) == 1);
     assert(visible_count(tree2) == 2);
     expand = rt_virtual_tree_expand(tree2, rt_const_cstr("b"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
     assert(visible_count(tree2) == 3);
-    rt_virtual_tree_add_node(
-        tree2, rt_const_cstr("a"), rt_const_cstr("root"), rt_const_cstr("Cycle attempt"));
+    assert(rt_virtual_tree_move_node(tree2, rt_const_cstr("root"), rt_const_cstr("a")) == 0);
+    assert(visible_count(tree2) == 3);
+    expect_trap(
+        [&] {
+            rt_virtual_tree_add_node(
+                tree2, rt_const_cstr("b"), rt_const_cstr("a"), rt_const_cstr("duplicate"));
+        },
+        "GUI model ID must be unique: a");
     assert(visible_count(tree2) == 3);
 
     void *tree3 = rt_virtual_tree_new();
@@ -127,6 +195,49 @@ int main() {
     expand = rt_virtual_tree_expand(tree3, rt_const_cstr("missing"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
     assert(visible_count(tree3) == 2);
+
+    // Slice-only tree materialization and real TreeView binding.
+    void *treeSlice = rt_virtual_tree_visible_rows_range(tree2, 1, 1);
+    assert(rt_seq_len(treeSlice) == 1);
+    void *boundTree = rt_treeview_new(nullptr);
+    assert(rt_virtual_tree_bind(tree2, boundTree) == 1);
+    assert(rt_treeview_set_virtual_model(boundTree, tree2) == 1);
+    rt_virtual_tree_select_id(tree2, rt_const_cstr("a"));
+    assert(take(rt_virtual_tree_get_selected_id(tree2)) == "a");
+    rt_treeview_clear_virtual_model(boundTree);
+
+    // The hash-indexed model and cached flattened order remain bounded at 100k rows; only the
+    // requested 20 maps are realized by VisibleRowsRange.
+    void *largeTree = rt_virtual_tree_new();
+    for (int i = 0; i < 100000; i++) {
+        char id[32];
+        int length = snprintf(id, sizeof(id), "row-%d", i);
+        assert(length > 0 && static_cast<size_t>(length) < sizeof(id));
+        rt_string managedId = rt_string_from_bytes(id, static_cast<size_t>(length));
+        rt_virtual_tree_add_node(largeTree, rt_const_cstr(""), managedId, rt_const_cstr("Row"));
+        rt_string_unref(managedId);
+    }
+    void *largeSlice = rt_virtual_tree_visible_rows_range(largeTree, 99980, 20);
+    assert(rt_seq_len(largeSlice) == 20);
+
+    // Destruction order is safe in both directions. Releasing the model disables virtual mode on
+    // its still-live control; destroying a control first clears the model's raw pointer.
+    void *lifetimeListModel = rt_virtual_list_new(100, 20, 100);
+    void *lifetimeListControl = rt_listbox_new(nullptr);
+    assert(rt_virtual_list_bind(lifetimeListModel, lifetimeListControl) == 1);
+    if (lifetimeListModel && rt_obj_release_check0(lifetimeListModel))
+        rt_obj_free(lifetimeListModel);
+    assert(rt_listbox_get_visible_count(lifetimeListControl) == 0);
+    rt_widget_destroy(lifetimeListControl);
+
+    void *lifetimeTreeModel = rt_virtual_tree_new();
+    rt_virtual_tree_add_node(
+        lifetimeTreeModel, rt_const_cstr(""), rt_const_cstr("node"), rt_const_cstr("Node"));
+    void *lifetimeTreeControl = rt_treeview_new(nullptr);
+    assert(rt_virtual_tree_bind(lifetimeTreeModel, lifetimeTreeControl) == 1);
+    rt_widget_destroy(lifetimeTreeControl);
+    rt_virtual_tree_select_id(lifetimeTreeModel, rt_const_cstr("node"));
+    assert(take(rt_virtual_tree_get_selected_id(lifetimeTreeModel)) == "node");
 
     void *command = rt_command_state_new(rt_const_cstr("build"), rt_const_cstr("Build"));
     rt_command_state_set_enabled(command, 0);

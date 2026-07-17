@@ -6,17 +6,27 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/gui/tests/test_vg_datagrid.c
-// Purpose: Headless tests for the data grid widget (Viper.GUI.Grid) — column
-//          auto-sizing, row/column counts, cell storage, and clear.
+// Purpose: Headless tests for the data grid widget (Viper.GUI.Grid), including
+//          compatibility storage, sparse virtualization, selection, sorting,
+//          resizing, editing, scrolling, keyboard input, and event edges.
 // Key invariants:
 //   - A column's width is its widest header/cell text plus 2 * cell_padding.
 //   - With no font, column width is 0.
+//   - A 10,000-row virtual table allocates only explicitly materialized cells.
+//   - Selection, activation, sort, resize, and edit edges are independent.
+// Ownership/Lifetime:
+//   - Each grid owns copied header/cell strings and is destroyed before its
+//     borrowed test font. Direct event calls use stack-owned payloads.
+// Links: lib/gui/include/vg_ide_widgets_panels.h,
+//        lib/gui/src/widgets/vg_datagrid.c
 //
 //===----------------------------------------------------------------------===//
 
+#include "vg_event.h"
 #include "vg_font.h"
 #include "vg_ide_widgets.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -140,53 +150,213 @@ static size_t build_minimal_test_font(uint8_t *font) {
     return offset;
 }
 
-int main(void) {
-    vg_datagrid_t *grid = vg_datagrid_create(NULL);
+/// @brief Exercise the compatibility dense-storage and cached auto-width surface.
+/// @param grid Empty grid under test.
+/// @param font Borrowed live font used for deterministic measurement.
+/// @return Zero on success, or one after emitting the first failed check.
+static int test_dense_compatibility(vg_datagrid_t *grid, vg_font_t *font) {
     CHECK(grid != NULL);
     CHECK(vg_datagrid_column_count(grid) == 0);
     CHECK(vg_datagrid_row_count(grid) == 0);
+    CHECK(vg_datagrid_logical_row_count(grid) == 0u);
+    CHECK(grid->base.vtable->can_focus != NULL);
+    CHECK(!grid->base.vtable->can_focus(&grid->base));
 
     vg_datagrid_set_columns(grid, 3);
     CHECK(vg_datagrid_column_count(grid) == 3);
     CHECK(vg_datagrid_column_width(grid, 0) == 0); // no font yet
-
-    // Real monospace font (1000-unit advances) at 16px.
-    uint8_t blob[512];
-    size_t blob_size = build_minimal_test_font(blob);
-    vg_font_t *font = vg_font_load(blob, blob_size);
-    CHECK(font != NULL);
     vg_datagrid_set_font(grid, font, 16.0f);
 
     vg_datagrid_set_header(grid, 0, "ID");
     vg_datagrid_set_cell(grid, 0, 0, "1");
     vg_datagrid_set_cell(grid, 1, 0, "22");
     vg_datagrid_set_cell(grid, 0, 1, "short");
-    vg_datagrid_set_cell(grid, 1, 1, "a-longer-value"); // widest cell in column 1
+    vg_datagrid_set_cell(grid, 1, 1, "a-longer-value");
     vg_datagrid_set_cell(grid, 0, 2, "x");
 
     CHECK(vg_datagrid_row_count(grid) == 2);
+    CHECK(vg_datagrid_logical_row_count(grid) == 2u);
     const char *got = vg_datagrid_get_cell(grid, 1, 1);
     CHECK(got != NULL && strcmp(got, "a-longer-value") == 0);
-    CHECK(vg_datagrid_get_cell(grid, 5, 0) == NULL); // out of range
+    CHECK(vg_datagrid_get_cell(grid, 5, 0) == NULL);
 
-    // Auto-sizing: a column tracks its widest content.
     int w0 = vg_datagrid_column_width(grid, 0);
     int w1 = vg_datagrid_column_width(grid, 1);
     int w2 = vg_datagrid_column_width(grid, 2);
     CHECK(w0 > 0 && w1 > 0 && w2 > 0);
-    CHECK(w1 > w0); // "a-longer-value" wider than "22"/"ID"
-    CHECK(w1 > w2); // wider than "x"
+    CHECK(w1 > w0);
+    CHECK(w1 > w2);
 
-    // Replacing the widest cell with a shorter one shrinks the column.
     vg_datagrid_set_cell(grid, 1, 1, "s");
-    int w1_after = vg_datagrid_column_width(grid, 1);
-    CHECK(w1_after < w1);
+    CHECK(vg_datagrid_column_width(grid, 1) < w1);
+    uint64_t revision = vg_widget_get_revision(&grid->base);
+    vg_datagrid_set_cell(grid, INT_MAX, 0, "overflow");
+    CHECK(vg_datagrid_logical_row_count(grid) == 2u);
+    CHECK(vg_widget_get_revision(&grid->base) == revision);
 
-    // Clear removes rows but keeps columns and headers.
     vg_datagrid_clear(grid);
     CHECK(vg_datagrid_row_count(grid) == 0);
     CHECK(vg_datagrid_column_count(grid) == 3);
-    CHECK(vg_datagrid_column_width(grid, 0) > vg_datagrid_column_width(grid, 1)); // header vs empty
+    CHECK(vg_datagrid_column_width(grid, 0) > vg_datagrid_column_width(grid, 1));
+    return 0;
+}
+
+/// @brief Exercise sparse 10,000-by-20 virtualization and exact large row counts.
+/// @param grid Grid under test; existing dense state is intentionally replaced.
+/// @return Zero on success, or one after emitting the first failed check.
+static int test_sparse_virtualization(vg_datagrid_t *grid) {
+    vg_datagrid_set_columns(grid, 20);
+    for (int col = 0; col < 20; ++col)
+        CHECK(vg_datagrid_set_column_width(grid, col, 40.0f));
+    vg_datagrid_set_virtual_row_count(grid, 10000u);
+
+    CHECK(grid->virtual_mode);
+    CHECK(grid->cells == NULL);
+    CHECK(grid->row_capacity == 0);
+    CHECK(grid->virtual_cell_count == 0u);
+    CHECK(vg_datagrid_logical_row_count(grid) == 10000u);
+    CHECK(vg_datagrid_row_count(grid) == 10000);
+
+    CHECK(vg_datagrid_set_virtual_cell(grid, 0u, 0, "first"));
+    CHECK(vg_datagrid_set_virtual_cell(grid, 1234u, 5, "middle"));
+    CHECK(vg_datagrid_set_virtual_cell(grid, 9999u, 19, "last"));
+    CHECK(grid->virtual_cell_count == 3u);
+    CHECK(strcmp(vg_datagrid_get_cell(grid, 1234u, 5), "middle") == 0);
+    CHECK(!vg_datagrid_set_virtual_cell(grid, 10000u, 0, "invalid"));
+    CHECK(!vg_datagrid_set_virtual_cell(grid, 0u, 20, "invalid"));
+    CHECK(grid->virtual_cell_count == 3u);
+
+    uint64_t revision = vg_widget_get_revision(&grid->base);
+    CHECK(vg_datagrid_set_virtual_cell(grid, 1234u, 5, "middle"));
+    CHECK(vg_widget_get_revision(&grid->base) == revision);
+    CHECK(vg_datagrid_set_virtual_cell(grid, 1234u, 5, NULL));
+    CHECK(grid->virtual_cell_count == 2u);
+    CHECK(vg_datagrid_get_cell(grid, 1234u, 5) == NULL);
+
+    vg_datagrid_set_viewport_rows(grid, 1230u, 5u);
+    CHECK(vg_datagrid_get_scroll_row(grid) == 1230u);
+    CHECK(grid->viewport_row_count == 5u);
+    vg_datagrid_scroll_to_row(grid, 20000u);
+    CHECK(vg_datagrid_get_scroll_row(grid) == 9999u);
+
+    vg_datagrid_set_virtual_row_count(grid, SIZE_MAX);
+    CHECK(vg_datagrid_logical_row_count(grid) == SIZE_MAX);
+    CHECK(vg_datagrid_row_count(grid) == INT_MAX);
+    CHECK(vg_datagrid_set_virtual_cell(grid, SIZE_MAX - 1u, 1, "huge"));
+    CHECK(strcmp(vg_datagrid_get_cell(grid, SIZE_MAX - 1u, 1), "huge") == 0);
+
+    vg_datagrid_set_virtual_row_count(grid, 10000u);
+    CHECK(vg_datagrid_logical_row_count(grid) == 10000u);
+    CHECK(vg_datagrid_get_cell(grid, SIZE_MAX - 1u, 1) == NULL);
+    CHECK(grid->virtual_cell_count == 2u);
+    return 0;
+}
+
+/// @brief Exercise selection, keyboard activation, sorting, resizing, editing, and scroll edges.
+/// @param grid Virtual grid with 10,000 rows and twenty fixed-width columns.
+/// @return Zero on success, or one after emitting the first failed check.
+static int test_interactive_surface(vg_datagrid_t *grid) {
+    while (vg_widget_was_changed(&grid->base)) {
+    }
+    vg_datagrid_set_selectable(grid, true);
+    CHECK(grid->base.vtable->can_focus(&grid->base));
+    CHECK(vg_datagrid_select_cell(grid, 1234u, 5));
+    CHECK(vg_datagrid_get_selected_row(grid) == 1234u);
+    CHECK(vg_datagrid_get_selected_column(grid) == 5);
+    CHECK(vg_datagrid_was_selection_changed(grid));
+    CHECK(!vg_datagrid_was_selection_changed(grid));
+    CHECK(strstr(vg_widget_get_accessible_value(&grid->base), "row 1235 column 6") != NULL);
+
+    vg_datagrid_set_viewport_rows(grid, 1233u, 2u);
+    vg_event_t down = {.type = VG_EVENT_KEY_DOWN, .key.key = VG_KEY_DOWN};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &down));
+    CHECK(vg_datagrid_get_selected_row(grid) == 1235u);
+    CHECK(vg_datagrid_get_scroll_row(grid) == 1234u);
+    CHECK(vg_datagrid_was_selection_changed(grid));
+
+    vg_event_t enter = {.type = VG_EVENT_KEY_DOWN, .key.key = VG_KEY_ENTER};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &enter));
+    CHECK(vg_widget_was_activated(&grid->base));
+    CHECK(!vg_widget_was_activated(&grid->base));
+
+    vg_datagrid_set_editable(grid, true);
+    vg_datagrid_set_selectable(grid, false);
+    vg_event_t f2 = {.type = VG_EVENT_KEY_DOWN, .key.key = VG_KEY_F2};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &f2));
+    CHECK(vg_datagrid_is_editing(grid));
+    CHECK(vg_datagrid_commit_edit(grid, "keyboard edit"));
+    CHECK(strcmp(vg_datagrid_get_cell(grid, 0u, 0), "keyboard edit") == 0);
+    CHECK(vg_datagrid_was_cell_edited(grid));
+    CHECK(!vg_datagrid_was_cell_edited(grid));
+    CHECK(vg_datagrid_begin_edit(grid, 1u, 1));
+    vg_datagrid_cancel_edit(grid);
+    CHECK(!vg_datagrid_is_editing(grid));
+    CHECK(!vg_datagrid_was_cell_edited(grid));
+
+    vg_datagrid_set_header(grid, 0, "A");
+    vg_datagrid_set_sortable(grid, 2, true);
+    CHECK(vg_datagrid_set_sort(grid, 2, 99));
+    CHECK(vg_datagrid_get_sort_column(grid) == 2);
+    CHECK(vg_datagrid_get_sort_direction(grid) == 1);
+    CHECK(vg_datagrid_was_sort_changed(grid));
+    uint64_t revision = vg_widget_get_revision(&grid->base);
+    CHECK(vg_datagrid_set_sort(grid, 2, 1));
+    CHECK(vg_widget_get_revision(&grid->base) == revision);
+    CHECK(!vg_datagrid_was_sort_changed(grid));
+
+    vg_event_t header_click = {.type = VG_EVENT_CLICK,
+                               .mouse = {.x = 90.0f, .y = 5.0f, .button = VG_MOUSE_LEFT}};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &header_click));
+    CHECK(vg_datagrid_get_sort_direction(grid) == -1);
+    CHECK(vg_datagrid_was_sort_changed(grid));
+
+    vg_datagrid_set_column_resizable(grid, 1, true);
+    while (vg_datagrid_was_column_resized(grid)) {
+    }
+    vg_event_t resize_down = {.type = VG_EVENT_MOUSE_DOWN,
+                              .mouse = {.x = 80.0f, .y = 5.0f, .button = VG_MOUSE_LEFT}};
+    vg_event_t resize_move = {.type = VG_EVENT_MOUSE_MOVE,
+                              .mouse = {.x = 100.0f, .y = 5.0f, .button = VG_MOUSE_LEFT}};
+    vg_event_t resize_up = {.type = VG_EVENT_MOUSE_UP,
+                            .mouse = {.x = 100.0f, .y = 5.0f, .button = VG_MOUSE_LEFT}};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &resize_down));
+    CHECK(vg_widget_get_input_capture() == &grid->base);
+    CHECK(grid->base.vtable->handle_event(&grid->base, &resize_move));
+    CHECK(grid->base.vtable->handle_event(&grid->base, &resize_up));
+    CHECK(vg_widget_get_input_capture() == NULL);
+    CHECK(vg_datagrid_column_width(grid, 1) == 60);
+    CHECK(vg_datagrid_was_column_resized(grid));
+    CHECK(vg_datagrid_get_resized_column(grid) == 1);
+    int sort_direction = vg_datagrid_get_sort_direction(grid);
+    vg_event_t suppressed_click = {.type = VG_EVENT_CLICK,
+                                   .mouse = {.x = 100.0f, .y = 5.0f, .button = VG_MOUSE_LEFT}};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &suppressed_click));
+    CHECK(vg_datagrid_get_sort_direction(grid) == sort_direction);
+
+    vg_datagrid_scroll_to_row(grid, 9999u);
+    vg_event_t wheel_down = {.type = VG_EVENT_MOUSE_WHEEL, .wheel.delta_y = -1.0f};
+    CHECK(!grid->base.vtable->handle_event(&grid->base, &wheel_down));
+    vg_event_t wheel_up = {.type = VG_EVENT_MOUSE_WHEEL, .wheel.delta_y = 1.0f};
+    CHECK(grid->base.vtable->handle_event(&grid->base, &wheel_up));
+    CHECK(vg_datagrid_get_scroll_row(grid) == 9996u);
+
+    vg_datagrid_set_editable(grid, false);
+    vg_datagrid_set_sortable(grid, 2, false);
+    vg_datagrid_set_column_resizable(grid, 1, false);
+    CHECK(!grid->base.vtable->can_focus(&grid->base));
+    return 0;
+}
+
+int main(void) {
+    vg_datagrid_t *grid = vg_datagrid_create(NULL);
+    uint8_t blob[512];
+    size_t blob_size = build_minimal_test_font(blob);
+    vg_font_t *font = vg_font_load(blob, blob_size);
+    CHECK(font != NULL);
+
+    CHECK(test_dense_compatibility(grid, font) == 0);
+    CHECK(test_sparse_virtualization(grid) == 0);
+    CHECK(test_interactive_surface(grid) == 0);
 
     vg_datagrid_destroy(grid);
     vg_font_destroy(font);

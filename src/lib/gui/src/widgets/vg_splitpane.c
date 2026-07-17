@@ -27,6 +27,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -84,6 +85,8 @@ vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t di
     split->split_position = 0.5f; // 50% by default
     split->min_first_size = 50.0f;
     split->min_second_size = 50.0f;
+    split->restore_position = split->split_position;
+    split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
     {
         float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
         split->splitter_size = 6.0f * scale;
@@ -156,11 +159,16 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
         float available = widget->measured_width - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_width = available * split->split_position;
-        if (first_width < split->min_first_size)
-            first_width = split->min_first_size;
-        if (available - first_width < split->min_second_size)
-            first_width = available - split->min_second_size;
+        float first_width = split->collapsed_side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f
+                            : split->collapsed_side == VG_SPLIT_COLLAPSED_SECOND
+                                ? available
+                                : available * split->split_position;
+        if (split->collapsed_side == VG_SPLIT_COLLAPSED_NONE) {
+            if (first_width < split->min_first_size)
+                first_width = split->min_first_size;
+            if (available - first_width < split->min_second_size)
+                first_width = available - split->min_second_size;
+        }
         if (first_width < 0.0f)
             first_width = 0.0f;
         float second_width = available - first_width;
@@ -172,11 +180,16 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
         float available = widget->measured_height - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_height = available * split->split_position;
-        if (first_height < split->min_first_size)
-            first_height = split->min_first_size;
-        if (available - first_height < split->min_second_size)
-            first_height = available - split->min_second_size;
+        float first_height = split->collapsed_side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f
+                             : split->collapsed_side == VG_SPLIT_COLLAPSED_SECOND
+                                 ? available
+                                 : available * split->split_position;
+        if (split->collapsed_side == VG_SPLIT_COLLAPSED_NONE) {
+            if (first_height < split->min_first_size)
+                first_height = split->min_first_size;
+            if (available - first_height < split->min_second_size)
+                first_height = available - split->min_second_size;
+        }
         if (first_height < 0.0f)
             first_height = 0.0f;
         float second_height = available - first_height;
@@ -235,10 +248,13 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         float available = width - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_width = resolve_first_size(available,
-                                               available * split->split_position,
-                                               split->min_first_size,
-                                               split->min_second_size);
+        float first_width = split->collapsed_side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f
+                            : split->collapsed_side == VG_SPLIT_COLLAPSED_SECOND
+                                ? available
+                                : resolve_first_size(available,
+                                                     available * split->split_position,
+                                                     split->min_first_size,
+                                                     split->min_second_size);
         float second_width = available - first_width;
         if (second_width < 0.0f)
             second_width = 0.0f;
@@ -253,10 +269,13 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         float available = height - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_height = resolve_first_size(available,
-                                                available * split->split_position,
-                                                split->min_first_size,
-                                                split->min_second_size);
+        float first_height = split->collapsed_side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f
+                             : split->collapsed_side == VG_SPLIT_COLLAPSED_SECOND
+                                 ? available
+                                 : resolve_first_size(available,
+                                                      available * split->split_position,
+                                                      split->min_first_size,
+                                                      split->min_second_size);
         float second_height = available - first_height;
         if (second_height < 0.0f)
             second_height = 0.0f;
@@ -298,8 +317,11 @@ static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float del
         return false;
 
     split->split_position = new_position;
+    split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
+    split->restore_position = new_position;
     split->base.needs_layout = true;
     split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
     return true;
 }
 
@@ -419,9 +441,15 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (pos > 1)
                     pos = 1;
 
-                split->split_position = pos;
-                widget->needs_layout = true;
-                widget->needs_paint = true;
+                if (split->split_position != pos ||
+                    split->collapsed_side != VG_SPLIT_COLLAPSED_NONE) {
+                    split->split_position = pos;
+                    split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
+                    split->restore_position = pos;
+                    widget->needs_layout = true;
+                    widget->needs_paint = true;
+                    vg_widget_note_change(widget);
+                }
                 return true;
             }
 
@@ -521,12 +549,15 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position) {
         position = 0;
     if (position > 1)
         position = 1;
-    if (split->split_position == position)
+    if (split->split_position == position && split->collapsed_side == VG_SPLIT_COLLAPSED_NONE)
         return;
 
     split->split_position = position;
+    split->restore_position = position;
+    split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
     split->base.needs_layout = true;
     split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
 }
 
 /// @brief Return the current normalised split position.
@@ -556,6 +587,118 @@ void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float mi
     split->min_first_size = min_first;
     split->min_second_size = min_second;
     split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
+}
+
+/// @brief Set the first pane's minimum physical size.
+/// @details Non-finite and non-positive inputs are normalized to zero. A real value transition
+///          invalidates layout and advances the split pane's general revision.
+/// @param split Split pane widget to configure; NULL is ignored.
+/// @param size Minimum size in physical pixels.
+void vg_splitpane_set_min_first(vg_splitpane_t *split, float size) {
+    if (!split)
+        return;
+    float normalized = isfinite(size) && size > 0.0f ? size : 0.0f;
+    if (split->min_first_size == normalized)
+        return;
+    split->min_first_size = normalized;
+    split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
+}
+
+/// @brief Set the second pane's minimum physical size.
+/// @details Non-finite and non-positive inputs are normalized to zero. A real value transition
+///          invalidates layout and advances the split pane's general revision.
+/// @param split Split pane widget to configure; NULL is ignored.
+/// @param size Minimum size in physical pixels.
+void vg_splitpane_set_min_second(vg_splitpane_t *split, float size) {
+    if (!split)
+        return;
+    float normalized = isfinite(size) && size > 0.0f ? size : 0.0f;
+    if (split->min_second_size == normalized)
+        return;
+    split->min_second_size = normalized;
+    split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
+}
+
+/// @brief Return the configured first-pane minimum size.
+/// @param split Split pane widget to inspect.
+/// @return Minimum first-pane size in physical pixels, or zero for NULL.
+float vg_splitpane_get_min_first(const vg_splitpane_t *split) {
+    return split ? split->min_first_size : 0.0f;
+}
+
+/// @brief Return the configured second-pane minimum size.
+/// @param split Split pane widget to inspect.
+/// @return Minimum second-pane size in physical pixels, or zero for NULL.
+float vg_splitpane_get_min_second(const vg_splitpane_t *split) {
+    return split ? split->min_second_size : 0.0f;
+}
+
+/// @brief Return the split pane's creation-time direction.
+/// @param split Split pane widget to inspect.
+/// @return Horizontal or vertical direction; NULL defaults to horizontal.
+vg_split_direction_t vg_splitpane_get_direction(const vg_splitpane_t *split) {
+    return split ? split->direction : VG_SPLIT_HORIZONTAL;
+}
+
+/// @brief Apply an explicit collapsed-side state and retain a restore position.
+/// @details The first transition from the uncollapsed state captures the current position. A
+///          switch directly between collapsed sides keeps that same original restore position.
+/// @param split Split pane widget to update; NULL is ignored.
+/// @param side First or second collapsed-side value.
+static void splitpane_collapse(vg_splitpane_t *split, vg_split_collapsed_side_t side) {
+    if (!split || side == VG_SPLIT_COLLAPSED_NONE || split->collapsed_side == side)
+        return;
+    if (split->collapsed_side == VG_SPLIT_COLLAPSED_NONE)
+        split->restore_position = split->split_position;
+    split->collapsed_side = side;
+    split->split_position = side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f : 1.0f;
+    split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
+}
+
+/// @brief Collapse the first (left or top) pane.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_collapse_first(vg_splitpane_t *split) {
+    splitpane_collapse(split, VG_SPLIT_COLLAPSED_FIRST);
+}
+
+/// @brief Collapse the second (right or bottom) pane.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_collapse_second(vg_splitpane_t *split) {
+    splitpane_collapse(split, VG_SPLIT_COLLAPSED_SECOND);
+}
+
+/// @brief Restore both panes to the divider position retained before collapse.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_restore(vg_splitpane_t *split) {
+    if (!split || split->collapsed_side == VG_SPLIT_COLLAPSED_NONE)
+        return;
+    float restored = split->restore_position;
+    if (!isfinite(restored))
+        restored = 0.5f;
+    if (restored < 0.0f)
+        restored = 0.0f;
+    if (restored > 1.0f)
+        restored = 1.0f;
+    split->split_position = restored;
+    split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
+    split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    vg_widget_note_change(&split->base);
+}
+
+/// @brief Return the currently collapsed pane.
+/// @param split Split pane widget to inspect.
+/// @return None, first, or second collapsed-side value; NULL returns none.
+vg_split_collapsed_side_t vg_splitpane_get_collapsed_side(const vg_splitpane_t *split) {
+    return split ? split->collapsed_side : VG_SPLIT_COLLAPSED_NONE;
 }
 
 /// @brief Return the first (left or top) child widget of the split pane.

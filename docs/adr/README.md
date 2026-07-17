@@ -91,6 +91,10 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0058](0058-gui-lookup-option-apis.md) — GUI Lookup Option APIs
 - [ADR 0067](0067-gui-toolbar-named-icons.md) — GUI Toolbar Named Icon Runtime API
 - [ADR 0068](0068-gui-app-activation-api.md) — GUI App Activation API
+- [ADR 0106](0106-gui-runtime-lifetime-contract-and-coordinate-policy.md) — Make GUI Lifetimes, Contracts, and Coordinates Explicit
+- [ADR 0107](0107-gui-theme-accessibility-input-and-render-policy.md) — Unify GUI Theme, Accessibility, Input, and Rendering State
+- [ADR 0108](0108-gui-control-layout-and-model-completeness.md) — Complete the GUI Control, Layout, and Virtual Model Surface
+- [ADR 0109](0109-gui-dialog-media-scheduling-and-automation.md) — Make GUI Dialogs, Media, and Automation Frame-Driven
 
 ## Graphics3D & Game Systems
 

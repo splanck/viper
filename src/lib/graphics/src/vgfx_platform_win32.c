@@ -38,6 +38,7 @@
 
 #ifdef _WIN32
 
+#include <imm.h>
 #include <limits.h>
 #include <malloc.h>
 #include <stdint.h>
@@ -78,6 +79,8 @@ typedef struct {
     int height;                   ///< Cached client height in physical pixels
     int close_requested;          ///< 1 if WM_CLOSE received, 0 otherwise
     WCHAR pending_high_surrogate; ///< Pending UTF-16 high surrogate from WM_CHAR
+    int ime_active;               ///< 1 between native IME start and commit/cancel boundaries
+    int ime_committed;            ///< 1 after result text was emitted for the active session
     DWORD saved_style;            ///< Windowed style saved for fullscreen restore
     DWORD saved_exstyle;          ///< Windowed ex-style saved for fullscreen restore
     RECT saved_rect;              ///< Windowed bounds saved for fullscreen restore
@@ -622,6 +625,183 @@ static int win32_modifiers(void) {
     return mods;
 }
 
+/// @brief Count Unicode scalar/codepoint positions in a bounded UTF-16 sequence.
+/// @details Valid surrogate pairs count once. Lone surrogates count once as malformed platform
+///          input, matching the deterministic replacement behavior used by later UTF-8 conversion.
+/// @param text Borrowed UTF-16 code units; may be NULL only when @p unit_count is zero.
+/// @param unit_count Number of readable UTF-16 code units.
+/// @return Unicode-codepoint count represented by the prefix.
+static size_t win32_utf16_codepoint_count(const WCHAR *text, size_t unit_count) {
+    if (!text && unit_count != 0)
+        return 0;
+    size_t count = 0;
+    for (size_t index = 0; index < unit_count; index++, count++) {
+        WCHAR high = text[index];
+        if (high >= 0xD800 && high <= 0xDBFF && index + 1u < unit_count) {
+            WCHAR low = text[index + 1u];
+            if (low >= 0xDC00 && low <= 0xDFFF)
+                index++;
+        }
+    }
+    return count;
+}
+
+/// @brief Resolve the selected/target segment in an IMM32 preedit string.
+/// @details IMM32 exposes one attribute byte per UTF-16 code unit. A contiguous target-converted
+///          or target-not-converted segment becomes the visible preedit selection. If no target
+///          exists, `GCS_CURSORPOS` becomes a zero-length caret. Results are converted from UTF-16
+///          units to the ViperGFX event contract's Unicode-codepoint offsets.
+/// @param context Active IMM32 input context.
+/// @param text Borrowed preedit UTF-16 code units.
+/// @param unit_count Number of readable code units in @p text.
+/// @param out_start Receives preedit selection/caret start in codepoints.
+/// @param out_length Receives selected preedit codepoint count.
+static void win32_ime_selection(
+    HIMC context, const WCHAR *text, size_t unit_count, int32_t *out_start, int32_t *out_length) {
+    if (!out_start || !out_length)
+        return;
+    *out_start = 0;
+    *out_length = 0;
+
+    size_t target_start = unit_count;
+    size_t target_end = unit_count;
+    LONG attribute_bytes = ImmGetCompositionStringW(context, GCS_COMPATTR, NULL, 0);
+    if (attribute_bytes > 0) {
+        BYTE *attributes = (BYTE *)malloc((size_t)attribute_bytes);
+        if (attributes &&
+            ImmGetCompositionStringW(context, GCS_COMPATTR, attributes, (DWORD)attribute_bytes) ==
+                attribute_bytes) {
+            size_t available =
+                (size_t)attribute_bytes < unit_count ? (size_t)attribute_bytes : unit_count;
+            for (size_t index = 0; index < available; index++) {
+                BYTE attribute = attributes[index];
+                if (attribute != ATTR_TARGET_CONVERTED && attribute != ATTR_TARGET_NOTCONVERTED)
+                    continue;
+                if (target_start == unit_count)
+                    target_start = index;
+                target_end = index + 1u;
+            }
+        }
+        free(attributes);
+    }
+
+    if (target_start == unit_count) {
+        LONG cursor = ImmGetCompositionStringW(context, GCS_CURSORPOS, NULL, 0);
+        target_start = cursor > 0 ? (size_t)cursor : 0;
+        if (target_start > unit_count)
+            target_start = unit_count;
+        target_end = target_start;
+    }
+
+    size_t start_codepoints = win32_utf16_codepoint_count(text, target_start);
+    size_t end_codepoints = win32_utf16_codepoint_count(text, target_end);
+    if (start_codepoints > (size_t)INT32_MAX)
+        start_codepoints = (size_t)INT32_MAX;
+    if (end_codepoints > (size_t)INT32_MAX)
+        end_codepoints = (size_t)INT32_MAX;
+    *out_start = (int32_t)start_codepoints;
+    *out_length =
+        end_codepoints >= start_codepoints ? (int32_t)(end_codepoints - start_codepoints) : 0;
+}
+
+/// @brief Copy an IMM32 composition/result string into one queued ViperGFX event.
+/// @details Retrieves a bounded native UTF-16 value, converts it to UTF-8 using Win32's Unicode
+///          conversion API, derives target selection for preedit updates, and queues the complete
+///          value-type lifecycle event. Allocation or native conversion failure records an event
+///          overflow instead of emitting partially initialized text.
+/// @param win Window receiving the native IME event.
+/// @param context Active IMM32 input context borrowed for this call.
+/// @param type COMPOSITION_UPDATE for `GCS_COMPSTR` or COMPOSITION_COMMIT for `GCS_RESULTSTR`.
+/// @param string_index IMM32 string selector.
+/// @param timestamp Monotonic event timestamp in milliseconds.
+/// @return One when a lifecycle event was enqueued; otherwise zero.
+static int win32_enqueue_ime_string(struct vgfx_window *win,
+                                    HIMC context,
+                                    vgfx_event_type_t type,
+                                    DWORD string_index,
+                                    int64_t timestamp) {
+    if (!win || !context)
+        return 0;
+    LONG byte_count = ImmGetCompositionStringW(context, string_index, NULL, 0);
+    if (byte_count < 0 || ((size_t)byte_count % sizeof(WCHAR)) != 0)
+        return 0;
+    size_t unit_count = (size_t)byte_count / sizeof(WCHAR);
+    if (unit_count > (size_t)INT_MAX)
+        return 0;
+
+    WCHAR *wide = (WCHAR *)calloc(unit_count + 1u, sizeof(WCHAR));
+    if (!wide) {
+        vgfx_internal_note_event_overflow(win);
+        return 0;
+    }
+    if (byte_count > 0 &&
+        ImmGetCompositionStringW(context, string_index, wide, (DWORD)byte_count) != byte_count) {
+        free(wide);
+        return 0;
+    }
+
+    int utf8_length =
+        unit_count == 0
+            ? 0
+            : WideCharToMultiByte(
+                  CP_UTF8, WC_ERR_INVALID_CHARS, wide, (int)unit_count, NULL, 0, NULL, NULL);
+    if (utf8_length <= 0 && unit_count > 0) {
+        utf8_length = WideCharToMultiByte(CP_UTF8, 0, wide, (int)unit_count, NULL, 0, NULL, NULL);
+    }
+    if (utf8_length < 0) {
+        free(wide);
+        return 0;
+    }
+    char *utf8 = (char *)malloc((size_t)utf8_length + 1u);
+    if (!utf8) {
+        free(wide);
+        vgfx_internal_note_event_overflow(win);
+        return 0;
+    }
+    if (utf8_length > 0 &&
+        WideCharToMultiByte(CP_UTF8, 0, wide, (int)unit_count, utf8, utf8_length, NULL, NULL) !=
+            utf8_length) {
+        free(utf8);
+        free(wide);
+        return 0;
+    }
+    utf8[utf8_length] = '\0';
+
+    int32_t selection_start = 0;
+    int32_t selection_length = 0;
+    if (type == VGFX_EVENT_COMPOSITION_UPDATE) {
+        win32_ime_selection(context, wide, unit_count, &selection_start, &selection_length);
+    }
+    vgfx_event_t event;
+    int initialized = vgfx_internal_init_composition_event(&event,
+                                                           type,
+                                                           timestamp,
+                                                           utf8,
+                                                           (size_t)utf8_length,
+                                                           selection_start,
+                                                           selection_length,
+                                                           -1,
+                                                           -1,
+                                                           win32_modifiers());
+    free(utf8);
+    free(wide);
+    return initialized ? vgfx_internal_enqueue_event(win, &event) : 0;
+}
+
+/// @brief Enqueue a text-free native IME start or cancellation boundary.
+/// @param win Window receiving the composition boundary.
+/// @param type COMPOSITION_START or COMPOSITION_CANCEL.
+/// @param timestamp Monotonic event timestamp in milliseconds.
+static void win32_enqueue_ime_boundary(struct vgfx_window *win,
+                                       vgfx_event_type_t type,
+                                       int64_t timestamp) {
+    vgfx_event_t event;
+    if (vgfx_internal_init_composition_event(
+            &event, type, timestamp, "", 0, 0, 0, -1, -1, win32_modifiers())) {
+        vgfx_internal_enqueue_event(win, &event);
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Window Procedure
 //===----------------------------------------------------------------------===//
@@ -730,8 +910,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_KILLFOCUS: {
             /* Window lost focus */
             vgfx_internal_set_focus_state(win, 0);
-            if (w32)
+            if (w32) {
                 w32->pending_high_surrogate = 0;
+                if (w32->ime_active)
+                    win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_CANCEL, timestamp);
+                w32->ime_active = 0;
+                w32->ime_committed = 0;
+            }
             vgfx_internal_clear_input_state(win);
             /* Release the cursor clip so the rest of the desktop is usable
              * while unfocused (re-applied on WM_SETFOCUS). */
@@ -763,6 +948,63 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             }
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
+
+        case WM_IME_SETCONTEXT:
+            /* ViperGUI renders preedit itself. Keep candidate/status UI enabled
+               while suppressing the legacy system composition window. */
+            if (wparam)
+                lparam &= ~ISC_SHOWUICOMPOSITIONWINDOW;
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+
+        case WM_IME_STARTCOMPOSITION:
+            if (w32) {
+                if (w32->ime_active)
+                    win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_CANCEL, timestamp);
+                w32->ime_active = 1;
+                w32->ime_committed = 0;
+                win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_START, timestamp);
+            }
+            return 0;
+
+        case WM_IME_COMPOSITION: {
+            if (!w32)
+                return 0;
+            HIMC context = ImmGetContext(hwnd);
+            if (!context)
+                return 0;
+
+            if ((lparam & GCS_RESULTSTR) != 0) {
+                if (!w32->ime_active)
+                    win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_START, timestamp);
+                if (win32_enqueue_ime_string(
+                        win, context, VGFX_EVENT_COMPOSITION_COMMIT, GCS_RESULTSTR, timestamp)) {
+                    w32->ime_committed = 1;
+                }
+                w32->ime_active = 0;
+            }
+
+            if ((lparam & (GCS_COMPSTR | GCS_CURSORPOS | GCS_COMPATTR)) != 0) {
+                if (!w32->ime_active) {
+                    win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_START, timestamp);
+                    w32->ime_active = 1;
+                    w32->ime_committed = 0;
+                }
+                (void)win32_enqueue_ime_string(
+                    win, context, VGFX_EVENT_COMPOSITION_UPDATE, GCS_COMPSTR, timestamp);
+            }
+
+            ImmReleaseContext(hwnd, context);
+            return 0;
+        }
+
+        case WM_IME_ENDCOMPOSITION:
+            if (w32) {
+                if (w32->ime_active && !w32->ime_committed)
+                    win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_CANCEL, timestamp);
+                w32->ime_active = 0;
+                w32->ime_committed = 0;
+            }
+            return 0;
 
         case WM_KEYDOWN: {
             /* Key pressed */

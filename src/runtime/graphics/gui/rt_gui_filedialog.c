@@ -5,29 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_gui_filedialog.c
-// Purpose: File dialog runtime bindings for ViperGUI. Provides both simple
-//   convenience dialogs (open, open_multiple, save, select_folder) and an
-//   object-oriented builder API (new, set_title, add_filter, show, get_path).
+// File: src/runtime/graphics/gui/rt_gui_filedialog.c
+// Purpose: Cross-platform file-dialog runtime bindings, including sentinel-compatible and
+//   Option/Seq one-shot helpers plus reusable synchronous/asynchronous picker controllers.
 //
 // Key invariants:
-//   - Simple dialogs block until the user selects or cancels, returning a path
-//     string (or empty on cancel).
-//   - The builder API uses rt_filedialog_data_t (GC-managed) to track the
-//     underlying vg_filedialog_t and selected paths.
-//   - On macOS, native file dialogs are used via vg_native_open_file/save_file.
+//   - Compatibility helpers block and retain their empty-string/escaped-list contracts.
+//   - ShowAsync never polls recursively; ordinary app frames drive exactly one completion edge.
+//   - Accepted path arrays are deep-copied atomically before lower-dialog storage can change.
+//   - Reusable retained pickers share filtering/bookmark semantics across supported platforms.
 //
 // Ownership/Lifetime:
-//   - rt_filedialog_data_t is a GC heap object; the vg_filedialog_t is
-//     manually freed on rt_filedialog_destroy().
+//   - rt_filedialog_data_t is GC-managed and owns its lower dialog plus copied result paths.
+//   - Option/Seq results are independently managed and remain valid after controller destruction.
 //
-// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/src/widgets/vg_dialog.c (underlying widget)
+// Links: src/runtime/graphics/gui/rt_gui.h,
+//        src/lib/gui/src/widgets/vg_filedialog.c,
+//        docs/adr/0109-gui-dialog-media-scheduling-and-automation.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_option.h"
 #include "rt_platform.h"
+#include "rt_seq.h"
+#include "rt_trap.h"
 
 /// @brief Count paths in the escaped semicolon list returned by `OpenMultiple`.
 int64_t rt_filedialog_path_list_count(rt_string escaped) {
@@ -113,6 +115,84 @@ rt_string rt_filedialog_path_list_get(rt_string escaped, int64_t index) {
     rt_string result = rt_string_from_bytes(decoded, out);
     free(decoded);
     return result;
+}
+
+/// @brief Convert a compatibility path result into an explicit optional value.
+/// @details File-system paths selected by the supported dialogs are non-empty. Consequently the
+///          compatibility empty-string sentinel maps to `None`, while every selected path maps to
+///          `Some(path)`. The Option retains the runtime string and this helper releases its local
+///          reference before returning.
+/// @param path Owned runtime string returned by a synchronous compatibility dialog.
+/// @return Managed `Viper.Option[str]`; `None` for cancellation, failure, or an empty path.
+static void *rt_filedialog_path_option(rt_string path) {
+    if (!path || rt_str_len(path) <= 0) {
+        rt_string_unref(path);
+        return rt_option_none();
+    }
+    void *option = rt_option_some_str(path);
+    rt_string_unref(path);
+    return option;
+}
+
+/// @brief Show the single-file picker and distinguish cancellation from selection.
+/// @details This is the Option-returning companion to @ref rt_filedialog_open. It preserves the
+///          same synchronous compatibility behavior and platform implementation but replaces the
+///          ambiguous empty-string sentinel with `None`.
+/// @param title Dialog title copied for the duration of the operation.
+/// @param default_path Initial directory; embedded NUL input is rejected by the underlying API.
+/// @param filter Semicolon-delimited glob filter such as `*.zia;*.bas`.
+/// @return `Some(path)` after acceptance, otherwise `None` on cancel, unavailable graphics, or
+///         construction failure.
+void *rt_filedialog_open_option(rt_string title, rt_string default_path, rt_string filter) {
+    return rt_filedialog_path_option(rt_filedialog_open(title, default_path, filter));
+}
+
+/// @brief Show the save picker and return its result without a sentinel collision.
+/// @details Delegates to the existing synchronous save operation so native and retained dialogs
+///          have identical filtering and extension behavior.
+/// @param title Dialog title.
+/// @param default_path Initial directory.
+/// @param filter Semicolon-delimited glob filter.
+/// @param default_name Initial filename shown in the save field.
+/// @return `Some(path)` after acceptance, otherwise `None`.
+void *rt_filedialog_save_option(rt_string title,
+                                rt_string default_path,
+                                rt_string filter,
+                                rt_string default_name) {
+    return rt_filedialog_path_option(rt_filedialog_save(title, default_path, filter, default_name));
+}
+
+/// @brief Show the folder picker and represent cancellation as `None`.
+/// @param title Dialog title.
+/// @param default_path Initial directory.
+/// @return `Some(path)` for the selected folder, otherwise `None`.
+void *rt_filedialog_select_folder_option(rt_string title, rt_string default_path) {
+    return rt_filedialog_path_option(rt_filedialog_select_folder(title, default_path));
+}
+
+/// @brief Show the multi-file picker and return an owned sequence of individual paths.
+/// @details The legacy escaped-semicolon representation remains supported. This operation decodes
+///          it immediately into an owned `Seq[str]`, including paths containing literal semicolons
+///          or backslashes. Cancellation and failure return an empty sequence.
+/// @param title Dialog title.
+/// @param default_path Initial directory.
+/// @param filter Semicolon-delimited glob filter.
+/// @return Managed owned sequence of selected runtime strings; empty on cancellation/failure.
+void *rt_filedialog_open_multiple_seq(rt_string title, rt_string default_path, rt_string filter) {
+    void *paths = rt_seq_new_owned();
+    if (!paths)
+        return NULL;
+    rt_string escaped = rt_filedialog_open_multiple(title, default_path, filter);
+    int64_t count = rt_filedialog_path_list_count(escaped);
+    for (int64_t index = 0; index < count; index++) {
+        rt_string path = rt_filedialog_path_list_get(escaped, index);
+        if (!path)
+            continue;
+        rt_seq_push(paths, path);
+        rt_string_unref(path);
+    }
+    rt_string_unref(escaped);
+    return paths;
 }
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -207,7 +287,7 @@ static int rt_filedialog_prepare_modal(rt_gui_app_t *app, vg_filedialog_t *dialo
     vg_dialog_set_modal(&dialog->base, true, app->root);
     vg_filedialog_show(dialog);
     rt_gui_push_dialog(app, &dialog->base);
-    return 1;
+    return rt_gui_top_dialog(app) == &dialog->base;
 }
 
 /// @brief Run the GUI event loop until the dialog closes or the app signals shutdown.
@@ -227,11 +307,13 @@ static int rt_filedialog_run_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
 
 /// @brief Prepare and then run a modal file dialog in one call.
 /// @details Combines `rt_filedialog_prepare_modal` + `rt_filedialog_run_modal`.
+#if !RT_PLATFORM_MACOS
 static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     if (!rt_filedialog_prepare_modal(app, dialog))
         return 0;
     return rt_filedialog_run_modal(app, dialog);
 }
+#endif
 
 /// @brief One-shot "open file" dialog. Blocks the caller until the user picks a single file or
 /// cancels when an active GUI app/window exists. Returns the absolute path on selection, or an
@@ -460,9 +542,13 @@ typedef struct {
     char **selected_paths;
     size_t selected_count;
     int64_t result;
+    int64_t status;
+    const char *error;
+    uint64_t completed_edges;
 } rt_filedialog_data_t;
 
 static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data);
+static void rt_filedialog_record_completion(rt_filedialog_data_t *data);
 
 static rt_filedialog_data_t **s_filedialog_wrappers = NULL;
 static size_t s_filedialog_wrapper_count = 0;
@@ -531,10 +617,14 @@ void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
     for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
         rt_filedialog_data_t *data = s_filedialog_wrappers[i];
         if (data && data->dialog && &data->dialog->base == dialog) {
+            if (data->status == RT_GUI_DIALOG_STATUS_OPEN) {
+                data->status = RT_GUI_DIALOG_STATUS_FAILED;
+                data->error = "No active GUI application is available";
+                rt_filedialog_record_completion(data);
+            }
             data->dialog = NULL;
             data->owner_app = NULL;
             data->result = 0;
-            rt_filedialog_clear_selected_paths(data);
         }
     }
 }
@@ -565,20 +655,26 @@ static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
     data->selected_count = 0;
 }
 
-/// @brief Copy the dialog's current selected-path list into the wrapper struct.
-/// @details Fetches the borrowed path array owned by the VG backend, deep-copies every string, then
-///          atomically replaces the wrapper's previous list. Partial copy failures clean
-///          up fully and return 0 rather than leaving a corrupt partial list.
-static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
-    if (!data || !data->dialog)
-        return 0;
+/// @brief Record one completed asynchronous operation without losing unread edges.
+/// @details Completion counters saturate instead of wrapping so a slow observer can consume every
+///          distinct completion up to the representable limit. The status/error/result fields must
+///          be populated before this helper is called.
+/// @param data Live registered file-dialog wrapper receiving the completion edge.
+static void rt_filedialog_record_completion(rt_filedialog_data_t *data) {
+    if (data && data->completed_edges < UINT64_MAX)
+        data->completed_edges++;
+}
 
-    size_t count = 0;
-    char **paths = vg_filedialog_get_selected_paths(data->dialog, &count);
-    if (!paths || count == 0) {
-        rt_filedialog_clear_selected_paths(data);
+/// @brief Deep-copy an explicit borrowed path array into a file-dialog wrapper atomically.
+/// @details The old selection remains unchanged if any allocation fails. Empty arrays are treated
+///          as no accepted selection and clear the previous snapshot only after validation.
+/// @param data Live wrapper that will own the copied path array.
+/// @param paths Borrowed UTF-8 path pointers owned by the lower dialog.
+/// @param count Number of pointers in @p paths.
+/// @return 1 after a complete copy; 0 for invalid/empty input, overflow, or allocation failure.
+static int rt_filedialog_copy_paths(rt_filedialog_data_t *data, char **paths, size_t count) {
+    if (!data || !paths || count == 0)
         return 0;
-    }
     if (count > SIZE_MAX / sizeof(char *))
         return 0;
 
@@ -603,6 +699,61 @@ static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
     data->selected_paths = copy;
     data->selected_count = count;
     return 1;
+}
+
+/// @brief Copy the dialog's current selected-path list into the wrapper struct.
+/// @details Fetches the borrowed path array owned by the VG backend, deep-copies every string, then
+///          atomically replaces the wrapper's previous list. Partial copy failures clean
+///          up fully and return 0 rather than leaving a corrupt partial list.
+static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
+    if (!data || !data->dialog)
+        return 0;
+
+    size_t count = 0;
+    char **paths = vg_filedialog_get_selected_paths(data->dialog, &count);
+    if (!paths || count == 0) {
+        rt_filedialog_clear_selected_paths(data);
+        return 0;
+    }
+    return rt_filedialog_copy_paths(data, paths, count);
+}
+
+/// @brief Translate one lower-dialog close result into the runtime asynchronous state machine.
+/// @details The callback never destroys the lower dialog because it runs inside
+///          `vg_dialog_close`. It snapshots accepted paths, records exactly one completion edge,
+///          and removes the now-closed modal entry from its owning app so subsequent events route
+///          to the previous root immediately.
+/// @param dialog Borrowed lower dialog that has just closed.
+/// @param result Lower close result.
+/// @param user_data Borrowed registered @ref rt_filedialog_data_t wrapper.
+static void rt_filedialog_on_result(vg_dialog_t *dialog,
+                                    vg_dialog_result_t result,
+                                    void *user_data) {
+    rt_filedialog_data_t *data = (rt_filedialog_data_t *)user_data;
+    if (!rt_filedialog_wrapper_is_registered(data) || !data->dialog ||
+        &data->dialog->base != dialog || data->status != RT_GUI_DIALOG_STATUS_OPEN) {
+        return;
+    }
+
+    if (result == VG_DIALOG_RESULT_OK) {
+        if (rt_filedialog_copy_selected_paths(data)) {
+            data->result = 1;
+            data->status = RT_GUI_DIALOG_STATUS_ACCEPTED;
+            data->error = "";
+        } else {
+            data->result = 0;
+            data->status = RT_GUI_DIALOG_STATUS_FAILED;
+            data->error = "File dialog result could not be stored";
+        }
+    } else {
+        rt_filedialog_clear_selected_paths(data);
+        data->result = 0;
+        data->status = RT_GUI_DIALOG_STATUS_CANCELLED;
+        data->error = "";
+    }
+    rt_filedialog_record_completion(data);
+    if (rt_gui_is_app_handle(data->owner_app))
+        rt_gui_remove_dialog(data->owner_app, dialog);
 }
 
 /// @brief Release all resources owned by the file-dialog wrapper.
@@ -666,10 +817,14 @@ void *rt_filedialog_new(int64_t type) {
     data->selected_paths = NULL;
     data->selected_count = 0;
     data->result = 0;
+    data->status = RT_GUI_DIALOG_STATUS_IDLE;
+    data->error = "";
+    data->completed_edges = 0;
     if (!rt_filedialog_register_wrapper(data)) {
         rt_filedialog_dispose(data);
         return NULL;
     }
+    vg_dialog_set_on_result(&dlg->base, rt_filedialog_on_result, data);
     rt_obj_set_finalizer(data, rt_filedialog_finalize);
 
     return data;
@@ -781,33 +936,201 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
     vg_filedialog_set_multi_select(data->dialog, multiple != 0);
 }
 
+/// @brief Control whether hidden directory entries are visible in this picker.
+/// @details The retained cross-platform picker reloads the current directory immediately when the
+///          value changes. Invalid, destroyed, or currently unavailable handles are ignored.
+/// @param dialog Live FileDialog wrapper.
+/// @param show_hidden Non-zero to include platform-hidden entries; zero to filter them out.
+void rt_filedialog_set_show_hidden(void *dialog, int64_t show_hidden) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (data)
+        vg_filedialog_set_show_hidden(data->dialog, show_hidden != 0);
+}
+
+/// @brief Configure save-mode overwrite confirmation.
+/// @details This setting is ignored by open/folder modes and is implemented by the same retained
+///          dialog on macOS, Windows, and Linux. Invalid handles are ignored.
+/// @param dialog Live FileDialog wrapper.
+/// @param confirm Non-zero to require confirmation before replacing an existing path.
+void rt_filedialog_set_confirm_overwrite(void *dialog, int64_t confirm) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (data)
+        vg_filedialog_set_confirm_overwrite(data->dialog, confirm != 0);
+}
+
+/// @brief Set the extension appended to extensionless save filenames.
+/// @details The lower picker copies the value and accepts forms with or without a leading period.
+///          Embedded NUL input is rejected atomically. The setting affects save mode only.
+/// @param dialog Live FileDialog wrapper.
+/// @param extension UTF-8 extension such as `.zia`; an empty string disables automatic append.
+void rt_filedialog_set_default_extension(void *dialog, rt_string extension) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
+        return;
+    char *value = rt_string_to_cstr_no_nul(extension);
+    if (extension && !value)
+        return;
+    vg_filedialog_set_default_extension(data->dialog, value ? value : "");
+    free(value);
+}
+
+/// @brief Add one quick-access path to the file-dialog bookmark sidebar.
+/// @details The complete path is used as both the stable label and destination, avoiding locale-
+///          dependent basename parsing at the runtime boundary. The lower platform adapter copies
+///          the string. Embedded NUL input and invalid handles leave the bookmark list unchanged.
+/// @param dialog Live FileDialog wrapper.
+/// @param path Absolute UTF-8 directory path.
+void rt_filedialog_add_bookmark(void *dialog, rt_string path) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
+        return;
+    char *value = rt_string_to_cstr_no_nul(path);
+    if (!value)
+        return;
+    vg_filedialog_add_bookmark(data->dialog, value, value);
+    free(value);
+}
+
+/// @brief Remove every quick-access bookmark from a file dialog.
+/// @details This includes default bookmarks installed by construction. Call AddBookmark afterward
+///          to build an application-specific list. Invalid or destroyed handles are ignored.
+/// @param dialog Live FileDialog wrapper.
+void rt_filedialog_clear_bookmarks(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (data)
+        vg_filedialog_clear_bookmarks(data->dialog);
+}
+
+/// @brief Open a file dialog without entering a nested polling loop.
+/// @details Presentation is registered with the owning app and completion is advanced by ordinary
+///          App.Poll/RunFrame dispatch. Calling this while the same object is open traps with the
+///          stable `GUI dialog is already open` error and preserves its current state. A failed
+///          start records status Failed, an error string, and one completion edge.
+/// @param dialog Live stateful FileDialog wrapper.
+/// @return 1 when presentation started, otherwise 0 for an invalid handle/app or setup failure.
+int64_t rt_filedialog_show_async(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
+        return 0;
+    if (data->status == RT_GUI_DIALOG_STATUS_OPEN || vg_dialog_is_open(&data->dialog->base)) {
+        rt_trap("GUI dialog is already open");
+        return 0;
+    }
+
+    rt_gui_app_t *app =
+        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_filedialog_app();
+    rt_filedialog_clear_selected_paths(data);
+    data->result = 0;
+    data->error = "";
+    if (!app || !app->window || !app->root) {
+        data->status = RT_GUI_DIALOG_STATUS_FAILED;
+        data->error = "No active GUI application is available";
+        rt_filedialog_record_completion(data);
+        return 0;
+    }
+
+    data->owner_app = app;
+    data->status = RT_GUI_DIALOG_STATUS_OPEN;
+    if (!rt_filedialog_prepare_modal(app, data->dialog)) {
+        vg_dialog_hide(&data->dialog->base);
+        data->status = RT_GUI_DIALOG_STATUS_FAILED;
+        data->error = "The requested file dialog operation is not available";
+        rt_filedialog_record_completion(data);
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Show the dialog modally. Blocks the caller until the user dismisses it. Returns 1 if
 /// the user confirmed at least one selection, 0 if cancelled or if no active GUI window exists.
 /// Replaces any prior selection snapshot (calling `_show` twice on the same handle is allowed).
 int64_t rt_filedialog_show(void *dialog) {
     RT_ASSERT_MAIN_THREAD();
-    if (!dialog)
-        return 0;
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data || !rt_filedialog_show_async(dialog))
+        return 0;
+    rt_gui_app_t *app = data->owner_app;
+    rt_filedialog_run_modal(app, data->dialog);
+    if (data->status == RT_GUI_DIALOG_STATUS_OPEN)
+        vg_dialog_close(&data->dialog->base, VG_DIALOG_RESULT_CANCEL);
+    return data->status == RT_GUI_DIALOG_STATUS_ACCEPTED ? 1 : 0;
+}
+
+/// @brief Query whether a stateful file dialog is currently presented.
+/// @param dialog FileDialog wrapper; invalid or destroyed handles are treated as closed.
+/// @return 1 only while the lower dialog is open and status is Open, otherwise 0.
+int64_t rt_filedialog_is_open(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    return data && data->status == RT_GUI_DIALOG_STATUS_OPEN &&
+                   vg_dialog_is_open(&data->dialog->base)
+               ? 1
+               : 0;
+}
+
+/// @brief Consume one file-dialog completion edge.
+/// @details Selection, cancellation, and start/runtime failure each produce exactly one edge. The
+///          status and result data remain readable after consumption and by multiple observers.
+/// @param dialog Registered FileDialog wrapper; a missing/destroyed wrapper has no edge.
+/// @return 1 when an unread completion exists, otherwise 0.
+int64_t rt_filedialog_was_completed(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
+    if (!data || data->completed_edges == 0)
+        return 0;
+    data->completed_edges--;
+    return 1;
+}
+
+/// @brief Return the current file-dialog state-machine status.
+/// @param dialog Registered FileDialog wrapper.
+/// @return One of `RT_GUI_DIALOG_STATUS_*`; invalid/destroyed handles report Failed.
+int64_t rt_filedialog_get_status(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
+    return data ? data->status : RT_GUI_DIALOG_STATUS_FAILED;
+}
+
+/// @brief Return a stable diagnostic for the most recent file-dialog failure.
+/// @details Successful, idle, open, and cancelled states return an empty string. The returned
+///          runtime string is independently managed and remains valid after the dialog is reused.
+/// @param dialog Registered FileDialog wrapper.
+/// @return Owned runtime error string, or empty for no recorded error/invalid handles.
+rt_string rt_filedialog_get_error(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
+    const char *error = data && data->error ? data->error : "";
+    return rt_string_from_bytes(error, strlen(error));
+}
+
+/// @brief Snapshot every accepted path as an owned runtime sequence.
+/// @details The wrapper's native path snapshot is copied into managed strings; callers may retain
+///          or mutate the sequence independently of later dialog reuse or destruction.
+/// @param dialog Registered FileDialog wrapper.
+/// @return Owned `Seq[str]`, empty before acceptance/cancel/failure or for invalid handles.
+void *rt_filedialog_get_paths(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
+    void *paths = rt_seq_new_owned();
+    if (!paths)
+        return NULL;
+    rt_filedialog_data_t *data = rt_filedialog_wrapper_checked(dialog);
     if (!data)
-        return 0;
-
-    // Replace any previous selection snapshot with the latest dialog result.
-    rt_filedialog_clear_selected_paths(data);
-    rt_gui_app_t *app =
-        rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_filedialog_app();
-    if (!rt_filedialog_show_modal(app, data->dialog)) {
-        data->result = 0;
-        return 0;
+        return paths;
+    for (size_t index = 0; index < data->selected_count; index++) {
+        const char *path = data->selected_paths[index] ? data->selected_paths[index] : "";
+        rt_string value = rt_string_from_bytes(path, strlen(path));
+        if (!value)
+            continue;
+        rt_seq_push(paths, value);
+        rt_string_unref(value);
     }
-    data->owner_app = app;
-    if (!rt_filedialog_copy_selected_paths(data)) {
-        data->result = 0;
-        return 0;
-    }
-    data->result = (data->selected_count > 0) ? 1 : 0;
-
-    return data->result;
+    return paths;
 }
 
 /// @brief Return the first selected path from the most recent `_show`. Empty if no selection.
@@ -956,10 +1279,75 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
     (void)multiple;
 }
 
+/// @brief Stub: hidden-file configuration is unavailable without graphics.
+void rt_filedialog_set_show_hidden(void *dialog, int64_t show_hidden) {
+    (void)dialog;
+    (void)show_hidden;
+}
+
+/// @brief Stub: overwrite confirmation is unavailable without graphics.
+void rt_filedialog_set_confirm_overwrite(void *dialog, int64_t confirm) {
+    (void)dialog;
+    (void)confirm;
+}
+
+/// @brief Stub: default-extension configuration is unavailable without graphics.
+void rt_filedialog_set_default_extension(void *dialog, rt_string extension) {
+    (void)dialog;
+    (void)extension;
+}
+
+/// @brief Stub: bookmark configuration is unavailable without graphics.
+void rt_filedialog_add_bookmark(void *dialog, rt_string path) {
+    (void)dialog;
+    (void)path;
+}
+
+/// @brief Stub: no bookmark state exists without graphics.
+void rt_filedialog_clear_bookmarks(void *dialog) {
+    (void)dialog;
+}
+
+/// @brief Stub: asynchronous presentation cannot start without graphics.
+int64_t rt_filedialog_show_async(void *dialog) {
+    (void)dialog;
+    return 0;
+}
+
 /// @brief Stub: returns 0 — dialog cannot be shown without graphics.
 int64_t rt_filedialog_show(void *dialog) {
     (void)dialog;
     return 0;
+}
+
+/// @brief Stub: no file dialog is open without graphics.
+int64_t rt_filedialog_is_open(void *dialog) {
+    (void)dialog;
+    return 0;
+}
+
+/// @brief Stub: no stateful wrapper can complete without graphics.
+int64_t rt_filedialog_was_completed(void *dialog) {
+    (void)dialog;
+    return 0;
+}
+
+/// @brief Stub: absent file-dialog handles report Failed.
+int64_t rt_filedialog_get_status(void *dialog) {
+    (void)dialog;
+    return RT_GUI_DIALOG_STATUS_FAILED;
+}
+
+/// @brief Stub: return the stable graphics-disabled capability diagnostic.
+rt_string rt_filedialog_get_error(void *dialog) {
+    (void)dialog;
+    return rt_const_cstr("GUI support is not available in this build");
+}
+
+/// @brief Stub: return an empty owned path sequence without graphics.
+void *rt_filedialog_get_paths(void *dialog) {
+    (void)dialog;
+    return rt_seq_new_owned();
 }
 
 /// @brief Stub: returns empty string — no path available without graphics.

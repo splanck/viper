@@ -43,6 +43,7 @@ static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool radio_can_focus(vg_widget_t *widget);
 static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio);
 static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool notify);
+static void radiogroup_note_change(vg_radiogroup_t *group, bool selection_changed);
 
 //=============================================================================
 // RadioButton VTable
@@ -63,6 +64,10 @@ static void radio_destroy(vg_widget_t *widget) {
         radiogroup_unregister(radio->group, radio);
     free(radio->text);
     radio->text = NULL;
+    if (radio->owns_user_data)
+        free(radio->user_data);
+    radio->user_data = NULL;
+    radio->owns_user_data = false;
 }
 
 /// @brief VTable measure: sizes the widget to the circle diameter plus optional text extent.
@@ -166,8 +171,23 @@ vg_radiogroup_t *vg_radiogroup_create(void) {
         return NULL;
     }
     group->selected_index = -1;
+    group->revision = 1;
 
     return group;
+}
+
+/// @brief Advance a radio group's saturating revision and optional selection edge.
+/// @details Membership operations pass false; logical selected-index transitions pass true. The
+///          two revisions are deliberately independent so WasChanged never consumes GetRevision.
+/// @param group Radio group to update; NULL is ignored.
+/// @param selection_changed true when selected_index changed.
+static void radiogroup_note_change(vg_radiogroup_t *group, bool selection_changed) {
+    if (!group)
+        return;
+    if (group->revision < UINT64_MAX)
+        group->revision++;
+    if (selection_changed && group->selection_revision < UINT64_MAX)
+        group->selection_revision++;
 }
 
 /// @brief Removes @p radio from @p group's button array, compacts the array, and updates
@@ -186,6 +206,7 @@ static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radi
     if (removed_index < 0)
         return;
 
+    int previous_selected = group->selected_index;
     for (int i = removed_index; i < group->button_count - 1; i++)
         group->buttons[i] = group->buttons[i + 1];
     group->button_count--;
@@ -204,6 +225,7 @@ static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radi
     } else if (group->selected_index > removed_index) {
         group->selected_index--;
     }
+    radiogroup_note_change(group, previous_selected != group->selected_index);
 }
 
 /// @brief Destroy a radio group, nulling the group pointer of all member buttons.
@@ -277,6 +299,7 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
         }
         group->buttons[group->button_count++] = radio;
         radio->group = group;
+        radiogroup_note_change(group, false);
     }
 
     if (parent) {
@@ -301,6 +324,7 @@ static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool no
 
     if (old != selected) {
         radio->base.needs_paint = true;
+        vg_widget_note_change(&radio->base);
         if (notify && radio->on_change)
             radio->on_change(&radio->base, selected, radio->on_change_data);
     }
@@ -314,6 +338,8 @@ void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
     if (!radio)
         return;
 
+    vg_radiogroup_t *group = radio->group;
+    int previous_selected = group ? group->selected_index : -1;
     if (selected && radio->group) {
         int own_index = -1;
         // Deselect all others in group
@@ -346,6 +372,8 @@ void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
             }
         }
     }
+    if (group && previous_selected != group->selected_index)
+        radiogroup_note_change(group, true);
 }
 
 /// @brief Return true if this radio button is currently selected.
@@ -375,15 +403,99 @@ int vg_radiogroup_get_selected(vg_radiogroup_t *group) {
 /// @param index Zero-based index of the button to select, or a negative value
 ///              to clear the selection entirely.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index) {
-    if (!group)
-        return;
-    if (index < 0) {
+    (void)vg_radiogroup_try_set_selected(group, index);
+}
+
+/// @brief Attempt to update a radio group's selected member by index.
+/// @details Clearing selection updates all member visuals and callbacks, then records one logical
+///          group transition. Out-of-range requests leave all state and revisions unchanged.
+/// @param group Radio group to update.
+/// @param index Zero-based member index or -1 to clear selection.
+/// @return true for a valid request, otherwise false.
+bool vg_radiogroup_try_set_selected(vg_radiogroup_t *group, int index) {
+    if (!group || index < -1 || index >= group->button_count)
+        return false;
+    if (index == -1) {
+        int previous_selected = group->selected_index;
         for (int i = 0; i < group->button_count; i++)
             radio_apply_selected(group->buttons[i], false, true);
         group->selected_index = -1;
-        return;
+        if (previous_selected != -1)
+            radiogroup_note_change(group, true);
+        return true;
     }
-    if (index >= group->button_count)
-        return;
     vg_radiobutton_set_selected(group->buttons[index], true);
+    return true;
+}
+
+/// @brief Return the number of buttons registered with a radio group.
+/// @param group Radio group to inspect.
+/// @return Member count, or zero for NULL.
+int vg_radiogroup_get_count(const vg_radiogroup_t *group) {
+    return group ? group->button_count : 0;
+}
+
+/// @brief Consume the radio group's independent selected-index transition edge.
+/// @param group Radio group to inspect.
+/// @return true once after one or more unreported selection transitions.
+bool vg_radiogroup_was_changed(vg_radiogroup_t *group) {
+    if (!group || group->selection_revision == group->reported_selection_revision)
+        return false;
+    group->reported_selection_revision = group->selection_revision;
+    return true;
+}
+
+/// @brief Return a radio group's non-consuming saturating revision.
+/// @param group Radio group to inspect.
+/// @return Revision, or zero for NULL.
+uint64_t vg_radiogroup_get_revision(const vg_radiogroup_t *group) {
+    return group ? group->revision : 0;
+}
+
+/// @brief Replace a radio button's visible text using allocation-before-release semantics.
+/// @param radio Radio button widget to update; NULL is ignored.
+/// @param text UTF-8 text to copy; NULL is treated as empty.
+void vg_radiobutton_set_text(vg_radiobutton_t *radio, const char *text) {
+    if (!radio)
+        return;
+    const char *value = text ? text : "";
+    if (radio->text && strcmp(radio->text, value) == 0)
+        return;
+    char *copy = vg_strdup(value);
+    if (!copy)
+        return;
+    free(radio->text);
+    radio->text = copy;
+    radio->base.needs_layout = true;
+    radio->base.needs_paint = true;
+    vg_widget_note_revision(&radio->base);
+}
+
+/// @brief Return a radio button's current visible text.
+/// @param radio Radio button widget to inspect.
+/// @return Borrowed text pointer, or NULL for NULL.
+const char *vg_radiobutton_get_text(const vg_radiobutton_t *radio) {
+    return radio ? radio->text : NULL;
+}
+
+/// @brief Replace a radio button's opaque data pointer.
+/// @details An internally-owned previous block is released; the new pointer is borrowed. Passing
+///          the identical pointer is a no-op to avoid invalidating an owned payload in place.
+/// @param radio Radio button widget to update; NULL is ignored.
+/// @param data Borrowed opaque pointer or NULL.
+void vg_radiobutton_set_data(vg_radiobutton_t *radio, void *data) {
+    if (!radio || radio->user_data == data)
+        return;
+    if (radio->owns_user_data)
+        free(radio->user_data);
+    radio->user_data = data;
+    radio->owns_user_data = false;
+    vg_widget_note_revision(&radio->base);
+}
+
+/// @brief Return a radio button's stored opaque data pointer.
+/// @param radio Radio button widget to inspect.
+/// @return Borrowed pointer, or NULL when absent.
+void *vg_radiobutton_get_data(const vg_radiobutton_t *radio) {
+    return radio ? radio->user_data : NULL;
 }

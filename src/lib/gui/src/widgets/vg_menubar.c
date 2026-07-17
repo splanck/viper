@@ -59,6 +59,8 @@ static void menubar_destroy(vg_widget_t *widget);
 static void menubar_measure(vg_widget_t *widget, float available_width, float available_height);
 static void menubar_paint(vg_widget_t *widget, void *canvas);
 static void menubar_paint_overlay(vg_widget_t *widget, void *canvas);
+static void menubar_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height);
 static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event);
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item);
 
@@ -73,7 +75,8 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
                                               .paint_overlay = menubar_paint_overlay,
                                               .handle_event = menubar_handle_event,
                                               .can_focus = NULL,
-                                              .on_focus = NULL};
+                                              .on_focus = NULL,
+                                              .get_visual_bounds = menubar_get_visual_bounds};
 
 //=============================================================================
 // Helper Functions
@@ -292,7 +295,9 @@ static void menubar_get_open_dropdown_bounds(vg_menubar_t *menubar,
     if (!menubar || !menubar->open_menu)
         return;
 
-    float dropdown_x = menubar->base.x;
+    float dropdown_x = 0.0f;
+    float dropdown_y = 0.0f;
+    vg_widget_get_screen_bounds(&menubar->base, &dropdown_x, &dropdown_y, NULL, NULL);
     for (vg_menu_t *menu = menubar->first_menu; menu != menubar->open_menu; menu = menu->next) {
         if (!menu->title || !menubar->font)
             continue;
@@ -336,13 +341,39 @@ static void menubar_get_open_dropdown_bounds(vg_menubar_t *menubar,
     if (out_x)
         *out_x = dropdown_x;
     if (out_y)
-        *out_y = menubar->base.y + menubar->base.height;
+        *out_y = dropdown_y + menubar->base.height;
     if (out_width)
         *out_width = dropdown_width;
     if (out_height)
         *out_height = dropdown_height;
     if (out_item_height)
         *out_item_height = item_height;
+}
+
+/// @brief Report the currently open menu panel's absolute rectangle.
+/// @details Native platform menus draw outside the retained framebuffer and are
+///          therefore excluded. Custom menus reuse the exact geometry helper used
+///          by overlay painting and pointer hit testing, including nested-parent
+///          screen-coordinate conversion.
+/// @param widget Menu bar being queried.
+/// @param x Receives panel X, or zero when no custom menu is open.
+/// @param y Receives panel Y, or zero when no custom menu is open.
+/// @param width Receives panel width, or zero when no custom menu is open.
+/// @param height Receives panel height, or zero when no custom menu is open.
+static void menubar_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    if (x)
+        *x = 0.0f;
+    if (y)
+        *y = 0.0f;
+    if (width)
+        *width = 0.0f;
+    if (height)
+        *height = 0.0f;
+    vg_menubar_t *menubar = (vg_menubar_t *)widget;
+    if (!menubar || menubar->native_main_menu || !menubar->open_menu || !menubar->font)
+        return;
+    menubar_get_open_dropdown_bounds(menubar, x, y, width, height, NULL);
 }
 
 //=============================================================================
@@ -1263,6 +1294,45 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
 
     retire_menu(menubar, menu);
     menubar->base.needs_paint = true;
+}
+
+/// @brief Unlink and free one exact retired item from a menu record.
+/// @details Works for both live menus and menu records retained on a MenuBar retirement chain.
+bool vg_menu_reclaim_retired_item(vg_menu_t *menu, vg_menu_item_t *item) {
+    if (!menu || !item)
+        return false;
+    vg_menu_item_t **link = &menu->retired_items;
+    while (*link) {
+        vg_menu_item_t *candidate = *link;
+        if (candidate == item) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_menu_item(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
+}
+
+/// @brief Unlink and free one exact retired menu from a MenuBar.
+/// @details The embedding runtime has already established that the menu and its retained items have
+///          no managed wrappers, so the ordinary deep menu destructor is safe.
+bool vg_menubar_reclaim_retired_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
+    if (!menubar || !menu)
+        return false;
+    vg_menu_t **link = &menubar->retired_menus;
+    while (*link) {
+        vg_menu_t *candidate = *link;
+        if (candidate == menu) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_menu(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
 }
 
 /// @brief Set the font and size for all menu bar labels and drop-down items.

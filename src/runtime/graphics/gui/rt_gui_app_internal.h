@@ -41,4 +41,11 @@ int rt_gui_register_app(rt_gui_app_t *app);
 void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float size);
 int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font);
 
+/// @brief Collect an app's generation-retired fonts after a presentation or idle boundary.
+/// @details Fonts retired in the current generation or still referenced anywhere remain queued;
+///          dead entries are removed and older unreferenced fonts are destroyed. The pass is
+///          allocation-free and compacts the queue in place.
+/// @param app App whose retirement queue should be collected; NULL is ignored.
+void rt_gui_collect_retired_fonts(rt_gui_app_t *app);
+
 #endif // VIPER_ENABLE_GRAPHICS

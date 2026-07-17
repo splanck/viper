@@ -10,11 +10,14 @@ API in the first version.
 
 ## Problem statement
 
-Viper already provides the essential primitives: synthetic Canvas3D input,
-World3D RunFrames/RunFramesOnly, manual phase methods, final-frame capture,
-Pixels inspection, and many C/Zia fixtures. Each game still builds its own
-probe loops, termination, state assertions, image sampling, and output format.
-That makes migrations harder to compare and test behavior inconsistent.
+Viper already provides the essential primitives: synthetic Canvas3D input
+(`PushSyntheticKey`, `PushSyntheticMouse`, `AdvanceSyntheticFrame`,
+`ClearSyntheticInput`, `SetSyntheticDeltaTimeSec`), World3D
+RunFrames/RunFramesOnly, manual phase methods, final-frame capture
+(`World3D.CaptureFinalFrame`, `Canvas3D.ScreenshotFinal`), Pixels inspection,
+and many C/Zia fixtures. Each game still builds its own probe loops,
+termination, state assertions, image sampling, and output format. That makes
+migrations harder to compare and test behavior inconsistent.
 
 ## Dependencies
 
@@ -141,7 +144,8 @@ Provide:
 - N rendered frames via FrameDriver with zero/multiple steps naturally;
 - custom render hooks;
 - capture without present where approved;
-- controlled long-frame injection for spiral guard;
+- controlled long-frame injection for spiral guard (through
+  `SetSyntheticDeltaTimeSec`, never wall-clock sleeps);
 - timeout/maximum steps that fails rather than hangs.
 
 Never call both `World3D.Update` and FrameDriver BeginFrame in one scenario.

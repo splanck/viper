@@ -285,14 +285,14 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
     const uint32_t glyph =
         (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : theme->colors.fg_primary;
     // Anti-aliased up/down chevrons.
-    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x - 4, up_mid_y + 2, up_mid_x, up_mid_y - 2, 1.4f,
-                    glyph);
-    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x, up_mid_y - 2, up_mid_x + 4, up_mid_y + 2, 1.4f,
-                    glyph);
-    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x - 4, down_mid_y - 2, up_mid_x, down_mid_y + 2,
-                    1.4f, glyph);
-    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x, down_mid_y + 2, up_mid_x + 4, down_mid_y - 2,
-                    1.4f, glyph);
+    vg_draw_line_aa(
+        (vgfx_window_t)canvas, up_mid_x - 4, up_mid_y + 2, up_mid_x, up_mid_y - 2, 1.4f, glyph);
+    vg_draw_line_aa(
+        (vgfx_window_t)canvas, up_mid_x, up_mid_y - 2, up_mid_x + 4, up_mid_y + 2, 1.4f, glyph);
+    vg_draw_line_aa(
+        (vgfx_window_t)canvas, up_mid_x - 4, down_mid_y - 2, up_mid_x, down_mid_y + 2, 1.4f, glyph);
+    vg_draw_line_aa(
+        (vgfx_window_t)canvas, up_mid_x, down_mid_y + 2, up_mid_x + 4, down_mid_y - 2, 1.4f, glyph);
 }
 
 /// @brief VTable handle_event: handles click on up/down arrow buttons, mouse-wheel
@@ -428,7 +428,8 @@ static bool spinner_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         }
                         return true;
                     case VG_KEY_ENTER:
-                        spinner_commit_edit(spinner);
+                        if (spinner_commit_edit(spinner))
+                            vg_widget_note_submission(widget);
                         widget->needs_paint = true;
                         return true;
                     case VG_KEY_ESCAPE:
@@ -604,8 +605,10 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
     spinner->editing = false;
     spinner->base.needs_paint = true;
 
-    if (old != value && spinner->on_change) {
-        spinner->on_change(&spinner->base, value, spinner->on_change_data);
+    if (old != value) {
+        vg_widget_note_change(&spinner->base);
+        if (spinner->on_change)
+            spinner->on_change(&spinner->base, value, spinner->on_change_data);
     }
 }
 
@@ -636,9 +639,16 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
         min_val = max_val;
         max_val = tmp;
     }
+    double old_min = spinner->min_value;
+    double old_max = spinner->max_value;
+    uint64_t old_change_revision = spinner->base.change_revision;
     spinner->min_value = min_val;
     spinner->max_value = max_val;
     vg_spinner_set_value(spinner, spinner->value);
+    if ((old_min != min_val || old_max != max_val) &&
+        old_change_revision == spinner->base.change_revision) {
+        vg_widget_note_revision(&spinner->base);
+    }
 }
 
 /// @brief Set the amount added or subtracted by each arrow-button click or key press.
@@ -649,8 +659,12 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
 void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
     if (!spinner)
         return;
-    spinner->step = isfinite(step) && step > 0 ? step : 1;
+    double normalized = isfinite(step) && step > 0 ? step : 1;
+    if (spinner->step == normalized)
+        return;
+    spinner->step = normalized;
     spinner->base.needs_paint = true;
+    vg_widget_note_revision(&spinner->base);
 }
 
 /// @brief Set the number of decimal places shown and accepted during text edit.
@@ -668,10 +682,13 @@ void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
         decimals = 0;
     if (decimals > VG_SPINNER_MAX_DECIMALS)
         decimals = VG_SPINNER_MAX_DECIMALS;
+    if (spinner->decimal_places == decimals)
+        return;
     spinner->decimal_places = decimals;
     update_text_buffer(spinner);
     spinner->base.needs_layout = true;
     spinner->base.needs_paint = true;
+    vg_widget_note_revision(&spinner->base);
 }
 
 /// @brief Set the font and size used to render the spinner's numeric text.

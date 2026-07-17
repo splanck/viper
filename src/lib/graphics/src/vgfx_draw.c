@@ -121,6 +121,40 @@ static void set_empty_clip(struct vgfx_window *win) {
     win->clip_enabled = 1;
 }
 
+/// @brief Intersect the current effective clip with one physical-pixel rectangle.
+/// @details Both inputs are already canonicalized against the framebuffer. Empty inputs preserve
+///          an empty current clip. All edge arithmetic uses 64 bits to avoid signed overflow.
+/// @param win Window whose current clip is narrowed.
+/// @param x Physical-pixel left edge of the limiting rectangle.
+/// @param y Physical-pixel top edge of the limiting rectangle.
+/// @param w Non-negative physical-pixel width.
+/// @param h Non-negative physical-pixel height.
+static void intersect_current_clip(
+    struct vgfx_window *win, int32_t x, int32_t y, int32_t w, int32_t h) {
+    if (!win || !win->clip_enabled || win->clip_w <= 0 || win->clip_h <= 0 || w <= 0 || h <= 0) {
+        if (win)
+            set_empty_clip(win);
+        return;
+    }
+    int64_t left = win->clip_x > x ? win->clip_x : x;
+    int64_t top = win->clip_y > y ? win->clip_y : y;
+    int64_t current_right = (int64_t)win->clip_x + win->clip_w;
+    int64_t current_bottom = (int64_t)win->clip_y + win->clip_h;
+    int64_t limit_right = (int64_t)x + w;
+    int64_t limit_bottom = (int64_t)y + h;
+    int64_t right = current_right < limit_right ? current_right : limit_right;
+    int64_t bottom = current_bottom < limit_bottom ? current_bottom : limit_bottom;
+    if (left >= right || top >= bottom) {
+        set_empty_clip(win);
+        return;
+    }
+    win->clip_x = (int32_t)left;
+    win->clip_y = (int32_t)top;
+    win->clip_w = (int32_t)(right - left);
+    win->clip_h = (int32_t)(bottom - top);
+    win->clip_enabled = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Context Structures for Algorithm Callbacks
 //===----------------------------------------------------------------------===//
@@ -948,6 +982,10 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
     win->clip_w = (int32_t)(right - left);
     win->clip_h = (int32_t)(bottom - top);
     win->clip_enabled = 1;
+    if (win->clip_limit_enabled) {
+        intersect_current_clip(
+            win, win->clip_limit_x, win->clip_limit_y, win->clip_limit_w, win->clip_limit_h);
+    }
 }
 
 /// @brief Clear the clipping rectangle, restoring full-window drawing.
@@ -963,7 +1001,15 @@ void vgfx_clear_clip(vgfx_window_t window) {
     if (!win)
         return;
 
-    win->clip_enabled = 0;
+    if (win->clip_limit_enabled) {
+        win->clip_x = win->clip_limit_x;
+        win->clip_y = win->clip_limit_y;
+        win->clip_w = win->clip_limit_w;
+        win->clip_h = win->clip_limit_h;
+        win->clip_enabled = 1;
+    } else {
+        win->clip_enabled = 0;
+    }
 }
 
 /// @brief Query the current effective framebuffer clipping rectangle.
@@ -1012,6 +1058,54 @@ int vgfx_get_clip(
     if (out_h)
         *out_h = h;
     return active ? 1 : 0;
+}
+
+/// @brief Establish one allocation-free clip ceiling for a retained compositor.
+/// @details See the public declaration for the contract. The requested rectangle is first
+///          canonicalized by the ordinary clip implementation so coordinate scaling and window
+///          clipping remain identical. A pre-existing clip is then intersected into the ceiling.
+int vgfx_push_clip_limit(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h) {
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win || win->clip_limit_enabled)
+        return 0;
+
+    win->clip_limit_saved_enabled = win->clip_enabled;
+    win->clip_limit_saved_x = win->clip_x;
+    win->clip_limit_saved_y = win->clip_y;
+    win->clip_limit_saved_w = win->clip_w;
+    win->clip_limit_saved_h = win->clip_h;
+
+    vgfx_set_clip(window, x, y, w, h);
+    if (win->clip_limit_saved_enabled) {
+        intersect_current_clip(win,
+                               win->clip_limit_saved_x,
+                               win->clip_limit_saved_y,
+                               win->clip_limit_saved_w,
+                               win->clip_limit_saved_h);
+    }
+    win->clip_limit_x = win->clip_x;
+    win->clip_limit_y = win->clip_y;
+    win->clip_limit_w = win->clip_w;
+    win->clip_limit_h = win->clip_h;
+    win->clip_limit_enabled = 1;
+    return 1;
+}
+
+/// @brief Restore the exact clip captured by @ref vgfx_push_clip_limit.
+void vgfx_pop_clip_limit(vgfx_window_t window) {
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win || !win->clip_limit_enabled)
+        return;
+    win->clip_enabled = win->clip_limit_saved_enabled;
+    win->clip_x = win->clip_limit_saved_x;
+    win->clip_y = win->clip_limit_saved_y;
+    win->clip_w = win->clip_limit_saved_w;
+    win->clip_h = win->clip_limit_saved_h;
+    win->clip_limit_enabled = 0;
+    win->clip_limit_x = 0;
+    win->clip_limit_y = 0;
+    win->clip_limit_w = 0;
+    win->clip_limit_h = 0;
 }
 
 //===----------------------------------------------------------------------===//

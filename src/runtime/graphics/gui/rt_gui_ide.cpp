@@ -3,15 +3,44 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_gui_ide.cpp
+// File: src/runtime/graphics/gui/rt_gui_ide.cpp
 // Purpose: GUI automation, virtualization, and command/accessibility helpers
 //          for IDE-style applications.
+// Key invariants:
+//   - Virtual list and tree IDs are non-empty and unique; duplicate updates
+//     trap without mutating model state.
+//   - Model/control bindings are non-owning and are invalidated from either
+//     side before the pointed-to object is reclaimed.
+//   - Bound controls request only viewport slices; stable-ID lookup uses hash
+//     indexes and never scans the full logical row count.
+// Ownership/Lifetime:
+//   - Runtime objects own their C++ state and release it from object finalizers.
+//   - Bound ListBox/TreeView controls remain owned by their GUI parent tree.
+//   - Strings returned to the runtime are newly referenced managed values.
+// Links: src/runtime/graphics/gui/rt_gui_ide.h,
+//        src/runtime/graphics/gui/rt_gui_internal.h,
+//        src/lib/gui/include/vg_widgets.h,
+//        src/lib/gui/include/vg_ide_widgets_tree.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_ide.h"
 
 #include "rt_gui.h" // self-guarding MenuItem/ToolbarItem/Shortcuts/CommandPalette accessors
+#ifdef VIPER_ENABLE_GRAPHICS
+#include "../2d/rt_pixels_internal.h"
+#include "rt_gui_automation_bridge.h"
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnested-anon-types"
+#endif
+#include "../../../lib/graphics/include/vgfx.h"
+#include "../../../lib/gui/include/vg_ide_widgets_tree.h"
+#include "../../../lib/gui/include/vg_widgets.h"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+#endif
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_option.h"
@@ -22,10 +51,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <new>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #define RT_GUI_IDE_REQUIRE_OR_RETURN(var, expr, value)                                             \
@@ -48,6 +80,28 @@ std::string toStd(rt_string s) {
     if (!data || len <= 0)
         return {};
     return std::string(data, static_cast<size_t>(len));
+}
+
+/// @brief Copy runtime text into a C-renderable UTF-8 string without hidden NUL truncation.
+/// @details Each embedded NUL byte becomes U+FFFD. Allocation failure propagates to the caller,
+///          which preserves the prior model value.
+static std::string toGuiTextStd(rt_string value) {
+    std::string input = toStd(value);
+    size_t nul_count =
+        static_cast<size_t>(std::count(input.begin(), input.end(), static_cast<char>('\0')));
+    if (nul_count == 0u)
+        return input;
+    if (nul_count > (std::numeric_limits<size_t>::max() - input.size()) / 2u)
+        throw std::bad_alloc();
+    std::string output;
+    output.reserve(input.size() + nul_count * 2u);
+    for (char ch : input) {
+        if (ch == '\0')
+            output.append("\xEF\xBF\xBD", 3u);
+        else
+            output.push_back(ch);
+    }
+    return output;
 }
 
 rt_string makeString(const std::string &value) {
@@ -135,6 +189,10 @@ struct HarnessState {
     std::vector<WidgetRecord> widgets;
     std::vector<EventRecord> events;
     std::string focus;
+#ifdef VIPER_ENABLE_GRAPHICS
+    void *boundApp{nullptr};
+    size_t dispatchedEvents{0};
+#endif
 };
 
 struct HarnessHandle {
@@ -156,9 +214,272 @@ HarnessHandle *requireHarness(void *obj) {
 
 void harnessFinalizer(void *obj) {
     auto *h = static_cast<HarnessHandle *>(obj);
+#ifdef VIPER_ENABLE_GRAPHICS
+    if (h->state && h->state->boundApp) {
+        releaseObject(h->state->boundApp);
+        h->state->boundApp = nullptr;
+    }
+#endif
     delete h->state;
     h->state = nullptr;
 }
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+/// @brief Return the live app currently retained by an automation harness.
+/// @details Explicit app destruction invalidates the app magic even though the harness still
+///          owns a managed reference. Validation on every operation therefore prevents stale
+///          native windows from being dereferenced while allowing a later Unbind to release the
+///          retained runtime allocation safely.
+/// @param state Harness state whose optional binding is inspected.
+/// @param out_view Destination for the refreshed borrowed automation view.
+/// @return True for a live bound app, otherwise false.
+static bool harnessBoundApp(HarnessState &state, rt_gui_automation_app_view_t &out_view) {
+    return rt_gui_automation_snapshot_app(state.boundApp, &out_view) != 0;
+}
+
+/// @brief Clamp a public 64-bit automation coordinate into the platform event domain.
+/// @param value Coordinate supplied through the runtime API.
+/// @return The nearest representable signed 32-bit coordinate.
+static int32_t harnessEventCoordinate(int64_t value) {
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    return static_cast<int32_t>(value);
+}
+
+/// @brief Produce a deterministic timestamp for one app-bound synthetic event.
+/// @details Once the app scheduler has been initialized, its deterministic timer clock is used;
+///          before the first rendered frame the monotonic GUI clock supplies the timestamp.
+///          Values are saturated to the signed platform-event representation.
+/// @param app Live app receiving the event.
+/// @return Non-negative event time in milliseconds.
+static int64_t harnessEventTimeMs(const rt_gui_automation_app_view_t &app) {
+    return app.event_time_ms < 0 ? 0 : app.event_time_ms;
+}
+
+/// @brief Compare an automation token with an ASCII keyword without locale dependence.
+/// @param value Caller-supplied token.
+/// @param keyword Lowercase ASCII keyword to match.
+/// @return True when the complete strings match ignoring ASCII letter case.
+static bool harnessAsciiEqual(const std::string &value, const char *keyword) {
+    if (!keyword)
+        return false;
+    size_t length = std::char_traits<char>::length(keyword);
+    if (value.size() != length)
+        return false;
+    for (size_t i = 0; i < length; ++i) {
+        unsigned char ch = static_cast<unsigned char>(value[i]);
+        char lowered =
+            (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : static_cast<char>(ch);
+        if (lowered != keyword[i])
+            return false;
+    }
+    return true;
+}
+
+/// @brief Translate the documented TestHarness key vocabulary into a ViperGFX key code.
+/// @details Named navigation/editing keys are matched case-insensitively. A one-byte printable
+///          ASCII token maps to its uppercase key identity while retaining the original byte for
+///          the optional text-input event generated by the dispatcher.
+/// @param value Automation key token.
+/// @param out_text_codepoint Optional destination for a printable text codepoint, or zero.
+/// @return Platform key code, or VGFX_KEY_UNKNOWN for unsupported tokens.
+static vgfx_key_t harnessKeyCode(const std::string &value, uint32_t *out_text_codepoint) {
+    if (out_text_codepoint)
+        *out_text_codepoint = 0;
+
+    struct NamedKey {
+        const char *name;
+        vgfx_key_t key;
+    };
+
+    static constexpr NamedKey named[] = {{"escape", VGFX_KEY_ESCAPE},
+                                         {"enter", VGFX_KEY_ENTER},
+                                         {"return", VGFX_KEY_ENTER},
+                                         {"left", VGFX_KEY_LEFT},
+                                         {"right", VGFX_KEY_RIGHT},
+                                         {"up", VGFX_KEY_UP},
+                                         {"down", VGFX_KEY_DOWN},
+                                         {"backspace", VGFX_KEY_BACKSPACE},
+                                         {"delete", VGFX_KEY_DELETE},
+                                         {"tab", VGFX_KEY_TAB},
+                                         {"home", VGFX_KEY_HOME},
+                                         {"end", VGFX_KEY_END},
+                                         {"pageup", VGFX_KEY_PAGE_UP},
+                                         {"pagedown", VGFX_KEY_PAGE_DOWN},
+                                         {"space", VGFX_KEY_SPACE}};
+    for (const NamedKey &entry : named) {
+        if (harnessAsciiEqual(value, entry.name)) {
+            if (out_text_codepoint && entry.key == VGFX_KEY_SPACE)
+                *out_text_codepoint = static_cast<uint32_t>(' ');
+            return entry.key;
+        }
+    }
+    if (value.size() != 1u)
+        return VGFX_KEY_UNKNOWN;
+    unsigned char byte = static_cast<unsigned char>(value[0]);
+    if (byte < 0x20u || byte > 0x7Eu)
+        return VGFX_KEY_UNKNOWN;
+    if (out_text_codepoint)
+        *out_text_codepoint = byte;
+    if (byte >= 'a' && byte <= 'z')
+        byte = static_cast<unsigned char>(byte - 'a' + 'A');
+    return static_cast<vgfx_key_t>(byte);
+}
+
+/// @brief Post one recorded key action through the app's real platform event queue.
+/// @details A key press/release pair is always attempted. Printable keys also receive a native
+///          text-input event between the pair unless Ctrl, Alt, or Command is active, matching the
+///          separation used by desktop platform adapters. Queue failures are reported without
+///          retry so a full queue cannot stall the harness journal indefinitely.
+/// @param app Live target app.
+/// @param record Recorded key action.
+/// @return True only when every required event was accepted.
+static bool harnessPostKey(const rt_gui_automation_app_view_t &app, const EventRecord &record) {
+    uint32_t text_codepoint = 0;
+    vgfx_key_t key = harnessKeyCode(record.value, &text_codepoint);
+    vgfx_window_t window = static_cast<vgfx_window_t>(app.window);
+    if (!window || key == VGFX_KEY_UNKNOWN)
+        return false;
+
+    vgfx_event_t event{};
+    event.time_ms = harnessEventTimeMs(app);
+    event.type = VGFX_EVENT_KEY_DOWN;
+    event.data.key.key = key;
+    event.data.key.is_repeat = 0;
+    event.data.key.modifiers = static_cast<int>(record.modifiers);
+    bool accepted = vgfx_post_event(window, &event) != 0;
+
+    const int command_modifiers = VGFX_MOD_CTRL | VGFX_MOD_ALT | VGFX_MOD_CMD;
+    if (text_codepoint != 0u && (record.modifiers & command_modifiers) == 0) {
+        event = {};
+        event.type = VGFX_EVENT_TEXT_INPUT;
+        event.time_ms = harnessEventTimeMs(app);
+        event.data.text.codepoint = text_codepoint;
+        event.data.text.modifiers = static_cast<int>(record.modifiers);
+        accepted = (vgfx_post_event(window, &event) != 0) && accepted;
+    }
+
+    event = {};
+    event.type = VGFX_EVENT_KEY_UP;
+    event.time_ms = harnessEventTimeMs(app);
+    event.data.key.key = key;
+    event.data.key.is_repeat = 0;
+    event.data.key.modifiers = static_cast<int>(record.modifiers);
+    return (vgfx_post_event(window, &event) != 0) && accepted;
+}
+
+/// @brief Post one recorded mouse action through the app's real platform event queue.
+/// @details `move`, `down`/`mousedown`, `up`/`mouseup`, and `click` are accepted
+///          case-insensitively. Click expands to an adjacent down/up pair at the same physical
+///          framebuffer coordinate. Buttons follow ViperGFX ordinals: left=0, right=1, middle=2.
+/// @param app Live target app.
+/// @param record Recorded mouse action.
+/// @return True only when the complete requested action was queued.
+static bool harnessPostMouse(const rt_gui_automation_app_view_t &app, const EventRecord &record) {
+    vgfx_window_t window = static_cast<vgfx_window_t>(app.window);
+    if (!window || record.button < VGFX_MOUSE_LEFT || record.button > VGFX_MOUSE_MIDDLE)
+        return false;
+    int32_t x = harnessEventCoordinate(record.x);
+    int32_t y = harnessEventCoordinate(record.y);
+    vgfx_event_t event{};
+    event.time_ms = harnessEventTimeMs(app);
+    if (harnessAsciiEqual(record.type, "move") || harnessAsciiEqual(record.type, "mousemove") ||
+        harnessAsciiEqual(record.type, "mouse_move")) {
+        event.type = VGFX_EVENT_MOUSE_MOVE;
+        event.data.mouse_move.x = x;
+        event.data.mouse_move.y = y;
+        event.data.mouse_move.modifiers = 0;
+        return vgfx_post_event(window, &event) != 0;
+    }
+
+    bool click = harnessAsciiEqual(record.type, "click");
+    bool down = click || harnessAsciiEqual(record.type, "down") ||
+                harnessAsciiEqual(record.type, "mousedown") ||
+                harnessAsciiEqual(record.type, "mouse_down");
+    bool up = click || harnessAsciiEqual(record.type, "up") ||
+              harnessAsciiEqual(record.type, "mouseup") ||
+              harnessAsciiEqual(record.type, "mouse_up");
+    if (!down && !up)
+        return false;
+    event.type = down ? VGFX_EVENT_MOUSE_DOWN : VGFX_EVENT_MOUSE_UP;
+    event.data.mouse_button.x = x;
+    event.data.mouse_button.y = y;
+    event.data.mouse_button.button = static_cast<vgfx_mouse_button_t>(record.button);
+    event.data.mouse_button.modifiers = 0;
+    bool accepted = vgfx_post_event(window, &event) != 0;
+    if (click) {
+        event.type = VGFX_EVENT_MOUSE_UP;
+        accepted = (vgfx_post_event(window, &event) != 0) && accepted;
+    }
+    return accepted;
+}
+
+/// @brief Queue every undispatched journal record for a bound app exactly once.
+/// @details The cursor advances even for malformed records or queue overflow, making each call
+///          finite and ensuring an invalid event cannot permanently block later automation. The
+///          caller chooses whether to poll separately or as part of a deterministic render frame.
+/// @param state Harness state containing the journal and dispatch cursor.
+/// @param app Live target app.
+/// @return Number of journal records whose complete expanded action was queued, saturated to i64.
+static int64_t harnessPostPending(HarnessState &state, const rt_gui_automation_app_view_t &app) {
+    uint64_t accepted = 0;
+    if (state.dispatchedEvents > state.events.size())
+        state.dispatchedEvents = state.events.size();
+    while (state.dispatchedEvents < state.events.size()) {
+        const EventRecord &record = state.events[state.dispatchedEvents++];
+        bool posted =
+            record.type == "key" ? harnessPostKey(app, record) : harnessPostMouse(app, record);
+        if (posted && accepted < static_cast<uint64_t>(INT64_MAX))
+            ++accepted;
+    }
+    return static_cast<int64_t>(accepted);
+}
+
+/// @brief Read one requested physical pixel from a framebuffer with transparent clipping.
+/// @details Coordinates outside the framebuffer, malformed descriptors, and missing storage all
+///          produce transparent black. In-bounds bytes are packed into the runtime's canonical
+///          numeric 0xRRGGBBAA representation.
+/// @param framebuffer Borrowed framebuffer descriptor valid for the current operation.
+/// @param x Requested physical X coordinate.
+/// @param y Requested physical Y coordinate.
+/// @return Canonical packed RGBA pixel, or zero outside the image.
+static uint32_t harnessFramebufferPixel(const vgfx_framebuffer_t &framebuffer,
+                                        int64_t x,
+                                        int64_t y) {
+    if (!framebuffer.pixels || framebuffer.width <= 0 || framebuffer.height <= 0 ||
+        framebuffer.stride < 0 ||
+        static_cast<int64_t>(framebuffer.stride) < static_cast<int64_t>(framebuffer.width) * 4 ||
+        x < 0 || y < 0 || x >= framebuffer.width || y >= framebuffer.height)
+        return 0;
+    const uint8_t *pixel = framebuffer.pixels + static_cast<size_t>(y) * framebuffer.stride +
+                           static_cast<size_t>(x) * 4u;
+    return (static_cast<uint32_t>(pixel[0]) << 24u) | (static_cast<uint32_t>(pixel[1]) << 16u) |
+           (static_cast<uint32_t>(pixel[2]) << 8u) | static_cast<uint32_t>(pixel[3]);
+}
+
+/// @brief Mix one byte into the stable TestHarness framebuffer hash.
+/// @param hash Current FNV-1a 64-bit accumulator.
+/// @param byte Next byte in the canonical stream.
+/// @return Updated accumulator.
+static uint64_t harnessHashByte(uint64_t hash, uint8_t byte) {
+    return (hash ^ byte) * UINT64_C(1099511628211);
+}
+
+/// @brief Mix one signed runtime dimension in a platform-independent little-endian form.
+/// @param hash Current FNV-1a accumulator.
+/// @param value Dimension or coordinate value to encode.
+/// @return Updated accumulator.
+static uint64_t harnessHashI64(uint64_t hash, int64_t value) {
+    uint64_t bits = static_cast<uint64_t>(value);
+    for (unsigned shift = 0; shift < 64u; shift += 8u)
+        hash = harnessHashByte(hash, static_cast<uint8_t>(bits >> shift));
+    return hash;
+}
+
+#endif
 
 void *widgetToMap(const WidgetRecord *w) {
     void *map = rt_map_new();
@@ -210,8 +531,12 @@ struct VirtualListState {
     int64_t rowHeight{20};
     int64_t viewportHeight{100};
     int64_t overscan{2};
-    std::map<int64_t, std::string> rowIds;
+    std::unordered_map<int64_t, std::string> rowIds;
+    std::unordered_map<std::string, int64_t> idRows;
+    std::unordered_map<int64_t, std::string> rowTexts;
     std::string selectedId;
+    std::string providerScratch;
+    void *boundList{nullptr};
 };
 
 struct VirtualListHandle {
@@ -231,28 +556,94 @@ VirtualListHandle *requireList(void *obj) {
     return h;
 }
 
-void listFinalizer(void *obj) {
-    auto *h = static_cast<VirtualListHandle *>(obj);
-    delete h->state;
-    h->state = nullptr;
-}
-
-std::string rowId(VirtualListState &state, int64_t row) {
+#ifdef VIPER_ENABLE_GRAPHICS
+/// @brief Return the stable id for one logical row, synthesizing the decimal default when sparse.
+/// @details This helper is needed only by the live ListBox selection bridge. Pure model queries use
+///          the allocation-free reverse index path and therefore do not compile it into stub
+///          builds.
+/// @param state Live virtual-list model containing sparse explicit row identifiers.
+/// @param row Non-negative logical row whose stable identifier is requested.
+/// @return Explicit identifier when assigned, otherwise the canonical decimal row identifier.
+static std::string rowId(const VirtualListState &state, int64_t row) {
     auto it = state.rowIds.find(row);
     if (it != state.rowIds.end())
         return it->second;
     return std::to_string(row);
 }
+#endif
 
-struct VirtualTreeState;
-void eraseChildId(VirtualTreeState &state, const std::string &parent, const std::string &id);
-bool subtreeContains(VirtualTreeState &state,
-                     const std::string &root,
-                     const std::string &needle,
-                     std::set<std::string> &seen);
-void removeVirtualTreeDescendants(VirtualTreeState &state,
-                                  const std::string &id,
-                                  std::set<std::string> &seen);
+/// @brief Parse a canonical non-negative decimal ID representable by a runtime row index.
+/// @details Leading zeroes are rejected except for the id `0`, keeping implicit IDs one-to-one.
+static bool parseCanonicalRowNumber(const std::string &id, int64_t *out_row) {
+    if (id.empty() || (id.size() > 1 && id.front() == '0'))
+        return false;
+    uint64_t value = 0;
+    for (char ch : id) {
+        if (ch < '0' || ch > '9')
+            return false;
+        uint64_t digit = static_cast<uint64_t>(ch - '0');
+        if (value > (static_cast<uint64_t>(INT64_MAX) - digit) / 10u)
+            return false;
+        value = value * 10u + digit;
+    }
+    int64_t row = static_cast<int64_t>(value);
+    if (out_row)
+        *out_row = row;
+    return true;
+}
+
+/// @brief Parse a canonical decimal row id within the current logical list.
+static bool parseImplicitRowId(const VirtualListState &state,
+                               const std::string &id,
+                               int64_t *out_row) {
+    int64_t row = -1;
+    if (!parseCanonicalRowNumber(id, &row) || row >= state.rowCount)
+        return false;
+    if (out_row)
+        *out_row = row;
+    return true;
+}
+
+/// @brief Resolve a stable id through the explicit hash or an unshadowed implicit decimal id.
+static bool findListRowById(const VirtualListState &state,
+                            const std::string &id,
+                            int64_t *out_row) {
+    auto explicit_owner = state.idRows.find(id);
+    if (explicit_owner != state.idRows.end()) {
+        if (out_row)
+            *out_row = explicit_owner->second;
+        return true;
+    }
+    int64_t row = -1;
+    if (!parseImplicitRowId(state, id, &row) || state.rowIds.find(row) != state.rowIds.end())
+        return false;
+    if (out_row)
+        *out_row = row;
+    return true;
+}
+
+/// @brief Report a duplicate stable model id without mutating the model.
+static void trapDuplicateModelId(const std::string &id) {
+    std::string message = "GUI model ID must be unique: ";
+    try {
+        message += id;
+    } catch (const std::bad_alloc &) {
+        rt_trap("GUI model ID must be unique");
+        return;
+    }
+    rt_trap(message.c_str());
+}
+
+static void detachVirtualList(VirtualListState &state);
+
+/// @brief Finalize a VirtualList after first severing its non-owning control binding.
+static void listFinalizer(void *obj) {
+    auto *h = static_cast<VirtualListHandle *>(obj);
+    if (h->state)
+        detachVirtualList(*h->state);
+    delete h->state;
+    h->state = nullptr;
+}
 
 struct TreeNode {
     std::string id;
@@ -261,11 +652,21 @@ struct TreeNode {
     std::vector<std::string> children;
     bool expanded{false};
     bool loaded{false};
+    bool declared{true};
+};
+
+struct VisibleTreeRow {
+    std::string id;
+    size_t depth{0};
 };
 
 struct VirtualTreeState {
-    std::map<std::string, TreeNode> nodes;
+    std::unordered_map<std::string, TreeNode> nodes;
     std::string selectedId;
+    std::vector<VisibleTreeRow> visibleRows;
+    std::unordered_map<std::string, size_t> visibleIndexById;
+    bool visibleDirty{true};
+    void *boundTree{nullptr};
 };
 
 struct VirtualTreeHandle {
@@ -285,8 +686,13 @@ VirtualTreeHandle *requireTree(void *obj) {
     return h;
 }
 
-void treeFinalizer(void *obj) {
+static void detachVirtualTree(VirtualTreeState &state);
+
+/// @brief Finalize a VirtualTree after first severing its non-owning control binding.
+static void treeFinalizer(void *obj) {
     auto *h = static_cast<VirtualTreeHandle *>(obj);
+    if (h->state)
+        detachVirtualTree(*h->state);
     delete h->state;
     h->state = nullptr;
 }
@@ -323,30 +729,10 @@ void commandStateFinalizer(void *obj) {
     h->state = nullptr;
 }
 
-void collectVisible(VirtualTreeState &state, const std::string &id, int64_t depth, void *rows) {
-    auto it = state.nodes.find(id);
-    if (it == state.nodes.end())
-        return;
-    const TreeNode &node = it->second;
-    void *map = rt_map_new();
-    if (!map)
-        return;
-    mapSetStr(map, "id", node.id);
-    mapSetStr(map, "text", node.text);
-    mapSetStr(map, "parentId", node.parent);
-    rt_map_set_int(map, rt_const_cstr("depth"), depth);
-    rt_map_set_bool(map, rt_const_cstr("expanded"), node.expanded ? 1 : 0);
-    rt_map_set_bool(
-        map, rt_const_cstr("needsPopulate"), (!node.loaded && node.children.empty()) ? 1 : 0);
-    rt_seq_push(rows, map);
-    releaseObject(map);
-    if (!node.expanded)
-        return;
-    for (const auto &child : node.children)
-        collectVisible(state, child, depth + 1, rows);
-}
-
-void eraseChildId(VirtualTreeState &state, const std::string &parent, const std::string &id) {
+/// @brief Remove one child link while preserving the relative order of all remaining children.
+static void eraseChildId(VirtualTreeState &state,
+                         const std::string &parent,
+                         const std::string &id) {
     auto pit = state.nodes.find(parent);
     if (pit == state.nodes.end())
         return;
@@ -354,39 +740,282 @@ void eraseChildId(VirtualTreeState &state, const std::string &parent, const std:
     children.erase(std::remove(children.begin(), children.end(), id), children.end());
 }
 
-bool subtreeContains(VirtualTreeState &state,
-                     const std::string &root,
-                     const std::string &needle,
-                     std::set<std::string> &seen) {
-    if (root == needle)
-        return true;
-    if (!seen.insert(root).second)
-        return false;
-    auto it = state.nodes.find(root);
-    if (it == state.nodes.end())
-        return false;
-    for (const auto &child : it->second.children) {
-        if (subtreeContains(state, child, needle, seen))
+/// @brief Return true when assigning @p id beneath @p parent would introduce an ancestry cycle.
+static bool virtualTreeWouldCycle(const VirtualTreeState &state,
+                                  const std::string &id,
+                                  const std::string &parent) {
+    std::string cursor = parent;
+    size_t remaining = state.nodes.size() + 1u;
+    while (!cursor.empty() && remaining-- > 0u) {
+        if (cursor == id)
             return true;
+        auto it = state.nodes.find(cursor);
+        if (it == state.nodes.end())
+            return false;
+        cursor = it->second.parent;
     }
-    return false;
+    return remaining == 0u && !cursor.empty();
 }
 
-void removeVirtualTreeDescendants(VirtualTreeState &state,
-                                  const std::string &id,
-                                  std::set<std::string> &seen) {
-    auto it = state.nodes.find(id);
-    if (it == state.nodes.end() || !seen.insert(id).second)
-        return;
-    std::vector<std::string> children = it->second.children;
-    for (const auto &child : children) {
-        removeVirtualTreeDescendants(state, child, seen);
-        if (child != id)
-            state.nodes.erase(child);
+/// @brief Rebuild the flattened visible-row index iteratively, then swap it atomically.
+static bool ensureVisibleTreeIndex(VirtualTreeState &state) {
+    if (!state.visibleDirty)
+        return true;
+    try {
+        std::vector<VisibleTreeRow> rows;
+        rows.reserve(state.nodes.size() > 0 ? state.nodes.size() - 1u : 0u);
+        std::unordered_map<std::string, size_t> indexes;
+        indexes.reserve(state.nodes.size() > 0 ? state.nodes.size() - 1u : 0u);
+        std::vector<VisibleTreeRow> stack;
+        auto root = state.nodes.find("");
+        if (root != state.nodes.end()) {
+            stack.reserve(root->second.children.size());
+            for (auto it = root->second.children.rbegin(); it != root->second.children.rend(); ++it)
+                stack.push_back(VisibleTreeRow{*it, 0u});
+        }
+        size_t remaining = state.nodes.size();
+        while (!stack.empty() && remaining-- > 0u) {
+            VisibleTreeRow row = std::move(stack.back());
+            stack.pop_back();
+            auto node_it = state.nodes.find(row.id);
+            if (node_it == state.nodes.end())
+                continue;
+            indexes.emplace(row.id, rows.size());
+            rows.push_back(row);
+            const TreeNode &node = node_it->second;
+            if (!node.expanded)
+                continue;
+            for (auto child = node.children.rbegin(); child != node.children.rend(); ++child)
+                stack.push_back(VisibleTreeRow{*child, row.depth + 1u});
+        }
+        state.visibleRows.swap(rows);
+        state.visibleIndexById.swap(indexes);
+        state.visibleDirty = false;
+        return true;
+    } catch (const std::bad_alloc &) {
+        return false;
     }
-    it = state.nodes.find(id);
-    if (it != state.nodes.end())
-        it->second.children.clear();
+}
+
+/// @brief Convert one cached visible row into the public runtime map shape.
+static void *visibleTreeRowToMap(VirtualTreeState &state, const VisibleTreeRow &row) {
+    auto it = state.nodes.find(row.id);
+    if (it == state.nodes.end())
+        return nullptr;
+    const TreeNode &node = it->second;
+    void *map = rt_map_new();
+    if (!map)
+        return nullptr;
+    mapSetStr(map, "id", node.id);
+    mapSetStr(map, "text", node.text);
+    mapSetStr(map, "parentId", node.parent);
+    rt_map_set_int(map,
+                   rt_const_cstr("depth"),
+                   row.depth > static_cast<size_t>(INT64_MAX) ? INT64_MAX
+                                                              : static_cast<int64_t>(row.depth));
+    rt_map_set_bool(map, rt_const_cstr("expanded"), node.expanded ? 1 : 0);
+    rt_map_set_bool(
+        map, rt_const_cstr("needsPopulate"), (!node.loaded && node.children.empty()) ? 1 : 0);
+    return map;
+}
+
+/// @brief Remove every descendant of @p id iteratively, retaining the named node itself.
+static void removeVirtualTreeDescendants(VirtualTreeState &state, const std::string &id) {
+    auto it = state.nodes.find(id);
+    if (it == state.nodes.end())
+        return;
+    std::vector<std::string> stack = it->second.children;
+    it->second.children.clear();
+    while (!stack.empty()) {
+        std::string child = std::move(stack.back());
+        stack.pop_back();
+        auto child_it = state.nodes.find(child);
+        if (child_it == state.nodes.end() || child == id)
+            continue;
+        for (const auto &grandchild : child_it->second.children)
+            stack.push_back(grandchild);
+        state.nodes.erase(child_it);
+    }
+    state.visibleDirty = true;
+}
+
+#ifdef VIPER_ENABLE_GRAPHICS
+/// @brief Supply borrowed text for one bound ListBox viewport row.
+static void virtualListProvider(
+    vg_widget_t *listbox, size_t index, const char **text, struct vg_icon *icon, void *user_data) {
+    (void)listbox;
+    (void)icon;
+    auto *state = static_cast<VirtualListState *>(user_data);
+    if (!text)
+        return;
+    *text = "";
+    if (!state || index > static_cast<size_t>(INT64_MAX) ||
+        static_cast<int64_t>(index) >= state->rowCount)
+        return;
+    int64_t row = static_cast<int64_t>(index);
+    auto explicit_text = state->rowTexts.find(row);
+    if (explicit_text != state->rowTexts.end()) {
+        *text = explicit_text->second.c_str();
+        return;
+    }
+    auto explicit_id = state->rowIds.find(row);
+    if (explicit_id != state->rowIds.end()) {
+        *text = explicit_id->second.c_str();
+        return;
+    }
+    try {
+        state->providerScratch = std::to_string(row);
+        *text = state->providerScratch.c_str();
+    } catch (const std::bad_alloc &) {
+        *text = "";
+    }
+}
+
+/// @brief Clear the model's raw ListBox pointer when the lower control detaches first.
+static void virtualListUnbound(vg_widget_t *listbox, void *user_data) {
+    auto *state = static_cast<VirtualListState *>(user_data);
+    if (state && state->boundList == listbox)
+        state->boundList = nullptr;
+}
+
+/// @brief Refresh a bound ListBox count and cached viewport after a model mutation.
+static void syncBoundVirtualList(VirtualListState &state) {
+    auto *listbox = static_cast<vg_listbox_t *>(state.boundList);
+    if (!listbox)
+        return;
+    size_t count = static_cast<uint64_t>(state.rowCount) > SIZE_MAX
+                       ? SIZE_MAX
+                       : static_cast<size_t>(state.rowCount);
+    vg_listbox_set_total_count(listbox, count);
+    vg_listbox_invalidate_items(listbox);
+}
+
+/// @brief Supply one borrowed flattened row descriptor to a bound virtual TreeView.
+static bool virtualTreeProvider(vg_treeview_t *tree,
+                                size_t index,
+                                vg_treeview_virtual_row_t *out_row,
+                                void *user_data) {
+    (void)tree;
+    auto *state = static_cast<VirtualTreeState *>(user_data);
+    if (!state || !out_row || !ensureVisibleTreeIndex(*state) || index >= state->visibleRows.size())
+        return false;
+    const VisibleTreeRow &visible = state->visibleRows[index];
+    auto it = state->nodes.find(visible.id);
+    if (it == state->nodes.end())
+        return false;
+    const TreeNode &node = it->second;
+    out_row->text = node.text.c_str();
+    out_row->depth = visible.depth;
+    out_row->expanded = node.expanded;
+    out_row->has_children = !node.children.empty() || !node.loaded;
+    out_row->loading = node.expanded && !node.loaded && node.children.empty();
+    return true;
+}
+
+/// @brief Synchronize flattened row count, selection, and paint after a tree model mutation.
+static void syncBoundVirtualTree(VirtualTreeState &state) {
+    auto *tree = static_cast<vg_treeview_t *>(state.boundTree);
+    if (!tree || !ensureVisibleTreeIndex(state))
+        return;
+    vg_treeview_set_virtual_row_count(tree, state.visibleRows.size());
+    auto selected = state.visibleIndexById.find(state.selectedId);
+    vg_treeview_select_virtual_index(
+        tree, selected == state.visibleIndexById.end() ? SIZE_MAX : selected->second);
+    vg_treeview_invalidate_virtual_rows(tree);
+}
+
+/// @brief Apply one semantic virtual TreeView action to the hash-indexed model.
+static void virtualTreeAction(vg_treeview_t *tree,
+                              size_t index,
+                              vg_treeview_virtual_action_t action,
+                              void *user_data) {
+    auto *state = static_cast<VirtualTreeState *>(user_data);
+    if (!state || state->boundTree != tree || !ensureVisibleTreeIndex(*state) ||
+        index >= state->visibleRows.size())
+        return;
+
+    std::string id;
+    try {
+        id = state->visibleRows[index].id;
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+    auto node = state->nodes.find(id);
+    if (node == state->nodes.end())
+        return;
+
+    try {
+        if (action == VG_TREEVIEW_VIRTUAL_SELECT) {
+            state->selectedId = id;
+            return;
+        }
+        if (action == VG_TREEVIEW_VIRTUAL_PARENT) {
+            const std::string &parent = node->second.parent;
+            auto parent_index = state->visibleIndexById.find(parent);
+            if (!parent.empty() && parent_index != state->visibleIndexById.end()) {
+                state->selectedId = parent;
+                vg_treeview_select_virtual_index(tree, parent_index->second);
+            }
+            return;
+        }
+        if (action == VG_TREEVIEW_VIRTUAL_TOGGLE) {
+            node->second.expanded = !node->second.expanded;
+            state->visibleDirty = true;
+            syncBoundVirtualTree(*state);
+        }
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+}
+
+/// @brief Clear the model's raw TreeView pointer when the lower control detaches first.
+static void virtualTreeUnbound(vg_treeview_t *tree, void *user_data) {
+    auto *state = static_cast<VirtualTreeState *>(user_data);
+    if (state && state->boundTree == tree)
+        state->boundTree = nullptr;
+}
+#else
+/// @brief Preserve VirtualList mutation semantics when GUI rendering is compiled out.
+/// @details A graphics-disabled runtime can still create and query the pure data model, but no
+///          lower ListBox exists to invalidate. The no-op keeps every mutation entry point shared
+///          between enabled and disabled builds without manufacturing a control handle.
+/// @param state Live model state whose data mutation has already completed.
+static void syncBoundVirtualList(VirtualListState &state) {
+    (void)state;
+}
+
+/// @brief Preserve VirtualTree mutation semantics when GUI rendering is compiled out.
+/// @details Flattened model state remains fully usable in stub builds; only projection into a
+///          TreeView is unavailable. The no-op deliberately performs no lazy flattening so a data
+///          mutation has the same allocation behavior regardless of graphics availability.
+/// @param state Live model state whose data mutation has already completed.
+static void syncBoundVirtualTree(VirtualTreeState &state) {
+    (void)state;
+}
+#endif
+
+/// @brief Detach a VirtualList from its non-owning control, if any.
+static void detachVirtualList(VirtualListState &state) {
+    void *bound = state.boundList;
+    state.boundList = nullptr;
+#ifdef VIPER_ENABLE_GRAPHICS
+    if (bound)
+        vg_listbox_clear_virtual_model(static_cast<vg_listbox_t *>(bound));
+#else
+    (void)bound;
+#endif
+}
+
+/// @brief Detach a VirtualTree from its non-owning control, if any.
+static void detachVirtualTree(VirtualTreeState &state) {
+    void *bound = state.boundTree;
+    state.boundTree = nullptr;
+#ifdef VIPER_ENABLE_GRAPHICS
+    if (bound)
+        vg_treeview_clear_virtual_model(static_cast<vg_treeview_t *>(bound));
+#else
+    (void)bound;
+#endif
 }
 
 double channelLuminance(int64_t c) {
@@ -547,6 +1176,276 @@ void rt_gui_test_harness_clear(void *harness) {
     h->state->widgets.clear();
     h->state->events.clear();
     h->state->focus.clear();
+#ifdef VIPER_ENABLE_GRAPHICS
+    h->state->dispatchedEvents = 0;
+#endif
+}
+
+/// @brief Retain a live App as the real automation target for a TestHarness.
+/// @details Historical synthetic events are not replayed, and failed validation preserves any
+///          current binding. Graphics-disabled builds expose the same ABI and return false.
+/// @param harness Managed TestHarness object.
+/// @param app Live App object to retain.
+/// @return 1 when bound, otherwise 0.
+int8_t rt_gui_test_harness_bind_app(void *harness, void *app) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), 0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t validated{};
+    if (!rt_gui_automation_snapshot_app(app, &validated))
+        return 0;
+    if (h->state->boundApp == app)
+        return 1;
+    rt_obj_retain_known(app);
+    void *previous = h->state->boundApp;
+    h->state->boundApp = app;
+    h->state->dispatchedEvents = h->state->events.size();
+    releaseObject(previous);
+    return 1;
+#else
+    (void)app;
+    return 0;
+#endif
+}
+
+/// @brief Release the App retained by a TestHarness without clearing synthetic state.
+/// @param harness Managed TestHarness object.
+void rt_gui_test_harness_unbind_app(void *harness) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
+#ifdef VIPER_ENABLE_GRAPHICS
+    void *previous = h->state->boundApp;
+    h->state->boundApp = nullptr;
+    h->state->dispatchedEvents = h->state->events.size();
+    releaseObject(previous);
+#endif
+}
+
+/// @brief Queue pending authored events and poll the bound App once.
+/// @details Every journal record is attempted at most once; the return count includes only records
+///          whose full native-event expansion was accepted by the synchronized window queue.
+/// @param harness Managed TestHarness object.
+/// @return Successfully queued record count, or zero without a live binding.
+int64_t rt_gui_test_harness_dispatch_pending(void *harness) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), 0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    if (!harnessBoundApp(*h->state, app))
+        return 0;
+    int64_t accepted = harnessPostPending(*h->state, app);
+    rt_gui_app_poll(h->state->boundApp);
+    return accepted;
+#else
+    return 0;
+#endif
+}
+
+/// @brief Queue pending authored events and execute one deterministic App frame.
+/// @param harness Managed TestHarness object.
+/// @param delta_ms Requested scheduler advance in milliseconds.
+/// @return 1 while the bound app remains runnable, otherwise 0.
+int8_t rt_gui_test_harness_render_frame(void *harness, double delta_ms) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), 0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    if (!harnessBoundApp(*h->state, app))
+        return 0;
+    (void)harnessPostPending(*h->state, app);
+    return rt_gui_app_run_frame_with_delta(h->state->boundApp, delta_ms) ? 1 : 0;
+#else
+    (void)delta_ms;
+    return 0;
+#endif
+}
+
+/// @brief Deep-copy a requested physical framebuffer rectangle into Pixels storage.
+/// @details Out-of-window samples are transparent and successful output is generation-stamped so
+///          downstream image caches observe the newly populated content immediately.
+/// @param harness Managed TestHarness object with a live app binding.
+/// @param x Physical region origin X.
+/// @param y Physical region origin Y.
+/// @param width Positive capture width.
+/// @param height Positive capture height.
+/// @return New managed Pixels object, or NULL when unavailable.
+void *rt_gui_test_harness_capture_pixels(
+    void *harness, int64_t x, int64_t y, int64_t width, int64_t height) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    if (!harnessBoundApp(*h->state, app) || width <= 0 || height <= 0)
+        return nullptr;
+    vgfx_framebuffer_t framebuffer{};
+    if (!vgfx_get_framebuffer(static_cast<vgfx_window_t>(app.window), &framebuffer))
+        return nullptr;
+    void *pixels = rt_pixels_new(width, height);
+    rt_pixels_impl *output = rt_pixels_checked_impl_or_null(pixels);
+    if (!output)
+        return nullptr;
+    for (int64_t row = 0; row < height; ++row) {
+        for (int64_t column = 0; column < width; ++column) {
+            output->data[static_cast<size_t>(row) * static_cast<size_t>(width) +
+                         static_cast<size_t>(column)] =
+                harnessFramebufferPixel(
+                    framebuffer, saturatingAddI64(x, column), saturatingAddI64(y, row));
+        }
+    }
+    pixels_touch(output);
+    return pixels;
+#else
+    (void)x;
+    (void)y;
+    (void)width;
+    (void)height;
+    return nullptr;
+#endif
+}
+
+/// @brief Compute a stable FNV-1a digest over one physical framebuffer region.
+/// @details Dimensions and RGBA channel bytes have explicit encodings, making the 16-character
+///          lowercase digest independent of pointer identity, alignment, and host endianness.
+/// @param harness Managed TestHarness object with a live app binding.
+/// @param x Physical region origin X.
+/// @param y Physical region origin Y.
+/// @param width Positive capture width.
+/// @param height Positive capture height.
+/// @return Newly referenced digest, or an empty string when unavailable.
+rt_string rt_gui_test_harness_capture_hash(
+    void *harness, int64_t x, int64_t y, int64_t width, int64_t height) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    if (!harnessBoundApp(*h->state, app) || width <= 0 || height <= 0)
+        return makeString("");
+    vgfx_framebuffer_t framebuffer{};
+    if (!vgfx_get_framebuffer(static_cast<vgfx_window_t>(app.window), &framebuffer))
+        return makeString("");
+    uint64_t hash = UINT64_C(14695981039346656037);
+    hash = harnessHashI64(hash, width);
+    hash = harnessHashI64(hash, height);
+    for (int64_t row = 0; row < height; ++row) {
+        for (int64_t column = 0; column < width; ++column) {
+            uint32_t rgba = harnessFramebufferPixel(
+                framebuffer, saturatingAddI64(x, column), saturatingAddI64(y, row));
+            hash = harnessHashByte(hash, static_cast<uint8_t>(rgba >> 24u));
+            hash = harnessHashByte(hash, static_cast<uint8_t>(rgba >> 16u));
+            hash = harnessHashByte(hash, static_cast<uint8_t>(rgba >> 8u));
+            hash = harnessHashByte(hash, static_cast<uint8_t>(rgba));
+        }
+    }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string encoded(16u, '0');
+    for (size_t index = 0; index < encoded.size(); ++index) {
+        unsigned shift = static_cast<unsigned>((encoded.size() - index - 1u) * 4u);
+        encoded[index] = digits[(hash >> shift) & 0xFu];
+    }
+    return makeString(encoded);
+#else
+    (void)x;
+    (void)y;
+    (void)width;
+    (void)height;
+    return makeString("");
+#endif
+}
+
+/// @brief Compare a reference Pixels image with a bound physical framebuffer region.
+/// @details Returns a schema-versioned statistics map for both successful and unavailable
+///          comparisons. Tolerance is per RGBA channel and is clamped to [0,255].
+/// @param harness Managed TestHarness object.
+/// @param expected Reference Pixels image.
+/// @param x Physical destination origin X.
+/// @param y Physical destination origin Y.
+/// @param tolerance Maximum accepted absolute channel delta.
+/// @return New managed comparison Map, or NULL only when its root allocation fails.
+void *rt_gui_test_harness_compare_region(
+    void *harness, void *expected, int64_t x, int64_t y, int64_t tolerance) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
+    void *comparison = rt_map_new();
+    if (!comparison)
+        return nullptr;
+    rt_map_set_int(comparison, rt_const_cstr("schemaVersion"), 1);
+    rt_map_set_bool(comparison, rt_const_cstr("matches"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("width"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("height"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("tolerance"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("comparedPixels"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("differentPixels"), 0);
+    rt_map_set_int(comparison, rt_const_cstr("maxChannelDelta"), 0);
+    rt_map_set_float(comparison, rt_const_cstr("meanAbsoluteError"), 0.0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    rt_pixels_impl *reference = rt_pixels_checked_impl_or_null(expected);
+    if (!harnessBoundApp(*h->state, app) || !reference)
+        return comparison;
+    if (tolerance < 0)
+        tolerance = 0;
+    if (tolerance > 255)
+        tolerance = 255;
+    rt_map_set_int(comparison, rt_const_cstr("width"), reference->width);
+    rt_map_set_int(comparison, rt_const_cstr("height"), reference->height);
+    rt_map_set_int(comparison, rt_const_cstr("tolerance"), tolerance);
+    vgfx_framebuffer_t framebuffer{};
+    if (!vgfx_get_framebuffer(static_cast<vgfx_window_t>(app.window), &framebuffer))
+        return comparison;
+
+    uint64_t compared = 0;
+    uint64_t different = 0;
+    int64_t max_delta = 0;
+    long double absolute_error = 0.0L;
+    for (int64_t row = 0; row < reference->height; ++row) {
+        for (int64_t column = 0; column < reference->width; ++column) {
+            uint32_t actual = harnessFramebufferPixel(
+                framebuffer, saturatingAddI64(x, column), saturatingAddI64(y, row));
+            uint32_t wanted =
+                reference->data[static_cast<size_t>(row) * static_cast<size_t>(reference->width) +
+                                static_cast<size_t>(column)];
+            bool pixel_differs = false;
+            for (unsigned shift = 0; shift < 32u; shift += 8u) {
+                int lhs = static_cast<int>((actual >> shift) & 0xFFu);
+                int rhs = static_cast<int>((wanted >> shift) & 0xFFu);
+                int delta = lhs >= rhs ? lhs - rhs : rhs - lhs;
+                absolute_error += static_cast<long double>(delta);
+                if (delta > max_delta)
+                    max_delta = delta;
+                if (delta > tolerance)
+                    pixel_differs = true;
+            }
+            if (pixel_differs)
+                ++different;
+            ++compared;
+        }
+    }
+    int64_t compared_i64 =
+        compared > static_cast<uint64_t>(INT64_MAX) ? INT64_MAX : static_cast<int64_t>(compared);
+    int64_t different_i64 =
+        different > static_cast<uint64_t>(INT64_MAX) ? INT64_MAX : static_cast<int64_t>(different);
+    double mean_error =
+        compared == 0u
+            ? 0.0
+            : static_cast<double>(absolute_error / (static_cast<long double>(compared) * 4.0L));
+    rt_map_set_bool(comparison, rt_const_cstr("matches"), different == 0u ? 1 : 0);
+    rt_map_set_int(comparison, rt_const_cstr("comparedPixels"), compared_i64);
+    rt_map_set_int(comparison, rt_const_cstr("differentPixels"), different_i64);
+    rt_map_set_int(comparison, rt_const_cstr("maxChannelDelta"), max_delta);
+    rt_map_set_float(comparison, rt_const_cstr("meanAbsoluteError"), mean_error);
+#else
+    (void)expected;
+    (void)x;
+    (void)y;
+    (void)tolerance;
+#endif
+    return comparison;
+}
+
+/// @brief Return the normal public accessibility snapshot for the bound app root.
+/// @param harness Managed TestHarness object.
+/// @return New managed schema-versioned Map, empty when no live app is bound.
+void *rt_gui_test_harness_get_accessibility_snapshot(void *harness) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_gui_automation_app_view_t app{};
+    return rt_accessibility_snapshot(harnessBoundApp(*h->state, app) ? app.root : nullptr);
+#else
+    return rt_accessibility_snapshot(nullptr);
+#endif
 }
 
 int64_t rt_gui_test_harness_tick(void *harness, int64_t frames) {
@@ -710,6 +1609,9 @@ void *rt_gui_test_harness_event_at(void *harness, int64_t index) {
 void rt_gui_test_harness_clear_events(void *harness) {
     RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
     h->state->events.clear();
+#ifdef VIPER_ENABLE_GRAPHICS
+    h->state->dispatchedEvents = 0;
+#endif
 }
 
 rt_string rt_gui_test_harness_get_focus(void *harness) {
@@ -775,19 +1677,256 @@ void *rt_virtual_list_new(int64_t row_count, int64_t row_height, int64_t viewpor
     return h;
 }
 
-void rt_virtual_list_set_count(void *list, int64_t row_count) {
-    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
-    h->state->rowCount = std::max<int64_t>(0, row_count);
-}
-
-void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id) {
-    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+/// @brief Synchronize model selection from a bound ListBox's current selected index.
+static void syncVirtualListSelectionFromControl(VirtualListState &state) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *listbox = static_cast<vg_listbox_t *>(state.boundList);
+    if (!listbox)
+        return;
+    size_t selected = vg_listbox_get_selected_index(listbox);
     try {
-        if (row >= 0 && row < h->state->rowCount)
-            h->state->rowIds[row] = toStd(id);
+        if (selected == SIZE_MAX || selected > static_cast<size_t>(INT64_MAX) ||
+            static_cast<int64_t>(selected) >= state.rowCount)
+            state.selectedId.clear();
+        else
+            state.selectedId = rowId(state, static_cast<int64_t>(selected));
     } catch (const std::bad_alloc &) {
         return;
     }
+#else
+    (void)state;
+#endif
+}
+
+/// @brief Resize a sparse VirtualList while preserving unique stable-ID semantics.
+void rt_virtual_list_set_count(void *list, int64_t row_count) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+    VirtualListState &state = *h->state;
+    int64_t new_count = std::max<int64_t>(0, row_count);
+    if (new_count == state.rowCount)
+        return;
+
+    if (new_count > state.rowCount) {
+        for (const auto &entry : state.idRows) {
+            int64_t implicit_row = -1;
+            if (parseCanonicalRowNumber(entry.first, &implicit_row) &&
+                implicit_row >= state.rowCount && implicit_row < new_count &&
+                entry.second != implicit_row) {
+                trapDuplicateModelId(entry.first);
+                return;
+            }
+        }
+    }
+
+    if (new_count < state.rowCount) {
+        for (auto it = state.rowIds.begin(); it != state.rowIds.end();) {
+            if (it->first >= new_count) {
+                state.idRows.erase(it->second);
+                it = state.rowIds.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (auto it = state.rowTexts.begin(); it != state.rowTexts.end();) {
+            if (it->first >= new_count)
+                it = state.rowTexts.erase(it);
+            else
+                ++it;
+        }
+    }
+
+    state.rowCount = new_count;
+    int64_t selected_row = -1;
+    if (!state.selectedId.empty() && !findListRowById(state, state.selectedId, &selected_row))
+        state.selectedId.clear();
+    syncBoundVirtualList(state);
+}
+
+/// @brief Assign a unique stable ID with rollback on allocation failure.
+void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+    VirtualListState &state = *h->state;
+    if (row < 0 || row >= state.rowCount)
+        return;
+    try {
+        std::string desired = toStd(id);
+        if (desired.empty()) {
+            rt_trap("GUI model ID must not be empty");
+            return;
+        }
+        std::string implicit = std::to_string(row);
+        auto current = state.rowIds.find(row);
+        std::string old_id = current != state.rowIds.end() ? current->second : implicit;
+        if (desired == old_id)
+            return;
+
+        int64_t owner = -1;
+        if (findListRowById(state, desired, &owner) && owner != row) {
+            trapDuplicateModelId(desired);
+            return;
+        }
+
+        bool follows_selection = state.selectedId == old_id;
+        std::string selected_replacement = follows_selection ? desired : std::string();
+        if (desired == implicit) {
+            if (current != state.rowIds.end()) {
+                state.idRows.erase(current->second);
+                state.rowIds.erase(current);
+            }
+        } else {
+            state.idRows.reserve(state.idRows.size() + 1u);
+            state.rowIds.reserve(state.rowIds.size() + 1u);
+            current = state.rowIds.find(row);
+            auto inserted_index = state.idRows.emplace(desired, row);
+            if (!inserted_index.second && inserted_index.first->second != row) {
+                trapDuplicateModelId(desired);
+                return;
+            }
+            std::string row_value = desired;
+            if (current != state.rowIds.end()) {
+                current->second.swap(row_value);
+            } else {
+                try {
+                    state.rowIds.emplace(row, std::move(row_value));
+                } catch (const std::bad_alloc &) {
+                    if (inserted_index.second)
+                        state.idRows.erase(inserted_index.first);
+                    return;
+                }
+            }
+            state.idRows.erase(old_id);
+        }
+        if (follows_selection)
+            state.selectedId.swap(selected_replacement);
+#ifdef VIPER_ENABLE_GRAPHICS
+        if (state.boundList) {
+            vg_listbox_invalidate_item(static_cast<vg_listbox_t *>(state.boundList),
+                                       static_cast<size_t>(row));
+            if (follows_selection)
+                vg_listbox_select_index(static_cast<vg_listbox_t *>(state.boundList),
+                                        static_cast<size_t>(row));
+        }
+#endif
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+}
+
+/// @brief Set display text for one sparse VirtualList row without changing its stable ID.
+void rt_virtual_list_set_row_text(void *list, int64_t row, rt_string text) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+    VirtualListState &state = *h->state;
+    if (row < 0 || row >= state.rowCount)
+        return;
+    try {
+        std::string value = toGuiTextStd(text);
+        auto current = state.rowTexts.find(row);
+        if (current != state.rowTexts.end()) {
+            if (current->second == value)
+                return;
+            current->second.swap(value);
+        } else {
+            state.rowTexts.emplace(row, std::move(value));
+        }
+#ifdef VIPER_ENABLE_GRAPHICS
+        if (state.boundList)
+            vg_listbox_invalidate_item(static_cast<vg_listbox_t *>(state.boundList),
+                                       static_cast<size_t>(row));
+#endif
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+}
+
+/// @brief Invalidate one bound ListBox row after application-owned backing data changes.
+void rt_virtual_list_invalidate_row(void *list, int64_t row) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+    if (row < 0 || row >= h->state->rowCount)
+        return;
+#ifdef VIPER_ENABLE_GRAPHICS
+    if (h->state->boundList)
+        vg_listbox_invalidate_item(static_cast<vg_listbox_t *>(h->state->boundList),
+                                   static_cast<size_t>(row));
+#endif
+}
+
+/// @brief Bind a VirtualList to a live ListBox, preserving an old binding on allocation failure.
+int8_t rt_virtual_list_bind(void *list, void *listbox) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), 0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control =
+        static_cast<vg_listbox_t *>(rt_gui_widget_checked_for_binding(listbox, VG_WIDGET_LISTBOX));
+    if (!control)
+        return 0;
+    VirtualListState &state = *h->state;
+    void *old_control = state.boundList;
+    if (!vg_listbox_bind_virtual_model(control,
+                                       static_cast<size_t>(state.rowCount),
+                                       static_cast<float>(state.rowHeight),
+                                       virtualListProvider,
+                                       &state,
+                                       virtualListUnbound))
+        return 0;
+    state.boundList = control;
+    if (old_control && old_control != control)
+        vg_listbox_clear_virtual_model(static_cast<vg_listbox_t *>(old_control));
+    int64_t selected = -1;
+    if (findListRowById(state, state.selectedId, &selected))
+        vg_listbox_select_index(control, static_cast<size_t>(selected));
+    return 1;
+#else
+    (void)listbox;
+    return 0;
+#endif
+}
+
+/// @brief Detach a VirtualList from its current ListBox, if any.
+void rt_virtual_list_unbind(void *list) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
+    detachVirtualList(*h->state);
+}
+
+/// @brief Reverse-form convenience wrapper for `VirtualList.Bind`.
+int8_t rt_listbox_set_virtual_model(void *listbox, void *model) {
+    return rt_virtual_list_bind(model, listbox);
+}
+
+/// @brief Clear a ListBox's external model binding without destroying either object.
+void rt_listbox_clear_virtual_model(void *listbox) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control =
+        static_cast<vg_listbox_t *>(rt_gui_widget_checked_for_binding(listbox, VG_WIDGET_LISTBOX));
+    if (control)
+        vg_listbox_clear_virtual_model(control);
+#else
+    (void)listbox;
+#endif
+}
+
+/// @brief Return the first provider-backed ListBox row in the current viewport.
+int64_t rt_listbox_get_visible_first(void *listbox) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control =
+        static_cast<vg_listbox_t *>(rt_gui_widget_checked_for_binding(listbox, VG_WIDGET_LISTBOX));
+    size_t value = control ? vg_listbox_get_visible_first(control) : 0u;
+    return value > static_cast<size_t>(INT64_MAX) ? INT64_MAX : static_cast<int64_t>(value);
+#else
+    (void)listbox;
+    return 0;
+#endif
+}
+
+/// @brief Return the number of provider-backed ListBox rows materialized for its viewport.
+int64_t rt_listbox_get_visible_count(void *listbox) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control =
+        static_cast<vg_listbox_t *>(rt_gui_widget_checked_for_binding(listbox, VG_WIDGET_LISTBOX));
+    size_t value = control ? vg_listbox_get_visible_count(control) : 0u;
+    return value > static_cast<size_t>(INT64_MAX) ? INT64_MAX : static_cast<int64_t>(value);
+#else
+    (void)listbox;
+    return 0;
+#endif
 }
 
 void *rt_virtual_list_visible_range(void *list, int64_t scroll_y) {
@@ -813,6 +1952,16 @@ void rt_virtual_list_select_id(void *list, rt_string id) {
     RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
     try {
         h->state->selectedId = toStd(id);
+#ifdef VIPER_ENABLE_GRAPHICS
+        if (h->state->boundList) {
+            int64_t row = -1;
+            if (findListRowById(*h->state, h->state->selectedId, &row))
+                vg_listbox_select_index(static_cast<vg_listbox_t *>(h->state->boundList),
+                                        static_cast<size_t>(row));
+            else
+                vg_listbox_select_index(static_cast<vg_listbox_t *>(h->state->boundList), SIZE_MAX);
+        }
+#endif
     } catch (const std::bad_alloc &) {
         return;
     }
@@ -820,20 +1969,15 @@ void rt_virtual_list_select_id(void *list, rt_string id) {
 
 rt_string rt_virtual_list_get_selected_id(void *list) {
     RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), nullptr);
+    syncVirtualListSelectionFromControl(*h->state);
     return makeString(h->state->selectedId);
 }
 
 int64_t rt_virtual_list_get_selected_index(void *list) {
     RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), -1);
-    try {
-        for (int64_t row = 0; row < h->state->rowCount; row++) {
-            if (rowId(*h->state, row) == h->state->selectedId)
-                return row;
-        }
-    } catch (const std::bad_alloc &) {
-        return -1;
-    }
-    return -1;
+    syncVirtualListSelectionFromControl(*h->state);
+    int64_t row = -1;
+    return findListRowById(*h->state, h->state->selectedId, &row) ? row : -1;
 }
 
 void *rt_virtual_tree_new(void) {
@@ -847,7 +1991,7 @@ void *rt_virtual_tree_new(void) {
         return nullptr;
     }
     try {
-        h->state->nodes[""] = TreeNode{"", "", "", {}, true, true};
+        h->state->nodes.emplace("", TreeNode{"", "", "", {}, true, true, true});
     } catch (const std::bad_alloc &) {
         delete h->state;
         h->state = nullptr;
@@ -863,47 +2007,158 @@ void rt_virtual_tree_add_node(void *tree, rt_string parent_id, rt_string id_s, r
     try {
         std::string parent = toStd(parent_id);
         std::string id = toStd(id_s);
-        std::string node_text = toStd(text);
-        if (id.empty())
+        std::string node_text = toGuiTextStd(text);
+        if (id.empty()) {
+            rt_trap("GUI model ID must not be empty");
             return;
+        }
         if (id == parent)
             return;
         auto &state = *h->state;
         auto existing = state.nodes.find(id);
-        if (existing != state.nodes.end()) {
-            std::set<std::string> seen;
-            if (subtreeContains(state, id, parent, seen))
+        if (existing != state.nodes.end() && existing->second.declared) {
+            trapDuplicateModelId(id);
+            return;
+        }
+        if (virtualTreeWouldCycle(state, id, parent))
+            return;
+
+        bool declares_placeholder = existing != state.nodes.end();
+        TreeNode pending_node;
+        std::string pending_child_link;
+        std::string placeholder_parent_value;
+        std::string placeholder_old_parent;
+        if (declares_placeholder) {
+            placeholder_parent_value = parent;
+            placeholder_old_parent = existing->second.parent;
+            if (placeholder_old_parent != parent)
+                pending_child_link = id;
+        } else {
+            pending_node = TreeNode{id, node_text, parent, {}, false, false, true};
+            pending_child_link = id;
+        }
+
+        bool inserted_parent = false;
+        bool needs_parent = state.nodes.find(parent) == state.nodes.end();
+        state.nodes.reserve(state.nodes.size() + (needs_parent ? 2u : 1u));
+        if (needs_parent) {
+            TreeNode placeholder{parent, parent, "", {}, false, false, false};
+            std::string root_link = parent;
+            auto parent_result = state.nodes.emplace(parent, std::move(placeholder));
+            if (!parent_result.second)
                 return;
-        }
-
-        if (!state.nodes.count(parent)) {
-            state.nodes[parent] = TreeNode{parent, parent, "", {}, false, false};
-            auto root = state.nodes.find("");
-            if (!parent.empty() && root != state.nodes.end()) {
-                auto &root_children = root->second.children;
-                if (std::find(root_children.begin(), root_children.end(), parent) ==
-                    root_children.end())
-                    root_children.push_back(parent);
+            try {
+                state.nodes.find("")->second.children.push_back(std::move(root_link));
+            } catch (const std::bad_alloc &) {
+                state.nodes.erase(parent_result.first);
+                return;
             }
+            inserted_parent = true;
         }
 
+        auto parent_it = state.nodes.find(parent);
         existing = state.nodes.find(id);
         if (existing == state.nodes.end()) {
-            state.nodes[id] = TreeNode{id, node_text, parent, {}, false, false};
+            auto node_result = state.nodes.emplace(id, std::move(pending_node));
+            if (!node_result.second) {
+                if (inserted_parent) {
+                    auto &roots = state.nodes.find("")->second.children;
+                    if (!roots.empty() && roots.back() == parent)
+                        roots.pop_back();
+                    state.nodes.erase(parent);
+                }
+                return;
+            }
+            parent_it = state.nodes.find(parent);
+            try {
+                parent_it->second.children.push_back(std::move(pending_child_link));
+            } catch (const std::bad_alloc &) {
+                state.nodes.erase(node_result.first);
+                if (inserted_parent) {
+                    auto &roots = state.nodes.find("")->second.children;
+                    if (!roots.empty() && roots.back() == parent)
+                        roots.pop_back();
+                    state.nodes.erase(parent);
+                }
+                return;
+            }
         } else {
-            if (existing->second.parent != parent)
-                eraseChildId(state, existing->second.parent, id);
-            existing->second.id = id;
-            existing->second.text = node_text;
-            existing->second.parent = parent;
+            if (placeholder_old_parent != parent) {
+                try {
+                    parent_it->second.children.push_back(std::move(pending_child_link));
+                } catch (const std::bad_alloc &) {
+                    if (inserted_parent) {
+                        auto &roots = state.nodes.find("")->second.children;
+                        if (!roots.empty() && roots.back() == parent)
+                            roots.pop_back();
+                        state.nodes.erase(parent);
+                    }
+                    return;
+                }
+            }
+            existing->second.text.swap(node_text);
+            existing->second.parent.swap(placeholder_parent_value);
+            existing->second.declared = true;
+            if (placeholder_old_parent != parent)
+                eraseChildId(state, placeholder_old_parent, id);
         }
 
-        auto &children = state.nodes[parent].children;
-        if (std::find(children.begin(), children.end(), id) == children.end())
-            children.push_back(id);
-        state.nodes[parent].loaded = true;
+        parent_it = state.nodes.find(parent);
+        if (parent_it != state.nodes.end())
+            parent_it->second.loaded = true;
+        state.visibleDirty = true;
+        syncBoundVirtualTree(state);
     } catch (const std::bad_alloc &) {
         return;
+    }
+}
+
+/// @brief Move an existing declared node beneath another existing node without changing its ID.
+int8_t rt_virtual_tree_move_node(void *tree, rt_string id_s, rt_string parent_id) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), 0);
+    try {
+        std::string id = toStd(id_s);
+        std::string parent = toStd(parent_id);
+        VirtualTreeState &state = *h->state;
+        auto node = state.nodes.find(id);
+        auto new_parent = state.nodes.find(parent);
+        if (id.empty() || id == parent || node == state.nodes.end() || !node->second.declared ||
+            new_parent == state.nodes.end() || virtualTreeWouldCycle(state, id, parent))
+            return 0;
+        if (node->second.parent == parent)
+            return 1;
+
+        std::string child_link = id;
+        std::string parent_value = parent;
+        new_parent->second.children.push_back(std::move(child_link));
+        std::string old_parent = node->second.parent;
+        node->second.parent.swap(parent_value);
+        eraseChildId(state, old_parent, id);
+        new_parent->second.loaded = true;
+        state.visibleDirty = true;
+        syncBoundVirtualTree(state);
+        return 1;
+    } catch (const std::bad_alloc &) {
+        return 0;
+    }
+}
+
+/// @brief Replace one declared virtual-tree node label atomically.
+int8_t rt_virtual_tree_set_node_text(void *tree, rt_string id_s, rt_string text) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), 0);
+    try {
+        std::string id = toStd(id_s);
+        std::string value = toGuiTextStd(text);
+        auto node = h->state->nodes.find(id);
+        if (node == h->state->nodes.end() || !node->second.declared)
+            return 0;
+        if (node->second.text != value) {
+            node->second.text.swap(value);
+            syncBoundVirtualTree(*h->state);
+        }
+        return 1;
+    } catch (const std::bad_alloc &) {
+        return 0;
     }
 }
 
@@ -920,7 +2175,11 @@ void *rt_virtual_tree_expand(void *tree, rt_string id_s) {
             rt_map_set_bool(map, rt_const_cstr("needsPopulate"), 1);
             return map;
         }
-        it->second.expanded = true;
+        if (!it->second.expanded) {
+            it->second.expanded = true;
+            h->state->visibleDirty = true;
+            syncBoundVirtualTree(*h->state);
+        }
         rt_map_set_bool(map, rt_const_cstr("found"), 1);
         rt_map_set_bool(map, rt_const_cstr("expanded"), 1);
         rt_map_set_bool(map,
@@ -937,8 +2196,11 @@ void rt_virtual_tree_collapse(void *tree, rt_string id_s) {
     RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         auto it = h->state->nodes.find(toStd(id_s));
-        if (it != h->state->nodes.end())
+        if (it != h->state->nodes.end() && it->second.expanded) {
             it->second.expanded = false;
+            h->state->visibleDirty = true;
+            syncBoundVirtualTree(*h->state);
+        }
     } catch (const std::bad_alloc &) {
         return;
     }
@@ -948,6 +2210,7 @@ void rt_virtual_tree_select_id(void *tree, rt_string id) {
     RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         h->state->selectedId = toStd(id);
+        syncBoundVirtualTree(*h->state);
     } catch (const std::bad_alloc &) {
         return;
     }
@@ -959,14 +2222,34 @@ rt_string rt_virtual_tree_get_selected_id(void *tree) {
 }
 
 void *rt_virtual_tree_visible_rows(void *tree) {
+    return rt_virtual_tree_visible_rows_range(tree, 0, INT64_MAX);
+}
+
+/// @brief Materialize only the requested slice of the cached flattened tree order.
+void *rt_virtual_tree_visible_rows_range(void *tree, int64_t first, int64_t count) {
     RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), nullptr);
     void *rows = rt_seq_new_owned();
     if (!rows)
         return nullptr;
-    auto root = h->state->nodes.find("");
-    if (root != h->state->nodes.end()) {
-        for (const auto &id : root->second.children)
-            collectVisible(*h->state, id, 0, rows);
+    if (first < 0)
+        first = 0;
+    if (count < 0)
+        count = 0;
+    if (!ensureVisibleTreeIndex(*h->state))
+        return rows;
+    size_t start = static_cast<uint64_t>(first) > SIZE_MAX ? SIZE_MAX : static_cast<size_t>(first);
+    size_t requested =
+        static_cast<uint64_t>(count) > SIZE_MAX ? SIZE_MAX : static_cast<size_t>(count);
+    if (start >= h->state->visibleRows.size())
+        return rows;
+    size_t available = h->state->visibleRows.size() - start;
+    size_t length = requested < available ? requested : available;
+    for (size_t offset = 0; offset < length; offset++) {
+        void *map = visibleTreeRowToMap(*h->state, h->state->visibleRows[start + offset]);
+        if (!map)
+            break;
+        rt_seq_push(rows, map);
+        releaseObject(map);
     }
     return rows;
 }
@@ -978,8 +2261,7 @@ void rt_virtual_tree_refresh_subtree(void *tree, rt_string id_s) {
         auto it = h->state->nodes.find(id);
         if (it == h->state->nodes.end())
             return;
-        std::set<std::string> seen;
-        removeVirtualTreeDescendants(*h->state, it->first, seen);
+        removeVirtualTreeDescendants(*h->state, it->first);
         if (!h->state->selectedId.empty() &&
             h->state->nodes.find(h->state->selectedId) == h->state->nodes.end())
             h->state->selectedId.clear();
@@ -987,9 +2269,64 @@ void rt_virtual_tree_refresh_subtree(void *tree, rt_string id_s) {
         if (it == h->state->nodes.end())
             return;
         it->second.loaded = false;
+        h->state->visibleDirty = true;
+        syncBoundVirtualTree(*h->state);
     } catch (const std::bad_alloc &) {
         return;
     }
+}
+
+/// @brief Bind a VirtualTree to a live TreeView without constructing retained nodes.
+int8_t rt_virtual_tree_bind(void *tree, void *treeview) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), 0);
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control = static_cast<vg_treeview_t *>(
+        rt_gui_widget_checked_for_binding(treeview, VG_WIDGET_TREEVIEW));
+    if (!control || !ensureVisibleTreeIndex(*h->state))
+        return 0;
+    VirtualTreeState &state = *h->state;
+    void *old_control = state.boundTree;
+    if (!vg_treeview_bind_virtual_model(control,
+                                        state.visibleRows.size(),
+                                        virtualTreeProvider,
+                                        virtualTreeAction,
+                                        &state,
+                                        virtualTreeUnbound))
+        return 0;
+    state.boundTree = control;
+    if (old_control && old_control != control)
+        vg_treeview_clear_virtual_model(static_cast<vg_treeview_t *>(old_control));
+    auto selected = state.visibleIndexById.find(state.selectedId);
+    if (selected != state.visibleIndexById.end())
+        vg_treeview_select_virtual_index(control, selected->second);
+    return 1;
+#else
+    (void)treeview;
+    return 0;
+#endif
+}
+
+/// @brief Detach a VirtualTree from its current TreeView.
+void rt_virtual_tree_unbind(void *tree) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
+    detachVirtualTree(*h->state);
+}
+
+/// @brief Reverse-form convenience wrapper for `VirtualTree.Bind`.
+int8_t rt_treeview_set_virtual_model(void *treeview, void *model) {
+    return rt_virtual_tree_bind(model, treeview);
+}
+
+/// @brief Clear a TreeView's external model binding without destroying either object.
+void rt_treeview_clear_virtual_model(void *treeview) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    auto *control = static_cast<vg_treeview_t *>(
+        rt_gui_widget_checked_for_binding(treeview, VG_WIDGET_TREEVIEW));
+    if (control)
+        vg_treeview_clear_virtual_model(control);
+#else
+    (void)treeview;
+#endif
 }
 
 void *rt_command_state_new(rt_string id, rt_string label) {

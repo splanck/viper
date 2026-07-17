@@ -9,10 +9,14 @@ keep current `Canvas3D.SetQuality` and `Game3D.Quality.Apply` compatible.
 
 ## Problem statement
 
-Viper already has two useful quality layers:
+Viper already has three overlapping quality entry points:
 
 - `Canvas3D.SetQuality` installs backend-safe post-FX profiles and exposes
   requested/active/fallback status;
+- `World3D.SetQuality` delegates to the canvas call and additionally replaces
+  the world's effects post-FX chain with a standard-quality chain
+  (`rt_game3d_world_api.inc`), which makes it a direct hazard for authored
+  post-FX and a required subject of the compatibility tests below;
 - `Game3D.Quality.Apply` sets world quality, frustum culling, and backend-safe
   shadows/cascades.
 
@@ -88,7 +92,9 @@ Authored post-FX rule:
 - a profile can describe a recommended post-FX level;
 - `ApplyProfile` must not replace an explicitly authored PostFX3D chain unless
   the caller opts into the standard chain;
-- existing `Canvas3D.SetQuality` retains its documented standard-chain behavior;
+- existing `Canvas3D.SetQuality` and `World3D.SetQuality` retain their
+  documented standard-chain behavior, including World3D's replacement of the
+  effects post-FX chain;
 - `Quality.Apply` compatibility behavior is documented and tested before any
   refactor.
 
@@ -99,6 +105,8 @@ Authored post-FX rule:
 Build a table of current knobs, ranges, capabilities, and owners:
 
 - Canvas quality requested/active/fallback;
+- `World3D.SetQuality` canvas delegation and standard post-FX chain
+  replacement;
 - post-FX features and software fallbacks;
 - render scale capability;
 - shadows, quality taps, cascades, bias;
@@ -155,8 +163,9 @@ textures, terrain, pools, or environment objects.
 ### Phase 4 — Compatibility wrappers
 
 Refactor `Game3D.Quality.Apply` to Resolve + compatible Apply only after tests
-prove the same visible behavior. Keep `Canvas3D.SetQuality` independent and
-document when it replaces the post-FX chain. Do not create recursive apply calls.
+prove the same visible behavior. Keep `Canvas3D.SetQuality` and
+`World3D.SetQuality` independent and document when each replaces the post-FX
+chain. Do not create recursive apply calls.
 
 ### Phase 5 — Tests
 

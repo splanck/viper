@@ -200,7 +200,7 @@ void *rt_breadcrumb_new(void *parent) {
         rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
     if (app && app->default_font) {
-        vg_breadcrumb_set_font(bc, app->default_font, app->default_font_size);
+        vg_breadcrumb_set_font(bc, app->default_font, rt_gui_app_effective_font_size(app));
     }
 
     return data;
@@ -473,6 +473,23 @@ void rt_minimap_forget_editor_subtree(vg_widget_t *subtree) {
     }
 }
 
+/// @brief Synchronize source observations for every live Minimap owned by one app.
+/// @details This allocation-free scheduler bridge runs before app dirty-state inspection so editor
+///          text/layout/viewport transitions invalidate the minimap in the same retained frame.
+void rt_minimap_sync_app(void *app_ptr) {
+    if (!app_ptr)
+        return;
+    for (size_t index = 0; index < s_minimap_wrapper_count; ++index) {
+        rt_minimap_data_t *data = s_minimap_wrappers[index];
+        if (!data || data->magic != RT_MINIMAP_DATA_MAGIC || !data->minimap ||
+            !vg_widget_is_live(&data->minimap->base)) {
+            continue;
+        }
+        if (rt_gui_app_from_widget(&data->minimap->base) == (rt_gui_app_t *)app_ptr)
+            (void)vg_minimap_sync_source(data->minimap);
+    }
+}
+
 /// @brief Authenticate a Minimap handle via its magic tag (NULL if not).
 static rt_minimap_data_t *rt_minimap_checked(void *minimap) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
@@ -650,6 +667,45 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     vg_widget_invalidate(&data->minimap->base);
 }
 
+/// @brief Synchronize and return the minimap's combined editor-source revision.
+int64_t rt_minimap_get_source_revision(void *minimap) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
+        return 0;
+    const uint64_t revision = vg_minimap_get_source_revision(data->minimap);
+    return revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)revision;
+}
+
+/// @brief Invalidate only cached summaries intersecting a source-line range.
+void rt_minimap_invalidate_lines(void *minimap, int64_t first, int64_t count) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap || first < 0 || count <= 0 || first > UINT32_MAX)
+        return;
+    uint64_t last = (uint64_t)first + (uint64_t)count - 1u;
+    if (last > UINT32_MAX)
+        last = UINT32_MAX;
+    vg_minimap_invalidate_lines(data->minimap, (uint32_t)first, (uint32_t)last);
+}
+
+/// @brief Atomically resize the bounded minimap line-summary cache.
+void rt_minimap_set_maximum_cached_lines(void *minimap, int64_t count) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
+        return;
+    const int64_t clamped = count < 0 ? 0 : (count > 1000000 ? 1000000 : count);
+    (void)vg_minimap_set_maximum_cached_lines(data->minimap, (uint32_t)clamped);
+}
+
+/// @brief Return the number of valid bounded line-summary cache entries.
+int64_t rt_minimap_get_cached_line_count(void *minimap) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    return data && data->minimap ? (int64_t)vg_minimap_get_cached_line_count(data->minimap) : 0;
+}
+
 /// @brief Add a highlighted marker region to the minimap.
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
@@ -711,6 +767,11 @@ void rt_minimap_clear_markers(void *minimap) {
 //=============================================================================
 
 #else /* !VIPER_ENABLE_GRAPHICS */
+
+/// @brief Stub: graphics disabled — no runtime minimaps require source synchronization.
+void rt_minimap_sync_app(void *app_ptr) {
+    (void)app_ptr;
+}
 
 /// @brief Stub: returns NULL — breadcrumb widget requires graphics.
 void *rt_breadcrumb_new(void *parent) {
@@ -846,6 +907,31 @@ void rt_minimap_set_scale(void *minimap, double scale) {
 void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     (void)minimap;
     (void)show;
+}
+
+/// @brief Stub: graphics disabled — no observed minimap source revision exists.
+int64_t rt_minimap_get_source_revision(void *minimap) {
+    (void)minimap;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no minimap cache range can be invalidated.
+void rt_minimap_invalidate_lines(void *minimap, int64_t first, int64_t count) {
+    (void)minimap;
+    (void)first;
+    (void)count;
+}
+
+/// @brief Stub: graphics disabled — no minimap cache can be configured.
+void rt_minimap_set_maximum_cached_lines(void *minimap, int64_t count) {
+    (void)minimap;
+    (void)count;
+}
+
+/// @brief Stub: graphics disabled — no cached minimap lines exist.
+int64_t rt_minimap_get_cached_line_count(void *minimap) {
+    (void)minimap;
+    return 0;
 }
 
 /// @brief Add a highlighted marker region to the minimap.

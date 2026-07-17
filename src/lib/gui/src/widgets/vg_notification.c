@@ -32,6 +32,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -430,6 +431,100 @@ static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
     return false;
 }
 
+/// @brief Compute the exact retained-damage union for currently paintable toast cards.
+/// @details Mirrors the visibility and `max_visible` rules in notification_manager_paint, then
+///          conservatively includes the level-2 soft shadow used by that paint path. See the
+///          public declaration for output and ownership semantics.
+bool vg_notification_manager_get_visual_bounds(
+    vg_notification_manager_t *mgr, float *x, float *y, float *width, float *height) {
+    float out_x = 0.0f;
+    float out_y = 0.0f;
+    float out_w = 0.0f;
+    float out_h = 0.0f;
+    bool any = false;
+    size_t visible_count = 0;
+
+    if (mgr) {
+        float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+        for (size_t i = 0; i < mgr->notification_count; ++i) {
+            vg_notification_t *notif = mgr->notifications[i];
+            if (!notif)
+                continue;
+            if (visible_count >= mgr->max_visible)
+                break;
+            visible_count++;
+            if (!isfinite(notif->opacity) || notif->opacity <= 0.0f)
+                continue;
+
+            float nx = 0.0f, ny = 0.0f, nw = 0.0f, nh = 0.0f;
+            if (!notification_bounds_for_index(
+                    mgr, i, &nx, &ny, &nw, &nh, NULL, NULL, NULL, NULL) ||
+                !isfinite(nx) || !isfinite(ny) || !isfinite(nw) || !isfinite(nh) || nw <= 0.0f ||
+                nh <= 0.0f) {
+                continue;
+            }
+            float nr = nx + nw;
+            float nb = ny + nh;
+            if (!isfinite(nr) || !isfinite(nb))
+                continue;
+            if (!any) {
+                x0 = nx;
+                y0 = ny;
+                x1 = nr;
+                y1 = nb;
+                any = true;
+            } else {
+                if (nx < x0)
+                    x0 = nx;
+                if (ny < y0)
+                    y0 = ny;
+                if (nr > x1)
+                    x1 = nr;
+                if (nb > y1)
+                    y1 = nb;
+            }
+        }
+
+        if (any) {
+            float left = 1.0f, top = 1.0f, right = 1.0f, bottom = 1.0f;
+            const vg_theme_t *theme = vg_theme_get_current();
+            if (theme && theme->elevation.level2.alpha > 0 &&
+                isfinite(theme->elevation.level2.blur) && theme->elevation.level2.blur > 0.0f) {
+                int blur_radius = (int)(theme->elevation.level2.blur * 0.5f + 0.5f);
+                if (blur_radius < 1)
+                    blur_radius = 1;
+                float padding = (float)(blur_radius * 3 + 1);
+                float shadow_left = padding - (float)theme->elevation.level2.dx;
+                float shadow_top = padding - (float)theme->elevation.level2.dy;
+                float shadow_right = padding + (float)theme->elevation.level2.dx;
+                float shadow_bottom = padding + (float)theme->elevation.level2.dy;
+                if (shadow_left > left)
+                    left = shadow_left;
+                if (shadow_top > top)
+                    top = shadow_top;
+                if (shadow_right > right)
+                    right = shadow_right;
+                if (shadow_bottom > bottom)
+                    bottom = shadow_bottom;
+            }
+            out_x = x0 - left;
+            out_y = y0 - top;
+            out_w = (x1 + right) - out_x;
+            out_h = (y1 + bottom) - out_y;
+        }
+    }
+
+    if (x)
+        *x = out_x;
+    if (y)
+        *y = out_y;
+    if (width)
+        *width = out_w;
+    if (height)
+        *height = out_h;
+    return any;
+}
+
 //=============================================================================
 // Notification Manager Implementation
 //=============================================================================
@@ -758,7 +853,7 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
         }
 
         if (notif->duration_ms > 0 && !notif->dismissed) {
-            uint64_t elapsed = now_ms - notif->created_at;
+            uint64_t elapsed = now_ms >= notif->created_at ? (now_ms - notif->created_at) : 0;
             if (elapsed >= notif->duration_ms) {
                 notification_request_dismiss(notif, notif->created_at + notif->duration_ms);
                 needs_repaint = true;
@@ -829,6 +924,56 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
     mgr->notification_count = write_idx;
     if (needs_repaint || old_count != write_idx)
         mgr->base.needs_paint = true;
+}
+
+/// @brief Convert one absolute notification timestamp to a relative scheduler delay.
+/// @param now_ms Current scheduler time.
+/// @param target_ms Absolute transition time on the same clock.
+/// @return Zero when due, otherwise a positive delay saturated to INT64_MAX.
+static int64_t notification_relative_deadline_ms(uint64_t now_ms, uint64_t target_ms) {
+    if (target_ms <= now_ms)
+        return 0;
+    uint64_t remaining = target_ms - now_ms;
+    return remaining > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)remaining;
+}
+
+/// @brief Return the nearest notification animation tick or auto-dismiss deadline.
+/// @param mgr Notification manager to inspect; NULL has no deadline.
+/// @param now_ms Current scheduler time in milliseconds.
+/// @return Milliseconds until work, zero when due, or -1 when no timer is active.
+int64_t vg_notification_manager_next_deadline_ms(const vg_notification_manager_t *mgr,
+                                                 uint64_t now_ms) {
+    if (!mgr)
+        return -1;
+    int64_t deadline = -1;
+    for (size_t i = 0; i < mgr->notification_count; ++i) {
+        const vg_notification_t *notif = mgr->notifications[i];
+        if (!notif)
+            continue;
+        if (notif->created_at == 0)
+            return 0;
+
+        bool entering =
+            !notif->dismissed && (notif->opacity < 1.0f || notif->slide_progress < 1.0f);
+        bool exiting = notif->dismissed && (notif->opacity > 0.0f || notif->slide_progress > 0.0f);
+        if (entering || exiting) {
+            if (deadline < 0 || deadline > 16)
+                deadline = 16;
+            continue;
+        }
+        if (!notif->dismissed && notif->duration_ms > 0) {
+            uint64_t duration = (uint64_t)notif->duration_ms;
+            uint64_t target = notif->created_at > UINT64_MAX - duration
+                                  ? UINT64_MAX
+                                  : notif->created_at + duration;
+            int64_t candidate = notification_relative_deadline_ms(now_ms, target);
+            if (candidate == 0)
+                return 0;
+            if (deadline < 0 || candidate < deadline)
+                deadline = candidate;
+        }
+    }
+    return deadline;
 }
 
 /// @brief Show a notification without an action button.

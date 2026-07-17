@@ -159,15 +159,19 @@ Do not accumulate paused wall time into a burst of fixed steps on resume.
 
 Add tests for current GameBase3D scene enter/exit, transition, max frames, and
 overlay. Capture current simple example behavior. List all direct consumers so
-the upgrade can provide a compatibility adapter or update them together.
+the upgrade can provide a compatibility adapter or update them together; the
+known consumers at review time were `examples/3d/game3d_scenes/main.zia` and
+docs snippets, but re-enumerate before editing.
 
 ### Phase 1 — New scene interface/base adapter
 
 1. Add fixed/pre-simulation, after-fixed-step, variable, draw, and resize
    methods.
 2. Provide no-op base/null implementation.
-3. Keep old `update` compatibility temporarily through an adapter if existing
-   examples use it; mark and remove only within this coordinated example update.
+3. Keep old `update` and single-argument `onEnter(world)` compatibility
+   temporarily through an adapter if existing examples use them (the current
+   interface passes no scope); mark and remove only within this coordinated
+   example update.
 4. Document which methods may mutate simulation.
 
 ### Phase 2 — Driver and scope integration

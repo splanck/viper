@@ -21,6 +21,10 @@ Status labels:
 - Low-level `Viper.Graphics3D` uses its existing PascalCase conventions.
 - Stateful `Viper.Game3D` follows the actual class registry's member style;
   match the neighboring class rather than normalizing unrelated APIs.
+- Vector-valued parameters and properties use the existing `Viper.Math.Vec2`
+  and `Viper.Math.Vec3` classes, exactly as `Entity3D.Position` and
+  `PhysicsHit3D.Point/Normal` do today; `Vec2`/`Vec3` below abbreviate those
+  qualified types.
 - New public runtime objects end in `3D` unless they extend an established
   static helper name.
 - Class IDs are appended permanently after checking the live ID registry.
@@ -75,6 +79,10 @@ New(world: World3D, fixedDt: Float) -> FrameDriver3D
 MaxFrameDt: Float read/write       default 0.25
 MaxFixedSteps: Integer read/write  default 8
 ```
+
+The `MaxFixedSteps` default of 8 deliberately mirrors the existing internal
+`RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME` spiral guard so driver and `RunFixed`
+schedules agree by default.
 
 Draft poll/step contract:
 
@@ -170,7 +178,7 @@ Remove(handle) -> Boolean
 Clear() -> Void
 Count: Integer read-only
 Update(dt: Float) -> Void
-Draw(pass: RenderPass, canvas: Canvas3D, camera: Camera3D) -> Void
+Draw(phase: EnvironmentPhase3D value, canvas: Canvas3D, camera: Camera3D) -> Void
 ```
 
 Proposed static constants surface `Viper.Game3D.EnvironmentPhase3D` identifies
@@ -307,8 +315,10 @@ World3D.OverlapSphere(center, radius, layerMask) -> WorldHitList3D
 ```
 
 `WorldHit3D` exposes `Hit`, `Distance`, `Fraction`, `Point`, `Normal`, raw
-`Body`, resolved `Entity`, optional `Hitbox`, `RegionTag`, and
-`StartedPenetrating`. Misses return a non-null result with `Hit=false`.
+`Body`, resolved `Entity`, optional `Hitbox`, `RegionTag`,
+`StartedPenetrating`, and the raw hit's existing `SurfaceType` and `IsTrigger`
+values carried through unchanged. Misses return a non-null result with
+`Hit=false`.
 
 `WorldHitList3D` exposes `Count`, `Truncated`, and `Hit(index)`. The returned
 hits remain valid for the documented list lifetime; invalid indexes trap using

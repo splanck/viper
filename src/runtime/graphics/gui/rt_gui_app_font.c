@@ -57,46 +57,75 @@ static int rt_gui_contextmenu_tree_uses_font(vg_contextmenu_t *menu, vg_font_t *
     return 0;
 }
 
-/// @brief Keep a font alive until the app is destroyed (prevents use-after-free).
-/// @details When the user calls App.SetFont or Font.Destroy while a GUI object
-///          still references the font, defer destruction to app teardown.
-/// @param app App that will own the retired font.
-/// @param font Font to retain (must not be NULL).
+/// @brief Queue a font for generation-safe reclamation by an app.
+/// @details Retirement records the app's current render generation. Collection may destroy the
+///          font only after a different generation has reached a presentation/idle boundary and
+///          no live app surface references it. Parallel arrays are grown transactionally so an
+///          allocation failure preserves the previous queue. Duplicate retirement refreshes the
+///          generation without adding storage.
+/// @param app App whose frame scheduler will collect the font.
+/// @param font Font to retain temporarily; must not be NULL.
+/// @return Non-zero when queued/refreshed, or zero on invalid input/allocation failure.
 int rt_gui_retire_font(rt_gui_app_t *app, vg_font_t *font) {
     if (!app || !font)
         return 0;
     for (int i = 0; i < app->retired_font_count; i++) {
-        if (app->retired_fonts[i] == font)
+        if (app->retired_fonts[i] == font) {
+            app->retired_font_generations[i] = app->frame_generation;
             return 1;
+        }
     }
     if (app->retired_font_count >= app->retired_font_cap) {
         if (app->retired_font_cap > INT_MAX / 2)
             return 0;
         int new_cap = app->retired_font_cap ? app->retired_font_cap * 2 : 4;
-        void *p = realloc(app->retired_fonts, (size_t)new_cap * sizeof(*app->retired_fonts));
-        if (!p)
+        vg_font_t **new_fonts = (vg_font_t **)malloc((size_t)new_cap * sizeof(*new_fonts));
+        uint64_t *new_generations = (uint64_t *)malloc((size_t)new_cap * sizeof(*new_generations));
+        if (!new_fonts || !new_generations) {
+            free(new_fonts);
+            free(new_generations);
             return 0;
-        app->retired_fonts = p;
+        }
+        if (app->retired_font_count > 0) {
+            memcpy(new_fonts,
+                   app->retired_fonts,
+                   (size_t)app->retired_font_count * sizeof(*new_fonts));
+            memcpy(new_generations,
+                   app->retired_font_generations,
+                   (size_t)app->retired_font_count * sizeof(*new_generations));
+        }
+        free(app->retired_fonts);
+        free(app->retired_font_generations);
+        app->retired_fonts = new_fonts;
+        app->retired_font_generations = new_generations;
         app->retired_font_cap = new_cap;
     }
-    app->retired_fonts[app->retired_font_count++] = font;
+    app->retired_fonts[app->retired_font_count] = font;
+    app->retired_font_generations[app->retired_font_count] = app->frame_generation;
+    ++app->retired_font_count;
     return 1;
 }
 
-/// @brief Return non-zero if any part of the app references `font`.
-/// @details Checks the default font, retired font list, entire widget tree
-///          (root + all dialogs), command palettes, notification manager, and
-///          manual tooltip. Used before deciding whether to destroy a font
-///          immediately or defer it to app teardown.
-static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
+/// @brief Return non-zero if an app has a render/theme reference to a font.
+/// @details Retirement queues are intentionally excluded: they keep storage alive but are not
+///          actual consumers. The scan covers app role/default fonts, effective/custom themes,
+///          retained and detached widget trees, palettes, notifications, tooltips, and menus.
+/// @param app App to inspect.
+/// @param font Candidate live or retired font pointer.
+/// @return Non-zero when an active reference remains.
+static int rt_gui_app_has_font_reference(rt_gui_app_t *app, vg_font_t *font) {
     if (!app || !font)
         return 0;
-    if (app->default_font == font)
+    if (app->default_font == font || app->role_font_bold == font || app->role_font_mono == font)
         return 1;
-    for (int i = 0; i < app->retired_font_count; i++) {
-        if (app->retired_fonts[i] == font)
-            return 1;
-    }
+    if (app->theme &&
+        (app->theme->typography.font_regular == font || app->theme->typography.font_bold == font ||
+         app->theme->typography.font_mono == font))
+        return 1;
+    if (app->custom_theme_base && (app->custom_theme_base->typography.font_regular == font ||
+                                   app->custom_theme_base->typography.font_bold == font ||
+                                   app->custom_theme_base->typography.font_mono == font))
+        return 1;
     if (rt_gui_widget_tree_uses_font(app->root, font))
         return 1;
     for (int i = 0; i < app->dialog_count; i++) {
@@ -118,11 +147,11 @@ static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
     return 0;
 }
 
-/// @brief Retire `font` into any app that currently holds a reference to it.
-/// @details Scans the active app, current app, and all registered apps in order.
-///          The first app that claims the font via `rt_gui_app_uses_font` takes
-///          ownership of it for deferred destruction. Returns 1 if retired, 0 if
-///          no app claims the font (safe to destroy immediately).
+/// @brief Retire `font` into every app that currently holds a render reference.
+/// @details Active/current candidates cover isolated fake-app tests; the registry covers ordinary
+///          multi-window use. Queue insertion is idempotent, so duplicates are harmless.
+/// @param font Font whose public owner is being destroyed/replaced.
+/// @return Non-zero when at least one app still references and queued the font.
 int rt_gui_retire_font_if_in_use(vg_font_t *font) {
     if (!font)
         return 0;
@@ -130,14 +159,14 @@ int rt_gui_retire_font_if_in_use(vg_font_t *font) {
     rt_gui_app_t *candidates[2] = {s_active_app, s_current_app};
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
         rt_gui_app_t *app = candidates[i];
-        if (app && rt_gui_app_uses_font(app, font)) {
+        if (app && rt_gui_app_has_font_reference(app, font)) {
             used = 1;
             rt_gui_retire_font(app, font);
         }
     }
     for (int i = 0; i < s_registered_app_count; i++) {
         rt_gui_app_t *app = s_registered_apps[i];
-        if (app && rt_gui_app_uses_font(app, font)) {
+        if (app && rt_gui_app_has_font_reference(app, font)) {
             used = 1;
             rt_gui_retire_font(app, font);
         }
@@ -146,7 +175,9 @@ int rt_gui_retire_font_if_in_use(vg_font_t *font) {
 }
 
 /// @brief Retire a font into every other app that still references it.
-/// @return non-zero when another live app references @p font.
+/// @param skip App being destroyed and therefore excluded.
+/// @param font Font whose ownership is being released.
+/// @return Non-zero when another live app references @p font.
 int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font) {
     if (!font)
         return 0;
@@ -154,19 +185,66 @@ int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font) {
     rt_gui_app_t *candidates[2] = {s_active_app, s_current_app};
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
         rt_gui_app_t *app = candidates[i];
-        if (app && app != skip && rt_gui_app_uses_font(app, font)) {
+        if (app && app != skip && rt_gui_app_has_font_reference(app, font)) {
             used = 1;
             rt_gui_retire_font(app, font);
         }
     }
     for (int i = 0; i < s_registered_app_count; i++) {
         rt_gui_app_t *app = s_registered_apps[i];
-        if (app && app != skip && rt_gui_app_uses_font(app, font)) {
+        if (app && app != skip && rt_gui_app_has_font_reference(app, font)) {
             used = 1;
             rt_gui_retire_font(app, font);
         }
     }
     return used;
+}
+
+/// @brief Return whether any known app still has a real reference to a font.
+/// @details The owner/current/active checks support isolated tests and registry transitions. The
+///          registered scan provides the authoritative multi-app view. Retirement entries alone
+///          never count as use.
+/// @param owner App currently attempting collection; may be an unregistered fake app.
+/// @param font Candidate font.
+/// @return Non-zero while any app surface still references the font.
+static int rt_gui_any_app_has_font_reference(rt_gui_app_t *owner, vg_font_t *font) {
+    rt_gui_app_t *candidates[3] = {owner, s_active_app, s_current_app};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+        if (candidates[i] && rt_gui_app_has_font_reference(candidates[i], font))
+            return 1;
+    }
+    for (int i = 0; i < s_registered_app_count; ++i) {
+        if (s_registered_apps[i] && rt_gui_app_has_font_reference(s_registered_apps[i], font))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Reclaim unused retired fonts after a safe app frame generation.
+/// @details Entries retired during the current generation remain untouched. Older entries are
+///          compacted in place; dead handles disappear, live fonts with remaining render/theme
+///          references stay queued, and unreferenced live fonts are destroyed. This operation is
+///          allocation-free and may be called at every presentation or idle boundary.
+/// @param app App whose retirement queue should be collected; NULL is ignored.
+void rt_gui_collect_retired_fonts(rt_gui_app_t *app) {
+    if (!app || app->retired_font_count <= 0)
+        return;
+    int write_index = 0;
+    for (int read_index = 0; read_index < app->retired_font_count; ++read_index) {
+        vg_font_t *font = app->retired_fonts[read_index];
+        uint64_t generation = app->retired_font_generations[read_index];
+        int keep =
+            font && vg_font_is_live(font) &&
+            (generation == app->frame_generation || rt_gui_any_app_has_font_reference(app, font));
+        if (!keep && font && vg_font_is_live(font))
+            vg_font_destroy(font);
+        if (keep) {
+            app->retired_fonts[write_index] = font;
+            app->retired_font_generations[write_index] = generation;
+            ++write_index;
+        }
+    }
+    app->retired_font_count = write_index;
 }
 
 /// @brief Recursively apply a font and size to a widget and all its descendants.
@@ -181,6 +259,12 @@ int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font) {
 void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float size) {
     if (!widget || !font)
         return;
+    vg_theme_t *theme = vg_theme_get_current();
+    vg_font_t *bold_font =
+        theme && vg_font_is_live(theme->typography.font_bold) ? theme->typography.font_bold : font;
+    vg_font_t *mono_font =
+        theme && vg_font_is_live(theme->typography.font_mono) ? theme->typography.font_mono : font;
+    vg_font_t *applied_font = font;
     switch (widget->type) {
         case VG_WIDGET_LABEL:
             vg_label_set_font((vg_label_t *)widget, font, size);
@@ -218,6 +302,9 @@ void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float siz
         case VG_WIDGET_COLORPICKER:
             vg_colorpicker_set_font((vg_colorpicker_t *)widget, font, size);
             break;
+        case VG_WIDGET_DATAGRID:
+            vg_datagrid_set_font((vg_datagrid_t *)widget, font, size);
+            break;
         case VG_WIDGET_TREEVIEW:
             vg_treeview_set_font((vg_treeview_t *)widget, font, size);
             break;
@@ -241,11 +328,21 @@ void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float siz
             // that must match the rendered glyph advances. Once a caller has set the
             // editor's font explicitly, do not overwrite it with the app-wide
             // (typically proportional) chrome font.
-            if (!((vg_codeeditor_t *)widget)->font_pinned)
-                vg_codeeditor_set_font((vg_codeeditor_t *)widget, font, size);
+            if (!((vg_codeeditor_t *)widget)->font_pinned) {
+                applied_font = mono_font;
+                vg_codeeditor_set_font((vg_codeeditor_t *)widget, applied_font, size);
+            } else {
+                applied_font = ((vg_codeeditor_t *)widget)->font;
+            }
             break;
         case VG_WIDGET_OUTPUTPANE:
-            vg_outputpane_set_font((vg_outputpane_t *)widget, font, size);
+            applied_font = mono_font;
+            vg_outputpane_set_font((vg_outputpane_t *)widget, applied_font, size);
+            break;
+        case VG_WIDGET_GROUPBOX:
+            applied_font = bold_font;
+            if (widget->vtable && widget->vtable->set_font)
+                widget->vtable->set_font(widget, applied_font, size);
             break;
         case VG_WIDGET_RADIO: {
             vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
@@ -258,6 +355,7 @@ void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float siz
                 widget->vtable->set_font(widget, font, size);
             break;
     }
+    widget->runtime_font_reference = applied_font;
     widget->needs_layout = true;
     widget->needs_paint = true;
     for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
@@ -272,6 +370,8 @@ void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float siz
 static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
     if (!widget || !font)
         return 0;
+    if (widget->runtime_font_reference == font)
+        return 1;
     switch (widget->type) {
         case VG_WIDGET_LABEL:
             return ((vg_label_t *)widget)->font == font;
@@ -293,6 +393,8 @@ static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
             return ((vg_spinner_t *)widget)->font == font;
         case VG_WIDGET_COLORPICKER:
             return ((vg_colorpicker_t *)widget)->font == font;
+        case VG_WIDGET_DATAGRID:
+            return ((vg_datagrid_t *)widget)->font == font;
         case VG_WIDGET_TREEVIEW:
             return ((vg_treeview_t *)widget)->font == font;
         case VG_WIDGET_TABBAR:
@@ -311,6 +413,10 @@ static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
             return ((vg_outputpane_t *)widget)->font == font;
         case VG_WIDGET_RADIO:
             return ((vg_radiobutton_t *)widget)->font == font;
+        case VG_WIDGET_GROUPBOX:
+            return ((vg_groupbox_t *)widget)->font == font;
+        case VG_WIDGET_POPUPLIST:
+            return ((vg_popuplist_t *)widget)->font == font;
         default:
             return 0;
     }
@@ -366,6 +472,11 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
 
     vg_theme_t *theme = vg_theme_get_current();
     float scale = (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
+    vg_font_t *bold_font =
+        theme && vg_font_is_live(theme->typography.font_bold) ? theme->typography.font_bold : font;
+    vg_font_t *mono_font =
+        theme && vg_font_is_live(theme->typography.font_mono) ? theme->typography.font_mono : font;
+    vg_font_t *applied_font = font;
 
     switch (widget->type) {
         case VG_WIDGET_LABEL: {
@@ -434,6 +545,13 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             picker->font_size = size > 0 ? size : 12.0f;
             break;
         }
+        case VG_WIDGET_DATAGRID: {
+            vg_datagrid_t *grid = (vg_datagrid_t *)widget;
+            grid->font = font;
+            grid->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            grid->line_height = grid->font_size * 1.4f;
+            break;
+        }
         case VG_WIDGET_TREEVIEW: {
             vg_treeview_t *tree = (vg_treeview_t *)widget;
             tree->font = font;
@@ -483,22 +601,33 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             // Skip editors whose font was pinned by an explicit SetFont: the
             // monospace grid (char_width) must stay matched to the rendered font.
             if (!editor->font_pinned) {
-                editor->font = font;
+                applied_font = mono_font;
+                editor->font = applied_font;
                 editor->font_size =
                     size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
                 if (editor->char_width <= 0.0f)
                     editor->char_width = editor->font_size * 0.6f;
                 if (editor->line_height <= 0.0f)
                     editor->line_height = editor->font_size * 1.35f;
+            } else {
+                applied_font = editor->font;
             }
             break;
         }
         case VG_WIDGET_OUTPUTPANE: {
             vg_outputpane_t *pane = (vg_outputpane_t *)widget;
-            pane->font = font;
+            applied_font = mono_font;
+            pane->font = applied_font;
             pane->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             if (pane->line_height <= 0.0f)
                 pane->line_height = pane->font_size * 1.35f;
+            break;
+        }
+        case VG_WIDGET_GROUPBOX: {
+            vg_groupbox_t *groupbox = (vg_groupbox_t *)widget;
+            applied_font = bold_font;
+            groupbox->font = applied_font;
+            groupbox->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
             break;
         }
         case VG_WIDGET_RADIO: {
@@ -513,6 +642,7 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             break;
     }
 
+    widget->runtime_font_reference = applied_font;
     widget->needs_layout = true;
     widget->needs_paint = true;
     for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
@@ -539,42 +669,58 @@ void rt_gui_apply_default_font(vg_widget_t *widget) {
         rt_gui_ensure_default_font();
     if (!app->default_font)
         return;
+    float effective_size = rt_gui_app_effective_font_size(app);
     if (rt_gui_font_handle_supports_metrics(app->default_font))
-        rt_gui_apply_font_to_widget(widget, app->default_font, app->default_font_size);
+        rt_gui_apply_font_to_widget(widget, app->default_font, effective_size);
     else
-        rt_gui_inherit_font_to_widget(widget, app->default_font, app->default_font_size);
+        rt_gui_inherit_font_to_widget(widget, app->default_font, effective_size);
 }
 
+/// @brief Reapply an app's default font to every retained and detached GUI surface.
+/// @details Converts the stored logical-point size to effective framebuffer pixels once, then
+///          propagates that value through the root tree, notifications, palettes, active tooltip,
+///          context menu, and dialogs. Invalid apps or apps without a default font are no-ops.
+/// @param app App whose default font should be propagated; ownership is unchanged.
 void rt_gui_reapply_default_font(rt_gui_app_t *app) {
     if (!app || !app->default_font)
         return;
+    float effective_size = rt_gui_app_effective_font_size(app);
     if (app->root) {
         if (rt_gui_font_handle_supports_metrics(app->default_font))
-            rt_gui_apply_font_to_widget(app->root, app->default_font, app->default_font_size);
+            rt_gui_apply_font_to_widget(app->root, app->default_font, effective_size);
         else
-            rt_gui_inherit_font_to_widget(app->root, app->default_font, app->default_font_size);
+            rt_gui_inherit_font_to_widget(app->root, app->default_font, effective_size);
     }
     if (app->notification_manager) {
         vg_notification_manager_set_font(
-            app->notification_manager, app->default_font, app->default_font_size);
+            app->notification_manager, app->default_font, effective_size);
     }
     for (int i = 0; i < app->command_palette_count; i++) {
         if (app->command_palettes[i])
-            vg_commandpalette_set_font(
-                app->command_palettes[i], app->default_font, app->default_font_size);
+            vg_commandpalette_set_font(app->command_palettes[i], app->default_font, effective_size);
+    }
+    if (app->tooltip_manager_state.active_tooltip) {
+        app->tooltip_manager_state.active_tooltip->font = app->default_font;
+        app->tooltip_manager_state.active_tooltip->font_size = effective_size;
+    }
+    if (rt_gui_get_active_app() == app) {
+        vg_tooltip_manager_t *tooltip_manager = vg_tooltip_manager_get();
+        if (tooltip_manager && tooltip_manager->active_tooltip) {
+            tooltip_manager->active_tooltip->font = app->default_font;
+            tooltip_manager->active_tooltip->font_size = effective_size;
+        }
     }
     if (app->manual_tooltip) {
         app->manual_tooltip->font = app->default_font;
-        app->manual_tooltip->font_size = app->default_font_size;
+        app->manual_tooltip->font_size = effective_size;
     }
     if (app->active_context_menu) {
         if (rt_gui_font_handle_supports_metrics(app->default_font))
-            vg_contextmenu_set_font(
-                app->active_context_menu, app->default_font, app->default_font_size);
+            vg_contextmenu_set_font(app->active_context_menu, app->default_font, effective_size);
     }
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i])
-            vg_dialog_set_font(app->dialog_stack[i], app->default_font, app->default_font_size);
+            vg_dialog_set_font(app->dialog_stack[i], app->default_font, effective_size);
     }
 }
 

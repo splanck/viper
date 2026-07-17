@@ -703,6 +703,19 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
     rt_weakref_free(ref_b);
 }
 
+/// @brief Verify that the registry's internal tombstone value is never accepted as a payload.
+/// @details Public validators accept arbitrary opaque addresses. Address value one is reserved as
+///          the open-addressing tombstone, so treating an occupied tombstone slot as an exact key
+///          would make header validation subtract from an invalid address. Both lookup entry
+///          points must reject the sentinel before probing and must clear an output header.
+static void test_heap_registry_tombstone_is_not_a_payload() {
+    void *sentinel = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
+    rt_heap_hdr_t *header = reinterpret_cast<rt_heap_hdr_t *>(static_cast<uintptr_t>(1));
+    ASSERT(rt_heap_is_payload(sentinel) == 0, "heap tombstone is not a payload");
+    ASSERT(rt_heap_try_get_header(sentinel, &header) == 0, "heap tombstone has no header");
+    ASSERT(header == nullptr, "failed tombstone lookup clears the header output");
+}
+
 static void test_collect_restores_cycle_after_finalizer_resurrection() {
     g_resurrected_object = NULL;
     g_cycle_finalizer_count = 0;
@@ -924,6 +937,7 @@ int main() {
     test_weakref_cleared_by_collect();
     test_weak_field_zeroed_by_collect();
     test_collect_reclaims_cycle_storage_and_finalizers();
+    test_heap_registry_tombstone_is_not_a_payload();
     test_collect_restores_cycle_after_finalizer_resurrection();
     test_collect_releases_untracked_external_children();
     test_traverse_can_touch_gc_without_deadlock();

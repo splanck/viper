@@ -128,16 +128,45 @@ inline const std::vector<const char *> &windowsExclusiveDynamicSymbols() {
 }
 
 inline const std::vector<const char *> &macExclusiveDynamicSymbols() {
-    static const std::vector<const char *> kSyms = {
-        "sincosf_stret", "_NSGetExecutablePath", "_NSGetArgc", "_NSGetArgv",
-        "_NSConcreteStackBlock", "_NSConcreteGlobalBlock", "_NSConcreteMallocBlock", "_Block_copy",
-        "_Block_release", "_Block_object_assign", "_Block_object_dispose", "dyld_stub_binder",
-        "_tlv_atexit", "_tlv_bootstrap", "__assert_rtn", "__chkstk_darwin", "__stderrp", "__stdinp",
-        "__stdoutp", "__darwin_check_fd_set_overflow", "select$DARWIN_EXTSN", "mach_timebase_info",
-        "mach_absolute_time", "mach_task_self_", "mach_host_self", "sysctlbyname", "task_info",
-        "host_page_size", "_os_unfair_lock_lock", "_os_unfair_lock_unlock", "os_unfair_lock_lock",
-        "os_unfair_lock_unlock", "sel_registerName", "sel_getName", "_objc_empty_cache",
-        "_objc_empty_vtable"};
+    static const std::vector<const char *> kSyms = {"sincosf_stret",
+                                                    "memset_pattern4",
+                                                    "memset_pattern8",
+                                                    "memset_pattern16",
+                                                    "_NSGetExecutablePath",
+                                                    "_NSGetArgc",
+                                                    "_NSGetArgv",
+                                                    "_NSConcreteStackBlock",
+                                                    "_NSConcreteGlobalBlock",
+                                                    "_NSConcreteMallocBlock",
+                                                    "_Block_copy",
+                                                    "_Block_release",
+                                                    "_Block_object_assign",
+                                                    "_Block_object_dispose",
+                                                    "dyld_stub_binder",
+                                                    "_tlv_atexit",
+                                                    "_tlv_bootstrap",
+                                                    "__assert_rtn",
+                                                    "__chkstk_darwin",
+                                                    "__stderrp",
+                                                    "__stdinp",
+                                                    "__stdoutp",
+                                                    "__darwin_check_fd_set_overflow",
+                                                    "select$DARWIN_EXTSN",
+                                                    "mach_timebase_info",
+                                                    "mach_absolute_time",
+                                                    "mach_task_self_",
+                                                    "mach_host_self",
+                                                    "sysctlbyname",
+                                                    "task_info",
+                                                    "host_page_size",
+                                                    "_os_unfair_lock_lock",
+                                                    "_os_unfair_lock_unlock",
+                                                    "os_unfair_lock_lock",
+                                                    "os_unfair_lock_unlock",
+                                                    "sel_registerName",
+                                                    "sel_getName",
+                                                    "_objc_empty_cache",
+                                                    "_objc_empty_vtable"};
     return kSyms;
 }
 
@@ -366,6 +395,12 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "memcpy",
         "memmove",
         "memset",
+        // Darwin libSystem helpers that Clang may synthesize when vectorizing
+        // repeated fixed-width stores. They are intentionally macOS-only via
+        // macExclusiveDynamicSymbols() above.
+        "memset_pattern4",
+        "memset_pattern8",
+        "memset_pattern16",
         "memcmp",
         "bcmp",
         "memchr",

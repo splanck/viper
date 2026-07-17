@@ -5,15 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_videowidget.c
-// Purpose: GUI VideoWidget — video playback widget for Viper.GUI apps.
-//   Creates an image widget for video display + optional transport controls.
+// File: src/runtime/graphics/gui/rt_videowidget.c
+// Purpose: App-scheduled GUI video playback with reusable frame conversion,
+//          transport controls, fullscreen integration, and consumable events.
 //
 // Key invariants:
-//   - Video frames decoded by VideoPlayer, blitted to vg_image_t.
+//   - Video frames decoded by VideoPlayer are atomically uploaded to vg_image_t.
 //   - Slider tracks playback position (0.0-1.0 normalized).
-//   - Update(dt) must be called each GUI frame to advance playback.
+//   - Automatic and manual updates decode/upload at most once per app frame.
 //   - Pixel format conversion: Viper Pixels (0xRRGGBBAA) → vg_image RGBA bytes.
+//   - Media event edges are independent; consuming one never consumes another.
+// Ownership/Lifetime:
+//   - The wrapper owns its player and reusable RGBA conversion buffer.
+//   - The owning app's retained root owns the widget subtree.
+//   - App destruction invalidates wrappers before destroying the retained tree.
 //
 // Links: rt_videowidget.h, rt_videoplayer.h, rt_gui.h
 //
@@ -43,6 +48,12 @@ extern void rt_obj_free(void *obj);
  * single external dependency so isolated VideoWidget contract tests can stub
  * the runtime GUI layer without linking all widget/app objects. */
 extern void *rt_gui_widget_parent_container_checked(void *handle);
+extern void *rt_gui_widget_owner_app(void *handle);
+extern uint64_t rt_gui_app_frame_generation_for_owner(void *app);
+extern int rt_gui_image_try_set_rgba_bytes(void *image,
+                                           const uint8_t *rgba,
+                                           int64_t width,
+                                           int64_t height);
 
 /* VideoPlayer functions */
 extern void *rt_videoplayer_open(rt_string path);
@@ -71,14 +82,35 @@ typedef struct {
     void *pause_button;
     void *stop_button;
     void *position_slider;
+    void *owner_app; /* borrowed rt_gui_app_t */
+    uint8_t *rgba_scratch;
+    size_t rgba_scratch_capacity;
+    const void *last_frame;
+    const char *error; /* borrowed stable diagnostic literal */
     /* Config */
     int8_t show_controls;
     int8_t looping;
+    int8_t auto_update;
+    int8_t controls_auto_hide;
+    int8_t controls_hidden_by_auto;
+    int8_t buffering;
+    int8_t at_end;
+    int8_t failure_latched;
+    int8_t manual_update_pending;
     double volume;
     double slider_last_value;
+    double controls_idle_seconds;
+    double last_uploaded_position;
     /* Cached dimensions */
     int32_t video_width;
     int32_t video_height;
+    uint64_t revision;
+    uint64_t loaded_edges;
+    uint64_t failed_edges;
+    uint64_t buffering_changed_edges;
+    uint64_t ended_edges;
+    uint64_t seeked_edges;
+    uint64_t last_auto_generation;
 } rt_videowidget;
 
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
@@ -131,6 +163,11 @@ static void videowidget_unregister_wrapper(rt_videowidget *w) {
                 &s_videowidget_wrappers[i + 1],
                 (s_videowidget_wrapper_count - i - 1) * sizeof(*s_videowidget_wrappers));
         s_videowidget_wrapper_count--;
+        if (s_videowidget_wrapper_count == 0) {
+            free(s_videowidget_wrappers);
+            s_videowidget_wrappers = NULL;
+            s_videowidget_wrapper_cap = 0;
+        }
         return;
     }
 }
@@ -151,6 +188,90 @@ static int videowidget_wrapper_is_registered(const rt_videowidget *w) {
 static rt_videowidget *videowidget_checked(void *obj) {
     rt_videowidget *w = (rt_videowidget *)obj;
     return videowidget_wrapper_is_registered(w) && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;
+}
+
+/// @brief Advance the widget's saturating non-consuming state revision.
+/// @param w Live widget to update.
+static void videowidget_note_revision(rt_videowidget *w) {
+    if (w && w->revision != UINT64_MAX)
+        ++w->revision;
+}
+
+/// @brief Record one independent consumable media-event edge and state revision.
+/// @param w Live widget receiving the event.
+/// @param edges Saturating event counter owned by @p w.
+static void videowidget_note_event(rt_videowidget *w, uint64_t *edges) {
+    if (!w || !edges)
+        return;
+    if (*edges != UINT64_MAX)
+        ++*edges;
+    videowidget_note_revision(w);
+}
+
+/// @brief Consume at most one edge from a saturating media-event counter.
+/// @param edges Event counter to inspect and decrement.
+/// @return 1 when an edge was consumed, otherwise 0.
+static int64_t videowidget_consume_event(uint64_t *edges) {
+    if (!edges || *edges == 0u)
+        return 0;
+    --*edges;
+    return 1;
+}
+
+/// @brief Set a frame-processing failure once per consecutive failure episode.
+/// @details Repeated bad frames retain the diagnostic without flooding WasFailed. A successful
+///          upload clears and rearms the latch.
+/// @param w Live widget.
+/// @param error Stable non-empty diagnostic literal.
+static void videowidget_set_failure(rt_videowidget *w, const char *error) {
+    if (!w || !error)
+        return;
+    w->error = error;
+    if (!w->failure_latched) {
+        w->failure_latched = 1;
+        videowidget_note_event(w, &w->failed_edges);
+    }
+}
+
+/// @brief Clear a recovered frame failure and rearm the next failure edge.
+/// @param w Live widget whose upload just succeeded.
+static void videowidget_clear_failure(rt_videowidget *w) {
+    if (!w || (!w->failure_latched && !w->error))
+        return;
+    w->failure_latched = 0;
+    w->error = NULL;
+    videowidget_note_revision(w);
+}
+
+/// @brief Record a buffering-state transition without conflating it with failure.
+/// @param w Live widget.
+/// @param buffering Non-zero when actively playing without a decoded frame.
+static void videowidget_set_buffering(rt_videowidget *w, int buffering) {
+    if (!w)
+        return;
+    const int8_t normalized = buffering ? 1 : 0;
+    if (w->buffering == normalized)
+        return;
+    w->buffering = normalized;
+    videowidget_note_event(w, &w->buffering_changed_edges);
+}
+
+/// @brief Apply the effective transport-strip visibility.
+/// @param w Live widget.
+/// @param visible Non-zero to show the retained controls subtree.
+static void videowidget_apply_controls_visibility(rt_videowidget *w, int visible) {
+    if (w && w->controls_widget)
+        rt_widget_set_visible(w->controls_widget, visible ? 1 : 0);
+}
+
+/// @brief Reveal requested controls and reset the deterministic idle timer.
+/// @param w Live widget receiving transport interaction.
+static void videowidget_wake_controls(rt_videowidget *w) {
+    if (!w)
+        return;
+    w->controls_idle_seconds = 0.0;
+    w->controls_hidden_by_auto = 0;
+    videowidget_apply_controls_visibility(w, w->show_controls != 0);
 }
 
 /// @brief GC finalizer for a VideoWidget.
@@ -188,6 +309,12 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     w->pause_button = NULL;
     w->stop_button = NULL;
     w->position_slider = NULL;
+    w->owner_app = NULL;
+    free(w->rgba_scratch);
+    w->rgba_scratch = NULL;
+    w->rgba_scratch_capacity = 0u;
+    w->last_frame = NULL;
+    w->error = NULL;
 
     if (w->player) {
         release_gc_object(w->player);
@@ -207,6 +334,211 @@ static double clamp_volume(double vol) {
     if (vol > 1.0)
         return 1.0;
     return vol;
+}
+
+/// @brief Grow the reusable packed-to-RGBA conversion buffer atomically.
+/// @param w Live widget that owns the buffer.
+/// @param width Positive frame width.
+/// @param height Positive frame height.
+/// @return 1 when sufficient storage is available, otherwise 0 with old storage retained.
+static int videowidget_ensure_rgba_scratch(rt_videowidget *w, int64_t width, int64_t height) {
+    if (!w || width <= 0 || height <= 0 || (uintmax_t)width > (uintmax_t)SIZE_MAX ||
+        (uintmax_t)height > (uintmax_t)SIZE_MAX) {
+        return 0;
+    }
+    const size_t frame_width = (size_t)width;
+    const size_t frame_height = (size_t)height;
+    if (frame_width > SIZE_MAX / frame_height || frame_width * frame_height > SIZE_MAX / 4u) {
+        return 0;
+    }
+    const size_t required = frame_width * frame_height * 4u;
+    if (required <= w->rgba_scratch_capacity && w->rgba_scratch)
+        return 1;
+    uint8_t *replacement = (uint8_t *)malloc(required);
+    if (!replacement)
+        return 0;
+    free(w->rgba_scratch);
+    w->rgba_scratch = replacement;
+    w->rgba_scratch_capacity = required;
+    return 1;
+}
+
+/// @brief Convert and upload the current decoded frame without steady-state allocation.
+/// @details Frame dimensions, storage, and conversion capacity are validated before the atomic
+///          Image upload. Paused frames at an unchanged position skip conversion entirely.
+/// @param w Live VideoWidget.
+/// @param force Non-zero when a seek/transport transition requires refresh at an equal position.
+/// @return 1 when a frame is available and current, otherwise 0.
+static int videowidget_upload_current_frame(rt_videowidget *w, int force) {
+    if (!w || !w->player)
+        return 0;
+    void *frame = rt_videoplayer_get_frame(w->player);
+    const int playing = rt_videoplayer_get_is_playing(w->player) != 0;
+    if (!frame) {
+        videowidget_set_buffering(w, playing);
+        return 0;
+    }
+    videowidget_set_buffering(w, 0);
+
+    const int64_t frame_width = rt_pixels_width(frame);
+    const int64_t frame_height = rt_pixels_height(frame);
+    const uint32_t *raw = rt_pixels_raw_buffer(frame);
+    if (frame_width <= 0 || frame_height <= 0 || frame_width > INT32_MAX ||
+        frame_height > INT32_MAX) {
+        videowidget_set_failure(w, "Video frame dimensions are invalid");
+        return 0;
+    }
+    if (!raw) {
+        videowidget_set_failure(w, "Video frame pixel data is unavailable");
+        return 0;
+    }
+
+    double position = rt_videoplayer_get_position(w->player);
+    if (!isfinite(position))
+        position = 0.0;
+    if (!force && w->last_frame == frame && w->video_width == (int32_t)frame_width &&
+        w->video_height == (int32_t)frame_height && w->last_uploaded_position == position) {
+        videowidget_clear_failure(w);
+        return 1;
+    }
+    if (!videowidget_ensure_rgba_scratch(w, frame_width, frame_height)) {
+        videowidget_set_failure(w, "Video frame storage could not be allocated");
+        return 0;
+    }
+
+    const size_t pixel_count = (size_t)frame_width * (size_t)frame_height;
+    for (size_t index = 0; index < pixel_count; ++index) {
+        const uint32_t packed = raw[index];
+        const size_t output = index * 4u;
+        w->rgba_scratch[output + 0u] = (uint8_t)((packed >> 24u) & 0xFFu);
+        w->rgba_scratch[output + 1u] = (uint8_t)((packed >> 16u) & 0xFFu);
+        w->rgba_scratch[output + 2u] = (uint8_t)((packed >> 8u) & 0xFFu);
+        w->rgba_scratch[output + 3u] = (uint8_t)(packed & 0xFFu);
+    }
+    if (!w->image_widget || !rt_gui_image_try_set_rgba_bytes(
+                                w->image_widget, w->rgba_scratch, frame_width, frame_height)) {
+        videowidget_set_failure(w, "Video frame image upload failed");
+        return 0;
+    }
+
+    if (w->video_width != (int32_t)frame_width || w->video_height != (int32_t)frame_height) {
+        w->video_width = (int32_t)frame_width;
+        w->video_height = (int32_t)frame_height;
+        rt_widget_set_size(w->image_widget, frame_width, frame_height);
+    }
+    w->last_frame = frame;
+    w->last_uploaded_position = position;
+    videowidget_clear_failure(w);
+    videowidget_note_revision(w);
+    return 1;
+}
+
+/// @brief Perform one authoritative transport/decode/upload scheduler step.
+/// @param w Live VideoWidget.
+/// @param dt Elapsed seconds; invalid or non-positive values do not advance the player.
+static void videowidget_update_core(rt_videowidget *w, double dt) {
+    if (!w || !w->player)
+        return;
+    const double elapsed = isfinite(dt) && dt > 0.0 ? dt : 0.0;
+    int interaction = 0;
+    int force_frame = 0;
+
+    if (w->play_button && rt_widget_was_clicked(w->play_button)) {
+        rt_videoplayer_play(w->player);
+        videowidget_note_revision(w);
+        interaction = 1;
+    }
+    if (w->pause_button && rt_widget_was_clicked(w->pause_button)) {
+        rt_videoplayer_pause(w->player);
+        videowidget_note_revision(w);
+        interaction = 1;
+    }
+    if (w->stop_button && rt_widget_was_clicked(w->stop_button)) {
+        rt_videoplayer_stop(w->player);
+        w->at_end = 0;
+        videowidget_note_revision(w);
+        interaction = 1;
+        force_frame = 1;
+    }
+    if (interaction)
+        videowidget_wake_controls(w);
+
+    if (elapsed > 0.0)
+        rt_videoplayer_update(w->player, elapsed);
+
+    double duration = rt_videoplayer_get_duration(w->player);
+    if (!isfinite(duration) || duration < 0.0)
+        duration = 0.0;
+    if (w->position_slider && duration > 0.0) {
+        double slider_value = rt_slider_get_value(w->position_slider);
+        if (!isfinite(slider_value))
+            slider_value = 0.0;
+        if (slider_value < 0.0)
+            slider_value = 0.0;
+        if (slider_value > 1.0)
+            slider_value = 1.0;
+        if (slider_value != w->slider_last_value) {
+            rt_videoplayer_seek(w->player, slider_value * duration);
+            w->slider_last_value = slider_value;
+            videowidget_note_event(w, &w->seeked_edges);
+            videowidget_wake_controls(w);
+            interaction = 1;
+            force_frame = 1;
+        }
+    }
+
+    double position = rt_videoplayer_get_position(w->player);
+    if (!isfinite(position) || position < 0.0)
+        position = 0.0;
+    const int ended_now =
+        duration > 0.0 && !rt_videoplayer_get_is_playing(w->player) && position >= duration - 0.001;
+    if (ended_now && !w->at_end) {
+        w->at_end = 1;
+        videowidget_note_event(w, &w->ended_edges);
+        videowidget_wake_controls(w);
+    } else if (!ended_now) {
+        w->at_end = 0;
+    }
+    if (ended_now && w->looping) {
+        rt_videoplayer_stop(w->player);
+        rt_videoplayer_play(w->player);
+        w->at_end = 0;
+        force_frame = 1;
+    }
+
+    (void)videowidget_upload_current_frame(w, force_frame || elapsed > 0.0);
+
+    if (w->position_slider && duration > 0.0) {
+        double playback_value = rt_videoplayer_get_position(w->player) / duration;
+        if (!isfinite(playback_value))
+            playback_value = 0.0;
+        if (playback_value < 0.0)
+            playback_value = 0.0;
+        if (playback_value > 1.0)
+            playback_value = 1.0;
+        rt_slider_set_value(w->position_slider, playback_value);
+        w->slider_last_value = playback_value;
+    }
+
+    const int playing = rt_videoplayer_get_is_playing(w->player) != 0;
+    if (!w->show_controls) {
+        w->controls_hidden_by_auto = 0;
+        videowidget_apply_controls_visibility(w, 0);
+    } else if (!w->controls_auto_hide || !playing) {
+        if (w->controls_hidden_by_auto) {
+            w->controls_hidden_by_auto = 0;
+            videowidget_note_revision(w);
+        }
+        w->controls_idle_seconds = 0.0;
+        videowidget_apply_controls_visibility(w, 1);
+    } else if (!interaction && elapsed > 0.0) {
+        w->controls_idle_seconds += elapsed;
+        if (w->controls_idle_seconds >= 2.5 && !w->controls_hidden_by_auto) {
+            w->controls_hidden_by_auto = 1;
+            videowidget_apply_controls_visibility(w, 0);
+            videowidget_note_revision(w);
+        }
+    }
 }
 
 /// @brief Construct a video-playback GUI widget. Opens the file via `rt_videoplayer_open`,
@@ -246,10 +578,15 @@ void *rt_videowidget_new(void *parent, rt_string path) {
     w->player = player;
     w->video_width = vw;
     w->video_height = vh;
+    w->owner_app = rt_gui_widget_owner_app(parent_widget);
     w->show_controls = 1;
     w->looping = 0;
+    w->auto_update = 1;
     w->volume = 1.0;
     w->slider_last_value = 0.0;
+    w->last_uploaded_position = NAN;
+    w->revision = 1u;
+    w->last_auto_generation = UINT64_MAX;
     if (!videowidget_register_wrapper(w)) {
         videowidget_dispose(w, 0);
         release_gc_object(w);
@@ -296,9 +633,11 @@ void *rt_videowidget_new(void *parent, rt_string path) {
     rt_widget_add_child(parent_widget, w->root_widget);
     if (w->controls_widget)
         rt_widget_add_child(w->root_widget, w->controls_widget);
+    videowidget_apply_controls_visibility(w, 1);
 
     /* Display first frame */
-    rt_videowidget_update(w, 0.0);
+    videowidget_update_core(w, 0.0);
+    videowidget_note_event(w, &w->loaded_edges);
 
     return w;
 }
@@ -321,6 +660,9 @@ void rt_videowidget_play(void *obj) {
     if (!w->player)
         return;
     rt_videoplayer_play(w->player);
+    w->at_end = 0;
+    videowidget_wake_controls(w);
+    videowidget_note_revision(w);
 }
 
 /// @brief Pause playback (preserves position). Resume with `_play`.
@@ -332,6 +674,8 @@ void rt_videowidget_pause(void *obj) {
     if (!w->player)
         return;
     rt_videoplayer_pause(w->player);
+    videowidget_wake_controls(w);
+    videowidget_note_revision(w);
 }
 
 /// @brief Stop playback and rewind to position 0.
@@ -343,82 +687,143 @@ void rt_videowidget_stop(void *obj) {
     if (!w->player)
         return;
     rt_videoplayer_stop(w->player);
+    w->at_end = 0;
+    videowidget_wake_controls(w);
+    videowidget_note_revision(w);
 }
 
-/// @brief Per-frame tick: handle button clicks (play/pause/stop), advance video by `dt` seconds,
-/// auto-loop when configured (rewind+play on natural end), decode the current frame to RGBA and
-/// blit into the Image widget, and bidirectionally sync the position slider with playback time.
-/// Slider drags cause seeks; playback time updates the slider position. Caller invokes once per
-/// frame from the GUI loop.
+/// @brief Manually request one transport/decode/upload update.
+/// @details With auto-update enabled, a completed scheduler update or earlier manual update in the
+///          current app generation suppresses duplicate work. Manual-only mode always updates.
 void rt_videowidget_update(void *obj, double dt) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w || !w->player)
+        return;
+    if (w->auto_update && w->owner_app) {
+        const uint64_t generation = rt_gui_app_frame_generation_for_owner(w->owner_app);
+        if (generation == 0u) {
+            videowidget_update_core(w, dt);
+            return;
+        }
+        if (w->manual_update_pending || w->last_auto_generation == generation) {
+            return;
+        }
+        videowidget_update_core(w, dt);
+        w->manual_update_pending = 1;
+        return;
+    }
+    videowidget_update_core(w, dt);
+}
+
+/// @brief Enable or disable app-owned automatic frame scheduling.
+/// @details Changing mode resets idempotence bookkeeping so the next selected update path performs
+///          one complete step. Unattached widgets can retain the flag but have no app deadline.
+void rt_videowidget_set_auto_update(void *obj, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     rt_videowidget *w = videowidget_checked(obj);
     if (!w)
         return;
-    if (!w->player)
+    const int8_t normalized = enabled ? 1 : 0;
+    if (w->auto_update == normalized)
         return;
+    w->auto_update = normalized;
+    w->manual_update_pending = 0;
+    w->last_auto_generation = UINT64_MAX;
+    videowidget_note_revision(w);
+}
 
-    if (w->play_button && rt_widget_was_clicked(w->play_button))
-        rt_videoplayer_play(w->player);
-    if (w->pause_button && rt_widget_was_clicked(w->pause_button))
-        rt_videoplayer_pause(w->player);
-    if (w->stop_button && rt_widget_was_clicked(w->stop_button))
-        rt_videoplayer_stop(w->player);
+/// @brief Return whether this live widget participates in app scheduling.
+int64_t rt_videowidget_is_auto_update(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w && w->auto_update ? 1 : 0;
+}
 
-    /* Advance video playback */
-    if (isfinite(dt) && dt > 0.0)
-        rt_videoplayer_update(w->player, dt);
+/// @brief Consume one successful-load edge without changing other event counters.
+int64_t rt_videowidget_was_loaded(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? videowidget_consume_event(&w->loaded_edges) : 0;
+}
 
-    /* Check for natural end-of-video before auto-looping. Paused videos also
-       report !is_playing, so position must be at the end of the stream. */
-    if (w->looping && rt_videoplayer_get_is_playing(w->player) == 0 &&
-        rt_videoplayer_get_duration(w->player) > 0.0 &&
-        rt_videoplayer_get_position(w->player) >= rt_videoplayer_get_duration(w->player) - 0.001) {
-        rt_videoplayer_stop(w->player);
-        rt_videoplayer_play(w->player);
-    }
+/// @brief Consume one frame-processing failure edge.
+int64_t rt_videowidget_was_failed(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? videowidget_consume_event(&w->failed_edges) : 0;
+}
 
-    /* Update image widget with current frame */
-    void *frame = rt_videoplayer_get_frame(w->player);
-    if (frame && w->image_widget) {
-        int64_t frame_w = rt_pixels_width(frame);
-        int64_t frame_h = rt_pixels_height(frame);
-        const uint32_t *raw = rt_pixels_raw_buffer(frame);
-        if (raw && frame_w > 0 && frame_h > 0 && frame_w <= INT32_MAX && frame_h <= INT32_MAX) {
-            rt_image_set_pixels(w->image_widget, frame, frame_w, frame_h);
-            if (w->video_width != (int32_t)frame_w || w->video_height != (int32_t)frame_h) {
-                w->video_width = (int32_t)frame_w;
-                w->video_height = (int32_t)frame_h;
-                rt_widget_set_size(w->image_widget, frame_w, frame_h);
-            }
-        }
-    }
+/// @brief Consume one buffering-state transition edge.
+int64_t rt_videowidget_was_buffering_changed(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? videowidget_consume_event(&w->buffering_changed_edges) : 0;
+}
 
-    if (w->position_slider) {
-        double duration = rt_videoplayer_get_duration(w->player);
-        if (isfinite(duration) && duration > 0.0) {
-            double slider_value = rt_slider_get_value(w->position_slider);
-            if (!isfinite(slider_value))
-                slider_value = 0.0;
-            if (slider_value < 0.0)
-                slider_value = 0.0;
-            if (slider_value > 1.0)
-                slider_value = 1.0;
-            if (slider_value != w->slider_last_value) {
-                rt_videoplayer_seek(w->player, slider_value * duration);
-                w->slider_last_value = slider_value;
-            }
-            double playback_value = rt_videoplayer_get_position(w->player) / duration;
-            if (!isfinite(playback_value))
-                playback_value = 0.0;
-            if (playback_value < 0.0)
-                playback_value = 0.0;
-            if (playback_value > 1.0)
-                playback_value = 1.0;
-            rt_slider_set_value(w->position_slider, playback_value);
-            w->slider_last_value = playback_value;
-        }
-    }
+/// @brief Consume one natural-end event edge.
+int64_t rt_videowidget_was_ended(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? videowidget_consume_event(&w->ended_edges) : 0;
+}
+
+/// @brief Consume one timeline-seek event edge.
+int64_t rt_videowidget_was_seeked(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w ? videowidget_consume_event(&w->seeked_edges) : 0;
+}
+
+/// @brief Return a caller-owned copy of the current frame diagnostic.
+rt_string rt_videowidget_get_error(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    const char *error = w && w->error ? w->error : "";
+    return rt_string_from_bytes(error, strlen(error));
+}
+
+/// @brief Return the saturating non-consuming widget revision in signed runtime range.
+int64_t rt_videowidget_get_revision(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
+        return 0;
+    return w->revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)w->revision;
+}
+
+/// @brief Enable or disable the deterministic 2.5-second transport auto-hide policy.
+void rt_videowidget_set_controls_auto_hide(void *obj, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
+        return;
+    const int8_t normalized = enabled ? 1 : 0;
+    if (w->controls_auto_hide == normalized)
+        return;
+    w->controls_auto_hide = normalized;
+    videowidget_wake_controls(w);
+    videowidget_note_revision(w);
+}
+
+/// @brief Forward fullscreen state to this widget's borrowed owning app.
+void rt_videowidget_set_fullscreen(void *obj, int64_t fullscreen) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w || !w->owner_app)
+        return;
+    const int64_t requested = fullscreen ? 1 : 0;
+    if (rt_app_is_fullscreen(w->owner_app) == requested)
+        return;
+    rt_app_set_fullscreen(w->owner_app, requested);
+    videowidget_note_revision(w);
+}
+
+/// @brief Query fullscreen state from this widget's borrowed owning app.
+int64_t rt_videowidget_is_fullscreen(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    return w && w->owner_app && rt_app_is_fullscreen(w->owner_app) ? 1 : 0;
 }
 
 /// @brief Toggle visibility of the play/pause/stop/slider strip (image widget always visible).
@@ -427,9 +832,14 @@ void rt_videowidget_set_show_controls(void *obj, int8_t show) {
     rt_videowidget *w = videowidget_checked(obj);
     if (!w)
         return;
-    w->show_controls = show;
-    if (w->controls_widget)
-        rt_widget_set_visible(w->controls_widget, show != 0);
+    const int8_t normalized = show ? 1 : 0;
+    if (w->show_controls == normalized)
+        return;
+    w->show_controls = normalized;
+    w->controls_hidden_by_auto = 0;
+    w->controls_idle_seconds = 0.0;
+    videowidget_apply_controls_visibility(w, normalized);
+    videowidget_note_revision(w);
 }
 
 int64_t rt_videowidget_get_show_controls(void *obj) {
@@ -446,7 +856,11 @@ void rt_videowidget_set_loop(void *obj, int8_t loop) {
     rt_videowidget *w = videowidget_checked(obj);
     if (!w)
         return;
-    w->looping = loop;
+    const int8_t normalized = loop ? 1 : 0;
+    if (w->looping == normalized)
+        return;
+    w->looping = normalized;
+    videowidget_note_revision(w);
 }
 
 int64_t rt_videowidget_get_loop(void *obj) {
@@ -464,9 +878,12 @@ void rt_videowidget_set_volume(void *obj, double vol) {
     if (!w)
         return;
     vol = clamp_volume(vol);
+    if (w->volume == vol)
+        return;
     w->volume = vol;
     if (w->player)
         rt_videoplayer_set_volume(w->player, vol);
+    videowidget_note_revision(w);
 }
 
 /// @brief Return 1 if the underlying VideoPlayer is currently playing, else 0.
@@ -494,6 +911,64 @@ double rt_videowidget_get_duration(void *obj) {
     if (!w)
         return 0.0;
     return w->player ? rt_videoplayer_get_duration(w->player) : 0.0;
+}
+
+/// @brief Run one automatic update for every VideoWidget owned by an app.
+/// @details Registry traversal allocates nothing. A pending manual update is acknowledged, and a
+///          repeated call with the same generation is ignored, guaranteeing one decode/upload per
+///          app generation without background threads.
+void rt_videowidget_update_app(void *app, double dt, uint64_t frame_generation) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!app || frame_generation == 0u)
+        return;
+    for (size_t index = 0; index < s_videowidget_wrapper_count; ++index) {
+        rt_videowidget *w = s_videowidget_wrappers[index];
+        if (!w || w->magic != RT_VIDEOWIDGET_MAGIC || w->owner_app != app || !w->auto_update ||
+            !w->player) {
+            continue;
+        }
+        if (w->last_auto_generation == frame_generation)
+            continue;
+        if (w->manual_update_pending) {
+            w->manual_update_pending = 0;
+            w->last_auto_generation = frame_generation;
+            continue;
+        }
+        videowidget_update_core(w, dt);
+        w->last_auto_generation = frame_generation;
+    }
+}
+
+/// @brief Return a 16ms scheduler deadline while an owned auto-updated video is playing.
+int64_t rt_videowidget_next_deadline_ms(const void *app) {
+    if (!app)
+        return -1;
+    for (size_t index = 0; index < s_videowidget_wrapper_count; ++index) {
+        rt_videowidget *w = s_videowidget_wrappers[index];
+        if (w && w->magic == RT_VIDEOWIDGET_MAGIC && w->owner_app == app && w->auto_update &&
+            w->player && rt_videoplayer_get_is_playing(w->player)) {
+            return 16;
+        }
+    }
+    return -1;
+}
+
+/// @brief Release controller resources for every VideoWidget belonging to a dying app.
+/// @details Subtrees are deliberately not destroyed here because app root teardown owns them. The
+///          registry compacts during disposal, so the loop advances only past non-matching entries.
+void rt_videowidget_forget_app(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!app)
+        return;
+    size_t index = 0u;
+    while (index < s_videowidget_wrapper_count) {
+        rt_videowidget *w = s_videowidget_wrappers[index];
+        if (w && w->magic == RT_VIDEOWIDGET_MAGIC && w->owner_app == app) {
+            videowidget_dispose(w, 0);
+            continue;
+        }
+        ++index;
+    }
 }
 
 void *rt_videowidget_get_root(void *obj) {

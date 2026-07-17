@@ -44,6 +44,20 @@ static vg_image_t *rt_image_checked(void *handle) {
     return (vg_image_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_IMAGE);
 }
 
+/// @brief Atomically upload caller-converted straight RGBA bytes into an Image widget.
+/// @details This internal media fast path performs no conversion allocation. The lower Image
+///          copies into reusable owned storage and preserves its old pixels on validation or OOM.
+int rt_gui_image_try_set_rgba_bytes(void *image,
+                                    const uint8_t *rgba,
+                                    int64_t width,
+                                    int64_t height) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_image_t *img = rt_image_checked(image);
+    if (!img || !rgba || width <= 0 || height <= 0 || width > INT32_MAX || height > INT32_MAX)
+        return 0;
+    return vg_image_try_set_pixels(img, rgba, (int)width, (int)height) ? 1 : 0;
+}
+
 //=============================================================================
 // Image Widget
 //=============================================================================
@@ -58,10 +72,10 @@ void *rt_image_new(void *parent) {
 }
 
 /// @brief Convert a Viper Pixels object to byte-order RGBA and upload to an image widget.
-/// @details Viper stores pixels as packed 0xRRGGBBAA 32-bit integers; vg_image_set_pixels
-///          expects interleaved [R, G, B, A] bytes. This function allocates a temporary
-///          RGBA buffer, shuffles channels per-pixel, calls vg_image_set_pixels, then
-///          frees the buffer. width/height 0 defaults to the Pixels object dimensions.
+/// @details Viper stores pixels as packed 0xRRGGBBAA 32-bit integers; the lower image expects
+///          interleaved [R, G, B, A] bytes. This function allocates a temporary conversion buffer,
+///          shuffles channels, performs an atomic lower upload, and then frees the buffer.
+///          Width/height zero defaults to the Pixels object dimensions.
 /// @param image  Image widget to update (may be NULL — no-op).
 /// @param pixels Viper Pixels object providing source pixel data (NULL clears the image).
 /// @param width  Crop width (0 = full Pixels width).
@@ -121,15 +135,88 @@ static int rt_image_set_from_pixels_object(vg_image_t *image,
         }
     }
 
-    vg_image_set_pixels(image, rgba, (int)width, (int)height);
+    const bool uploaded = vg_image_try_set_pixels(image, rgba, (int)width, (int)height);
     free(rgba);
-    return 1;
+    return uploaded ? 1 : 0;
 }
 
 /// @brief Set the pixels of the image.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     rt_image_set_from_pixels_object(rt_image_checked(image), pixels, width, height);
+}
+
+/// @brief Atomically upload a Pixels object and report whether it completed.
+/// @details NULL source objects are rejected so callers cannot accidentally clear a valid image;
+///          the legacy SetPixels entry point retains its NULL-clears compatibility behavior.
+int64_t rt_image_try_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!pixels)
+        return 0;
+    return rt_image_set_from_pixels_object(rt_image_checked(image), pixels, width, height) ? 1 : 0;
+}
+
+/// @brief Convert and atomically copy a rectangular Pixels region into an existing image.
+/// @details Rectangle arithmetic is validated before allocating or touching image state. Only the
+///          requested source region is converted, which bounds transient memory to width*height*4.
+int64_t rt_image_update_region(void *image,
+                               void *pixels,
+                               int64_t source_x,
+                               int64_t source_y,
+                               int64_t width,
+                               int64_t height,
+                               int64_t dest_x,
+                               int64_t dest_y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_image_t *img = rt_image_checked(image);
+    if (!img || !pixels || source_x < 0 || source_y < 0 || width <= 0 || height <= 0 ||
+        dest_x < 0 || dest_y < 0 || source_x > INT32_MAX || source_y > INT32_MAX ||
+        width > INT32_MAX || height > INT32_MAX || dest_x > INT32_MAX || dest_y > INT32_MAX) {
+        return 0;
+    }
+
+    const int64_t source_width = rt_pixels_width(pixels);
+    const int64_t source_height = rt_pixels_height(pixels);
+    const uint32_t *source = rt_pixels_raw_buffer(pixels);
+    if (!source || source_width <= 0 || source_height <= 0 || width > source_width ||
+        height > source_height || source_x > source_width - width ||
+        source_y > source_height - height || (uintmax_t)source_width > (uintmax_t)SIZE_MAX) {
+        return 0;
+    }
+
+    const size_t region_width = (size_t)width;
+    const size_t region_height = (size_t)height;
+    if (region_width > SIZE_MAX / region_height || region_width * region_height > SIZE_MAX / 4u) {
+        return 0;
+    }
+    uint8_t *rgba = (uint8_t *)malloc(region_width * region_height * 4u);
+    if (!rgba)
+        return 0;
+
+    const size_t stride = (size_t)source_width;
+    for (size_t y = 0; y < region_height; ++y) {
+        for (size_t x = 0; x < region_width; ++x) {
+            const uint32_t packed = source[((size_t)source_y + y) * stride + (size_t)source_x + x];
+            const size_t output = (y * region_width + x) * 4u;
+            rgba[output + 0u] = (uint8_t)((packed >> 24u) & 0xFFu);
+            rgba[output + 1u] = (uint8_t)((packed >> 16u) & 0xFFu);
+            rgba[output + 2u] = (uint8_t)((packed >> 8u) & 0xFFu);
+            rgba[output + 3u] = (uint8_t)(packed & 0xFFu);
+        }
+    }
+
+    const bool updated = vg_image_update_region(img,
+                                                rgba,
+                                                (int)width,
+                                                (int)height,
+                                                0,
+                                                0,
+                                                (int)width,
+                                                (int)height,
+                                                (int)dest_x,
+                                                (int)dest_y);
+    free(rgba);
+    return updated ? 1 : 0;
 }
 
 /// @brief Clear the image widget's pixel data, showing nothing.
@@ -148,6 +235,24 @@ void rt_image_set_scale_mode(void *image, int64_t mode) {
     if (img) {
         vg_image_set_scale_mode(img, (vg_image_scale_t)rt_gui_clamp_i64_to_i32(mode, 0, 3));
     }
+}
+
+/// @brief Select nearest or bilinear image resizing.
+void rt_image_set_filter(void *image, int64_t filter) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_image_t *img = rt_image_checked(image);
+    if (img) {
+        vg_image_set_filter(img,
+                            filter == RT_IMAGE_FILTER_BILINEAR ? VG_IMAGE_FILTER_BILINEAR
+                                                               : VG_IMAGE_FILTER_NEAREST);
+    }
+}
+
+/// @brief Return the current image resize filter, defaulting to nearest for invalid handles.
+int64_t rt_image_get_filter(void *image) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_image_t *img = rt_image_checked(image);
+    return img ? (int64_t)vg_image_get_filter(img) : RT_IMAGE_FILTER_NEAREST;
 }
 
 /// @brief Set the opacity of the image.
@@ -326,6 +431,18 @@ void rt_groupbox_add_child(void *gb, void *child) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+/// @brief Stub: graphics disabled — no internal RGBA upload can succeed.
+int rt_gui_image_try_set_rgba_bytes(void *image,
+                                    const uint8_t *rgba,
+                                    int64_t width,
+                                    int64_t height) {
+    (void)image;
+    (void)rgba;
+    (void)width;
+    (void)height;
+    return 0;
+}
+
 /// @brief Stub: graphics disabled — returns NULL; no image widget is created.
 void *rt_image_new(void *parent) {
     (void)parent;
@@ -340,6 +457,35 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
     (void)height;
 }
 
+/// @brief Stub: graphics disabled — no image upload can succeed.
+int64_t rt_image_try_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
+    (void)image;
+    (void)pixels;
+    (void)width;
+    (void)height;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no image region can be updated.
+int64_t rt_image_update_region(void *image,
+                               void *pixels,
+                               int64_t source_x,
+                               int64_t source_y,
+                               int64_t width,
+                               int64_t height,
+                               int64_t dest_x,
+                               int64_t dest_y) {
+    (void)image;
+    (void)pixels;
+    (void)source_x;
+    (void)source_y;
+    (void)width;
+    (void)height;
+    (void)dest_x;
+    (void)dest_y;
+    return 0;
+}
+
 /// @brief Clear the image widget's pixel data, showing nothing.
 void rt_image_clear(void *image) {
     (void)image;
@@ -349,6 +495,18 @@ void rt_image_clear(void *image) {
 void rt_image_set_scale_mode(void *image, int64_t mode) {
     (void)image;
     (void)mode;
+}
+
+/// @brief Stub: graphics disabled — image filtering has no target.
+void rt_image_set_filter(void *image, int64_t filter) {
+    (void)image;
+    (void)filter;
+}
+
+/// @brief Stub: graphics disabled — nearest is the stable default filter.
+int64_t rt_image_get_filter(void *image) {
+    (void)image;
+    return RT_IMAGE_FILTER_NEAREST;
 }
 
 /// @brief Set the opacity of the image.
@@ -383,7 +541,9 @@ void rt_floatingpanel_set_position(void *panel, double x, double y) {
 }
 
 /// @brief Stub: graphics disabled — no floating panel to center.
-void rt_floatingpanel_center_in_parent(void *panel) { (void)panel; }
+void rt_floatingpanel_center_in_parent(void *panel) {
+    (void)panel;
+}
 
 /// @brief Set the width and height of a floating panel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {

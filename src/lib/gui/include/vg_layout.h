@@ -114,6 +114,16 @@ typedef enum vg_direction {
     VG_DIRECTION_COLUMN_REVERSE, ///< Bottom-to-top column layout.
 } vg_direction_t;
 
+/// @brief Line-wrapping policy for Flex containers.
+/// @details `VG_FLEX_WRAP_REVERSE` forms the same lines as normal wrapping but
+///          places the first line at the cross-axis end and subsequent lines
+///          toward the cross-axis start.
+typedef enum vg_flex_wrap {
+    VG_FLEX_NO_WRAP,      ///< Keep all children on one flex line.
+    VG_FLEX_WRAP,         ///< Wrap overflowing children toward the cross-axis end.
+    VG_FLEX_WRAP_REVERSE, ///< Wrap overflowing children toward the cross-axis start.
+} vg_flex_wrap_t;
+
 //=============================================================================
 // Dock Position
 //=============================================================================
@@ -169,7 +179,7 @@ typedef struct vg_flex_layout {
     vg_justify_t justify_content; ///< Distribution of children along the main axis.
     vg_align_t align_content;     ///< Alignment of wrapped lines along the cross axis.
     float gap;                    ///< Uniform gap between adjacent items (pixels).
-    bool wrap;                    ///< If true, children wrap to new lines when space runs out.
+    vg_flex_wrap_t wrap;          ///< Line-wrapping and cross-axis line-order policy.
     void *scratch_children;       ///< Internal reusable child-pointer scratch buffer.
     int scratch_child_capacity;   ///< Capacity of scratch_children in widget pointers.
     void *scratch_lines;          ///< Internal reusable wrapped-line scratch buffer.
@@ -238,6 +248,16 @@ void vg_vbox_set_align(vg_widget_t *vbox, vg_align_t align);
 /// @param justify The justification strategy to apply.
 void vg_vbox_set_justify(vg_widget_t *vbox, vg_justify_t justify);
 
+/// @brief Read the cross-axis alignment of a VBox.
+/// @param vbox VBox widget to inspect.
+/// @return Current alignment, or `VG_ALIGN_START` for a non-VBox handle.
+vg_align_t vg_vbox_get_align(const vg_widget_t *vbox);
+
+/// @brief Read the main-axis justification of a VBox.
+/// @param vbox VBox widget to inspect.
+/// @return Current justification, or `VG_JUSTIFY_START` for a non-VBox handle.
+vg_justify_t vg_vbox_get_justify(const vg_widget_t *vbox);
+
 //=============================================================================
 // HBox Layout API
 //=============================================================================
@@ -268,6 +288,16 @@ void vg_hbox_set_align(vg_widget_t *hbox, vg_align_t align);
 /// @param hbox    The HBox widget to update.
 /// @param justify The justification strategy to apply.
 void vg_hbox_set_justify(vg_widget_t *hbox, vg_justify_t justify);
+
+/// @brief Read the cross-axis alignment of an HBox.
+/// @param hbox HBox widget to inspect.
+/// @return Current alignment, or `VG_ALIGN_START` for a non-HBox handle.
+vg_align_t vg_hbox_get_align(const vg_widget_t *hbox);
+
+/// @brief Read the main-axis justification of an HBox.
+/// @param hbox HBox widget to inspect.
+/// @return Current justification, or `VG_JUSTIFY_START` for a non-HBox handle.
+vg_justify_t vg_hbox_get_justify(const vg_widget_t *hbox);
 
 //=============================================================================
 // Flex Layout API
@@ -319,6 +349,20 @@ void vg_container_set_spacing(vg_widget_t *container, float spacing);
 /// @param wrap true to enable wrapping, false to keep all items on one line.
 void vg_flex_set_wrap(vg_widget_t *flex, bool wrap);
 
+/// @brief Set the complete Flex line-wrapping policy.
+/// @details Unlike the compatibility boolean setter, this operation can select
+///          reverse cross-axis line placement. Invalid values become no-wrap.
+/// @param flex Flex widget to update.
+/// @param wrap Wrapping policy.
+void vg_flex_set_wrap_mode(vg_widget_t *flex, vg_flex_wrap_t wrap);
+
+/// @brief Identify the concrete layout algorithm owned by a widget.
+/// @details The query compares the layout vtable and never interprets opaque
+///          implementation data, making it safe for runtime handle validation.
+/// @param widget Live widget to inspect; may be NULL.
+/// @return Concrete layout kind, or `VG_LAYOUT_NONE` for an ordinary widget.
+vg_layout_type_t vg_layout_get_type(const vg_widget_t *widget);
+
 //=============================================================================
 // Grid Layout API
 //=============================================================================
@@ -357,14 +401,16 @@ void vg_grid_set_gap(vg_widget_t *grid, float column_gap, float row_gap);
 ///
 /// @param grid   The Grid widget to update.
 /// @param column Zero-based column index.
-/// @param width  Desired column width in pixels.
+/// @param width  Track definition: positive fixed pixels, zero auto/content,
+///               or a negative fractional weight.
 void vg_grid_set_column_width(vg_widget_t *grid, int column, float width);
 
 /// @brief Override the height of a specific row in a Grid container.
 ///
 /// @param grid   The Grid widget to update.
 /// @param row    Zero-based row index.
-/// @param height Desired row height in pixels.
+/// @param height Track definition: positive fixed pixels, zero auto/content,
+///               or a negative fractional weight.
 void vg_grid_set_row_height(vg_widget_t *grid, int row, float height);
 
 /// @brief Place a child widget in a specific cell (or span of cells) in the grid.
@@ -380,6 +426,20 @@ void vg_grid_set_row_height(vg_widget_t *grid, int row, float height);
 /// @param col_span Number of columns the child spans (>= 1).
 /// @param row_span Number of rows the child spans (>= 1).
 void vg_grid_place(
+    vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span);
+
+/// @brief Validate and record one direct child's grid placement atomically.
+/// @details The child must already be a direct child of the grid. Negative or
+///          out-of-range indices, non-positive spans, and allocation failure
+///          leave existing placement metadata unchanged.
+/// @param grid Grid layout container.
+/// @param child Existing direct child of @p grid.
+/// @param column Zero-based starting column.
+/// @param row Zero-based starting row.
+/// @param col_span Positive number of columns to span.
+/// @param row_span Positive number of rows to span.
+/// @return true when placement metadata was committed, otherwise false.
+bool vg_grid_place_checked(
     vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span);
 
 //=============================================================================
@@ -402,6 +462,21 @@ vg_widget_t *vg_dock_create(void);
 /// @param child    The child widget to add.
 /// @param position The edge to dock the child to (left, top, right, bottom, or fill).
 void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position);
+
+/// @brief Add or update a child in a Dock container with status reporting.
+/// @details A detached child is attached after registry capacity is secured. A
+///          child owned by another parent, an invalid dock position, or an
+///          allocation failure leaves both trees unchanged.
+/// @param dock Dock layout container.
+/// @param child Detached widget or existing direct child of @p dock.
+/// @param position Left, top, right, bottom, or fill.
+/// @return true when the dock assignment was committed, otherwise false.
+bool vg_dock_add_checked(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position);
+
+/// @brief Set the physical gap reserved between consecutive docked regions.
+/// @param dock Dock layout container.
+/// @param gap Non-negative gap in pixels; invalid values become zero.
+void vg_dock_set_gap(vg_widget_t *dock, float gap);
 
 //=============================================================================
 // Layout Engine Functions (internal use)

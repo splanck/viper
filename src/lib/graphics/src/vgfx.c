@@ -407,6 +407,54 @@ void vgfx_internal_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
 // FIFO eviction when full, with special handling for CLOSE events.
 //===----------------------------------------------------------------------===//
 
+/// @brief Initialize a bounded value-type event for one native IME lifecycle transition.
+/// @details See the internal header for the full ownership and index-unit contract. When the
+///          native UTF-8 payload exceeds inline capacity, the copied prefix ends before the first
+///          codepoint that would cross the bound and the event exposes `truncated = 1`.
+int vgfx_internal_init_composition_event(vgfx_event_t *event,
+                                         vgfx_event_type_t type,
+                                         int64_t time_ms,
+                                         const char *text,
+                                         size_t text_length,
+                                         int32_t selection_start,
+                                         int32_t selection_length,
+                                         int32_t replacement_start,
+                                         int32_t replacement_length,
+                                         int modifiers) {
+    if (!event)
+        return 0;
+    if (type != VGFX_EVENT_COMPOSITION_START && type != VGFX_EVENT_COMPOSITION_UPDATE &&
+        type != VGFX_EVENT_COMPOSITION_COMMIT && type != VGFX_EVENT_COMPOSITION_CANCEL)
+        return 0;
+    if (!text && text_length != 0)
+        return 0;
+
+    memset(event, 0, sizeof(*event));
+    event->type = type;
+    event->time_ms = time_ms;
+
+    size_t copy_length = text_length;
+    const size_t maximum = (size_t)VGFX_COMPOSITION_TEXT_CAPACITY - 1u;
+    if (copy_length > maximum) {
+        copy_length = maximum;
+        while (copy_length > 0 &&
+               (((const unsigned char *)text)[copy_length] & UINT8_C(0xC0)) == UINT8_C(0x80)) {
+            copy_length--;
+        }
+        event->data.composition.truncated = 1;
+    }
+    if (copy_length > 0)
+        memcpy(event->data.composition.text, text, copy_length);
+    event->data.composition.text[copy_length] = '\0';
+    event->data.composition.text_length = (uint32_t)copy_length;
+    event->data.composition.selection_start = selection_start < 0 ? 0 : selection_start;
+    event->data.composition.selection_length = selection_length < 0 ? 0 : selection_length;
+    event->data.composition.replacement_start = replacement_start;
+    event->data.composition.replacement_length = replacement_length;
+    event->data.composition.modifiers = modifiers;
+    return 1;
+}
+
 /// @brief Yield during event queue lock contention.
 /// @details Uses the native scheduler yield primitive where available.  This
 ///          keeps the queue's critical section lightweight while preventing
@@ -421,10 +469,11 @@ void vgfx_internal_event_wait(void) {
 ///          leave callers with a permanently pressed key/button or a missed close
 ///          notification.
 /// @param type Event type to classify.
-/// @return Non-zero for close/key-up/mouse-up/focus-lost events.
+/// @return Non-zero for close, release/focus-loss, and IME lifecycle boundary events.
 static int vgfx_event_is_release_state_event(vgfx_event_type_t type) {
     return type == VGFX_EVENT_CLOSE || type == VGFX_EVENT_KEY_UP || type == VGFX_EVENT_MOUSE_UP ||
-           type == VGFX_EVENT_FOCUS_LOST;
+           type == VGFX_EVENT_FOCUS_LOST || type == VGFX_EVENT_COMPOSITION_START ||
+           type == VGFX_EVENT_COMPOSITION_COMMIT || type == VGFX_EVENT_COMPOSITION_CANCEL;
 }
 
 /// @brief Test whether an event is cheap to evict during overflow.
@@ -436,7 +485,8 @@ static int vgfx_event_is_release_state_event(vgfx_event_type_t type) {
 /// @return Non-zero when the event is a preferred overflow victim.
 static int vgfx_event_is_transient_overflow_candidate(vgfx_event_type_t type) {
     return type == VGFX_EVENT_MOUSE_MOVE || type == VGFX_EVENT_SCROLL ||
-           type == VGFX_EVENT_RESIZE || type == VGFX_EVENT_FOCUS_GAINED;
+           type == VGFX_EVENT_RESIZE || type == VGFX_EVENT_FOCUS_GAINED ||
+           type == VGFX_EVENT_TEXT_INPUT || type == VGFX_EVENT_COMPOSITION_UPDATE;
 }
 
 /// @brief Test whether an event must survive an explicit queue flush.
@@ -554,6 +604,19 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
     if (win->destroying) {
         vgfx_internal_event_unlock(win);
         return 0;
+    }
+
+    /* Native IMEs can publish many preedit selection updates in one platform
+       pump. Only the newest consecutive update is observable, while start,
+       commit, and cancel boundaries remain distinct queue entries. */
+    if (event->type == VGFX_EVENT_COMPOSITION_UPDATE && win->event_head != win->event_tail) {
+        int32_t previous =
+            (win->event_head == 0) ? (VGFX_INTERNAL_EVENT_QUEUE_SLOTS - 1) : (win->event_head - 1);
+        if (win->event_queue[previous].type == VGFX_EVENT_COMPOSITION_UPDATE) {
+            win->event_queue[previous] = *event;
+            vgfx_internal_event_unlock(win);
+            return 1;
+        }
     }
     int32_t next_head = vgfx_ring_next_index(win->event_head);
 
@@ -1367,6 +1430,21 @@ int32_t vgfx_window_get_height(vgfx_window_t window) {
 //===----------------------------------------------------------------------===//
 // Event Handling
 //===----------------------------------------------------------------------===//
+
+/// @brief Append a validated caller-authored event to the public event queue.
+/// @details The queue owns a value copy, so stack-authored events and inline text payloads
+///          remain valid after this call returns. Routing through the internal synchronized
+///          enqueue operation preserves native ordering, overflow accounting, and release-event
+///          protection. A NONE or out-of-range discriminator is never a dispatchable event and
+///          is rejected before the queue is touched.
+/// @param window Window whose synchronized event queue receives the value.
+/// @param event Caller-owned event to copy.
+/// @return 1 on successful enqueue, otherwise 0.
+int32_t vgfx_post_event(vgfx_window_t window, const vgfx_event_t *event) {
+    if (!window || !event || event->type <= VGFX_EVENT_NONE || event->type > VGFX_EVENT_FILE_DROP)
+        return 0;
+    return vgfx_internal_enqueue_event((struct vgfx_window *)window, event);
+}
 
 /// @brief Poll the next event from the window's event queue.
 /// @details Dequeues and returns the oldest event.  If the queue is empty,

@@ -236,6 +236,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_color.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_app_font.c
+        graphics/gui/rt_gui_font_platform.c
+        graphics/gui/rt_gui_accessibility.c
         graphics/gui/rt_gui_codeeditor.c
         graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
@@ -248,9 +250,13 @@ set(RT_GRAPHICS_SOURCES
         graphics/gui/rt_gui_system.c
         graphics/gui/rt_gui_widgets.c
         graphics/gui/rt_gui_subhandle.c
+        graphics/gui/rt_gui_layout.c
+        graphics/gui/rt_gui_theme.c
         graphics/gui/rt_gui_widgets_complex.c
         graphics/gui/rt_gui_image.c
         graphics/gui/rt_gui_controls.c
+        graphics/gui/rt_gui_color.c
+        graphics/gui/rt_gui_constants.c
         graphics/gui/rt_gui_ide.cpp
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
@@ -404,6 +410,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/rt_font.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_app_font.c
+        graphics/gui/rt_gui_accessibility.c
         graphics/gui/rt_gui_codeeditor.c
         graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
@@ -416,9 +423,14 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/gui/rt_gui_system.c
         graphics/gui/rt_gui_widgets.c
         graphics/gui/rt_gui_subhandle.c
+        graphics/gui/rt_gui_layout.c
+        graphics/gui/rt_gui_theme.c
         graphics/gui/rt_gui_widgets_complex.c
         graphics/gui/rt_gui_image.c
         graphics/gui/rt_gui_controls.c
+        graphics/gui/rt_gui_color.c
+        graphics/gui/rt_gui_constants.c
+        graphics/gui/rt_gui_ide.cpp
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
         graphics/input/rt_inputmgr.c
@@ -499,14 +511,18 @@ set(RT_GRAPHICS_DISABLED_SOURCES
 if (APPLE)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_metal.m)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_macos_menu.m)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_macos.m)
     set_source_files_properties(graphics/3d/backend/vgfx3d_backend_metal.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
     set_source_files_properties(graphics/gui/rt_gui_macos_menu.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
+    set_source_files_properties(graphics/gui/rt_gui_accessibility_macos.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
 endif ()
 if (WIN32)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_d3d11.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_win32.c)
 endif ()
 if (UNIX AND NOT APPLE AND NOT VIPERGFX_BACKEND STREQUAL "Headless")
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_opengl.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_linux.c)
 endif ()
 
 set(RT_AUDIO_SOURCES
@@ -931,8 +947,8 @@ target_link_libraries(viper_rt_localization PUBLIC viper_rt_collections viper_rt
 
 # Windows requires ws2_32 for sockets
 if (WIN32)
-    target_link_libraries(viper_rt_base PUBLIC shell32)
-    target_link_libraries(viper_runtime PUBLIC shell32)
+    target_link_libraries(viper_rt_base PUBLIC shell32 advapi32)
+    target_link_libraries(viper_runtime PUBLIC shell32 advapi32)
     target_link_libraries(viper_rt_network PUBLIC ws2_32)
     target_link_libraries(viper_runtime PUBLIC ws2_32)
     target_link_libraries(viper_rt_graphics PUBLIC Xinput9_1_0)

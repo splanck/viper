@@ -6,18 +6,18 @@
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/widgets/vg_minimap.c
-// Purpose: Minimap widget — a scaled-down pixel-density view of a linked
-//          vg_codeeditor_t that shows the full document and highlights the
-//          current viewport.  Clicking or dragging scrolls the editor.
+// Purpose: Revision-observing minimap widget with a bounded direct-mapped line
+//          raster-summary cache and interactive viewport navigation.
 // Key invariants:
-//   - render_buffer is a heap-allocated RGBA pixel buffer sized to the widget's
-//     physical dimensions; it is rebuilt when buffer_dirty is true.
+//   - Line-summary lookup is O(1), bounded by maximum_cached_lines, and never
+//     scales retained memory with document length.
+//   - Text/layout changes invalidate line summaries; scroll-only changes retain
+//     them and repaint only the viewport-dependent surface.
 //   - scale controls the vertical pixels-per-line ratio (clamped to [0.05, 0.5]).
 //   - show_viewport controls drawing of the viewport indicator rectangle.
 //   - buffer_dirty is set whenever the document or widget size changes.
 // Ownership/Lifetime:
-//   - minimap->render_buffer and minimap->markers are heap-allocated and freed
-//     in minimap_destroy.
+//   - render_buffer, line_cache, and markers are owned and freed by the minimap.
 //   - The widget does not own the linked vg_codeeditor_t.
 // Links: lib/gui/include/vg_ide_widgets.h,
 //        lib/gui/include/vg_theme.h,
@@ -28,6 +28,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,7 @@ static int minimap_trimmed_line_bounds(const char *text,
                                        int *out_first,
                                        int *out_last);
 static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap);
+static void minimap_clear_line_cache(vg_minimap_t *minimap);
 
 //=============================================================================
 // Minimap VTable
@@ -89,6 +91,17 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
     minimap->bg_color = 0xFF111827;
     minimap->text_color = 0xFF3B82F6;
     minimap->buffer_dirty = true;
+    minimap->source_revision = 1u;
+    (void)vg_minimap_set_maximum_cached_lines(minimap, 2048u);
+    if (editor && vg_widget_is_live(&editor->base)) {
+        minimap->observed_text_revision = editor->revision;
+        minimap->observed_layout_revision = editor->layout_generation;
+        minimap->observed_scroll_x = editor->scroll_x;
+        minimap->observed_scroll_y = editor->scroll_y;
+        minimap->observed_visible_first_line = editor->visible_first_line;
+        minimap->observed_visible_line_count = editor->visible_line_count;
+        minimap->observed_line_count = editor->line_count;
+    }
 
     return minimap;
 }
@@ -97,7 +110,11 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
 static void minimap_destroy(vg_widget_t *widget) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     free(minimap->render_buffer);
+    free(minimap->line_cache);
     free(minimap->markers);
+    minimap->render_buffer = NULL;
+    minimap->line_cache = NULL;
+    minimap->markers = NULL;
 }
 
 /// @brief Destroy the minimap widget, freeing its pixel buffer and markers.
@@ -145,6 +162,105 @@ static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap) {
         return NULL;
     }
     return minimap->editor;
+}
+
+/// @brief Advance the minimap's saturating observed-source revision.
+/// @param minimap Minimap whose source or viewport changed.
+static void minimap_advance_source_revision(vg_minimap_t *minimap) {
+    if (minimap && minimap->source_revision != UINT64_MAX)
+        ++minimap->source_revision;
+}
+
+/// @brief Invalidate every direct-mapped cached line summary without freeing storage.
+/// @param minimap Minimap cache to clear.
+static void minimap_clear_line_cache(vg_minimap_t *minimap) {
+    if (!minimap)
+        return;
+    if (minimap->line_cache && minimap->maximum_cached_lines > 0u) {
+        memset(minimap->line_cache,
+               0,
+               (size_t)minimap->maximum_cached_lines * sizeof(*minimap->line_cache));
+    }
+    minimap->cached_line_count = 0u;
+}
+
+/// @brief Synchronize source-content, layout, and viewport observations from the editor.
+bool vg_minimap_sync_source(vg_minimap_t *minimap) {
+    if (!minimap)
+        return false;
+    vg_codeeditor_t *editor = minimap_live_editor(minimap);
+    if (!editor)
+        return false;
+
+    const bool content_changed = minimap->observed_text_revision != editor->revision ||
+                                 minimap->observed_layout_revision != editor->layout_generation ||
+                                 minimap->observed_line_count != editor->line_count;
+    const bool viewport_changed =
+        minimap->observed_scroll_x != editor->scroll_x ||
+        minimap->observed_scroll_y != editor->scroll_y ||
+        minimap->observed_visible_first_line != editor->visible_first_line ||
+        minimap->observed_visible_line_count != editor->visible_line_count;
+    if (!content_changed && !viewport_changed)
+        return false;
+
+    minimap->observed_text_revision = editor->revision;
+    minimap->observed_layout_revision = editor->layout_generation;
+    minimap->observed_scroll_x = editor->scroll_x;
+    minimap->observed_scroll_y = editor->scroll_y;
+    minimap->observed_visible_first_line = editor->visible_first_line;
+    minimap->observed_visible_line_count = editor->visible_line_count;
+    minimap->observed_line_count = editor->line_count;
+    if (content_changed) {
+        minimap_clear_line_cache(minimap);
+        minimap->buffer_dirty = true;
+    }
+    minimap_advance_source_revision(minimap);
+    vg_widget_note_revision(&minimap->base);
+    vg_widget_invalidate(&minimap->base);
+    return true;
+}
+
+/// @brief Synchronize and return the minimap's combined observed-source revision.
+uint64_t vg_minimap_get_source_revision(vg_minimap_t *minimap) {
+    if (!minimap)
+        return 0u;
+    (void)vg_minimap_sync_source(minimap);
+    return minimap->source_revision;
+}
+
+/// @brief Atomically replace the bounded direct-mapped line cache.
+bool vg_minimap_set_maximum_cached_lines(vg_minimap_t *minimap, uint32_t maximum_lines) {
+    if (!minimap)
+        return false;
+    if (maximum_lines == minimap->maximum_cached_lines)
+        return true;
+    if (maximum_lines == 0u) {
+        free(minimap->line_cache);
+        minimap->line_cache = NULL;
+        minimap->maximum_cached_lines = 0u;
+        minimap->cached_line_count = 0u;
+        vg_widget_note_revision(&minimap->base);
+        vg_widget_invalidate(&minimap->base);
+        return true;
+    }
+    if ((size_t)maximum_lines > SIZE_MAX / sizeof(*minimap->line_cache))
+        return false;
+    vg_minimap_line_cache_entry_t *replacement =
+        (vg_minimap_line_cache_entry_t *)calloc((size_t)maximum_lines, sizeof(*replacement));
+    if (!replacement)
+        return false;
+    free(minimap->line_cache);
+    minimap->line_cache = replacement;
+    minimap->maximum_cached_lines = maximum_lines;
+    minimap->cached_line_count = 0u;
+    vg_widget_note_revision(&minimap->base);
+    vg_widget_invalidate(&minimap->base);
+    return true;
+}
+
+/// @brief Return the count of currently valid direct-mapped cache slots.
+uint32_t vg_minimap_get_cached_line_count(const vg_minimap_t *minimap) {
+    return minimap ? minimap->cached_line_count : 0u;
 }
 
 /// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor
@@ -239,10 +355,46 @@ static int minimap_trimmed_line_bounds(const char *text,
     return first >= 0 && last >= first;
 }
 
+/// @brief Return cached trimmed bounds for a line, populating its direct-mapped slot on miss.
+/// @param minimap Minimap owning the bounded cache.
+/// @param line Non-negative source line number.
+/// @param text Borrowed line text.
+/// @param max_columns Maximum byte columns to scan.
+/// @param out_first Receives first non-whitespace byte column.
+/// @param out_last Receives last non-whitespace byte column.
+/// @return Non-zero when the represented line segment is non-blank.
+static int minimap_cached_line_bounds(vg_minimap_t *minimap,
+                                      int line,
+                                      const char *text,
+                                      int max_columns,
+                                      int *out_first,
+                                      int *out_last) {
+    if (!minimap || !minimap->line_cache || minimap->maximum_cached_lines == 0u || line < 0)
+        return minimap_trimmed_line_bounds(text, max_columns, out_first, out_last);
+    const uint32_t slot = (uint32_t)line % minimap->maximum_cached_lines;
+    vg_minimap_line_cache_entry_t *entry = &minimap->line_cache[slot];
+    if (!entry->valid || entry->line != line || entry->scan_columns != max_columns) {
+        const bool was_valid = entry->valid;
+        entry->line = line;
+        entry->scan_columns = max_columns;
+        (void)minimap_trimmed_line_bounds(
+            text, max_columns, &entry->first_column, &entry->last_column);
+        entry->valid = true;
+        if (!was_valid && minimap->cached_line_count < minimap->maximum_cached_lines)
+            ++minimap->cached_line_count;
+    }
+    if (out_first)
+        *out_first = entry->first_column;
+    if (out_last)
+        *out_last = entry->last_column;
+    return entry->first_column >= 0 && entry->last_column >= entry->first_column;
+}
+
 /// @brief VTable paint: draws background, then proportional text bars for each document line,
 /// marker overlays, and the viewport highlight rectangle.
 static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
+    (void)vg_minimap_sync_source(minimap);
     vg_codeeditor_t *editor = minimap_live_editor(minimap);
     if (!editor)
         return;
@@ -307,7 +459,8 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
 
         int first = -1;
         int last = -1;
-        if (!minimap_trimmed_line_bounds(editor->lines[line].text, scan_columns, &first, &last))
+        if (!minimap_cached_line_bounds(
+                minimap, line, editor->lines[line].text, scan_columns, &first, &last))
             continue;
 
         float start_ratio = (float)first / visible_columns;
@@ -399,10 +552,34 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor) {
     if (!minimap)
         return;
+    if (editor && (!vg_widget_is_live(&editor->base) || editor->base.type != VG_WIDGET_CODEEDITOR))
+        editor = NULL;
+    if (minimap->editor == editor)
+        return;
 
     minimap->editor = editor;
+    minimap_clear_line_cache(minimap);
     minimap->buffer_dirty = true;
-    minimap->base.needs_paint = true;
+    if (editor) {
+        minimap->observed_text_revision = editor->revision;
+        minimap->observed_layout_revision = editor->layout_generation;
+        minimap->observed_scroll_x = editor->scroll_x;
+        minimap->observed_scroll_y = editor->scroll_y;
+        minimap->observed_visible_first_line = editor->visible_first_line;
+        minimap->observed_visible_line_count = editor->visible_line_count;
+        minimap->observed_line_count = editor->line_count;
+    } else {
+        minimap->observed_text_revision = 0u;
+        minimap->observed_layout_revision = 0u;
+        minimap->observed_scroll_x = 0.0f;
+        minimap->observed_scroll_y = 0.0f;
+        minimap->observed_visible_first_line = 0;
+        minimap->observed_visible_line_count = 0;
+        minimap->observed_line_count = 0;
+    }
+    minimap_advance_source_revision(minimap);
+    vg_widget_note_revision(&minimap->base);
+    vg_widget_invalidate(&minimap->base);
 }
 
 /// @brief Set the vertical scale ratio between minimap pixels and document lines.
@@ -418,9 +595,13 @@ void vg_minimap_set_scale(vg_minimap_t *minimap, float scale) {
     if (scale > 0.5f)
         scale = 0.5f;
 
+    if (minimap->scale == scale)
+        return;
     minimap->scale = scale;
+    minimap_clear_line_cache(minimap);
     minimap->buffer_dirty = true;
-    minimap->base.needs_paint = true;
+    vg_widget_note_revision(&minimap->base);
+    vg_widget_invalidate(&minimap->base);
 }
 
 /// @brief Show or hide the viewport indicator rectangle drawn over the minimap.
@@ -431,8 +612,11 @@ void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show) {
     if (!minimap)
         return;
 
+    if (minimap->show_viewport == show)
+        return;
     minimap->show_viewport = show;
-    minimap->base.needs_paint = true;
+    vg_widget_note_revision(&minimap->base);
+    vg_widget_invalidate(&minimap->base);
 }
 
 /// @brief Mark the minimap's pixel buffer as dirty, forcing a full rebuild on next paint.
@@ -442,14 +626,15 @@ void vg_minimap_invalidate(vg_minimap_t *minimap) {
     if (!minimap)
         return;
 
+    minimap_clear_line_cache(minimap);
     minimap->buffer_dirty = true;
-    minimap->base.needs_paint = true;
+    vg_widget_invalidate(&minimap->base);
 }
 
 /// @brief Invalidate the pixel buffer due to a change in a range of document lines.
 ///
-/// @details Currently marks the entire buffer dirty regardless of the line range.
-///          A future optimisation could rebuild only the affected pixel rows.
+/// @details Only matching direct-mapped cache slots are discarded. Other line summaries remain
+///          reusable, so an incremental editor integration can bound rescanning to changed lines.
 ///
 /// @param minimap    The minimap to invalidate.
 /// @param start_line First changed line (zero-based, inclusive).
@@ -457,11 +642,22 @@ void vg_minimap_invalidate(vg_minimap_t *minimap) {
 void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line) {
     if (!minimap)
         return;
-    (void)start_line;
-    (void)end_line;
-
-    // For simplicity, just mark the whole buffer dirty
-    // A more optimized implementation could update only affected pixels
+    if (start_line > end_line) {
+        const uint32_t temporary = start_line;
+        start_line = end_line;
+        end_line = temporary;
+    }
+    for (uint32_t slot = 0u; slot < minimap->maximum_cached_lines; ++slot) {
+        vg_minimap_line_cache_entry_t *entry = &minimap->line_cache[slot];
+        if (!entry->valid || entry->line < 0)
+            continue;
+        const uint32_t line = (uint32_t)entry->line;
+        if (line < start_line || line > end_line)
+            continue;
+        entry->valid = false;
+        if (minimap->cached_line_count > 0u)
+            --minimap->cached_line_count;
+    }
     minimap->buffer_dirty = true;
-    minimap->base.needs_paint = true;
+    vg_widget_invalidate(&minimap->base);
 }

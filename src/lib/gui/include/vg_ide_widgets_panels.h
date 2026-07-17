@@ -36,7 +36,10 @@ typedef struct vg_tab {
     struct vg_tabbar *owner; ///< Owning tab bar for invalidation/reorder
     char *title;             ///< Tab title (owned)
     char *tooltip;           ///< Tab tooltip (owned)
+    char *stable_id;         ///< Optional application-stable identifier (owned)
+    size_t stable_id_len;    ///< Stable identifier length in bytes
     void *user_data;         ///< User data
+    bool owns_user_data;     ///< True when user_data must be freed with the tab
     bool closable;           ///< Can tab be closed
     bool modified;           ///< Show modified indicator
     struct vg_tab *next;
@@ -106,6 +109,10 @@ typedef struct vg_tabbar {
     bool auto_close;                         ///< Auto-remove tab on close click (default true)
     uint64_t active_change_version;          ///< Monotonic counter for active-tab changes
     uint64_t reported_active_change_version; ///< Last active-change version observed by runtime
+    uint64_t reorder_version;                ///< Monotonic counter for successful reorder events
+    uint64_t reported_reorder_version;       ///< Last reorder version consumed by a poll observer
+    int reordered_from;                      ///< Source index of the most recent reorder
+    int reordered_to;                        ///< Destination index of the most recent reorder
     char *saved_tooltip_text;  ///< Preserved widget tooltip while a tab tooltip is active
     bool hover_tooltip_active; ///< True while widget tooltip is overridden by hovered tab
 } vg_tabbar_t;
@@ -135,6 +142,16 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab);
 /// @brief Free retired tab tombstones after all stale tab handles are discarded.
 /// @param tabbar Tab bar widget.
 void vg_tabbar_prune_retired_tabs(vg_tabbar_t *tabbar);
+
+/// @brief Reclaim one specific retired tab tombstone from a live TabBar.
+/// @details Unlinks and frees @p tab only when it is present in `tabbar->retired_tabs`. The caller
+///          must first discard or invalidate every managed wrapper for that tab. Live tabs,
+///          foreign addresses, NULL inputs, and already reclaimed tabs return false without
+///          mutation. No allocation is performed.
+/// @param tabbar Live owner whose retired chain is searched.
+/// @param tab Candidate retained tab record.
+/// @return true when the exact tombstone was unlinked and freed, otherwise false.
+bool vg_tabbar_reclaim_retired_tab(vg_tabbar_t *tabbar, vg_tab_t *tab);
 
 /// @brief Make a tab the active (foreground) tab.
 /// @param tabbar Tab bar widget.
@@ -170,6 +187,11 @@ int vg_tabbar_index_at(vg_tabbar_t *tabbar, int x, int y);
 /// @param title New title string (copied internally).
 void vg_tab_set_title(vg_tab_t *tab, const char *title);
 
+/// @brief Return a tab's borrowed title text.
+/// @param tab Live tab to inspect.
+/// @return Borrowed NUL-terminated title, or an empty string for a stale/NULL tab.
+const char *vg_tab_get_title(const vg_tab_t *tab);
+
 /// @brief Set the modified indicator on a tab.
 /// @param tab      Tab to modify.
 /// @param modified true to show the unsaved-changes dot.
@@ -185,11 +207,71 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip);
 /// @param data Caller-owned pointer stored without copying.
 void vg_tab_set_data(vg_tab_t *tab, void *data);
 
+/// @brief Return the opaque caller data stored on a tab.
+/// @param tab Live tab to inspect.
+/// @return Borrowed data pointer, or NULL when absent or stale.
+void *vg_tab_get_data(const vg_tab_t *tab);
+
+/// @brief Set whether a tab exposes its close affordance.
+/// @details The value affects layout immediately and advances the owning TabBar revision only when
+///          it changes. Stale tabs are ignored.
+/// @param tab Tab to modify.
+/// @param closable true to display and enable the close button.
+void vg_tab_set_closable(vg_tab_t *tab, bool closable);
+
+/// @brief Return whether a live tab is closable.
+/// @param tab Tab to inspect.
+/// @return true when closable, otherwise false.
+bool vg_tab_is_closable(const vg_tab_t *tab);
+
+/// @brief Assign an application-stable identifier to a tab.
+/// @details The identifier is copied before the old allocation is released, preserving the prior
+///          value on allocation failure. Empty values clear the ID. Uniqueness is an application
+///          or virtual-model responsibility.
+/// @param tab Tab to modify.
+/// @param stable_id NUL-terminated identifier; NULL is treated as empty.
+/// @return true on success, including an unchanged value; false for stale tabs or allocation
+///         failure.
+bool vg_tab_set_stable_id(vg_tab_t *tab, const char *stable_id);
+
+/// @brief Return a tab's borrowed application-stable identifier.
+/// @param tab Tab to inspect.
+/// @return Borrowed identifier, or an empty string when absent or stale.
+const char *vg_tab_get_stable_id(const vg_tab_t *tab);
+
 /// @brief Set the font used to render tab labels.
 /// @param tabbar Tab bar widget.
 /// @param font   Font handle.
 /// @param size   Font size in pixels.
 void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size);
+
+/// @brief Move a tab from one zero-based index to another.
+/// @details Invalid indices and unchanged moves return false without mutation. A successful move
+///          updates linked-list order, records the independent reorder edge and source/destination
+///          payload, advances the TabBar revision, and invokes the optional reorder callback after
+///          the committed state is visible.
+/// @param tabbar Tab bar to reorder.
+/// @param from_index Current zero-based tab index.
+/// @param to_index Destination zero-based tab index in the final order.
+/// @return true only when the order changed.
+bool vg_tabbar_move_tab(vg_tabbar_t *tabbar, int from_index, int to_index);
+
+/// @brief Consume the TabBar's independent reorder edge.
+/// @details Does not clear the last source/destination payload, active-change edge, close edge, or
+///          non-consuming revision. Multiple unreported reorders coalesce.
+/// @param tabbar Tab bar to inspect.
+/// @return true once after one or more unreported successful reorders.
+bool vg_tabbar_was_reordered(vg_tabbar_t *tabbar);
+
+/// @brief Return the source index from the most recent successful reorder.
+/// @param tabbar Tab bar to inspect.
+/// @return Zero-based source index, or -1 when no reorder has occurred.
+int vg_tabbar_get_reordered_from(const vg_tabbar_t *tabbar);
+
+/// @brief Return the destination index from the most recent successful reorder.
+/// @param tabbar Tab bar to inspect.
+/// @return Zero-based destination index, or -1 when no reorder has occurred.
+int vg_tabbar_get_reordered_to(const vg_tabbar_t *tabbar);
 
 /// @brief Set the callback fired when the active tab changes.
 /// @param tabbar    Tab bar widget.
@@ -223,15 +305,24 @@ typedef enum vg_split_direction {
     VG_SPLIT_VERTICAL    ///< Top/Bottom split
 } vg_split_direction_t;
 
+/// @brief Identifies which split-pane side is collapsed.
+typedef enum vg_split_collapsed_side {
+    VG_SPLIT_COLLAPSED_NONE = 0,  ///< Both panes are visible.
+    VG_SPLIT_COLLAPSED_FIRST = 1, ///< The left/top pane is collapsed.
+    VG_SPLIT_COLLAPSED_SECOND = 2 ///< The right/bottom pane is collapsed.
+} vg_split_collapsed_side_t;
+
 /// @brief SplitPane widget structure
 typedef struct vg_splitpane {
     vg_widget_t base;
 
-    vg_split_direction_t direction; ///< Split direction
-    float split_position;           ///< Splitter position (0-1 ratio)
-    float min_first_size;           ///< Minimum size for first pane
-    float min_second_size;          ///< Minimum size for second pane
-    float splitter_size;            ///< Splitter bar thickness
+    vg_split_direction_t direction;           ///< Split direction
+    float split_position;                     ///< Splitter position (0-1 ratio)
+    float min_first_size;                     ///< Minimum size for first pane
+    float min_second_size;                    ///< Minimum size for second pane
+    float splitter_size;                      ///< Splitter bar thickness
+    float restore_position;                   ///< Divider position restored after collapse
+    vg_split_collapsed_side_t collapsed_side; ///< Currently collapsed pane
 
     uint32_t splitter_color;       ///< Splitter bar color
     uint32_t splitter_hover_color; ///< Splitter hover color
@@ -264,6 +355,59 @@ float vg_splitpane_get_position(vg_splitpane_t *split);
 /// @param min_first  Minimum size of the first (left/top) pane in pixels.
 /// @param min_second Minimum size of the second (right/bottom) pane in pixels.
 void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float min_second);
+
+/// @brief Set the minimum pixel size of the first (left or top) pane.
+/// @details Negative and non-finite values are treated as zero. The value is ignored while the
+///          first pane is explicitly collapsed and becomes effective again after restore.
+/// @param split Split pane widget to configure; NULL is ignored.
+/// @param size Minimum first-pane size in physical pixels.
+void vg_splitpane_set_min_first(vg_splitpane_t *split, float size);
+
+/// @brief Set the minimum pixel size of the second (right or bottom) pane.
+/// @details Negative and non-finite values are treated as zero. The value is ignored while the
+///          second pane is explicitly collapsed and becomes effective again after restore.
+/// @param split Split pane widget to configure; NULL is ignored.
+/// @param size Minimum second-pane size in physical pixels.
+void vg_splitpane_set_min_second(vg_splitpane_t *split, float size);
+
+/// @brief Return the configured minimum size of the first pane.
+/// @param split Split pane widget to inspect.
+/// @return Minimum first-pane size in physical pixels, or 0 when @p split is NULL.
+float vg_splitpane_get_min_first(const vg_splitpane_t *split);
+
+/// @brief Return the configured minimum size of the second pane.
+/// @param split Split pane widget to inspect.
+/// @return Minimum second-pane size in physical pixels, or 0 when @p split is NULL.
+float vg_splitpane_get_min_second(const vg_splitpane_t *split);
+
+/// @brief Return the split pane's immutable orientation.
+/// @param split Split pane widget to inspect.
+/// @return The creation-time orientation, or VG_SPLIT_HORIZONTAL when @p split is NULL.
+vg_split_direction_t vg_splitpane_get_direction(const vg_splitpane_t *split);
+
+/// @brief Collapse the first (left or top) pane.
+/// @details The current non-collapsed divider position is retained for a later call to
+///          vg_splitpane_restore(). Repeating the operation is a no-op.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_collapse_first(vg_splitpane_t *split);
+
+/// @brief Collapse the second (right or bottom) pane.
+/// @details The current non-collapsed divider position is retained for a later call to
+///          vg_splitpane_restore(). Repeating the operation is a no-op.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_collapse_second(vg_splitpane_t *split);
+
+/// @brief Restore both panes after an explicit collapse.
+/// @details Restores the divider fraction saved immediately before the first collapse in the
+///          current collapse sequence. Calling this while neither side is collapsed is a no-op.
+/// @param split Split pane widget to update; NULL is ignored.
+void vg_splitpane_restore(vg_splitpane_t *split);
+
+/// @brief Return which pane is explicitly collapsed.
+/// @param split Split pane widget to inspect.
+/// @return VG_SPLIT_COLLAPSED_NONE, VG_SPLIT_COLLAPSED_FIRST, or
+///         VG_SPLIT_COLLAPSED_SECOND; NULL returns VG_SPLIT_COLLAPSED_NONE.
+vg_split_collapsed_side_t vg_splitpane_get_collapsed_side(const vg_splitpane_t *split);
 
 /// @brief Get the container widget for the first (left or top) pane.
 /// @param split Split pane widget.
@@ -391,18 +535,18 @@ typedef struct vg_outputpane {
 
     // Alternate-screen preservation. CSI ?1047/1049 h swaps the active terminal
     // buffer into an empty full-screen buffer; CSI ?1047/1049 l restores it.
-    bool alternate_screen;               ///< True when the pane is showing the alternate buffer.
-    vg_output_line_t *primary_lines;     ///< Saved primary scrollback while alternate_screen is true.
-    size_t primary_line_start;           ///< Saved primary ring start.
-    size_t primary_line_count;           ///< Saved primary logical line count.
-    size_t primary_line_capacity;        ///< Saved primary ring capacity.
-    float primary_scroll_y;              ///< Saved primary vertical scroll.
-    bool primary_scroll_locked;          ///< Saved primary scroll-lock flag.
-    size_t primary_term_cursor_line;     ///< Saved primary terminal cursor line.
-    size_t primary_term_origin_line;     ///< Saved primary cursor-addressing origin line.
-    size_t primary_saved_cursor_line;    ///< Saved primary saved-cursor line.
-    uint32_t primary_saved_cursor_col;   ///< Saved primary saved-cursor column.
-    uint32_t primary_cursor_col;         ///< Saved primary terminal cursor column.
+    bool alternate_screen;             ///< True when the pane is showing the alternate buffer.
+    vg_output_line_t *primary_lines;   ///< Saved primary scrollback while alternate_screen is true.
+    size_t primary_line_start;         ///< Saved primary ring start.
+    size_t primary_line_count;         ///< Saved primary logical line count.
+    size_t primary_line_capacity;      ///< Saved primary ring capacity.
+    float primary_scroll_y;            ///< Saved primary vertical scroll.
+    bool primary_scroll_locked;        ///< Saved primary scroll-lock flag.
+    size_t primary_term_cursor_line;   ///< Saved primary terminal cursor line.
+    size_t primary_term_origin_line;   ///< Saved primary cursor-addressing origin line.
+    size_t primary_saved_cursor_line;  ///< Saved primary saved-cursor line.
+    uint32_t primary_saved_cursor_col; ///< Saved primary saved-cursor column.
+    uint32_t primary_cursor_col;       ///< Saved primary terminal cursor column.
 
     // Callbacks
     void (*on_line_click)(struct vg_outputpane *pane, int line, int col, void *user_data);
@@ -638,12 +782,18 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size);
 void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max);
 
 //=============================================================================
-// Grid Widget (tabular data with auto-sized columns)
+// Grid Widget (interactive viewport-aware tabular data)
 //=============================================================================
 
-/// @brief Tabular data grid: rows of text cells in columns that auto-size to their widest
-///        cell, with optional column headers. A non-interactive display widget (no selection
-///        or scrolling) intended for property and data panels.
+/// @brief Sparse virtual-cell entry owned by a data grid.
+/// @details The concrete layout is private to `vg_datagrid.c`; callers only observe the pointer in
+///          `vg_datagrid_t` for diagnostics and must not dereference it.
+typedef struct vg_datagrid_virtual_cell vg_datagrid_virtual_cell_t;
+
+/// @brief Interactive, viewport-aware table with optional headers and sparse virtual rows.
+/// @details Legacy `SetCell` tables remain display-only until selection, sorting, resizing, or
+///          editing is explicitly enabled. Normal cells use a dense owned array. Virtual cells use
+///          a sorted sparse array so large logical row counts do not allocate per-row storage.
 typedef struct vg_datagrid {
     vg_widget_t base;
 
@@ -654,6 +804,48 @@ typedef struct vg_datagrid {
     int row_count;    ///< Number of populated rows.
     int row_capacity; ///< Allocated row capacity.
     char **cells;     ///< [row_capacity * col_count] cell strings (entries may be NULL).
+
+    bool virtual_mode;        ///< True when virtual_row_count is authoritative.
+    size_t virtual_row_count; ///< Logical virtual row count without per-row allocation.
+    vg_datagrid_virtual_cell_t *virtual_cells; ///< Sorted sparse materialized cells (owned).
+    size_t virtual_cell_count;                 ///< Number of materialized sparse cells.
+    size_t virtual_cell_capacity;              ///< Allocated sparse-cell capacity.
+
+    size_t viewport_first_row; ///< First source row rendered by the explicit viewport.
+    size_t viewport_row_count; ///< Maximum rendered rows; zero derives count from widget height.
+    size_t scroll_row;         ///< First row selected by ScrollToRow/keyboard scrolling.
+
+    bool selectable;                     ///< Enable pointer/keyboard cell selection.
+    size_t selected_row;                 ///< Selected source row, or SIZE_MAX when absent.
+    int selected_col;                    ///< Selected column, or -1 when absent.
+    uint64_t selection_version;          ///< Monotonic selection transition counter.
+    uint64_t reported_selection_version; ///< Last selection transition consumed by polling.
+
+    bool *sortable_columns;         ///< [col_count] columns allowed to publish sort requests.
+    int sort_column;                ///< Active sort column, or -1 when unsorted.
+    int sort_direction;             ///< -1 descending, 0 none, 1 ascending.
+    uint64_t sort_version;          ///< Monotonic sort transition counter.
+    uint64_t reported_sort_version; ///< Last sort transition consumed by polling.
+
+    float *column_widths;             ///< [col_count] explicit physical widths; zero means auto.
+    int *auto_column_widths;          ///< [col_count] cached measured widths for O(visible) paint.
+    bool *resizable_columns;          ///< [col_count] columns that support pointer resize.
+    bool resizing_column;             ///< True while a resize drag owns input capture.
+    int resize_column;                ///< Column being resized, or -1.
+    float resize_start_x;             ///< Widget-local pointer X at resize start.
+    float resize_start_width;         ///< Physical column width at resize start.
+    bool resize_drag_changed;         ///< True when current capture changed effective width.
+    bool suppress_click;              ///< Suppress synthetic header click after a resize drag.
+    uint64_t resize_version;          ///< Monotonic effective width-change counter.
+    uint64_t reported_resize_version; ///< Last resize transition consumed by polling.
+    int resized_column;               ///< Most recently resized column, or -1.
+
+    bool editable;                  ///< Allow BeginEdit/CommitEdit operations.
+    bool editing;                   ///< True while one cell is in externally-driven edit mode.
+    size_t editing_row;             ///< Source row being edited, or SIZE_MAX.
+    int editing_col;                ///< Column being edited, or -1.
+    uint64_t edit_version;          ///< Monotonic committed-cell edit counter.
+    uint64_t reported_edit_version; ///< Last committed edit consumed by polling.
 
     vg_font_t *font;    ///< Font for cells and headers.
     float font_size;    ///< Font size in pixels.
@@ -666,39 +858,246 @@ typedef struct vg_datagrid {
     uint32_t grid_color;   ///< Row/column separator color.
 } vg_datagrid_t;
 
-/// @brief Create a tabular grid widget attached to @p parent (may be NULL).
+/// @brief Create a tabular grid widget attached to @p parent.
+/// @details The grid begins in compatibility display-only mode with no columns or rows. Attached
+///          grids are owned by @p parent; detached grids are owned by the caller.
+/// @param parent Parent widget, or NULL for a detached grid.
+/// @return Newly allocated grid, or NULL on allocation failure.
 vg_datagrid_t *vg_datagrid_create(vg_widget_t *parent);
 
-/// @brief Destroy a grid and free its cell/header storage.
+/// @brief Destroy a grid and all dense/sparse cell, header, and column metadata storage.
+/// @param grid Grid to destroy; NULL is ignored.
 void vg_datagrid_destroy(vg_datagrid_t *grid);
 
-/// @brief Set the number of columns. Clears all existing headers and cells.
+/// @brief Set the number of columns, atomically clearing all existing headers and rows.
+/// @details Allocation failure preserves the previous table. Interactive column metadata is reset
+///          to its disabled defaults. Negative values are treated as zero.
+/// @param grid Grid to update.
+/// @param count New column count.
 void vg_datagrid_set_columns(vg_datagrid_t *grid, int count);
 
-/// @brief Set the header text for a column (NULL/empty clears it).
+/// @brief Set copied header text for one column.
+/// @details NULL/empty clears the header. Allocation failure preserves the old text.
+/// @param grid Grid to update.
+/// @param col Zero-based column index.
+/// @param text UTF-8 header text, or NULL/empty to clear.
 void vg_datagrid_set_header(vg_datagrid_t *grid, int col, const char *text);
 
-/// @brief Set the text of a cell, growing the row count as needed.
+/// @brief Set copied text in a dense compatibility cell, growing row count as needed.
+/// @details Calling this API exits virtual mode and clears sparse virtual cells. Invalid indices or
+///          allocation failure preserve the previous table.
+/// @param grid Grid to update.
+/// @param row Zero-based dense row index.
+/// @param col Zero-based column index.
+/// @param text UTF-8 text, or NULL/empty for an empty cell.
 void vg_datagrid_set_cell(vg_datagrid_t *grid, int row, int col, const char *text);
 
-/// @brief Return a cell's text, or NULL when empty/out of range. Borrowed; do not free.
-const char *vg_datagrid_get_cell(const vg_datagrid_t *grid, int row, int col);
+/// @brief Return a dense or virtual cell's borrowed text.
+/// @param grid Grid to inspect.
+/// @param row Zero-based row index.
+/// @param col Zero-based column index.
+/// @return Borrowed NUL-terminated text, or NULL when empty/out of range.
+const char *vg_datagrid_get_cell(const vg_datagrid_t *grid, size_t row, int col);
 
-/// @brief Remove all rows (columns and headers are kept).
+/// @brief Remove every dense or sparse row while retaining columns and headers.
+/// @param grid Grid to clear; NULL is ignored.
 void vg_datagrid_clear(vg_datagrid_t *grid);
 
-/// @brief Set the font used for headers and cells.
+/// @brief Set the font used for headers/cells and refresh cached auto widths.
+/// @param grid Grid to update.
+/// @param font Borrowed live font, or NULL to disable text drawing.
+/// @param size Physical font size; non-positive values keep the previous positive size.
 void vg_datagrid_set_font(vg_datagrid_t *grid, vg_font_t *font, float size);
 
 /// @brief Auto-sized pixel width of a column: the widest of its header and cells, plus
-///        padding. Returns 0 when no font is set or @p col is out of range.
+///        padding, unless an explicit width is configured.
+/// @param grid Grid to inspect.
+/// @param col Zero-based column index.
+/// @return Effective physical width, or zero when @p col is invalid.
 int vg_datagrid_column_width(const vg_datagrid_t *grid, int col);
 
-/// @brief Number of populated rows.
+/// @brief Return the logical row count for dense or virtual mode.
+/// @param grid Grid to inspect.
+/// @return Row count saturated at `INT_MAX`, or zero for NULL.
 int vg_datagrid_row_count(const vg_datagrid_t *grid);
 
-/// @brief Number of columns.
+/// @brief Return the full logical row count without integer saturation.
+/// @details This companion to `vg_datagrid_row_count` is intended for runtime bridges and
+///          virtualization code whose row domain can exceed `INT_MAX`. Dense compatibility grids
+///          remain limited by their signed-int indexing API, while sparse virtual grids use the
+///          complete `size_t` range.
+/// @param grid Grid to inspect.
+/// @return Exact dense-or-virtual logical row count, or zero for NULL.
+size_t vg_datagrid_logical_row_count(const vg_datagrid_t *grid);
+
+/// @brief Return the number of columns.
+/// @param grid Grid to inspect.
+/// @return Non-negative column count, or zero for NULL.
 int vg_datagrid_column_count(const vg_datagrid_t *grid);
+
+/// @brief Set the first row and maximum count painted by the grid viewport.
+/// @details Only the requested slice is visited during paint. A count of zero derives capacity
+///          from arranged height. Values beyond the logical row count are clamped on use.
+/// @param grid Grid to update.
+/// @param first Zero-based first logical row.
+/// @param count Maximum visible row count, or zero for automatic height-based count.
+void vg_datagrid_set_viewport_rows(vg_datagrid_t *grid, size_t first, size_t count);
+
+/// @brief Switch to sparse virtual mode with the specified logical row count.
+/// @details Dense rows are cleared when entering virtual mode. Shrinking removes materialized cells
+///          beyond the new end and clears invalid selection/edit state. No per-row array is
+///          allocated.
+/// @param grid Grid to update.
+/// @param count Logical virtual row count.
+void vg_datagrid_set_virtual_row_count(vg_datagrid_t *grid, size_t count);
+
+/// @brief Set one copied sparse virtual cell value.
+/// @details The grid must have columns and @p row must be below the virtual row count. Empty text
+///          removes an existing sparse entry. Allocation failure is atomic.
+/// @param grid Grid to update.
+/// @param row Zero-based logical virtual row.
+/// @param col Zero-based column.
+/// @param text UTF-8 text, or NULL/empty to remove materialization.
+/// @return true when the request was valid and storage succeeded, including unchanged values.
+bool vg_datagrid_set_virtual_cell(vg_datagrid_t *grid, size_t row, int col, const char *text);
+
+/// @brief Enable or disable cell selection.
+/// @details Disabling clears any current selection and records one selection transition.
+/// @param grid Grid to update.
+/// @param enabled true to accept pointer/keyboard selection.
+void vg_datagrid_set_selectable(vg_datagrid_t *grid, bool enabled);
+
+/// @brief Return the selected logical row.
+/// @param grid Grid to inspect.
+/// @return Selected row, or `SIZE_MAX` when absent/invalid.
+size_t vg_datagrid_get_selected_row(const vg_datagrid_t *grid);
+
+/// @brief Return the selected column.
+/// @param grid Grid to inspect.
+/// @return Zero-based column, or -1 when absent/invalid.
+int vg_datagrid_get_selected_column(const vg_datagrid_t *grid);
+
+/// @brief Select one valid cell.
+/// @param grid Grid to update; selection must be enabled.
+/// @param row Zero-based logical row.
+/// @param col Zero-based column.
+/// @return true when the requested cell is valid, including unchanged selection.
+bool vg_datagrid_select_cell(vg_datagrid_t *grid, size_t row, int col);
+
+/// @brief Clear the current grid selection.
+/// @param grid Grid to update; NULL or already-clear grids are no-ops.
+void vg_datagrid_clear_selection(vg_datagrid_t *grid);
+
+/// @brief Consume the independent selection transition edge.
+/// @param grid Grid to inspect.
+/// @return true once after one or more unreported selection changes.
+bool vg_datagrid_was_selection_changed(vg_datagrid_t *grid);
+
+/// @brief Enable or disable sorting requests for one column.
+/// @details Disabling the active sort column clears its sort direction and publishes a sort edge.
+/// @param grid Grid to update.
+/// @param col Zero-based column.
+/// @param enabled true to allow `SetSort` and header activation.
+void vg_datagrid_set_sortable(vg_datagrid_t *grid, int col, bool enabled);
+
+/// @brief Set the active sort request.
+/// @details Direction is normalized to -1 (descending), 0 (none), or 1 (ascending). Nonzero
+///          directions require a valid sortable column. This records state only; applications or
+///          virtual models own data ordering.
+/// @param grid Grid to update.
+/// @param col Zero-based sort column; ignored for direction zero.
+/// @param direction Requested direction.
+/// @return true when the request is valid, including unchanged state.
+bool vg_datagrid_set_sort(vg_datagrid_t *grid, int col, int direction);
+
+/// @brief Return the active sort column.
+/// @param grid Grid to inspect.
+/// @return Zero-based column, or -1 when unsorted/invalid.
+int vg_datagrid_get_sort_column(const vg_datagrid_t *grid);
+
+/// @brief Return normalized sort direction.
+/// @param grid Grid to inspect.
+/// @return -1 descending, 0 none, or 1 ascending.
+int vg_datagrid_get_sort_direction(const vg_datagrid_t *grid);
+
+/// @brief Consume the independent sort-state transition edge.
+/// @param grid Grid to inspect.
+/// @return true once after one or more unreported sort changes.
+bool vg_datagrid_was_sort_changed(vg_datagrid_t *grid);
+
+/// @brief Set one column's explicit physical width, or reset it to automatic.
+/// @details Width zero selects cached auto sizing. Positive widths are clamped to a safe minimum.
+///          Effective changes publish the resize edge and revision.
+/// @param grid Grid to update.
+/// @param col Zero-based column.
+/// @param width Physical toolkit width; non-finite/negative values are rejected.
+/// @return true when the request is valid, including unchanged width.
+bool vg_datagrid_set_column_width(vg_datagrid_t *grid, int col, float width);
+
+/// @brief Enable or disable pointer resizing for one column boundary.
+/// @param grid Grid to update.
+/// @param col Zero-based column.
+/// @param enabled true to allow drag resizing.
+void vg_datagrid_set_column_resizable(vg_datagrid_t *grid, int col, bool enabled);
+
+/// @brief Consume the independent effective-column-resize edge.
+/// @param grid Grid to inspect.
+/// @return true once after one or more unreported width changes.
+bool vg_datagrid_was_column_resized(vg_datagrid_t *grid);
+
+/// @brief Return the most recently resized column.
+/// @param grid Grid to inspect.
+/// @return Zero-based column, or -1 when no resize exists/handle is invalid.
+int vg_datagrid_get_resized_column(const vg_datagrid_t *grid);
+
+/// @brief Enable or disable externally-driven cell editing.
+/// @details Disabling cancels an active edit without changing cell content.
+/// @param grid Grid to update.
+/// @param enabled true to permit BeginEdit/CommitEdit.
+void vg_datagrid_set_editable(vg_datagrid_t *grid, bool enabled);
+
+/// @brief Begin editing one valid cell.
+/// @details Editing is controller-driven; text is committed later through
+///          `vg_datagrid_commit_edit`. Beginning an edit selects the cell when selection is
+///          enabled.
+/// @param grid Grid to update.
+/// @param row Zero-based logical row.
+/// @param col Zero-based column.
+/// @return true when edit mode began or already targets the requested cell.
+bool vg_datagrid_begin_edit(vg_datagrid_t *grid, size_t row, int col);
+
+/// @brief Commit copied UTF-8 text to the active edit cell.
+/// @details Dense and sparse virtual cells use their normal atomic setters. A successful effective
+///          text change publishes the cell-edited edge; the edit closes even when text is
+///          unchanged.
+/// @param grid Grid to update.
+/// @param text UTF-8 replacement, or NULL/empty to clear.
+/// @return true when an active valid edit was committed, otherwise false.
+bool vg_datagrid_commit_edit(vg_datagrid_t *grid, const char *text);
+
+/// @brief Cancel active edit mode without changing cell content.
+/// @param grid Grid to update; NULL/already-idle grids are no-ops.
+void vg_datagrid_cancel_edit(vg_datagrid_t *grid);
+
+/// @brief Query whether a grid has an active edit controller.
+/// @param grid Grid to inspect.
+/// @return true when editing a valid cell, otherwise false.
+bool vg_datagrid_is_editing(const vg_datagrid_t *grid);
+
+/// @brief Consume the independent committed-cell-edit edge.
+/// @param grid Grid to inspect.
+/// @return true once after one or more unreported effective edits.
+bool vg_datagrid_was_cell_edited(vg_datagrid_t *grid);
+
+/// @brief Scroll the viewport so @p row becomes its first visible row.
+/// @param grid Grid to update.
+/// @param row Requested logical row; values beyond the end clamp to the last row.
+void vg_datagrid_scroll_to_row(vg_datagrid_t *grid, size_t row);
+
+/// @brief Return the current first viewport row.
+/// @param grid Grid to inspect.
+/// @return Zero-based row, or zero for NULL/empty grids.
+size_t vg_datagrid_get_scroll_row(const vg_datagrid_t *grid);
 
 #ifdef __cplusplus
 }
