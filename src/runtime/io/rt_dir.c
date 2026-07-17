@@ -123,11 +123,7 @@ int64_t rt_dir_exists(rt_string path) {
     struct stat st;
     if (stat(cpath, &st) != 0)
         return 0;
-#if defined(__viperdos__)
     return S_ISDIR(st.st_mode);
-#else
-    return S_ISDIR(st.st_mode);
-#endif
 #endif
 }
 
@@ -183,12 +179,6 @@ void rt_dir_make(rt_string path) {
 
 #ifdef _WIN32
     if (!rt_dir_win_create_dir(cpath)) {
-        rt_dir_trap_io("Dir.Make: failed to create directory");
-    }
-#elif defined(__viperdos__)
-    if (mkdir(cpath, 0755) != 0) {
-        if (errno == EEXIST && rt_dir_posix_path_is_dir(cpath))
-            return;
         rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #else
@@ -292,26 +282,6 @@ void rt_dir_make_all(rt_string path) {
                     return;
                 }
             }
-#elif defined(__viperdos__)
-            struct stat st;
-            if (stat(tmp, &st) == 0) {
-                if (!S_ISDIR(st.st_mode)) {
-                    free(tmp);
-                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
-                    return;
-                }
-            } else {
-                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-                    free(tmp);
-                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
-                    return;
-                }
-                if (!rt_dir_posix_path_is_dir(tmp)) {
-                    free(tmp);
-                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
-                    return;
-                }
-            }
 #else
             struct stat st;
             if (stat(tmp, &st) == 0) {
@@ -344,26 +314,6 @@ void rt_dir_make_all(rt_string path) {
         free(tmp);
         rt_dir_trap_io("Dir.MakeAll: failed to create directory");
         return;
-    }
-#elif defined(__viperdos__)
-    struct stat st;
-    if (stat(tmp, &st) == 0) {
-        if (!S_ISDIR(st.st_mode)) {
-            free(tmp);
-            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
-            return;
-        }
-    } else {
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-            free(tmp);
-            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
-            return;
-        }
-        if (!rt_dir_posix_path_is_dir(tmp)) {
-            free(tmp);
-            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
-            return;
-        }
     }
 #else
     struct stat st;
@@ -441,10 +391,6 @@ void rt_dir_remove(rt_string path) {
     if (!rt_dir_win_remove_dir(cpath)) {
         rt_dir_trap_io("Dir.Remove: failed to remove directory");
     }
-#elif defined(__viperdos__)
-    if (rmdir(cpath) != 0) {
-        rt_dir_trap_io("Dir.Remove: failed to remove directory");
-    }
 #else
     if (rmdir(cpath) != 0) {
         rt_dir_trap_io("Dir.Remove: failed to remove directory");
@@ -452,14 +398,7 @@ void rt_dir_remove(rt_string path) {
 #endif
 }
 
-#if defined(__viperdos__)
-/// @brief Internal helper to delete a single file.
-static int delete_file(const char *path) {
-    return unlink(path) == 0 ? 1 : 0;
-}
-#endif
-
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
 static int rt_dir_posix_open_dir_at(int parent_fd, const char *name) {
     struct stat lst;
     if (fstatat(parent_fd, name, &lst, AT_SYMLINK_NOFOLLOW) != 0)
@@ -698,57 +637,6 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
     free(pattern);
     free(dir_path);
     return ok;
-#elif defined(__viperdos__)
-    struct stat root_st;
-    if (lstat(cpath, &root_st) != 0) {
-        if (errno == ENOENT)
-            return 1;
-        return 0;
-    }
-    if (S_ISLNK(root_st.st_mode))
-        return unlink(cpath) == 0 || errno == ENOENT;
-    if (!S_ISDIR(root_st.st_mode))
-        return 0;
-
-    DIR *dir = opendir(cpath);
-    if (!dir)
-        return errno == ENOENT ? 1 : 0;
-
-    int ok = 1;
-    struct dirent *ent;
-    for (;;) {
-        errno = 0;
-        ent = readdir(dir);
-        if (!ent) {
-            if (errno != 0)
-                ok = 0;
-            break;
-        }
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-            continue;
-
-        char *full_path = rt_dir_join_child_alloc(cpath, ent->d_name);
-        if (!full_path) {
-            ok = 0;
-            continue;
-        }
-
-        struct stat st;
-        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            if (!rt_dir_remove_all_cpath(full_path))
-                ok = 0;
-        } else {
-            if (!delete_file(full_path) && errno != ENOENT)
-                ok = 0;
-        }
-        free(full_path);
-    }
-
-    if (closedir(dir) != 0)
-        ok = 0;
-    if (rmdir(cpath) != 0 && errno != ENOENT)
-        ok = 0;
-    return ok;
 #else
     return rt_dir_remove_all_posix_safe(cpath);
 #endif
@@ -888,7 +776,7 @@ rt_string rt_dir_current(void) {
     free(wide);
     return result;
 #else
-    // Unix and ViperDOS: allocate dynamically so very long cwd paths work.
+    // Unix: allocate dynamically so very long cwd paths work.
     char *buffer = getcwd(NULL, 0);
     if (buffer == NULL) {
         rt_dir_trap_io("Dir.Current: failed to get current directory");
@@ -965,10 +853,6 @@ void rt_dir_set_current(rt_string path) {
         return;
     }
     free(wide);
-#elif defined(__viperdos__)
-    if (chdir(cpath) != 0) {
-        rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
-    }
 #else
     if (chdir(cpath) != 0) {
         rt_dir_trap_io("Dir.SetCurrent: failed to change directory");

@@ -60,6 +60,5 @@ User-facing documentation lives in the **[main documentation index](../README.md
 - [Documentation Style Guide](doc-style.md) — Layout, naming, and formatting rules for `docs/`
 - [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
 - [Source Health Guardrails](source-health.md) — Local audit baselines for high-ownership subsystems
-- [Dependencies](dependencies.md) — Build and runtime dependencies
 - [Cross-Platform Differences](../cross-platform/platform-differences.md) — macOS vs Linux vs Windows behavior
 - [Cross-Platform Checklist](../cross-platform/platform-checklist.md) — Compliance tracking

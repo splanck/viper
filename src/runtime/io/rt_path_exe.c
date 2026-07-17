@@ -15,7 +15,6 @@
 //   - macOS: uses _NSGetExecutablePath + realpath + dirname.
 //   - Windows: uses GetModuleFileNameA + strip filename.
 //   - Linux: uses readlink("/proc/self/exe") + dirname.
-//   - ViperDOS: returns "." (no meaningful exe path).
 //   - Platform probes use fixed MAX_PATH/PATH_MAX buffers. Overlong paths fail;
 //     the runtime wrapper falls back to "." (macOS also does so for probe errors).
 //   - Windows uses the process ANSI code page through GetModuleFileNameA, so a
@@ -44,8 +43,6 @@
 #elif defined(__linux__)
 #include <limits.h>
 #include <unistd.h>
-#elif defined(__viperdos__)
-// No exe path detection on ViperDOS.
 #else
 #include <limits.h>
 #include <unistd.h>
@@ -77,7 +74,7 @@ static void strip_filename(char *path) {
 
 /// @brief Get the directory of the running executable as a C string.
 /// @return malloc'd string (caller must free), NULL for Windows/Linux probe failure,
-///         or "." for macOS/ViperDOS/unknown-platform fallback.
+///         or "." for macOS/unknown-platform fallback.
 char *rt_path_exe_dir_cstr(void) {
 #if defined(_WIN32)
     // Windows: GetModuleFileNameW into a growing buffer so long paths and paths
@@ -184,10 +181,6 @@ char *rt_path_exe_dir_cstr(void) {
             return buf;
         }
     }
-
-#elif defined(__viperdos__)
-    // ViperDOS: no meaningful exe path; return current directory.
-    return strdup(".");
 
 #else
     // Unknown platform fallback.

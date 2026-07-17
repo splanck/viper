@@ -56,7 +56,7 @@
 
 #if RT_PLATFORM_WINDOWS
 #include <windows.h>
-#elif !RT_PLATFORM_VIPERDOS
+#else
 #include <sched.h>
 #endif
 
@@ -129,7 +129,7 @@ static uint64_t mb_hash_bytes(const char *s, size_t len) {
 /// @brief Acquire the bus's internal spinlock with acquire ordering.
 /// @details Uses `__atomic_test_and_set` and yields on contention. The yield
 ///          uses platform-appropriate primitives (`SwitchToThread` on Windows,
-///          `sched_yield` on POSIX, busy-wait on ViperDOS). No-op on a NULL
+///          `sched_yield` on POSIX). No-op on a NULL
 ///          bus so call-sites that handle a NULL bus uniformly don't have to
 ///          special-case the lock.
 /// @param mb Bus instance (may be NULL).
@@ -140,7 +140,7 @@ static void mb_lock(rt_msgbus_impl *mb) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(&mb->lock, __ATOMIC_ACQUIRE));

@@ -3112,7 +3112,7 @@ uint64_t rt_gui_app_frame_generation_for_owner(void *app_ptr) {
 
 // ===========================================================================
 // Headless stubs — match the public-API prototypes above so that
-// non-graphical builds (server / CLI / ViperDOS) link cleanly. Each
+// non-graphical builds (server / CLI) link cleanly. Each
 // stub safely no-ops or returns a sentinel (NULL, 0, 1 for "should
 // close"). Doc comments inherit from the real implementations above.
 // ===========================================================================

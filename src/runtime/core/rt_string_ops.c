@@ -57,7 +57,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+#if !RT_PLATFORM_WINDOWS
 #include <sched.h>
 #endif
 
@@ -98,7 +98,7 @@ static void rt_string_registry_lock_(void) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(&g_string_registry_.lock, __ATOMIC_ACQUIRE));

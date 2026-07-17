@@ -55,16 +55,12 @@ typedef SOCKET socket_t;
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
-#if !RT_PLATFORM_VIPERDOS
 #include <ifaddrs.h>
-#endif
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#if !RT_PLATFORM_VIPERDOS
 #include <poll.h>
 #include <sys/ioctl.h>
-#endif
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>

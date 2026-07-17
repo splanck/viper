@@ -657,7 +657,7 @@ void archive_write_bytes_to_path(const char *cpath, void *data) {
         cpath, src, total, "Archive: failed to write destination file");
 }
 
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
 static int archive_openat_posix(int parent_fd, const char *name, int flags, mode_t mode) {
 #ifdef O_CLOEXEC
     flags |= O_CLOEXEC;

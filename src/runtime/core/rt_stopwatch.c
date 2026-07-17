@@ -210,7 +210,7 @@ static int64_t get_timestamp_ns(void) {
     }
     return result;
 #else
-    // Unix and ViperDOS: use clock_gettime.
+    // Unix: use clock_gettime.
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {

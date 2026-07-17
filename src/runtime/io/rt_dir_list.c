@@ -107,7 +107,7 @@ void *rt_dir_list(rt_string path) {
     FindClose(h);
     free(pattern);
 #else
-    // Unix and ViperDOS: use POSIX directory APIs.
+    // Unix: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;
@@ -213,13 +213,8 @@ void *rt_dir_entries_seq(rt_string path) {
     struct stat st;
     if (stat(cpath, &st) != 0)
         rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
-#if defined(__viperdos__)
     if (!S_ISDIR(st.st_mode))
         rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
-#else
-    if (!S_ISDIR(st.st_mode))
-        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
-#endif
 #endif
 
     void *result = rt_seq_new();
@@ -264,7 +259,7 @@ void *rt_dir_entries_seq(rt_string path) {
     FindClose(h);
     free(pattern);
 #else
-    // Unix and ViperDOS: use POSIX directory APIs.
+    // Unix: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
@@ -376,7 +371,7 @@ void *rt_dir_files(rt_string path) {
     FindClose(h);
     free(pattern);
 #else
-    // Unix and ViperDOS: use POSIX directory APIs.
+    // Unix: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;
@@ -528,7 +523,7 @@ void *rt_dir_dirs(rt_string path) {
     FindClose(h);
     free(pattern);
 #else
-    // Unix and ViperDOS: use POSIX directory APIs.
+    // Unix: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
         return result;

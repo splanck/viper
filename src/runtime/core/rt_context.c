@@ -54,7 +54,7 @@
 
 #if RT_PLATFORM_WINDOWS
 // GetCurrentThreadId() is available via windows.h (included from rt_platform.h)
-#elif !RT_PLATFORM_VIPERDOS
+#else
 #include <pthread.h>
 #include <sched.h>
 #endif
@@ -128,7 +128,7 @@ static void rt_spin_lock(int *lock) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
@@ -151,8 +151,6 @@ static void rt_spin_unlock(int *lock) {
 
 #if RT_PLATFORM_WINDOWS
 static DWORD g_main_thread_id_;
-#elif RT_PLATFORM_VIPERDOS
-// ViperDOS is single-threaded; no tracking needed.
 #else
 static pthread_t g_main_thread_;
 #endif
@@ -178,7 +176,7 @@ static void rt_capture_process_main_thread_(void) {
                RT_MAIN_THREAD_INITIALIZING) {
 #if RT_PLATFORM_WINDOWS
             Sleep(0);
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         }
@@ -186,7 +184,7 @@ static void rt_capture_process_main_thread_(void) {
     }
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
-#elif !RT_PLATFORM_VIPERDOS
+#else
     g_main_thread_ = pthread_self();
 #endif
     __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
@@ -201,7 +199,7 @@ static void __cdecl rt_capture_process_main_thread_ctor(void) {
 #pragma section(".CRT$XCU", read)
 __declspec(allocate(".CRT$XCU")) void(__cdecl *rt_capture_process_main_thread_ctor_)(void) =
     rt_capture_process_main_thread_ctor;
-#elif !RT_PLATFORM_VIPERDOS
+#else
 /// @brief GCC/Clang `__attribute__((constructor))` that runs main-thread capture before main().
 __attribute__((constructor)) static void rt_capture_process_main_thread_ctor(void) {
     rt_capture_process_main_thread_();
@@ -216,7 +214,7 @@ __attribute__((constructor)) static void rt_capture_process_main_thread_ctor(voi
 void rt_set_main_thread(void) {
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
-#elif !RT_PLATFORM_VIPERDOS
+#else
     g_main_thread_ = pthread_self();
 #endif
     __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
@@ -225,7 +223,6 @@ void rt_set_main_thread(void) {
 /// @brief Return non-zero when the calling thread is the runtime's designated main thread.
 /// @details Lazily captures the main thread on first call if neither
 ///          the constructor nor `rt_set_main_thread` has run.
-///          ViperDOS is single-threaded so this always returns 1.
 ///          On Windows uses thread-ID compare; on POSIX uses
 ///          `pthread_equal` because `pthread_t` is opaque and
 ///          comparison via `==` isn't portable.
@@ -234,8 +231,6 @@ int8_t rt_is_main_thread(void) {
         rt_capture_process_main_thread_();
 #if RT_PLATFORM_WINDOWS
     return GetCurrentThreadId() == g_main_thread_id_;
-#elif RT_PLATFORM_VIPERDOS
-    return 1;
 #else
     return pthread_equal(pthread_self(), g_main_thread_);
 #endif
@@ -312,7 +307,7 @@ static void rt_legacy_ensure_init(void) {
     while ((state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE)) == 1) {
 #if RT_PLATFORM_WINDOWS
         SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
         sched_yield();
 #endif
     }

@@ -195,7 +195,6 @@ src/tests/runtime/RTStopwatchTests.cpp 2
 src/tests/runtime/RTStreamTests.cpp 2
 src/tests/runtime/RTStringBuilderTests.c 3
 src/tests/runtime/RTTempFileTests.cpp 3
-src/tests/runtime/RTViperDOSPlatformTests.cpp 4
 src/tests/runtime/RTWatcherTests.cpp 9
 src/tests/runtime/RTWebSocketTests.cpp 1
 src/tests/runtime/RT_TimerTests.cpp 1

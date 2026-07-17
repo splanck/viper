@@ -341,7 +341,6 @@ rt_string rt_dns_local_host(void) {
 ///   - **Win32:** `GetAdaptersAddresses(AF_UNSPEC)` with skip-anycast/multicast/dns flags. Two-pass
 ///     (re-allocates buffer if first call returns ERROR_BUFFER_OVERFLOW).
 ///   - **Unix:** `getifaddrs` walking the linked list once.
-///   - **ViperDOS:** returns empty Seq (no `getifaddrs` available).
 /// Returns a Seq of rt_strings; loopback (127.0.0.1, ::1) is included. Useful for "what's my IP?"
 /// queries when the user hasn't specified an interface.
 void *rt_dns_local_addrs(void) {
@@ -396,9 +395,6 @@ void *rt_dns_local_addrs(void) {
     }
 
     free(addrs);
-#elif defined(__viperdos__)
-    // ViperDOS does not provide getifaddrs(); return empty list.
-    (void)seq;
 #else
     // Unix: use getifaddrs for local addresses
     struct ifaddrs *ifaddr, *ifa;

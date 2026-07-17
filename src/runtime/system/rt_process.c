@@ -52,9 +52,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <wchar.h>
 #include <windows.h>
-#elif defined(__viperdos__)
-// ViperDOS process handles are intentionally unavailable until async process
-// primitives exist in the target runtime.
 #else
 #include <fcntl.h>
 #include <signal.h>
@@ -95,8 +92,6 @@ typedef struct rt_process_impl {
     HANDLE stdout_read;
     HANDLE stderr_read;
     HANDLE stdin_write;
-#elif defined(__viperdos__)
-    int reserved;
 #else
     pid_t pid;
     int stdout_fd;
@@ -345,7 +340,7 @@ static rt_process_impl *process_alloc(void) {
     proc->stdout_read = NULL;
     proc->stderr_read = NULL;
     proc->stdin_write = NULL;
-#elif !defined(__viperdos__)
+#else
     proc->pid = -1;
     proc->stdout_fd = -1;
     proc->stderr_fd = -1;
@@ -929,28 +924,6 @@ static rt_process_impl *process_start_impl(rt_string program,
     return proc;
 }
 
-#elif defined(__viperdos__)
-
-static void process_drain(rt_process_impl *proc) {
-    (void)proc;
-}
-
-static void process_poll_internal(rt_process_impl *proc, int wait) {
-    (void)proc;
-    (void)wait;
-}
-
-static rt_process_impl *process_start_impl(rt_string program,
-                                           void *args,
-                                           rt_string cwd,
-                                           void *env) {
-    (void)program;
-    (void)args;
-    (void)cwd;
-    (void)env;
-    return NULL;
-}
-
 #else
 
 /// @brief Write to a POSIX pipe without globally changing SIGPIPE behavior.
@@ -1384,8 +1357,6 @@ static void process_close(rt_process_impl *proc) {
     close_handle(&proc->stdin_write);
     close_handle(&proc->thread);
     close_handle(&proc->process);
-#elif defined(__viperdos__)
-    process_drain(proc);
 #else
     if (proc->running && proc->pid > 0) {
         (void)kill(proc->pid, SIGTERM);
@@ -1498,9 +1469,6 @@ int64_t rt_process_write_stdin(void *handle, rt_string data) {
         off += written;
     }
     return (int64_t)off;
-#elif defined(__viperdos__)
-    (void)bytes;
-    return -1;
 #else
     if (proc->stdin_fd < 0)
         return -1;
@@ -1538,8 +1506,6 @@ int64_t rt_process_kill(void *handle) {
     if (!proc->process)
         return 0;
     return TerminateProcess(proc->process, 1) ? 1 : 0;
-#elif defined(__viperdos__)
-    return 0;
 #else
     if (proc->pid <= 0)
         return 0;

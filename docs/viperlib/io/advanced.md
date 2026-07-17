@@ -465,7 +465,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | macOS    | kqueue                     |
 | Windows  | ReadDirectoryChangesW      |
 
-`Start()` traps as unsupported on ViperDOS and other stub platforms.
+`Start()` traps as unsupported on stub platforms.
 
 ### Zia Example
 

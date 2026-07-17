@@ -2312,7 +2312,7 @@ int8_t rt_popuplist_is_visible(void *list) {
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
-// non-graphical builds (server / CLI / ViperDOS) can link without pulling
+// non-graphical builds (server / CLI) can link without pulling
 // in the GUI subsystem. Each stub safely no-ops or returns a sentinel
 // (NULL pointer, 0, -1, or empty string). Doc comments are inherited
 // from the real implementations above by virtue of identical names.

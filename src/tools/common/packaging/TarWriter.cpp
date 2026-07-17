@@ -18,7 +18,7 @@
 // Ownership/Lifetime:
 //   - Single-use writer, accumulates entries then outputs.
 //
-// Links: TarWriter.hpp, viperdos/user/libc/include/tar.h
+// Links: TarWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 

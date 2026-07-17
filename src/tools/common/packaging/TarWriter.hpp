@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Output returned as std::vector<uint8_t>.
 //
-// Links: TarWriter.cpp, viperdos/user/libc/include/tar.h (reference)
+// Links: TarWriter.cpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

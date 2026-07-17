@@ -15,7 +15,7 @@
 //   - CPU count queries use GetSystemInfo (Win32), sysctl/sysconf (POSIX).
 //     Linux/generic POSIX fall back to 1; the macOS sysconf fallback can return -1.
 //   - OS name strings are statically determined at compile time from predefined
-//     platform macros, including ViperDOS, and never change at runtime.
+//     platform macros and never change at runtime.
 //   - Hostname is queried fresh on each call; it is not cached.
 //   - Memory queries use GlobalMemoryStatusEx (Win32) or sysinfo (Linux) or
 //     host_statistics64 (macOS).
@@ -56,11 +56,6 @@
 #include <windows.h>
 
 #include "rt_file_path.h" // rt_file_path_wide_to_string for UTF-8 conversion (VDOC-217)
-#elif defined(__viperdos__)
-// ViperDOS provides POSIX-compatible system info APIs.
-#include <sys/types.h>
-#include <sys/utsname.h>
-#include <unistd.h>
 #else
 #include <pwd.h>
 #include <sys/stat.h>
@@ -296,8 +291,8 @@ rt_string rt_machine_linux_parse_os_release_file(const char *path) {
 // Operating System
 // ============================================================================
 
-/// @brief Return a lowercase platform identifier ("windows", "macos", "linux", "viperdos",
-/// "unknown"). Compile-time selected from `_WIN32`/`__APPLE__`/`__linux__`/`__viperdos__`.
+/// @brief Return a lowercase platform identifier ("windows", "macos", "linux",
+/// "unknown"). Compile-time selected from `_WIN32`/`__APPLE__`/`__linux__`.
 rt_string rt_machine_os(void) {
 #if defined(_WIN32)
     return make_str("windows");
@@ -305,8 +300,6 @@ rt_string rt_machine_os(void) {
     return make_str("macos");
 #elif defined(__linux__)
     return make_str("linux");
-#elif defined(__viperdos__)
-    return make_str("viperdos");
 #else
     return make_str("unknown");
 #endif
@@ -320,7 +313,7 @@ rt_string rt_machine_os(void) {
 ///   `uname.release`.
 ///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to
 ///   `uname.release`.
-///   - **Other Unix / ViperDOS:** `uname.release`.
+///   - **Other Unix:** `uname.release`.
 /// Returns "unknown" if every probe fails.
 rt_string rt_machine_os_ver(void) {
 #ifdef _WIN32
@@ -400,7 +393,7 @@ rt_string rt_machine_os_ver(void) {
     return make_str("unknown");
 
 #else
-    // Unix and ViperDOS: use uname.
+    // Unix: use uname.
     struct utsname uts;
     if (uname(&uts) == 0) {
         return make_str(uts.release);

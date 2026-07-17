@@ -717,8 +717,8 @@ static void archive_tm_to_dos_datetime(const struct tm *tm,
 }
 
 /// @brief Convert Unix epoch seconds to UTC broken-down time.
-/// @details Routes through @ref rt_gmtime_r so the platform-specific Windows,
-///          POSIX, and ViperDOS conversion details stay in the runtime platform
+/// @details Routes through @ref rt_gmtime_r so the platform-specific Windows
+///          and POSIX conversion details stay in the runtime platform
 ///          adapter instead of this archive writer.
 /// @param epoch Seconds since the Unix epoch.
 /// @param out_tm Output calendar time.
@@ -1309,7 +1309,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     rt_dir_make_all(dest_dir);
     archive_reject_symlink_components(cdir, root_len, 1);
 
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
     int root_fd = archive_open_root_dir_posix(cdir);
     if (root_fd < 0)
         return;

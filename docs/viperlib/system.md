@@ -487,7 +487,6 @@ func start() {
   waiting for exit. `Destroy()` is idempotent; POSIX allows 500 ms after `SIGTERM` before
   `SIGKILL`, while Windows terminates a live child immediately.
 - Output buffers are capped at 16 MB per stream between reads.
-- ViperDOS currently has no asynchronous process backend: every `Start*` call returns `NULL`.
 
 ---
 
@@ -555,7 +554,7 @@ if opened.IsOk {
 ```
 
 On macOS and Linux the backend uses a controlling POSIX PTY; Windows requires ConPTY (Windows 10
-version 1809 or newer); ViperDOS is unsupported. `LastError` is a compatibility side channel stored
+version 1809 or newer). `LastError` is a compatibility side channel stored
 in a thread-local buffer, so concurrent PTY calls on different threads keep independent diagnostics;
 read it on the same thread that performed the failing operation (prefer `OpenResult` for structured
 errors). `Read`/`ReadResult` share one merged
@@ -579,7 +578,7 @@ System information queries providing read-only access to machine properties.
 
 | Property   | Type      | Description                                                              |
 |------------|-----------|--------------------------------------------------------------------------|
-| `Os`       | `String`  | `"linux"`, `"macos"`, `"windows"`, `"viperdos"`, or `"unknown"`          |
+| `Os`       | `String`  | `"linux"`, `"macos"`, `"windows"`, or `"unknown"`                        |
 | `OsVer`    | `String`  | Operating system version string (e.g., `"14.2.1"` on macOS)              |
 | `Arch`     | `String`  | CPU architecture identifier                                              |
 | `Host`     | `String`  | Machine hostname                                                         |

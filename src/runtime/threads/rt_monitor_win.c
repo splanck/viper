@@ -835,6 +835,4 @@ void rt_monitor_pause_all(void *obj) {
     LeaveCriticalSection(&m->cs);
 }
 
-// ViperDOS provides pthreads — falls through to the Unix/pthread
-// implementation below.
 #endif // defined(_WIN32)

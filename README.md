@@ -328,7 +328,7 @@ Platform guides:
 
 **Internals**: [Architecture](docs/internals/architecture.md), [VM](docs/internals/vm.md), [Code Map](docs/internals/codemap.md), [Backend](docs/internals/backend.md), [IL Passes](docs/il/il-passes.md)
 
-**Contributors**: [Contributor Guide](docs/internals/contributor-guide.md), [Frontend How-To](docs/internals/frontend-howto.md), [Testing](docs/internals/testing.md), [Dependencies](docs/internals/dependencies.md)
+**Contributors**: [Contributor Guide](docs/internals/contributor-guide.md), [Frontend How-To](docs/internals/frontend-howto.md), [Testing](docs/internals/testing.md)
 
 ---
 

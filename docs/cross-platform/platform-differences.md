@@ -395,10 +395,8 @@ These are known platform-specific limitations, tracked across the project.
 
 | ID | Category | Description | Severity |
 |----|----------|-------------|----------|
-| GAP-1 | Filesystem | ViperDOS file watcher is a stub (no kernel inotify support) | Low |
 | GAP-2 | Filesystem | Windows `MAX_PATH` (260 char) limit on directory operations | Medium |
 | ~~GAP-3~~ | ~~Process~~ | ~~Resolved: Windows tests use CreateProcess self-relaunch + Job Object~~ | ~~Resolved~~ |
 | ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: x86-64 native codegen now supports both SysV and Win64 ABIs~~ | ~~Resolved~~ |
 | GAP-5 | Graphics | Linux requires X11 dev headers; configure fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
 | GAP-6 | Audio | Linux requires ALSA dev headers; configure fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
-| GAP-7 | Packaging | ViperDOS Windows build cannot create UEFI ESP images | Low |

@@ -44,7 +44,7 @@ extern void rt_trap_net(const char *msg, int err_code);
 #define close closesocket
 typedef int socklen_t;
 #else
-// Unix and ViperDOS: use BSD socket APIs.
+// Unix: use BSD socket APIs.
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -521,7 +521,7 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len) {
 static int ws_wait_socket(int fd, int timeout_ms, int for_write) {
     if (fd < 0 || timeout_ms < 0)
         return -1;
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
     struct pollfd pfd;
     int result;
     pfd.fd = fd;
@@ -560,7 +560,7 @@ static void ws_set_nonblocking(int fd, int nonblocking) {
     u_long mode = nonblocking ? 1 : 0;
     ioctlsocket(fd, FIONBIO, &mode);
 #else
-    // Unix and ViperDOS: use fcntl.
+    // Unix: use fcntl.
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0)
         return;
@@ -579,7 +579,7 @@ static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv) {
     DWORD tv = (DWORD)timeout_ms;
     setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
 #else
-    // Unix and ViperDOS: use setsockopt with timeval.
+    // Unix: use setsockopt with timeval.
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;

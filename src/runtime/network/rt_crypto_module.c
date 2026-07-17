@@ -39,7 +39,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif !RT_PLATFORM_VIPERDOS
+#else
 #include <sched.h>
 #endif
 
@@ -67,7 +67,7 @@ static volatile int g_module_lock = 0;
 static void module_lock_yield(void) {
 #if RT_PLATFORM_WINDOWS
     SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
     (void)sched_yield();
 #endif
 }

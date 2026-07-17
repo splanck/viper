@@ -60,7 +60,6 @@ failures without changing the `PtySession` handle shape.
   `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`, with non-blocking `PeekNamedPipe`
   drains. The three ConPTY symbols are resolved **dynamically** so the binary
   still loads on pre-1809 Windows; `IsSupported()` reflects availability.
-- **ViperDOS:** unsupported (`Open` returns NULL, `IsSupported` returns 0).
 
 **Rendering** reuses the existing `Viper.GUI.OutputPane`, which is already
 ANSI-SGR-aware and color-stateful across appends; only carriage-return column

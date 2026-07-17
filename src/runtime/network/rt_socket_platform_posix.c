@@ -10,7 +10,7 @@
 //
 // Key invariants:
 //   - WinSock initialization is a no-op on POSIX-style platforms.
-//   - poll() is preferred when available; ViperDOS falls back to select().
+//   - poll() is used for socket readiness waits, retrying after EINTR.
 //   - macOS SIGPIPE suppression uses SO_NOSIGPIPE once per socket, while any
 //     platform exposing MSG_NOSIGNAL also receives per-send suppression.
 //
@@ -109,8 +109,7 @@ bool rt_socket_set_nonblocking(socket_t sock, bool nonblocking) {
 }
 
 /// @brief Query queued read bytes for a POSIX socket.
-/// @details Uses FIONREAD where the platform exposes ioctl(); ViperDOS reports
-///          unsupported so callers retain their historical zero-on-unknown behavior.
+/// @details Uses FIONREAD via ioctl() to report the queued byte count.
 /// @param sock Socket descriptor to inspect.
 /// @param bytes_out Receives the queued byte count on success.
 /// @return true if the query succeeded, false otherwise.
@@ -118,10 +117,6 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
     if (!bytes_out)
         return false;
     *bytes_out = 0;
-#if RT_PLATFORM_VIPERDOS
-    (void)sock;
-    return false;
-#else
     int bytes_available = 0;
     if (ioctl(sock, FIONREAD, &bytes_available) != 0)
         return false;
@@ -129,7 +124,6 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
         return false;
     *bytes_out = (int64_t)bytes_available;
     return true;
-#endif
 }
 
 /// @brief Apply SO_RCVTIMEO or SO_SNDTIMEO to a POSIX socket.
@@ -146,8 +140,7 @@ bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
 }
 
 /// @brief Wait for a POSIX socket to become readable or writable.
-/// @details Uses poll() where available, retrying after EINTR, and falls back to
-///          select() on ViperDOS.
+/// @details Uses poll(), retrying after EINTR.
 /// @param sock Socket descriptor to wait on.
 /// @param timeout_ms Timeout in milliseconds.
 /// @param for_write true waits for POLLOUT/write readiness; false waits for read readiness.
@@ -155,7 +148,6 @@ bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
 int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     if (timeout_ms < 0)
         return -1;
-#if !RT_PLATFORM_VIPERDOS
     struct pollfd pfd;
     pfd.fd = sock;
     pfd.events = for_write ? POLLOUT : POLLIN;
@@ -171,21 +163,4 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     if (result > 0 && (pfd.revents & (POLLERR | POLLHUP)) && !(pfd.revents & (POLLIN | POLLOUT)))
         return -1;
     return result;
-#else
-    fd_set fds;
-    FD_ZERO(&fds);
-    if (sock == INVALID_SOCK || sock >= FD_SETSIZE) {
-        errno = EINVAL;
-        return -1;
-    }
-    FD_SET(sock, &fds);
-
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    if (for_write)
-        return select(sock + 1, NULL, &fds, NULL, &tv);
-    return select(sock + 1, &fds, NULL, NULL, &tv);
-#endif
 }

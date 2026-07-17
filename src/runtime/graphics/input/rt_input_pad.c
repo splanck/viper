@@ -122,7 +122,7 @@ static double pad_clamp_unit_finite(double value) {
 //=============================================================================
 
 // ===========================================================================
-// Each platform (macOS / Linux / Windows / ViperDOS) provides its own
+// Each platform (macOS / Linux / Windows) provides its own
 // `platform_pad_poll` and `platform_pad_vibrate` implementations. The
 // public API in `rt_pad_*` calls the platform variant via these
 // forward declarations; only one definition is compiled in per build.

@@ -51,12 +51,6 @@
 #define RT_PLATFORM_LINUX 0
 #endif
 
-#if defined(__viperdos__)
-#define RT_PLATFORM_VIPERDOS 1
-#else
-#define RT_PLATFORM_VIPERDOS 0
-#endif
-
 //===----------------------------------------------------------------------===//
 // Compiler Detection
 //===----------------------------------------------------------------------===//
@@ -968,15 +962,6 @@ static inline void rt_windows_sleep_ms(int64_t ms) {
         Sleep((DWORD)ms);
 }
 
-#elif RT_PLATFORM_VIPERDOS
-
-// ViperDOS platform — provides POSIX-compatible APIs via libc.
-#include <sys/time.h>
-#include <unistd.h>
-
-#define RT_PATH_SEPARATOR '/'
-#define RT_PATH_SEPARATOR_STR "/"
-
 #else // POSIX systems (macOS, Linux)
 
 #include <sys/time.h>
@@ -1069,8 +1054,7 @@ void rt_assert_main_thread_(const char *file, int line);
 
 /// @def RT_ASSERT_MAIN_THREAD()
 /// Traps with a diagnostic if called from a non-main thread.
-/// On ViperDOS (no threading), compiles to nothing.
-#if RT_PLATFORM_VIPERDOS || defined(RT_NO_MAIN_THREAD_ASSERT)
+#if defined(RT_NO_MAIN_THREAD_ASSERT)
 #define RT_ASSERT_MAIN_THREAD() ((void)0)
 #else
 #define RT_ASSERT_MAIN_THREAD() rt_assert_main_thread_(__FILE__, __LINE__)

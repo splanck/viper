@@ -49,7 +49,7 @@ void *rt_pty_open_result(
 
 /// @brief Return TRUE when the runtime can create PTY sessions on this platform.
 /// @note Always true on POSIX; on Windows it reflects ConPTY availability
-///       (Windows 10 1809+); false on ViperDOS.
+///       (Windows 10 1809+).
 int64_t rt_pty_is_supported(void);
 
 /// @brief Return the most recent PTY startup/support error for this process.

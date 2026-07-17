@@ -50,7 +50,7 @@
 
 #if RT_PLATFORM_WINDOWS
 #include <windows.h>
-#elif !RT_PLATFORM_VIPERDOS
+#else
 #include <sched.h>
 #endif
 
@@ -95,7 +95,7 @@ static void value_type_lock(void) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(&g_value_type_layout_lock, __ATOMIC_ACQUIRE));

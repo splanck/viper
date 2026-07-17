@@ -52,7 +52,7 @@
 
     <p>Viper has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt, no zlib. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
 
-    <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Viper complete control over its compilation pipeline, enables portability to unusual targets (like ViperDOS), and makes the entire system auditable and educational.</p>
+    <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Viper complete control over its compilation pipeline, enables portability to unusual targets, and makes the entire system auditable and educational.</p>
 
     <h2 id="what-we-replaced">What Typical Projects Use vs. What Viper Builds</h2>
 
@@ -219,7 +219,7 @@
     <p>When a bug appears in the linker, the optimizer, or the runtime &mdash; we fix it directly. No waiting for upstream releases, no version conflicts, no ABI compatibility concerns.</p>
 
     <h3>Portability</h3>
-    <p>Viper can target platforms where external libraries don't exist. ViperDOS runs on bare-metal x86 with no OS &mdash; something impossible if the compiler depended on LLVM or SDL.</p>
+    <p>Viper can target platforms where external libraries don't exist &mdash; the entire toolchain needs nothing beyond a C/C++ compiler and the host's libc, something impossible if it depended on LLVM or SDL.</p>
 
     <h3>Auditability</h3>
     <p>Every line of code in Viper's output binary was written by the Viper project. No hidden transitive dependencies, no supply chain concerns for the compiler itself.</p>

@@ -167,9 +167,8 @@ static ViperCountdown *require_countdown(void *obj) {
 /// @brief POSIX: convert a `struct timespec` into a millisecond `int64_t`, trapping on overflow.
 /// @details Multiplies `tv_sec * 1000` through `countdown_checked_mul_i64` and adds
 ///          `tv_nsec / 1000000` through `countdown_checked_add_i64` so an absurdly large
-///          timespec can't silently wrap. Excludes ViperDOS where `clock_gettime` is
-///          unavailable.
-#if !defined(_WIN32) && !defined(__viperdos__)
+///          timespec can't silently wrap.
+#if !defined(_WIN32)
 static int64_t countdown_timespec_to_ms(struct timespec ts) {
     int64_t seconds_ms;
     int64_t result;
@@ -210,8 +209,6 @@ static int64_t get_timestamp_ms(void) {
         return 0;
     }
     return result;
-#elif defined(__viperdos__)
-    return rt_timer_ms();
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC

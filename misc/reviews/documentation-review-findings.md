@@ -3237,8 +3237,8 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** add internal read/write synchronization or expose an explicit build/freeze
   transition whose enforcement is shared with the server types.
 - **Review (2026-07-16):** Confirmed and fixed with internal read/write synchronization (the
-  first suggested route). Each router owns a platform rwlock (SRWLOCK / `pthread_rwlock_t`,
-  NULL no-op on single-threaded ViperDOS — same idiom as `rt_type_registry.c`). `add_route`
+  first suggested route). Each router owns a platform rwlock (SRWLOCK / `pthread_rwlock_t` —
+  same idiom as `rt_type_registry.c`). `add_route`
   now builds the route fully detached (all parsing/validation traps happen unlocked, so a
   longjmp recovery hook cannot leak a held lock) and publishes under the write lock;
   `Match`/`Count` hold the read lock, so concurrent matches stay parallel while registration
@@ -7269,7 +7269,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   launch failure ambiguity, and signal normalization were incomplete. Process/PTy documentation
   hid replacement-environment semantics, executable-lookup divergence, nullable startup,
   partial writes, negative-signal ambiguity, platform availability, dimension clamps, and
-  termination behavior. Machine omitted ViperDOS and several properties while calling unlike
+  termination behavior. Machine omitted several properties while calling unlike
   memory metrics equivalent. Terminal hid null EOF results, byte-oriented input, 32-bit narrowing,
   TTY/color rules, batching exceptions, and alternate-screen state defects. Adjacent headers
   additionally called synchronous Exec fire-and-forget, assigned its TLS state to RtContext,

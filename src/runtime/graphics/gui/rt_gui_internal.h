@@ -51,7 +51,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Unix and ViperDOS: strings.h provides strcasecmp.
+// Unix: strings.h provides strcasecmp.
 #if !RT_PLATFORM_WINDOWS
 #include <strings.h>
 #endif

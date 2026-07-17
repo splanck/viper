@@ -749,7 +749,6 @@ __attribute__((packed, aligned(8)))
 | `__linux__` | Linux |
 | `__MACH__` | macOS |
 | `__unix__` | Unix-like |
-| `__viperdos__` | Viper OS |
 | `_WIN32` | Windows (32 or 64-bit) |
 | `_WIN64` | Windows 64-bit |
 

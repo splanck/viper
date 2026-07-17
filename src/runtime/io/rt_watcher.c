@@ -16,7 +16,7 @@
 //   - Events are queued internally and consumed through Poll/PollFor.
 //   - Explicit Stop releases resources promptly; the finalizer also stops an
 //     active watcher and clears queued event strings.
-//   - A stub implementation is provided for unsupported platforms (ViperDOS).
+//   - A stub implementation is provided for unsupported platforms.
 //   - All public functions guard against NULL watcher handles.
 //
 // Ownership/Lifetime:
@@ -65,8 +65,6 @@
 #endif
 #elif RT_PLATFORM_WINDOWS
 #include "rt_win32_wait.h"
-#elif RT_PLATFORM_VIPERDOS
-// ViperDOS: file watching deferred until kernel inotify-like support exists.
 #else
 // Stub platform
 #endif

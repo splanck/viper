@@ -545,7 +545,6 @@ Memory order constants:
 | `__APPLE__` | macOS/iOS |
 | `__linux__` | Linux |
 | `__unix__` | Unix-like systems |
-| `__viperdos__` | Viper OS (custom) |
 | `_WIN32` | Windows (32 or 64-bit) |
 | `_WIN64` | Windows 64-bit |
 

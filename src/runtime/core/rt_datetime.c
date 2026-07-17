@@ -288,14 +288,6 @@ int64_t rt_datetime_now(void) {
 int64_t rt_datetime_now_ms(void) {
 #if RT_PLATFORM_WINDOWS
     return rt_windows_time_ms();
-#elif RT_PLATFORM_VIPERDOS
-    // ViperDOS provides clock_gettime via libc.
-    {
-        struct timespec ts;
-        if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
-            return 0;
-        return dt_epoch_millis_from_parts((int64_t)ts.tv_sec, (int64_t)ts.tv_nsec / 1000000);
-    }
 #elif RT_PLATFORM_MACOS
     struct timeval tv;
     if (gettimeofday(&tv, NULL) != 0)

@@ -50,12 +50,6 @@
 #include <windows.h>
 #define isatty _isatty
 #define fileno _fileno
-#elif defined(__viperdos__)
-// ViperDOS provides POSIX-compatible terminal APIs via libc.
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#include <termios.h>
-#include <unistd.h>
 #else
 #include <sys/ioctl.h>
 #include <sys/select.h>

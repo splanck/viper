@@ -151,23 +151,6 @@ void rt_trap_stack_overflow(void) {
     _exit(1);
 }
 
-#elif defined(__viperdos__)
-
-// ViperDOS stack safety implementation.
-// Signal-based guard pages require ViperDOS signal handler trampoline.
-// For now, init is a no-op; overflow traps explicitly.
-
-void rt_init_stack_safety(void) {
-    // No-op until ViperDOS signal handler trampoline is available.
-}
-
-void rt_trap_stack_overflow(void) {
-    // Use fprintf for simplicity; could use write() if available
-    fprintf(stderr, "Viper runtime trap: stack overflow\n");
-    fflush(stderr);
-    exit(1);
-}
-
 #else
 // Fallback for other platforms - no-op implementation
 void rt_init_stack_safety(void) {

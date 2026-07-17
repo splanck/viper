@@ -45,7 +45,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif !RT_PLATFORM_VIPERDOS
+#else
 #include <sched.h>
 #endif
 
@@ -89,7 +89,7 @@ static int g_output_capture_lock;
 static void rt_output_yield_(void) {
 #if RT_PLATFORM_WINDOWS
     SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
     sched_yield();
 #endif
 }

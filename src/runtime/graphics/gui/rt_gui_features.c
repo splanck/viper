@@ -1327,7 +1327,7 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
-// non-graphical builds (server / CLI / ViperDOS) link without pulling in
+// non-graphical builds (server / CLI) link without pulling in
 // the GUI. Each stub no-ops or returns a sentinel; doc comments are
 // inherited from the real functions above by virtue of identical names.
 // ===========================================================================

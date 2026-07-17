@@ -54,11 +54,6 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
-#elif defined(__viperdos__)
-// ViperDOS provides /dev/urandom via VirtIO-RNG.
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
 #else
 #if defined(__linux__)
 #include <sys/random.h>
@@ -116,7 +111,7 @@ static void rand_secure_zero(void *ptr, size_t len) {
 ///            interrupted) and on `EINTR`. Falls back to `/dev/urandom` if
 ///            `getrandom` returns `ENOSYS` (kernel < 3.17 — extremely rare
 ///            but possible on long-running enterprise distros).
-///          - **Other Unix / ViperDOS**: `/dev/urandom` directly. Same loop
+///          - **Other Unix**: `/dev/urandom` directly. Same loop
 ///            structure — read in a loop until the requested length is
 ///            satisfied, retrying on `EINTR`, treating `read() == 0` as a
 ///            failure (the device should never EOF).
@@ -176,18 +171,9 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
     if (bytes_read == len)
         return 0;
 #endif
-    // Unix and ViperDOS: use /dev/urandom.
-#if defined(__viperdos__)
-#ifdef O_CLOEXEC
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-    int fd = open("/dev/urandom", O_RDONLY);
-#endif
-    int close_after_read = 1;
-#else
+    // Unix: use /dev/urandom.
     int fd = rand_urandom_fd();
     int close_after_read = 0;
-#endif
     if (fd < 0)
         return -1;
 

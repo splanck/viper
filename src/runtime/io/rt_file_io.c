@@ -96,22 +96,6 @@ typedef SSIZE_T ssize_t;
 #endif
 // mode_t for Windows (off_t is defined in sys/types.h as _off_t)
 typedef unsigned short mode_t;
-#elif RT_PLATFORM_VIPERDOS
-// ViperDOS provides POSIX-compatible file I/O via libc.
-#include <sys/stat.h>
-#include <sys/types.h>
-typedef long ssize_t;
-#define S_IRUSR 0400
-#define S_IWUSR 0200
-#define S_IRGRP 0040
-#define S_IWGRP 0020
-#define S_IROTH 0004
-#define S_IWOTH 0002
-#ifndef EINTR
-#define EINTR 0 // ViperDOS may not define EINTR
-#endif
-// ViperDOS needs mode_t definition
-typedef unsigned short mode_t;
 #else
 // POSIX systems
 #include <sys/stat.h>

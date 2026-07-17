@@ -28,7 +28,6 @@
 //   - Windows: ConPTY (CreatePseudoConsole/ResizePseudoConsole/ClosePseudoConsole)
 //     resolved dynamically (Windows 10 1809+). NOTE: this path is not buildable
 //     on non-Windows hosts and must be validated by hand on Windows.
-//   - ViperDOS: unsupported (Open returns NULL, IsSupported returns 0).
 //
 // Links: src/runtime/system/rt_pty.h, src/runtime/system/rt_process.c
 //
@@ -67,8 +66,6 @@
 typedef HRESULT(WINAPI *pty_create_pseudoconsole_fn)(COORD, HANDLE, HANDLE, DWORD, void **);
 typedef HRESULT(WINAPI *pty_resize_pseudoconsole_fn)(void *, COORD);
 typedef VOID(WINAPI *pty_close_pseudoconsole_fn)(void *);
-#elif defined(__viperdos__)
-// ViperDOS has no PTY support.
 #else
 #include <fcntl.h>
 #include <signal.h>
@@ -110,8 +107,6 @@ typedef struct rt_pty_impl {
     HANDLE input_write; // parent -> child
     HANDLE output_read; // child -> parent
     void *hpc;          // HPCON
-#elif defined(__viperdos__)
-    int reserved;
 #else
     pid_t pid;
     int master_fd;
@@ -363,7 +358,7 @@ static rt_pty_impl *pty_alloc(void) {
     pty->input_write = NULL;
     pty->output_read = NULL;
     pty->hpc = NULL;
-#elif !defined(__viperdos__)
+#else
     pty->pid = -1;
     pty->master_fd = -1;
 #endif
@@ -786,58 +781,6 @@ static void pty_close(rt_pty_impl *pty) {
 static int64_t pty_supported(void) {
     pty_load_conpty();
     return pty_conpty_available ? 1 : 0;
-}
-
-// ===========================================================================
-#elif defined(__viperdos__)
-// --- ViperDOS: unsupported -------------------------------------------------
-
-static rt_pty_impl *pty_open_impl(
-    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
-    (void)program;
-    (void)args;
-    (void)cwd;
-    (void)env;
-    (void)cols;
-    (void)rows;
-    pty_set_last_error("PTY is unsupported on ViperDOS");
-    return NULL;
-}
-
-static void pty_drain(rt_pty_impl *pty) {
-    (void)pty;
-}
-
-static void pty_poll_internal(rt_pty_impl *pty, int wait) {
-    (void)pty;
-    (void)wait;
-}
-
-static int pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
-    (void)pty;
-    (void)cols;
-    (void)rows;
-    return 0; // no PTY backend on this platform: resize cannot succeed
-}
-
-static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
-    (void)pty;
-    (void)bytes;
-    (void)len;
-    return -1;
-}
-
-static void pty_close(rt_pty_impl *pty) {
-    if (!pty || pty->destroyed)
-        return;
-    buffer_free(&pty->output_buf);
-    pty->running = 0;
-    pty->started = 0;
-    pty->destroyed = 1;
-}
-
-static int64_t pty_supported(void) {
-    return 0;
 }
 
 // ===========================================================================
@@ -1419,8 +1362,6 @@ int64_t rt_pty_kill(void *handle) {
     if (!pty->process)
         return 0;
     return TerminateProcess(pty->process, 1) ? 1 : 0;
-#elif defined(__viperdos__)
-    return 0;
 #else
     if (pty->pid <= 0)
         return 0;

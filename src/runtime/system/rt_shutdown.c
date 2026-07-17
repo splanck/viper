@@ -27,7 +27,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif !defined(__viperdos__)
+#else
 #include <signal.h>
 #endif
 
@@ -101,7 +101,7 @@ static BOOL WINAPI shutdown_win_ctrl_handler(DWORD ctrl_type) {
     rt_shutdown_request(reason);
     return TRUE;
 }
-#elif !defined(__viperdos__)
+#else
 // rt_shutdown_request only performs a lock-free atomic OR, so it is
 // async-signal-safe to call directly from these handlers.
 static void shutdown_posix_sigint(int sig) {
@@ -123,7 +123,7 @@ void rt_shutdown_install_signal_handlers(void) {
     }
 #if defined(_WIN32)
     SetConsoleCtrlHandler(shutdown_win_ctrl_handler, TRUE);
-#elif !defined(__viperdos__)
+#else
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = shutdown_posix_sigint;

@@ -51,7 +51,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif !defined(__viperdos__)
+#else
 #include <pthread.h>
 #endif
 
@@ -67,13 +67,11 @@ static void tr_rwlock_init(RtTypeRegistryState *st) {
     if (lock)
         InitializeSRWLock(lock);
     st->rw_lock = lock;
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(pthread_rwlock_t));
     if (lock)
         pthread_rwlock_init(lock, NULL);
     st->rw_lock = lock;
-#else
-    st->rw_lock = NULL;
 #endif
 }
 
@@ -81,7 +79,7 @@ static void tr_rwlock_init(RtTypeRegistryState *st) {
 static void tr_rwlock_destroy(RtTypeRegistryState *st) {
     if (!st->rw_lock)
         return;
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
     pthread_rwlock_destroy((pthread_rwlock_t *)st->rw_lock);
 #endif
     free(st->rw_lock);
@@ -96,7 +94,7 @@ static int tr_rdlock(RtTypeRegistryState *st) {
         return 0;
 #ifdef _WIN32
     AcquireSRWLockShared((SRWLOCK *)st->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_rdlock((pthread_rwlock_t *)st->rw_lock);
 #endif
     return 1;
@@ -110,7 +108,7 @@ static void tr_rdunlock(RtTypeRegistryState *st, int locked) {
         return;
 #ifdef _WIN32
     ReleaseSRWLockShared((SRWLOCK *)st->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_unlock((pthread_rwlock_t *)st->rw_lock);
 #endif
 }
@@ -121,7 +119,7 @@ static void tr_wrlock(RtTypeRegistryState *st) {
         return;
 #ifdef _WIN32
     AcquireSRWLockExclusive((SRWLOCK *)st->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_wrlock((pthread_rwlock_t *)st->rw_lock);
 #endif
 }
@@ -132,7 +130,7 @@ static void tr_wrunlock(RtTypeRegistryState *st) {
         return;
 #ifdef _WIN32
     ReleaseSRWLockExclusive((SRWLOCK *)st->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_unlock((pthread_rwlock_t *)st->rw_lock);
 #endif
 }

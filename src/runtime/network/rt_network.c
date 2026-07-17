@@ -10,7 +10,7 @@
 #define _DARWIN_C_SOURCE 1 // macOS: expose BSD extensions
 #endif
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1 // Linux/ViperDOS: expose ip_mreq
+#define _GNU_SOURCE 1 // Linux: expose ip_mreq
 #endif
 
 //

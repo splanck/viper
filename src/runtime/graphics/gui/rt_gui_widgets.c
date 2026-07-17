@@ -2336,7 +2336,7 @@ void *rt_gui_widget_owner_app(void *handle) {
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so
-// non-graphical builds (server / CLI / ViperDOS) link without pulling in
+// non-graphical builds (server / CLI) link without pulling in
 // the GUI subsystem. Each stub no-ops or returns a sentinel; doc comments
 // inherit from the real impls above by virtue of identical names.
 // ===========================================================================

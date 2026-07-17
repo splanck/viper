@@ -243,36 +243,6 @@ int64_t rt_clock_ticks_us(void) {
     return rt_time_scale_seconds(whole, 1000000LL, fraction);
 }
 
-#elif defined(__viperdos__)
-
-// ViperDOS time implementation — uses POSIX-compatible libc APIs.
-#include <errno.h>
-#include <time.h>
-
-void rt_sleep_ms(int32_t ms) {
-    if (ms < 0)
-        ms = 0;
-    struct timespec req;
-    req.tv_sec = ms / 1000;
-    req.tv_nsec = (long)(ms % 1000) * 1000000L;
-    while (nanosleep(&req, &req) == -1 && errno == EINTR) {
-    }
-}
-
-int64_t rt_timer_ms(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
-        return 0;
-    return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)(ts.tv_nsec / 1000000));
-}
-
-int64_t rt_clock_ticks_us(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
-        return 0;
-    return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)(ts.tv_nsec / 1000));
-}
-
 #else
 #include <errno.h>
 #include <time.h>

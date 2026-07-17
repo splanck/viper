@@ -165,11 +165,6 @@ When responding to a task:
 # Build all demos on Windows
 .\scripts\build_demos_win.cmd
 
-# Build and test ViperDOS (NEVER use build_viper.sh for ViperDOS!)
-./scripts/build_viperdos.sh
-# Build ViperDOS without launching QEMU:
-./scripts/build_viperdos.sh --no-run
-
 # Format
 clang-format -i <files>
 ```

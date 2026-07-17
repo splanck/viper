@@ -35,7 +35,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif !defined(__viperdos__)
+#else
 #include <pthread.h>
 #endif
 
@@ -70,7 +70,7 @@ typedef struct {
     route_t *routes;
     int route_count;
     int route_capacity;
-    void *rw_lock; ///< Platform rwlock (SRWLOCK / pthread_rwlock_t; NULL on ViperDOS)
+    void *rw_lock; ///< Platform rwlock (SRWLOCK / pthread_rwlock_t)
 } rt_http_router_impl;
 
 typedef struct {
@@ -104,13 +104,11 @@ static void router_lock_init(rt_http_router_impl *router) {
     if (lock)
         InitializeSRWLock(lock);
     router->rw_lock = lock;
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(pthread_rwlock_t));
     if (lock)
         pthread_rwlock_init(lock, NULL);
     router->rw_lock = lock;
-#else
-    router->rw_lock = NULL;
 #endif
 }
 
@@ -118,7 +116,7 @@ static void router_lock_init(rt_http_router_impl *router) {
 static void router_lock_destroy(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#if !defined(_WIN32) && !defined(__viperdos__)
+#if !defined(_WIN32)
     pthread_rwlock_destroy((pthread_rwlock_t *)router->rw_lock);
 #endif
     free(router->rw_lock);
@@ -131,7 +129,7 @@ static void router_rdlock(rt_http_router_impl *router) {
         return;
 #ifdef _WIN32
     AcquireSRWLockShared((SRWLOCK *)router->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_rdlock((pthread_rwlock_t *)router->rw_lock);
 #endif
 }
@@ -142,7 +140,7 @@ static void router_rdunlock(rt_http_router_impl *router) {
         return;
 #ifdef _WIN32
     ReleaseSRWLockShared((SRWLOCK *)router->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);
 #endif
 }
@@ -153,7 +151,7 @@ static void router_wrlock(rt_http_router_impl *router) {
         return;
 #ifdef _WIN32
     AcquireSRWLockExclusive((SRWLOCK *)router->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_wrlock((pthread_rwlock_t *)router->rw_lock);
 #endif
 }
@@ -164,7 +162,7 @@ static void router_wrunlock(rt_http_router_impl *router) {
         return;
 #ifdef _WIN32
     ReleaseSRWLockExclusive((SRWLOCK *)router->rw_lock);
-#elif !defined(__viperdos__)
+#else
     pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);
 #endif
 }

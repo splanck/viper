@@ -1881,10 +1881,6 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_gc_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_gc_hash test_rt_gc_hash)
 
-    viper_add_test(test_rt_viperdos_platform ${VIPER_TESTS_DIR}/runtime/RTViperDOSPlatformTests.cpp)
-    target_link_libraries(test_rt_viperdos_platform PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_viperdos_platform test_rt_viperdos_platform)
-
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)

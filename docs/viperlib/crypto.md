@@ -714,7 +714,7 @@ Compatibility mode reads directly from the platform CSPRNG. Approved mode seeds 
 | Linux    | `getrandom(2)`; `/dev/urandom` fallback only when the syscall is unavailable (`ENOSYS`) |
 | macOS    | arc4random_buf                   |
 | Windows  | BCryptGenRandom                  |
-| Other Unix / ViperDOS | `/dev/urandom`       |
+| Other Unix | `/dev/urandom`                  |
 
 `Int` uses rejection sampling, is inclusive at both ends, and supports the full signed 64-bit
 domain without range overflow.

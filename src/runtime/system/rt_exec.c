@@ -52,13 +52,6 @@
 #include <windows.h>
 #define popen _popen
 #define pclose _pclose
-#elif defined(__viperdos__)
-// ViperDOS provides POSIX-compatible process APIs via libc.
-#include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
-extern char **environ;
 #else
 #include <fcntl.h>
 #include <spawn.h>

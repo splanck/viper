@@ -8,8 +8,7 @@ last-verified: 2026-07-14
 
 When adding or modifying platform-sensitive functionality in Viper, use this
 reference to identify every file that must be touched. The codebase targets
-**Windows (x86-64)**, **macOS (x86-64 + ARM64)**, **Linux (x86-64)**, and
-**ViperDOS (AArch64)**.
+**Windows (x86-64)**, **macOS (x86-64 + ARM64)**, and **Linux (x86-64)**.
 
 For a user-facing reference of runtime behavioral differences across platforms, see
 [platform-differences.md](platform-differences.md).
@@ -32,7 +31,6 @@ Viper now uses two shared platform/capability layers:
 | `RT_PLATFORM_WINDOWS` | `_WIN32 \|\| _WIN64` | `src/runtime/rt_platform.h` |
 | `RT_PLATFORM_MACOS` | `__APPLE__` | `src/runtime/rt_platform.h` |
 | `RT_PLATFORM_LINUX` | `__linux__` | `src/runtime/rt_platform.h` |
-| `RT_PLATFORM_VIPERDOS` | `__viperdos__` | `src/runtime/rt_platform.h` |
 | `RT_COMPILER_MSVC` | MSVC (not Clang-CL) | `src/runtime/rt_platform.h` |
 | `RT_COMPILER_GCC_LIKE` | GCC or Clang | `src/runtime/rt_platform.h` |
 
@@ -75,7 +73,6 @@ Important rule:
 | `src/runtime/io/rt_watcher.c` | Filesystem watching — three backends selected with `RT_PLATFORM_*`: **Linux** (inotify + poll), **macOS** (kqueue + kevent), **Windows** (ReadDirectoryChangesW + overlapped I/O). |
 | `src/runtime/rt_platform.h` | Path separator macro, POSIX compat shims for Windows, `mode_t` typedef. |
 
-**[GAP]** ViperDOS file watcher is a stub — no kernel inotify support yet.
 **[GAP]** Windows directory paths limited to `MAX_PATH` (260 chars); no Unicode long-path support.
 
 ---
@@ -116,7 +113,7 @@ Important rule:
 | File | Reason |
 |------|--------|
 | `src/runtime/system/rt_exec.c` | Runtime process execution — direct argv spawning on Windows/POSIX, shell mode only when explicitly requested. |
-| `src/runtime/system/rt_machine.c` | System info — four separate implementations: Windows (`GetSystemInfo`, `GlobalMemoryStatusEx`, `GetComputerNameA`), macOS (`sysctl`, `host_statistics64`), Linux (`sysconf`, `sysinfo`), ViperDOS (POSIX `sysconf`/`uname`). |
+| `src/runtime/system/rt_machine.c` | System info — three separate implementations: Windows (`GetSystemInfo`, `GlobalMemoryStatusEx`, `GetComputerNameA`), macOS (`sysctl`, `host_statistics64`), Linux (`sysconf`, `sysinfo`). |
 | `src/vm/VM.cpp` | Ctrl-C / interrupt handling — Windows: `SetConsoleCtrlHandler` + `windowsCtrlHandler`. POSIX: `sigaction(SIGINT)` + `posixSigintHandler` with `SA_RESTART`. |
 | `src/tests/common/PosixCompat.h` | Test compatibility layer — Windows stubs for `fork()` (returns -1), `waitpid()`, `pipe()` → `_pipe()`, `usleep()` → `Sleep()`, `mkstemp()` → `_mktemp_s()`. Uses `SKIP_TEST_NO_FORK()` macro. |
 | `src/common/RunProcess.cpp` | Tool/common subprocess launcher — native argv-based spawning with separate stdout/stderr capture; shell mode must be explicit via `run_shell_command()`. |
@@ -202,8 +199,6 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 | `src/tools/common/packaging/PkgVerify.*` | Structural verification for produced installer artifacts. Extend this rather than adding format-specific one-off verification scripts. |
 | `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper_win.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_FAST_DEBUG`, `VIPER_JOBS`, `VIPER_CTEST_JOBS`, `VIPER_RUN_SLOW_TESTS`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
 
-> ViperDOS build scripts now live in the separate ViperDOS repository; its platform targets remain listed above because the runtime still compiles for `RT_PLATFORM_VIPERDOS`.
-
 ---
 
 ### 10. Build System / Compiler
@@ -225,7 +220,6 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 
 | ID | Category | Gap Description | Severity |
 |----|----------|----------------|----------|
-| GAP-1 | Filesystem | ViperDOS file watcher is a stub (no kernel inotify) | Low |
 | GAP-2 | Filesystem | Windows `MAX_PATH` (260 char) limit on directory operations | Medium |
 | ~~GAP-3~~ | ~~Process~~ | ~~Resolved: Windows uses CreateProcess self-relaunch + Job Object~~ | ~~Resolved~~ |
 | ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: Both SysV and Win64 ABIs now implemented~~ | ~~Resolved~~ |
@@ -260,7 +254,7 @@ For features that use platform branches within a single runtime file, use
 #elif RT_PLATFORM_MACOS
     // macOS-specific (kqueue, mach_*, etc.)
 #else
-    // POSIX fallback (Linux + ViperDOS)
+    // POSIX fallback (Linux)
 #endif
 ```
 

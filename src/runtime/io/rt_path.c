@@ -49,11 +49,6 @@
 #include <windows.h>
 #define PATH_SEP '\\'
 #define PATH_SEP_STR "\\"
-#elif defined(__viperdos__)
-// ViperDOS: POSIX path utilities available via libc.
-#include <unistd.h>
-#define PATH_SEP '/'
-#define PATH_SEP_STR "/"
 #else
 #include <unistd.h>
 #define PATH_SEP '/'

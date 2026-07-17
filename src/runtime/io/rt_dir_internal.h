@@ -48,14 +48,6 @@
 #ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
 #endif
-#elif defined(__viperdos__)
-// ViperDOS provides POSIX-compatible directory APIs via libc.
-#include <dirent.h>
-#include <unistd.h>
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
-#define PATH_SEP '/'
 #else
 #include <dirent.h>
 #include <fcntl.h>

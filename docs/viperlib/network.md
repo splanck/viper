@@ -762,8 +762,7 @@ There is no way to distinguish between a non-existent domain (NXDOMAIN), a DNS s
 Validation methods (`IsIpv4`, `IsIpv6`, `IsIP`) never trap and return `False` for invalid input.
 
 `LocalAddrs()` uses platform interface enumeration and can include addresses from interfaces that
-are not currently up. The ViperDOS adapter returns an empty sequence. Address order is platform
-dependent.
+are not currently up. Address order is platform dependent.
 
 ### Address Formats
 

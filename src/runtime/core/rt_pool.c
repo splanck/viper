@@ -41,7 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+#if !RT_PLATFORM_WINDOWS
 #include <sched.h>
 #endif
 
@@ -264,7 +264,7 @@ static void rt_pool_lifecycle_lock_(void) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(&g_pool_lifecycle_lock, __ATOMIC_ACQUIRE));
@@ -311,7 +311,7 @@ static void rt_pool_lock_(int *lock) {
         do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
             sched_yield();
 #endif
         } while (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
@@ -705,7 +705,7 @@ void rt_pool_shutdown(void) {
         rt_pool_lifecycle_unlock_();
 #if RT_PLATFORM_WINDOWS
         SwitchToThread();
-#elif !RT_PLATFORM_VIPERDOS
+#else
         sched_yield();
 #endif
         rt_pool_lifecycle_lock_();
